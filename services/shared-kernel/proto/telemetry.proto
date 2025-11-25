@@ -1,0 +1,41 @@
+syntax = "proto3";
+package gisv2.telemetry;
+
+option csharp_namespace = "GisV2.SharedKernel.Telemetry";
+option go_package = "github.com/belivegis/gisv2/sharedkernel/telemetry";
+
+message NormalizedTelemetry {
+  string event_id = 1;
+  string device_id = 2;
+  string vehicle_id = 3;
+  string protocol = 4;
+  int64 received_at = 5; // unix ms
+  Position position = 6;
+  VehicleState state = 7;
+  repeated Alert alerts = 8;
+  map<string, string> metadata = 9;
+}
+
+message Position {
+  double latitude = 1;
+  double longitude = 2;
+  double speed_kph = 3;
+  double heading_deg = 4;
+  double altitude_m = 5;
+  double hdop = 6;
+}
+
+message VehicleState {
+  double odometer_km = 1;
+  double fuel_level_pct = 2;
+  bool engine_on = 3;
+  bool ignition_on = 4;
+  double battery_voltage = 5;
+  double temperature_c = 6;
+}
+
+message Alert {
+  string code = 1; // e.g. SPEEDING, GEOFENCE, SOS
+  string severity = 2; // INFO, WARN, CRITICAL
+  string description = 3;
+}
