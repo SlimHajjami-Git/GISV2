@@ -1,0 +1,10 @@
+listeners:
+  - port: 6100
+    protocol: gps_type_1
+    transport: tcp
+  - port: 6200
+    protocol: gps_type_2
+    transport: tcp
+  - port: 6210
+    protocol: gps_type_2_1
+    transport: tcp

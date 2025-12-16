@@ -1,0 +1,6 @@
+version: "2"
+authtoken: 364rXWdxgQAJvKJU8LPTFog3a07_3yotM7gLdCQ2Pm7LMYbbV
+tunnels:
+  frontend:
+    addr: frontend:80
+    proto: http

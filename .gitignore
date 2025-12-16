@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+.npm
+
+# Build outputs
+target/
+dist/
+build/
+*.exe
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Angular
+.angular/
+
+# Rust
+Cargo.lock
+*.pdb

@@ -1,0 +1,85 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: gis_v2
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_INITDB_ARGS: "--locale=en_US.UTF-8"
+      LC_ALL: en_US.UTF-8
+      LANG: en_US.UTF-8
+    command: ["postgres", "-c", "lc_messages=en_US.UTF-8"]
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+      # Allow guest user to connect from any host (needed for Windows host tests)
+      RABBITMQ_LOOPBACK_USERS: none
+    ports:
+      - "5673:5672"      # AMQP (5673 externe -> 5672 interne)
+      - "15673:15672"    # Management UI (15673 externe -> 15672 interne)
+
+  gps-ingest:
+    build:
+      context: ./services/gps-ingest-rust
+    env_file:
+      - ./services/gps-ingest-rust/.env.docker
+    depends_on:
+      postgres:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/gis_v2
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
+      RABBITMQ_EXCHANGE: telemetry.raw
+      RABBITMQ_ROUTING_KEY: hh
+      API_PORT: 3000
+    ports:
+      - "3000:3000"      # REST API
+      - "6100:6100"      # GPS TCP listener
+      - "6200:6200"
+      - "6210:6210"
+    volumes:
+      - ./services/gps-ingest-rust/config:/app/config:ro
+
+  frontend:
+    build:
+      context: ./services/gis-frontend
+      dockerfile: Dockerfile
+    depends_on:
+      - gps-ingest
+    ports:
+      - "4200:80"
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    command: start --all --config /etc/ngrok.yml
+    volumes:
+      - ./ngrok.yml:/etc/ngrok.yml:ro
+    ports:
+      - "4040:4040"    # ngrok web interface
+    depends_on:
+      - gps-ingest
+      - frontend
+
+volumes:
+  pgdata:

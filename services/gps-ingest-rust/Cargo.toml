@@ -11,6 +11,14 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 anyhow = "1"
 amqprs = "1"
+async-trait = "0.1"
 prost = "0.12"
 prost-types = "0.12"
 thiserror = "1"
+sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "chrono"] }
+dotenvy = "0.15"
+serde_yaml = "0.9"
+hex = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+axum = "0.7"
+tower-http = { version = "0.5", features = ["cors"] }
