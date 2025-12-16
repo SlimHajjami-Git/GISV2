@@ -4,11 +4,12 @@ import { Router } from '@angular/router';
 import { MockDataService } from '../services/mock-data.service';
 import { Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { VehiclePopupComponent } from './shared/vehicle-popup.component';
 
 @Component({
   selector: 'app-vehicles',
   standalone: true,
-  imports: [CommonModule, AppLayoutComponent],
+  imports: [CommonModule, AppLayoutComponent, VehiclePopupComponent],
   template: `
     <app-layout>
       <div class="vehicles-page">
@@ -33,6 +34,13 @@ import { AppLayoutComponent } from './shared/app-layout.component';
             <option value="suv">SUV</option>
             <option value="utilitaire">Utilitaire</option>
           </select>
+          <button class="btn-primary" (click)="openAddPopup()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Nouveau véhicule
+          </button>
         </div>
 
         <div class="vehicles-grid">
@@ -112,7 +120,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
             </div>
 
             <div class="vehicle-card-footer">
-              <button class="btn-secondary">
+              <button class="btn-secondary" (click)="openEditPopup(vehicle)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -129,6 +137,13 @@ import { AppLayoutComponent } from './shared/app-layout.component';
           </div>
         </div>
       </div>
+
+      <app-vehicle-popup
+        [isOpen]="isPopupOpen"
+        [vehicle]="selectedVehicle"
+        (closed)="closePopup()"
+        (saved)="saveVehicle($event)"
+      />
     </app-layout>
   `,
   styles: [`
@@ -439,6 +454,8 @@ import { AppLayoutComponent } from './shared/app-layout.component';
 export class VehiclesComponent implements OnInit {
   vehicles: Vehicle[] = [];
   company: Company | null = null;
+  isPopupOpen = false;
+  selectedVehicle: Vehicle | null = null;
 
   constructor(
     private router: Router,
@@ -484,5 +501,25 @@ export class VehiclesComponent implements OnInit {
   logout() {
     this.dataService.logout();
     this.router.navigate(['/']);
+  }
+
+  openAddPopup() {
+    this.selectedVehicle = null;
+    this.isPopupOpen = true;
+  }
+
+  openEditPopup(vehicle: Vehicle) {
+    this.selectedVehicle = vehicle;
+    this.isPopupOpen = true;
+  }
+
+  closePopup() {
+    this.isPopupOpen = false;
+    this.selectedVehicle = null;
+  }
+
+  saveVehicle(vehicleData: Partial<Vehicle>) {
+    console.log('Saving vehicle:', vehicleData);
+    this.closePopup();
   }
 }

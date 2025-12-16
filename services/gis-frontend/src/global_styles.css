@@ -23,6 +23,7 @@
   --bg-page: #f8fafc;
   --bg-card: #ffffff;
   --bg-secondary: #f1f5f9;
+  --bg-tertiary: #f8fafc;
   --bg-hover: #e2e8f0;
   --bg-nav: #ffffff;
 
@@ -33,6 +34,7 @@
 
   /* Border Colors */
   --border-color: #e2e8f0;
+  --border-light: #cbd5e1;
   --border-dark: #cbd5e1;
 
   /* Shadows */

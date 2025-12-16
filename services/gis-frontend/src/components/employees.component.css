@@ -1,7 +1,50 @@
 /* ===== EMPLOYEES PAGE ===== */
 .employees-page {
   flex: 1;
+  padding: 0;
   background: var(--bg-page);
+}
+
+.filters-bar {
+  display: flex;
+  gap: 12px;
+  padding: 24px 32px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.search-box {
+  flex: 1;
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.search-box input {
+  width: 100%;
+  padding: 10px 14px 10px 42px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.search-box input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.search-box input::placeholder {
+  color: var(--text-muted);
 }
 
 .btn-primary {
@@ -22,6 +65,7 @@
 .btn-primary:hover {
   background: var(--primary-dark);
   transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }
 
 .employees-grid {
@@ -197,6 +241,15 @@
 }
 
 @media (max-width: 768px) {
+  .filters-bar {
+    flex-wrap: wrap;
+    padding: 16px 20px;
+  }
+
+  .search-box {
+    width: 100%;
+  }
+
   .employees-grid {
     grid-template-columns: 1fr;
     padding: 16px 20px;

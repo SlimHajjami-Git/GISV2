@@ -4,17 +4,20 @@ import { Router } from '@angular/router';
 import { MockDataService } from '../services/mock-data.service';
 import { Employee, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { EmployeePopupComponent } from './shared/employee-popup.component';
 
 @Component({
   selector: 'app-employees',
   standalone: true,
-  imports: [CommonModule, AppLayoutComponent],
+  imports: [CommonModule, AppLayoutComponent, EmployeePopupComponent],
   templateUrl: './employees.component.html',
   styleUrls: ['./employees.component.css']
 })
 export class EmployeesComponent implements OnInit {
   employees: Employee[] = [];
   company: Company | null = null;
+  isPopupOpen = false;
+  selectedEmployee: Employee | null = null;
 
   constructor(
     private router: Router,
@@ -55,5 +58,25 @@ export class EmployeesComponent implements OnInit {
   logout() {
     this.dataService.logout();
     this.router.navigate(['/']);
+  }
+
+  openAddPopup() {
+    this.selectedEmployee = null;
+    this.isPopupOpen = true;
+  }
+
+  openEditPopup(employee: Employee) {
+    this.selectedEmployee = employee;
+    this.isPopupOpen = true;
+  }
+
+  closePopup() {
+    this.isPopupOpen = false;
+    this.selectedEmployee = null;
+  }
+
+  saveEmployee(employeeData: Partial<Employee>) {
+    console.log('Saving employee:', employeeData);
+    this.closePopup();
   }
 }
