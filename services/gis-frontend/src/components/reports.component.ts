@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { MockDataService } from '../services/mock-data.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 
 Chart.register(...registerables);
@@ -11,7 +12,7 @@ Chart.register(...registerables);
 @Component({
   selector: 'app-reports',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ButtonComponent, CardComponent, DataTableComponent],
   templateUrl: './reports.component.html',
   styleUrls: ['./reports.component.css']
 })
@@ -58,17 +59,50 @@ export class ReportsComponent implements OnInit {
 
   vehicles: any[] = [];
   selectedTemplate: any = null;
+  selectedTemplateId = '';
+  selectedVehicleId = '';
   selectedVehicleIds: string[] = [];
+
+  // Period
+  periods = [
+    { value: 'today', label: 'Today' },
+    { value: 'yesterday', label: 'Yesterday' },
+    { value: 'week', label: 'Week' },
+    { value: 'month', label: 'Month' }
+  ];
+  selectedPeriod = 'week';
+  
+  // Interval
+  intervalType = 'previous';
+  intervalValue = 1;
+  intervalUnit = 'months';
+  includeCurrent = false;
 
   fromDate = '';
   toDate = '';
-  selectedPeriod = 'today';
-  includeCurrent = false;
 
   reportGenerated = false;
   activeTab = 'chart';
   loading = false;
 
+  // Accordion sections
+  expandedSections: { [key: string]: boolean } = {
+    templates: false,
+    result: true
+  };
+
+  // Chart legend
+  chartLines = {
+    all: true,
+    speed: true,
+    fuel: true,
+    consumption: true
+  };
+
+  // Pagination
+  currentPage = 1;
+  pageSize = 50;
+  
   chartData: any[] = [];
   tableData: any[] = [];
   statisticsData: any = {};
@@ -137,6 +171,61 @@ export class ReportsComponent implements OnInit {
 
   selectTemplate(template: any) {
     this.selectedTemplate = template;
+    this.selectedTemplateId = template.id;
+  }
+
+  onTemplateChange() {
+    this.selectedTemplate = this.templates.find(t => t.id === this.selectedTemplateId) || null;
+  }
+
+  toggleSection(section: string) {
+    this.expandedSections[section] = !this.expandedSections[section];
+  }
+
+  toggleAllLines() {
+    const allChecked = this.chartLines.all;
+    this.chartLines.speed = allChecked;
+    this.chartLines.fuel = allChecked;
+    this.chartLines.consumption = allChecked;
+  }
+
+  clearFilters() {
+    this.selectedTemplateId = '';
+    this.selectedTemplate = null;
+    this.selectedVehicleId = '';
+    this.selectedPeriod = 'week';
+    this.intervalValue = 1;
+    this.intervalUnit = 'months';
+    this.includeCurrent = false;
+    this.reportGenerated = false;
+  }
+
+  // Pagination getters
+  get totalPages(): number {
+    return Math.ceil(this.tableData.length / this.pageSize) || 1;
+  }
+
+  get startItem(): number {
+    return (this.currentPage - 1) * this.pageSize + 1;
+  }
+
+  get endItem(): number {
+    return Math.min(this.currentPage * this.pageSize, this.tableData.length);
+  }
+
+  get paginatedData(): any[] {
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.tableData.slice(start, start + this.pageSize);
+  }
+
+  goToPage(page: number) {
+    if (page >= 1 && page <= this.totalPages) {
+      this.currentPage = page;
+    }
+  }
+
+  onPageSizeChange() {
+    this.currentPage = 1;
   }
 
   executeReport() {
@@ -145,18 +234,15 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
-    if (this.selectedVehicleIds.length === 0) {
-      alert('Veuillez sélectionner au moins un véhicule');
-      return;
-    }
-
     this.loading = true;
+    this.expandedSections['result'] = true;
 
     setTimeout(() => {
       this.reportGenerated = true;
-      this.generateMockData();
+      this.generateFuelData();
       this.loading = false;
       this.activeTab = 'chart';
+      this.currentPage = 1;
 
       setTimeout(() => {
         this.createChart();
@@ -292,6 +378,58 @@ export class ReportsComponent implements OnInit {
     }
   }
 
+  generateFuelData() {
+    // Generate realistic fuel filling data
+    const locations = [
+      'DN2, Bălcăuți, Suceava, Romania',
+      'DN2, Siret, Suceava, Romania, 3.71 km from Siret',
+      'DN2, Cordun, Neamț, Romania, 3.87 km from Roman',
+      'DN2, Fântâna Mare, Suceava, Romania, 1.04 km from Fântâna Mare',
+      'DN2, Sascut, Bacău, Romania, 1.97 km from Schineni'
+    ];
+    
+    this.tableData = [];
+    const baseDate = new Date('2024-12-01T00:00:00');
+    
+    for (let i = 0; i < 20; i++) {
+      const date = new Date(baseDate.getTime() + i * 3 * 60 * 60 * 1000);
+      const filled = Math.floor(Math.random() * 30) + 10;
+      const initialLevel = Math.floor(Math.random() * 300) + 400;
+      
+      this.tableData.push({
+        location: locations[i % locations.length],
+        filled: `${filled} l`,
+        initialLevel: `${initialLevel} l`,
+        finalLevel: `${initialLevel + filled} l`,
+        sensor: 'FLS',
+        driver: 'Alex Black',
+        time: date.toLocaleString('fr-FR', { 
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit'
+        })
+      });
+    }
+
+    // Chart data - fuel level over time
+    this.chartData = [];
+    for (let i = 0; i < 24; i++) {
+      const hour = 14 + Math.floor(i / 2);
+      const minute = (i % 2) * 30;
+      const fuelLevel = 50 + Math.sin(i * 0.5) * 20 + Math.random() * 10;
+      this.chartData.push({
+        label: `${hour}:${minute.toString().padStart(2, '0')}`,
+        value: Math.round(fuelLevel)
+      });
+    }
+
+    this.statisticsData = {
+      totalFilled: '298 l',
+      avgFilling: '22.3 l',
+      totalFillings: '15',
+      avgInterval: '4.2 h'
+    };
+  }
+
   createChart() {
     if (!this.chartCanvas) return;
 
@@ -302,7 +440,7 @@ export class ReportsComponent implements OnInit {
     const ctx = this.chartCanvas.nativeElement.getContext('2d');
     if (!ctx) return;
 
-    const type = this.selectedTemplate.type;
+    const type = this.selectedTemplate?.type || 'fuel';
     let config: ChartConfiguration;
 
     if (type === 'stops') {

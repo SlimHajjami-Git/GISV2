@@ -3,11 +3,12 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { MockDataService } from '../services/mock-data.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { CardComponent } from './shared/ui';
 
 @Component({
   selector: 'app-geofences',
   standalone: true,
-  imports: [CommonModule, AppLayoutComponent],
+  imports: [CommonModule, AppLayoutComponent, CardComponent],
   template: `
     <app-layout>
       <div class="geofences-page">
@@ -28,46 +29,53 @@ import { AppLayoutComponent } from './shared/app-layout.component';
   styles: [`
     .geofences-page {
       flex: 1;
-      background: var(--bg-page);
+      background: #f1f5f9;
+      display: flex;
+      flex-direction: column;
+      min-height: calc(100vh - 42px);
     }
 
     .geofences-content {
       display: flex;
       align-items: center;
       justify-content: center;
-      min-height: 400px;
+      flex: 1;
       padding: 40px;
+      background: white;
+      margin: 1px;
     }
 
     .coming-soon {
       text-align: center;
-      max-width: 600px;
+      max-width: 400px;
     }
 
     .coming-soon svg {
-      color: var(--primary);
-      opacity: 0.7;
-      margin-bottom: 32px;
+      color: #3b82f6;
+      opacity: 0.5;
+      margin-bottom: 16px;
+      width: 48px;
+      height: 48px;
     }
 
     .coming-soon h1 {
-      font-size: 28px;
-      font-weight: 700;
-      color: var(--text-primary);
-      margin: 0 0 16px 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: #1e293b;
+      margin: 0 0 8px 0;
     }
 
     .coming-soon p {
-      font-size: 16px;
-      color: var(--text-secondary);
-      margin: 0 0 12px 0;
-      line-height: 1.6;
+      font-size: 12px;
+      color: #64748b;
+      margin: 0 0 8px 0;
+      line-height: 1.5;
     }
 
     .coming-soon .description {
-      font-size: 14px;
-      color: var(--text-muted);
-      margin-top: 24px;
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 12px;
     }
   `]
 })

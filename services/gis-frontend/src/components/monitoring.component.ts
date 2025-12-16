@@ -5,12 +5,13 @@ import { Router } from '@angular/router';
 import { MockDataService } from '../services/mock-data.service';
 import { Vehicle } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { StatCardComponent, ButtonComponent, CardComponent } from './shared/ui';
 import * as L from 'leaflet';
 
 @Component({
   selector: 'app-monitoring',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, StatCardComponent, ButtonComponent, CardComponent],
   templateUrl: './monitoring.component.html',
   styleUrls: ['./monitoring.component.css']
 })

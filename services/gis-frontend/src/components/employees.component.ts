@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { MockDataService } from '../services/mock-data.service';
 import { Employee, Company } from '../models/types';
@@ -9,15 +10,21 @@ import { EmployeePopupComponent } from './shared/employee-popup.component';
 @Component({
   selector: 'app-employees',
   standalone: true,
-  imports: [CommonModule, AppLayoutComponent, EmployeePopupComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, EmployeePopupComponent],
   templateUrl: './employees.component.html',
   styleUrls: ['./employees.component.css']
 })
 export class EmployeesComponent implements OnInit {
   employees: Employee[] = [];
+  allEmployees: Employee[] = [];
   company: Company | null = null;
   isPopupOpen = false;
   selectedEmployee: Employee | null = null;
+
+  // Filters
+  searchQuery = '';
+  filterStatus = '';
+  filterRole = '';
 
   constructor(
     private router: Router,
@@ -32,8 +39,20 @@ export class EmployeesComponent implements OnInit {
 
     this.company = this.dataService.getCurrentCompany();
     if (this.company) {
-      this.employees = this.dataService.getEmployeesByCompany(this.company.id);
+      this.allEmployees = this.dataService.getEmployeesByCompany(this.company.id);
+      this.employees = [...this.allEmployees];
     }
+  }
+
+  filterEmployees() {
+    this.employees = this.allEmployees.filter(e => {
+      const matchesSearch = !this.searchQuery || 
+        e.name.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+        e.email.toLowerCase().includes(this.searchQuery.toLowerCase());
+      const matchesStatus = !this.filterStatus || e.status === this.filterStatus;
+      const matchesRole = !this.filterRole || e.role === this.filterRole;
+      return matchesSearch && matchesStatus && matchesRole;
+    });
   }
 
   getRoleLabel(role: string): string {

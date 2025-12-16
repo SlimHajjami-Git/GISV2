@@ -1,47 +1,47 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { MockDataService } from '../services/mock-data.service';
 import { Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { VehiclePopupComponent } from './shared/vehicle-popup.component';
+import { FilterBarComponent, SearchInputComponent } from './shared/ui';
 
 @Component({
   selector: 'app-vehicles',
   standalone: true,
-  imports: [CommonModule, AppLayoutComponent, VehiclePopupComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, VehiclePopupComponent, FilterBarComponent, SearchInputComponent],
   template: `
     <app-layout>
       <div class="vehicles-page">
-        <div class="filters-bar">
-          <div class="search-box">
-            <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/>
-              <path d="m21 21-4.35-4.35"/>
-            </svg>
-            <input type="text" placeholder="Rechercher un véhicule..." />
-          </div>
-          <select class="filter-select">
+        <ui-filter-bar>
+          <ui-search-input 
+            placeholder="Rechercher un véhicule..."
+            [(ngModel)]="searchQuery"
+            (onSearch)="filterVehicles()">
+          </ui-search-input>
+          <select class="filter-select" [(ngModel)]="filterStatus" (change)="filterVehicles()">
             <option value="">Tous les statuts</option>
             <option value="available">Disponibles</option>
             <option value="in_use">En service</option>
             <option value="maintenance">En maintenance</option>
           </select>
-          <select class="filter-select">
+          <select class="filter-select" [(ngModel)]="filterType" (change)="filterVehicles()">
             <option value="">Tous les types</option>
             <option value="camion">Camion</option>
             <option value="citadine">Citadine</option>
             <option value="suv">SUV</option>
             <option value="utilitaire">Utilitaire</option>
           </select>
-          <button class="btn-primary" (click)="openAddPopup()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <button class="btn-add" (click)="openAddPopup()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"/>
               <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            Nouveau véhicule
+            Ajouter
           </button>
-        </div>
+        </ui-filter-bar>
 
         <div class="vehicles-grid">
           <div class="vehicle-card" *ngFor="let vehicle of vehicles">
@@ -154,88 +154,45 @@ import { VehiclePopupComponent } from './shared/vehicle-popup.component';
       background: var(--bg-page);
     }
 
-    .btn-primary {
+    .btn-add {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 10px 20px;
-      background: var(--primary);
+      gap: 6px;
+      padding: 6px 12px;
+      background: #3b82f6;
       color: white;
       border: none;
-      border-radius: 8px;
-      font-weight: 600;
-      font-size: 14px;
+      border-radius: 3px;
+      font-family: var(--font-family);
+      font-size: 12px;
+      font-weight: 500;
       cursor: pointer;
-      transition: all 0.2s;
+      margin-left: auto;
     }
 
-    .btn-primary:hover {
-      background: var(--primary-dark);
-      transform: translateY(-1px);
-      box-shadow: var(--shadow-md);
+    .btn-add:hover {
+      background: #2563eb;
     }
 
-    .filters-bar {
-      display: flex;
-      gap: 12px;
-      padding: 24px 32px;
-      background: var(--bg-card);
-      border-bottom: 1px solid var(--border-color);
-    }
-
-    .search-box {
+    ui-search-input {
       flex: 1;
-      position: relative;
-    }
-
-    .search-icon {
-      position: absolute;
-      left: 14px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: var(--text-muted);
-      pointer-events: none;
-    }
-
-    .search-box input {
-      width: 100%;
-      padding: 10px 14px 10px 42px;
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      color: var(--text-primary);
-      font-size: 14px;
-      transition: all 0.2s;
-    }
-
-    .search-box input:focus {
-      outline: none;
-      border-color: var(--primary);
-    }
-
-    .search-box input::placeholder {
-      color: var(--text-muted);
+      max-width: 300px;
     }
 
     .filter-select {
-      padding: 10px 14px;
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      color: var(--text-primary);
-      font-size: 14px;
+      padding: 6px 10px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 3px;
+      color: #1e293b;
+      font-family: var(--font-family);
+      font-size: 12px;
       cursor: pointer;
-      transition: all 0.2s;
     }
 
     .filter-select:focus {
       outline: none;
-      border-color: var(--primary);
-    }
-
-    .filter-select option {
-      background: var(--bg-secondary);
-      color: var(--text-primary);
+      border-color: #3b82f6;
     }
 
     .vehicles-grid {
@@ -246,7 +203,7 @@ import { VehiclePopupComponent } from './shared/vehicle-popup.component';
     }
 
     .vehicle-card {
-      background: var(--bg-secondary);
+      background: var(--bg-card);
       border-radius: 12px;
       border: 1px solid var(--border-color);
       overflow: hidden;
@@ -453,9 +410,15 @@ import { VehiclePopupComponent } from './shared/vehicle-popup.component';
 })
 export class VehiclesComponent implements OnInit {
   vehicles: Vehicle[] = [];
+  allVehicles: Vehicle[] = [];
   company: Company | null = null;
   isPopupOpen = false;
   selectedVehicle: Vehicle | null = null;
+  
+  // Filters
+  searchQuery = '';
+  filterStatus = '';
+  filterType = '';
 
   constructor(
     private router: Router,
@@ -470,8 +433,21 @@ export class VehiclesComponent implements OnInit {
 
     this.company = this.dataService.getCurrentCompany();
     if (this.company) {
-      this.vehicles = this.dataService.getVehiclesByCompany(this.company.id);
+      this.allVehicles = this.dataService.getVehiclesByCompany(this.company.id);
+      this.vehicles = [...this.allVehicles];
     }
+  }
+
+  filterVehicles() {
+    this.vehicles = this.allVehicles.filter(v => {
+      const matchesSearch = !this.searchQuery || 
+        v.name.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+        v.brand.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+        v.plate.toLowerCase().includes(this.searchQuery.toLowerCase());
+      const matchesStatus = !this.filterStatus || v.status === this.filterStatus;
+      const matchesType = !this.filterType || v.type === this.filterType;
+      return matchesSearch && matchesStatus && matchesType;
+    });
   }
 
   getStatusLabel(status: string): string {

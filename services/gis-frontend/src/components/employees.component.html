@@ -1,22 +1,31 @@
 <app-layout>
   <div class="employees-page">
-    <div class="filters-bar">
-      <div class="search-box">
-        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"/>
-          <path d="m21 21-4.35-4.35"/>
+    <div class="filter-bar">
+      <div class="search-wrapper">
+        <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
         </svg>
-        <input type="text" placeholder="Rechercher un employé..." />
+        <input type="text" class="search-input" placeholder="Rechercher un employé..." [(ngModel)]="searchQuery" (input)="filterEmployees()">
       </div>
-      <button class="btn-primary" (click)="openAddPopup()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <select class="filter-select" [(ngModel)]="filterStatus" (change)="filterEmployees()">
+        <option value="">Tous les statuts</option>
+        <option value="active">Actifs</option>
+        <option value="inactive">Inactifs</option>
+      </select>
+      <select class="filter-select" [(ngModel)]="filterRole" (change)="filterEmployees()">
+        <option value="">Tous les rôles</option>
+        <option value="driver">Conducteurs</option>
+        <option value="manager">Managers</option>
+        <option value="admin">Admins</option>
+      </select>
+      <button class="btn-add" (click)="openAddPopup()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="12" y1="5" x2="12" y2="19"/>
           <line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
-        Nouvel employé
+        Ajouter
       </button>
     </div>
-
     <div class="employees-grid">
       @for (employee of employees; track employee.id) {
         <div class="employee-card">

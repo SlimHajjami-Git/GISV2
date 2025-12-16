@@ -1,217 +1,264 @@
 <app-layout>
   <div class="reports-page">
     <div class="reports-layout">
-  <!-- SIDEBAR GAUCHE -->
-  <aside class="reports-sidebar">
-    <!-- Templates de rapports -->
-    <div class="sidebar-section">
-      <h3 class="sidebar-title">Templates de rapports</h3>
-      <div class="templates-list">
-        @for (template of templates; track template.id) {
-          <div
-            class="template-item"
-            [class.active]="selectedTemplate?.id === template.id"
-            (click)="selectTemplate(template)">
-            <span class="template-icon">{{ template.icon }}</span>
-            <div class="template-info">
-              <div class="template-name">{{ template.name }}</div>
-              <div class="template-desc">{{ template.description }}</div>
-            </div>
-          </div>
-        }
-      </div>
-    </div>
+      <!-- SIDEBAR GAUCHE -->
+      <aside class="reports-sidebar">
+        <!-- Template Selector -->
+        <div class="sidebar-row">
+          <label class="field-label">Template</label>
+          <select class="field-select" [(ngModel)]="selectedTemplateId" (change)="onTemplateChange()">
+            <option value="">Sélectionner...</option>
+            @for (template of templates; track template.id) {
+              <option [value]="template.id">{{ template.name }}</option>
+            }
+          </select>
+        </div>
 
-    <!-- Filtres -->
-    <div class="sidebar-section">
-      <h3 class="sidebar-title">Période</h3>
-      <div class="period-buttons">
-        <button
-          *ngFor="let period of ['today', 'yesterday', 'week', 'month']"
-          class="period-btn"
-          [class.active]="selectedPeriod === period"
-          (click)="selectPeriod(period)">
-          {{ period === 'today' ? 'Aujourd\'hui' : period === 'yesterday' ? 'Hier' : period === 'week' ? 'Semaine' : 'Mois' }}
-        </button>
-      </div>
-    </div>
+        <!-- Vehicle Selector -->
+        <div class="sidebar-row">
+          <label class="field-label">Véhicule</label>
+          <select class="field-select" [(ngModel)]="selectedVehicleId">
+            <option value="">Tous les véhicules</option>
+            @for (vehicle of vehicles; track vehicle.id) {
+              <option [value]="vehicle.id">{{ vehicle.brand }} {{ vehicle.model }}</option>
+            }
+          </select>
+        </div>
 
-    <div class="sidebar-section">
-      <h3 class="sidebar-title">De</h3>
-      <input type="datetime-local" class="date-input" [(ngModel)]="fromDate" />
-    </div>
+        <!-- Period Buttons -->
+        <div class="period-row">
+          <button *ngFor="let p of periods" 
+            [class.active]="selectedPeriod === p.value"
+            (click)="selectPeriod(p.value)">{{ p.label }}</button>
+        </div>
 
-    <div class="sidebar-section">
-      <h3 class="sidebar-title">À</h3>
-      <input type="datetime-local" class="date-input" [(ngModel)]="toDate" />
-    </div>
-
-    <div class="sidebar-section">
-      <label class="checkbox-label">
-        <input type="checkbox" [(ngModel)]="includeCurrent" />
-        <span>Including current</span>
-      </label>
-    </div>
-
-    <div class="sidebar-section">
-      <h3 class="sidebar-title">Véhicules</h3>
-      <select class="vehicle-select" [(ngModel)]="selectedVehicleIds" multiple size="5">
-        @for (vehicle of vehicles; track vehicle.id) {
-          <option [value]="vehicle.id">
-            {{ vehicle.brand }} {{ vehicle.model }} - {{ vehicle.plate }}
-          </option>
-        }
-      </select>
-      <div class="hint-text">Maintenez Ctrl pour sélectionner plusieurs</div>
-    </div>
-
-    <div class="sidebar-actions">
-      <button class="execute-btn" (click)="executeReport()" [disabled]="loading">
-        @if (loading) {
-          <span class="loader"></span>
-          <span>Chargement...</span>
-        } @else {
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="5 3 19 12 5 21 5 3"/>
-          </svg>
-          <span>Exécuter</span>
-        }
-      </button>
-    </div>
-  </aside>
-
-  <!-- WORKSPACE PRINCIPAL -->
-  <main class="reports-workspace">
-    @if (!reportGenerated) {
-      <div class="empty-state">
-        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-          <line x1="16" y1="13" x2="8" y2="13"/>
-          <line x1="16" y1="17" x2="8" y2="17"/>
-        </svg>
-        <h2>Sélectionnez un template</h2>
-        <p>Choisissez un template de rapport, sélectionnez les paramètres et cliquez sur Exécuter</p>
-      </div>
-    } @else {
-      <div class="report-results">
-        <!-- Header avec titre et boutons export -->
-        <div class="results-header">
-          <div class="results-title">
-            <span class="report-icon">{{ selectedTemplate.icon }}</span>
-            <h2>{{ selectedTemplate.name }}</h2>
-          </div>
-          <div class="export-buttons">
-            <button class="export-btn" (click)="exportReport('pdf')">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              PDF
-            </button>
-            <button class="export-btn" (click)="exportReport('excel')">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              Excel
-            </button>
-            <button class="export-btn" (click)="exportReport('csv')">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              CSV
-            </button>
+        <!-- Interval -->
+        <div class="sidebar-row">
+          <label class="field-label">Intervalle</label>
+          <div class="interval-row">
+            <select class="field-select small" [(ngModel)]="intervalType">
+              <option value="previous">Précédent</option>
+              <option value="current">Actuel</option>
+            </select>
+            <input type="number" class="field-input small" [(ngModel)]="intervalValue" min="1" max="12">
+            <select class="field-select small" [(ngModel)]="intervalUnit">
+              <option value="days">jours</option>
+              <option value="weeks">semaines</option>
+              <option value="months">mois</option>
+            </select>
           </div>
         </div>
 
-        <!-- Onglets -->
-        <div class="tabs">
-          <button
-            class="tab"
-            [class.active]="activeTab === 'chart'"
-            (click)="setActiveTab('chart')">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="20" x2="18" y2="10"/>
-              <line x1="12" y1="20" x2="12" y2="4"/>
-              <line x1="6" y1="20" x2="6" y2="14"/>
-            </svg>
-            Chart
-          </button>
-          <button
-            class="tab"
-            [class.active]="activeTab === 'table'"
-            (click)="setActiveTab('table')">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-              <line x1="3" y1="9" x2="21" y2="9"/>
-              <line x1="9" y1="21" x2="9" y2="9"/>
-            </svg>
-            Table
-          </button>
-          <button
-            class="tab"
-            [class.active]="activeTab === 'statistics'"
-            (click)="setActiveTab('statistics')">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 3v18h18"/>
-              <path d="m19 9-5 5-4-4-3 3"/>
-            </svg>
-            Statistics
+        <!-- Including current -->
+        <div class="sidebar-row">
+          <label class="checkbox-row">
+            <input type="checkbox" [(ngModel)]="includeCurrent">
+            <span>Inclure période en cours</span>
+          </label>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-row">
+          <button class="btn-clear" (click)="clearFilters()">Effacer</button>
+          <button class="btn-execute" (click)="executeReport()" [disabled]="loading">
+            @if (loading) {
+              <span class="spinner"></span>
+            }
+            Exécuter
           </button>
         </div>
 
-        <!-- Contenu des onglets -->
-        <div class="tab-content">
-          @if (activeTab === 'chart') {
-            <div class="chart-container">
-              <canvas #chartCanvas></canvas>
-            </div>
-          }
+        <!-- Report Sections (Accordion) -->
+        <div class="accordion-section">
+          <div class="accordion-header" (click)="toggleSection('templates')">
+            <span>Report templates</span>
+            <svg [class.rotated]="expandedSections['templates']" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </div>
+        </div>
 
-          @if (activeTab === 'table') {
-            <div class="table-container">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    @for (key of tableData.length > 0 ? Object.keys(tableData[0]) : []; track key) {
-                      <th>{{ key }}</th>
-                    }
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (row of tableData; track $index) {
-                    <tr>
-                      @for (key of Object.keys(row); track key) {
-                        <td>{{ row[key] }}</td>
-                      }
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            </div>
-          }
-
-          @if (activeTab === 'statistics') {
-            <div class="statistics-container">
-              <div class="stats-grid">
-                @for (key of getStatKeys(); track key) {
-                  <div class="stat-card">
-                    <div class="stat-label">{{ key }}</div>
-                    <div class="stat-value">{{ statisticsData[key] }}</div>
-                  </div>
-                }
+        <div class="accordion-section">
+          <div class="accordion-header" [class.active]="reportGenerated" (click)="toggleSection('result')">
+            <span>Report result</span>
+            <svg [class.rotated]="expandedSections['result']" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </div>
+          @if (expandedSections['result'] && reportGenerated) {
+            <div class="accordion-content">
+              <div class="result-item" [class.active]="activeTab === 'statistics'" (click)="setActiveTab('statistics')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                </svg>
+                <span>Statistiques</span>
+              </div>
+              <div class="result-item" [class.active]="activeTab === 'table'" (click)="setActiveTab('table')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                  <line x1="3" y1="9" x2="21" y2="9"/>
+                  <line x1="9" y1="21" x2="9" y2="9"/>
+                </svg>
+                <span>{{ selectedTemplate?.name || 'Données' }}</span>
+              </div>
+              <div class="result-item" [class.active]="activeTab === 'chart'" (click)="setActiveTab('chart')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="20" x2="18" y2="10"/>
+                  <line x1="12" y1="20" x2="12" y2="4"/>
+                  <line x1="6" y1="20" x2="6" y2="14"/>
+                </svg>
+                <span>Graphique</span>
               </div>
             </div>
           }
         </div>
-      </div>
-    }
-  </main>
-  </div>
+
+        <!-- Chart Legend -->
+        @if (reportGenerated && activeTab === 'chart') {
+          <div class="chart-legend">
+            <div class="legend-title">Légende</div>
+            <label class="legend-item">
+              <input type="checkbox" [(ngModel)]="chartLines.all" (change)="toggleAllLines()">
+              <span class="legend-line" style="background: #64748b"></span>
+              <span>Toutes les lignes</span>
+            </label>
+            <label class="legend-item">
+              <input type="checkbox" [(ngModel)]="chartLines.speed">
+              <span class="legend-line" style="background: #22c55e"></span>
+              <span>Vitesse, km/h</span>
+            </label>
+            <label class="legend-item">
+              <input type="checkbox" [(ngModel)]="chartLines.fuel">
+              <span class="legend-line" style="background: #3b82f6"></span>
+              <span>Niveau carburant, L</span>
+            </label>
+            <label class="legend-item">
+              <input type="checkbox" [(ngModel)]="chartLines.consumption">
+              <span class="legend-line" style="background: #f97316"></span>
+              <span>Consommation, L/h</span>
+            </label>
+          </div>
+        }
+      </aside>
+
+      <!-- WORKSPACE PRINCIPAL -->
+      <main class="reports-workspace">
+        @if (!reportGenerated) {
+          <div class="empty-state">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+            <h3>Générer un rapport</h3>
+            <p>Sélectionnez un template et un véhicule, puis cliquez sur Exécuter</p>
+          </div>
+        } @else {
+          <div class="workspace-content">
+            <!-- Chart Section -->
+            <div class="chart-section">
+              <div class="section-toolbar">
+                <div class="toolbar-left">
+                  <button class="tool-btn" title="Zoom avant">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                      <line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
+                    </svg>
+                  </button>
+                  <button class="tool-btn" title="Zoom arrière">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                      <line x1="8" y1="11" x2="14" y2="11"/>
+                    </svg>
+                  </button>
+                  <button class="tool-btn" title="Réinitialiser">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                    </svg>
+                  </button>
+                </div>
+                <div class="toolbar-center">
+                  <span class="section-title">Graphique</span>
+                </div>
+                <div class="toolbar-right">
+                  <button class="export-btn-sm" (click)="exportReport('png')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Export
+                  </button>
+                </div>
+              </div>
+              <div class="chart-area">
+                <canvas #chartCanvas></canvas>
+              </div>
+            </div>
+
+            <!-- Table Section -->
+            <div class="table-section">
+              <div class="section-toolbar">
+                <div class="toolbar-left">
+                  <div class="pagination">
+                    <button class="page-btn" [disabled]="currentPage === 1" (click)="goToPage(1)">«</button>
+                    <button class="page-btn" [disabled]="currentPage === 1" (click)="goToPage(currentPage - 1)">‹</button>
+                    <span class="page-info">{{ currentPage }} sur {{ totalPages }}</span>
+                    <button class="page-btn" [disabled]="currentPage === totalPages" (click)="goToPage(currentPage + 1)">›</button>
+                    <button class="page-btn" [disabled]="currentPage === totalPages" (click)="goToPage(totalPages)">»</button>
+                    <span class="items-info">Éléments {{ startItem }} à {{ endItem }} sur {{ tableData.length }}</span>
+                    <select class="page-size-select" [(ngModel)]="pageSize" (change)="onPageSizeChange()">
+                      <option [value]="10">10</option>
+                      <option [value]="25">25</option>
+                      <option [value]="50">50</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="toolbar-center">
+                  <span class="section-title">{{ selectedTemplate?.name || 'Données' }}</span>
+                </div>
+                <div class="toolbar-right">
+                  <button class="export-btn-sm" (click)="exportReport('excel')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Export
+                  </button>
+                </div>
+              </div>
+              <div class="table-wrapper">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Emplacement</th>
+                      <th>Quantité</th>
+                      <th>Niveau initial</th>
+                      <th>Niveau final</th>
+                      <th>Capteur</th>
+                      <th>Conducteur</th>
+                      <th>Date/Heure</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (row of paginatedData; track $index) {
+                      <tr [class.highlighted]="$index === 0">
+                        <td class="location-cell">{{ row.location }}</td>
+                        <td class="value-cell">{{ row.filled }}</td>
+                        <td>{{ row.initialLevel }}</td>
+                        <td>{{ row.finalLevel }}</td>
+                        <td>{{ row.sensor }}</td>
+                        <td>{{ row.driver }}</td>
+                        <td class="time-cell">{{ row.time }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        }
+      </main>
+    </div>
   </div>
 </app-layout>

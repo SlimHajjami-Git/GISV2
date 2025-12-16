@@ -1,71 +1,91 @@
 /* ===== EMPLOYEES PAGE ===== */
 .employees-page {
   flex: 1;
-  padding: 0;
-  background: var(--bg-page);
-}
-
-.filters-bar {
+  background: #f1f5f9;
   display: flex;
-  gap: 12px;
-  padding: 24px 32px;
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border-color);
+  flex-direction: column;
+  min-height: calc(100vh - 42px);
 }
 
-.search-box {
-  flex: 1;
+/* Filter Bar - Shared Style */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.search-wrapper {
   position: relative;
+  flex: 1;
+  max-width: 300px;
 }
 
 .search-icon {
   position: absolute;
-  left: 14px;
+  left: 10px;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--text-muted);
+  color: #94a3b8;
   pointer-events: none;
 }
 
-.search-box input {
+.search-input {
   width: 100%;
-  padding: 10px 14px 10px 42px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  color: var(--text-primary);
-  font-size: 14px;
-  transition: all 0.2s;
+  padding: 6px 10px 6px 32px;
+  font-family: var(--font-family);
+  font-size: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 3px;
+  background: white;
+  color: #1e293b;
 }
 
-.search-box input:focus {
+.search-input::placeholder {
+  color: #94a3b8;
+}
+
+.search-input:focus {
   outline: none;
-  border-color: var(--primary);
+  border-color: #3b82f6;
 }
 
-.search-box input::placeholder {
-  color: var(--text-muted);
+.filter-select {
+  padding: 6px 10px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 3px;
+  color: #1e293b;
+  font-family: var(--font-family);
+  font-size: 12px;
+  cursor: pointer;
 }
 
-.btn-primary {
+.filter-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.btn-add {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  background: var(--primary);
+  gap: 6px;
+  padding: 6px 12px;
+  background: #3b82f6;
   color: white;
   border: none;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 14px;
+  border-radius: 3px;
+  font-family: var(--font-family);
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  margin-left: auto;
 }
 
-.btn-primary:hover {
-  background: var(--primary-dark);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
+.btn-add:hover {
+  background: #2563eb;
 }
 
 .employees-grid {
@@ -76,7 +96,7 @@
 }
 
 .employee-card {
-  background: var(--bg-secondary);
+  background: var(--bg-card);
   border-radius: 12px;
   border: 1px solid var(--border-color);
   overflow: hidden;

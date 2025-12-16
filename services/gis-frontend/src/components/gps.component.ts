@@ -4,11 +4,12 @@ import { Router } from '@angular/router';
 import { MockDataService } from '../services/mock-data.service';
 import { GPSLocation, GPSAlert, Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { CardComponent } from './shared/ui';
 
 @Component({
   selector: 'app-gps',
   standalone: true,
-  imports: [CommonModule, AppLayoutComponent],
+  imports: [CommonModule, AppLayoutComponent, CardComponent],
   template: `
     <app-layout>
       <div class="gps-page">
@@ -78,28 +79,30 @@ import { AppLayoutComponent } from './shared/app-layout.component';
     /* ===== GPS PAGE ===== */
     .gps-page {
       flex: 1;
-      background: var(--bg-page);
+      background: #f1f5f9;
+      display: flex;
+      flex-direction: column;
+      min-height: calc(100vh - 42px);
     }
 
     .gps-layout {
       display: grid;
-      grid-template-columns: 1fr 400px;
-      gap: 24px;
-      padding: 24px 32px;
+      grid-template-columns: 1fr 280px;
+      gap: 1px;
+      background: #e2e8f0;
+      flex: 1;
     }
+
     .map-container {
-      background: var(--bg-card);
-      border-radius: 12px;
+      background: white;
       overflow: hidden;
-      box-shadow: var(--shadow-md);
-      height: 600px;
-      border: 1px solid var(--border-color);
+      height: 100%;
     }
 
     .map-placeholder {
       width: 100%;
       height: 100%;
-      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
       position: relative;
     }
 
@@ -114,13 +117,13 @@ import { AppLayoutComponent } from './shared/app-layout.component';
     }
 
     .map-overlay h3 {
-      font-size: 28px;
-      font-weight: 700;
-      margin: 0 0 8px;
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0 0 6px;
     }
 
     .map-overlay p {
-      font-size: 16px;
+      font-size: 12px;
       margin: 0 0 24px;
       opacity: 0.9;
     }
@@ -145,79 +148,84 @@ import { AppLayoutComponent } from './shared/app-layout.component';
 
     .marker-icon { font-size: 28px; }
     .marker-info { flex: 1; }
-    .marker-name { font-weight: 600; color: var(--text-primary); }
-    .marker-speed { font-size: 14px; color: var(--text-secondary); }
+    .marker-name { font-weight: 600; color: #1e293b; font-size: 12px; }
+    .marker-speed { font-size: 11px; color: #64748b; }
 
     .gps-sidebar {
       display: flex;
       flex-direction: column;
-      gap: 24px;
+      background: white;
+      overflow-y: auto;
     }
 
     .card {
-      background: var(--bg-card);
-      border-radius: 12px;
-      border: 1px solid var(--border-color);
+      background: white;
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    .card:last-child {
+      border-bottom: none;
     }
 
     .card-header {
-      padding: 20px;
-      border-bottom: 1px solid var(--border-color);
+      padding: 10px 14px;
+      border-bottom: 1px solid #f1f5f9;
     }
 
     .card-header h3 {
-      font-size: 16px;
+      font-size: 12px;
       font-weight: 600;
-      color: var(--text-primary);
+      color: #1e293b;
       margin: 0;
     }
 
     .vehicles-list {
-      padding: 16px;
+      padding: 10px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 6px;
     }
 
     .vehicle-item {
       display: flex;
       align-items: center;
-      gap: 12px;
-      padding: 12px;
-      background: var(--bg-secondary);
-      border-radius: 8px;
+      gap: 10px;
+      padding: 8px 10px;
+      background: #f8fafc;
+      border-radius: 3px;
+      border: 1px solid #e2e8f0;
     }
 
-    .vehicle-icon { font-size: 24px; }
+    .vehicle-icon { font-size: 18px; }
     .vehicle-info { flex: 1; }
-    .vehicle-name { font-weight: 600; color: var(--text-primary); font-size: 14px; }
-    .vehicle-location { font-size: 12px; color: var(--text-secondary); }
+    .vehicle-name { font-weight: 600; color: #1e293b; font-size: 12px; }
+    .vehicle-location { font-size: 11px; color: #64748b; }
     .vehicle-speed { text-align: center; }
-    .speed-value { font-size: 20px; font-weight: 700; color: var(--primary); }
-    .speed-label { font-size: 10px; color: var(--text-muted); }
+    .speed-value { font-size: 14px; font-weight: 700; color: #3b82f6; }
+    .speed-label { font-size: 9px; color: #94a3b8; }
 
     .alerts-list {
-      padding: 16px;
+      padding: 10px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 6px;
     }
 
     .alert-item {
       display: flex;
-      gap: 12px;
-      padding: 12px;
-      background: rgba(239, 68, 68, 0.1);
-      border-radius: 8px;
-      border-left: 3px solid var(--danger);
+      gap: 10px;
+      padding: 8px 10px;
+      background: rgba(239, 68, 68, 0.05);
+      border-radius: 3px;
+      border-left: 3px solid #ef4444;
     }
 
-    .alert-icon { font-size: 20px; }
+    .alert-icon { font-size: 16px; }
     .alert-content { flex: 1; }
-    .alert-vehicle { font-weight: 600; color: var(--text-primary); font-size: 14px; }
-    .alert-message { font-size: 12px; color: var(--text-secondary); margin: 4px 0; }
-    .alert-time { font-size: 11px; color: var(--text-muted); }
-    .empty-state { text-align: center; padding: 24px; color: var(--text-muted); }
+    .alert-vehicle { font-weight: 600; color: #1e293b; font-size: 12px; }
+    .alert-message { font-size: 11px; color: #64748b; margin: 2px 0; }
+    .alert-time { font-size: 10px; color: #94a3b8; }
+    .empty-state { text-align: center; padding: 20px; color: #94a3b8; font-size: 12px; }
 
     @media (max-width: 1024px) {
       .gps-layout {
