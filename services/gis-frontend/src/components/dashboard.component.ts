@@ -1,16 +1,16 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
-import { MockDataService } from '../services/mock-data.service';
-import { Vehicle, Company } from '../models/types';
+import { Router, RouterModule } from '@angular/router';
+import { ApiService } from '../services/api.service';
+import { Vehicle, Company, MaintenanceRecord, VehicleCost } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './shared/ui';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, DateFilterBarComponent, CardComponent, LegendItemComponent],
+  imports: [CommonModule, FormsModule, RouterModule, AppLayoutComponent, DateFilterBarComponent, CardComponent, LegendItemComponent],
   template: `
     <app-layout>
       <div class="dashboard-container">
@@ -165,6 +165,150 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
                   <div class="bar-container">
                     <div class="bar" [style.width.%]="(unit.mileage / maxMileage) * 100" [style.background]="'#3b82f6'"></div>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 3: Maintenance & Costs -->
+          <!-- Upcoming Maintenance Card -->
+          <div class="card maintenance-card">
+            <div class="card-header">
+              <span class="card-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 6px;">
+                  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                </svg>
+                Maintenance
+              </span>
+              <a routerLink="/maintenance" class="view-all-link">Voir tout →</a>
+            </div>
+            <div class="card-body">
+              <div class="maintenance-stats">
+                <div class="maint-stat scheduled">
+                  <span class="maint-count">{{ scheduledMaintCount }}</span>
+                  <span class="maint-label">Planifiées</span>
+                </div>
+                <div class="maint-stat in-progress">
+                  <span class="maint-count">{{ inProgressMaintCount }}</span>
+                  <span class="maint-label">En cours</span>
+                </div>
+                <div class="maint-stat completed">
+                  <span class="maint-count">{{ completedMaintCount }}</span>
+                  <span class="maint-label">Terminées</span>
+                </div>
+              </div>
+              <div class="upcoming-list">
+                @for (m of upcomingMaintenance; track m.id) {
+                  <div class="upcoming-item">
+                    <div class="upcoming-icon" [class]="m.status">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                      </svg>
+                    </div>
+                    <div class="upcoming-info">
+                      <span class="upcoming-title">{{ m.description }}</span>
+                      <span class="upcoming-vehicle">{{ getVehicleName(m.vehicleId) }}</span>
+                    </div>
+                    <span class="upcoming-date">{{ formatShortDate(m.date) }}</span>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+
+          <!-- Costs Summary Card -->
+          <div class="card costs-card">
+            <div class="card-header">
+              <span class="card-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 6px;">
+                  <line x1="12" y1="1" x2="12" y2="23"/>
+                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                </svg>
+                Dépenses du mois
+              </span>
+              <a routerLink="/reports" class="view-all-link">Voir rapport →</a>
+            </div>
+            <div class="card-body">
+              <div class="cost-total">
+                <span class="cost-amount">{{ totalMonthlyCost | number:'1.0-0' }} DH</span>
+                <span class="cost-period">Ce mois</span>
+              </div>
+              <div class="cost-breakdown">
+                <div class="cost-item fuel">
+                  <div class="cost-bar" [style.width.%]="getFuelPercentage()"></div>
+                  <span class="cost-type">Carburant</span>
+                  <span class="cost-value">{{ fuelCost | number:'1.0-0' }} DH</span>
+                </div>
+                <div class="cost-item maintenance">
+                  <div class="cost-bar" [style.width.%]="getMaintenancePercentage()"></div>
+                  <span class="cost-type">Maintenance</span>
+                  <span class="cost-value">{{ maintenanceCost | number:'1.0-0' }} DH</span>
+                </div>
+                <div class="cost-item other">
+                  <div class="cost-bar" [style.width.%]="getOtherPercentage()"></div>
+                  <span class="cost-type">Autres</span>
+                  <span class="cost-value">{{ otherCost | number:'1.0-0' }} DH</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Fleet Status Card -->
+          <div class="card fleet-status-card">
+            <div class="card-header">
+              <span class="card-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 6px;">
+                  <rect x="1" y="3" width="15" height="13" rx="2"/>
+                  <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
+                  <circle cx="5.5" cy="18.5" r="2.5"/>
+                  <circle cx="18.5" cy="18.5" r="2.5"/>
+                </svg>
+                État de la flotte
+              </span>
+              <a routerLink="/vehicles" class="view-all-link">Voir tout →</a>
+            </div>
+            <div class="card-body">
+              <div class="fleet-stats">
+                <div class="fleet-stat">
+                  <div class="fleet-icon available">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                      <polyline points="22 4 12 14.01 9 11.01"/>
+                    </svg>
+                  </div>
+                  <span class="fleet-count">{{ availableVehicles }}</span>
+                  <span class="fleet-label">Disponibles</span>
+                </div>
+                <div class="fleet-stat">
+                  <div class="fleet-icon in-use">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="1" y="3" width="15" height="13" rx="2"/>
+                      <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
+                      <circle cx="5.5" cy="18.5" r="2.5"/>
+                      <circle cx="18.5" cy="18.5" r="2.5"/>
+                    </svg>
+                  </div>
+                  <span class="fleet-count">{{ inUseVehicles }}</span>
+                  <span class="fleet-label">En service</span>
+                </div>
+                <div class="fleet-stat">
+                  <div class="fleet-icon maintenance">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                    </svg>
+                  </div>
+                  <span class="fleet-count">{{ maintenanceVehicles }}</span>
+                  <span class="fleet-label">Maintenance</span>
+                </div>
+                <div class="fleet-stat">
+                  <div class="fleet-icon gps">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                      <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                  </div>
+                  <span class="fleet-count">{{ gpsEquippedVehicles }}</span>
+                  <span class="fleet-label">Avec GPS</span>
                 </div>
               </div>
             </div>
@@ -531,6 +675,221 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
       grid-row: 2;
     }
 
+    /* View All Link */
+    .view-all-link {
+      font-size: 11px;
+      color: #3b82f6;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .view-all-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Maintenance Card */
+    .maintenance-card {
+      grid-column: 1;
+      grid-row: 3;
+    }
+
+    .maintenance-stats {
+      display: flex;
+      gap: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #f1f5f9;
+      margin-bottom: 12px;
+    }
+
+    .maint-stat {
+      flex: 1;
+      text-align: center;
+      padding: 8px;
+      border-radius: 4px;
+    }
+
+    .maint-stat.scheduled { background: #eff6ff; }
+    .maint-stat.in-progress { background: #fef3c7; }
+    .maint-stat.completed { background: #dcfce7; }
+
+    .maint-count {
+      display: block;
+      font-size: 18px;
+      font-weight: 700;
+      color: #1e293b;
+    }
+
+    .maint-label {
+      font-size: 9px;
+      color: #64748b;
+      text-transform: uppercase;
+    }
+
+    .upcoming-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .upcoming-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+      border-bottom: 1px solid #f8fafc;
+    }
+
+    .upcoming-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .upcoming-icon.scheduled { background: #dbeafe; color: #2563eb; }
+    .upcoming-icon.in_progress { background: #fef3c7; color: #d97706; }
+    .upcoming-icon.completed { background: #dcfce7; color: #16a34a; }
+
+    .upcoming-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .upcoming-title {
+      font-size: 11px;
+      font-weight: 500;
+      color: #1e293b;
+    }
+
+    .upcoming-vehicle {
+      font-size: 10px;
+      color: #94a3b8;
+    }
+
+    .upcoming-date {
+      font-size: 10px;
+      color: #64748b;
+      white-space: nowrap;
+    }
+
+    /* Costs Card */
+    .costs-card {
+      grid-column: 2;
+      grid-row: 3;
+    }
+
+    .cost-total {
+      text-align: center;
+      padding: 12px;
+      background: #f0fdf4;
+      border-radius: 6px;
+      margin-bottom: 14px;
+    }
+
+    .cost-amount {
+      display: block;
+      font-size: 24px;
+      font-weight: 700;
+      color: #16a34a;
+    }
+
+    .cost-period {
+      font-size: 10px;
+      color: #64748b;
+    }
+
+    .cost-breakdown {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .cost-item {
+      position: relative;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 10px;
+      background: #f8fafc;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .cost-bar {
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 100%;
+      opacity: 0.3;
+    }
+
+    .cost-item.fuel .cost-bar { background: #f97316; }
+    .cost-item.maintenance .cost-bar { background: #3b82f6; }
+    .cost-item.other .cost-bar { background: #64748b; }
+
+    .cost-type {
+      font-size: 11px;
+      color: #64748b;
+      position: relative;
+    }
+
+    .cost-value {
+      font-size: 12px;
+      font-weight: 600;
+      color: #1e293b;
+      position: relative;
+    }
+
+    /* Fleet Status Card */
+    .fleet-status-card {
+      grid-column: 3;
+      grid-row: 3;
+    }
+
+    .fleet-stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .fleet-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 14px;
+      background: #f8fafc;
+      border-radius: 6px;
+    }
+
+    .fleet-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 8px;
+    }
+
+    .fleet-icon.available { background: #dcfce7; color: #16a34a; }
+    .fleet-icon.in-use { background: #dbeafe; color: #2563eb; }
+    .fleet-icon.maintenance { background: #fef3c7; color: #d97706; }
+    .fleet-icon.gps { background: #f3e8ff; color: #9333ea; }
+
+    .fleet-count {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1e293b;
+    }
+
+    .fleet-label {
+      font-size: 10px;
+      color: #64748b;
+    }
+
     /* Responsive */
     @media (max-width: 1200px) {
       .dashboard-grid {
@@ -610,27 +969,170 @@ export class DashboardComponent implements OnInit {
 
   maxMileage = 34000;
 
+  // Maintenance data
+  maintenanceRecords: MaintenanceRecord[] = [];
+  upcomingMaintenance: MaintenanceRecord[] = [];
+  scheduledMaintCount = 0;
+  inProgressMaintCount = 0;
+  completedMaintCount = 0;
+
+  // Cost data
+  vehicleCosts: VehicleCost[] = [];
+  totalMonthlyCost = 0;
+  fuelCost = 0;
+  maintenanceCost = 0;
+  otherCost = 0;
+
+  // Fleet status
+  availableVehicles = 0;
+  inUseVehicles = 0;
+  maintenanceVehicles = 0;
+  gpsEquippedVehicles = 0;
+
   constructor(
     private router: Router,
-    private dataService: MockDataService
+    private apiService: ApiService
   ) {}
 
   ngOnInit() {
-    if (!this.dataService.isAuthenticated()) {
+    if (!this.apiService.isAuthenticated()) {
       this.router.navigate(['/login']);
       return;
     }
 
-    this.company = this.dataService.getCurrentCompany();
-
-    if (this.company) {
-      this.vehicles = this.dataService.getVehiclesByCompany(this.company.id);
-    }
+    // Load data from API
+    this.loadVehicles();
+    this.loadMaintenanceData();
+    this.loadCostData();
 
     const today = new Date();
     const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
     this.toDate = today.toISOString().split('T')[0];
     this.fromDate = weekAgo.toISOString().split('T')[0];
+    
+    // Set company from current user
+    const user = this.apiService.getCurrentUserSync();
+    if (user) {
+      this.company = {
+        id: user.companyId.toString(),
+        name: user.companyName,
+        type: 'transport',
+        subscriptionId: '1'
+      } as Company;
+    }
+  }
+
+  loadVehicles() {
+    this.apiService.getVehicles().subscribe({
+      next: (vehicles) => {
+        this.vehicles = vehicles.map(v => ({
+          id: v.id.toString(),
+          companyId: v.companyId?.toString() || '',
+          name: v.name,
+          type: v.type,
+          brand: v.brand,
+          model: v.model,
+          plate: v.plate,
+          year: v.year,
+          color: v.color,
+          status: v.status as 'available' | 'in_use' | 'maintenance',
+          hasGPS: v.hasGps,
+          mileage: v.mileage
+        })) as Vehicle[];
+        this.calculateFleetStatus();
+      },
+      error: (err) => console.error('Error loading vehicles:', err)
+    });
+  }
+
+  loadMaintenanceData() {
+    this.apiService.getMaintenanceRecords().subscribe({
+      next: (records) => {
+        this.maintenanceRecords = records.map(m => ({
+          id: m.id.toString(),
+          vehicleId: m.vehicleId.toString(),
+          companyId: m.companyId.toString(),
+          type: m.type,
+          description: m.description,
+          mileageAtService: m.mileageAtService,
+          date: new Date(m.date),
+          nextServiceDate: m.nextServiceDate ? new Date(m.nextServiceDate) : undefined,
+          nextServiceMileage: m.nextServiceMileage,
+          status: m.status as 'scheduled' | 'in_progress' | 'completed',
+          laborCost: m.laborCost,
+          partsCost: m.partsCost,
+          totalCost: m.totalCost,
+          serviceProvider: m.serviceProvider,
+          notes: m.notes,
+          parts: m.parts || []
+        })) as MaintenanceRecord[];
+        
+        this.scheduledMaintCount = this.maintenanceRecords.filter(m => m.status === 'scheduled').length;
+        this.inProgressMaintCount = this.maintenanceRecords.filter(m => m.status === 'in_progress').length;
+        this.completedMaintCount = this.maintenanceRecords.filter(m => m.status === 'completed').length;
+        
+        this.upcomingMaintenance = [...this.maintenanceRecords]
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          .slice(0, 4);
+      },
+      error: (err) => console.error('Error loading maintenance:', err)
+    });
+  }
+
+  loadCostData() {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    this.apiService.getCosts({ startDate: startOfMonth }).subscribe({
+      next: (costs) => {
+        this.vehicleCosts = costs.map(c => ({
+          id: c.id.toString(),
+          vehicleId: c.vehicleId.toString(),
+          companyId: c.companyId.toString(),
+          type: c.type as 'fuel' | 'maintenance' | 'insurance' | 'tax' | 'toll' | 'parking' | 'fine' | 'other',
+          description: c.description,
+          amount: c.amount,
+          date: new Date(c.date),
+          mileage: c.mileage,
+          receiptNumber: c.receiptNumber,
+          receiptUrl: c.receiptUrl
+        })) as VehicleCost[];
+        
+        this.fuelCost = this.vehicleCosts.filter(c => c.type === 'fuel').reduce((sum, c) => sum + c.amount, 0);
+        this.maintenanceCost = this.vehicleCosts.filter(c => c.type === 'maintenance').reduce((sum, c) => sum + c.amount, 0);
+        this.otherCost = this.vehicleCosts.filter(c => c.type !== 'fuel' && c.type !== 'maintenance').reduce((sum, c) => sum + c.amount, 0);
+        this.totalMonthlyCost = this.fuelCost + this.maintenanceCost + this.otherCost;
+      },
+      error: (err) => console.error('Error loading costs:', err)
+    });
+  }
+
+  calculateFleetStatus() {
+    this.availableVehicles = this.vehicles.filter(v => v.status === 'available').length;
+    this.inUseVehicles = this.vehicles.filter(v => v.status === 'in_use').length;
+    this.maintenanceVehicles = this.vehicles.filter(v => v.status === 'maintenance').length;
+    this.gpsEquippedVehicles = this.vehicles.filter(v => v.hasGPS).length;
+  }
+
+  getVehicleName(vehicleId: string): string {
+    const vehicle = this.vehicles.find(v => v.id === vehicleId);
+    return vehicle ? vehicle.name : vehicleId;
+  }
+
+  formatShortDate(date: Date): string {
+    return new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+  }
+
+  getFuelPercentage(): number {
+    return this.totalMonthlyCost > 0 ? (this.fuelCost / this.totalMonthlyCost) * 100 : 0;
+  }
+
+  getMaintenancePercentage(): number {
+    return this.totalMonthlyCost > 0 ? (this.maintenanceCost / this.totalMonthlyCost) * 100 : 0;
+  }
+
+  getOtherPercentage(): number {
+    return this.totalMonthlyCost > 0 ? (this.otherCost / this.totalMonthlyCost) * 100 : 0;
   }
 
   get totalMotion(): number {

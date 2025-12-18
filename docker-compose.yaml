@@ -61,12 +61,30 @@ services:
     volumes:
       - ./services/gps-ingest-rust/config:/app/config:ro
 
+  gis-api:
+    build:
+      context: ./services/GisAPI
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_started
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=gis_v2;Username=postgres;Password=postgres"
+      Jwt__Key: "YourSuperSecretKeyForJWTTokenGeneration2024!"
+      Jwt__Issuer: "GisAPI"
+      Jwt__Audience: "GisAPI"
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./services/gis-frontend
       dockerfile: Dockerfile
     depends_on:
       - gps-ingest
+      - gis-api
     ports:
       - "4200:80"
 

@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { MockDataService } from '../services/mock-data.service';
+import { AuthService } from '../services/auth.service';
 
 @Component({
   selector: 'app-login',
@@ -56,8 +56,12 @@ import { MockDataService } from '../services/mock-data.service';
               <a href="#" class="link">Mot de passe oublié?</a>
             </div>
 
-            <button type="submit" class="btn-primary btn-full">
-              Se connecter
+            @if (errorMessage) {
+              <div class="error-message">{{ errorMessage }}</div>
+            }
+
+            <button type="button" class="btn-primary btn-full" [disabled]="isLoading" (click)="onSubmit()">
+              {{ isLoading ? 'Connexion...' : 'Se connecter' }}
             </button>
           </form>
 
@@ -282,6 +286,16 @@ import { MockDataService } from '../services/mock-data.service';
       stroke: white;
     }
 
+    .error-message {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #dc2626;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+
     @media (max-width: 968px) {
       .auth-container {
         grid-template-columns: 1fr;
@@ -297,15 +311,38 @@ export class LoginComponent {
   email = '';
   password = '';
   rememberMe = false;
+  isLoading = false;
+  errorMessage = '';
 
   constructor(
     private router: Router,
-    private dataService: MockDataService
+    private authService: AuthService
   ) {}
 
   onSubmit() {
-    if (this.dataService.login(this.email, this.password)) {
-      this.router.navigate(['/dashboard']);
-    }
+    console.log('Login attempt:', this.email);
+    this.isLoading = true;
+    this.errorMessage = '';
+    
+    this.authService.login(this.email, this.password).subscribe({
+      next: (user) => {
+        console.log('Login response:', user);
+        this.isLoading = false;
+        if (user) {
+          console.log('Navigating to dashboard...');
+          this.router.navigate(['/dashboard']);
+        } else {
+          this.errorMessage = 'Email ou mot de passe incorrect';
+        }
+      },
+      error: (err) => {
+        console.error('Login error:', err);
+        this.isLoading = false;
+        this.errorMessage = 'Erreur de connexion au serveur';
+      },
+      complete: () => {
+        console.log('Login observable completed');
+      }
+    });
   }
 }

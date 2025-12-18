@@ -11,6 +11,12 @@ import { MonitoringComponent } from './components/monitoring.component';
 import { ReportsComponent } from './components/reports.component';
 import { GeofencesComponent } from './components/geofences.component';
 import { NotificationsComponent } from './components/notifications.component';
+import { GPSDevicesComponent } from './components/gps-devices.component';
+import { MaintenanceComponent } from './components/maintenance.component';
+import { VehicleCostsComponent } from './components/vehicle-costs.component';
+import { ProfileComponent } from './components/profile.component';
+import { SettingsComponent } from './components/settings.component';
+import { UserManagementComponent } from './components/user-management.component';
 
 export const routes: Routes = [
   { path: '', component: LandingComponent },
@@ -22,10 +28,16 @@ export const routes: Routes = [
   { path: 'drivers', component: EmployeesComponent },
   { path: 'employees', component: EmployeesComponent },
   { path: 'gps', component: GpsComponent },
+  { path: 'gps-devices', component: GPSDevicesComponent },
+  { path: 'maintenance', component: MaintenanceComponent },
+  { path: 'costs', component: VehicleCostsComponent },
   { path: 'subscription', component: SubscriptionComponent },
   { path: 'monitoring', component: MonitoringComponent },
   { path: 'reports', component: ReportsComponent },
   { path: 'geofences', component: GeofencesComponent },
   { path: 'notifications', component: NotificationsComponent },
+  { path: 'profile', component: ProfileComponent },
+  { path: 'settings', component: SettingsComponent },
+  { path: 'users', component: UserManagementComponent },
   { path: '**', redirectTo: '' },
 ];

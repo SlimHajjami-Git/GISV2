@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, AfterViewInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { MockDataService } from '../services/mock-data.service';
+import { ApiService } from '../services/api.service';
 import { Vehicle } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { StatCardComponent, ButtonComponent, CardComponent } from './shared/ui';
@@ -42,11 +42,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   constructor(
     private router: Router,
-    private dataService: MockDataService
+    private apiService: ApiService
   ) {}
 
   ngOnInit() {
-    if (!this.dataService.isAuthenticated()) {
+    if (!this.apiService.isAuthenticated()) {
       this.router.navigate(['/login']);
       return;
     }
@@ -90,23 +90,27 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   loadData() {
-    const company = this.dataService.getCurrentCompany();
-    if (!company) return;
-
     this.loading = true;
 
-    this.vehicles = this.dataService.getVehiclesByCompany(company.id).map(v => ({
-      ...v,
-      registration_number: v.plate,
-      currentLocation: v.hasGPS ? this.generateRandomLocation() : undefined,
-      currentSpeed: v.hasGPS ? Math.floor(Math.random() * 100) : 0,
-      isOnline: v.hasGPS
-    }));
-
-    this.applyFilters();
-    this.updateStats();
-    this.updateVehicleMarkers();
-    this.loading = false;
+    this.apiService.getVehicles().subscribe({
+      next: (vehicles) => {
+        this.vehicles = vehicles.map(v => ({
+          ...v,
+          registration_number: v.plate,
+          currentLocation: v.hasGPS ? this.generateRandomLocation() : undefined,
+          currentSpeed: v.hasGPS ? Math.floor(Math.random() * 100) : 0,
+          isOnline: v.hasGPS
+        }));
+        this.applyFilters();
+        this.updateStats();
+        this.updateVehicleMarkers();
+        this.loading = false;
+      },
+      error: (err) => {
+        console.error('Error loading vehicles:', err);
+        this.loading = false;
+      }
+    });
   }
 
   generateRandomLocation() {

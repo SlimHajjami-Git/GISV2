@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { MockDataService } from '../services/mock-data.service';
+import { ApiService } from '../services/api.service';
 import { GPSLocation, GPSAlert, Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { CardComponent } from './shared/ui';
@@ -253,29 +253,42 @@ export class GpsComponent implements OnInit {
 
   constructor(
     private router: Router,
-    private dataService: MockDataService
+    private apiService: ApiService
   ) {}
 
   ngOnInit() {
-    if (!this.dataService.isAuthenticated()) {
+    if (!this.apiService.isAuthenticated()) {
       this.router.navigate(['/login']);
       return;
     }
 
-    this.company = this.dataService.getCurrentCompany();
-    if (this.company) {
-      this.vehicles = this.dataService.getVehiclesByCompany(this.company.id);
-      this.gpsVehicles = this.vehicles.filter(v => v.hasGPS);
-    }
+    this.loadData();
+  }
 
-    this.dataService.getGPSLocations().subscribe(locations => {
-      this.locations = locations.filter(l =>
-        this.gpsVehicles.some(v => v.id === l.vehicleId)
-      );
+  loadData() {
+    this.apiService.getVehicles().subscribe({
+      next: (vehicles) => {
+        this.vehicles = vehicles;
+        this.gpsVehicles = this.vehicles.filter(v => v.hasGPS);
+        this.loadLocations();
+      },
+      error: (err) => console.error('Error loading vehicles:', err)
     });
 
-    this.dataService.getGPSAlerts().subscribe(alerts => {
-      this.alerts = alerts.filter(a => !a.resolved);
+    this.apiService.getAlerts(false).subscribe({
+      next: (alerts) => this.alerts = alerts.filter(a => !a.resolved),
+      error: (err) => console.error('Error loading alerts:', err)
+    });
+  }
+
+  loadLocations() {
+    this.apiService.getVehicleLocations().subscribe({
+      next: (locations) => {
+        this.locations = locations.filter(l =>
+          this.gpsVehicles.some(v => v.id === l.vehicleId)
+        );
+      },
+      error: (err) => console.error('Error loading locations:', err)
     });
   }
 
@@ -297,7 +310,7 @@ export class GpsComponent implements OnInit {
   }
 
   logout() {
-    this.dataService.logout();
+    this.apiService.logout();
     this.router.navigate(['/']);
   }
 }

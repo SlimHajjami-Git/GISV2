@@ -131,6 +131,85 @@ import { Vehicle } from '../../models/types';
             </div>
           </div>
 
+          <!-- GPS Device Section -->
+          <div class="gps-section" *ngIf="formData.hasGPS">
+            <div class="section-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                <circle cx="12" cy="10" r="3"/>
+              </svg>
+              <span>Informations GPS</span>
+            </div>
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="gpsImei">IMEI *</label>
+                <input
+                  type="text"
+                  id="gpsImei"
+                  name="gpsImei"
+                  [(ngModel)]="formData.gpsImei"
+                  placeholder="Ex: 358762109054321"
+                  maxlength="15"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="gpsSimNumber">Numéro SIM *</label>
+                <input
+                  type="text"
+                  id="gpsSimNumber"
+                  name="gpsSimNumber"
+                  [(ngModel)]="formData.gpsSimNumber"
+                  placeholder="Ex: +212 6 12 34 56 78"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="gpsSimOperator">Opérateur SIM</label>
+                <select id="gpsSimOperator" name="gpsSimOperator" [(ngModel)]="formData.gpsSimOperator">
+                  <option value="">Sélectionner</option>
+                  <option value="maroc_telecom">Maroc Telecom</option>
+                  <option value="orange">Orange</option>
+                  <option value="inwi">Inwi</option>
+                  <option value="other">Autre</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="gpsBrand">Marque GPS</label>
+                <select id="gpsBrand" name="gpsBrand" [(ngModel)]="formData.gpsBrand">
+                  <option value="">Sélectionner</option>
+                  <option value="Concox">Concox</option>
+                  <option value="Coban">Coban</option>
+                  <option value="Queclink">Queclink</option>
+                  <option value="Teltonika">Teltonika</option>
+                  <option value="Other">Autre</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="gpsModel">Modèle GPS</label>
+                <input
+                  type="text"
+                  id="gpsModel"
+                  name="gpsModel"
+                  [(ngModel)]="formData.gpsModel"
+                  placeholder="Ex: GT06N"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="gpsInstallationDate">Date d'installation</label>
+                <input
+                  type="date"
+                  id="gpsInstallationDate"
+                  name="gpsInstallationDate"
+                  [(ngModel)]="formData.gpsInstallationDate"
+                />
+              </div>
+            </div>
+          </div>
+
           <div class="popup-footer">
             <button type="button" class="btn-secondary" (click)="close()">
               Annuler
@@ -172,7 +251,7 @@ import { Vehicle } from '../../models/types';
       background: white;
       border-radius: 6px;
       box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
-      max-width: 600px;
+      max-width: 700px;
       width: 100%;
       max-height: 90vh;
       overflow: hidden;
@@ -297,6 +376,26 @@ import { Vehicle } from '../../models/types';
       color: #1e293b;
     }
 
+    .gps-section {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid #e2e8f0;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      color: #3b82f6;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .section-header svg {
+      color: #3b82f6;
+    }
+
     .popup-footer {
       padding: 14px 20px;
       border-top: 1px solid #e2e8f0;
@@ -374,7 +473,13 @@ export class VehiclePopupComponent implements OnInit {
     type: 'citadine',
     status: 'available',
     mileage: 0,
-    hasGPS: false
+    hasGPS: false,
+    gpsImei: '',
+    gpsSimNumber: '',
+    gpsSimOperator: undefined,
+    gpsBrand: '',
+    gpsModel: '',
+    gpsInstallationDate: undefined
   };
 
   ngOnInit() {

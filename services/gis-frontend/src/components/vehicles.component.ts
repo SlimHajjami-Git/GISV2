@@ -2,16 +2,17 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { MockDataService } from '../services/mock-data.service';
+import { ApiService } from '../services/api.service';
 import { Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { VehiclePopupComponent } from './shared/vehicle-popup.component';
+import { VehicleCostsPopupComponent } from './shared/vehicle-costs-popup.component';
 import { FilterBarComponent, SearchInputComponent } from './shared/ui';
 
 @Component({
   selector: 'app-vehicles',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, VehiclePopupComponent, FilterBarComponent, SearchInputComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, VehiclePopupComponent, VehicleCostsPopupComponent, FilterBarComponent, SearchInputComponent],
   template: `
     <app-layout>
       <div class="vehicles-page">
@@ -127,6 +128,13 @@ import { FilterBarComponent, SearchInputComponent } from './shared/ui';
                 </svg>
                 Modifier
               </button>
+              <button class="btn-costs" (click)="openCostsPopup(vehicle)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="1" x2="12" y2="23"/>
+                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                </svg>
+                Dépenses
+              </button>
               <button class="btn-link">
                 Détails
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -143,6 +151,12 @@ import { FilterBarComponent, SearchInputComponent } from './shared/ui';
         [vehicle]="selectedVehicle"
         (closed)="closePopup()"
         (saved)="saveVehicle($event)"
+      />
+
+      <app-vehicle-costs-popup
+        [isOpen]="isCostsPopupOpen"
+        [vehicle]="selectedVehicleForCosts"
+        (closed)="closeCostsPopup()"
       />
     </app-layout>
   `,
@@ -391,6 +405,26 @@ import { FilterBarComponent, SearchInputComponent } from './shared/ui';
       gap: 6px;
     }
 
+    .btn-costs {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: #f0fdf4;
+      color: #16a34a;
+      border: 1px solid #bbf7d0;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-costs:hover {
+      background: #dcfce7;
+      border-color: #86efac;
+    }
+
     @media (max-width: 768px) {
       .filters-bar {
         flex-wrap: wrap;
@@ -415,6 +449,10 @@ export class VehiclesComponent implements OnInit {
   isPopupOpen = false;
   selectedVehicle: Vehicle | null = null;
   
+  // Costs popup
+  isCostsPopupOpen = false;
+  selectedVehicleForCosts: Vehicle | null = null;
+
   // Filters
   searchQuery = '';
   filterStatus = '';
@@ -422,20 +460,51 @@ export class VehiclesComponent implements OnInit {
 
   constructor(
     private router: Router,
-    private dataService: MockDataService
+    private apiService: ApiService
   ) {}
 
   ngOnInit() {
-    if (!this.dataService.isAuthenticated()) {
+    if (!this.apiService.isAuthenticated()) {
       this.router.navigate(['/login']);
       return;
     }
 
-    this.company = this.dataService.getCurrentCompany();
-    if (this.company) {
-      this.allVehicles = this.dataService.getVehiclesByCompany(this.company.id);
-      this.vehicles = [...this.allVehicles];
+    const user = this.apiService.getCurrentUserSync();
+    if (user) {
+      this.company = {
+        id: user.companyId.toString(),
+        name: user.companyName,
+        type: 'transport',
+        subscriptionId: '1'
+      } as Company;
     }
+    
+    this.loadVehicles();
+  }
+
+  loadVehicles() {
+    this.apiService.getVehicles().subscribe({
+      next: (vehicles) => {
+        this.allVehicles = vehicles.map(v => ({
+          id: v.id.toString(),
+          companyId: v.companyId?.toString() || '',
+          name: v.name,
+          type: v.type,
+          brand: v.brand,
+          model: v.model,
+          plate: v.plate,
+          year: v.year,
+          color: v.color,
+          status: v.status as 'available' | 'in_use' | 'maintenance',
+          hasGPS: v.hasGps,
+          mileage: v.mileage,
+          assignedDriverId: v.assignedDriverId?.toString(),
+          assignedDriverName: v.assignedDriverName
+        })) as Vehicle[];
+        this.vehicles = [...this.allVehicles];
+      },
+      error: (err) => console.error('Error loading vehicles:', err)
+    });
   }
 
   filterVehicles() {
@@ -475,7 +544,7 @@ export class VehiclesComponent implements OnInit {
   }
 
   logout() {
-    this.dataService.logout();
+    this.apiService.logout();
     this.router.navigate(['/']);
   }
 
@@ -497,5 +566,15 @@ export class VehiclesComponent implements OnInit {
   saveVehicle(vehicleData: Partial<Vehicle>) {
     console.log('Saving vehicle:', vehicleData);
     this.closePopup();
+  }
+
+  openCostsPopup(vehicle: Vehicle) {
+    this.selectedVehicleForCosts = vehicle;
+    this.isCostsPopupOpen = true;
+  }
+
+  closeCostsPopup() {
+    this.isCostsPopupOpen = false;
+    this.selectedVehicleForCosts = null;
   }
 }

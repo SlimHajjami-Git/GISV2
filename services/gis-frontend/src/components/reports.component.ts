@@ -2,7 +2,7 @@ import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { MockDataService } from '../services/mock-data.service';
+import { ApiService } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
@@ -54,6 +54,20 @@ export class ReportsComponent implements OnInit {
       type: 'distance',
       icon: '📏',
       description: 'Kilométrage parcouru'
+    },
+    {
+      id: '6',
+      name: 'Rapport de coûts',
+      type: 'costs',
+      icon: '💰',
+      description: 'Analyse des dépenses véhicules'
+    },
+    {
+      id: '7',
+      name: 'Rapport de maintenance',
+      type: 'maintenance',
+      icon: '🔧',
+      description: 'Historique des maintenances'
     }
   ];
 
@@ -111,11 +125,11 @@ export class ReportsComponent implements OnInit {
 
   constructor(
     private router: Router,
-    private dataService: MockDataService
+    private apiService: ApiService
   ) {}
 
   ngOnInit() {
-    if (!this.dataService.isAuthenticated()) {
+    if (!this.apiService.isAuthenticated()) {
       this.router.navigate(['/login']);
       return;
     }
@@ -125,9 +139,10 @@ export class ReportsComponent implements OnInit {
   }
 
   loadData() {
-    const company = this.dataService.getCurrentCompany();
-    if (!company) return;
-    this.vehicles = this.dataService.getVehiclesByCompany(company.id);
+    this.apiService.getVehicles().subscribe({
+      next: (vehicles) => this.vehicles = vehicles,
+      error: (err) => console.error('Error loading vehicles:', err)
+    });
   }
 
   initializeDates() {

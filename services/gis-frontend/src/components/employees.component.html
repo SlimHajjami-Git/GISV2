@@ -1,3 +1,12 @@
+<app-driver-score-detail
+  [isOpen]="isDetailOpen"
+  [employee]="detailEmployee"
+  [driverScore]="detailDriverScore"
+  [assignedVehicle]="detailAssignedVehicle"
+  (closed)="closeDriverDetail()"
+  (dateFilterChanged)="onDateFilterChanged($event)"
+/>
+
 <app-layout>
   <div class="employees-page">
     <div class="filter-bar">
@@ -89,7 +98,7 @@
               </svg>
               Modifier
             </button>
-            <button class="btn-link">Détails</button>
+            <button class="btn-link" type="button" (click)="openDriverDetail(employee); $event.stopPropagation()">Détails</button>
           </div>
         </div>
       }
@@ -102,4 +111,5 @@
     (closed)="closePopup()"
     (saved)="saveEmployee($event)"
   />
+
 </app-layout>

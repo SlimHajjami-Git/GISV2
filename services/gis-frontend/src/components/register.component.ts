@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute, RouterLink } from '@angular/router';
-import { MockDataService } from '../services/mock-data.service';
+import { AuthService } from '../services/auth.service';
 import { Subscription } from '../models/types';
 
 @Component({
@@ -362,7 +362,11 @@ import { Subscription } from '../models/types';
   `]
 })
 export class RegisterComponent {
-  subscriptions: Subscription[] = [];
+  subscriptions: Subscription[] = [
+    { id: 'sub1', name: 'Parc Automobile', type: 'parc', price: 49.99, features: [], gpsTracking: false, gpsInstallation: false },
+    { id: 'sub2', name: 'Parc + GPS', type: 'parc_gps', price: 99.99, features: [], gpsTracking: true, gpsInstallation: false },
+    { id: 'sub3', name: 'Parc + GPS + Install', type: 'parc_gps_install', price: 149.99, features: [], gpsTracking: true, gpsInstallation: true }
+  ];
   formData = {
     name: '',
     email: '',
@@ -373,19 +377,18 @@ export class RegisterComponent {
     password: '',
     acceptTerms: false
   };
+  isLoading = false;
+  errorMessage = '';
 
   constructor(
     private router: Router,
     private route: ActivatedRoute,
-    private dataService: MockDataService
+    private authService: AuthService
   ) {
-    this.dataService.getSubscriptions().subscribe(subs => {
-      this.subscriptions = subs;
-      this.route.queryParams.subscribe(params => {
-        if (params['plan']) {
-          this.formData.subscriptionId = params['plan'];
-        }
-      });
+    this.route.queryParams.subscribe(params => {
+      if (params['plan']) {
+        this.formData.subscriptionId = params['plan'];
+      }
     });
   }
 
@@ -394,8 +397,29 @@ export class RegisterComponent {
   }
 
   onSubmit() {
-    if (this.formData.acceptTerms) {
-      this.router.navigate(['/login']);
-    }
+    if (!this.formData.acceptTerms) return;
+    
+    this.isLoading = true;
+    this.errorMessage = '';
+    
+    this.authService.register(
+      this.formData.name,
+      this.formData.email,
+      this.formData.password,
+      this.formData.companyName
+    ).subscribe({
+      next: (user) => {
+        this.isLoading = false;
+        if (user) {
+          this.router.navigate(['/dashboard']);
+        } else {
+          this.errorMessage = 'Erreur lors de la création du compte';
+        }
+      },
+      error: () => {
+        this.isLoading = false;
+        this.errorMessage = 'Erreur de connexion au serveur';
+      }
+    });
   }
 }
