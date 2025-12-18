@@ -30,6 +30,22 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   viewMode: 'map' | 'list' | 'split' = 'split';
   mapStyle: 'streets' | 'satellite' | 'terrain' = 'streets';
 
+  // Panel & Tabs
+  isPanelCollapsed = false;
+  activeTab: 'details' | 'playback' | 'message' = 'details';
+
+  // Playback
+  playbackFromDate = '';
+  playbackToDate = '';
+  isPlaybackLoaded = false;
+  isPlaying = false;
+  playbackProgress = 0;
+  playbackSpeed = 1;
+  playbackSpeeds = [0.5, 1, 2, 4, 8];
+
+  // Message
+  driverMessage = '';
+
   refreshInterval: any;
 
   stats = {
@@ -274,5 +290,52 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   navigate(path: string) {
     this.router.navigate([path]);
+  }
+
+  // Panel toggle
+  togglePanel() {
+    this.isPanelCollapsed = !this.isPanelCollapsed;
+    setTimeout(() => {
+      if (this.map) {
+        this.map.invalidateSize();
+      }
+    }, 300);
+  }
+
+  // Get driver initial for avatar
+  getDriverInitial(vehicle: any): string {
+    if (vehicle.assignedDriver) {
+      return vehicle.assignedDriver.charAt(0).toUpperCase();
+    }
+    return '?';
+  }
+
+  // Playback methods
+  loadPlaybackRoute() {
+    // TODO: Load route from API based on date range
+    this.isPlaybackLoaded = true;
+    this.playbackProgress = 0;
+  }
+
+  togglePlayback() {
+    this.isPlaying = !this.isPlaying;
+  }
+
+  resetPlayback() {
+    this.isPlaying = false;
+    this.playbackProgress = 0;
+  }
+
+  skipToEnd() {
+    this.isPlaying = false;
+    this.playbackProgress = 100;
+  }
+
+  // Message
+  sendMessageToDriver() {
+    if (this.driverMessage.trim()) {
+      alert(`Message envoyé: ${this.driverMessage}`);
+      this.driverMessage = '';
+    }
   }
 }
