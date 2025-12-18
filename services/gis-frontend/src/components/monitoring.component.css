@@ -77,26 +77,27 @@
 
 .panel-toggle {
   position: absolute;
-  right: -12px;
+  right: -16px;
   top: 50%;
   transform: translateY(-50%);
-  width: 24px;
-  height: 48px;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 0 6px 6px 0;
+  width: 32px;
+  height: 64px;
+  background: #3b82f6;
+  border: none;
+  border-radius: 0 8px 8px 0;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 10;
-  color: #64748b;
+  z-index: 1000;
+  color: white;
   transition: all 0.2s;
+  box-shadow: 2px 0 8px rgba(0,0,0,0.15);
 }
 
 .panel-toggle:hover {
-  background: #f1f5f9;
-  color: #3b82f6;
+  background: #2563eb;
+  width: 36px;
 }
 
 .panel-content {
@@ -297,24 +298,41 @@
 /* ===== VEHICLE POPUP PANEL ===== */
 .vehicle-popup-panel {
   position: absolute;
-  top: 70px;
-  right: 16px;
-  width: 320px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 360px;
   background: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
   border: 1px solid #e2e8f0;
-  z-index: 500;
+  z-index: 600;
   overflow: hidden;
+  cursor: default;
+}
+
+.vehicle-popup-panel.dragged {
+  transform: none;
+}
+
+.vehicle-popup-panel.dragging {
+  cursor: grabbing;
+  opacity: 0.95;
+  user-select: none;
 }
 
 .popup-header {
-  padding: 10px 12px;
-  background: #3b82f6;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
   color: white;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  cursor: grab;
+}
+
+.popup-header:active {
+  cursor: grabbing;
 }
 
 .popup-title {

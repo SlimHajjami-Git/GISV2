@@ -147,19 +147,27 @@
         <div id="tracking-map" class="map"></div>
 
         <!-- Vehicle Popup on Map -->
-        <div class="vehicle-popup-panel" *ngIf="selectedVehicle">
-          <div class="popup-header">
+        <div 
+          class="vehicle-popup-panel" 
+          *ngIf="selectedVehicle"
+          [class.dragging]="isDragging"
+          [class.dragged]="popupPosition.x !== 0 || popupPosition.y !== 0"
+          [ngStyle]="(popupPosition.x !== 0 || popupPosition.y !== 0) ? {'left': popupPosition.x + 'px', 'top': popupPosition.y + 'px'} : {}"
+          (mousemove)="onDrag($event)"
+          (mouseup)="stopDrag()"
+          (mouseleave)="stopDrag()">
+          <div class="popup-header" (mousedown)="startDrag($event)">
             <div class="popup-title">
               <div class="popup-status" [class]="getVehicleStatusClass(selectedVehicle)"></div>
               <span class="popup-name">{{ selectedVehicle.brand }} {{ selectedVehicle.model }}</span>
             </div>
             <div class="popup-actions">
-              <button class="popup-action-btn" title="Centrer">
+              <button class="popup-action-btn" title="Centrer" (mousedown)="$event.stopPropagation()">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>
                 </svg>
               </button>
-              <button class="popup-action-btn" (click)="selectedVehicle = null" title="Fermer">
+              <button class="popup-action-btn" (click)="selectedVehicle = null; popupPosition = {x: 0, y: 0}" (mousedown)="$event.stopPropagation()" title="Fermer">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>

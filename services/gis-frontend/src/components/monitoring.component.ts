@@ -46,6 +46,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Message
   driverMessage = '';
 
+  // Popup drag
+  isDragging = false;
+  popupPosition = { x: 0, y: 0 };
+  dragOffset = { x: 0, y: 0 };
+
   refreshInterval: any;
 
   stats = {
@@ -191,9 +196,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   selectVehicle(vehicle: any) {
     this.selectedVehicle = vehicle;
+    this.activeTab = 'details';
+    this.popupPosition = { x: 0, y: 0 }; // Reset position to center
+    this.isDragging = false;
 
     if (this.map && vehicle.currentLocation) {
-      this.map.setView([vehicle.currentLocation.lat, vehicle.currentLocation.lng], 15);
+      this.map.setView([vehicle.currentLocation.lat, vehicle.currentLocation.lng], 12);
     }
   }
 
@@ -337,5 +345,47 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       alert(`Message envoyé: ${this.driverMessage}`);
       this.driverMessage = '';
     }
+  }
+
+  // Popup drag methods
+  startDrag(event: MouseEvent) {
+    const popup = (event.target as HTMLElement).closest('.vehicle-popup-panel') as HTMLElement;
+    const container = popup?.parentElement;
+    if (!popup || !container) return;
+
+    this.isDragging = true;
+    const popupRect = popup.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+
+    // Position relative to container
+    const currentLeft = popupRect.left - containerRect.left;
+    const currentTop = popupRect.top - containerRect.top;
+
+    // Offset from mouse click to popup top-left
+    this.dragOffset = {
+      x: event.clientX - containerRect.left - currentLeft,
+      y: event.clientY - containerRect.top - currentTop
+    };
+
+    // Set initial position relative to container
+    this.popupPosition = { x: currentLeft, y: currentTop };
+  }
+
+  onDrag(event: MouseEvent) {
+    if (!this.isDragging) return;
+    
+    const container = document.querySelector('.map-container');
+    if (!container) return;
+
+    const containerRect = container.getBoundingClientRect();
+    
+    this.popupPosition = {
+      x: event.clientX - containerRect.left - this.dragOffset.x,
+      y: event.clientY - containerRect.top - this.dragOffset.y
+    };
+  }
+
+  stopDrag() {
+    this.isDragging = false;
   }
 }
