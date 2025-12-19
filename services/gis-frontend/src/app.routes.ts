@@ -17,6 +17,7 @@ import { VehicleCostsComponent } from './components/vehicle-costs.component';
 import { ProfileComponent } from './components/profile.component';
 import { SettingsComponent } from './components/settings.component';
 import { UserManagementComponent } from './components/user-management.component';
+import { adminRoutes } from './admin/admin.routes';
 
 export const routes: Routes = [
   { path: '', component: LandingComponent },
@@ -39,5 +40,6 @@ export const routes: Routes = [
   { path: 'profile', component: ProfileComponent },
   { path: 'settings', component: SettingsComponent },
   { path: 'users', component: UserManagementComponent },
+  { path: 'admin', children: adminRoutes },
   { path: '**', redirectTo: '' },
 ];
