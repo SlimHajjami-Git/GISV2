@@ -52,7 +52,7 @@ export interface Vehicle {
   gpsDeviceId?: string;
   gpsImei?: string;
   gpsSimNumber?: string;
-  gpsSimOperator?: 'orange' | 'inwi' | 'maroc_telecom' | 'other';
+  gpsSimOperator?: 'ooredoo' | 'orange_tunisie' | 'tunisie_telecom' | 'other';
   gpsModel?: string;
   gpsBrand?: string;
   gpsInstallationDate?: Date;

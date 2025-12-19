@@ -92,7 +92,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   initializeMap() {
     setTimeout(() => {
       if (!this.map) {
-        this.map = L.map('tracking-map').setView([48.8566, 2.3522], 6);
+        this.map = L.map('tracking-map').setView([36.8065, 10.1815], 8);
 
         const mapUrls: Record<string, string> = {
           streets: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -135,9 +135,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   generateRandomLocation() {
+    // Tunis, Tunisia coordinates
     return {
-      lat: 48.8566 + (Math.random() - 0.5) * 0.5,
-      lng: 2.3522 + (Math.random() - 0.5) * 0.5
+      lat: 36.8065 + (Math.random() - 0.5) * 0.15,
+      lng: 10.1815 + (Math.random() - 0.5) * 0.15
     };
   }
 

@@ -30,7 +30,7 @@ import { Employee } from '../../models/types';
                 name="name"
                 [(ngModel)]="formData.name"
                 required
-                placeholder="Ex: Jean Dupont"
+                placeholder="Ex: Mohamed Ben Ali"
               />
             </div>
 
@@ -54,7 +54,7 @@ import { Employee } from '../../models/types';
                 name="phone"
                 [(ngModel)]="formData.phone"
                 required
-                placeholder="+33 6 12 34 56 78"
+                placeholder="+216 50 123 456"
               />
             </div>
 

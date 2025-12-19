@@ -54,7 +54,7 @@ import { Company } from '../models/types';
                 </div>
                 <div class="form-group">
                   <label>Téléphone</label>
-                  <input type="tel" [(ngModel)]="profile.phone" placeholder="+212 6XX XXX XXX">
+                  <input type="tel" [(ngModel)]="profile.phone" placeholder="+216 XX XXX XXX">
                 </div>
                 <div class="form-group">
                   <label>Poste</label>
@@ -452,16 +452,16 @@ export class ProfileComponent implements OnInit {
   profile = {
     fullName: '',
     email: '',
-    phone: '+212 661 234 567',
+    phone: '+216 50 234 567',
     position: 'Gestionnaire de flotte',
     role: 'Administrateur',
     industry: 'transport',
-    address: '123 Boulevard Mohammed V',
-    city: 'Casablanca',
-    country: 'MA',
+    address: '45 Avenue Habib Bourguiba',
+    city: 'Tunis',
+    country: 'TN',
     language: 'fr',
-    timezone: 'Africa/Casablanca',
-    currency: 'MAD',
+    timezone: 'Africa/Tunis',
+    currency: 'TND',
     dateFormat: 'dd/MM/yyyy',
     distanceUnit: 'km',
     speedUnit: 'kmh',

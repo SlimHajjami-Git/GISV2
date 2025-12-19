@@ -53,19 +53,19 @@ import { MockDataService } from '../../services/mock-data.service';
             <div class="summary-bar">
               <div class="summary-item">
                 <span class="summary-label">Total</span>
-                <span class="summary-value">{{ getTotalCost() | number:'1.0-0' }} DH</span>
+                <span class="summary-value">{{ getTotalCost() | number:'1.0-0' }} DT</span>
               </div>
               <div class="summary-item fuel">
                 <span class="summary-label">Carburant</span>
-                <span class="summary-value">{{ getFuelCost() | number:'1.0-0' }} DH</span>
+                <span class="summary-value">{{ getFuelCost() | number:'1.0-0' }} DT</span>
               </div>
               <div class="summary-item maintenance">
                 <span class="summary-label">Maintenance</span>
-                <span class="summary-value">{{ getMaintenanceCost() | number:'1.0-0' }} DH</span>
+                <span class="summary-value">{{ getMaintenanceCost() | number:'1.0-0' }} DT</span>
               </div>
               <div class="summary-item other">
                 <span class="summary-label">Autres</span>
-                <span class="summary-value">{{ getOtherCost() | number:'1.0-0' }} DH</span>
+                <span class="summary-value">{{ getOtherCost() | number:'1.0-0' }} DT</span>
               </div>
             </div>
 
@@ -96,7 +96,7 @@ import { MockDataService } from '../../services/mock-data.service';
                     </span>
                   </div>
                   <div class="cost-right">
-                    <span class="cost-amount">{{ cost.amount | number:'1.0-0' }} DH</span>
+                    <span class="cost-amount">{{ cost.amount | number:'1.0-0' }} DT</span>
                     <span class="cost-date">{{ formatDate(cost.date) }}</span>
                   </div>
                   <div class="cost-actions">
@@ -154,7 +154,7 @@ import { MockDataService } from '../../services/mock-data.service';
                 </div>
 
                 <div class="form-group">
-                  <label for="amount">Montant (DH) *</label>
+                  <label for="amount">Montant (DT) *</label>
                   <input type="number" id="amount" name="amount" [(ngModel)]="costForm.amount" required min="0" step="0.01">
                 </div>
 

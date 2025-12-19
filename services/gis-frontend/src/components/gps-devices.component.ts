@@ -43,9 +43,9 @@ interface GPSDeviceView {
           </select>
           <select class="filter-select" [(ngModel)]="filterOperator" (change)="filterDevices()">
             <option value="">Tous les opérateurs</option>
-            <option value="maroc_telecom">Maroc Telecom</option>
-            <option value="orange">Orange</option>
-            <option value="inwi">Inwi</option>
+            <option value="ooredoo">Ooredoo</option>
+            <option value="orange_tunisie">Orange Tunisie</option>
+            <option value="tunisie_telecom">Tunisie Telecom</option>
           </select>
           <a routerLink="/vehicles" class="btn-add">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -350,9 +350,9 @@ interface GPSDeviceView {
       font-weight: 500;
     }
 
-    .operator-badge.maroc_telecom { background: #dbeafe; color: #1d4ed8; }
-    .operator-badge.orange { background: #ffedd5; color: #c2410c; }
-    .operator-badge.inwi { background: #fae8ff; color: #a21caf; }
+    .operator-badge.ooredoo { background: #fee2e2; color: #dc2626; }
+    .operator-badge.orange_tunisie { background: #ffedd5; color: #c2410c; }
+    .operator-badge.tunisie_telecom { background: #dbeafe; color: #1d4ed8; }
     .operator-badge.other { background: #f1f5f9; color: #64748b; }
 
     .status-badge {
@@ -593,9 +593,9 @@ export class GPSDevicesComponent implements OnInit {
 
   getOperatorLabel(operator: string): string {
     const labels: any = {
-      maroc_telecom: 'Maroc Telecom',
-      orange: 'Orange',
-      inwi: 'Inwi',
+      ooredoo: 'Ooredoo',
+      orange_tunisie: 'Orange Tunisie',
+      tunisie_telecom: 'Tunisie Telecom',
       other: 'Autre'
     };
     return labels[operator] || operator || '-';

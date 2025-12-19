@@ -230,24 +230,24 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
             </div>
             <div class="card-body">
               <div class="cost-total">
-                <span class="cost-amount">{{ totalMonthlyCost | number:'1.0-0' }} DH</span>
+                <span class="cost-amount">{{ totalMonthlyCost | number:'1.0-0' }} DT</span>
                 <span class="cost-period">Ce mois</span>
               </div>
               <div class="cost-breakdown">
                 <div class="cost-item fuel">
                   <div class="cost-bar" [style.width.%]="getFuelPercentage()"></div>
                   <span class="cost-type">Carburant</span>
-                  <span class="cost-value">{{ fuelCost | number:'1.0-0' }} DH</span>
+                  <span class="cost-value">{{ fuelCost | number:'1.0-0' }} DT</span>
                 </div>
                 <div class="cost-item maintenance">
                   <div class="cost-bar" [style.width.%]="getMaintenancePercentage()"></div>
                   <span class="cost-type">Maintenance</span>
-                  <span class="cost-value">{{ maintenanceCost | number:'1.0-0' }} DH</span>
+                  <span class="cost-value">{{ maintenanceCost | number:'1.0-0' }} DT</span>
                 </div>
                 <div class="cost-item other">
                   <div class="cost-bar" [style.width.%]="getOtherPercentage()"></div>
                   <span class="cost-type">Autres</span>
-                  <span class="cost-value">{{ otherCost | number:'1.0-0' }} DH</span>
+                  <span class="cost-value">{{ otherCost | number:'1.0-0' }} DT</span>
                 </div>
               </div>
             </div>
@@ -320,7 +320,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
   styles: [`
     .dashboard-container {
       flex: 1;
-      background: #f1f5f9;
+      background: var(--bg-page);
       min-height: calc(100vh - 42px);
       display: flex;
       flex-direction: column;
@@ -332,13 +332,13 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
       grid-template-columns: 340px 1fr 1fr;
       grid-template-rows: auto 1fr;
       gap: 1px;
-      background: #e2e8f0;
+      background: var(--border-color);
       flex: 1;
     }
 
     /* Cards */
     .card {
-      background: white;
+      background: var(--bg-card);
     }
 
     .card-header {
@@ -346,17 +346,17 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
       justify-content: space-between;
       align-items: center;
       padding: 10px 14px;
-      border-bottom: 1px solid #f1f5f9;
+      border-bottom: 1px solid var(--border-color);
     }
 
     .card-title {
-      color: #1e293b;
+      color: var(--text-primary);
       font-size: 13px;
       font-weight: 600;
     }
 
     .card-title .help {
-      color: #94a3b8;
+      color: var(--text-muted);
       font-size: 11px;
       margin-left: 4px;
     }
@@ -399,8 +399,8 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
       transform: translate(-50%, -50%);
       font-size: 18px;
       font-weight: 700;
-      color: #1e293b;
-      background: white;
+      color: var(--text-primary);
+      background: var(--bg-card);
       width: 50px;
       height: 50px;
       border-radius: 50%;
@@ -425,11 +425,11 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
 
     .legend-row .label {
       flex: 1;
-      color: #64748b;
+      color: var(--text-secondary);
     }
 
     .legend-row .value {
-      color: #1e293b;
+      color: var(--text-primary);
       font-weight: 600;
       min-width: 16px;
       text-align: right;
@@ -463,7 +463,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
       align-items: center;
       gap: 6px;
       font-size: 11px;
-      color: #64748b;
+      color: var(--text-secondary);
     }
 
     .legend-square {
@@ -477,7 +477,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     }
 
     .legend-total {
-      color: #1e293b;
+      color: var(--text-primary);
       font-weight: 600;
     }
 
@@ -492,15 +492,15 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
       justify-content: space-between;
       padding-right: 8px;
       font-size: 10px;
-      color: #94a3b8;
+      color: var(--text-muted);
       text-align: right;
       width: 35px;
     }
 
     .chart-area {
       flex: 1;
-      border-left: 1px solid #e2e8f0;
-      border-bottom: 1px solid #e2e8f0;
+      border-left: 1px solid var(--border-color);
+      border-bottom: 1px solid var(--border-color);
     }
 
     .line-svg {
@@ -514,7 +514,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
       padding-top: 6px;
       padding-left: 40px;
       font-size: 9px;
-      color: #94a3b8;
+      color: var(--text-muted);
     }
 
     /* Geofences */
@@ -528,7 +528,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
       align-items: center;
       gap: 8px;
       padding: 6px 0;
-      border-bottom: 1px solid #f1f5f9;
+      border-bottom: 1px solid var(--border-color);
     }
 
     .geofence-row:last-child {
@@ -541,12 +541,12 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
 
     .geo-name {
       flex: 1;
-      color: #64748b;
+      color: var(--text-secondary);
       font-size: 12px;
     }
 
     .geo-count {
-      color: #1e293b;
+      color: var(--text-primary);
       font-weight: 600;
       font-size: 12px;
     }
@@ -578,8 +578,8 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
       transform: translate(-50%, -50%);
       font-size: 16px;
       font-weight: 700;
-      color: #1e293b;
-      background: white;
+      color: var(--text-primary);
+      background: var(--bg-card);
       width: 45px;
       height: 45px;
       border-radius: 50%;
@@ -602,12 +602,12 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     }
 
     .health-row .label {
-      color: #64748b;
+      color: var(--text-secondary);
       min-width: 90px;
     }
 
     .health-row .value {
-      color: #1e293b;
+      color: var(--text-primary);
       font-weight: 600;
     }
 
@@ -616,9 +616,9 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
       display: grid;
       grid-template-columns: 140px repeat(5, 1fr);
       font-size: 9px;
-      color: #94a3b8;
+      color: var(--text-muted);
       padding-bottom: 6px;
-      border-bottom: 1px solid #f1f5f9;
+      border-bottom: 1px solid var(--border-color);
       margin-bottom: 8px;
     }
 
@@ -649,18 +649,18 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     }
 
     .unit-name {
-      color: #64748b;
+      color: var(--text-secondary);
     }
 
     .unit-km {
-      color: #94a3b8;
+      color: var(--text-muted);
       font-size: 10px;
       margin-left: auto;
     }
 
     .bar-container {
       height: 18px;
-      background: #f1f5f9;
+      background: var(--bg-tertiary);
       border-radius: 2px;
       overflow: hidden;
     }
@@ -697,7 +697,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
       display: flex;
       gap: 12px;
       padding-bottom: 12px;
-      border-bottom: 1px solid #f1f5f9;
+      border-bottom: 1px solid var(--border-color);
       margin-bottom: 12px;
     }
 
@@ -708,20 +708,20 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
       border-radius: 4px;
     }
 
-    .maint-stat.scheduled { background: #eff6ff; }
-    .maint-stat.in-progress { background: #fef3c7; }
-    .maint-stat.completed { background: #dcfce7; }
+    .maint-stat.scheduled { background: rgba(59, 130, 246, 0.1); }
+    .maint-stat.in-progress { background: rgba(234, 179, 8, 0.1); }
+    .maint-stat.completed { background: rgba(34, 197, 94, 0.1); }
 
     .maint-count {
       display: block;
       font-size: 18px;
       font-weight: 700;
-      color: #1e293b;
+      color: var(--text-primary);
     }
 
     .maint-label {
       font-size: 9px;
-      color: #64748b;
+      color: var(--text-secondary);
       text-transform: uppercase;
     }
 
@@ -736,7 +736,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
       align-items: center;
       gap: 10px;
       padding: 6px 0;
-      border-bottom: 1px solid #f8fafc;
+      border-bottom: 1px solid var(--border-color);
     }
 
     .upcoming-icon {
@@ -761,17 +761,17 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     .upcoming-title {
       font-size: 11px;
       font-weight: 500;
-      color: #1e293b;
+      color: var(--text-primary);
     }
 
     .upcoming-vehicle {
       font-size: 10px;
-      color: #94a3b8;
+      color: var(--text-muted);
     }
 
     .upcoming-date {
       font-size: 10px;
-      color: #64748b;
+      color: var(--text-secondary);
       white-space: nowrap;
     }
 
@@ -784,7 +784,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     .cost-total {
       text-align: center;
       padding: 12px;
-      background: #f0fdf4;
+      background: rgba(34, 197, 94, 0.1);
       border-radius: 6px;
       margin-bottom: 14px;
     }
@@ -798,7 +798,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
 
     .cost-period {
       font-size: 10px;
-      color: #64748b;
+      color: var(--text-secondary);
     }
 
     .cost-breakdown {
@@ -813,7 +813,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
       justify-content: space-between;
       align-items: center;
       padding: 8px 10px;
-      background: #f8fafc;
+      background: var(--bg-secondary);
       border-radius: 4px;
       overflow: hidden;
     }
@@ -832,14 +832,14 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
 
     .cost-type {
       font-size: 11px;
-      color: #64748b;
+      color: var(--text-secondary);
       position: relative;
     }
 
     .cost-value {
       font-size: 12px;
       font-weight: 600;
-      color: #1e293b;
+      color: var(--text-primary);
       position: relative;
     }
 
@@ -860,7 +860,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
       flex-direction: column;
       align-items: center;
       padding: 14px;
-      background: #f8fafc;
+      background: var(--bg-secondary);
       border-radius: 6px;
     }
 
@@ -882,12 +882,12 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     .fleet-count {
       font-size: 20px;
       font-weight: 700;
-      color: #1e293b;
+      color: var(--text-primary);
     }
 
     .fleet-label {
       font-size: 10px;
-      color: #64748b;
+      color: var(--text-secondary);
     }
 
     /* Responsive */

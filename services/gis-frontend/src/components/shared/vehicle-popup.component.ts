@@ -160,7 +160,7 @@ import { Vehicle } from '../../models/types';
                   id="gpsSimNumber"
                   name="gpsSimNumber"
                   [(ngModel)]="formData.gpsSimNumber"
-                  placeholder="Ex: +212 6 12 34 56 78"
+                  placeholder="Ex: +216 50 123 456"
                 />
               </div>
 
@@ -168,9 +168,9 @@ import { Vehicle } from '../../models/types';
                 <label for="gpsSimOperator">Opérateur SIM</label>
                 <select id="gpsSimOperator" name="gpsSimOperator" [(ngModel)]="formData.gpsSimOperator">
                   <option value="">Sélectionner</option>
-                  <option value="maroc_telecom">Maroc Telecom</option>
-                  <option value="orange">Orange</option>
-                  <option value="inwi">Inwi</option>
+                  <option value="ooredoo">Ooredoo</option>
+                  <option value="orange_tunisie">Orange Tunisie</option>
+                  <option value="tunisie_telecom">Tunisie Telecom</option>
                   <option value="other">Autre</option>
                 </select>
               </div>

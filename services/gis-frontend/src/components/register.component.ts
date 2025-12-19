@@ -33,7 +33,7 @@ import { Subscription } from '../models/types';
                   id="name"
                   [(ngModel)]="formData.name"
                   name="name"
-                  placeholder="Jean Dupont"
+                  placeholder="Mohamed Ben Ali"
                   required
                 />
               </div>

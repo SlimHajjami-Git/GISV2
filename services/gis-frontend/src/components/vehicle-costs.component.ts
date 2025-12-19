@@ -66,7 +66,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ getFuelCost() | number:'1.0-0' }} DH</span>
+              <span class="stat-value">{{ getFuelCost() | number:'1.0-0' }} DT</span>
               <span class="stat-label">Carburant</span>
             </div>
           </div>
@@ -77,7 +77,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ getMaintenanceCost() | number:'1.0-0' }} DH</span>
+              <span class="stat-value">{{ getMaintenanceCost() | number:'1.0-0' }} DT</span>
               <span class="stat-label">Maintenance</span>
             </div>
           </div>
@@ -88,7 +88,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ getInsuranceCost() | number:'1.0-0' }} DH</span>
+              <span class="stat-value">{{ getInsuranceCost() | number:'1.0-0' }} DT</span>
               <span class="stat-label">Assurance</span>
             </div>
           </div>
@@ -100,7 +100,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ getTotalCost() | number:'1.0-0' }} DH</span>
+              <span class="stat-value">{{ getTotalCost() | number:'1.0-0' }} DT</span>
               <span class="stat-label">Total dépenses</span>
             </div>
           </div>
@@ -119,19 +119,19 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                 <div class="summary-stats">
                   <div class="summary-item">
                     <span class="summary-label">Carburant</span>
-                    <span class="summary-value fuel">{{ summary.fuelCost | number:'1.0-0' }} DH</span>
+                    <span class="summary-value fuel">{{ summary.fuelCost | number:'1.0-0' }} DT</span>
                   </div>
                   <div class="summary-item">
                     <span class="summary-label">Maintenance</span>
-                    <span class="summary-value maintenance">{{ summary.maintenanceCost | number:'1.0-0' }} DH</span>
+                    <span class="summary-value maintenance">{{ summary.maintenanceCost | number:'1.0-0' }} DT</span>
                   </div>
                   <div class="summary-item">
                     <span class="summary-label">Autres</span>
-                    <span class="summary-value other">{{ summary.otherCost | number:'1.0-0' }} DH</span>
+                    <span class="summary-value other">{{ summary.otherCost | number:'1.0-0' }} DT</span>
                   </div>
                   <div class="summary-item total">
                     <span class="summary-label">Total</span>
-                    <span class="summary-value total">{{ summary.totalCost | number:'1.0-0' }} DH</span>
+                    <span class="summary-value total">{{ summary.totalCost | number:'1.0-0' }} DT</span>
                   </div>
                 </div>
               </div>
@@ -166,7 +166,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                     </span>
                   </td>
                   <td class="description-cell">{{ cost.description }}</td>
-                  <td class="amount-cell">{{ cost.amount | number:'1.0-0' }} DH</td>
+                  <td class="amount-cell">{{ cost.amount | number:'1.0-0' }} DT</td>
                   <td class="reference-cell">{{ cost.receiptNumber || '-' }}</td>
                   <td>
                     <div class="action-buttons">
@@ -247,7 +247,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                 </div>
 
                 <div class="form-group">
-                  <label for="costAmount">Montant (DH) *</label>
+                  <label for="costAmount">Montant (DT) *</label>
                   <input type="number" id="costAmount" [(ngModel)]="costForm.amount" name="amount" required min="0" placeholder="0" />
                 </div>
 

@@ -2,6 +2,7 @@ import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { ApiService } from '../../services/api.service';
+import { ThemeService } from '../../services/theme.service';
 import { GPSAlert } from '../../models/types';
 
 @Component({
@@ -88,6 +89,20 @@ import { GPSAlert } from '../../models/types';
 
         <!-- Right Actions -->
         <div class="nav-actions">
+          <!-- Theme Toggle -->
+          <button class="nav-icon-btn theme-toggle" (click)="toggleTheme()" [title]="isDarkMode ? 'Mode clair' : 'Mode sombre'">
+            <svg *ngIf="!isDarkMode" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+            <svg *ngIf="isDarkMode" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="5"/>
+              <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+              <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+            </svg>
+          </button>
+
           <!-- Notification Bell -->
           <div class="notification-wrapper">
             <button class="nav-icon-btn notification-btn" [class.has-unread]="unreadCount > 0" (click)="toggleNotifications($event)" title="Notifications">
@@ -234,14 +249,20 @@ import { GPSAlert } from '../../models/types';
     /* ===== WIALON-STYLE TOP NAVIGATION BAR ===== */
     .top-nav {
       height: 42px;
-      background: #f0f0f0;
-      border-bottom: 1px solid #d0d0d0;
+      background: var(--bg-nav, #f0f0f0);
+      border-bottom: 1px solid var(--border-color, #d0d0d0);
       display: flex;
       align-items: center;
       padding: 0 12px;
       position: sticky;
       top: 0;
       z-index: 1000;
+      transition: background 0.3s, border-color 0.3s;
+    }
+
+    :host-context([data-theme="dark"]) .top-nav {
+      background: #1e293b;
+      border-color: #334155;
     }
 
     /* ===== BRAND / LOGO ===== */
@@ -269,8 +290,16 @@ import { GPSAlert } from '../../models/types';
     .brand-text {
       font-size: 16px;
       font-weight: 700;
-      color: #333;
+      color: var(--text-primary, #333);
       letter-spacing: -0.3px;
+    }
+
+    :host-context([data-theme="dark"]) .nav-brand {
+      border-color: #334155;
+    }
+
+    :host-context([data-theme="dark"]) .nav-brand:hover {
+      background: rgba(255, 255, 255, 0.05);
     }
 
     /* ===== NAVIGATION LINKS ===== */
@@ -287,7 +316,7 @@ import { GPSAlert } from '../../models/types';
       gap: 6px;
       padding: 8px 12px;
       border-radius: 4px;
-      color: #555;
+      color: var(--text-secondary, #555);
       font-size: 13px;
       font-weight: 500;
       cursor: pointer;
@@ -297,7 +326,7 @@ import { GPSAlert } from '../../models/types';
     }
 
     .nav-link:hover {
-      color: #333;
+      color: var(--text-primary, #333);
       background: rgba(0, 0, 0, 0.06);
     }
 
@@ -305,6 +334,14 @@ import { GPSAlert } from '../../models/types';
       color: #6366f1;
       background: rgba(99, 102, 241, 0.12);
       font-weight: 600;
+    }
+
+    :host-context([data-theme="dark"]) .nav-link:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    :host-context([data-theme="dark"]) .nav-link.active {
+      background: rgba(99, 102, 241, 0.2);
     }
 
     .nav-link svg {
@@ -331,7 +368,7 @@ import { GPSAlert } from '../../models/types';
       border-radius: 4px;
       background: transparent;
       border: none;
-      color: #666;
+      color: var(--text-secondary, #666);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -341,7 +378,19 @@ import { GPSAlert } from '../../models/types';
 
     .nav-icon-btn:hover {
       background: rgba(0, 0, 0, 0.06);
-      color: #333;
+      color: var(--text-primary, #333);
+    }
+
+    :host-context([data-theme="dark"]) .nav-icon-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .theme-toggle {
+      color: var(--text-secondary);
+    }
+
+    .theme-toggle:hover {
+      color: #f59e0b;
     }
 
     /* ===== NOTIFICATIONS ===== */
@@ -746,8 +795,17 @@ export class AppLayoutComponent implements OnInit {
 
   constructor(
     private router: Router,
-    private apiService: ApiService
+    private apiService: ApiService,
+    private themeService: ThemeService
   ) {}
+
+  get isDarkMode(): boolean {
+    return this.themeService.isDarkMode;
+  }
+
+  toggleTheme(): void {
+    this.themeService.toggleTheme();
+  }
 
   ngOnInit() {
     this.loadNotifications();

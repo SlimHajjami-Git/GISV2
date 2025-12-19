@@ -113,7 +113,7 @@ import { MaintenanceRecord, Vehicle } from '../../models/types';
             </div>
             <div class="form-grid">
               <div class="form-group">
-                <label for="laborCost">Main d'œuvre (DH)</label>
+                <label for="laborCost">Main d'œuvre (DT)</label>
                 <input
                   type="number"
                   id="laborCost"
@@ -126,7 +126,7 @@ import { MaintenanceRecord, Vehicle } from '../../models/types';
               </div>
 
               <div class="form-group">
-                <label for="partsCost">Pièces (DH)</label>
+                <label for="partsCost">Pièces (DT)</label>
                 <input
                   type="number"
                   id="partsCost"
@@ -140,7 +140,7 @@ import { MaintenanceRecord, Vehicle } from '../../models/types';
 
               <div class="form-group total-group">
                 <label>Total</label>
-                <div class="total-value">{{ formData.totalCost | number:'1.0-0' }} DH</div>
+                <div class="total-value">{{ formData.totalCost | number:'1.0-0' }} DT</div>
               </div>
             </div>
           </div>

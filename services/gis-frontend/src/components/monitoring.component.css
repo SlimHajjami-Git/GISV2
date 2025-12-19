@@ -4,13 +4,13 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #f1f5f9;
+  background: var(--bg-page);
   min-height: calc(100vh - 42px);
 }
 
 .stats-bar {
-  background: white;
-  border-bottom: 1px solid #e2e8f0;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
   padding: 6px 12px;
   display: flex;
   gap: 8px;
@@ -22,9 +22,9 @@
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  background: #f8fafc;
+  background: var(--bg-secondary);
   border-radius: 4px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   transition: all 0.15s;
 }
 
@@ -46,12 +46,12 @@
 .stat-item .stat-value {
   font-size: 14px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--text-primary);
 }
 
 .stat-item .stat-label {
   font-size: 11px;
-  color: #64748b;
+  color: var(--text-secondary);
 }
 
 .monitoring-layout {
@@ -63,12 +63,12 @@
 /* ===== COLLAPSIBLE PANEL ===== */
 .vehicles-panel {
   width: 260px;
-  background: white;
-  border-right: 1px solid #e2e8f0;
+  background: var(--bg-card);
+  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   position: relative;
-  transition: width 0.3s ease;
+  transition: width 0.3s ease, background 0.3s;
 }
 
 .vehicles-panel.collapsed {
@@ -109,7 +109,7 @@
 
 .panel-header {
   padding: 8px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -118,30 +118,30 @@
 .search-input {
   width: 100%;
   padding: 6px 10px;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 3px;
-  color: #1e293b;
+  color: var(--text-primary);
   font-family: var(--font-family);
   font-size: 12px;
 }
 
 .search-input:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--primary);
 }
 
 .search-input::placeholder {
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .filter-select {
   width: 100%;
   padding: 6px 10px;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 3px;
-  color: #1e293b;
+  color: var(--text-primary);
   font-family: var(--font-family);
   font-size: 12px;
   cursor: pointer;
@@ -149,7 +149,6 @@
 
 .filter-select:focus {
   outline: none;
-  border-color: #3b82f6;
   border-color: var(--primary);
 }
 
@@ -173,7 +172,7 @@
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  background: #f8fafc;
+  background: var(--bg-secondary);
   border-radius: 4px;
   border: 1px solid transparent;
   cursor: pointer;
@@ -181,13 +180,13 @@
 }
 
 .vehicle-item:hover {
-  background: #f1f5f9;
-  border-color: #e2e8f0;
+  background: var(--bg-hover);
+  border-color: var(--border-color);
 }
 
 .vehicle-item.selected {
-  background: #eff6ff;
-  border-color: #3b82f6;
+  background: rgba(99, 102, 241, 0.15);
+  border-color: var(--primary);
 }
 
 .vehicle-status {
@@ -211,7 +210,7 @@
 
 .vehicle-name {
   font-weight: 500;
-  color: #1e293b;
+  color: var(--text-primary);
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
@@ -220,13 +219,13 @@
 
 .vehicle-plate {
   font-size: 10px;
-  color: #64748b;
+  color: var(--text-secondary);
   font-family: monospace;
 }
 
 .vehicle-speed {
   font-weight: 600;
-  color: #1e293b;
+  color: var(--text-primary);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -298,21 +297,21 @@
 /* ===== VEHICLE POPUP PANEL ===== */
 .vehicle-popup-panel {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  bottom: 20px;
+  right: 20px;
   width: 360px;
-  background: white;
+  background: var(--bg-card);
   border-radius: 10px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.25);
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   z-index: 600;
   overflow: hidden;
   cursor: default;
 }
 
 .vehicle-popup-panel.dragged {
-  transform: none;
+  bottom: auto;
+  right: auto;
 }
 
 .vehicle-popup-panel.dragging {
@@ -383,8 +382,8 @@
 /* Tabs */
 .popup-tabs {
   display: flex;
-  border-bottom: 1px solid #e2e8f0;
-  background: #f8fafc;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
 }
 
 .popup-tab {
@@ -397,7 +396,7 @@
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
@@ -405,14 +404,14 @@
 }
 
 .popup-tab:hover {
-  color: #3b82f6;
-  background: #eff6ff;
+  color: var(--primary);
+  background: rgba(99, 102, 241, 0.1);
 }
 
 .popup-tab.active {
-  color: #3b82f6;
-  border-bottom-color: #3b82f6;
-  background: white;
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  background: var(--bg-card);
 }
 
 .popup-content {
@@ -439,19 +438,19 @@
 
 .info-label {
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--text-muted);
   text-transform: uppercase;
 }
 
 .info-value {
   font-size: 12px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--text-primary);
 }
 
 .info-value.plate {
   font-family: monospace;
-  background: #f1f5f9;
+  background: var(--bg-tertiary);
   padding: 2px 6px;
   border-radius: 3px;
 }
@@ -463,12 +462,12 @@
 .driver-section {
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--border-color);
 }
 
 .section-label {
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--text-muted);
   text-transform: uppercase;
   display: block;
   margin-bottom: 8px;
@@ -496,7 +495,7 @@
 .driver-name {
   font-size: 12px;
   font-weight: 500;
-  color: #1e293b;
+  color: var(--text-primary);
 }
 
 /* Playback Section */
@@ -520,20 +519,21 @@
 
 .date-field label {
   font-size: 10px;
-  color: #64748b;
+  color: var(--text-secondary);
 }
 
 .date-field input {
   padding: 6px 8px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   border-radius: 4px;
   font-size: 11px;
-  color: #1e293b;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
 }
 
 .date-field input:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--primary);
 }
 
 .load-route-btn {
@@ -561,7 +561,7 @@
   flex-direction: column;
   gap: 10px;
   padding-top: 10px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--border-color);
 }
 
 .control-buttons {
@@ -574,9 +574,9 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  color: #64748b;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -585,8 +585,8 @@
 }
 
 .control-btn:hover {
-  background: #e2e8f0;
-  color: #3b82f6;
+  background: var(--bg-hover);
+  color: var(--primary);
 }
 
 .control-btn.play {
@@ -606,7 +606,7 @@
   height: 4px;
   -webkit-appearance: none;
   appearance: none;
-  background: #e2e8f0;
+  background: var(--border-color);
   border-radius: 2px;
   outline: none;
 }
@@ -625,27 +625,27 @@
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: #64748b;
+  color: var(--text-secondary);
 }
 
 .speed-selector button {
   padding: 4px 8px;
-  border: 1px solid #e2e8f0;
-  background: white;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
   border-radius: 3px;
   font-size: 10px;
-  color: #64748b;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .speed-selector button:hover {
-  background: #f1f5f9;
+  background: var(--bg-hover);
 }
 
 .speed-selector button.active {
-  background: #3b82f6;
-  border-color: #3b82f6;
+  background: var(--primary);
+  border-color: var(--primary);
   color: white;
 }
 
@@ -659,21 +659,22 @@
 .message-input {
   width: 100%;
   padding: 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   border-radius: 4px;
   font-size: 12px;
   font-family: inherit;
   resize: none;
-  color: #1e293b;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
 }
 
 .message-input:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--primary);
 }
 
 .message-input::placeholder {
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .send-message-btn {

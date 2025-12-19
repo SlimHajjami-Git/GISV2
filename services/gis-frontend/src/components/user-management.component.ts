@@ -244,7 +244,7 @@ interface ManagedUser {
                   </div>
                   <div class="form-group">
                     <label>Téléphone</label>
-                    <input type="tel" [(ngModel)]="userForm.phone" placeholder="+212 6XX XXX XXX">
+                    <input type="tel" [(ngModel)]="userForm.phone" placeholder="+216 XX XXX XXX">
                   </div>
                   <div class="form-group">
                     <label>Statut</label>
@@ -1089,9 +1089,9 @@ export class UserManagementComponent implements OnInit {
     this.users = [
       {
         id: '1',
-        name: 'Ahmed Benali',
+        name: 'Ahmed Ben Salem',
         email: 'ahmed.benali@example.com',
-        phone: '+212 661 234 567',
+        phone: '+216 50 234 567',
         roles: ['driver'],
         permissions: ['dashboard', 'monitoring', 'vehicles'],
         assignedVehicles: this.vehicles.slice(0, 2).map(v => v.id),
@@ -1101,9 +1101,9 @@ export class UserManagementComponent implements OnInit {
       },
       {
         id: '2',
-        name: 'Karim Tazi',
+        name: 'Karim Trabelsi',
         email: 'karim.tazi@example.com',
-        phone: '+212 662 345 678',
+        phone: '+216 51 345 678',
         roles: ['driver', 'supervisor'],
         permissions: ['dashboard', 'monitoring', 'vehicles', 'drivers', 'geofences', 'reports'],
         assignedVehicles: this.vehicles.map(v => v.id),
@@ -1113,9 +1113,9 @@ export class UserManagementComponent implements OnInit {
       },
       {
         id: '3',
-        name: 'Youssef Alami',
+        name: 'Youssef Mejri',
         email: 'youssef.alami@example.com',
-        phone: '+212 663 456 789',
+        phone: '+216 52 456 789',
         roles: ['supervisor'],
         permissions: ['dashboard', 'monitoring', 'vehicles', 'drivers', 'geofences', 'reports', 'maintenance', 'costs'],
         assignedVehicles: this.vehicles.map(v => v.id),
@@ -1124,9 +1124,9 @@ export class UserManagementComponent implements OnInit {
       },
       {
         id: '4',
-        name: 'Omar Fassi',
+        name: 'Omar Gharbi',
         email: 'omar.fassi@example.com',
-        phone: '+212 664 567 890',
+        phone: '+216 53 567 890',
         roles: ['driver'],
         permissions: ['dashboard', 'monitoring'],
         assignedVehicles: this.vehicles.slice(0, 1).map(v => v.id),

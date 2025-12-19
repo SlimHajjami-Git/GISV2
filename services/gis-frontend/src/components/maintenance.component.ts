@@ -97,7 +97,7 @@ import { MaintenancePopupComponent } from './shared/maintenance-popup.component'
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ getTotalCost() | number:'1.0-0' }} DH</span>
+              <span class="stat-value">{{ getTotalCost() | number:'1.0-0' }} DT</span>
               <span class="stat-label">Coût total</span>
             </div>
           </div>
@@ -141,7 +141,7 @@ import { MaintenancePopupComponent } from './shared/maintenance-popup.component'
                   </td>
                   <td class="cost-cell">
                     <div class="cost-breakdown">
-                      <span class="total-cost">{{ record.totalCost | number:'1.0-0' }} DH</span>
+                      <span class="total-cost">{{ record.totalCost | number:'1.0-0' }} DT</span>
                       <span class="cost-detail">MO: {{ record.laborCost }} / Pièces: {{ record.partsCost }}</span>
                     </div>
                   </td>
