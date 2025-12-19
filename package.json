@@ -1,0 +1,11 @@
+{
+  "name": "gis-v2",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix services/gis-frontend",
+    "build": "npm run build --prefix services/gis-frontend",
+    "start": "npm run start --prefix services/gis-frontend",
+    "install:frontend": "npm install --prefix services/gis-frontend"
+  }
+}
