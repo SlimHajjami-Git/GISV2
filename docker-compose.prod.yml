@@ -92,7 +92,7 @@ services:
   frontend:
     build:
       context: ./services/gis-frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.prod
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"]
       interval: 15s
