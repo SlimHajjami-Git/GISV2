@@ -24,6 +24,9 @@ builder.Services.AddHostedService<GisAPI.Services.GpsTelemetryConsumer>();
 // Geocoding Service with cache
 builder.Services.AddSingleton<GisAPI.Services.IGeocodingService, GisAPI.Services.GeocodingService>();
 
+// Driving Behavior Detection Service
+builder.Services.AddScoped<GisAPI.Services.IDrivingBehaviorService, GisAPI.Services.DrivingBehaviorService>();
+
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "DefaultSecretKeyForDevelopment123!";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
