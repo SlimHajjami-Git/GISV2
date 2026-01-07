@@ -110,6 +110,27 @@ services:
       - "80:80"
     restart: unless-stopped
 
+  osrm:
+    image: osrm/osrm-backend:latest
+    volumes:
+      - osrm_data:/data
+    ports:
+      - "5001:5000"
+    command: >
+      sh -c "
+        if [ ! -f /data/tunisia-latest.osrm ]; then
+          echo 'Downloading Tunisia map...';
+          apt-get update && apt-get install -y wget;
+          wget -q http://download.geofabrik.de/africa/tunisia-latest.osm.pbf -O /data/tunisia-latest.osm.pbf;
+          osrm-extract -p /opt/car.lua /data/tunisia-latest.osm.pbf;
+          osrm-partition /data/tunisia-latest.osrm;
+          osrm-customize /data/tunisia-latest.osrm;
+        fi;
+        osrm-routed --algorithm mld /data/tunisia-latest.osrm
+      "
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   rabbitmq_data:
+  osrm_data:
