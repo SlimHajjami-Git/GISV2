@@ -85,8 +85,10 @@ services:
       API_PORT: 3000
       RUST_LOG: info
     ports:
-      - "3000:3000"   # GPS TCP port
-      - "3001:3001"   # GPS UDP port
+      - "3000:3000"   # HTTP API
+      - "6100:6100"   # GPS type 1 (TCP)
+      - "6200:6200"   # GPS type 2 (TCP)
+      - "6210:6210"   # GPS type 2.1 (TCP)
     restart: unless-stopped
 
   frontend:
