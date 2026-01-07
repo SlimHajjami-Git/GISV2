@@ -45,6 +45,29 @@ public class Vehicle
     [Column("has_gps")]
     public bool HasGps { get; set; }
 
+    [MaxLength(17)]
+    [Column("vin")]
+    public string? VIN { get; set; }
+
+    [MaxLength(20)]
+    [Column("fuel_type")]
+    public string? FuelType { get; set; } // diesel, gasoline, electric, hybrid, lpg
+
+    [Column("tank_capacity")]
+    public int? TankCapacity { get; set; } // liters
+
+    [Column("insurance_expiry")]
+    public DateTime? InsuranceExpiry { get; set; }
+
+    [Column("technical_inspection_expiry")]
+    public DateTime? TechnicalInspectionExpiry { get; set; }
+
+    [Column("purchase_date")]
+    public DateTime? PurchaseDate { get; set; }
+
+    [Column("purchase_price", TypeName = "decimal(12,2)")]
+    public decimal? PurchasePrice { get; set; }
+
     [Column("mileage")]
     public int Mileage { get; set; }
 
@@ -93,6 +116,13 @@ public class Vehicle
     public ICollection<VehicleDocument> Documents { get; set; } = new List<VehicleDocument>();
     public ICollection<MaintenanceRecord> MaintenanceRecords { get; set; } = new List<MaintenanceRecord>();
     public ICollection<VehicleCost> Costs { get; set; } = new List<VehicleCost>();
+    public ICollection<Trip> Trips { get; set; } = new List<Trip>();
+    public ICollection<DrivingEvent> DrivingEvents { get; set; } = new List<DrivingEvent>();
+    public ICollection<Contract> Contracts { get; set; } = new List<Contract>();
+    public ICollection<Reservation> Reservations { get; set; } = new List<Reservation>();
+    public ICollection<DriverAssignment> DriverAssignments { get; set; } = new List<DriverAssignment>();
+    public ICollection<DailyStatistics> DailyStatistics { get; set; } = new List<DailyStatistics>();
+    public ICollection<UserVehicle> AssignedUsers { get; set; } = new List<UserVehicle>();
 }
 
 public class VehicleDocument

@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
@@ -991,7 +991,10 @@ export class DashboardComponent implements OnInit {
 
   constructor(
     private router: Router,
-    private apiService: ApiService
+    private apiService: ApiService,
+    private ngZone: NgZone,
+    private cdr: ChangeDetectorRef,
+    private appRef: ApplicationRef
   ) {}
 
   ngOnInit() {
@@ -1000,10 +1003,12 @@ export class DashboardComponent implements OnInit {
       return;
     }
 
-    // Load data from API
-    this.loadVehicles();
-    this.loadMaintenanceData();
-    this.loadCostData();
+    // Load data from API - use ngZone.run to ensure change detection
+    this.ngZone.run(() => {
+      this.loadVehicles();
+      this.loadMaintenanceData();
+      this.loadCostData();
+    });
 
     const today = new Date();
     const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -1025,21 +1030,25 @@ export class DashboardComponent implements OnInit {
   loadVehicles() {
     this.apiService.getVehicles().subscribe({
       next: (vehicles) => {
-        this.vehicles = vehicles.map(v => ({
-          id: v.id.toString(),
-          companyId: v.companyId?.toString() || '',
-          name: v.name,
-          type: v.type,
-          brand: v.brand,
-          model: v.model,
-          plate: v.plate,
-          year: v.year,
-          color: v.color,
-          status: v.status as 'available' | 'in_use' | 'maintenance',
-          hasGPS: v.hasGps,
-          mileage: v.mileage
-        })) as Vehicle[];
-        this.calculateFleetStatus();
+        this.ngZone.run(() => {
+          this.vehicles = vehicles.map(v => ({
+            id: v.id.toString(),
+            companyId: v.companyId?.toString() || '',
+            name: v.name,
+            type: v.type,
+            brand: v.brand,
+            model: v.model,
+            plate: v.plate,
+            year: v.year,
+            color: v.color,
+            status: v.status as 'available' | 'in_use' | 'maintenance',
+            hasGPS: v.hasGps,
+            mileage: v.mileage
+          })) as Vehicle[];
+          this.calculateFleetStatus();
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
       },
       error: (err) => console.error('Error loading vehicles:', err)
     });
@@ -1048,32 +1057,36 @@ export class DashboardComponent implements OnInit {
   loadMaintenanceData() {
     this.apiService.getMaintenanceRecords().subscribe({
       next: (records) => {
-        this.maintenanceRecords = records.map(m => ({
-          id: m.id.toString(),
-          vehicleId: m.vehicleId.toString(),
-          companyId: m.companyId.toString(),
-          type: m.type,
-          description: m.description,
-          mileageAtService: m.mileageAtService,
-          date: new Date(m.date),
-          nextServiceDate: m.nextServiceDate ? new Date(m.nextServiceDate) : undefined,
-          nextServiceMileage: m.nextServiceMileage,
-          status: m.status as 'scheduled' | 'in_progress' | 'completed',
-          laborCost: m.laborCost,
-          partsCost: m.partsCost,
-          totalCost: m.totalCost,
-          serviceProvider: m.serviceProvider,
-          notes: m.notes,
-          parts: m.parts || []
-        })) as MaintenanceRecord[];
-        
-        this.scheduledMaintCount = this.maintenanceRecords.filter(m => m.status === 'scheduled').length;
-        this.inProgressMaintCount = this.maintenanceRecords.filter(m => m.status === 'in_progress').length;
-        this.completedMaintCount = this.maintenanceRecords.filter(m => m.status === 'completed').length;
-        
-        this.upcomingMaintenance = [...this.maintenanceRecords]
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-          .slice(0, 4);
+        this.ngZone.run(() => {
+          this.maintenanceRecords = records.map(m => ({
+            id: m.id.toString(),
+            vehicleId: m.vehicleId.toString(),
+            companyId: m.companyId.toString(),
+            type: m.type,
+            description: m.description,
+            mileageAtService: m.mileageAtService,
+            date: new Date(m.date),
+            nextServiceDate: m.nextServiceDate ? new Date(m.nextServiceDate) : undefined,
+            nextServiceMileage: m.nextServiceMileage,
+            status: m.status as 'scheduled' | 'in_progress' | 'completed',
+            laborCost: m.laborCost,
+            partsCost: m.partsCost,
+            totalCost: m.totalCost,
+            serviceProvider: m.serviceProvider,
+            notes: m.notes,
+            parts: m.parts || []
+          })) as MaintenanceRecord[];
+          
+          this.scheduledMaintCount = this.maintenanceRecords.filter(m => m.status === 'scheduled').length;
+          this.inProgressMaintCount = this.maintenanceRecords.filter(m => m.status === 'in_progress').length;
+          this.completedMaintCount = this.maintenanceRecords.filter(m => m.status === 'completed').length;
+          
+          this.upcomingMaintenance = [...this.maintenanceRecords]
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            .slice(0, 4);
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
       },
       error: (err) => console.error('Error loading maintenance:', err)
     });
@@ -1085,23 +1098,27 @@ export class DashboardComponent implements OnInit {
     
     this.apiService.getCosts({ startDate: startOfMonth }).subscribe({
       next: (costs) => {
-        this.vehicleCosts = costs.map(c => ({
-          id: c.id.toString(),
-          vehicleId: c.vehicleId.toString(),
-          companyId: c.companyId.toString(),
-          type: c.type as 'fuel' | 'maintenance' | 'insurance' | 'tax' | 'toll' | 'parking' | 'fine' | 'other',
-          description: c.description,
-          amount: c.amount,
-          date: new Date(c.date),
-          mileage: c.mileage,
-          receiptNumber: c.receiptNumber,
-          receiptUrl: c.receiptUrl
-        })) as VehicleCost[];
-        
-        this.fuelCost = this.vehicleCosts.filter(c => c.type === 'fuel').reduce((sum, c) => sum + c.amount, 0);
-        this.maintenanceCost = this.vehicleCosts.filter(c => c.type === 'maintenance').reduce((sum, c) => sum + c.amount, 0);
-        this.otherCost = this.vehicleCosts.filter(c => c.type !== 'fuel' && c.type !== 'maintenance').reduce((sum, c) => sum + c.amount, 0);
-        this.totalMonthlyCost = this.fuelCost + this.maintenanceCost + this.otherCost;
+        this.ngZone.run(() => {
+          this.vehicleCosts = costs.map(c => ({
+            id: c.id.toString(),
+            vehicleId: c.vehicleId.toString(),
+            companyId: c.companyId.toString(),
+            type: c.type as 'fuel' | 'maintenance' | 'insurance' | 'tax' | 'toll' | 'parking' | 'fine' | 'other',
+            description: c.description,
+            amount: c.amount,
+            date: new Date(c.date),
+            mileage: c.mileage,
+            receiptNumber: c.receiptNumber,
+            receiptUrl: c.receiptUrl
+          })) as VehicleCost[];
+          
+          this.fuelCost = this.vehicleCosts.filter(c => c.type === 'fuel').reduce((sum, c) => sum + c.amount, 0);
+          this.maintenanceCost = this.vehicleCosts.filter(c => c.type === 'maintenance').reduce((sum, c) => sum + c.amount, 0);
+          this.otherCost = this.vehicleCosts.filter(c => c.type !== 'fuel' && c.type !== 'maintenance').reduce((sum, c) => sum + c.amount, 0);
+          this.totalMonthlyCost = this.fuelCost + this.maintenanceCost + this.otherCost;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
       },
       error: (err) => console.error('Error loading costs:', err)
     });

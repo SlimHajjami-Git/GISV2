@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using GisAPI.Data;
-using GisAPI.Models;
+using GisAPI.Infrastructure.Persistence;
+using GisAPI.Domain.Entities;
 
 namespace GisAPI.Controllers;
 

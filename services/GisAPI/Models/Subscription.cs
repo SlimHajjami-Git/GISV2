@@ -27,6 +27,17 @@ public class Subscription
 
     public int MaxVehicles { get; set; } = 10;
 
+    public int MaxUsers { get; set; } = 5;
+
+    public int MaxGpsDevices { get; set; } = 10;
+
+    public int MaxGeofences { get; set; } = 20;
+
+    [MaxLength(20)]
+    public string BillingCycle { get; set; } = "monthly"; // monthly, quarterly, yearly
+
+    public bool IsActive { get; set; } = true;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation

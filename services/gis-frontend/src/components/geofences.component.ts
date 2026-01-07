@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../services/api.service';
-import { Geofence, GeofenceEvent, GeofencePoint, Vehicle, Company } from '../models/types';
+import { Geofence, GeofenceEvent, GeofencePoint, Vehicle, Company, GeofenceGroup } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import * as L from 'leaflet';
 
@@ -328,6 +328,40 @@ import * as L from 'leaflet';
                     <input type="number" [(ngModel)]="geofenceForm.alertSpeed" name="alertSpeed" min="0" step="5" placeholder="km/h">
                   </div>
                 </div>
+                <div class="cooldown-row">
+                  <label>Cooldown notifications:</label>
+                  <input type="number" [(ngModel)]="geofenceForm.notificationCooldownMinutes" name="cooldown" min="0" step="1" placeholder="min"> min
+                </div>
+              </div>
+
+              <!-- Active Hours Section -->
+              <div class="active-hours-section">
+                <span class="section-label">Heures d'activité (optionnel)</span>
+                <div class="hours-row">
+                  <div class="time-input">
+                    <label>Début:</label>
+                    <input type="time" [(ngModel)]="geofenceForm.activeStartTime" name="startTime">
+                  </div>
+                  <div class="time-input">
+                    <label>Fin:</label>
+                    <input type="time" [(ngModel)]="geofenceForm.activeEndTime" name="endTime">
+                  </div>
+                </div>
+                <div class="days-row">
+                  <label class="day-checkbox" *ngFor="let day of weekDays">
+                    <input type="checkbox" [checked]="isDayActive(day.value)" (change)="toggleDay(day.value)">
+                    <span>{{ day.label }}</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Group Selection -->
+              <div class="form-group" *ngIf="groups.length > 0">
+                <label>Groupe (optionnel)</label>
+                <select [(ngModel)]="geofenceForm.groupId" name="groupId">
+                  <option [ngValue]="null">Aucun groupe</option>
+                  <option *ngFor="let group of groups" [ngValue]="group.id">{{ group.name }}</option>
+                </select>
               </div>
 
               <div class="popup-footer">
@@ -978,6 +1012,86 @@ import * as L from 'leaflet';
 
     .btn-save:hover { background: #2563eb; }
 
+    /* Cooldown Row */
+    .cooldown-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .cooldown-row input {
+      width: 60px;
+      padding: 4px 8px;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    /* Active Hours Section */
+    .active-hours-section {
+      padding: 12px;
+      background: #f8fafc;
+      border-radius: 6px;
+      margin-bottom: 14px;
+    }
+
+    .hours-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 10px;
+    }
+
+    .time-input {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .time-input label {
+      font-size: 11px;
+      color: #64748b;
+    }
+
+    .time-input input[type="time"] {
+      padding: 4px 8px;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    .days-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .day-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      font-size: 11px;
+      color: #64748b;
+      cursor: pointer;
+    }
+
+    .day-checkbox:has(input:checked) {
+      background: #dbeafe;
+      border-color: #3b82f6;
+      color: #1e40af;
+    }
+
+    .day-checkbox input {
+      width: 12px;
+      height: 12px;
+    }
+
     @media (max-width: 900px) {
       .events-panel { display: none; }
     }
@@ -988,7 +1102,18 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
   allGeofences: Geofence[] = [];
   events: GeofenceEvent[] = [];
   vehicles: Vehicle[] = [];
+  groups: GeofenceGroup[] = [];
   company: Company | null = null;
+
+  weekDays = [
+    { value: 'monday', label: 'Lun' },
+    { value: 'tuesday', label: 'Mar' },
+    { value: 'wednesday', label: 'Mer' },
+    { value: 'thursday', label: 'Jeu' },
+    { value: 'friday', label: 'Ven' },
+    { value: 'saturday', label: 'Sam' },
+    { value: 'sunday', label: 'Dim' }
+  ];
 
   searchQuery = '';
   filterType = '';
@@ -1011,7 +1136,12 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     coordinates: [] as GeofencePoint[],
     alertOnEntry: true,
     alertOnExit: true,
-    alertSpeed: null
+    alertSpeed: null,
+    notificationCooldownMinutes: 5,
+    activeStartTime: null as string | null,
+    activeEndTime: null as string | null,
+    activeDays: [] as string[],
+    groupId: null as number | null
   };
 
   // Leaflet maps
@@ -1050,6 +1180,32 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       next: (vehicles) => this.vehicles = vehicles,
       error: (err) => console.error('Error loading vehicles:', err)
     });
+
+    this.apiService.getGeofenceGroups().subscribe({
+      next: (groups) => this.groups = groups,
+      error: (err) => console.error('Error loading groups:', err)
+    });
+
+    this.apiService.getGeofenceEvents().subscribe({
+      next: (events) => this.events = events.slice(0, 50),
+      error: (err) => console.error('Error loading events:', err)
+    });
+  }
+
+  isDayActive(day: string): boolean {
+    return this.geofenceForm.activeDays?.includes(day) || false;
+  }
+
+  toggleDay(day: string) {
+    if (!this.geofenceForm.activeDays) {
+      this.geofenceForm.activeDays = [];
+    }
+    const index = this.geofenceForm.activeDays.indexOf(day);
+    if (index > -1) {
+      this.geofenceForm.activeDays.splice(index, 1);
+    } else {
+      this.geofenceForm.activeDays.push(day);
+    }
   }
 
   ngAfterViewInit() {
@@ -1380,7 +1536,12 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       coordinates: [] as GeofencePoint[],
       alertOnEntry: true,
       alertOnExit: true,
-      alertSpeed: null
+      alertSpeed: null,
+      notificationCooldownMinutes: 5,
+      activeStartTime: null,
+      activeEndTime: null,
+      activeDays: [],
+      groupId: null
     };
   }
 

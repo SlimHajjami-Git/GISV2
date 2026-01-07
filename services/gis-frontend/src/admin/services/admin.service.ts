@@ -185,21 +185,26 @@ export class AdminService {
   }
 
   login(email: string, password: string): Observable<AdminUser> {
-    if (email === 'admin@belive.tn' && password === 'admin123') {
-      const user: AdminUser = {
-        id: 'admin-1',
-        email: 'admin@belive.tn',
-        name: 'Super Admin',
-        role: 'super_admin',
-        permissions: ['*'],
-        lastLogin: new Date()
-      };
-      localStorage.setItem('admin_user', JSON.stringify(user));
-      localStorage.setItem('admin_token', 'admin-jwt-token');
-      this.adminUserSubject.next(user);
-      return of(user);
-    }
-    return throwError(() => new Error('Invalid credentials'));
+    return this.http.post<any>(`${this.apiUrl}/auth/login`, { email, password }).pipe(
+      map(response => {
+        const user: AdminUser = {
+          id: response.user.id.toString(),
+          email: response.user.email,
+          name: response.user.name,
+          role: response.user.roles?.includes('admin') ? 'super_admin' : 'admin',
+          permissions: response.user.permissions || ['*'],
+          lastLogin: new Date()
+        };
+        localStorage.setItem('admin_user', JSON.stringify(user));
+        localStorage.setItem('admin_token', response.token);
+        this.adminUserSubject.next(user);
+        return user;
+      }),
+      catchError(err => {
+        console.error('Login error:', err);
+        return throwError(() => new Error('Invalid credentials'));
+      })
+    );
   }
 
   logout(): void {

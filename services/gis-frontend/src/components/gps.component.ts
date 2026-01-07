@@ -1,10 +1,11 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { ApiService } from '../services/api.service';
 import { GPSLocation, GPSAlert, Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { CardComponent } from './shared/ui';
+import { interval, Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-gps',
@@ -244,12 +245,15 @@ import { CardComponent } from './shared/ui';
     }
   `]
 })
-export class GpsComponent implements OnInit {
-  locations: GPSLocation[] = [];
+export class GpsComponent implements OnInit, OnDestroy {
+  locations: any[] = [];
   alerts: GPSAlert[] = [];
   gpsVehicles: Vehicle[] = [];
   vehicles: Vehicle[] = [];
   company: Company | null = null;
+  private refreshSubscription?: Subscription;
+  isLoading = true;
+  lastUpdate: Date = new Date();
 
   constructor(
     private router: Router,
@@ -263,16 +267,31 @@ export class GpsComponent implements OnInit {
     }
 
     this.loadData();
+    
+    // Auto-refresh every 10 seconds for real-time updates
+    this.refreshSubscription = interval(10000).subscribe(() => {
+      this.loadLocations();
+    });
+  }
+
+  ngOnDestroy() {
+    if (this.refreshSubscription) {
+      this.refreshSubscription.unsubscribe();
+    }
   }
 
   loadData() {
+    this.isLoading = true;
     this.apiService.getVehicles().subscribe({
       next: (vehicles) => {
         this.vehicles = vehicles;
         this.gpsVehicles = this.vehicles.filter(v => v.hasGPS);
         this.loadLocations();
       },
-      error: (err) => console.error('Error loading vehicles:', err)
+      error: (err) => {
+        console.error('Error loading vehicles:', err);
+        this.isLoading = false;
+      }
     });
 
     this.apiService.getAlerts(false).subscribe({
@@ -282,13 +301,28 @@ export class GpsComponent implements OnInit {
   }
 
   loadLocations() {
-    this.apiService.getVehicleLocations().subscribe({
-      next: (locations) => {
-        this.locations = locations.filter(l =>
-          this.gpsVehicles.some(v => v.id === l.vehicleId)
-        );
+    this.apiService.getLatestPositions().subscribe({
+      next: (positions) => {
+        this.locations = positions.map(p => ({
+          vehicleId: p.vehicleId,
+          vehicleName: p.vehicleName,
+          plate: p.plate,
+          latitude: p.lastPosition?.latitude,
+          longitude: p.lastPosition?.longitude,
+          speed: p.lastPosition?.speedKph || 0,
+          address: p.lastPosition?.address || 'Position GPS',
+          ignitionOn: p.lastPosition?.ignitionOn,
+          recordedAt: p.lastPosition?.recordedAt,
+          isOnline: p.lastCommunication && 
+            (new Date().getTime() - new Date(p.lastCommunication).getTime()) < 300000
+        }));
+        this.lastUpdate = new Date();
+        this.isLoading = false;
       },
-      error: (err) => console.error('Error loading locations:', err)
+      error: (err) => {
+        console.error('Error loading GPS positions:', err);
+        this.isLoading = false;
+      }
     });
   }
 

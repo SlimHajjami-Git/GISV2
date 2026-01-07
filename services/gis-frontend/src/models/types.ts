@@ -227,10 +227,28 @@ export interface GeofenceEvent {
   id: string;
   geofenceId: string;
   vehicleId: string;
+  vehicleName?: string;
   type: 'entry' | 'exit' | 'speed_violation';
   timestamp: Date;
   location: GeofencePoint;
+  latitude?: number;
+  longitude?: number;
+  address?: string;
   speed?: number;
+  durationInsideSeconds?: number;
+  isNotified?: boolean;
+}
+
+export interface GeofenceGroup {
+  id: number;
+  name: string;
+  description?: string;
+  color: string;
+  iconName?: string;
+  companyId: number;
+  geofenceCount?: number;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 // Driver Score & Driving Behavior

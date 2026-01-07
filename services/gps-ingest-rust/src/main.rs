@@ -1,8 +1,8 @@
-mod api;
 mod config;
 mod db;
 mod ports;
 mod publisher;
+mod services;
 mod telemetry;
 mod transport;
 
@@ -10,10 +10,8 @@ use anyhow::Result;
 use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
-use tokio::net::TcpListener;
 use tracing::{info, warn, Level};
 
-use crate::api::ApiState;
 use crate::ports::{TelemetryEventPublisher, TelemetryStore};
 
 #[tokio::main]
@@ -35,9 +33,6 @@ async fn main() -> Result<()> {
         .await?;
     info!("Connected to PostgreSQL successfully");
 
-    // Clone pool pour l'API REST
-    let api_pool = db_pool.clone();
-
     let database: Arc<dyn TelemetryStore> = Arc::new(db::Database::new(db_pool));
 
     let publisher: Option<Arc<dyn TelemetryEventPublisher>> = match publisher::TelemetryPublisher::from_env().await? {
@@ -51,18 +46,9 @@ async fn main() -> Result<()> {
         }
     };
 
-    // Démarrer l'API REST en parallèle
-    let api_port = std::env::var("API_PORT").unwrap_or_else(|_| "3000".to_string());
-    let api_state = ApiState { pool: api_pool };
-    let api_router = api::create_router(api_state);
-    
-    tokio::spawn(async move {
-        let listener = TcpListener::bind(format!("0.0.0.0:{}", api_port))
-            .await
-            .expect("Failed to bind API port");
-        info!("REST API listening on http://0.0.0.0:{}", api_port);
-        axum::serve(listener, api_router).await.expect("API server error");
-    });
+    // Note: REST API removed - GPS data is now served by .NET GisAPI
+    // Rust service is now WRITE-ONLY (ingestion + RabbitMQ publishing)
+    info!("GPS Ingest service running in WRITE-ONLY mode (API served by .NET)");
 
     let app_config = config::load_config("config/listeners.yaml")?;
     if app_config.listeners.is_empty() {

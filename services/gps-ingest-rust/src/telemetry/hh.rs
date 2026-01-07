@@ -1,5 +1,6 @@
 use anyhow::{bail, Context, Result};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use tracing::debug;
 
 use super::model::{FrameKind, FrameVersion, HhFrame, HhInfoFrame};
 
@@ -160,6 +161,21 @@ fn parse_v1(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhF
     let send_flag = u8::from_str_radix(send_flag_raw, 16)?;
     let added_info = u32::from_str_radix(added_info_raw, 16)?;
 
+    // Parse base fuel from position 34-35
+    let base_fuel = u8::from_str_radix(fuel_raw, 16)?;
+    
+    // GISV1 Logic: If base fuel is 0, try FMS fuel as fallback
+    // For V1/V2, FMS fuel is at position 54-55 (2 hex chars) if frame is long enough
+    let fuel_final = if base_fuel == 0 && payload.len() >= 56 {
+        // Try FMS fuel at position 54-55
+        payload.get(54..56)
+            .and_then(|s| u8::from_str_radix(s, 16).ok())
+            .filter(|&v| v > 0 && v <= 100)
+            .unwrap_or(base_fuel)
+    } else {
+        base_fuel
+    };
+
     Ok(HhFrame {
         kind,
         version,
@@ -170,7 +186,7 @@ fn parse_v1(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhF
         heading_deg,
         power_voltage,
         power_source_rescue,
-        fuel_raw: u8::from_str_radix(fuel_raw, 16)?,
+        fuel_raw: fuel_final,
         ignition_on,
         mems_x: mems.0,
         mems_y: mems.1,
@@ -187,6 +203,7 @@ fn parse_v1(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhF
         flags_raw: u8::from_str_radix(flags_raw, 16)?,
         raw_payload: payload.to_string(),
         remaining_payload: None,
+        address: None,
     })
 }
 
@@ -224,6 +241,65 @@ fn parse_v3(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhF
     let satellites_in_view = payload.get(72..74).and_then(|s| u8::from_str_radix(s, 16).ok());
     let remaining_payload = payload.get(74..).map(ToOwned::to_owned);
 
+    // Parse base fuel from position 34-35
+    let base_fuel = u8::from_str_radix(fuel_raw, 16)?;
+    
+    // GISV1 Logic: If base fuel is 0, try multiple FMS positions as fallback
+    // V3 (NR08/NR09) can have fuel at positions: 54, 70, 82, 86, 90, 94 (2 hex chars each)
+    let fuel_final = if base_fuel == 0 {
+        let possible_positions: &[usize] = &[54, 70, 82, 86, 90, 94];
+        let mut found_fuel: Option<u8> = None;
+        
+        for &pos in possible_positions {
+            if payload.len() >= pos + 2 {
+                if let Some(raw) = payload.get(pos..pos+2) {
+                    if let Ok(val) = u8::from_str_radix(raw, 16) {
+                        if val > 0 && val <= 100 {
+                            tracing::info!(
+                                position = pos,
+                                fuel_value = val,
+                                "V3: FMS Fuel found"
+                            );
+                            found_fuel = Some(val);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // If still not found, try position 78-81 (4 bytes fuel level in 0.5L)
+        if found_fuel.is_none() && payload.len() >= 82 {
+            if let Some(raw) = payload.get(78..82) {
+                if let Ok(val) = u16::from_str_radix(raw, 16) {
+                    if val > 0 && val < 65535 {
+                        // Convert to percentage (assuming 80L tank max)
+                        let pct = std::cmp::min(100, ((val / 2) * 100 / 80) as u8);
+                        if pct > 0 {
+                            tracing::info!(
+                                fuel_level_raw = val,
+                                fuel_percent = pct,
+                                "V3: FMS Fuel Level at 78 converted"
+                            );
+                            found_fuel = Some(pct);
+                        }
+                    }
+                }
+            }
+        }
+        
+        if found_fuel.is_none() {
+            tracing::debug!(
+                payload_len = payload.len(),
+                "V3: No FMS fuel found at any position"
+            );
+        }
+        
+        found_fuel.unwrap_or(base_fuel)
+    } else {
+        base_fuel
+    };
+
     Ok(HhFrame {
         kind,
         version,
@@ -234,7 +310,7 @@ fn parse_v3(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhF
         heading_deg,
         power_voltage,
         power_source_rescue,
-        fuel_raw: u8::from_str_radix(fuel_raw, 16)?,
+        fuel_raw: fuel_final,
         ignition_on,
         mems_x: mems.0,
         mems_y: mems.1,
@@ -251,6 +327,7 @@ fn parse_v3(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhF
         flags_raw: u8::from_str_radix(flags_raw, 16)?,
         raw_payload: payload.to_string(),
         remaining_payload,
+        address: None,
     })
 }
 
@@ -283,20 +360,18 @@ fn decode_timestamp(hour_raw: &str, date_raw: &str) -> Result<(NaiveDateTime, bo
 fn decode_coordinate(raw: &str, flags_raw: &str, bit_mask: u8, _is_lat: bool) -> Result<f64> {
     let value = i64::from_str_radix(raw, 16)?;
     
-    // HH protocol stores coordinates in NMEA format: DDDMM.MMMM (or DDMM.MMMM for lat)
-    // where DDD = degrees, MM.MMMM = minutes with 4 decimal places
-    // The raw value is: degrees * 1000000 + minutes * 10000
-    // Example: 36°23.0098' is stored as 36230098 (hex: 0228D3D2)
+    // GISV1 formula: String.Format("{0:D2}", raw / 1000000) + "." + String.Format("{0:D6}", (raw % 1000000) * 100 / 60)
+    // The D6 format means ALWAYS 6 digits, so divisor is always 1,000,000
+    let degrees = value / 1_000_000;  // Integer division
+    let minutes_part = value % 1_000_000;
+    let decimal_int = (minutes_part * 100) / 60;  // Integer division like C#
     
-    // Convert from NMEA format to decimal degrees
-    let nmea_value = value as f64 / 10000.0;  // 3623.0098
-    let degrees = (nmea_value / 100.0).floor();  // 36
-    let minutes = nmea_value % 100.0;            // 23.0098
-    let mut coord = degrees + minutes / 60.0;    // 36.383496...
+    // IMPORTANT: GISV1 uses D6 format = always 6 digits, so always divide by 1,000,000
+    let mut coord = degrees as f64 + (decimal_int as f64 / 1_000_000.0);
 
     let flags = u8::from_str_radix(flags_raw, 16)?;
-    let negative = (flags & bit_mask) == 0;
-    if negative {
+    let is_positive = (flags & bit_mask) != 0;
+    if !is_positive {
         coord = -coord;
     }
 
@@ -304,7 +379,9 @@ fn decode_coordinate(raw: &str, flags_raw: &str, bit_mask: u8, _is_lat: bool) ->
 }
 
 fn parse_speed(raw: &str) -> Result<f64> {
-    Ok(u32::from_str_radix(raw, 16)? as f64 / 10.0)
+    // GISV1 formula: (int)(raw / 10 * 1.609) - uses integer division
+    let raw_val = u32::from_str_radix(raw, 16)?;
+    Ok(((raw_val / 10) as f64) * 1.609)
 }
 
 fn parse_heading(raw: &str) -> Result<f64> {

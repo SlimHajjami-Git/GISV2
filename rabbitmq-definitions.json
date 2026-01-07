@@ -1,0 +1,99 @@
+{
+  "vhosts": [
+    {"name": "/"}
+  ],
+  "exchanges": [
+    {
+      "name": "telemetry.raw",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false
+    },
+    {
+      "name": "gis.gps",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false
+    },
+    {
+      "name": "gis.alerts",
+      "vhost": "/",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false
+    },
+    {
+      "name": "gis.events",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false
+    }
+  ],
+  "queues": [
+    {
+      "name": "gps.telemetry.dotnet",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "gis.gps.positions",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "gis.alerts.notifications",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "gis.events.all",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "telemetry.raw",
+      "vhost": "/",
+      "destination": "gps.telemetry.dotnet",
+      "destination_type": "queue",
+      "routing_key": "hh",
+      "arguments": {}
+    },
+    {
+      "source": "gis.gps",
+      "vhost": "/",
+      "destination": "gis.gps.positions",
+      "destination_type": "queue",
+      "routing_key": "#",
+      "arguments": {}
+    },
+    {
+      "source": "gis.alerts",
+      "vhost": "/",
+      "destination": "gis.alerts.notifications",
+      "destination_type": "queue",
+      "routing_key": "#",
+      "arguments": {}
+    },
+    {
+      "source": "gis.events",
+      "vhost": "/",
+      "destination": "gis.events.all",
+      "destination_type": "queue",
+      "routing_key": "#",
+      "arguments": {}
+    }
+  ]
+}

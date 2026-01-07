@@ -1,12 +1,15 @@
-import { Component, OnInit, OnDestroy, AfterViewInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, AfterViewInit, ChangeDetectorRef, NgZone, ApplicationRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { ApiService } from '../services/api.service';
+import { SignalRService, PositionUpdate } from '../services/signalr.service';
 import { Vehicle } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { StatCardComponent, ButtonComponent, CardComponent } from './shared/ui';
 import * as L from 'leaflet';
+import 'leaflet-routing-machine';
 
 @Component({
   selector: 'app-monitoring',
@@ -17,6 +20,7 @@ import * as L from 'leaflet';
 })
 export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   map: L.Map | null = null;
+  mapReady = false;
   vehicleMarkers = new Map<string, L.Marker>();
 
   vehicles: Vehicle[] = [];
@@ -42,6 +46,19 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   playbackProgress = 0;
   playbackSpeed = 1;
   playbackSpeeds = [0.5, 1, 2, 4, 8];
+  playbackPositions: any[] = [];
+  playbackIndex = 0;
+  playbackInterval: any = null;
+  playbackPolyline: L.Polyline | null = null;
+  playbackMarker: L.Marker | null = null;
+  playbackLoading = false;
+  routingControl: any = null;
+  useRoadSnapping = true; // Toggle between road-snapped route and straight lines
+  pointMarkers: L.CircleMarker[] = []; // Markers for each GPS point
+  
+  // Bird Flight Filter Stats
+  filteredBirdFlights = 0;
+  showBirdFlightInfo = false;
 
   // Message
   driverMessage = '';
@@ -52,6 +69,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   dragOffset = { x: 0, y: 0 };
 
   refreshInterval: any;
+  signalRSubscription: Subscription | null = null;
+  connectionStatus = 'Disconnected';
 
   stats = {
     total: 0,
@@ -63,7 +82,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   constructor(
     private router: Router,
-    private apiService: ApiService
+    private apiService: ApiService,
+    private signalRService: SignalRService,
+    private cdr: ChangeDetectorRef,
+    private ngZone: NgZone,
+    private appRef: ApplicationRef
   ) {}
 
   ngOnInit() {
@@ -72,11 +95,21 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    this.loadData();
-    this.startAutoRefresh();
+    // Initialize state
+    this.vehicles = [];
+    this.filteredVehicles = [];
+    this.loading = true;
+
+    // Load data immediately - use zone.run to ensure Angular change detection
+    this.ngZone.run(() => {
+      this.loadData();
+      this.initSignalR();
+      this.startAutoRefresh();
+    });
   }
 
   ngAfterViewInit() {
+    // Initialize map immediately without delay
     this.initializeMap();
   }
 
@@ -84,12 +117,93 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
     }
+    if (this.signalRSubscription) {
+      this.signalRSubscription.unsubscribe();
+    }
+    this.signalRService.stopConnection();
     if (this.map) {
       this.map.remove();
     }
   }
 
+  async initSignalR() {
+    // Subscribe to connection state
+    this.signalRService.connectionState$.subscribe(state => {
+      this.connectionStatus = state;
+      console.log('SignalR connection state:', state);
+    });
+
+    // Subscribe to position updates
+    this.signalRSubscription = this.signalRService.positionUpdate$.subscribe(
+      (update: PositionUpdate) => this.handlePositionUpdate(update)
+    );
+
+    // Start connection
+    await this.signalRService.startConnection();
+  }
+
+  handlePositionUpdate(update: PositionUpdate) {
+    console.log('Real-time position update:', update);
+    
+    // Find the vehicle and update its position
+    const vehicleIndex = this.vehicles.findIndex(
+      v => v.id?.toString() === update.vehicleId?.toString()
+    );
+
+    if (vehicleIndex !== -1) {
+      const vehicle = this.vehicles[vehicleIndex] as any;
+      
+      // Update vehicle data
+      vehicle.currentLocation = {
+        lat: update.latitude,
+        lng: update.longitude
+      };
+      vehicle.currentSpeed = update.speedKph || 0;
+      vehicle.isOnline = true;
+      (vehicle as any).lastCommunication = update.timestamp;
+
+      // Update the marker on the map
+      this.updateSingleVehicleMarker(vehicle);
+      
+      // Update stats
+      this.updateStats();
+      
+      // If this vehicle is selected, update the panel
+      if (this.selectedVehicle?.id === vehicle.id) {
+        this.selectedVehicle = { ...vehicle };
+      }
+      
+      // Force change detection
+      this.cdr.detectChanges();
+    }
+  }
+
+  updateSingleVehicleMarker(vehicle: any) {
+    if (!this.map || !this.mapReady || !vehicle.currentLocation) return;
+
+    const markerId = vehicle.id?.toString();
+    const existingMarker = this.vehicleMarkers.get(markerId);
+    const isMoving = (vehicle.currentSpeed || 0) > 5;
+    const icon = this.createVehicleIcon(vehicle, isMoving);
+    const newLatLng = L.latLng(vehicle.currentLocation.lat, vehicle.currentLocation.lng);
+
+    if (existingMarker) {
+      // Animate marker movement
+      existingMarker.setLatLng(newLatLng);
+      existingMarker.setIcon(icon);
+      existingMarker.setPopupContent(this.createPopupContent(vehicle));
+    } else {
+      // Create new marker
+      const marker = L.marker(newLatLng, { icon })
+        .bindPopup(this.createPopupContent(vehicle))
+        .on('click', () => this.selectVehicle(vehicle));
+      marker.addTo(this.map!);
+      this.vehicleMarkers.set(markerId, marker);
+    }
+  }
+
   initializeMap() {
+    // Use setTimeout to ensure DOM is ready
     setTimeout(() => {
       if (!this.map) {
         this.map = L.map('tracking-map').setView([36.8065, 10.1815], 8);
@@ -105,45 +219,70 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           maxZoom: 19
         }).addTo(this.map);
 
-        this.updateVehicleMarkers();
+        this.mapReady = true;
+
+        // Update markers if data is already loaded
+        if (this.vehicles.length > 0) {
+          this.updateVehicleMarkers();
+        }
       }
-    }, 100);
+    }, 50);
   }
 
   loadData() {
     this.loading = true;
+    this.cdr.detectChanges();
 
-    this.apiService.getVehicles().subscribe({
+    // Single API call to get vehicles with their GPS positions
+    this.apiService.getVehiclesWithPositions().subscribe({
       next: (vehicles) => {
-        this.vehicles = vehicles.map(v => ({
-          ...v,
-          registration_number: v.plate,
-          currentLocation: v.hasGPS ? this.generateRandomLocation() : undefined,
-          currentSpeed: v.hasGPS ? Math.floor(Math.random() * 100) : 0,
-          isOnline: v.hasGPS
-        }));
-        this.applyFilters();
-        this.updateStats();
-        this.updateVehicleMarkers();
-        this.loading = false;
+        // Run inside Angular zone to ensure change detection triggers
+        this.ngZone.run(() => {
+          console.log('Vehicles loaded:', vehicles.length);
+          
+          const mappedVehicles = vehicles.map(v => ({
+            ...v,
+            registration_number: v.plate,
+            currentLocation: v.lastPosition ? {
+              lat: v.lastPosition.latitude,
+              lng: v.lastPosition.longitude
+            } : undefined,
+            currentSpeed: v.lastPosition?.speedKph || 0
+          }));
+          
+          // Assign to trigger change detection
+          this.vehicles = [...mappedVehicles];
+          this.loading = false;
+          
+          // Apply filters and update UI
+          this.doApplyFilters();
+          this.updateStats();
+          
+          // Force change detection
+          this.cdr.detectChanges();
+          
+          // Update map markers after a micro-task to ensure DOM is updated
+          Promise.resolve().then(() => {
+            this.updateVehicleMarkers();
+          });
+        });
       },
       error: (err) => {
-        console.error('Error loading vehicles:', err);
-        this.loading = false;
+        this.ngZone.run(() => {
+          console.error('Error loading vehicles:', err);
+          this.loading = false;
+          this.cdr.detectChanges();
+        });
       }
     });
   }
 
-  generateRandomLocation() {
-    // Tunis, Tunisia coordinates
-    return {
-      lat: 36.8065 + (Math.random() - 0.5) * 0.15,
-      lng: 10.1815 + (Math.random() - 0.5) * 0.15
-    };
-  }
-
   updateVehicleMarkers() {
-    if (!this.map) return;
+    // If map is not ready yet, retry after a short delay
+    if (!this.map || !this.mapReady) {
+      setTimeout(() => this.updateVehicleMarkers(), 100);
+      return;
+    }
 
     this.vehicleMarkers.forEach(marker => marker.remove());
     this.vehicleMarkers.clear();
@@ -207,7 +346,13 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   applyFilters() {
-    let filtered = this.vehicles;
+    this.doApplyFilters();
+    this.cdr.detectChanges();
+    this.updateVehicleMarkers();
+  }
+
+  private doApplyFilters() {
+    let filtered = [...this.vehicles];
 
     if (this.searchQuery) {
       const query = this.searchQuery.toLowerCase();
@@ -230,8 +375,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     }
 
-    this.filteredVehicles = filtered;
-    this.updateVehicleMarkers();
+    // Create new array reference to trigger change detection
+    this.filteredVehicles = [...filtered];
+    console.log('Filtered vehicles:', this.filteredVehicles.length);
   }
 
   onSearchChange(query: string) {
@@ -297,6 +443,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return 'Arrêté';
   }
 
+  // TrackBy function for better ngFor performance
+  trackByVehicleId(index: number, vehicle: any): string {
+    return vehicle.id;
+  }
+
   navigate(path: string) {
     this.router.navigate([path]);
   }
@@ -321,23 +472,364 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Playback methods
   loadPlaybackRoute() {
-    // TODO: Load route from API based on date range
-    this.isPlaybackLoaded = true;
-    this.playbackProgress = 0;
+    if (!this.selectedVehicle || !this.playbackFromDate || !this.playbackToDate) {
+      alert('Veuillez sélectionner un véhicule et une plage de dates');
+      return;
+    }
+
+    this.playbackLoading = true;
+    this.clearPlayback();
+
+    const fromDate = new Date(this.playbackFromDate);
+    const toDate = new Date(this.playbackToDate);
+    const vehicleId = parseInt(this.selectedVehicle.id, 10);
+
+    this.apiService.getVehicleHistory(vehicleId, fromDate, toDate).subscribe({
+      next: (response) => {
+        // Extract positions from the new response format
+        const positions = response.positions || response;
+        this.filteredBirdFlights = response.filteredBirdFlights || 0;
+        
+        this.playbackPositions = (Array.isArray(positions) ? positions : []).sort((a, b) => 
+          new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime()
+        );
+        
+        if (this.playbackPositions.length === 0) {
+          alert('Aucune position trouvée pour cette période');
+          this.playbackLoading = false;
+          return;
+        }
+
+        this.isPlaybackLoaded = true;
+        this.playbackIndex = 0;
+        this.playbackProgress = 0;
+        this.playbackLoading = false;
+
+        // Draw the complete route polyline
+        this.drawPlaybackRoute();
+        
+        // Position the playback marker at start
+        this.updatePlaybackMarker();
+      },
+      error: (err) => {
+        console.error('Error loading playback data:', err);
+        alert('Erreur lors du chargement de l\'historique');
+        this.playbackLoading = false;
+      }
+    });
+  }
+
+  drawPlaybackRoute() {
+    if (!this.map || this.playbackPositions.length === 0) return;
+
+    // Remove existing route elements
+    this.clearRouteDisplay();
+
+    // Create route coordinates
+    const routeCoords: L.LatLng[] = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
+
+    if (this.useRoadSnapping && routeCoords.length >= 2) {
+      // Use OSRM routing to snap to roads
+      this.drawRoutedPath(routeCoords);
+    } else {
+      // Simple polyline (straight lines)
+      this.drawStraightPath(routeCoords);
+    }
+
+    // Add point markers for each GPS position
+    this.addPointMarkers();
+  }
+
+  addPointMarkers() {
+    if (!this.map) return;
+
+    this.playbackPositions.forEach((position, index) => {
+      const marker = L.circleMarker([position.latitude, position.longitude], {
+        radius: 5,
+        fillColor: '#3b82f6',
+        color: '#ffffff',
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.8
+      }).addTo(this.map!);
+
+      // Format date/time
+      const time = new Date(position.recordedAt).toLocaleString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+
+      // Create popup content with details
+      const popupContent = `
+        <div style="font-family: Arial, sans-serif; min-width: 180px;">
+          <div style="font-weight: bold; color: #3b82f6; margin-bottom: 8px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px;">
+            Point ${index + 1}
+          </div>
+          <div style="font-size: 12px; line-height: 1.6;">
+            <div><strong>🕐 Heure:</strong> ${time}</div>
+            <div><strong>📍 Lat:</strong> ${position.latitude.toFixed(6)}</div>
+            <div><strong>📍 Lon:</strong> ${position.longitude.toFixed(6)}</div>
+            <div><strong>🚗 Vitesse:</strong> ${(position.speedKph || 0).toFixed(1)} km/h</div>
+            <div><strong>⛽ Carburant:</strong> ${position.fuelRaw || 0}%</div>
+            <div><strong>🌡️ Température:</strong> ${position.temperature || 'N/A'}°C</div>
+          </div>
+        </div>
+      `;
+
+      marker.bindPopup(popupContent);
+      this.pointMarkers.push(marker);
+    });
+  }
+
+  clearRouteDisplay() {
+    if (this.playbackPolyline) {
+      this.playbackPolyline.remove();
+      this.playbackPolyline = null;
+    }
+    if (this.routingControl) {
+      this.map?.removeControl(this.routingControl);
+      this.routingControl = null;
+    }
+    // Clear point markers
+    this.pointMarkers.forEach(marker => marker.remove());
+    this.pointMarkers = [];
+  }
+
+  drawStraightPath(coords: L.LatLng[]) {
+    if (!this.map) return;
+    
+    this.playbackPolyline = L.polyline(coords, {
+      color: '#3b82f6',
+      weight: 4,
+      opacity: 0.8
+    }).addTo(this.map);
+
+    this.map.fitBounds(this.playbackPolyline.getBounds().pad(0.1));
+  }
+
+  async drawRoutedPath(coords: L.LatLng[]) {
+    if (!this.map || coords.length < 2) return;
+
+    // Use local OSRM server (self-hosted) for road snapping
+    // Format: lon,lat;lon,lat;...
+    const coordsStr = coords.map(c => `${c.lng},${c.lat}`).join(';');
+    const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
+
+    try {
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`OSRM API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.code === 'Ok' && data.routes && data.routes[0] && data.routes[0].geometry) {
+        // Convert GeoJSON coordinates to Leaflet LatLng
+        const routeCoords: L.LatLng[] = data.routes[0].geometry.coordinates.map(
+          (c: number[]) => L.latLng(c[1], c[0])
+        );
+
+        this.playbackPolyline = L.polyline(routeCoords, {
+          color: '#3b82f6',
+          weight: 5,
+          opacity: 0.8
+        }).addTo(this.map!);
+
+        this.map!.fitBounds(this.playbackPolyline.getBounds().pad(0.1));
+        console.log('OSRM road-snapped route drawn successfully with', routeCoords.length, 'points');
+      } else {
+        throw new Error('Invalid OSRM response: ' + (data.code || 'unknown'));
+      }
+    } catch (error) {
+      console.warn('Road snapping failed, falling back to straight lines:', error);
+      this.drawStraightPath(coords);
+    }
+  }
+
+  toggleRoadSnapping() {
+    this.useRoadSnapping = !this.useRoadSnapping;
+    if (this.isPlaybackLoaded) {
+      this.drawPlaybackRoute();
+    }
+  }
+
+  updatePlaybackMarker() {
+    if (!this.map || this.playbackPositions.length === 0) return;
+
+    const position = this.playbackPositions[this.playbackIndex];
+    if (!position) return;
+
+    const latLng: L.LatLngExpression = [position.latitude, position.longitude];
+
+    if (this.playbackMarker) {
+      this.playbackMarker.setLatLng(latLng);
+    } else {
+      const icon = L.divIcon({
+        html: `<div class="playback-marker" style="background-color: #3b82f6; border: 3px solid white; border-radius: 50%; width: 20px; height: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);"></div>`,
+        className: 'custom-playback-marker',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+      });
+      this.playbackMarker = L.marker(latLng, { icon }).addTo(this.map);
+    }
+
+    // Update popup with position info
+    const time = new Date(position.recordedAt).toLocaleString('fr-FR');
+    const speed = position.speedKph || 0;
+    this.playbackMarker.bindPopup(`
+      <div>
+        <strong>Heure:</strong> ${time}<br>
+        <strong>Vitesse:</strong> ${speed.toFixed(1)} km/h<br>
+        <strong>Position:</strong> ${position.latitude.toFixed(5)}, ${position.longitude.toFixed(5)}
+      </div>
+    `);
   }
 
   togglePlayback() {
+    if (!this.isPlaybackLoaded) return;
+
     this.isPlaying = !this.isPlaying;
+
+    if (this.isPlaying) {
+      this.startPlaybackAnimation();
+    } else {
+      this.stopPlaybackAnimation();
+    }
+  }
+
+  startPlaybackAnimation() {
+    if (this.playbackInterval) {
+      clearInterval(this.playbackInterval);
+    }
+
+    const intervalMs = 1000 / this.playbackSpeed;
+
+    this.playbackInterval = setInterval(() => {
+      if (this.playbackIndex < this.playbackPositions.length - 1) {
+        this.playbackIndex++;
+        this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+        this.updatePlaybackMarker();
+        
+        // Center map on current position
+        const pos = this.playbackPositions[this.playbackIndex];
+        if (this.map && pos) {
+          this.map.panTo([pos.latitude, pos.longitude]);
+        }
+      } else {
+        this.isPlaying = false;
+        this.stopPlaybackAnimation();
+      }
+    }, intervalMs);
+  }
+
+  stopPlaybackAnimation() {
+    if (this.playbackInterval) {
+      clearInterval(this.playbackInterval);
+      this.playbackInterval = null;
+    }
   }
 
   resetPlayback() {
+    this.stopPlaybackAnimation();
     this.isPlaying = false;
+    this.playbackIndex = 0;
     this.playbackProgress = 0;
+    this.updatePlaybackMarker();
+
+    // Center on start position
+    if (this.map && this.playbackPositions.length > 0) {
+      const startPos = this.playbackPositions[0];
+      this.map.setView([startPos.latitude, startPos.longitude], 14);
+    }
   }
 
   skipToEnd() {
+    this.stopPlaybackAnimation();
     this.isPlaying = false;
+    this.playbackIndex = this.playbackPositions.length - 1;
     this.playbackProgress = 100;
+    this.updatePlaybackMarker();
+
+    // Center on end position
+    if (this.map && this.playbackPositions.length > 0) {
+      const endPos = this.playbackPositions[this.playbackPositions.length - 1];
+      this.map.setView([endPos.latitude, endPos.longitude], 14);
+    }
+  }
+
+  onPlaybackSpeedChange(speed: number) {
+    this.playbackSpeed = speed;
+    if (this.isPlaying) {
+      this.stopPlaybackAnimation();
+      this.startPlaybackAnimation();
+    }
+  }
+
+  onPlaybackProgressChange(progress: number) {
+    this.stopPlaybackAnimation();
+    this.isPlaying = false;
+    this.playbackProgress = progress;
+    this.playbackIndex = Math.floor((progress / 100) * (this.playbackPositions.length - 1));
+    this.updatePlaybackMarker();
+    
+    // Center map on current position
+    const pos = this.playbackPositions[this.playbackIndex];
+    if (this.map && pos) {
+      this.map.panTo([pos.latitude, pos.longitude]);
+    }
+  }
+
+  previousPoint() {
+    if (this.playbackIndex > 0) {
+      this.stopPlaybackAnimation();
+      this.isPlaying = false;
+      this.playbackIndex--;
+      this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+      this.updatePlaybackMarker();
+      
+      const pos = this.playbackPositions[this.playbackIndex];
+      if (this.map && pos) {
+        this.map.panTo([pos.latitude, pos.longitude]);
+      }
+    }
+  }
+
+  nextPoint() {
+    if (this.playbackIndex < this.playbackPositions.length - 1) {
+      this.stopPlaybackAnimation();
+      this.isPlaying = false;
+      this.playbackIndex++;
+      this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+      this.updatePlaybackMarker();
+      
+      const pos = this.playbackPositions[this.playbackIndex];
+      if (this.map && pos) {
+        this.map.panTo([pos.latitude, pos.longitude]);
+      }
+    }
+  }
+
+  clearPlayback() {
+    this.stopPlaybackAnimation();
+    this.isPlaybackLoaded = false;
+    this.isPlaying = false;
+    this.playbackPositions = [];
+    this.playbackIndex = 0;
+    this.playbackProgress = 0;
+    this.filteredBirdFlights = 0;
+
+    // Clear route display (polyline and routing control)
+    this.clearRouteDisplay();
+    
+    if (this.playbackMarker) {
+      this.playbackMarker.remove();
+      this.playbackMarker = null;
+    }
   }
 
   // Message

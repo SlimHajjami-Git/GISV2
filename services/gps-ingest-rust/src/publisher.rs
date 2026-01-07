@@ -88,27 +88,4 @@ impl TelemetryPublisher {
         }))
     }
 
-    pub async fn publish_hh_frame(&self, device_uid: &str, protocol: &str, frame: &HhFrame) -> Result<()> {
-        let payload = json!({
-            "device_uid": device_uid,
-            "protocol": protocol,
-            "recorded_at": frame.recorded_at.and_utc().to_rfc3339(),
-            "latitude": frame.latitude,
-            "longitude": frame.longitude,
-            "speed_kph": frame.speed_kph,
-            "heading_deg": frame.heading_deg,
-            "ignition_on": frame.ignition_on,
-            "fuel_raw": frame.fuel_raw,
-            "power_voltage": frame.power_voltage,
-            "raw_payload": frame.raw_payload,
-        });
-
-        let body = serde_json::to_vec(&payload)?;
-        let args = BasicPublishArguments::new(&self.exchange, &self.routing_key);
-        self.channel
-            .basic_publish(BasicProperties::default(), body, args)
-            .await
-            .with_context(|| "failed to publish telemetry event")?;
-        Ok(())
-    }
 }

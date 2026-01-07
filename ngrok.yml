@@ -4,3 +4,6 @@ tunnels:
   frontend:
     addr: frontend:80
     proto: http
+  gps-tcp:
+    addr: gps-ingest:6100
+    proto: tcp

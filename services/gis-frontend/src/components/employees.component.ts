@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -38,7 +38,10 @@ export class EmployeesComponent implements OnInit {
   constructor(
     private router: Router,
     private apiService: ApiService,
-    private mockDataService: MockDataService
+    private mockDataService: MockDataService,
+    private ngZone: NgZone,
+    private cdr: ChangeDetectorRef,
+    private appRef: ApplicationRef
   ) {}
 
   ngOnInit() {
@@ -47,21 +50,31 @@ export class EmployeesComponent implements OnInit {
       return;
     }
 
-    this.loadEmployees();
+    this.ngZone.run(() => {
+      this.loadEmployees();
+    });
   }
 
   loadEmployees() {
     this.apiService.getEmployees().subscribe({
       next: (employees) => {
-        this.allEmployees = employees;
-        this.employees = [...this.allEmployees];
+        this.ngZone.run(() => {
+          this.allEmployees = employees;
+          this.employees = [...this.allEmployees];
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
       },
       error: (err) => console.error('Error loading employees:', err)
     });
 
     this.apiService.getVehicles().subscribe({
       next: (vehicles) => {
-        this.allVehicles = vehicles;
+        this.ngZone.run(() => {
+          this.allVehicles = vehicles;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
       },
       error: (err) => console.error('Error loading vehicles:', err)
     });

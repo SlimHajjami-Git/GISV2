@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -460,7 +460,10 @@ export class VehiclesComponent implements OnInit {
 
   constructor(
     private router: Router,
-    private apiService: ApiService
+    private apiService: ApiService,
+    private ngZone: NgZone,
+    private cdr: ChangeDetectorRef,
+    private appRef: ApplicationRef
   ) {}
 
   ngOnInit() {
@@ -479,29 +482,35 @@ export class VehiclesComponent implements OnInit {
       } as Company;
     }
     
-    this.loadVehicles();
+    this.ngZone.run(() => {
+      this.loadVehicles();
+    });
   }
 
   loadVehicles() {
     this.apiService.getVehicles().subscribe({
       next: (vehicles) => {
-        this.allVehicles = vehicles.map(v => ({
-          id: v.id.toString(),
-          companyId: v.companyId?.toString() || '',
-          name: v.name,
-          type: v.type,
-          brand: v.brand,
-          model: v.model,
-          plate: v.plate,
-          year: v.year,
-          color: v.color,
-          status: v.status as 'available' | 'in_use' | 'maintenance',
-          hasGPS: v.hasGps,
-          mileage: v.mileage,
-          assignedDriverId: v.assignedDriverId?.toString(),
-          assignedDriverName: v.assignedDriverName
-        })) as Vehicle[];
-        this.vehicles = [...this.allVehicles];
+        this.ngZone.run(() => {
+          this.allVehicles = vehicles.map(v => ({
+            id: v.id.toString(),
+            companyId: v.companyId?.toString() || '',
+            name: v.name,
+            type: v.type,
+            brand: v.brand,
+            model: v.model,
+            plate: v.plate,
+            year: v.year,
+            color: v.color,
+            status: v.status as 'available' | 'in_use' | 'maintenance',
+            hasGPS: v.hasGps,
+            mileage: v.mileage,
+            assignedDriverId: v.assignedDriverId?.toString(),
+            assignedDriverName: v.assignedDriverName
+          })) as Vehicle[];
+          this.vehicles = [...this.allVehicles];
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
       },
       error: (err) => console.error('Error loading vehicles:', err)
     });

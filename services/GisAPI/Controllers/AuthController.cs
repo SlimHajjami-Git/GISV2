@@ -4,9 +4,9 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using GisAPI.Data;
+using GisAPI.Infrastructure.Persistence;
 using GisAPI.DTOs;
-using GisAPI.Models;
+using GisAPI.Domain.Entities;
 
 namespace GisAPI.Controllers;
 
@@ -148,6 +148,11 @@ public class AuthController : ControllerBase
         foreach (var role in user.Roles)
         {
             claims.Add(new Claim(ClaimTypes.Role, role));
+        }
+
+        foreach (var permission in user.Permissions)
+        {
+            claims.Add(new Claim("permission", permission));
         }
 
         var token = new JwtSecurityToken(

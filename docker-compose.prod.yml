@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gis_v2"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your_secure_password_here}
+      POSTGRES_DB: gis_v2
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-gisadmin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-your_secure_password_here}
+      RABBITMQ_LOOPBACK_USERS: none
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+
+  gis-api:
+    build:
+      context: ./services/GisAPI
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:5000
+      ConnectionStrings__DefaultConnection: Host=postgres;Database=gis_v2;Username=postgres;Password=${POSTGRES_PASSWORD:-your_secure_password_here}
+      Jwt__Key: ${JWT_SECRET_KEY:-YourSuperSecretKeyForProductionAtLeast32Characters!}
+      Jwt__Issuer: GisAPI
+      Jwt__Audience: GisAPI
+      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__Port: 5672
+      RabbitMQ__UserName: ${RABBITMQ_USER:-gisadmin}
+      RabbitMQ__Password: ${RABBITMQ_PASSWORD:-your_secure_password_here}
+    restart: unless-stopped
+
+  gps-ingest:
+    build:
+      context: ./services/gps-ingest-rust
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-your_secure_password_here}@postgres:5432/gis_v2
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: ${RABBITMQ_USER:-gisadmin}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-your_secure_password_here}
+      RABBITMQ_EXCHANGE: telemetry.raw
+      RABBITMQ_ROUTING_KEY: hh
+      API_PORT: 3000
+      RUST_LOG: info
+    ports:
+      - "3000:3000"   # GPS TCP port
+      - "3001:3001"   # GPS UDP port
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./services/gis-frontend
+      dockerfile: Dockerfile
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      gps-ingest:
+        condition: service_started
+      gis-api:
+        condition: service_started
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  rabbitmq_data:

@@ -177,6 +177,14 @@
   cursor: not-allowed;
 }
 
+.validation-hint {
+  padding: 8px 14px;
+  font-size: 11px;
+  color: #d97706;
+  background: #fef3c7;
+  border-bottom: 1px solid #fde68a;
+}
+
 .spinner {
   width: 12px;
   height: 12px;
@@ -255,9 +263,9 @@
 
 /* Chart Legend */
 .chart-legend {
-  padding: 12px 14px;
+  padding: 10px 14px;
   border-top: 1px solid #e2e8f0;
-  margin-top: auto;
+  background: #f8fafc;
 }
 
 .legend-title {
@@ -442,12 +450,12 @@
 
 /* Chart Section */
 .chart-section {
-  flex: 1;
   display: flex;
   flex-direction: column;
   background: white;
   border-bottom: 1px solid #e2e8f0;
-  min-height: 250px;
+  height: 280px;
+  flex-shrink: 0;
 }
 
 .section-toolbar {
@@ -518,8 +526,9 @@
 
 .chart-area {
   flex: 1;
-  padding: 12px;
-  min-height: 200px;
+  padding: 8px 12px;
+  height: 220px;
+  overflow: hidden;
 }
 
 .chart-area canvas {
@@ -533,7 +542,7 @@
   display: flex;
   flex-direction: column;
   background: white;
-  min-height: 200px;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -646,4 +655,30 @@
 .time-cell {
   color: #3b82f6;
   white-space: nowrap;
+}
+
+/* Anomaly rows */
+.data-table tbody tr.anomaly-row {
+  background: #fef2f2;
+}
+
+.data-table tbody tr.anomaly-row:hover {
+  background: #fee2e2;
+}
+
+.data-table tbody tr.anomaly-row td {
+  border-bottom-color: #fecaca;
+}
+
+/* Change cell (fuel variation) */
+.change-cell {
+  font-weight: 500;
+}
+
+.change-cell.positive {
+  color: #22c55e;
+}
+
+.change-cell.negative {
+  color: #ef4444;
 }

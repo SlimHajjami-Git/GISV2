@@ -30,6 +30,22 @@ public class Company
     [MaxLength(100)]
     public string? Email { get; set; }
 
+    [MaxLength(500)]
+    public string? LogoUrl { get; set; }
+
+    [MaxLength(50)]
+    public string? TaxId { get; set; } // ICE
+
+    [MaxLength(50)]
+    public string? RC { get; set; } // Registre de commerce
+
+    [MaxLength(50)]
+    public string? IF { get; set; } // Identifiant fiscal
+
+    public bool IsActive { get; set; } = true;
+
+    public DateTime? SubscriptionExpiresAt { get; set; }
+
     // Settings stored as JSON
     [Column(TypeName = "jsonb")]
     public CompanySettings? Settings { get; set; }
@@ -47,6 +63,11 @@ public class Company
     public ICollection<Vehicle> Vehicles { get; set; } = new List<Vehicle>();
     public ICollection<Employee> Employees { get; set; } = new List<Employee>();
     public ICollection<Geofence> Geofences { get; set; } = new List<Geofence>();
+    public ICollection<GpsDevice> GpsDevices { get; set; } = new List<GpsDevice>();
+    public ICollection<PointOfInterest> PointsOfInterest { get; set; } = new List<PointOfInterest>();
+    public ICollection<Report> Reports { get; set; } = new List<Report>();
+    public ICollection<ReportSchedule> ReportSchedules { get; set; } = new List<ReportSchedule>();
+    public ICollection<Supplier> Suppliers { get; set; } = new List<Supplier>();
 }
 
 public class CompanySettings

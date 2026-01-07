@@ -60,13 +60,18 @@
         <!-- Action Buttons -->
         <div class="action-row">
           <button class="btn-clear" (click)="clearFilters()">Effacer</button>
-          <button class="btn-execute" (click)="executeReport()" [disabled]="loading">
+          <button class="btn-execute" (click)="executeReport()" [disabled]="loading || !selectedTemplateId">
             @if (loading) {
               <span class="spinner"></span>
             }
             Exécuter
           </button>
         </div>
+        @if (!selectedTemplateId) {
+          <div class="validation-hint">⚠️ Sélectionnez un template</div>
+        } @else if (!selectedVehicleId && selectedTemplate?.type === 'fuel') {
+          <div class="validation-hint">⚠️ Sélectionnez un véhicule</div>
+        }
 
         <!-- Report Sections (Accordion) -->
         <div class="accordion-section">
@@ -231,25 +236,39 @@
                 <table class="data-table">
                   <thead>
                     <tr>
-                      <th>Emplacement</th>
-                      <th>Quantité</th>
-                      <th>Niveau initial</th>
-                      <th>Niveau final</th>
-                      <th>Capteur</th>
-                      <th>Conducteur</th>
-                      <th>Date/Heure</th>
+                      @if (selectedTemplate?.type === 'fuel') {
+                        <th>Date/Heure</th>
+                        <th>Niveau</th>
+                        <th>Variation</th>
+                        <th>Type</th>
+                        <th>Position</th>
+                        <th>Vitesse</th>
+                        <th>Odomètre</th>
+                      } @else {
+                        <th>Date/Heure</th>
+                        <th>Valeur</th>
+                        <th>Détails</th>
+                        <th>Statut</th>
+                      }
                     </tr>
                   </thead>
                   <tbody>
                     @for (row of paginatedData; track $index) {
-                      <tr [class.highlighted]="$index === 0">
-                        <td class="location-cell">{{ row.location }}</td>
-                        <td class="value-cell">{{ row.filled }}</td>
-                        <td>{{ row.initialLevel }}</td>
-                        <td>{{ row.finalLevel }}</td>
-                        <td>{{ row.sensor }}</td>
-                        <td>{{ row.driver }}</td>
-                        <td class="time-cell">{{ row.time }}</td>
+                      <tr [class.highlighted]="row.isAnomaly" [class.anomaly-row]="row.isAnomaly">
+                        @if (selectedTemplate?.type === 'fuel') {
+                          <td class="time-cell">{{ row.time }}</td>
+                          <td class="value-cell">{{ row.fuelPercent }}</td>
+                          <td class="change-cell" [class.positive]="row.fuelChange?.startsWith('+')" [class.negative]="row.fuelChange?.startsWith('-')">{{ row.fuelChange }}</td>
+                          <td>{{ row.eventType }}</td>
+                          <td class="location-cell">{{ row.location }}</td>
+                          <td>{{ row.speed }}</td>
+                          <td>{{ row.odometer }}</td>
+                        } @else {
+                          <td class="time-cell">{{ row.time || row.date }}</td>
+                          <td class="value-cell">{{ row.level || row.speed || row.distance }}</td>
+                          <td>{{ row.consumption || row.limit || row.location || row.trips }}</td>
+                          <td>{{ row.status || row.type || row.avgSpeed }}</td>
+                        }
                       </tr>
                     }
                   </tbody>

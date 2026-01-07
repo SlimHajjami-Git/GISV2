@@ -823,8 +823,8 @@ export class MockDataService {
   }
 
   getVehicles(): Observable<Vehicle[]> {
-    // Use asapScheduler to ensure async emission for proper Angular change detection
-    return this.vehicles$.asObservable().pipe(observeOn(asapScheduler));
+    // Return immediately without scheduler delay
+    return this.vehicles$.asObservable();
   }
 
   getVehiclesByCompany(companyId: string): Vehicle[] {
@@ -832,7 +832,7 @@ export class MockDataService {
   }
 
   getEmployees(): Observable<Employee[]> {
-    return this.employees$.asObservable().pipe(observeOn(asapScheduler));
+    return this.employees$.asObservable();
   }
 
   getEmployeesByCompany(companyId: string): Employee[] {
@@ -840,11 +840,11 @@ export class MockDataService {
   }
 
   getGPSLocations(): Observable<GPSLocation[]> {
-    return this.gpsLocations$.asObservable().pipe(observeOn(asapScheduler));
+    return this.gpsLocations$.asObservable();
   }
 
   getGPSAlerts(): Observable<GPSAlert[]> {
-    return this.gpsAlerts$.asObservable().pipe(observeOn(asapScheduler));
+    return this.gpsAlerts$.asObservable();
   }
 
   getAlertsByCompany(companyId: string): GPSAlert[] {

@@ -87,7 +87,7 @@
           <div class="vehicles-list">
             <div
               class="vehicle-item"
-              *ngFor="let vehicle of filteredVehicles"
+              *ngFor="let vehicle of filteredVehicles; trackBy: trackByVehicleId"
               [class.selected]="selectedVehicle?.id === vehicle.id"
               (click)="selectVehicle(vehicle)"
             >
@@ -257,14 +257,52 @@
                   </svg>
                   Charger le trajet
                 </button>
+                
+                <!-- Road Snapping Toggle -->
+                <div class="road-snapping-toggle">
+                  <label class="toggle-label">
+                    <input type="checkbox" [checked]="useRoadSnapping" (change)="toggleRoadSnapping()">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-text">Suivre les routes</span>
+                  </label>
+                </div>
                 <div class="playback-controls" *ngIf="isPlaybackLoaded">
+                  <div class="playback-info">
+                    <span>Point {{ playbackIndex + 1 }} / {{ playbackPositions.length }}</span>
+                    <!-- Bird Flight Filter Badge -->
+                    <span class="bird-flight-badge" *ngIf="filteredBirdFlights > 0" (click)="showBirdFlightInfo = !showBirdFlightInfo" title="Points GPS erratiques filtrés">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                      </svg>
+                      {{ filteredBirdFlights }} filtrés
+                    </span>
+                  </div>
+                  <!-- Bird Flight Info Popup -->
+                  <div class="bird-flight-popup" *ngIf="showBirdFlightInfo && filteredBirdFlights > 0">
+                    <div class="popup-header">
+                      <strong>Points GPS filtrés</strong>
+                      <button class="close-btn" (click)="showBirdFlightInfo = false">×</button>
+                    </div>
+                    <p>{{ filteredBirdFlights }} point(s) GPS erratique(s) ont été automatiquement filtrés pour améliorer la qualité du tracé.</p>
+                    <p class="popup-detail">Ces points présentaient des anomalies telles que:</p>
+                    <ul>
+                      <li>Vitesse implicite irréaliste (> 200 km/h)</li>
+                      <li>Sauts de position impossibles</li>
+                      <li>Signal GPS insuffisant</li>
+                    </ul>
+                  </div>
                   <div class="control-buttons">
-                    <button class="control-btn" (click)="resetPlayback()">
+                    <button class="control-btn" (click)="resetPlayback()" title="Retour au début">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/>
                       </svg>
                     </button>
-                    <button class="control-btn play" (click)="togglePlayback()">
+                    <button class="control-btn" (click)="previousPoint()" title="Point précédent">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="15 18 9 12 15 6"/>
+                      </svg>
+                    </button>
+                    <button class="control-btn play" (click)="togglePlayback()" title="{{ isPlaying ? 'Pause' : 'Lecture' }}">
                       <svg *ngIf="!isPlaying" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                         <polygon points="5 3 19 12 5 21 5 3"/>
                       </svg>
@@ -272,16 +310,21 @@
                         <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
                       </svg>
                     </button>
-                    <button class="control-btn" (click)="skipToEnd()">
+                    <button class="control-btn" (click)="nextPoint()" title="Point suivant">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="9 18 15 12 9 6"/>
+                      </svg>
+                    </button>
+                    <button class="control-btn" (click)="skipToEnd()" title="Aller à la fin">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
                       </svg>
                     </button>
                   </div>
-                  <input type="range" class="progress-slider" [min]="0" [max]="100" [(ngModel)]="playbackProgress">
+                  <input type="range" class="progress-slider" [min]="0" [max]="100" [ngModel]="playbackProgress" (ngModelChange)="onPlaybackProgressChange($event)">
                   <div class="speed-selector">
                     <span>Vitesse:</span>
-                    <button *ngFor="let s of playbackSpeeds" [class.active]="playbackSpeed === s" (click)="playbackSpeed = s">{{ s }}x</button>
+                    <button *ngFor="let s of playbackSpeeds" [class.active]="playbackSpeed === s" (click)="onPlaybackSpeedChange(s)">{{ s }}x</button>
                   </div>
                 </div>
               </div>

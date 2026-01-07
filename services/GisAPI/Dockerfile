@@ -2,12 +2,24 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-# Copy csproj and restore dependencies
-COPY *.csproj ./
+# Copy all project files for restore
+COPY GisAPI/*.csproj ./GisAPI/
+COPY src/GisAPI.Domain/*.csproj ./src/GisAPI.Domain/
+COPY src/GisAPI.Application/*.csproj ./src/GisAPI.Application/
+COPY src/GisAPI.Infrastructure/*.csproj ./src/GisAPI.Infrastructure/
+COPY src/GisAPI.Shared/*.csproj ./src/GisAPI.Shared/
+
+# Restore dependencies
+WORKDIR /src/GisAPI
 RUN dotnet restore
 
-# Copy everything else and build
-COPY . ./
+# Copy everything else
+WORKDIR /src
+COPY GisAPI/ ./GisAPI/
+COPY src/ ./src/
+
+# Build
+WORKDIR /src/GisAPI
 RUN dotnet publish -c Release -o /app/publish
 
 # Runtime stage
@@ -24,6 +36,6 @@ EXPOSE 5000
 
 # Set environment variables
 ENV ASPNETCORE_URLS=http://+:5000
-ENV ASPNETCORE_ENVIRONMENT=Production
+ENV ASPNETCORE_ENVIRONMENT=Docker
 
 ENTRYPOINT ["dotnet", "GisAPI.dll"]

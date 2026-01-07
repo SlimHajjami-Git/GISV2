@@ -105,6 +105,8 @@
   flex-direction: column;
   flex: 1;
   overflow: hidden;
+  min-height: 0; /* Fix for flexbox overflow */
+  height: 100%;
 }
 
 .panel-header {
@@ -164,6 +166,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 100px; /* Ensure minimum height for visibility */
 }
 
 /* ===== VEHICLE ITEMS ===== */
@@ -564,6 +567,13 @@
   border-top: 1px solid var(--border-color);
 }
 
+.playback-info {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
 .control-buttons {
   display: flex;
   justify-content: center;
@@ -725,6 +735,162 @@
   50% {
     opacity: 0.5;
   }
+}
+
+/* ===== BIRD FLIGHT FILTER BADGE ===== */
+.bird-flight-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-left: 8px;
+}
+
+.bird-flight-badge:hover {
+  background: rgba(245, 158, 11, 0.25);
+  border-color: rgba(245, 158, 11, 0.5);
+}
+
+.bird-flight-badge svg {
+  flex-shrink: 0;
+}
+
+/* Bird Flight Info Popup */
+.bird-flight-popup {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.bird-flight-popup .popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.bird-flight-popup .popup-header strong {
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.bird-flight-popup .close-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.bird-flight-popup .close-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.bird-flight-popup p {
+  margin: 0 0 8px;
+  line-height: 1.4;
+}
+
+.bird-flight-popup .popup-detail {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.bird-flight-popup ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.bird-flight-popup li {
+  margin-bottom: 2px;
+  color: var(--text-muted);
+}
+
+/* ===== ROAD SNAPPING TOGGLE ===== */
+.road-snapping-toggle {
+  margin: 8px 0;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.toggle-label input[type="checkbox"] {
+  display: none;
+}
+
+.toggle-slider {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  transition: all 0.2s;
+}
+
+.toggle-slider::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.toggle-label input:checked + .toggle-slider {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #3b82f6;
+}
+
+.toggle-label input:checked + .toggle-slider::after {
+  left: 16px;
+  background: #3b82f6;
+}
+
+.toggle-text {
+  user-select: none;
+}
+
+/* Hide leaflet routing machine UI elements */
+.leaflet-routing-container {
+  display: none !important;
 }
 
 @media (max-width: 768px) {

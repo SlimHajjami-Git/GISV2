@@ -42,6 +42,7 @@ pub struct HhFrame {
     pub flags_raw: u8,
     pub raw_payload: String,
     pub remaining_payload: Option<String>,
+    pub address: Option<String>,
 }
 
 #[derive(Debug, Clone)]

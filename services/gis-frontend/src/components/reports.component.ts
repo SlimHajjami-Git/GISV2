@@ -1,8 +1,9 @@
-import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, ViewChild, ElementRef, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { ApiService } from '../services/api.service';
+import { ApiService, FuelRecordsResult, FuelRecord } from '../services/api.service';
+import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
@@ -125,7 +126,11 @@ export class ReportsComponent implements OnInit {
 
   constructor(
     private router: Router,
-    private apiService: ApiService
+    private apiService: ApiService,
+    private geocodingService: GeocodingService,
+    private ngZone: NgZone,
+    private cdr: ChangeDetectorRef,
+    private appRef: ApplicationRef
   ) {}
 
   ngOnInit() {
@@ -134,8 +139,10 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
-    this.loadData();
-    this.initializeDates();
+    this.ngZone.run(() => {
+      this.loadData();
+      this.initializeDates();
+    });
   }
 
   loadData() {
@@ -244,205 +251,312 @@ export class ReportsComponent implements OnInit {
   }
 
   executeReport() {
+    console.log('executeReport called', { 
+      selectedTemplate: this.selectedTemplate, 
+      selectedVehicleId: this.selectedVehicleId,
+      fromDate: this.fromDate,
+      toDate: this.toDate
+    });
+
     if (!this.selectedTemplate) {
-      alert('Veuillez sélectionner un template de rapport');
+      console.warn('No template selected');
+      return;
+    }
+
+    if (!this.selectedVehicleId && this.selectedTemplate.type === 'fuel') {
+      console.warn('No vehicle selected for fuel report');
       return;
     }
 
     this.loading = true;
     this.expandedSections['result'] = true;
 
-    setTimeout(() => {
-      this.reportGenerated = true;
-      this.generateFuelData();
-      this.loading = false;
-      this.activeTab = 'chart';
-      this.currentPage = 1;
+    const startDate = this.fromDate ? new Date(this.fromDate) : undefined;
+    const endDate = this.toDate ? new Date(this.toDate) : undefined;
+    const vehicleId = this.selectedVehicleId ? parseInt(this.selectedVehicleId) : undefined;
 
-      setTimeout(() => {
-        this.createChart();
-      }, 100);
-    }, 1500);
+    // All report types use vehicle history API
+    this.executeVehicleReport(vehicleId, startDate, endDate);
   }
 
-  generateMockData() {
-    const type = this.selectedTemplate.type;
+  executeVehicleReport(vehicleId?: number, startDate?: Date, endDate?: Date) {
+    if (!vehicleId) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = { 'Message': 'Veuillez sélectionner un véhicule' };
+      this.reportGenerated = true;
+      this.loading = false;
+      return;
+    }
+
+    this.apiService.getVehicleHistory(vehicleId, startDate, endDate).subscribe({
+      next: (result) => {
+        this.ngZone.run(() => {
+          this.processVehicleData(result.positions);
+          this.reportGenerated = true;
+          this.loading = false;
+          this.activeTab = 'chart';
+          this.currentPage = 1;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+          setTimeout(() => this.createChart(), 100);
+        });
+      },
+      error: (err) => {
+        this.ngZone.run(() => {
+          console.error('Error loading vehicle history:', err);
+          this.tableData = [];
+          this.chartData = [];
+          this.statisticsData = { 'Erreur': 'Impossible de charger les données' };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
+      }
+    });
+  }
+
+  processVehicleData(positions: any[]) {
+    const type = this.selectedTemplate?.type || 'fuel';
+    const sorted = positions.sort((a: any, b: any) => 
+      new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime()
+    );
 
     switch (type) {
       case 'fuel':
-        this.chartData = [
-          { label: '08:00', value: 85 },
-          { label: '09:00', value: 82 },
-          { label: '10:00', value: 78 },
-          { label: '11:00', value: 75 },
-          { label: '12:00', value: 72 },
-          { label: '13:00', value: 100 },
-          { label: '14:00', value: 95 },
-          { label: '15:00', value: 90 },
-          { label: '16:00', value: 85 },
-          { label: '17:00', value: 78 }
-        ];
-        this.tableData = [
-          { time: '08:00', level: '85%', consumption: '12.5 L', status: 'Normal' },
-          { time: '10:00', level: '78%', consumption: '18.2 L', status: 'Élevée' },
-          { time: '12:30', level: '72%', consumption: '15.8 L', status: 'Normal' },
-          { time: '13:00', level: '100%', consumption: '45 L', status: 'Remplissage' },
-          { time: '16:00', level: '85%', consumption: '20.5 L', status: 'Élevée' }
-        ];
-        this.statisticsData = {
-          totalConsumption: '112.0 L',
-          avgConsumption: '8.5 L/100km',
-          totalRefills: '1',
-          refillVolume: '45 L'
-        };
+        this.processFuelReport(sorted);
         break;
-
       case 'speed':
-        this.chartData = [
-          { label: '08:00', value: 55 },
-          { label: '09:00', value: 75 },
-          { label: '10:00', value: 95 },
-          { label: '11:00', value: 68 },
-          { label: '12:00', value: 50 },
-          { label: '14:00', value: 65 },
-          { label: '15:00', value: 125 },
-          { label: '16:00', value: 85 },
-          { label: '17:00', value: 70 }
-        ];
-        this.tableData = [
-          { time: '10:15', speed: '95 km/h', limit: '90 km/h', excess: '5 km/h', duration: '5 min' },
-          { time: '15:30', speed: '125 km/h', limit: '90 km/h', excess: '35 km/h', duration: '2 min' },
-          { time: '16:45', speed: '105 km/h', limit: '90 km/h', excess: '15 km/h', duration: '3 min' }
-        ];
-        this.statisticsData = {
-          avgSpeed: '72 km/h',
-          maxSpeed: '125 km/h',
-          violations: '3',
-          totalExcessTime: '10 min'
-        };
+        this.processSpeedReport(sorted);
         break;
-
       case 'stops':
-        this.chartData = [
-          { label: 'Dépôt', value: 150 },
-          { label: 'Clients', value: 95 },
-          { label: 'Pause', value: 60 },
-          { label: 'Ravitaillement', value: 10 },
-          { label: 'Autres', value: 35 }
-        ];
-        this.tableData = [
-          { time: '08:15', location: 'Dépôt Principal', duration: '45 min', type: 'Départ' },
-          { time: '10:30', location: 'Client ABC', duration: '15 min', type: 'Livraison' },
-          { time: '12:00', location: 'Pause déjeuner', duration: '60 min', type: 'Pause' },
-          { time: '14:20', location: 'Client XYZ', duration: '25 min', type: 'Livraison' },
-          { time: '16:45', location: 'Station service', duration: '10 min', type: 'Carburant' }
-        ];
-        this.statisticsData = {
-          totalStops: '6',
-          totalDuration: '5h 30min',
-          avgStopDuration: '55 min',
-          longestStop: '2h 30min'
-        };
+        this.processStopsReport(sorted);
         break;
-
       case 'distance':
-        this.chartData = [
-          { label: 'Lundi', value: 290 },
-          { label: 'Mardi', value: 315 },
-          { label: 'Mercredi', value: 275 },
-          { label: 'Jeudi', value: 340 },
-          { label: 'Vendredi', value: 295 },
-          { label: 'Samedi', value: 180 },
-          { label: 'Dimanche', value: 95 }
-        ];
-        this.tableData = [
-          { date: 'Lundi 11/12', distance: '290 km', trips: '8', avgSpeed: '65 km/h' },
-          { date: 'Mardi 12/12', distance: '315 km', trips: '9', avgSpeed: '72 km/h' },
-          { date: 'Mercredi 13/12', distance: '275 km', trips: '7', avgSpeed: '68 km/h' },
-          { date: 'Jeudi 14/12', distance: '340 km', trips: '10', avgSpeed: '75 km/h' },
-          { date: 'Vendredi 15/12', distance: '295 km', trips: '8', avgSpeed: '70 km/h' }
-        ];
-        this.statisticsData = {
-          totalDistance: '1,790 km',
-          avgDaily: '255 km',
-          maxDaily: '340 km',
-          totalTrips: '42'
-        };
+        this.processDistanceReport(sorted);
         break;
-
       default:
-        this.chartData = [
-          { label: '08:00', value: 75 },
-          { label: '10:00', value: 72 },
-          { label: '12:00', value: 68 },
-          { label: '14:00', value: 80 },
-          { label: '16:00', value: 78 },
-          { label: '18:00', value: 82 }
-        ];
-        this.tableData = [
-          { time: '10:30', event: 'Freinage brusque', count: '8', severity: 'Moyen' },
-          { time: '11:15', event: 'Accélération rapide', count: '12', severity: 'Élevé' },
-          { time: '14:45', event: 'Virage serré', count: '5', severity: 'Faible' }
-        ];
-        this.statisticsData = {
-          score: '72/100',
-          harshBraking: '8',
-          rapidAccel: '12',
-          sharpTurns: '5'
-        };
+        this.processFuelReport(sorted);
     }
   }
 
-  generateFuelData() {
-    // Generate realistic fuel filling data
-    const locations = [
-      'DN2, Bălcăuți, Suceava, Romania',
-      'DN2, Siret, Suceava, Romania, 3.71 km from Siret',
-      'DN2, Cordun, Neamț, Romania, 3.87 km from Roman',
-      'DN2, Fântâna Mare, Suceava, Romania, 1.04 km from Fântâna Mare',
-      'DN2, Sascut, Bacău, Romania, 1.97 km from Schineni'
-    ];
-    
-    this.tableData = [];
-    const baseDate = new Date('2024-12-01T00:00:00');
-    
-    for (let i = 0; i < 20; i++) {
-      const date = new Date(baseDate.getTime() + i * 3 * 60 * 60 * 1000);
-      const filled = Math.floor(Math.random() * 30) + 10;
-      const initialLevel = Math.floor(Math.random() * 300) + 400;
+  processFuelReport(positions: any[]) {
+    // Filter to show only significant fuel changes or periodic readings
+    let lastFuel = -1;
+    const significantPositions = positions.filter((pos: any, index: number) => {
+      const fuel = pos.fuelRaw || 0;
+      const isFirst = index === 0;
+      const isLast = index === positions.length - 1;
+      const hasSignificantChange = Math.abs(fuel - lastFuel) >= 2;
+      const isEveryNth = index % 10 === 0; // Show every 10th position
       
-      this.tableData.push({
-        location: locations[i % locations.length],
-        filled: `${filled} l`,
-        initialLevel: `${initialLevel} l`,
-        finalLevel: `${initialLevel + filled} l`,
-        sensor: 'FLS',
-        driver: 'Alex Black',
-        time: date.toLocaleString('fr-FR', { 
-          year: 'numeric', month: '2-digit', day: '2-digit',
-          hour: '2-digit', minute: '2-digit'
-        })
-      });
-    }
+      if (isFirst || isLast || hasSignificantChange || isEveryNth) {
+        lastFuel = fuel;
+        return true;
+      }
+      return false;
+    });
 
-    // Chart data - fuel level over time
-    this.chartData = [];
-    for (let i = 0; i < 24; i++) {
-      const hour = 14 + Math.floor(i / 2);
-      const minute = (i % 2) * 30;
-      const fuelLevel = 50 + Math.sin(i * 0.5) * 20 + Math.random() * 10;
-      this.chartData.push({
-        label: `${hour}:${minute.toString().padStart(2, '0')}`,
-        value: Math.round(fuelLevel)
-      });
-    }
+    this.tableData = significantPositions.map((pos: any, index: number) => {
+      const prevPos = index > 0 ? significantPositions[index - 1] : null;
+      const fuelChange = prevPos ? (pos.fuelRaw || 0) - (prevPos.fuelRaw || 0) : 0;
+      
+      // Determine event type based on fuel change
+      let eventType = 'Lecture';
+      let isAnomaly = false;
+      if (fuelChange > 5) {
+        eventType = '⛽ Remplissage';
+      } else if (fuelChange < -15) {
+        eventType = '⚠️ Chute importante';
+        isAnomaly = true;
+      } else if (fuelChange < -5) {
+        eventType = '📉 Consommation';
+      } else if (fuelChange > 0) {
+        eventType = '📈 Augmentation';
+      }
+
+      // Use real odometer if available, otherwise calculate distance
+      let odometer = '-';
+      if (pos.odometerKm && pos.odometerKm > 0) {
+        odometer = `${pos.odometerKm.toLocaleString('fr-FR')} km`;
+      } else if (prevPos) {
+        const d = this.haversineDistance(prevPos.latitude, prevPos.longitude, pos.latitude, pos.longitude);
+        if (d > 0.1) {
+          odometer = `+${d.toFixed(1)} km`;
+        }
+      }
+
+      // Use address from API if available, otherwise show coordinates
+      const location = pos.address || `${pos.latitude.toFixed(4)}°, ${pos.longitude.toFixed(4)}°`;
+
+      return {
+        time: new Date(pos.recordedAt).toLocaleString('fr-FR', {
+          day: '2-digit', month: '2-digit', year: 'numeric',
+          hour: '2-digit', minute: '2-digit'
+        }),
+        fuelPercent: `${pos.fuelRaw || 0}%`,
+        fuelChange: fuelChange !== 0 ? `${fuelChange > 0 ? '+' : ''}${fuelChange.toFixed(0)}%` : '-',
+        eventType,
+        location,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        speed: pos.speedKph ? `${pos.speedKph.toFixed(0)} km/h` : '0 km/h',
+        odometer,
+        isAnomaly
+      };
+    });
+
+    // Fetch addresses asynchronously for positions without address
+    this.enrichWithAddresses();
+
+    // Chart data - all positions for smooth graph
+    this.chartData = positions.map((pos: any) => ({
+      label: new Date(pos.recordedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      value: pos.fuelRaw || 0
+    }));
+
+    // Statistics
+    const fuelValues = positions.map((p: any) => p.fuelRaw || 0).filter((f: number) => f > 0);
+    const avgFuel = fuelValues.length > 0 ? fuelValues.reduce((a: number, b: number) => a + b, 0) / fuelValues.length : 0;
+    const refuels = this.tableData.filter((r: any) => r.eventType.includes('Remplissage')).length;
+    const anomalies = this.tableData.filter((r: any) => r.isAnomaly).length;
 
     this.statisticsData = {
-      totalFilled: '298 l',
-      avgFilling: '22.3 l',
-      totalFillings: '15',
-      avgInterval: '4.2 h'
+      'Enregistrements': positions.length.toString(),
+      'Niveau moyen': `${avgFuel.toFixed(1)}%`,
+      'Niveau min': fuelValues.length > 0 ? `${Math.min(...fuelValues)}%` : 'N/A',
+      'Niveau max': fuelValues.length > 0 ? `${Math.max(...fuelValues)}%` : 'N/A',
+      'Remplissages': refuels.toString(),
+      'Alertes': anomalies.toString()
     };
+  }
+
+  processSpeedReport(positions: any[]) {
+    const speedData = positions.filter((p: any) => p.speedKph > 0);
+    
+    this.tableData = speedData.map((pos: any) => ({
+      time: new Date(pos.recordedAt).toLocaleString('fr-FR', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      }),
+      speed: `${(pos.speedKph || 0).toFixed(1)} km/h`,
+      location: `${pos.latitude.toFixed(5)}, ${pos.longitude.toFixed(5)}`,
+      isAnomaly: pos.speedKph > 90
+    }));
+
+    this.chartData = speedData.map((pos: any) => ({
+      label: new Date(pos.recordedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      value: pos.speedKph || 0
+    }));
+
+    const speeds = speedData.map((p: any) => p.speedKph || 0);
+    const avgSpeed = speeds.length > 0 ? speeds.reduce((a: number, b: number) => a + b, 0) / speeds.length : 0;
+    const violations = speeds.filter((s: number) => s > 90).length;
+
+    this.statisticsData = {
+      'Total points': positions.length.toString(),
+      'Vitesse moyenne': `${avgSpeed.toFixed(1)} km/h`,
+      'Vitesse max': speeds.length > 0 ? `${Math.max(...speeds).toFixed(1)} km/h` : 'N/A',
+      'Excès (>90 km/h)': violations.toString()
+    };
+  }
+
+  processStopsReport(positions: any[]) {
+    // Detect stops (speed = 0 or very low)
+    const stops: any[] = [];
+    let currentStop: any = null;
+
+    positions.forEach((pos: any, index: number) => {
+      const isStop = (pos.speedKph || 0) < 2;
+      
+      if (isStop && !currentStop) {
+        currentStop = { start: pos, positions: [pos] };
+      } else if (isStop && currentStop) {
+        currentStop.positions.push(pos);
+      } else if (!isStop && currentStop) {
+        currentStop.end = positions[index - 1];
+        stops.push(currentStop);
+        currentStop = null;
+      }
+    });
+
+    if (currentStop) {
+      currentStop.end = positions[positions.length - 1];
+      stops.push(currentStop);
+    }
+
+    this.tableData = stops.slice(0, 50).map((stop: any) => {
+      const duration = (new Date(stop.end.recordedAt).getTime() - new Date(stop.start.recordedAt).getTime()) / 60000;
+      return {
+        time: new Date(stop.start.recordedAt).toLocaleString('fr-FR', {
+          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+        }),
+        duration: `${Math.round(duration)} min`,
+        location: `${stop.start.latitude.toFixed(5)}, ${stop.start.longitude.toFixed(5)}`,
+        type: 'Arrêt'
+      };
+    });
+
+    this.chartData = stops.slice(0, 20).map((stop: any, i: number) => ({
+      label: `Arrêt ${i + 1}`,
+      value: Math.round((new Date(stop.end.recordedAt).getTime() - new Date(stop.start.recordedAt).getTime()) / 60000)
+    }));
+
+    const totalDuration = stops.reduce((sum: number, s: any) => 
+      sum + (new Date(s.end.recordedAt).getTime() - new Date(s.start.recordedAt).getTime()), 0) / 60000;
+
+    this.statisticsData = {
+      'Nombre d\'arrêts': stops.length.toString(),
+      'Durée totale': `${Math.round(totalDuration)} min`,
+      'Durée moyenne': stops.length > 0 ? `${Math.round(totalDuration / stops.length)} min` : 'N/A'
+    };
+  }
+
+  processDistanceReport(positions: any[]) {
+    // Calculate distance between points using Haversine
+    let totalDistance = 0;
+    const segments: any[] = [];
+
+    for (let i = 1; i < positions.length; i++) {
+      const prev = positions[i - 1];
+      const curr = positions[i];
+      const dist = this.haversineDistance(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
+      totalDistance += dist;
+      
+      if (i % 10 === 0) {
+        segments.push({
+          time: new Date(curr.recordedAt).toLocaleString('fr-FR', {
+            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+          }),
+          distance: `${totalDistance.toFixed(2)} km`,
+          speed: `${(curr.speedKph || 0).toFixed(1)} km/h`,
+          location: `${curr.latitude.toFixed(5)}, ${curr.longitude.toFixed(5)}`
+        });
+      }
+    }
+
+    this.tableData = segments;
+    this.chartData = segments.map((s: any, i: number) => ({
+      label: s.time.split(' ')[1] || `Pt ${i}`,
+      value: parseFloat(s.distance)
+    }));
+
+    this.statisticsData = {
+      'Distance totale': `${totalDistance.toFixed(2)} km`,
+      'Points GPS': positions.length.toString()
+    };
+  }
+
+  haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
   }
 
   createChart() {
@@ -553,6 +667,45 @@ export class ReportsComponent implements OnInit {
 
   getStatKeys(): string[] {
     return Object.keys(this.statisticsData);
+  }
+
+  /**
+   * Enrich table data with addresses from Nominatim for positions without address
+   */
+  async enrichWithAddresses() {
+    // Find positions that need geocoding (no address yet, only coordinates)
+    const positionsToGeocode = this.tableData.filter(
+      (row: any) => row.latitude && row.longitude && row.location.includes('°')
+    );
+
+    if (positionsToGeocode.length === 0) return;
+
+    // Batch geocode coordinates
+    const coordinates = positionsToGeocode.map((row: any) => ({
+      lat: row.latitude,
+      lon: row.longitude
+    }));
+
+    try {
+      const addressMap = await this.geocodingService.batchReverseGeocode(coordinates);
+      
+      // Update table data with addresses
+      this.ngZone.run(() => {
+        this.tableData = this.tableData.map((row: any) => {
+          if (row.latitude && row.longitude && row.location.includes('°')) {
+            const key = `${row.latitude.toFixed(4)},${row.longitude.toFixed(4)}`;
+            const address = addressMap.get(key);
+            if (address) {
+              return { ...row, location: address };
+            }
+          }
+          return row;
+        });
+        this.cdr.detectChanges();
+      });
+    } catch (error) {
+      console.error('Error enriching addresses:', error);
+    }
   }
 
   Object = Object;

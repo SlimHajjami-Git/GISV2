@@ -34,6 +34,15 @@ public class User
     [MaxLength(20)]
     public string Status { get; set; } = "active"; // active, inactive
 
+    [MaxLength(500)]
+    public string? AvatarUrl { get; set; }
+
+    public bool IsEmailVerified { get; set; }
+
+    public int FailedLoginAttempts { get; set; }
+
+    public DateTime? LockedUntil { get; set; }
+
     public int CompanyId { get; set; }
 
     [ForeignKey("CompanyId")]
@@ -48,6 +57,11 @@ public class User
 
     [ForeignKey("UserSettingsId")]
     public UserSettings? Settings { get; set; }
+
+    // Navigation
+    public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
+    public ICollection<Notification> Notifications { get; set; } = new List<Notification>();
+    public ICollection<UserVehicle> AssignedVehicles { get; set; } = new List<UserVehicle>();
 }
 
 public class UserSettings

@@ -44,6 +44,15 @@ public class GpsDevice
 
     public int? SignalStrength { get; set; }
 
+    public bool? ExternalPowerConnected { get; set; }
+
+    public double? LastLatitude { get; set; }
+
+    public double? LastLongitude { get; set; }
+
+    [Column(TypeName = "decimal(12,2)")]
+    public decimal? TotalDistance { get; set; } // Total km traveled
+
     public int CompanyId { get; set; }
 
     [ForeignKey("CompanyId")]
@@ -83,6 +92,8 @@ public class GpsPosition
     public bool? IgnitionOn { get; set; }
 
     public int? FuelRaw { get; set; }
+
+    public long? OdometerKm { get; set; }
 
     public int? PowerVoltage { get; set; }
 

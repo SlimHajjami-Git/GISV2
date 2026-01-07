@@ -31,6 +31,23 @@ public class Employee
 
     public DateTime? LicenseExpiry { get; set; }
 
+    [MaxLength(20)]
+    public string? CIN { get; set; } // Carte d'identité nationale
+
+    [MaxLength(500)]
+    public string? Address { get; set; }
+
+    [MaxLength(100)]
+    public string? EmergencyContact { get; set; }
+
+    [MaxLength(20)]
+    public string? EmergencyPhone { get; set; }
+
+    public DateTime? DateOfBirth { get; set; }
+
+    [MaxLength(500)]
+    public string? PhotoUrl { get; set; }
+
     public int CompanyId { get; set; }
 
     [ForeignKey("CompanyId")]
@@ -44,4 +61,9 @@ public class Employee
     
     // Navigation - vehicles where this employee is supervisor
     public ICollection<Vehicle> AssignedVehiclesAsSupervisor { get; set; } = new List<Vehicle>();
+
+    // Navigation - driver assignments history
+    public ICollection<DriverAssignment> DriverAssignments { get; set; } = new List<DriverAssignment>();
+    public ICollection<DriverScore> DriverScores { get; set; } = new List<DriverScore>();
+    public ICollection<Trip> Trips { get; set; } = new List<Trip>();
 }

@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -494,7 +494,10 @@ export class MaintenanceComponent implements OnInit {
 
   constructor(
     private router: Router,
-    private apiService: ApiService
+    private apiService: ApiService,
+    private ngZone: NgZone,
+    private cdr: ChangeDetectorRef,
+    private appRef: ApplicationRef
   ) {}
 
   ngOnInit() {
@@ -503,20 +506,32 @@ export class MaintenanceComponent implements OnInit {
       return;
     }
 
-    this.loadData();
+    this.ngZone.run(() => {
+      this.loadData();
+    });
   }
 
   loadData() {
     this.apiService.getMaintenanceRecords().subscribe({
       next: (records) => {
-        this.allRecords = records;
-        this.records = [...this.allRecords];
+        this.ngZone.run(() => {
+          this.allRecords = records;
+          this.records = [...this.allRecords];
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
       },
       error: (err) => console.error('Error loading maintenance:', err)
     });
 
     this.apiService.getVehicles().subscribe({
-      next: (vehicles) => this.vehicles = vehicles,
+      next: (vehicles) => {
+        this.ngZone.run(() => {
+          this.vehicles = vehicles;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
+      },
       error: (err) => console.error('Error loading vehicles:', err)
     });
   }

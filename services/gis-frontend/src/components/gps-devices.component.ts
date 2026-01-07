@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
@@ -528,7 +528,10 @@ export class GPSDevicesComponent implements OnInit {
 
   constructor(
     private router: Router,
-    private apiService: ApiService
+    private apiService: ApiService,
+    private ngZone: NgZone,
+    private cdr: ChangeDetectorRef,
+    private appRef: ApplicationRef
   ) {}
 
   ngOnInit() {
@@ -537,30 +540,36 @@ export class GPSDevicesComponent implements OnInit {
       return;
     }
 
-    this.loadData();
+    this.ngZone.run(() => {
+      this.loadData();
+    });
   }
 
   loadData() {
     this.apiService.getVehicles().subscribe({
       next: (vehicles) => {
-        this.allVehicles = vehicles;
-        // Build GPS device views from vehicles that have GPS
-        this.allDevices = this.allVehicles
-          .filter(v => v.hasGPS && v.gpsImei)
-          .map(v => ({
-            vehicleId: v.id,
-            vehicleName: v.name,
-            vehiclePlate: v.plate,
-            imei: v.gpsImei || '',
-            simNumber: v.gpsSimNumber || '',
-            simOperator: v.gpsSimOperator || '',
-            brand: v.gpsBrand || '',
-            model: v.gpsModel || '',
-            installationDate: v.gpsInstallationDate,
-            vehicleStatus: v.status,
-            isOnline: v.isOnline || false
-          }));
-        this.devices = [...this.allDevices];
+        this.ngZone.run(() => {
+          this.allVehicles = vehicles;
+          // Build GPS device views from vehicles that have GPS
+          this.allDevices = this.allVehicles
+            .filter(v => v.hasGPS && v.gpsImei)
+            .map(v => ({
+              vehicleId: v.id,
+              vehicleName: v.name,
+              vehiclePlate: v.plate,
+              imei: v.gpsImei || '',
+              simNumber: v.gpsSimNumber || '',
+              simOperator: v.gpsSimOperator || '',
+              brand: v.gpsBrand || '',
+              model: v.gpsModel || '',
+              installationDate: v.gpsInstallationDate,
+              vehicleStatus: v.status,
+              isOnline: v.isOnline || false
+            }));
+          this.devices = [...this.allDevices];
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
       },
       error: (err) => console.error('Error loading vehicles:', err)
     });
