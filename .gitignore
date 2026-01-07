@@ -39,7 +39,6 @@ Thumbs.db
 .angular/
 
 # Rust
-Cargo.lock
 *.pdb
 
 # Data volumes
