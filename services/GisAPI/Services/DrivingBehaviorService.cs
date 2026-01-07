@@ -9,11 +9,28 @@ namespace GisAPI.Services;
 /// </summary>
 public interface IDrivingBehaviorService
 {
+    // Direction detection
     Task<DrivingEvent?> DetectTurnAsync(int vehicleId, double previousHeading, double currentHeading, double latitude, double longitude, DateTime timestamp);
+    
+    // Speed-based detection
     Task<DrivingEvent?> DetectHarshAccelerationAsync(int vehicleId, double previousSpeed, double currentSpeed, double timeDeltaSeconds, double latitude, double longitude, DateTime timestamp);
     Task<DrivingEvent?> DetectHarshBrakingAsync(int vehicleId, double previousSpeed, double currentSpeed, double timeDeltaSeconds, double latitude, double longitude, DateTime timestamp);
     Task<DrivingEvent?> DetectExcessiveSpeedAsync(int vehicleId, double currentSpeed, double speedLimit, double latitude, double longitude, DateTime timestamp);
     Task<DrivingEvent?> DetectIdlingAsync(int vehicleId, bool ignitionOn, double speed, TimeSpan idleDuration, double latitude, double longitude, DateTime timestamp);
+    
+    // MEMS-based detection (G-force)
+    Task<DrivingEvent?> DetectMEMSEventAsync(int vehicleId, double accelX, double accelY, double accelZ, double speedKph, double latitude, double longitude, DateTime timestamp);
+    Task<DrivingEvent?> DetectSpeedBumpAsync(int vehicleId, double accelZ, double speedKph, double latitude, double longitude, DateTime timestamp);
+    Task<DrivingEvent?> DetectPotholeAsync(int vehicleId, double accelZ, double latitude, double longitude, DateTime timestamp);
+    
+    // Engine events
+    Task<DrivingEvent?> DetectHighRpmAsync(int vehicleId, int rpm, double latitude, double longitude, DateTime timestamp);
+    Task<DrivingEvent?> DetectIgnitionChangeAsync(int vehicleId, bool ignitionOn, double latitude, double longitude, DateTime timestamp);
+    
+    // Power events
+    Task<DrivingEvent?> DetectLowBatteryAsync(int vehicleId, int powerVoltage, double latitude, double longitude, DateTime timestamp);
+    
+    // Scoring
     Task<DrivingScore> CalculateDrivingScoreAsync(int vehicleId, DateTime startDate, DateTime endDate);
     Task<List<DrivingEvent>> GetDrivingEventsAsync(int vehicleId, DateTime startDate, DateTime endDate);
 }
@@ -23,13 +40,25 @@ public class DrivingBehaviorService : IDrivingBehaviorService
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<DrivingBehaviorService> _logger;
 
-    // Configurable thresholds
+    // Configurable thresholds - based on GISV1 values
     private const double TURN_ANGLE_THRESHOLD = 45.0;          // degrees for significant turn
     private const double SHARP_TURN_THRESHOLD = 90.0;          // degrees for sharp turn
     private const double HARSH_ACCELERATION_THRESHOLD = 3.5;   // m/s² (0-100 km/h in ~8s)
     private const double HARSH_BRAKING_THRESHOLD = -4.0;       // m/s² (negative for deceleration)
     private const double EXCESSIVE_IDLE_MINUTES = 5.0;         // minutes of idling
     private const double DEFAULT_SPEED_LIMIT = 120.0;          // km/h
+    
+    // MEMS thresholds (G-force) - from GISV1 AAP.cs
+    private const double MEMS_HARSH_BRAKING_G = -0.4;          // AccelX < -0.4G = harsh braking
+    private const double MEMS_HARSH_ACCEL_G = 0.4;             // AccelX > 0.4G = harsh acceleration
+    private const double MEMS_HARSH_CORNERING_G = 0.4;         // |AccelY| > 0.4G = harsh cornering
+    private const double MEMS_SPEED_BUMP_G = 0.5;              // AccelZ > 0.5G = speed bump
+    private const double MEMS_POTHOLE_G = -0.6;                // AccelZ < -0.6G = pothole
+    private const double SPEED_BUMP_MIN_SPEED = 30.0;          // km/h minimum for speed bump detection
+    
+    // Engine thresholds
+    private const int HIGH_RPM_THRESHOLD = 3200;               // RPM > 3200 = high RPM
+    private const int LOW_BATTERY_THRESHOLD = 128;             // Power < 128 = low battery
 
     public DrivingBehaviorService(IServiceProvider serviceProvider, ILogger<DrivingBehaviorService> logger)
     {
@@ -241,6 +270,216 @@ public class DrivingBehaviorService : IDrivingBehaviorService
     }
 
     /// <summary>
+    /// Detect driving events from MEMS accelerometer data (G-force)
+    /// Based on GISV1 AAP.cs thresholds
+    /// </summary>
+    public async Task<DrivingEvent?> DetectMEMSEventAsync(
+        int vehicleId,
+        double accelX,  // Acceleration/Braking axis
+        double accelY,  // Cornering axis (left/right)
+        double accelZ,  // Vertical axis (bumps/potholes)
+        double speedKph,
+        double latitude,
+        double longitude,
+        DateTime timestamp)
+    {
+        // Priority order: most severe events first
+        
+        // 1. Harsh braking (X negative)
+        if (accelX < MEMS_HARSH_BRAKING_G)
+        {
+            var severity = accelX < -0.6 ? DrivingEventSeverities.Critical : DrivingEventSeverities.High;
+            return await SaveAndReturnEventAsync(vehicleId, DrivingEventTypes.HarshBraking, severity, 
+                Math.Abs(accelX), speedKph, latitude, longitude, timestamp);
+        }
+        
+        // 2. Harsh acceleration (X positive)
+        if (accelX > MEMS_HARSH_ACCEL_G)
+        {
+            var severity = accelX > 0.6 ? DrivingEventSeverities.High : DrivingEventSeverities.Medium;
+            return await SaveAndReturnEventAsync(vehicleId, DrivingEventTypes.HarshAcceleration, severity,
+                accelX, speedKph, latitude, longitude, timestamp);
+        }
+        
+        // 3. Harsh cornering (Y axis)
+        if (Math.Abs(accelY) > MEMS_HARSH_CORNERING_G)
+        {
+            var eventType = accelY > 0 ? DrivingEventTypes.TurnRight : DrivingEventTypes.TurnLeft;
+            var severity = Math.Abs(accelY) > 0.6 ? DrivingEventSeverities.High : DrivingEventSeverities.Medium;
+            return await SaveAndReturnEventAsync(vehicleId, eventType, severity,
+                Math.Abs(accelY), speedKph, latitude, longitude, timestamp);
+        }
+        
+        // 4. Speed bump (Z positive + speed > 30 km/h)
+        if (accelZ > MEMS_SPEED_BUMP_G && speedKph > SPEED_BUMP_MIN_SPEED)
+        {
+            return await SaveAndReturnEventAsync(vehicleId, DrivingEventTypes.SpeedBump, DrivingEventSeverities.Medium,
+                accelZ, speedKph, latitude, longitude, timestamp);
+        }
+        
+        // 5. Pothole (Z negative)
+        if (accelZ < MEMS_POTHOLE_G)
+        {
+            return await SaveAndReturnEventAsync(vehicleId, DrivingEventTypes.Pothole, DrivingEventSeverities.Low,
+                Math.Abs(accelZ), speedKph, latitude, longitude, timestamp);
+        }
+        
+        return null;
+    }
+
+    /// <summary>
+    /// Detect speed bump from vertical acceleration
+    /// </summary>
+    public async Task<DrivingEvent?> DetectSpeedBumpAsync(
+        int vehicleId,
+        double accelZ,
+        double speedKph,
+        double latitude,
+        double longitude,
+        DateTime timestamp)
+    {
+        if (accelZ <= MEMS_SPEED_BUMP_G || speedKph <= SPEED_BUMP_MIN_SPEED)
+            return null;
+
+        var severity = accelZ > 0.8 ? DrivingEventSeverities.High : DrivingEventSeverities.Medium;
+        return await SaveAndReturnEventAsync(vehicleId, DrivingEventTypes.SpeedBump, severity,
+            accelZ, speedKph, latitude, longitude, timestamp);
+    }
+
+    /// <summary>
+    /// Detect pothole from negative vertical acceleration
+    /// </summary>
+    public async Task<DrivingEvent?> DetectPotholeAsync(
+        int vehicleId,
+        double accelZ,
+        double latitude,
+        double longitude,
+        DateTime timestamp)
+    {
+        if (accelZ >= MEMS_POTHOLE_G)
+            return null;
+
+        var severity = accelZ < -0.8 ? DrivingEventSeverities.High : DrivingEventSeverities.Medium;
+        return await SaveAndReturnEventAsync(vehicleId, DrivingEventTypes.Pothole, severity,
+            Math.Abs(accelZ), null, latitude, longitude, timestamp);
+    }
+
+    /// <summary>
+    /// Detect high RPM events
+    /// </summary>
+    public async Task<DrivingEvent?> DetectHighRpmAsync(
+        int vehicleId,
+        int rpm,
+        double latitude,
+        double longitude,
+        DateTime timestamp)
+    {
+        if (rpm <= HIGH_RPM_THRESHOLD)
+            return null;
+
+        var severity = rpm switch
+        {
+            > 5000 => DrivingEventSeverities.Critical,
+            > 4000 => DrivingEventSeverities.High,
+            _ => DrivingEventSeverities.Medium
+        };
+
+        var drivingEvent = new DrivingEvent
+        {
+            VehicleId = vehicleId,
+            Type = DrivingEventTypes.HighRpm,
+            Severity = severity,
+            Latitude = latitude,
+            Longitude = longitude,
+            Timestamp = timestamp,
+            Metadata = new Dictionary<string, object> { { "rpm", rpm } }
+        };
+
+        await SaveDrivingEventAsync(drivingEvent);
+        return drivingEvent;
+    }
+
+    /// <summary>
+    /// Detect ignition state changes
+    /// </summary>
+    public async Task<DrivingEvent?> DetectIgnitionChangeAsync(
+        int vehicleId,
+        bool ignitionOn,
+        double latitude,
+        double longitude,
+        DateTime timestamp)
+    {
+        var eventType = ignitionOn ? DrivingEventTypes.IgnitionOn : DrivingEventTypes.IgnitionOff;
+        
+        var drivingEvent = new DrivingEvent
+        {
+            VehicleId = vehicleId,
+            Type = eventType,
+            Severity = DrivingEventSeverities.Low,
+            Latitude = latitude,
+            Longitude = longitude,
+            Timestamp = timestamp
+        };
+
+        await SaveDrivingEventAsync(drivingEvent);
+        return drivingEvent;
+    }
+
+    /// <summary>
+    /// Detect low battery events
+    /// </summary>
+    public async Task<DrivingEvent?> DetectLowBatteryAsync(
+        int vehicleId,
+        int powerVoltage,
+        double latitude,
+        double longitude,
+        DateTime timestamp)
+    {
+        if (powerVoltage >= LOW_BATTERY_THRESHOLD)
+            return null;
+
+        var severity = powerVoltage < 64 ? DrivingEventSeverities.Critical : DrivingEventSeverities.High;
+
+        var drivingEvent = new DrivingEvent
+        {
+            VehicleId = vehicleId,
+            Type = DrivingEventTypes.LowBattery,
+            Severity = severity,
+            Latitude = latitude,
+            Longitude = longitude,
+            Timestamp = timestamp,
+            Metadata = new Dictionary<string, object> { { "voltage", powerVoltage } }
+        };
+
+        await SaveDrivingEventAsync(drivingEvent);
+        return drivingEvent;
+    }
+
+    /// <summary>
+    /// Helper to create and save a driving event
+    /// </summary>
+    private async Task<DrivingEvent> SaveAndReturnEventAsync(
+        int vehicleId, string eventType, string severity,
+        double gForce, double? speedKph,
+        double latitude, double longitude, DateTime timestamp)
+    {
+        var drivingEvent = new DrivingEvent
+        {
+            VehicleId = vehicleId,
+            Type = eventType,
+            Severity = severity,
+            GForce = gForce,
+            SpeedKph = speedKph,
+            Latitude = latitude,
+            Longitude = longitude,
+            Timestamp = timestamp
+        };
+
+        await SaveDrivingEventAsync(drivingEvent);
+        return drivingEvent;
+    }
+
+    /// <summary>
     /// Calculate driving score for a vehicle over a period
     /// </summary>
     public async Task<DrivingScore> CalculateDrivingScoreAsync(int vehicleId, DateTime startDate, DateTime endDate)
@@ -370,13 +609,39 @@ public class DrivingScore
 
 public static class DrivingEventTypes
 {
+    // Direction changes
     public const string TurnLeft = "turn_left";
     public const string TurnRight = "turn_right";
+    public const string Cornering = "cornering";
+    
+    // Acceleration events (MEMS X-axis)
     public const string HarshAcceleration = "harsh_acceleration";
     public const string HarshBraking = "harsh_braking";
+    
+    // Speed events
     public const string Speeding = "speeding";
     public const string ExcessiveIdling = "excessive_idling";
-    public const string Cornering = "cornering";
+    
+    // Road conditions (MEMS Z-axis)
+    public const string SpeedBump = "speed_bump";
+    public const string Pothole = "pothole";
+    
+    // Engine events
+    public const string HighRpm = "high_rpm";
+    public const string IgnitionOff = "ignition_off";
+    public const string IgnitionOn = "ignition_on";
+    
+    // Power events
+    public const string LowBattery = "low_battery";
+    public const string PowerDisconnect = "power_disconnect";
+    
+    // Emergency
+    public const string Sos = "sos";
+    public const string Towing = "towing";
+    
+    // Geofence
+    public const string GeofenceEntry = "geofence_entry";
+    public const string GeofenceExit = "geofence_exit";
 }
 
 public static class DrivingEventSeverities
