@@ -34,7 +34,8 @@ services:
 
   gis-api:
     build:
-      context: ./services/GisAPI
+      context: ./services
+      dockerfile: GisAPI/Dockerfile
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
       interval: 15s
