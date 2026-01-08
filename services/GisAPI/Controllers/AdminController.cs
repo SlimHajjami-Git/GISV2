@@ -397,6 +397,240 @@ public class AdminController : ControllerBase
         }));
     }
 
+    // ==================== VEHICLE MANAGEMENT ====================
+
+    [HttpGet("vehicles")]
+    public async Task<ActionResult<List<AdminVehicleDto>>> GetVehicles([FromQuery] string? search, [FromQuery] int? companyId, [FromQuery] string? status)
+    {
+        var query = _context.Vehicles
+            .Include(v => v.Company)
+            .Include(v => v.GpsDevice)
+            .Include(v => v.AssignedDriver)
+            .AsQueryable();
+
+        if (!string.IsNullOrEmpty(search))
+        {
+            query = query.Where(v => v.Name.Contains(search) || (v.Plate != null && v.Plate.Contains(search)));
+        }
+
+        if (companyId.HasValue)
+        {
+            query = query.Where(v => v.CompanyId == companyId.Value);
+        }
+
+        if (!string.IsNullOrEmpty(status) && status != "all")
+        {
+            query = query.Where(v => v.Status == status);
+        }
+
+        var vehicles = await query.OrderByDescending(v => v.CreatedAt).ToListAsync();
+
+        return Ok(vehicles.Select(v => new AdminVehicleDto
+        {
+            Id = v.Id,
+            Name = v.Name,
+            Type = v.Type,
+            Brand = v.Brand,
+            Model = v.Model,
+            Plate = v.Plate,
+            Year = v.Year,
+            Color = v.Color,
+            Status = v.Status,
+            HasGps = v.HasGps,
+            Mileage = v.Mileage,
+            CompanyId = v.CompanyId,
+            CompanyName = v.Company?.Name,
+            GpsDeviceId = v.GpsDeviceId,
+            GpsImei = v.GpsDevice?.DeviceUid ?? "",
+            AssignedDriverId = v.AssignedDriverId,
+            AssignedDriverName = v.AssignedDriver?.Name,
+            CreatedAt = v.CreatedAt,
+            UpdatedAt = v.UpdatedAt
+        }));
+    }
+
+    [HttpGet("vehicles/{id}")]
+    public async Task<ActionResult<AdminVehicleDto>> GetVehicle(int id)
+    {
+        var vehicle = await _context.Vehicles
+            .Include(v => v.Company)
+            .Include(v => v.GpsDevice)
+            .Include(v => v.AssignedDriver)
+            .FirstOrDefaultAsync(v => v.Id == id);
+
+        if (vehicle == null)
+            return NotFound();
+
+        return Ok(new AdminVehicleDto
+        {
+            Id = vehicle.Id,
+            Name = vehicle.Name,
+            Type = vehicle.Type,
+            Brand = vehicle.Brand,
+            Model = vehicle.Model,
+            Plate = vehicle.Plate,
+            Year = vehicle.Year,
+            Color = vehicle.Color,
+            Status = vehicle.Status,
+            HasGps = vehicle.HasGps,
+            Mileage = vehicle.Mileage,
+            CompanyId = vehicle.CompanyId,
+            CompanyName = vehicle.Company?.Name,
+            GpsDeviceId = vehicle.GpsDeviceId,
+            GpsImei = vehicle.GpsDevice?.DeviceUid ?? "",
+            AssignedDriverId = vehicle.AssignedDriverId,
+            AssignedDriverName = vehicle.AssignedDriver?.Name,
+            CreatedAt = vehicle.CreatedAt,
+            UpdatedAt = vehicle.UpdatedAt
+        });
+    }
+
+    [HttpPost("vehicles")]
+    public async Task<ActionResult<AdminVehicleDto>> CreateVehicle([FromBody] CreateAdminVehicleRequest request)
+    {
+        var company = await _context.Companies.FindAsync(request.CompanyId);
+        if (company == null)
+            return BadRequest(new { message = "Société non trouvée" });
+
+        var vehicle = new Vehicle
+        {
+            Name = request.Name,
+            Type = request.Type ?? "camion",
+            Brand = request.Brand,
+            Model = request.Model,
+            Plate = request.Plate,
+            Year = request.Year,
+            Color = request.Color,
+            Status = request.Status ?? "available",
+            HasGps = request.HasGps,
+            Mileage = request.Mileage ?? 0,
+            CompanyId = request.CompanyId,
+            GpsDeviceId = request.GpsDeviceId,
+            AssignedDriverId = request.AssignedDriverId
+        };
+
+        _context.Vehicles.Add(vehicle);
+        await _context.SaveChangesAsync();
+
+        return CreatedAtAction(nameof(GetVehicle), new { id = vehicle.Id }, new AdminVehicleDto
+        {
+            Id = vehicle.Id,
+            Name = vehicle.Name,
+            Type = vehicle.Type,
+            Brand = vehicle.Brand,
+            Model = vehicle.Model,
+            Plate = vehicle.Plate,
+            Year = vehicle.Year,
+            Color = vehicle.Color,
+            Status = vehicle.Status,
+            HasGps = vehicle.HasGps,
+            Mileage = vehicle.Mileage,
+            CompanyId = vehicle.CompanyId,
+            CompanyName = company.Name,
+            CreatedAt = vehicle.CreatedAt
+        });
+    }
+
+    [HttpPut("vehicles/{id}")]
+    public async Task<ActionResult<AdminVehicleDto>> UpdateVehicle(int id, [FromBody] UpdateAdminVehicleRequest request)
+    {
+        var vehicle = await _context.Vehicles
+            .Include(v => v.Company)
+            .Include(v => v.GpsDevice)
+            .Include(v => v.AssignedDriver)
+            .FirstOrDefaultAsync(v => v.Id == id);
+
+        if (vehicle == null)
+            return NotFound();
+
+        if (!string.IsNullOrEmpty(request.Name)) vehicle.Name = request.Name;
+        if (request.Type != null) vehicle.Type = request.Type;
+        if (request.Brand != null) vehicle.Brand = request.Brand;
+        if (request.Model != null) vehicle.Model = request.Model;
+        if (request.Plate != null) vehicle.Plate = request.Plate;
+        if (request.Year.HasValue) vehicle.Year = request.Year.Value;
+        if (request.Color != null) vehicle.Color = request.Color;
+        if (request.Status != null) vehicle.Status = request.Status;
+        if (request.HasGps.HasValue) vehicle.HasGps = request.HasGps.Value;
+        if (request.Mileage.HasValue) vehicle.Mileage = request.Mileage.Value;
+        if (request.CompanyId.HasValue) vehicle.CompanyId = request.CompanyId.Value;
+        if (request.GpsDeviceId.HasValue) vehicle.GpsDeviceId = request.GpsDeviceId.Value;
+        if (request.AssignedDriverId.HasValue) vehicle.AssignedDriverId = request.AssignedDriverId.Value;
+
+        vehicle.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return Ok(new AdminVehicleDto
+        {
+            Id = vehicle.Id,
+            Name = vehicle.Name,
+            Type = vehicle.Type,
+            Brand = vehicle.Brand,
+            Model = vehicle.Model,
+            Plate = vehicle.Plate,
+            Year = vehicle.Year,
+            Color = vehicle.Color,
+            Status = vehicle.Status,
+            HasGps = vehicle.HasGps,
+            Mileage = vehicle.Mileage,
+            CompanyId = vehicle.CompanyId,
+            CompanyName = vehicle.Company?.Name,
+            GpsDeviceId = vehicle.GpsDeviceId,
+            GpsImei = vehicle.GpsDevice?.DeviceUid ?? "",
+            AssignedDriverId = vehicle.AssignedDriverId,
+            AssignedDriverName = vehicle.AssignedDriver?.Name,
+            CreatedAt = vehicle.CreatedAt,
+            UpdatedAt = vehicle.UpdatedAt
+        });
+    }
+
+    [HttpDelete("vehicles/{id}")]
+    public async Task<ActionResult> DeleteVehicle(int id)
+    {
+        var vehicle = await _context.Vehicles.FindAsync(id);
+        if (vehicle == null) return NotFound();
+
+        _context.Vehicles.Remove(vehicle);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Véhicule supprimé" });
+    }
+
+    [HttpGet("company/{companyId}/vehicles")]
+    public async Task<ActionResult<List<AdminVehicleDto>>> GetCompanyVehicles(int companyId)
+    {
+        var vehicles = await _context.Vehicles
+            .Where(v => v.CompanyId == companyId)
+            .Include(v => v.Company)
+            .Include(v => v.GpsDevice)
+            .Include(v => v.AssignedDriver)
+            .OrderByDescending(v => v.CreatedAt)
+            .ToListAsync();
+
+        return Ok(vehicles.Select(v => new AdminVehicleDto
+        {
+            Id = v.Id,
+            Name = v.Name,
+            Type = v.Type,
+            Brand = v.Brand,
+            Model = v.Model,
+            Plate = v.Plate,
+            Year = v.Year,
+            Color = v.Color,
+            Status = v.Status,
+            HasGps = v.HasGps,
+            Mileage = v.Mileage,
+            CompanyId = v.CompanyId,
+            CompanyName = v.Company?.Name,
+            GpsDeviceId = v.GpsDeviceId,
+            GpsImei = v.GpsDevice?.DeviceUid ?? "",
+            AssignedDriverId = v.AssignedDriverId,
+            AssignedDriverName = v.AssignedDriver?.Name,
+            CreatedAt = v.CreatedAt,
+            UpdatedAt = v.UpdatedAt
+        }));
+    }
+
     // ==================== SERVICE HEALTH ====================
 
     [HttpGet("health")]
@@ -800,5 +1034,67 @@ public class UpdateAdminCompanyRequest
     public string? Phone { get; set; }
     public string? Type { get; set; }
     public int? SubscriptionId { get; set; }
+}
+
+public class AdminVehicleDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Type { get; set; } = "camion";
+    public string? Brand { get; set; }
+    public string? Model { get; set; }
+    public string? Plate { get; set; }
+    public int? Year { get; set; }
+    public string? Color { get; set; }
+    public string Status { get; set; } = "available";
+    public bool HasGps { get; set; }
+    public int Mileage { get; set; }
+    public string? FuelType { get; set; }
+    public int CompanyId { get; set; }
+    public string? CompanyName { get; set; }
+    public int? GpsDeviceId { get; set; }
+    public string? GpsImei { get; set; }
+    public int? AssignedDriverId { get; set; }
+    public string? AssignedDriverName { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+}
+
+public class CreateAdminVehicleRequest
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Type { get; set; }
+    public string? Brand { get; set; }
+    public string? Model { get; set; }
+    public string? Plate { get; set; }
+    public int? Year { get; set; }
+    public string? Color { get; set; }
+    public string? Status { get; set; }
+    public bool HasGps { get; set; }
+    public int? Mileage { get; set; }
+    public string? FuelType { get; set; }
+    public int? TankCapacity { get; set; }
+    public string? VIN { get; set; }
+    public int CompanyId { get; set; }
+    public int? GpsDeviceId { get; set; }
+    public int? AssignedDriverId { get; set; }
+}
+
+public class UpdateAdminVehicleRequest
+{
+    public string? Name { get; set; }
+    public string? Type { get; set; }
+    public string? Brand { get; set; }
+    public string? Model { get; set; }
+    public string? Plate { get; set; }
+    public int? Year { get; set; }
+    public string? Color { get; set; }
+    public string? Status { get; set; }
+    public bool? HasGps { get; set; }
+    public int? Mileage { get; set; }
+    public string? FuelType { get; set; }
+    public int? CompanyId { get; set; }
+    public int? GpsDeviceId { get; set; }
+    public int? AssignedDriverId { get; set; }
 }
 

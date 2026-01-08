@@ -54,6 +54,29 @@ export interface SystemUser {
   isOnline: boolean;
 }
 
+export interface AdminVehicle {
+  id: number;
+  name: string;
+  type: string;
+  brand?: string;
+  model?: string;
+  plate?: string;
+  year?: number;
+  color?: string;
+  status: 'available' | 'in_use' | 'maintenance';
+  hasGps: boolean;
+  mileage: number;
+  fuelType?: string;
+  companyId: number;
+  companyName?: string;
+  gpsDeviceId?: number;
+  gpsImei?: string;
+  assignedDriverId?: number;
+  assignedDriverName?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface ServiceHealth {
   name: string;
   status: 'healthy' | 'degraded' | 'down';
@@ -355,6 +378,54 @@ export class AdminService {
 
   getAvailableRoles(): Observable<any[]> {
     return this.http.get<any[]>(`${this.apiUrl}/admin/users/available-roles`, { headers: this.getHeaders() });
+  }
+
+  // ==================== VEHICLE MANAGEMENT ====================
+
+  getVehicles(search?: string, companyId?: number, status?: string): Observable<AdminVehicle[]> {
+    let url = `${this.apiUrl}/admin/vehicles`;
+    const params: string[] = [];
+    if (search) params.push(`search=${encodeURIComponent(search)}`);
+    if (companyId) params.push(`companyId=${companyId}`);
+    if (status && status !== 'all') params.push(`status=${status}`);
+    if (params.length > 0) url += '?' + params.join('&');
+    
+    return this.http.get<AdminVehicle[]>(url, { headers: this.getHeaders() }).pipe(
+      catchError(err => {
+        console.error('Error fetching vehicles:', err);
+        return of([]);
+      })
+    );
+  }
+
+  getVehicle(id: number): Observable<AdminVehicle | undefined> {
+    return this.http.get<AdminVehicle>(`${this.apiUrl}/admin/vehicles/${id}`, { headers: this.getHeaders() }).pipe(
+      catchError(err => {
+        console.error('Error fetching vehicle:', err);
+        return of(undefined);
+      })
+    );
+  }
+
+  getCompanyVehicles(companyId: number): Observable<AdminVehicle[]> {
+    return this.http.get<AdminVehicle[]>(`${this.apiUrl}/admin/company/${companyId}/vehicles`, { headers: this.getHeaders() }).pipe(
+      catchError(err => {
+        console.error('Error fetching company vehicles:', err);
+        return of([]);
+      })
+    );
+  }
+
+  createVehicle(vehicle: Partial<AdminVehicle>): Observable<AdminVehicle> {
+    return this.http.post<AdminVehicle>(`${this.apiUrl}/admin/vehicles`, vehicle, { headers: this.getHeaders() });
+  }
+
+  updateVehicle(id: number, updates: Partial<AdminVehicle>): Observable<AdminVehicle> {
+    return this.http.put<AdminVehicle>(`${this.apiUrl}/admin/vehicles/${id}`, updates, { headers: this.getHeaders() });
+  }
+
+  deleteVehicle(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/admin/vehicles/${id}`, { headers: this.getHeaders() });
   }
 
   getServiceHealth(): Observable<ServiceHealth[]> {
