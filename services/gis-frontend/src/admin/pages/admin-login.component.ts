@@ -154,7 +154,7 @@ import { AdminService } from '../services/admin.service';
       min-height: 100vh;
       display: flex;
       position: relative;
-      background: #0f1419;
+      background: #f1f5f9;
     }
 
     .login-background {
@@ -169,7 +169,7 @@ import { AdminService } from '../services/admin.service';
       right: -20%;
       width: 80%;
       height: 150%;
-      background: radial-gradient(ellipse at center, rgba(0, 212, 170, 0.15) 0%, transparent 70%);
+      background: radial-gradient(ellipse at center, rgba(0, 212, 170, 0.1) 0%, transparent 70%);
       animation: pulse 8s ease-in-out infinite;
     }
 
@@ -177,7 +177,7 @@ import { AdminService } from '../services/admin.service';
       position: absolute;
       inset: 0;
       background-image:
-        radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        radial-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px);
       background-size: 40px 40px;
     }
 
@@ -192,10 +192,11 @@ import { AdminService } from '../services/admin.service';
       display: flex;
       flex-direction: column;
       justify-content: center;
-      background: linear-gradient(135deg, rgba(26, 31, 46, 0.95) 0%, rgba(20, 24, 36, 0.98) 100%);
-      border-right: 1px solid rgba(255, 255, 255, 0.08);
+      background: #ffffff;
+      border-right: 1px solid #e2e8f0;
       position: relative;
       z-index: 1;
+      box-shadow: 4px 0 24px rgba(0, 0, 0, 0.08);
     }
 
     .login-header {
@@ -231,7 +232,7 @@ import { AdminService } from '../services/admin.service';
     .brand {
       font-size: 24px;
       font-weight: 700;
-      color: #fff;
+      color: #1f2937;
     }
 
     .subtitle {
@@ -241,7 +242,7 @@ import { AdminService } from '../services/admin.service';
     }
 
     .welcome-text {
-      color: #8b98a5;
+      color: #64748b;
       font-size: 15px;
       margin: 0;
     }
@@ -261,15 +262,15 @@ import { AdminService } from '../services/admin.service';
     .form-group label {
       font-size: 14px;
       font-weight: 500;
-      color: #e7e9ea;
+      color: #374151;
     }
 
     .input-wrapper {
       display: flex;
       align-items: center;
       gap: 12px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
       border-radius: 12px;
       padding: 14px 16px;
       transition: all 0.2s;
@@ -277,12 +278,12 @@ import { AdminService } from '../services/admin.service';
 
     .input-wrapper:focus-within {
       border-color: #00d4aa;
-      background: rgba(0, 212, 170, 0.05);
+      background: #ffffff;
       box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.1);
     }
 
     .input-wrapper svg {
-      color: #8b98a5;
+      color: #64748b;
       flex-shrink: 0;
     }
 
@@ -290,13 +291,13 @@ import { AdminService } from '../services/admin.service';
       flex: 1;
       border: none;
       background: transparent;
-      color: #e7e9ea;
+      color: #1f2937;
       font-size: 15px;
       outline: none;
     }
 
     .input-wrapper input::placeholder {
-      color: #6b7280;
+      color: #94a3b8;
     }
 
     .toggle-password {
@@ -304,14 +305,14 @@ import { AdminService } from '../services/admin.service';
       border: none;
       padding: 0;
       cursor: pointer;
-      color: #8b98a5;
+      color: #64748b;
       display: flex;
       align-items: center;
       transition: color 0.2s;
     }
 
     .toggle-password:hover {
-      color: #e7e9ea;
+      color: #1f2937;
     }
 
     .form-options {
@@ -325,7 +326,7 @@ import { AdminService } from '../services/admin.service';
       align-items: center;
       gap: 10px;
       font-size: 14px;
-      color: #8b98a5;
+      color: #64748b;
       cursor: pointer;
       position: relative;
       padding-left: 28px;
@@ -342,8 +343,8 @@ import { AdminService } from '../services/admin.service';
       left: 0;
       width: 18px;
       height: 18px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
       border-radius: 4px;
       transition: all 0.2s;
     }
@@ -469,7 +470,7 @@ import { AdminService } from '../services/admin.service';
     .login-info h2 {
       font-size: 32px;
       font-weight: 700;
-      color: #e7e9ea;
+      color: #1f2937;
       margin: 0 0 40px 0;
     }
 
@@ -499,13 +500,13 @@ import { AdminService } from '../services/admin.service';
     .features-list li h3 {
       font-size: 18px;
       font-weight: 600;
-      color: #e7e9ea;
+      color: #1f2937;
       margin: 0 0 6px 0;
     }
 
     .features-list li p {
       font-size: 14px;
-      color: #8b98a5;
+      color: #64748b;
       margin: 0;
       line-height: 1.5;
     }
