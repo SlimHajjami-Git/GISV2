@@ -95,20 +95,21 @@ interface NavItem {
     .admin-container {
       display: flex;
       min-height: 100vh;
-      background: #0f1419;
-      color: #e7e9ea;
+      background: #f1f5f9;
+      color: #1f2937;
     }
 
     .sidebar {
       width: 260px;
-      background: linear-gradient(180deg, #1a1f2e 0%, #141824 100%);
-      border-right: 1px solid rgba(255, 255, 255, 0.08);
+      background: #ffffff;
+      border-right: 1px solid #e2e8f0;
       display: flex;
       flex-direction: column;
       transition: width 0.3s ease;
       position: fixed;
       height: 100vh;
       z-index: 100;
+      box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
     }
 
     .sidebar.collapsed {
@@ -120,7 +121,7 @@ interface NavItem {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      border-bottom: 1px solid #e2e8f0;
     }
 
     .logo {
@@ -145,7 +146,7 @@ interface NavItem {
     .logo-text {
       font-size: 20px;
       font-weight: 600;
-      color: #fff;
+      color: #1f2937;
     }
 
     .logo-text .highlight {
@@ -156,9 +157,9 @@ interface NavItem {
       width: 32px;
       height: 32px;
       border: none;
-      background: rgba(255, 255, 255, 0.05);
+      background: #f1f5f9;
       border-radius: 8px;
-      color: #8b98a5;
+      color: #64748b;
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -167,8 +168,8 @@ interface NavItem {
     }
 
     .collapse-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: #fff;
+      background: #e2e8f0;
+      color: #1f2937;
     }
 
     .sidebar-nav {
@@ -183,7 +184,7 @@ interface NavItem {
       gap: 12px;
       padding: 12px 14px;
       border-radius: 10px;
-      color: #8b98a5;
+      color: #64748b;
       text-decoration: none;
       margin-bottom: 4px;
       transition: all 0.2s;
@@ -191,13 +192,13 @@ interface NavItem {
     }
 
     .nav-item:hover {
-      background: rgba(255, 255, 255, 0.05);
-      color: #e7e9ea;
+      background: #f1f5f9;
+      color: #1f2937;
     }
 
     .nav-item.active {
       background: linear-gradient(135deg, rgba(0, 212, 170, 0.15) 0%, rgba(0, 163, 136, 0.15) 100%);
-      color: #00d4aa;
+      color: #00a388;
     }
 
     .nav-item.active::before {
@@ -239,7 +240,7 @@ interface NavItem {
 
     .sidebar-footer {
       padding: 16px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      border-top: 1px solid #e2e8f0;
     }
 
     .admin-info {
@@ -247,7 +248,7 @@ interface NavItem {
       align-items: center;
       gap: 12px;
       padding: 12px;
-      background: rgba(255, 255, 255, 0.03);
+      background: #f8fafc;
       border-radius: 10px;
       margin-bottom: 12px;
     }
@@ -273,12 +274,12 @@ interface NavItem {
     .admin-name {
       font-size: 14px;
       font-weight: 600;
-      color: #e7e9ea;
+      color: #1f2937;
     }
 
     .admin-role {
       font-size: 12px;
-      color: #8b98a5;
+      color: #64748b;
     }
 
     .logout-btn {
@@ -318,9 +319,9 @@ interface NavItem {
 
     .top-header {
       height: 64px;
-      background: rgba(26, 31, 46, 0.8);
+      background: #ffffff;
       backdrop-filter: blur(10px);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      border-bottom: 1px solid #e2e8f0;
       padding: 0 24px;
       display: flex;
       align-items: center;
@@ -333,7 +334,7 @@ interface NavItem {
     .page-title {
       font-size: 20px;
       font-weight: 600;
-      color: #e7e9ea;
+      color: #1f2937;
       margin: 0;
     }
 
@@ -347,15 +348,15 @@ interface NavItem {
       display: flex;
       align-items: center;
       gap: 10px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
       border-radius: 10px;
       padding: 8px 14px;
       width: 280px;
     }
 
     .header-search svg {
-      color: #8b98a5;
+      color: #64748b;
       flex-shrink: 0;
     }
 
@@ -363,22 +364,22 @@ interface NavItem {
       flex: 1;
       border: none;
       background: transparent;
-      color: #e7e9ea;
+      color: #1f2937;
       font-size: 14px;
       outline: none;
     }
 
     .header-search input::placeholder {
-      color: #6b7280;
+      color: #94a3b8;
     }
 
     .header-btn {
       width: 40px;
       height: 40px;
       border: none;
-      background: rgba(255, 255, 255, 0.05);
+      background: #f8fafc;
       border-radius: 10px;
-      color: #8b98a5;
+      color: #64748b;
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -388,8 +389,8 @@ interface NavItem {
     }
 
     .header-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: #e7e9ea;
+      background: #e2e8f0;
+      color: #1f2937;
     }
 
     .notification-badge {
@@ -410,10 +411,10 @@ interface NavItem {
 
     .header-time {
       font-size: 14px;
-      color: #8b98a5;
+      color: #64748b;
       font-weight: 500;
       padding: 8px 14px;
-      background: rgba(255, 255, 255, 0.03);
+      background: #f8fafc;
       border-radius: 8px;
     }
 

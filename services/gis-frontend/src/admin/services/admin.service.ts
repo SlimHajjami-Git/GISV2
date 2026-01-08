@@ -195,31 +195,32 @@ export class AdminService {
   }
 
   getDashboardStats(): Observable<DashboardStats> {
-    return of({
-      totalClients: 47,
-      activeClients: 42,
-      totalUsers: 312,
-      usersOnline: 87,
-      totalVehicles: 1248,
-      activeDevices: 1156,
-      totalPositionsToday: 2456789,
-      alertsToday: 234,
-      revenueThisMonth: 125000,
-      newClientsThisMonth: 5
-    });
+    return this.http.get<DashboardStats>(`${this.apiUrl}/admin/dashboard/stats`, { headers: this.getHeaders() }).pipe(
+      catchError(err => {
+        console.error('Error fetching dashboard stats:', err);
+        return of({
+          totalClients: 0,
+          activeClients: 0,
+          totalUsers: 0,
+          usersOnline: 0,
+          totalVehicles: 0,
+          activeDevices: 0,
+          totalPositionsToday: 0,
+          alertsToday: 0,
+          revenueThisMonth: 0,
+          newClientsThisMonth: 0
+        });
+      })
+    );
   }
 
   getFeatureUsage(): Observable<FeatureUsage[]> {
-    return of([
-      { feature: 'Real-time Monitoring', usageCount: 15234, uniqueUsers: 245, trend: 12 },
-      { feature: 'Reports', usageCount: 8456, uniqueUsers: 189, trend: 8 },
-      { feature: 'Geofencing', usageCount: 4521, uniqueUsers: 134, trend: 15 },
-      { feature: 'Vehicle Management', usageCount: 3245, uniqueUsers: 201, trend: 5 },
-      { feature: 'Maintenance', usageCount: 2134, uniqueUsers: 98, trend: -3 },
-      { feature: 'Driver Scores', usageCount: 1876, uniqueUsers: 76, trend: 22 },
-      { feature: 'Cost Tracking', usageCount: 1543, uniqueUsers: 89, trend: 18 },
-      { feature: 'Playback', usageCount: 1234, uniqueUsers: 156, trend: 10 },
-    ]);
+    return this.http.get<FeatureUsage[]>(`${this.apiUrl}/admin/dashboard/feature-usage`, { headers: this.getHeaders() }).pipe(
+      catchError(err => {
+        console.error('Error fetching feature usage:', err);
+        return of([]);
+      })
+    );
   }
 
   // ==================== COMPANY/CLIENT MANAGEMENT ====================

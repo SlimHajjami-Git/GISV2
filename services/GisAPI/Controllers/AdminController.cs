@@ -325,36 +325,53 @@ public class AdminController : ControllerBase
         return Ok(_maintenanceMode);
     }
 
+    // ==================== DASHBOARD STATS ====================
+
+    [HttpGet("dashboard/stats")]
+    public async Task<ActionResult<DashboardStatsDto>> GetDashboardStats()
+    {
+        var today = DateTime.UtcNow.Date;
+        
+        var totalClients = await _context.Companies.CountAsync();
+        var activeClients = await _context.Companies.CountAsync(c => c.IsActive);
+        var totalUsers = await _context.Users.CountAsync();
+        var totalVehicles = await _context.Vehicles.CountAsync();
+        var activeDevices = await _context.GpsDevices.CountAsync();
+        var totalPositionsToday = await _context.GpsPositions.CountAsync(p => p.RecordedAt >= today);
+        
+        var firstOfMonth = new DateTime(today.Year, today.Month, 1);
+        var newClientsThisMonth = await _context.Companies.CountAsync(c => c.CreatedAt >= firstOfMonth);
+
+        return Ok(new DashboardStatsDto
+        {
+            TotalClients = totalClients,
+            ActiveClients = activeClients,
+            TotalUsers = totalUsers,
+            UsersOnline = 0,
+            TotalVehicles = totalVehicles,
+            ActiveDevices = activeDevices,
+            TotalPositionsToday = totalPositionsToday,
+            AlertsToday = 0,
+            RevenueThisMonth = 0,
+            NewClientsThisMonth = newClientsThisMonth
+        });
+    }
+
+    [HttpGet("dashboard/feature-usage")]
+    public ActionResult<List<FeatureUsageDto>> GetFeatureUsage()
+    {
+        // Feature usage tracking would require analytics implementation
+        // Return empty for now - can be implemented with proper tracking
+        return Ok(new List<FeatureUsageDto>());
+    }
+
     // ==================== ESTIMATES ====================
 
     [HttpGet("estimates")]
     public async Task<ActionResult<List<EstimateDto>>> GetEstimates()
     {
-        // For now, return from a simple in-memory store or database
-        // In production, you'd have an Estimates table
-        var estimates = new List<EstimateDto>
-        {
-            new EstimateDto
-            {
-                Id = "EST-001",
-                ClientName = "Nouveau Client",
-                ClientEmail = "contact@client.tn",
-                Items = new List<EstimateItemDto>
-                {
-                    new() { Description = "Abonnement GPS - 50 véhicules", Quantity = 1, UnitPrice = 2500, Total = 2500 },
-                    new() { Description = "Installation GPS", Quantity = 50, UnitPrice = 150, Total = 7500 }
-                },
-                Subtotal = 10000,
-                Tax = 1900,
-                Total = 11900,
-                Status = "sent",
-                ValidUntil = DateTime.UtcNow.AddDays(30),
-                CreatedAt = DateTime.UtcNow.AddDays(-5),
-                CreatedBy = "Admin"
-            }
-        };
-
-        return Ok(estimates);
+        // Return empty list - estimates feature not yet implemented with database
+        return Ok(new List<EstimateDto>());
     }
 
     [HttpPost("estimates")]
@@ -479,4 +496,26 @@ public class CreateEstimateRequest
 public class UpdateEstimateStatusRequest
 {
     public string Status { get; set; } = string.Empty;
+}
+
+public class DashboardStatsDto
+{
+    public int TotalClients { get; set; }
+    public int ActiveClients { get; set; }
+    public int TotalUsers { get; set; }
+    public int UsersOnline { get; set; }
+    public int TotalVehicles { get; set; }
+    public int ActiveDevices { get; set; }
+    public int TotalPositionsToday { get; set; }
+    public int AlertsToday { get; set; }
+    public decimal RevenueThisMonth { get; set; }
+    public int NewClientsThisMonth { get; set; }
+}
+
+public class FeatureUsageDto
+{
+    public string Feature { get; set; } = string.Empty;
+    public int UsageCount { get; set; }
+    public int UniqueUsers { get; set; }
+    public int Trend { get; set; }
 }
