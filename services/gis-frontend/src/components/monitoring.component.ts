@@ -55,6 +55,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   routingControl: any = null;
   useRoadSnapping = true; // Toggle between road-snapped route and straight lines
   pointMarkers: L.CircleMarker[] = []; // Markers for each GPS point
+  filteredBirdFlights = 0; // Count of filtered bird flight positions
 
   // Message
   driverMessage = '';

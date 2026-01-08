@@ -292,7 +292,7 @@ export class ReportsComponent implements OnInit {
     this.apiService.getVehicleHistory(vehicleId, startDate, endDate).subscribe({
       next: (result) => {
         this.ngZone.run(() => {
-          this.processVehicleData(result.positions);
+          this.processVehicleData(result);
           this.reportGenerated = true;
           this.loading = false;
           this.activeTab = 'chart';
