@@ -71,7 +71,7 @@ public static class SeedBelive
             Email = "admin@belive.ma",
             Phone = "+212 600 000000",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("Calypso@2026+"),
-            Roles = new[] { "superadmin" },
+            Roles = new[] { "super_admin" },
             Permissions = new[] { "all" },
             AssignedVehicleIds = Array.Empty<int>(),
             Status = "active",

@@ -190,7 +190,7 @@ public class AuthController : ControllerBase
                 // Update password for existing user
                 existingUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Calypso@2026+");
                 existingUser.Status = "active";
-                existingUser.Roles = new[] { "superadmin" };
+                existingUser.Roles = new[] { "super_admin" };
                 existingUser.Permissions = new[] { "all" };
                 await _context.SaveChangesAsync();
                 return Ok(new { message = "User admin@belive.ma updated", password = "Calypso@2026+" });
@@ -247,7 +247,7 @@ public class AuthController : ControllerBase
                 Email = "admin@belive.ma",
                 Phone = "+216 00 000 000",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword("Calypso@2026+"),
-                Roles = new[] { "superadmin" },
+                Roles = new[] { "super_admin" },
                 Permissions = new[] { "all" },
                 AssignedVehicleIds = Array.Empty<int>(),
                 Status = "active",
