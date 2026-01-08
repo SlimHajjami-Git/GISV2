@@ -1150,7 +1150,7 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
   private overviewLayers: L.FeatureGroup = L.featureGroup();
   private drawingLayer: L.Circle | L.Polygon | null = null;
   private markers: L.CircleMarker[] = [];
-  private defaultCenter: L.LatLngExpression = [33.5731, -7.5898]; // Casablanca
+  private defaultCenter: L.LatLngExpression = [36.8065, 10.1815]; // Tunis, Tunisie
 
   constructor(
     private router: Router,
