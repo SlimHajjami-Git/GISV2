@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\src\GisAPI.Application\GisAPI.Application.csproj" />
+    <ProjectReference Include="..\src\GisAPI.Domain\GisAPI.Domain.csproj" />
     <ProjectReference Include="..\src\GisAPI.Infrastructure\GisAPI.Infrastructure.csproj" />
     <ProjectReference Include="..\src\GisAPI.Shared\GisAPI.Shared.csproj" />
   </ItemGroup>

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using GisAPI.Services;
+using GisAPI.Domain.Entities;
 
 namespace GisAPI.Controllers;
 
@@ -73,7 +74,7 @@ public class DrivingBehaviorController : ControllerBase
             Period = new PeriodInfo { StartDate = start, EndDate = end },
             Score = score,
             EventsByType = events
-                .GroupBy(e => e.EventType)
+                .GroupBy(e => e.Type)
                 .ToDictionary(g => g.Key.ToString(), g => g.Count()),
             EventsBySeverity = events
                 .GroupBy(e => e.Severity)

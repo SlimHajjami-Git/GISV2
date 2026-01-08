@@ -128,15 +128,13 @@ public class GpsController : ControllerBase
 
     /// <summary>
     /// Get position history for a vehicle (for playback/route display)
-    /// Bird flights are filtered out by default to avoid erratic lines on the map
     /// </summary>
     [HttpGet("vehicles/{vehicleId}/history")]
-    public async Task<ActionResult<HistoryWithStatsDto>> GetVehicleHistory(
+    public async Task<ActionResult<List<PositionDto>>> GetVehicleHistory(
         int vehicleId,
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
-        [FromQuery] int limit = 500,
-        [FromQuery] bool includeBirdFlights = false)
+        [FromQuery] int limit = 10000)
     {
         var companyId = GetCompanyId();
 
@@ -147,31 +145,15 @@ public class GpsController : ControllerBase
             return NotFound();
 
         if (!vehicle.GpsDeviceId.HasValue)
-            return Ok(new HistoryWithStatsDto { Positions = new List<PositionDto>() });
+            return Ok(new List<PositionDto>());
 
         from ??= DateTime.UtcNow.AddHours(-24);
         to ??= DateTime.UtcNow;
 
-        // Count bird flights for statistics
-        var birdFlightCount = await _context.GpsPositions
+        var positions = await _context.GpsPositions
             .Where(p => p.DeviceId == vehicle.GpsDeviceId &&
                         p.RecordedAt >= from &&
-                        p.RecordedAt <= to &&
-                        p.IsBirdFlight)
-            .CountAsync();
-
-        var query = _context.GpsPositions
-            .Where(p => p.DeviceId == vehicle.GpsDeviceId &&
-                        p.RecordedAt >= from &&
-                        p.RecordedAt <= to);
-
-        // Filter out bird flights by default (erratic GPS points)
-        if (!includeBirdFlights)
-        {
-            query = query.Where(p => !p.IsBirdFlight);
-        }
-
-        var positions = await query
+                        p.RecordedAt <= to)
             .OrderBy(p => p.RecordedAt)
             .Take(limit)
             .Select(p => new PositionDto
@@ -189,25 +171,18 @@ public class GpsController : ControllerBase
             })
             .ToListAsync();
 
-        return Ok(new HistoryWithStatsDto
-        {
-            Positions = positions,
-            FilteredBirdFlights = birdFlightCount,
-            TotalPositions = positions.Count + (includeBirdFlights ? 0 : birdFlightCount)
-        });
+        return Ok(positions);
     }
 
     /// <summary>
     /// Get position history for a device by IMEI
-    /// Bird flights are filtered out by default
     /// </summary>
     [HttpGet("devices/{deviceUid}/history")]
     public async Task<ActionResult<List<PositionDto>>> GetDeviceHistory(
         string deviceUid,
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
-        [FromQuery] int limit = 500,
-        [FromQuery] bool includeBirdFlights = false)
+        [FromQuery] int limit = 10000)
     {
         var companyId = GetCompanyId();
 
@@ -220,18 +195,10 @@ public class GpsController : ControllerBase
         from ??= DateTime.UtcNow.AddHours(-24);
         to ??= DateTime.UtcNow;
 
-        var query = _context.GpsPositions
+        var positions = await _context.GpsPositions
             .Where(p => p.DeviceId == device.Id &&
                         p.RecordedAt >= from &&
-                        p.RecordedAt <= to);
-
-        // Filter out bird flights by default
-        if (!includeBirdFlights)
-        {
-            query = query.Where(p => !p.IsBirdFlight);
-        }
-
-        var positions = await query
+                        p.RecordedAt <= to)
             .OrderBy(p => p.RecordedAt)
             .Take(limit)
             .Select(p => new PositionDto
@@ -330,6 +297,68 @@ public class GpsController : ControllerBase
         return Ok(stats);
     }
 
+    // ==================== GPS DEVICES ====================
+
+    /// <summary>
+    /// Get available (unassigned) GPS devices for assignment to vehicles
+    /// </summary>
+    [HttpGet("devices/available")]
+    public async Task<ActionResult<List<GpsDeviceDto>>> GetAvailableDevices()
+    {
+        var companyId = GetCompanyId();
+
+        var devices = await _context.GpsDevices
+            .Where(d => d.CompanyId == companyId && 
+                        (d.Status == "unassigned" || d.Status == null) &&
+                        !_context.Vehicles.Any(v => v.GpsDeviceId == d.Id))
+            .OrderByDescending(d => d.LastCommunication)
+            .Select(d => new GpsDeviceDto
+            {
+                Id = d.Id,
+                DeviceUid = d.DeviceUid,
+                Label = d.Label,
+                SimNumber = d.SimNumber,
+                SimOperator = d.SimOperator,
+                Brand = d.Brand,
+                Model = d.Model,
+                Status = d.Status,
+                LastCommunication = d.LastCommunication
+            })
+            .ToListAsync();
+
+        return Ok(devices);
+    }
+
+    /// <summary>
+    /// Get all GPS devices for the company
+    /// </summary>
+    [HttpGet("devices")]
+    public async Task<ActionResult<List<GpsDeviceDto>>> GetAllDevices()
+    {
+        var companyId = GetCompanyId();
+
+        var devices = await _context.GpsDevices
+            .Where(d => d.CompanyId == companyId)
+            .OrderByDescending(d => d.LastCommunication)
+            .Select(d => new GpsDeviceDto
+            {
+                Id = d.Id,
+                DeviceUid = d.DeviceUid,
+                Label = d.Label,
+                SimNumber = d.SimNumber,
+                SimOperator = d.SimOperator,
+                Brand = d.Brand,
+                Model = d.Model,
+                Status = d.Status,
+                LastCommunication = d.LastCommunication,
+                AssignedVehicleId = _context.Vehicles.Where(v => v.GpsDeviceId == d.Id).Select(v => (int?)v.Id).FirstOrDefault(),
+                AssignedVehicleName = _context.Vehicles.Where(v => v.GpsDeviceId == d.Id).Select(v => v.Name).FirstOrDefault()
+            })
+            .ToListAsync();
+
+        return Ok(devices);
+    }
+
     // ==================== FLEET OVERVIEW ====================
 
     /// <summary>
@@ -406,17 +435,25 @@ public class PositionDto
     public long? OdometerKm { get; set; }
 }
 
-public class HistoryWithStatsDto
-{
-    public List<PositionDto> Positions { get; set; } = new();
-    public int FilteredBirdFlights { get; set; }
-    public int TotalPositions { get; set; }
-}
-
 public class GeocodeResultDto
 {
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public string? Address { get; set; }
     public bool FromCache { get; set; }
+}
+
+public class GpsDeviceDto
+{
+    public int Id { get; set; }
+    public string DeviceUid { get; set; } = string.Empty;
+    public string? Label { get; set; }
+    public string? SimNumber { get; set; }
+    public string? SimOperator { get; set; }
+    public string? Brand { get; set; }
+    public string? Model { get; set; }
+    public string? Status { get; set; }
+    public DateTime? LastCommunication { get; set; }
+    public int? AssignedVehicleId { get; set; }
+    public string? AssignedVehicleName { get; set; }
 }

@@ -118,40 +118,53 @@ import { AdminService, Client } from '../services/admin.service';
             </div>
 
             <div class="modal-body" *ngIf="!showViewModal">
+              <h4 class="section-title">Informations société</h4>
               <div class="form-group">
-                <label>Company Name</label>
-                <input type="text" [(ngModel)]="clientForm.name" placeholder="Enter company name" />
+                <label>Nom de la société *</label>
+                <input type="text" [(ngModel)]="clientForm.name" placeholder="Nom de la société" />
               </div>
               <div class="form-row">
                 <div class="form-group">
-                  <label>Email</label>
-                  <input type="email" [(ngModel)]="clientForm.email" placeholder="contact@company.com" />
+                  <label>Email société</label>
+                  <input type="email" [(ngModel)]="clientForm.email" placeholder="contact@societe.tn" />
                 </div>
                 <div class="form-group">
-                  <label>Phone</label>
+                  <label>Téléphone</label>
                   <input type="tel" [(ngModel)]="clientForm.phone" placeholder="+216 XX XXX XXX" />
                 </div>
               </div>
               <div class="form-row">
                 <div class="form-group">
-                  <label>Company Type</label>
+                  <label>Type de société</label>
                   <select [(ngModel)]="clientForm.type">
                     <option value="transport">Transport</option>
                     <option value="location">Location</option>
-                    <option value="other">Other</option>
+                    <option value="other">Autre</option>
                   </select>
                 </div>
                 <div class="form-group">
-                  <label>Subscription</label>
+                  <label>Abonnement</label>
                   <select [(ngModel)]="clientForm.subscriptionId">
-                    <option [value]="null">No Subscription</option>
-                    <option *ngFor="let sub of subscriptions" [value]="sub.id">{{ sub.name }} - {{ sub.price }} TND/month</option>
+                    <option [value]="null">Aucun abonnement</option>
+                    <option *ngFor="let sub of subscriptions" [value]="sub.id">{{ sub.name }} - {{ sub.price }} TND/mois</option>
                   </select>
                 </div>
               </div>
-              <div class="form-group">
-                <label>Max Vehicles</label>
-                <input type="number" [(ngModel)]="clientForm.maxVehicles" min="1" />
+              
+              <h4 class="section-title" *ngIf="!showEditModal">Administrateur de la société</h4>
+              <div class="form-row" *ngIf="!showEditModal">
+                <div class="form-group">
+                  <label>Nom de l'admin *</label>
+                  <input type="text" [(ngModel)]="clientForm.adminName" placeholder="Nom complet" />
+                </div>
+                <div class="form-group">
+                  <label>Email admin *</label>
+                  <input type="email" [(ngModel)]="clientForm.adminEmail" placeholder="admin@societe.tn" />
+                </div>
+              </div>
+              <div class="form-group" *ngIf="!showEditModal">
+                <label>Mot de passe *</label>
+                <input type="password" [(ngModel)]="clientForm.adminPassword" placeholder="Mot de passe" />
               </div>
             </div>
 
@@ -516,6 +529,17 @@ import { AdminService, Client } from '../services/admin.service';
       gap: 20px;
     }
 
+    .section-title {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #00d4aa;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
     .form-group {
       display: flex;
       flex-direction: column;
@@ -655,7 +679,10 @@ export class AdminClientsComponent implements OnInit {
     phone: '',
     type: 'transport',
     subscriptionId: undefined as number | undefined,
-    maxVehicles: 10
+    maxVehicles: 10,
+    adminName: '',
+    adminEmail: '',
+    adminPassword: ''
   };
 
   constructor(
@@ -700,7 +727,10 @@ export class AdminClientsComponent implements OnInit {
       phone: client.phone || '',
       type: client.type,
       subscriptionId: client.subscriptionId,
-      maxVehicles: client.maxVehicles
+      maxVehicles: client.maxVehicles,
+      adminName: '',
+      adminEmail: '',
+      adminPassword: ''
     };
     this.showViewModal = false;
     this.showEditModal = true;
@@ -748,7 +778,7 @@ export class AdminClientsComponent implements OnInit {
     this.showEditModal = false;
     this.showViewModal = false;
     this.selectedClient = null;
-    this.clientForm = { name: '', email: '', phone: '', type: 'transport', subscriptionId: undefined, maxVehicles: 10 };
+    this.clientForm = { name: '', email: '', phone: '', type: 'transport', subscriptionId: undefined, maxVehicles: 10, adminName: '', adminEmail: '', adminPassword: '' };
   }
 
   formatDate(date: Date): string {

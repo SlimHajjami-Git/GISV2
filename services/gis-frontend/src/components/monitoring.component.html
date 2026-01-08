@@ -269,27 +269,6 @@
                 <div class="playback-controls" *ngIf="isPlaybackLoaded">
                   <div class="playback-info">
                     <span>Point {{ playbackIndex + 1 }} / {{ playbackPositions.length }}</span>
-                    <!-- Bird Flight Filter Badge -->
-                    <span class="bird-flight-badge" *ngIf="filteredBirdFlights > 0" (click)="showBirdFlightInfo = !showBirdFlightInfo" title="Points GPS erratiques filtrés">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                      </svg>
-                      {{ filteredBirdFlights }} filtrés
-                    </span>
-                  </div>
-                  <!-- Bird Flight Info Popup -->
-                  <div class="bird-flight-popup" *ngIf="showBirdFlightInfo && filteredBirdFlights > 0">
-                    <div class="popup-header">
-                      <strong>Points GPS filtrés</strong>
-                      <button class="close-btn" (click)="showBirdFlightInfo = false">×</button>
-                    </div>
-                    <p>{{ filteredBirdFlights }} point(s) GPS erratique(s) ont été automatiquement filtrés pour améliorer la qualité du tracé.</p>
-                    <p class="popup-detail">Ces points présentaient des anomalies telles que:</p>
-                    <ul>
-                      <li>Vitesse implicite irréaliste (> 200 km/h)</li>
-                      <li>Sauts de position impossibles</li>
-                      <li>Signal GPS insuffisant</li>
-                    </ul>
                   </div>
                   <div class="control-buttons">
                     <button class="control-btn" (click)="resetPlayback()" title="Retour au début">

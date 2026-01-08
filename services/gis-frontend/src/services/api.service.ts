@@ -46,11 +46,6 @@ export interface PositionDto {
   odometerKm?: number;
 }
 
-export interface HistoryWithStats {
-  positions: PositionDto[];
-  filteredBirdFlights: number;
-  totalPositions: number;
-}
 
 @Injectable({
   providedIn: 'root'
@@ -482,15 +477,15 @@ export class ApiService {
     return this.http.get<any>(`${this.API_URL}/gps/vehicles/${vehicleId}/position`, { headers: this.getHeaders() });
   }
 
-  getVehicleHistory(vehicleId: number, from?: Date, to?: Date, limit = 500): Observable<HistoryWithStats> {
+  getVehicleHistory(vehicleId: number, from?: Date, to?: Date, limit = 10000): Observable<PositionDto[]> {
     let params = new HttpParams();
     if (from) params = params.set('from', from.toISOString());
     if (to) params = params.set('to', to.toISOString());
     params = params.set('limit', limit.toString());
-    return this.http.get<HistoryWithStats>(`${this.API_URL}/gps/vehicles/${vehicleId}/history`, { headers: this.getHeaders(), params });
+    return this.http.get<PositionDto[]>(`${this.API_URL}/gps/vehicles/${vehicleId}/history`, { headers: this.getHeaders(), params });
   }
 
-  getDeviceHistory(deviceUid: string, from?: Date, to?: Date, limit = 500): Observable<any[]> {
+  getDeviceHistory(deviceUid: string, from?: Date, to?: Date, limit = 10000): Observable<PositionDto[]> {
     let params = new HttpParams();
     if (from) params = params.set('from', from.toISOString());
     if (to) params = params.set('to', to.toISOString());
@@ -524,7 +519,15 @@ export class ApiService {
         map(devices => devices.filter(d => !d.vehicleId))
       );
     }
-    return this.http.get<any[]>(`${this.API_URL}/gpsdevices/unassigned`, { headers: this.getHeaders() });
+    return this.http.get<any[]>(`${this.API_URL}/gps/devices/available`, { headers: this.getHeaders() });
+  }
+
+  getAvailableGpsDevices(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.API_URL}/gps/devices/available`, { headers: this.getHeaders() });
+  }
+
+  getAllGpsDevices(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.API_URL}/gps/devices`, { headers: this.getHeaders() });
   }
 
   createGpsDevice(device: any): Observable<any> {

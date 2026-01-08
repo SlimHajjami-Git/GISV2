@@ -61,11 +61,6 @@ public class GpsPosition : Entity
     // Protocol info
     public byte? SendFlag { get; set; }           // Type d'événement (0-11)
     public byte? ProtocolVersion { get; set; }    // Version protocole AAP (1,2,3)
-    
-    // Bird Flight Filter - Points GPS erratiques détectés
-    public bool IsBirdFlight { get; set; }        // True si point GPS irréaliste (vol d'oiseau)
-    public string? BirdFlightReason { get; set; } // Raison du rejet (vitesse implicite, saut, etc.)
-    public double? ImplicitSpeedKph { get; set; } // Vitesse calculée entre ce point et le précédent
 }
 
 public class GpsAlert : Entity

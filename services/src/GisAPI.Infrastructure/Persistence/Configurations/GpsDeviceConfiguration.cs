@@ -78,11 +78,6 @@ public class GpsPositionConfiguration : IEntityTypeConfiguration<GpsPosition>
         builder.Property(e => e.SendFlag).HasColumnName("send_flag");
         builder.Property(e => e.ProtocolVersion).HasColumnName("protocol_version");
 
-        // Bird flight filter columns
-        builder.Property(e => e.IsBirdFlight).HasColumnName("is_bird_flight").HasDefaultValue(false);
-        builder.Property(e => e.BirdFlightReason).HasColumnName("bird_flight_reason").HasMaxLength(200);
-        builder.Property(e => e.ImplicitSpeedKph).HasColumnName("implicit_speed_kph");
-
         builder.HasIndex(e => e.DeviceId);
         builder.HasIndex(e => e.RecordedAt).IsDescending();
 

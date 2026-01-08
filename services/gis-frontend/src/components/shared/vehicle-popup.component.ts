@@ -1,7 +1,8 @@
-import { Component, EventEmitter, Input, Output, OnInit } from '@angular/core';
+import { Component, EventEmitter, Input, Output, OnInit, OnChanges, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Vehicle } from '../../models/types';
+import { ApiService } from '../../services/api.service';
 
 @Component({
   selector: 'app-vehicle-popup',
@@ -125,6 +126,7 @@ import { Vehicle } from '../../models/types';
                   type="checkbox"
                   name="hasGPS"
                   [(ngModel)]="formData.hasGPS"
+                  (change)="onHasGpsChange()"
                 />
                 <span>Ce véhicule dispose d'un GPS</span>
               </label>
@@ -138,23 +140,53 @@ import { Vehicle } from '../../models/types';
                 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
                 <circle cx="12" cy="10" r="3"/>
               </svg>
-              <span>Informations GPS</span>
+              <span>Appareil GPS</span>
             </div>
-            <div class="form-grid">
+            
+            <!-- GPS Selection Mode -->
+            <div class="gps-mode-selector">
+              <label class="radio-label">
+                <input type="radio" name="gpsMode" value="existing" [(ngModel)]="gpsMode" (change)="onGpsModeChange()">
+                <span>Sélectionner un appareil existant</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="gpsMode" value="new" [(ngModel)]="gpsMode" (change)="onGpsModeChange()">
+                <span>Ajouter un nouvel appareil</span>
+              </label>
+            </div>
+
+            <!-- Existing GPS Device Selection -->
+            <div class="form-group" *ngIf="gpsMode === 'existing'">
+              <label for="gpsDeviceId">Appareil GPS disponible</label>
+              <select id="gpsDeviceId" name="gpsDeviceId" [(ngModel)]="formData.gpsDeviceId" class="gps-select">
+                <option [value]="null">-- Sélectionner un appareil --</option>
+                <option *ngFor="let device of availableGpsDevices" [value]="device.id">
+                  {{ device.deviceUid }} {{ device.brand ? '(' + device.brand + ' ' + device.model + ')' : '' }}
+                  {{ device.lastCommunication ? '- Dernière comm: ' + formatDate(device.lastCommunication) : '- Jamais connecté' }}
+                </option>
+              </select>
+              <p class="help-text" *ngIf="availableGpsDevices.length === 0">
+                Aucun appareil GPS disponible. Ajoutez-en un nouveau ci-dessous.
+              </p>
+            </div>
+
+            <!-- New GPS Device Form -->
+            <div class="form-grid" *ngIf="gpsMode === 'new'">
               <div class="form-group">
-                <label for="gpsImei">IMEI *</label>
+                <label for="gpsImei">IMEI / ID Appareil *</label>
                 <input
                   type="text"
                   id="gpsImei"
                   name="gpsImei"
                   [(ngModel)]="formData.gpsImei"
                   placeholder="Ex: 358762109054321"
-                  maxlength="15"
+                  maxlength="20"
+                  required
                 />
               </div>
 
               <div class="form-group">
-                <label for="gpsSimNumber">Numéro SIM *</label>
+                <label for="gpsSimNumber">Numéro SIM</label>
                 <input
                   type="text"
                   id="gpsSimNumber"
@@ -179,23 +211,18 @@ import { Vehicle } from '../../models/types';
                 <label for="gpsBrand">Marque GPS</label>
                 <select id="gpsBrand" name="gpsBrand" [(ngModel)]="formData.gpsBrand">
                   <option value="">Sélectionner</option>
-                  <option value="Concox">Concox</option>
-                  <option value="Coban">Coban</option>
-                  <option value="Queclink">Queclink</option>
-                  <option value="Teltonika">Teltonika</option>
+                  <option value="NEMS">NEMS</option>
                   <option value="Other">Autre</option>
                 </select>
               </div>
 
               <div class="form-group">
-                <label for="gpsModel">Modèle GPS</label>
-                <input
-                  type="text"
-                  id="gpsModel"
-                  name="gpsModel"
-                  [(ngModel)]="formData.gpsModel"
-                  placeholder="Ex: GT06N"
-                />
+                <label for="gpsModel">Version GPS</label>
+                <select id="gpsModel" name="gpsModel" [(ngModel)]="formData.gpsModel">
+                  <option value="">Sélectionner</option>
+                  <option value="S">NEMS S</option>
+                  <option value="L">NEMS L</option>
+                </select>
               </div>
 
               <div class="form-group">
@@ -396,6 +423,50 @@ import { Vehicle } from '../../models/types';
       color: #3b82f6;
     }
 
+    .gps-mode-selector {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 16px;
+      padding: 12px;
+      background: #f8fafc;
+      border-radius: 6px;
+    }
+
+    .radio-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #475569;
+    }
+
+    .radio-label input[type="radio"] {
+      accent-color: #3b82f6;
+    }
+
+    .gps-select {
+      width: 100%;
+      padding: 10px 12px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #1e293b;
+    }
+
+    .gps-select:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+
+    .help-text {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 6px;
+      font-style: italic;
+    }
+
     .popup-footer {
       padding: 14px 20px;
       border-top: 1px solid #e2e8f0;
@@ -458,13 +529,16 @@ import { Vehicle } from '../../models/types';
     }
   `]
 })
-export class VehiclePopupComponent implements OnInit {
+export class VehiclePopupComponent implements OnInit, OnChanges {
   @Input() isOpen = false;
   @Input() vehicle: Vehicle | null = null;
   @Output() closed = new EventEmitter<void>();
   @Output() saved = new EventEmitter<Partial<Vehicle>>();
 
-  formData: Partial<Vehicle> = {
+  availableGpsDevices: any[] = [];
+  gpsMode: 'existing' | 'new' = 'existing';
+
+  formData: any = {
     name: '',
     plate: '',
     brand: '',
@@ -474,6 +548,7 @@ export class VehiclePopupComponent implements OnInit {
     status: 'available',
     mileage: 0,
     hasGPS: false,
+    gpsDeviceId: undefined,
     gpsImei: '',
     gpsSimNumber: '',
     gpsSimOperator: undefined,
@@ -482,10 +557,75 @@ export class VehiclePopupComponent implements OnInit {
     gpsInstallationDate: undefined
   };
 
+  constructor(private apiService: ApiService) {}
+
   ngOnInit() {
+    this.loadAvailableDevices();
     if (this.vehicle) {
       this.formData = { ...this.vehicle };
+      if (this.vehicle.gpsDeviceId) {
+        this.gpsMode = 'existing';
+      }
     }
+  }
+
+  ngOnChanges(changes: SimpleChanges) {
+    if (changes['isOpen'] && changes['isOpen'].currentValue) {
+      this.loadAvailableDevices();
+      if (this.vehicle) {
+        this.formData = { ...this.vehicle };
+        this.gpsMode = this.vehicle.gpsDeviceId ? 'existing' : 'new';
+      } else {
+        this.resetForm();
+      }
+    }
+  }
+
+  loadAvailableDevices() {
+    this.apiService.getAvailableGpsDevices().subscribe({
+      next: (devices) => {
+        this.availableGpsDevices = devices;
+        if (devices.length === 0) {
+          this.gpsMode = 'new';
+        }
+      },
+      error: (err) => {
+        console.error('Error loading GPS devices:', err);
+        this.availableGpsDevices = [];
+      }
+    });
+  }
+
+  onHasGpsChange() {
+    if (this.formData.hasGPS) {
+      this.loadAvailableDevices();
+    } else {
+      this.formData.gpsDeviceId = undefined;
+      this.formData.gpsImei = '';
+      this.formData.gpsSimNumber = '';
+      this.formData.gpsSimOperator = undefined;
+      this.formData.gpsBrand = '';
+      this.formData.gpsModel = '';
+      this.formData.gpsInstallationDate = undefined;
+    }
+  }
+
+  onGpsModeChange() {
+    if (this.gpsMode === 'existing') {
+      this.formData.gpsImei = '';
+      this.formData.gpsSimNumber = '';
+      this.formData.gpsSimOperator = undefined;
+      this.formData.gpsBrand = '';
+      this.formData.gpsModel = '';
+    } else {
+      this.formData.gpsDeviceId = undefined;
+    }
+  }
+
+  formatDate(date: string | Date): string {
+    if (!date) return '';
+    const d = new Date(date);
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
   onOverlayClick(event: MouseEvent) {
@@ -496,6 +636,28 @@ export class VehiclePopupComponent implements OnInit {
 
   close() {
     this.closed.emit();
+  }
+
+  resetForm() {
+    this.formData = {
+      name: '',
+      plate: '',
+      brand: '',
+      model: '',
+      year: new Date().getFullYear(),
+      type: 'citadine',
+      status: 'available',
+      mileage: 0,
+      hasGPS: false,
+      gpsDeviceId: undefined,
+      gpsImei: '',
+      gpsSimNumber: '',
+      gpsSimOperator: undefined,
+      gpsBrand: '',
+      gpsModel: '',
+      gpsInstallationDate: undefined
+    };
+    this.gpsMode = 'existing';
   }
 
   onSubmit() {

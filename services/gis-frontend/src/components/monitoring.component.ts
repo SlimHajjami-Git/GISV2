@@ -55,10 +55,6 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   routingControl: any = null;
   useRoadSnapping = true; // Toggle between road-snapped route and straight lines
   pointMarkers: L.CircleMarker[] = []; // Markers for each GPS point
-  
-  // Bird Flight Filter Stats
-  filteredBirdFlights = 0;
-  showBirdFlightInfo = false;
 
   // Message
   driverMessage = '';
@@ -485,12 +481,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const vehicleId = parseInt(this.selectedVehicle.id, 10);
 
     this.apiService.getVehicleHistory(vehicleId, fromDate, toDate).subscribe({
-      next: (response) => {
-        // Extract positions from the new response format
-        const positions = response.positions || response;
-        this.filteredBirdFlights = response.filteredBirdFlights || 0;
-        
-        this.playbackPositions = (Array.isArray(positions) ? positions : []).sort((a, b) => 
+      next: (positions) => {
+        // Positions are now returned as a direct array
+        this.playbackPositions = [...positions].sort((a: any, b: any) => 
           new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime()
         );
         

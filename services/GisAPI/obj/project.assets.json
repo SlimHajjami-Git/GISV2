@@ -4581,6 +4581,7 @@
     "net9.0": [
       "BCrypt.Net-Next >= 4.0.3",
       "GisAPI.Application >= 1.0.0",
+      "GisAPI.Domain >= 1.0.0",
       "GisAPI.Infrastructure >= 1.0.0",
       "GisAPI.Shared >= 1.0.0",
       "Microsoft.AspNetCore.Authentication.JwtBearer >= 9.0.0",
@@ -4627,6 +4628,9 @@
           "projectReferences": {
             "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Application\\GisAPI.Application.csproj": {
               "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Application\\GisAPI.Application.csproj"
+            },
+            "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Domain\\GisAPI.Domain.csproj": {
+              "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Domain\\GisAPI.Domain.csproj"
             },
             "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Infrastructure\\GisAPI.Infrastructure.csproj": {
               "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Infrastructure\\GisAPI.Infrastructure.csproj"

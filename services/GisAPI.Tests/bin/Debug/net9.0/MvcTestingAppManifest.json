@@ -1,3 +1,7 @@
 {
-  "GisAPI, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\GisAPI"
+  "GisAPI.Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Application",
+  "GisAPI, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\GisAPI",
+  "GisAPI.Domain, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Domain",
+  "GisAPI.Infrastructure, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Infrastructure",
+  "GisAPI.Shared, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Shared"
 }

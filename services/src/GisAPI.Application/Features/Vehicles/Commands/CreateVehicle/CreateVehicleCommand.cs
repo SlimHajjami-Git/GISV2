@@ -10,5 +10,16 @@ public record CreateVehicleCommand(
     string? Plate,
     int? Year,
     string? Color,
-    int Mileage = 0
+    int Mileage = 0,
+    int? GpsDeviceId = null,
+    GpsDeviceInfo? NewGpsDevice = null
 ) : ICommand<int>;
+
+public record GpsDeviceInfo(
+    string DeviceUid,
+    string? SimNumber,
+    string? SimOperator,
+    string? Brand,
+    string? Model,
+    DateTime? InstallationDate
+);

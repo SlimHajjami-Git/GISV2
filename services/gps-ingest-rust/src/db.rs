@@ -442,11 +442,10 @@ impl Database {
                 rpm,
                 send_flag,
                 protocol_version,
-                is_bird_flight,
                 address
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(),
-                $15, $16, $17, $18, $19, $20, $21, $22, false, $23
+                $15, $16, $17, $18, $19, $20, $21, $22, $23
             )
             RETURNING id
             "#,
