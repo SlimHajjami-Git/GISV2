@@ -64,15 +64,16 @@ public static class SeedBelive
         await context.SaveChangesAsync();
         Console.WriteLine($"Created company: {company.Name} (Id: {company.Id})");
 
-        // Create admin user (password: Admin123!)
+        // Create admin user (password: Calypso@2026+)
         var adminUser = new User
         {
             Name = "Admin Belive",
             Email = "admin@belive.ma",
             Phone = "+212 600 000000",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin123!"),
-            Roles = new[] { "admin" },
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("Calypso@2026+"),
+            Roles = new[] { "superadmin" },
             Permissions = new[] { "all" },
+            AssignedVehicleIds = Array.Empty<int>(),
             Status = "active",
             CompanyId = company.Id
         };
@@ -82,6 +83,6 @@ public static class SeedBelive
 
         Console.WriteLine("\n✅ Belive company seeded successfully!");
         Console.WriteLine($"   Company ID: {company.Id}");
-        Console.WriteLine($"   Admin login: admin@belive.ma / Admin123!");
+        Console.WriteLine($"   Admin login: admin@belive.ma / Calypso@2026+");
     }
 }
