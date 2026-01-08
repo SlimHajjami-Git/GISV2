@@ -228,19 +228,21 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
     }
 
     .stat-card {
-      background: linear-gradient(135deg, rgba(26, 31, 46, 0.8) 0%, rgba(20, 24, 36, 0.9) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
       border-radius: 16px;
       padding: 24px;
       display: flex;
       align-items: flex-start;
       gap: 16px;
       transition: all 0.3s;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     }
 
     .stat-card:hover {
       transform: translateY(-2px);
-      border-color: rgba(255, 255, 255, 0.15);
+      border-color: #cbd5e1;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }
 
     .stat-icon {
@@ -282,12 +284,12 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
     .stat-value {
       font-size: 28px;
       font-weight: 700;
-      color: #e7e9ea;
+      color: #1f2937;
     }
 
     .stat-label {
       font-size: 14px;
-      color: #8b98a5;
+      color: #64748b;
     }
 
     .stat-change {
@@ -307,10 +309,11 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
     }
 
     .card {
-      background: linear-gradient(135deg, rgba(26, 31, 46, 0.8) 0%, rgba(20, 24, 36, 0.9) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
       border-radius: 16px;
       padding: 24px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     }
 
     .card-header {
@@ -323,15 +326,15 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
     .card-header h3 {
       font-size: 16px;
       font-weight: 600;
-      color: #e7e9ea;
+      color: #1f2937;
       margin: 0;
     }
 
     .period-badge {
       font-size: 12px;
-      color: #8b98a5;
+      color: #64748b;
       padding: 4px 10px;
-      background: rgba(255, 255, 255, 0.05);
+      background: #f1f5f9;
       border-radius: 12px;
     }
 
@@ -339,9 +342,9 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
       width: 32px;
       height: 32px;
       border: none;
-      background: rgba(255, 255, 255, 0.05);
+      background: #f1f5f9;
       border-radius: 8px;
-      color: #8b98a5;
+      color: #64748b;
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -350,8 +353,8 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
     }
 
     .refresh-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: #e7e9ea;
+      background: #e2e8f0;
+      color: #1f2937;
     }
 
     .view-all {
@@ -386,18 +389,18 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
 
     .feature-name {
       font-size: 14px;
-      color: #e7e9ea;
+      color: #1f2937;
       font-weight: 500;
     }
 
     .feature-users {
       font-size: 12px;
-      color: #6b7280;
+      color: #64748b;
     }
 
     .feature-bar-container {
       height: 8px;
-      background: rgba(255, 255, 255, 0.05);
+      background: #e2e8f0;
       border-radius: 4px;
       overflow: hidden;
     }
@@ -420,7 +423,7 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
     .usage-count {
       font-size: 14px;
       font-weight: 600;
-      color: #e7e9ea;
+      color: #1f2937;
     }
 
     .trend {
@@ -451,7 +454,7 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
       align-items: center;
       gap: 12px;
       padding: 12px;
-      background: rgba(255, 255, 255, 0.03);
+      background: #f8fafc;
       border-radius: 10px;
     }
 
@@ -494,18 +497,18 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
 
     .service-name {
       font-size: 14px;
-      color: #e7e9ea;
+      color: #1f2937;
       font-weight: 500;
     }
 
     .service-uptime {
       font-size: 12px;
-      color: #6b7280;
+      color: #64748b;
     }
 
     .response-time {
       font-size: 13px;
-      color: #8b98a5;
+      color: #64748b;
       font-weight: 500;
     }
 
@@ -513,7 +516,7 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
       display: flex;
       gap: 16px;
       padding-top: 12px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      border-top: 1px solid #e2e8f0;
     }
 
     .summary-item {
@@ -521,7 +524,7 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
       align-items: center;
       gap: 6px;
       font-size: 13px;
-      color: #8b98a5;
+      color: #64748b;
     }
 
     .dot {

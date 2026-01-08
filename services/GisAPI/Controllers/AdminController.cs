@@ -153,6 +153,250 @@ public class AdminController : ControllerBase
         return features;
     }
 
+    // ==================== COMPANY MANAGEMENT ====================
+
+    [HttpGet("company")]
+    public async Task<ActionResult<List<AdminCompanyDto>>> GetCompanies([FromQuery] string? search, [FromQuery] string? status)
+    {
+        var query = _context.Companies
+            .Include(c => c.Subscription)
+            .Include(c => c.Vehicles)
+            .Include(c => c.Users)
+            .AsQueryable();
+
+        if (!string.IsNullOrEmpty(search))
+        {
+            query = query.Where(c => c.Name.Contains(search) || (c.Email != null && c.Email.Contains(search)));
+        }
+
+        if (!string.IsNullOrEmpty(status) && status != "all")
+        {
+            query = status switch
+            {
+                "active" => query.Where(c => c.IsActive),
+                "suspended" => query.Where(c => !c.IsActive),
+                _ => query
+            };
+        }
+
+        var companies = await query.OrderByDescending(c => c.CreatedAt).ToListAsync();
+
+        return Ok(companies.Select(c => new AdminCompanyDto
+        {
+            Id = c.Id,
+            Name = c.Name,
+            Email = c.Email,
+            Phone = c.Phone,
+            Type = c.Type,
+            SubscriptionId = c.SubscriptionId,
+            SubscriptionName = c.Subscription?.Name,
+            MaxVehicles = c.Subscription?.MaxVehicles ?? 0,
+            CurrentVehicles = c.Vehicles?.Count ?? 0,
+            CurrentUsers = c.Users?.Count ?? 0,
+            Status = c.IsActive ? "active" : "suspended",
+            CreatedAt = c.CreatedAt,
+            LastActivity = c.UpdatedAt
+        }));
+    }
+
+    [HttpGet("company/{id}")]
+    public async Task<ActionResult<AdminCompanyDto>> GetCompany(int id)
+    {
+        var company = await _context.Companies
+            .Include(c => c.Subscription)
+            .Include(c => c.Vehicles)
+            .Include(c => c.Users)
+            .FirstOrDefaultAsync(c => c.Id == id);
+
+        if (company == null)
+            return NotFound();
+
+        return Ok(new AdminCompanyDto
+        {
+            Id = company.Id,
+            Name = company.Name,
+            Email = company.Email,
+            Phone = company.Phone,
+            Type = company.Type,
+            SubscriptionId = company.SubscriptionId,
+            SubscriptionName = company.Subscription?.Name,
+            MaxVehicles = company.Subscription?.MaxVehicles ?? 0,
+            CurrentVehicles = company.Vehicles?.Count ?? 0,
+            CurrentUsers = company.Users?.Count ?? 0,
+            Status = company.IsActive ? "active" : "suspended",
+            CreatedAt = company.CreatedAt,
+            LastActivity = company.UpdatedAt
+        });
+    }
+
+    [HttpPost("company")]
+    public async Task<ActionResult<AdminCompanyDto>> CreateCompany([FromBody] CreateAdminCompanyRequest request)
+    {
+        if (!string.IsNullOrEmpty(request.Email) && await _context.Companies.AnyAsync(c => c.Email == request.Email))
+        {
+            return BadRequest(new { message = "Une société avec cet email existe déjà" });
+        }
+
+        var subscription = await _context.Subscriptions.FindAsync(request.SubscriptionId);
+
+        var company = new Company
+        {
+            Name = request.Name,
+            Email = request.Email,
+            Phone = request.Phone,
+            Type = request.Type ?? "transport",
+            SubscriptionId = request.SubscriptionId > 0 ? request.SubscriptionId : 1,
+            IsActive = true,
+            SubscriptionExpiresAt = DateTime.UtcNow.AddYears(1),
+            Settings = new CompanySettings
+            {
+                Currency = "DT",
+                Timezone = "Africa/Tunis",
+                Language = "fr"
+            }
+        };
+
+        _context.Companies.Add(company);
+        await _context.SaveChangesAsync();
+
+        // Create admin user if provided
+        if (!string.IsNullOrEmpty(request.AdminEmail) && !string.IsNullOrEmpty(request.AdminPassword))
+        {
+            var adminUser = new User
+            {
+                Name = request.AdminName ?? request.Name + " Admin",
+                Email = request.AdminEmail,
+                Phone = request.Phone,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.AdminPassword),
+                Roles = new[] { "admin" },
+                Permissions = new[] { "dashboard", "monitoring", "vehicles", "employees", "maintenance", "costs", "reports", "geofences", "notifications", "settings", "users" },
+                AssignedVehicleIds = Array.Empty<int>(),
+                CompanyId = company.Id,
+                Status = "active"
+            };
+            _context.Users.Add(adminUser);
+            await _context.SaveChangesAsync();
+        }
+
+        return CreatedAtAction(nameof(GetCompany), new { id = company.Id }, new AdminCompanyDto
+        {
+            Id = company.Id,
+            Name = company.Name,
+            Email = company.Email,
+            Phone = company.Phone,
+            Type = company.Type,
+            SubscriptionId = company.SubscriptionId,
+            SubscriptionName = subscription?.Name,
+            MaxVehicles = subscription?.MaxVehicles ?? 0,
+            CurrentVehicles = 0,
+            CurrentUsers = !string.IsNullOrEmpty(request.AdminEmail) ? 1 : 0,
+            Status = "active",
+            CreatedAt = company.CreatedAt
+        });
+    }
+
+    [HttpPut("company/{id}")]
+    public async Task<ActionResult<AdminCompanyDto>> UpdateCompany(int id, [FromBody] UpdateAdminCompanyRequest request)
+    {
+        var company = await _context.Companies
+            .Include(c => c.Subscription)
+            .Include(c => c.Vehicles)
+            .Include(c => c.Users)
+            .FirstOrDefaultAsync(c => c.Id == id);
+
+        if (company == null)
+            return NotFound();
+
+        if (!string.IsNullOrEmpty(request.Name)) company.Name = request.Name;
+        if (request.Email != null) company.Email = request.Email;
+        if (request.Phone != null) company.Phone = request.Phone;
+        if (request.Type != null) company.Type = request.Type;
+        if (request.SubscriptionId.HasValue) company.SubscriptionId = request.SubscriptionId.Value;
+
+        company.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return Ok(new AdminCompanyDto
+        {
+            Id = company.Id,
+            Name = company.Name,
+            Email = company.Email,
+            Phone = company.Phone,
+            Type = company.Type,
+            SubscriptionId = company.SubscriptionId,
+            SubscriptionName = company.Subscription?.Name,
+            MaxVehicles = company.Subscription?.MaxVehicles ?? 0,
+            CurrentVehicles = company.Vehicles?.Count ?? 0,
+            CurrentUsers = company.Users?.Count ?? 0,
+            Status = company.IsActive ? "active" : "suspended",
+            CreatedAt = company.CreatedAt,
+            LastActivity = company.UpdatedAt
+        });
+    }
+
+    [HttpPost("company/{id}/suspend")]
+    public async Task<ActionResult> SuspendCompany(int id)
+    {
+        var company = await _context.Companies.FindAsync(id);
+        if (company == null) return NotFound();
+
+        company.IsActive = false;
+        company.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Société suspendue" });
+    }
+
+    [HttpPost("company/{id}/activate")]
+    public async Task<ActionResult> ActivateCompany(int id)
+    {
+        var company = await _context.Companies.FindAsync(id);
+        if (company == null) return NotFound();
+
+        company.IsActive = true;
+        company.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Société activée" });
+    }
+
+    [HttpDelete("company/{id}")]
+    public async Task<ActionResult> DeleteCompany(int id)
+    {
+        var company = await _context.Companies.FindAsync(id);
+        if (company == null) return NotFound();
+
+        _context.Companies.Remove(company);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Société supprimée" });
+    }
+
+    [HttpGet("company/{companyId}/users")]
+    public async Task<ActionResult<List<AdminUserDto>>> GetCompanyUsers(int companyId)
+    {
+        var users = await _context.Users
+            .Where(u => u.CompanyId == companyId)
+            .Include(u => u.Company)
+            .ToListAsync();
+
+        return Ok(users.Select(u => new AdminUserDto
+        {
+            Id = u.Id,
+            Name = u.Name,
+            Email = u.Email,
+            Phone = u.Phone,
+            CompanyId = u.CompanyId,
+            CompanyName = u.Company?.Name ?? "",
+            Roles = u.Roles,
+            Permissions = u.Permissions,
+            Status = u.Status,
+            LastLoginAt = u.LastLoginAt,
+            CreatedAt = u.CreatedAt,
+            IsOnline = u.LastLoginAt.HasValue && u.LastLoginAt.Value > DateTime.UtcNow.AddMinutes(-30)
+        }));
+    }
+
     // ==================== SERVICE HEALTH ====================
 
     [HttpGet("health")]
@@ -519,3 +763,42 @@ public class FeatureUsageDto
     public int UniqueUsers { get; set; }
     public int Trend { get; set; }
 }
+
+public class AdminCompanyDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Email { get; set; }
+    public string? Phone { get; set; }
+    public string Type { get; set; } = "transport";
+    public int? SubscriptionId { get; set; }
+    public string? SubscriptionName { get; set; }
+    public int MaxVehicles { get; set; }
+    public int CurrentVehicles { get; set; }
+    public int CurrentUsers { get; set; }
+    public string Status { get; set; } = "active";
+    public DateTime CreatedAt { get; set; }
+    public DateTime? LastActivity { get; set; }
+}
+
+public class CreateAdminCompanyRequest
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Email { get; set; }
+    public string? Phone { get; set; }
+    public string? Type { get; set; }
+    public int SubscriptionId { get; set; }
+    public string? AdminName { get; set; }
+    public string? AdminEmail { get; set; }
+    public string? AdminPassword { get; set; }
+}
+
+public class UpdateAdminCompanyRequest
+{
+    public string? Name { get; set; }
+    public string? Email { get; set; }
+    public string? Phone { get; set; }
+    public string? Type { get; set; }
+    public int? SubscriptionId { get; set; }
+}
+

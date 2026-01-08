@@ -232,30 +232,30 @@ import { AdminService, Client } from '../services/admin.service';
       display: flex;
       align-items: center;
       gap: 10px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
       border-radius: 10px;
       padding: 10px 14px;
       width: 280px;
     }
 
-    .search-box svg { color: #8b98a5; }
+    .search-box svg { color: #64748b; }
 
     .search-box input {
       flex: 1;
       border: none;
       background: transparent;
-      color: #e7e9ea;
+      color: #1f2937;
       font-size: 14px;
       outline: none;
     }
 
     .filter-select {
       padding: 10px 14px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
       border-radius: 10px;
-      color: #e7e9ea;
+      color: #1f2937;
       font-size: 14px;
       outline: none;
       cursor: pointer;
@@ -288,15 +288,17 @@ import { AdminService, Client } from '../services/admin.service';
     }
 
     .client-card {
-      background: linear-gradient(135deg, rgba(26, 31, 46, 0.8) 0%, rgba(20, 24, 36, 0.9) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
       border-radius: 16px;
       overflow: hidden;
       transition: all 0.3s;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     }
 
     .client-card:hover {
-      border-color: rgba(255, 255, 255, 0.15);
+      border-color: #cbd5e1;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
       transform: translateY(-2px);
     }
 
@@ -309,7 +311,7 @@ import { AdminService, Client } from '../services/admin.service';
       align-items: center;
       gap: 14px;
       padding: 20px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid #e2e8f0;
     }
 
     .client-avatar {
@@ -339,12 +341,12 @@ import { AdminService, Client } from '../services/admin.service';
       margin: 0 0 4px 0;
       font-size: 16px;
       font-weight: 600;
-      color: #e7e9ea;
+      color: #1f2937;
     }
 
     .client-type {
       font-size: 13px;
-      color: #8b98a5;
+      color: #64748b;
     }
 
     .status-badge {
@@ -379,11 +381,11 @@ import { AdminService, Client } from '../services/admin.service';
       gap: 10px;
       margin-bottom: 12px;
       font-size: 13px;
-      color: #8b98a5;
+      color: #64748b;
     }
 
     .info-row svg {
-      color: #6b7280;
+      color: #64748b;
     }
 
     .stats-row {
@@ -391,7 +393,7 @@ import { AdminService, Client } from '../services/admin.service';
       gap: 20px;
       margin-top: 16px;
       padding-top: 16px;
-      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      border-top: 1px solid #e2e8f0;
     }
 
     .stat {
@@ -403,12 +405,12 @@ import { AdminService, Client } from '../services/admin.service';
     .stat-value {
       font-size: 16px;
       font-weight: 600;
-      color: #e7e9ea;
+      color: #1f2937;
     }
 
     .stat-label {
       font-size: 11px;
-      color: #6b7280;
+      color: #64748b;
       text-transform: uppercase;
     }
 
@@ -417,8 +419,8 @@ import { AdminService, Client } from '../services/admin.service';
       align-items: center;
       justify-content: space-between;
       padding: 16px 20px;
-      background: rgba(255, 255, 255, 0.02);
-      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      background: #f8fafc;
+      border-top: 1px solid #e2e8f0;
     }
 
     .joined-date {
@@ -459,8 +461,8 @@ import { AdminService, Client } from '../services/admin.service';
     }
 
     .action-btn.view {
-      background: rgba(255, 255, 255, 0.05);
-      color: #8b98a5;
+      background: #f1f5f9;
+      color: #64748b;
     }
 
     .action-btn:hover {
@@ -479,13 +481,14 @@ import { AdminService, Client } from '../services/admin.service';
     }
 
     .modal {
-      background: linear-gradient(135deg, #1a1f2e 0%, #141824 100%);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
       border-radius: 20px;
       width: 100%;
       max-width: 520px;
       max-height: 90vh;
       overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
     }
 
     .modal-header {
@@ -493,23 +496,23 @@ import { AdminService, Client } from '../services/admin.service';
       align-items: center;
       justify-content: space-between;
       padding: 20px 24px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      border-bottom: 1px solid #e2e8f0;
     }
 
     .modal-header h2 {
       margin: 0;
       font-size: 18px;
       font-weight: 600;
-      color: #e7e9ea;
+      color: #1f2937;
     }
 
     .close-btn {
       width: 36px;
       height: 36px;
       border: none;
-      background: rgba(255, 255, 255, 0.05);
+      background: #f1f5f9;
       border-radius: 10px;
-      color: #8b98a5;
+      color: #64748b;
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -518,8 +521,8 @@ import { AdminService, Client } from '../services/admin.service';
     }
 
     .close-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: #e7e9ea;
+      background: #e2e8f0;
+      color: #1f2937;
     }
 
     .modal-body {
@@ -533,11 +536,11 @@ import { AdminService, Client } from '../services/admin.service';
       margin: 0 0 8px 0;
       font-size: 14px;
       font-weight: 600;
-      color: #00d4aa;
+      color: #00a388;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       padding-bottom: 8px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      border-bottom: 1px solid #e2e8f0;
     }
 
     .form-group {
@@ -549,15 +552,15 @@ import { AdminService, Client } from '../services/admin.service';
     .form-group label {
       font-size: 14px;
       font-weight: 500;
-      color: #e7e9ea;
+      color: #374151;
     }
 
     .form-group input, .form-group select {
       padding: 12px 14px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
       border-radius: 10px;
-      color: #e7e9ea;
+      color: #1f2937;
       font-size: 14px;
       outline: none;
       transition: border-color 0.2s;
@@ -578,18 +581,18 @@ import { AdminService, Client } from '../services/admin.service';
       align-items: center;
       gap: 16px;
       padding-bottom: 20px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      border-bottom: 1px solid #e2e8f0;
     }
 
     .view-header h3 {
       margin: 0 0 8px 0;
       font-size: 20px;
-      color: #e7e9ea;
+      color: #1f2937;
     }
 
     .view-section {
       padding: 16px 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid #e2e8f0;
     }
 
     .view-section:last-child {
@@ -600,7 +603,7 @@ import { AdminService, Client } from '../services/admin.service';
       margin: 0 0 12px 0;
       font-size: 14px;
       font-weight: 600;
-      color: #00d4aa;
+      color: #00a388;
     }
 
     .view-row {
@@ -611,11 +614,11 @@ import { AdminService, Client } from '../services/admin.service';
     }
 
     .view-row span:first-child {
-      color: #8b98a5;
+      color: #64748b;
     }
 
     .view-row span:last-child {
-      color: #e7e9ea;
+      color: #1f2937;
       font-weight: 500;
     }
 
@@ -624,15 +627,15 @@ import { AdminService, Client } from '../services/admin.service';
       justify-content: flex-end;
       gap: 12px;
       padding: 20px 24px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      border-top: 1px solid #e2e8f0;
     }
 
     .btn-secondary {
       padding: 10px 20px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
       border-radius: 10px;
-      color: #e7e9ea;
+      color: #1f2937;
       font-size: 14px;
       font-weight: 500;
       cursor: pointer;
@@ -640,7 +643,7 @@ import { AdminService, Client } from '../services/admin.service';
     }
 
     .btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: #e2e8f0;
     }
 
     .btn-primary {
