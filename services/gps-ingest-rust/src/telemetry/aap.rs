@@ -350,6 +350,9 @@ impl AapDecoder {
     /// Decode coordinate from AAP protocol format
     /// GISV1 formula: String.Format("{0:D2}", raw / 1000000) + "." + String.Format("{0:D6}", (raw % 1000000) * 100 / 60)
     /// Uses INTEGER arithmetic to match GISV1 exactly
+    /// 
+    /// CRITICAL FIX: GISV1 uses {0:D6} format which ALWAYS pads to 6 digits
+    /// So we must ALWAYS divide by 1,000,000 regardless of decimal_int length!
     fn decode_coordinate(raw: &str, is_positive: bool) -> Result<f64> {
         let value = i64::from_str_radix(raw, 16)?;
         
@@ -358,11 +361,9 @@ impl AapDecoder {
         let minutes_part = value % 1_000_000;
         let decimal_int = (minutes_part * 100) / 60;  // Integer division like C#
         
-        // Reconstruct as: "degrees.decimal_int" then parse
-        // decimal_int could be up to 6+ digits, divide by appropriate power of 10
-        let decimal_str = format!("{}", decimal_int);
-        let divisor = 10_f64.powi(decimal_str.len() as i32);
-        let mut coord = degrees as f64 + (decimal_int as f64 / divisor);
+        // CRITICAL: GISV1 uses D6 format = ALWAYS 6 digits, so ALWAYS divide by 1,000,000
+        // This matches hh.rs implementation and fixes precision bug
+        let mut coord = degrees as f64 + (decimal_int as f64 / 1_000_000.0);
 
         if !is_positive {
             coord = -coord;
@@ -856,5 +857,64 @@ mod tests {
         assert!((fuel_rate - 50.0).abs() < 0.1, "Fuel rate should be ~50 L/100km");
         assert_eq!(fms.total_fuel_used_liters, Some(10000), "Total fuel should be 10000 L");
         assert!(fms.has_data, "has_data should be true");
+    }
+
+    #[test]
+    fn test_decode_real_gps_frame() {
+        // Real GPS frame provided for testing
+        let payload = "AA13008ACB0228D1A5008B736800A6062B000ED6E8E7800000000000030000000025D00000000000000000000000000000000C1F";
+        
+        println!("=== Decoding Real GPS Frame ===");
+        println!("Payload length: {}", payload.len());
+        println!("Raw payload: {}", payload);
+        
+        // Parse the frame
+        let result = AapDecoder::parse(payload);
+        
+        match result {
+            Ok(frame) => {
+                println!("\n=== Decoded Successfully ===");
+                println!("Frame type: {:?}", frame.frame_type);
+                println!("Protocol version: {:?}", frame.protocol_version);
+                println!("Timestamp: {}", frame.recorded_at);
+                println!("Latitude: {:.6}", frame.latitude);
+                println!("Longitude: {:.6}", frame.longitude);
+                println!("Speed: {:.1} km/h", frame.speed_kph);
+                println!("Heading: {:.0}°", frame.heading_deg);
+                println!("Power voltage: {} V", frame.power_voltage);
+                println!("Power source rescue: {}", frame.power_source_rescue);
+                println!("Fuel: {}%", frame.fuel_percent);
+                println!("Ignition: {}", if frame.ignition_on { "ON" } else { "OFF" });
+                println!("GPS valid: {}", frame.is_valid);
+                println!("Real-time: {}", frame.is_real_time);
+                println!("Odometer: {} km", frame.odometer_km);
+                println!("Temperature raw: {}", frame.temperature_raw);
+                println!("Send flag: {}", frame.send_flag);
+                println!("Added info: {}", frame.added_info);
+                println!("Signal quality: {:?}", frame.signal_quality);
+                println!("Satellites: {:?}", frame.satellites);
+                println!("\n=== MEMS Data ===");
+                println!("Accel X: {:.3} G (raw: {})", frame.mems.accel_x, frame.mems.raw_x);
+                println!("Accel Y: {:.3} G (raw: {})", frame.mems.accel_y, frame.mems.raw_y);
+                println!("Accel Z: {:.3} G (raw: {})", frame.mems.accel_z, frame.mems.raw_z);
+                println!("Driving event: {:?}", frame.mems.event);
+                println!("\n=== FMS Data ===");
+                println!("FMS Fuel: {:?}%", frame.fms.fuel_percent);
+                println!("FMS Temperature: {:?}°C", frame.fms.temperature_c);
+                println!("FMS Odometer: {:?} km", frame.fms.odometer_km);
+                println!("FMS Speed: {:?} km/h", frame.fms.speed_kph);
+                println!("FMS RPM: {:?}", frame.fms.rpm);
+                println!("FMS Fuel Rate: {:?} L/100km", frame.fms.fuel_rate_l_per_100km);
+                println!("FMS has data: {}", frame.fms.has_data);
+                
+                // Basic assertions
+                assert!(frame.latitude != 0.0, "Latitude should not be 0");
+                assert!(frame.longitude != 0.0, "Longitude should not be 0");
+            }
+            Err(e) => {
+                println!("ERROR: Failed to decode frame: {}", e);
+                panic!("Frame decoding failed: {}", e);
+            }
+        }
     }
 }

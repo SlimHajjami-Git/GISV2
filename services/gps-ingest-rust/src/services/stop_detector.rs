@@ -227,6 +227,7 @@ mod tests {
             flags_raw: 0,
             raw_payload: String::new(),
             remaining_payload: None,
+            address: None,
         }
     }
 

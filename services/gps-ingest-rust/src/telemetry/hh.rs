@@ -132,21 +132,25 @@ fn decode_header(header: &str) -> Result<(FrameKind, FrameVersion)> {
 }
 
 fn parse_v1(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhFrame> {
-    ensure_payload_len(payload, 70)?;
-    let hour_raw = &payload[4..10];
-    let lat_raw = &payload[10..18];
-    let lon_raw = &payload[18..26];
-    let speed_raw = &payload[26..30];
-    let heading_raw = &payload[30..32];
-    let power_raw = &payload[32..34];
-    let fuel_raw = &payload[34..36];
-    let mems_raw = &payload[36..42];
-    let flags_raw = &payload[42..44];
-    let temp_raw = &payload[44..48];
-    let odo_raw = &payload[48..56];
-    let send_flag_raw = &payload[56..58];
-    let added_info_raw = &payload[58..66];
-    let date_raw = &payload[66..70];
+    // GISV1 behavior: No explicit length check - just try to parse
+    // If payload is too short, Substring throws exception which is caught in try-catch
+    // We replicate this by using .get() and returning error if field is missing
+    // This allows partial frames to fail gracefully like GISV1
+    
+    let hour_raw = payload.get(4..10).context("frame too short: missing hour field")?;
+    let lat_raw = payload.get(10..18).context("frame too short: missing latitude field")?;
+    let lon_raw = payload.get(18..26).context("frame too short: missing longitude field")?;
+    let speed_raw = payload.get(26..30).context("frame too short: missing speed field")?;
+    let heading_raw = payload.get(30..32).context("frame too short: missing heading field")?;
+    let power_raw = payload.get(32..34).context("frame too short: missing power field")?;
+    let fuel_raw = payload.get(34..36).context("frame too short: missing fuel field")?;
+    let mems_raw = payload.get(36..42).context("frame too short: missing mems field")?;
+    let flags_raw = payload.get(42..44).context("frame too short: missing flags field")?;
+    let temp_raw = payload.get(44..48).context("frame too short: missing temp field")?;
+    let odo_raw = payload.get(48..56).context("frame too short: missing odometer field")?;
+    let send_flag_raw = payload.get(56..58).context("frame too short: missing send_flag field")?;
+    let added_info_raw = payload.get(58..66).context("frame too short: missing added_info field")?;
+    let date_raw = payload.get(66..70).context("frame too short: missing date field")?;
 
     let (recorded_at, is_real_time) = decode_timestamp(hour_raw, date_raw)?;
     let latitude = decode_coordinate(lat_raw, flags_raw, 0x01, true)?;
@@ -208,21 +212,21 @@ fn parse_v1(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhF
 }
 
 fn parse_v3(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhFrame> {
-    ensure_payload_len(payload, 74)?;
-    let hour_raw = &payload[4..10];
-    let lat_raw = &payload[10..18];
-    let lon_raw = &payload[18..26];
-    let speed_raw = &payload[26..30];
-    let heading_raw = &payload[30..32];
-    let power_raw = &payload[32..34];
-    let fuel_raw = &payload[34..36];
-    let mems_raw = &payload[36..42];
-    let flags_raw = &payload[42..44];
-    let temp_raw = &payload[44..48];
-    let odo_raw = &payload[48..56];
-    let send_flag_raw = &payload[56..58];
-    let added_info_raw = &payload[58..66];
-    let date_raw = &payload[66..70];
+    // GISV1 behavior: No explicit length check - try to parse and fail gracefully
+    let hour_raw = payload.get(4..10).context("V3 frame too short: missing hour field")?;
+    let lat_raw = payload.get(10..18).context("V3 frame too short: missing latitude field")?;
+    let lon_raw = payload.get(18..26).context("V3 frame too short: missing longitude field")?;
+    let speed_raw = payload.get(26..30).context("V3 frame too short: missing speed field")?;
+    let heading_raw = payload.get(30..32).context("V3 frame too short: missing heading field")?;
+    let power_raw = payload.get(32..34).context("V3 frame too short: missing power field")?;
+    let fuel_raw = payload.get(34..36).context("V3 frame too short: missing fuel field")?;
+    let mems_raw = payload.get(36..42).context("V3 frame too short: missing mems field")?;
+    let flags_raw = payload.get(42..44).context("V3 frame too short: missing flags field")?;
+    let temp_raw = payload.get(44..48).context("V3 frame too short: missing temp field")?;
+    let odo_raw = payload.get(48..56).context("V3 frame too short: missing odometer field")?;
+    let send_flag_raw = payload.get(56..58).context("V3 frame too short: missing send_flag field")?;
+    let added_info_raw = payload.get(58..66).context("V3 frame too short: missing added_info field")?;
+    let date_raw = payload.get(66..70).context("V3 frame too short: missing date field")?;
 
     let (recorded_at, is_real_time) = decode_timestamp(hour_raw, date_raw)?;
     let latitude = decode_coordinate(lat_raw, flags_raw, 0x01, true)?;

@@ -16,6 +16,7 @@ use crate::{
         fuel_tracker::FuelTracker,
         geofence_detector::GeofenceDetector,
         geocoding::GeocodingService,
+        gps_stabilizer::GpsStabilizer,
         stop_detector::StopDetector,
     },
     telemetry,
@@ -23,12 +24,13 @@ use crate::{
 
 type ConnectionMap = Arc<Mutex<HashMap<String, String>>>;
 
-/// Shared services for stop detection, fuel tracking, geocoding, and geofencing
+/// Shared services for stop detection, fuel tracking, geocoding, geofencing, and GPS stabilization
 pub struct TelemetryServices {
     pub stop_detector: StopDetector,
     pub fuel_tracker: FuelTracker,
     pub geocoding: GeocodingService,
     pub geofence_detector: GeofenceDetector,
+    pub gps_stabilizer: GpsStabilizer,
 }
 
 pub async fn run_listeners(
@@ -60,8 +62,9 @@ pub async fn run_listeners(
         fuel_tracker: FuelTracker::new(),
         geocoding: GeocodingService::new(nominatim_url),
         geofence_detector,
+        gps_stabilizer: GpsStabilizer::new(),
     });
-    info!("Telemetry services initialized (StopDetector, FuelTracker, Geocoding, GeofenceDetector)");
+    info!("Telemetry services initialized (StopDetector, FuelTracker, Geocoding, GeofenceDetector, GpsStabilizer)");
 
     let mut handles = Vec::new();
     for listener in &config.listeners {
@@ -173,18 +176,49 @@ async fn route_payload(
     let ascii_payload = String::from_utf8(raw_payload.to_vec()).context("payload is not UTF-8")?;
     
     // Split payload into individual frames (separated by newlines)
-    let frames: Vec<&str> = ascii_payload
+    let all_lines: Vec<&str> = ascii_payload
         .split(|c| c == '\r' || c == '\n')
         .map(|s| s.trim())
-        .filter(|s| !s.is_empty() && *s != "AAAA" && *s != "HHHH") // Skip delimiters
-        .filter(|s| starts_with_valid_header(s)) // Only keep valid frames
+        .filter(|s| !s.is_empty() && *s != "AAAA" && *s != "HHHH")
+        .collect();
+
+    // Log rejected frames for debugging
+    for line in &all_lines {
+        if !starts_with_valid_header(line) {
+            warn!(
+                rejected_frame = %line,
+                frame_len = line.len(),
+                "Frame rejected: does not start with valid HH/AA header"
+            );
+        }
+    }
+
+    let frames: Vec<&str> = all_lines
+        .into_iter()
+        .filter(|s| starts_with_valid_header(s))
         .collect();
 
     if frames.is_empty() {
         return Err(anyhow!("no valid HH/AA frames found in payload"));
     }
 
-    info!(protocol, frame_count = frames.len(), "Processing batch of frames");
+    info!(
+        protocol, 
+        frame_count = frames.len(), 
+        payload_len = ascii_payload.len(),
+        "Processing batch of frames"
+    );
+
+    // Log each frame for debugging (can be removed in production)
+    for (idx, frame_str) in frames.iter().enumerate() {
+        tracing::debug!(
+            protocol,
+            frame_idx = idx,
+            frame_len = frame_str.len(),
+            frame_start = &frame_str[..std::cmp::min(20, frame_str.len())],
+            "Frame to process"
+        );
+    }
 
     for frame_str in frames {
         if let Err(err) = process_single_frame(
@@ -198,7 +232,14 @@ async fn route_payload(
         )
         .await
         {
-            warn!(?err, frame = %frame_str, "Failed to process individual frame");
+            // Log detailed error info to help diagnose rejected frames
+            warn!(
+                ?err, 
+                frame = %frame_str, 
+                frame_len = frame_str.len(),
+                frame_header = &frame_str[..std::cmp::min(4, frame_str.len())],
+                "Failed to process individual frame - FRAME LOST"
+            );
         }
     }
 
@@ -250,18 +291,79 @@ async fn process_single_frame(
                     "UNKNOWN_DEVICE".to_string()
                 };
 
+                // Get device_id for services processing
+                let device_id_opt = database.get_device_id(&resolved_uid).await?;
+
+                // GPS Stabilization: Prevent drift when vehicle is stopped
+                // This mimics GISV1 behavior where coordinates are kept stable at anchor position
+                if let Some(device_id) = device_id_opt {
+                    let stabilized = services.gps_stabilizer.stabilize(device_id, &frame).await;
+                    if stabilized.was_stabilized {
+                        info!(
+                            device_id,
+                            original_lat = frame.latitude,
+                            original_lon = frame.longitude,
+                            stabilized_lat = stabilized.latitude,
+                            stabilized_lon = stabilized.longitude,
+                            drift_m = ?stabilized.drift_distance_meters,
+                            "GPS drift filtered - using stable anchor position"
+                        );
+                        frame.latitude = stabilized.latitude;
+                        frame.longitude = stabilized.longitude;
+                    }
+                }
+
                 // Geocode the position (async, non-blocking)
                 if frame.is_valid {
                     frame.address = services.geocoding.reverse_geocode(frame.latitude, frame.longitude).await;
                 }
 
-                // Get device_id for services processing
-                let device_id_opt = database.get_device_id(&resolved_uid).await?;
+                // ============================================================
+                // GISV1 CONDITIONS - Exact same logic as AAP.cs lines 840-844
+                // ============================================================
+                // Condition 1: SendFlag != 2 (skip heartbeat/duplicate frames)
+                // Condition 2: Date must be before tomorrow (not in future)
+                // ============================================================
+                
+                let dominated_tomorrow = chrono::Utc::now().date_naive() + chrono::Duration::days(1);
+                let frame_date = frame.recorded_at.date();
+                let date_coherent = frame_date < dominated_tomorrow;
+                
+                if frame.send_flag == 2 {
+                    info!(
+                        imei = %resolved_uid,
+                        send_flag = frame.send_flag,
+                        "Frame SKIPPED: SendFlag == 2 (same as GISV1)"
+                    );
+                    return Ok(()); // Skip this frame like GISV1
+                }
+                
+                if !date_coherent {
+                    warn!(
+                        imei = %resolved_uid,
+                        frame_date = %frame.recorded_at,
+                        "Frame SKIPPED: Date in future (same as GISV1)"
+                    );
+                    return Ok(()); // Skip this frame like GISV1
+                }
 
                 // Ingest the frame into the database
                 database
                     .ingest_hh_frame(&resolved_uid, protocol, &frame)
                     .await?;
+
+                // Log successful ingestion with key frame info for debugging
+                info!(
+                    imei = %resolved_uid,
+                    send_flag = frame.send_flag,
+                    speed_kph = frame.speed_kph,
+                    heading = frame.heading_deg,
+                    lat = frame.latitude,
+                    lon = frame.longitude,
+                    ignition = frame.ignition_on,
+                    is_valid = frame.is_valid,
+                    "Position ingested successfully"
+                );
 
                 // Process services (stop detection, fuel tracking)
                 if let Some(device_id) = device_id_opt {
@@ -433,6 +535,14 @@ mod tests {
         async fn get_device_vehicle_info(&self, _device_id: i32) -> anyhow::Result<(Option<i32>, i32)> {
             Ok((Some(1), 1)) // Mock vehicle_id and company_id
         }
+
+        async fn load_geofences(&self) -> anyhow::Result<Vec<crate::services::geofence_detector::Geofence>> {
+            Ok(Vec::new()) // No geofences for tests
+        }
+
+        async fn insert_geofence_event(&self, _event: &crate::services::geofence_detector::GeofenceEvent, _duration_seconds: Option<i32>) -> anyhow::Result<i32> {
+            Ok(1) // Mock event_id
+        }
     }
 
     struct MockPublisher {
@@ -467,6 +577,9 @@ mod tests {
         let services = Arc::new(TelemetryServices {
             stop_detector: StopDetector::new(),
             fuel_tracker: FuelTracker::new(),
+            geocoding: GeocodingService::new(None),
+            geofence_detector: GeofenceDetector::new(),
+            gps_stabilizer: GpsStabilizer::new(),
         });
         let peer = "127.0.0.1:1234";
 
@@ -518,6 +631,9 @@ mod tests {
         let services = Arc::new(TelemetryServices {
             stop_detector: StopDetector::new(),
             fuel_tracker: FuelTracker::new(),
+            geocoding: GeocodingService::new(None),
+            geofence_detector: GeofenceDetector::new(),
+            gps_stabilizer: GpsStabilizer::new(),
         });
         let peer = "10.0.0.5:5555";
 
