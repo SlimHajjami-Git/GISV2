@@ -319,33 +319,99 @@ async fn process_single_frame(
                 }
 
                 // ============================================================
-                // GISV1 CONDITIONS - Exact same logic as AAP.cs lines 840-844
+                // GISV1 CONDITIONS - From AAP.cs + SaveDynData stored procedure
                 // ============================================================
+                
+                // --- From AAP.cs lines 840-844 ---
                 // Condition 1: SendFlag != 2 (skip heartbeat/duplicate frames)
-                // Condition 2: Date must be before tomorrow (not in future)
-                // ============================================================
-                
-                let dominated_tomorrow = chrono::Utc::now().date_naive() + chrono::Duration::days(1);
-                let frame_date = frame.recorded_at.date();
-                let date_coherent = frame_date < dominated_tomorrow;
-                
                 if frame.send_flag == 2 {
                     info!(
                         imei = %resolved_uid,
                         send_flag = frame.send_flag,
                         "Frame SKIPPED: SendFlag == 2 (same as GISV1)"
                     );
-                    return Ok(()); // Skip this frame like GISV1
+                    return Ok(());
                 }
                 
-                if !date_coherent {
+                // Condition 2: Date must be before tomorrow (not in future)
+                let tomorrow = chrono::Utc::now().date_naive() + chrono::Duration::days(1);
+                let frame_date = frame.recorded_at.date();
+                if frame_date >= tomorrow {
                     warn!(
                         imei = %resolved_uid,
                         frame_date = %frame.recorded_at,
                         "Frame SKIPPED: Date in future (same as GISV1)"
                     );
-                    return Ok(()); // Skip this frame like GISV1
+                    return Ok(());
                 }
+
+                // --- From SaveDynData stored procedure ---
+                // Condition 3: Angle must be 0-360
+                if frame.heading_deg < 0.0 || frame.heading_deg > 360.0 {
+                    info!(
+                        imei = %resolved_uid,
+                        heading = frame.heading_deg,
+                        "Frame SKIPPED: Invalid angle (must be 0-360, same as GISV1 SaveDynData)"
+                    );
+                    return Ok(());
+                }
+
+                // Condition 4: Speed must be 0-300
+                if frame.speed_kph < 0.0 || frame.speed_kph > 300.0 {
+                    info!(
+                        imei = %resolved_uid,
+                        speed = frame.speed_kph,
+                        "Frame SKIPPED: Invalid speed (must be 0-300, same as GISV1 SaveDynData)"
+                    );
+                    return Ok(());
+                }
+
+                // Condition 5: Coordinates must not be too close to 0 (invalid GPS)
+                if frame.latitude.abs() < 0.05 && frame.longitude.abs() < 0.05 {
+                    info!(
+                        imei = %resolved_uid,
+                        lat = frame.latitude,
+                        lon = frame.longitude,
+                        "Frame SKIPPED: Coordinates near 0,0 (same as GISV1 SaveDynData)"
+                    );
+                    return Ok(());
+                }
+
+                // Condition 6: If GPS invalid, coords must not be near 0
+                if !frame.is_valid && frame.latitude.abs() < 0.3 && frame.longitude.abs() < 0.3 {
+                    info!(
+                        imei = %resolved_uid,
+                        lat = frame.latitude,
+                        lon = frame.longitude,
+                        is_valid = frame.is_valid,
+                        "Frame SKIPPED: Invalid GPS with coords near 0 (same as GISV1 SaveDynData)"
+                    );
+                    return Ok(());
+                }
+
+                // Condition 7: Longitude must be -180 to +180
+                if frame.longitude < -180.0 || frame.longitude > 180.0 {
+                    warn!(
+                        imei = %resolved_uid,
+                        lon = frame.longitude,
+                        "Frame SKIPPED: Longitude out of range (same as GISV1 SaveDynData)"
+                    );
+                    return Ok(());
+                }
+
+                // Condition 8: Latitude must be -90 to +90
+                if frame.latitude < -90.0 || frame.latitude > 90.0 {
+                    warn!(
+                        imei = %resolved_uid,
+                        lat = frame.latitude,
+                        "Frame SKIPPED: Latitude out of range (same as GISV1 SaveDynData)"
+                    );
+                    return Ok(());
+                }
+
+                // ============================================================
+                // END GISV1 CONDITIONS
+                // ============================================================
 
                 // Ingest the frame into the database
                 database
