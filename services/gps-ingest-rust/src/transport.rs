@@ -322,6 +322,30 @@ async fn process_single_frame(
                 // GISV1 CONDITIONS - From AAP.cs + SaveDynData stored procedure
                 // ============================================================
                 
+                // --- From AAP.cs lines 640-651: Time coherence correction ---
+                // If timestamp is before 2016-01-01, apply correction offset
+                const THRESHOLD_2016: i64 = 1451606400; // 2016-01-01 00:00:00 UTC
+                const TIME_OFFSET: i64 = 619315200;     // ~19.6 years correction
+                
+                let unix_time = frame.recorded_at.and_utc().timestamp();
+                if unix_time < THRESHOLD_2016 {
+                    let corrected = unix_time + TIME_OFFSET;
+                    // Apply correction + 1h timezone adjustment
+                    frame.recorded_at = chrono::DateTime::from_timestamp(corrected, 0)
+                        .map(|dt| dt.naive_utc() + chrono::Duration::hours(1))
+                        .unwrap_or(frame.recorded_at);
+                    info!(
+                        imei = %resolved_uid,
+                        old_unix = unix_time,
+                        corrected_unix = corrected,
+                        new_time = %frame.recorded_at,
+                        "Atime correction applied (same as GISV1)"
+                    );
+                } else {
+                    // --- From SaveDynData: Add +1h timezone adjustment ---
+                    frame.recorded_at = frame.recorded_at + chrono::Duration::hours(1);
+                }
+                
                 // --- From AAP.cs lines 840-844 ---
                 // Condition 1: SendFlag != 2 (skip heartbeat/duplicate frames)
                 if frame.send_flag == 2 {
