@@ -237,13 +237,33 @@ fn parse_v3(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhF
     let ignition_on = decode_bit(flags_raw, 0x04);
     let mems = decode_mems(mems_raw)?;
     let temperature_raw = u16::from_str_radix(temp_raw, 16)?;
-    let odometer_km = u32::from_str_radix(odo_raw, 16)?;
+    let base_odometer_km = u32::from_str_radix(odo_raw, 16)?;
     let send_flag = u8::from_str_radix(send_flag_raw, 16)?;
     let added_info = u32::from_str_radix(added_info_raw, 16)?;
 
     let signal_quality = payload.get(70..72).and_then(|s| u8::from_str_radix(s, 16).ok());
     let satellites_in_view = payload.get(72..74).and_then(|s| u8::from_str_radix(s, 16).ok());
     let remaining_payload = payload.get(74..).map(ToOwned::to_owned);
+
+    // ============================================================
+    // GISV1 Logic: FMS Odometer (AAP.cs lines 746-752)
+    // If FMS Odometer > 0, use it instead of base odometer
+    // FMS Odometer is at position 74-82 (8 hex chars = 4 bytes)
+    // ============================================================
+    let fms_odometer = payload.get(74..82)
+        .and_then(|s| u32::from_str_radix(s, 16).ok())
+        .filter(|&v| v > 0);
+    
+    let odometer_km = if let Some(fms_odo) = fms_odometer {
+        tracing::info!(
+            base_odo = base_odometer_km,
+            fms_odo = fms_odo,
+            "V3: Using FMS Odometer (same as GISV1)"
+        );
+        fms_odo
+    } else {
+        base_odometer_km
+    };
 
     // Parse base fuel from position 34-35
     let base_fuel = u8::from_str_radix(fuel_raw, 16)?;
