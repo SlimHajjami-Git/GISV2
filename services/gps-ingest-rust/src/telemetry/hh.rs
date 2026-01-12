@@ -31,13 +31,25 @@ pub fn is_system_frame(payload: &str) -> bool {
 }
 
 /// Parses HH00/AA00 connect frames or HH01/AA01 info frames (firmware/ICC/IMEI).
+/// Also extracts MAT prefix if present (e.g., "NR08G0663 AA00...")
 pub fn parse_info_frame(payload: &str) -> Result<HhInfoFrame> {
     let payload = payload.trim();
     
     // Handle HH00/AA00 connect frames: may have prefix like "NR08G0663 AA00..."
     // Example: NR08G0663 AA00123634281125@25/11/28,12:36:31+00 ,ICC:..., IMEI:...
     if let Some(aa_pos) = payload.find("AA00").or_else(|| payload.find("HH00")) {
-        return parse_connect_frame(&payload[aa_pos..]);
+        // Extract MAT prefix if present (everything before AA00/HH00)
+        let mat = if aa_pos > 0 {
+            let prefix = payload[..aa_pos].trim();
+            if !prefix.is_empty() {
+                Some(prefix.to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        return parse_connect_frame_with_mat(&payload[aa_pos..], mat);
     }
     
     if !payload.starts_with("HH01") && !payload.starts_with("AA01") {
@@ -70,12 +82,13 @@ pub fn parse_info_frame(payload: &str) -> Result<HhInfoFrame> {
         firmware_version,
         icc_id,
         imei,
+        mat: None, // HH01/AA01 frames don't have MAT prefix
     })
 }
 
-/// Parse HH00/AA00 connect frames
+/// Parse HH00/AA00 connect frames with optional MAT prefix
 /// Example: AA00123634281125@25/11/28,12:36:31+00 ,ICC:89216020803464581196F, IMEI:860141071569116
-fn parse_connect_frame(payload: &str) -> Result<HhInfoFrame> {
+fn parse_connect_frame_with_mat(payload: &str, mat: Option<String>) -> Result<HhInfoFrame> {
     // Split by comma to extract ICC and IMEI
     let parts: Vec<&str> = payload.split(',').map(|s| s.trim()).collect();
     
@@ -110,6 +123,7 @@ fn parse_connect_frame(payload: &str) -> Result<HhInfoFrame> {
         firmware_version,
         icc_id,
         imei,
+        mat, // MAT prefix extracted from frame (e.g., "NR08G0663")
     })
 }
 

@@ -12,6 +12,9 @@ public class GpsDevice
     [MaxLength(50)]
     public string DeviceUid { get; set; } = string.Empty; // IMEI
 
+    [MaxLength(50)]
+    public string? Mat { get; set; } // MAT (identifiant logique GPS, distinct du matricule véhicule)
+
     [MaxLength(100)]
     public string? Label { get; set; }
 

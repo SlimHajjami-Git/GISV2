@@ -13,6 +13,7 @@ public class GpsDeviceConfiguration : IEntityTypeConfiguration<GpsDevice>
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.DeviceUid).HasColumnName("device_uid").HasMaxLength(50).IsRequired();
+        builder.Property(e => e.Mat).HasColumnName("mat").HasMaxLength(50);
         builder.Property(e => e.Label).HasColumnName("label").HasMaxLength(100);
         builder.Property(e => e.SimNumber).HasColumnName("sim_number").HasMaxLength(20);
         builder.Property(e => e.SimOperator).HasColumnName("sim_operator").HasMaxLength(50);
@@ -30,6 +31,7 @@ public class GpsDeviceConfiguration : IEntityTypeConfiguration<GpsDevice>
         builder.Property(e => e.UpdatedAt).HasColumnName("updated_at");
 
         builder.HasIndex(e => e.DeviceUid).IsUnique();
+        builder.HasIndex(e => e.Mat);
         builder.HasIndex(e => e.CompanyId);
 
         builder.HasOne(e => e.Company)

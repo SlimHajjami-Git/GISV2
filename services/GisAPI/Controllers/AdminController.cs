@@ -441,7 +441,8 @@ public class AdminController : ControllerBase
             CompanyId = v.CompanyId,
             CompanyName = v.Company?.Name,
             GpsDeviceId = v.GpsDeviceId,
-            GpsImei = v.GpsDevice?.DeviceUid ?? "",
+            GpsImei = v.GpsDevice?.DeviceUid,
+            GpsMat = v.GpsDevice?.Mat,
             AssignedDriverId = v.AssignedDriverId,
             AssignedDriverName = v.AssignedDriver?.Name,
             CreatedAt = v.CreatedAt,
@@ -477,7 +478,8 @@ public class AdminController : ControllerBase
             CompanyId = vehicle.CompanyId,
             CompanyName = vehicle.Company?.Name,
             GpsDeviceId = vehicle.GpsDeviceId,
-            GpsImei = vehicle.GpsDevice?.DeviceUid ?? "",
+            GpsImei = vehicle.GpsDevice?.DeviceUid,
+            GpsMat = vehicle.GpsDevice?.Mat,
             AssignedDriverId = vehicle.AssignedDriverId,
             AssignedDriverName = vehicle.AssignedDriver?.Name,
             CreatedAt = vehicle.CreatedAt,
@@ -505,9 +507,38 @@ public class AdminController : ControllerBase
             HasGps = request.HasGps,
             Mileage = request.Mileage ?? 0,
             CompanyId = request.CompanyId,
-            GpsDeviceId = request.GpsDeviceId,
             AssignedDriverId = request.AssignedDriverId
         };
+
+        if (request.HasGps)
+        {
+            var (gpsDevice, error) = await ResolveGpsDeviceAsync(
+                request.CompanyId,
+                request.GpsDeviceId,
+                request.GpsImei,
+                request.GpsMat
+            );
+
+            if (error != null)
+                return BadRequest(new { message = error });
+
+            if (gpsDevice == null)
+                return BadRequest(new { message = "Impossible d'associer le GPS sans IMEI ou appareil existant." });
+
+            vehicle.GpsDeviceId = gpsDevice.Id;
+            vehicle.HasGps = true;
+            gpsDevice.Status = "assigned";
+            gpsDevice.Vehicle = vehicle;
+
+            if (!string.IsNullOrWhiteSpace(request.GpsMat))
+            {
+                gpsDevice.Mat = request.GpsMat;
+            }
+        }
+        else
+        {
+            vehicle.HasGps = false;
+        }
 
         _context.Vehicles.Add(vehicle);
         await _context.SaveChangesAsync();
@@ -527,7 +558,11 @@ public class AdminController : ControllerBase
             Mileage = vehicle.Mileage,
             CompanyId = vehicle.CompanyId,
             CompanyName = company.Name,
-            CreatedAt = vehicle.CreatedAt
+            GpsDeviceId = vehicle.GpsDeviceId,
+            GpsImei = vehicle.GpsDevice?.DeviceUid,
+            GpsMat = vehicle.GpsDevice?.Mat,
+            CreatedAt = vehicle.CreatedAt,
+            UpdatedAt = vehicle.UpdatedAt
         });
     }
 
@@ -554,8 +589,50 @@ public class AdminController : ControllerBase
         if (request.HasGps.HasValue) vehicle.HasGps = request.HasGps.Value;
         if (request.Mileage.HasValue) vehicle.Mileage = request.Mileage.Value;
         if (request.CompanyId.HasValue) vehicle.CompanyId = request.CompanyId.Value;
-        if (request.GpsDeviceId.HasValue) vehicle.GpsDeviceId = request.GpsDeviceId.Value;
         if (request.AssignedDriverId.HasValue) vehicle.AssignedDriverId = request.AssignedDriverId.Value;
+
+        var targetCompanyId = request.CompanyId ?? vehicle.CompanyId;
+
+        if (request.HasGps == false)
+        {
+            await ReleaseGpsDeviceAsync(vehicle.GpsDeviceId);
+            vehicle.GpsDeviceId = null;
+            vehicle.HasGps = false;
+        }
+        else if (request.HasGps == true ||
+                 request.GpsDeviceId.HasValue ||
+                 !string.IsNullOrWhiteSpace(request.GpsImei) ||
+                 !string.IsNullOrWhiteSpace(request.GpsMat))
+        {
+            var (gpsDevice, error) = await ResolveGpsDeviceAsync(
+                targetCompanyId,
+                request.GpsDeviceId,
+                request.GpsImei,
+                request.GpsMat
+            );
+
+            if (error != null)
+                return BadRequest(new { message = error });
+
+            if (gpsDevice != null)
+            {
+                if (vehicle.GpsDeviceId.HasValue && vehicle.GpsDeviceId != gpsDevice.Id)
+                {
+                    await ReleaseGpsDeviceAsync(vehicle.GpsDeviceId);
+                }
+
+                vehicle.GpsDeviceId = gpsDevice.Id;
+                vehicle.HasGps = true;
+                gpsDevice.Status = "assigned";
+                gpsDevice.Vehicle = vehicle;
+
+                if (!string.IsNullOrWhiteSpace(request.GpsImei))
+                    gpsDevice.DeviceUid = request.GpsImei!;
+
+                if (!string.IsNullOrWhiteSpace(request.GpsMat))
+                    gpsDevice.Mat = request.GpsMat;
+            }
+        }
 
         vehicle.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
@@ -576,7 +653,8 @@ public class AdminController : ControllerBase
             CompanyId = vehicle.CompanyId,
             CompanyName = vehicle.Company?.Name,
             GpsDeviceId = vehicle.GpsDeviceId,
-            GpsImei = vehicle.GpsDevice?.DeviceUid ?? "",
+            GpsImei = vehicle.GpsDevice?.DeviceUid,
+            GpsMat = vehicle.GpsDevice?.Mat,
             AssignedDriverId = vehicle.AssignedDriverId,
             AssignedDriverName = vehicle.AssignedDriver?.Name,
             CreatedAt = vehicle.CreatedAt,
@@ -623,12 +701,90 @@ public class AdminController : ControllerBase
             CompanyId = v.CompanyId,
             CompanyName = v.Company?.Name,
             GpsDeviceId = v.GpsDeviceId,
-            GpsImei = v.GpsDevice?.DeviceUid ?? "",
+            GpsImei = v.GpsDevice?.DeviceUid,
+            GpsMat = v.GpsDevice?.Mat,
             AssignedDriverId = v.AssignedDriverId,
             AssignedDriverName = v.AssignedDriver?.Name,
             CreatedAt = v.CreatedAt,
             UpdatedAt = v.UpdatedAt
         }));
+    }
+
+    private async Task<(GpsDevice? device, string? error)> ResolveGpsDeviceAsync(
+        int companyId,
+        int? gpsDeviceId,
+        string? gpsImei,
+        string? gpsMat)
+    {
+        if (gpsDeviceId.HasValue)
+        {
+            var device = await _context.GpsDevices.FirstOrDefaultAsync(d => d.Id == gpsDeviceId.Value);
+            if (device == null)
+                return (null, "Appareil GPS introuvable.");
+            if (device.CompanyId != companyId)
+                return (null, "Cet appareil GPS appartient à une autre société.");
+
+            return (device, null);
+        }
+
+        var normalizedImei = gpsImei?.Trim();
+        if (!string.IsNullOrEmpty(normalizedImei))
+        {
+            var device = await _context.GpsDevices.FirstOrDefaultAsync(d => d.DeviceUid == normalizedImei);
+            if (device != null)
+            {
+                if (device.CompanyId != companyId)
+                    return (null, "Un appareil avec cet IMEI appartient déjà à une autre société.");
+
+                if (!string.IsNullOrWhiteSpace(gpsMat) && string.IsNullOrWhiteSpace(device.Mat))
+                {
+                    device.Mat = gpsMat.Trim();
+                }
+
+                return (device, null);
+            }
+
+            var newDevice = new GpsDevice
+            {
+                DeviceUid = normalizedImei,
+                Mat = gpsMat?.Trim(),
+                CompanyId = companyId,
+                Status = "unassigned",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _context.GpsDevices.Add(newDevice);
+            return (newDevice, null);
+        }
+
+        var normalizedMat = gpsMat?.Trim();
+        if (!string.IsNullOrEmpty(normalizedMat))
+        {
+            var device = await _context.GpsDevices.FirstOrDefaultAsync(d => d.Mat == normalizedMat);
+            if (device != null)
+            {
+                if (device.CompanyId != companyId)
+                    return (null, "Un appareil avec ce MAT appartient déjà à une autre société.");
+
+                return (device, null);
+            }
+        }
+
+        return (null, null);
+    }
+
+    private async Task ReleaseGpsDeviceAsync(int? gpsDeviceId)
+    {
+        if (!gpsDeviceId.HasValue)
+            return;
+
+        var device = await _context.GpsDevices.FirstOrDefaultAsync(d => d.Id == gpsDeviceId.Value);
+        if (device == null)
+            return;
+
+        device.Status = "unassigned";
+        device.UpdatedAt = DateTime.UtcNow;
     }
 
     // ==================== SERVICE HEALTH ====================
@@ -1054,6 +1210,7 @@ public class AdminVehicleDto
     public string? CompanyName { get; set; }
     public int? GpsDeviceId { get; set; }
     public string? GpsImei { get; set; }
+    public string? GpsMat { get; set; }
     public int? AssignedDriverId { get; set; }
     public string? AssignedDriverName { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -1077,6 +1234,8 @@ public class CreateAdminVehicleRequest
     public string? VIN { get; set; }
     public int CompanyId { get; set; }
     public int? GpsDeviceId { get; set; }
+    public string? GpsImei { get; set; }
+    public string? GpsMat { get; set; }
     public int? AssignedDriverId { get; set; }
 }
 
@@ -1095,6 +1254,8 @@ public class UpdateAdminVehicleRequest
     public string? FuelType { get; set; }
     public int? CompanyId { get; set; }
     public int? GpsDeviceId { get; set; }
+    public string? GpsImei { get; set; }
+    public string? GpsMat { get; set; }
     public int? AssignedDriverId { get; set; }
 }
 

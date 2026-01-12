@@ -34,15 +34,16 @@ public class TramOnLineController : ControllerBase
 
         mat = mat.Trim();
 
+        // Search by Mat field (GPS logical identifier), not DeviceUid (IMEI)
         var existingDevice = await _context.GpsDevices
             .Include(d => d.Vehicle)
-            .FirstOrDefaultAsync(d => d.DeviceUid == mat);
+            .FirstOrDefaultAsync(d => d.Mat == mat);
 
         if (existingDevice != null)
         {
             return Ok(new MatRegistrationResponse(
                 false,
-                existingDevice.DeviceUid,
+                existingDevice.Mat ?? existingDevice.DeviceUid,
                 existingDevice.Vehicle?.Name,
                 existingDevice.Vehicle?.Id,
                 existingDevice.Vehicle?.GpsDeviceId ?? existingDevice.Id));
@@ -63,7 +64,8 @@ public class TramOnLineController : ControllerBase
 
         var gpsDevice = new GpsDevice
         {
-            DeviceUid = mat,
+            DeviceUid = $"AUTO_{mat}_{DateTime.UtcNow:yyyyMMddHHmmss}", // Temporary IMEI until real device connects
+            Mat = mat, // MAT is the logical GPS identifier
             CompanyId = companyId,
             Status = "active",
             CreatedAt = DateTime.UtcNow,
@@ -103,8 +105,9 @@ public class TramOnLineController : ControllerBase
             return BadRequest("MAT is required.");
         }
 
+        // Search by Mat field (GPS logical identifier)
         var device = await _context.GpsDevices
-            .FirstOrDefaultAsync(d => d.DeviceUid == mat.Trim());
+            .FirstOrDefaultAsync(d => d.Mat == mat.Trim());
 
         if (device == null)
         {

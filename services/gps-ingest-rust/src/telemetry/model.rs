@@ -50,4 +50,5 @@ pub struct HhInfoFrame {
     pub firmware_version: String,
     pub icc_id: Option<String>,
     pub imei: Option<String>,
+    pub mat: Option<String>, // MAT (GPS logical identifier, distinct from vehicle plate_number)
 }

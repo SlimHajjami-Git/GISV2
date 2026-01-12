@@ -69,9 +69,9 @@ export interface AdminVehicle {
   fuelType?: string;
   companyId: number;
   companyName?: string;
-  gpsDeviceId?: string;
+  gpsDeviceId?: number;
   gpsImei?: string;
-  gpsPhoneNumber?: string;
+  gpsMat?: string;
   assignedDriverId?: number;
   assignedDriverName?: string;
   createdAt: Date;

@@ -47,16 +47,20 @@ impl Database {
             .trim()
             .to_string();
 
+        // MAT is the GPS logical identifier (e.g., "NR08G0663"), distinct from vehicle plate_number
+        let mat = info.mat.as_ref().map(|m| m.trim().to_string());
+
         // Insert into gps_devices table (EF Core schema)
         // Default CompanyId = 1 (Belive) for testing - devices will be reassigned when linked to vehicles
         const DEFAULT_COMPANY_ID: i32 = 1; // Belive company
         
         sqlx::query(
             r#"
-            INSERT INTO gps_devices (device_uid, label, protocol_type, firmware_version, status, last_communication, company_id, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, 'unassigned', NOW(), $5, NOW(), NOW())
+            INSERT INTO gps_devices (device_uid, mat, label, protocol_type, firmware_version, status, last_communication, company_id, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, 'unassigned', NOW(), $6, NOW(), NOW())
             ON CONFLICT (device_uid) DO UPDATE
-                SET label = COALESCE(gps_devices.label, EXCLUDED.label),
+                SET mat = COALESCE(EXCLUDED.mat, gps_devices.mat),
+                    label = COALESCE(gps_devices.label, EXCLUDED.label),
                     protocol_type = EXCLUDED.protocol_type,
                     firmware_version = EXCLUDED.firmware_version,
                     last_communication = NOW(),
@@ -64,6 +68,7 @@ impl Database {
             "#,
         )
         .bind(&imei)
+        .bind(&mat)
         .bind(&firmware)
         .bind(protocol_type)
         .bind(&firmware)
