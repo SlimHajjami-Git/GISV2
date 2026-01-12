@@ -248,7 +248,7 @@
                         <th>Date/Heure</th>
                         <th>Valeur</th>
                         <th>Détails</th>
-                        <th>Statut</th>
+                        <th>Kilométrage</th>
                       }
                     </tr>
                   </thead>
@@ -267,7 +267,7 @@
                           <td class="time-cell">{{ row.time || row.date }}</td>
                           <td class="value-cell">{{ row.level || row.speed || row.distance }}</td>
                           <td>{{ row.consumption || row.limit || row.location || row.trips }}</td>
-                          <td>{{ row.status || row.type || row.avgSpeed }}</td>
+                          <td>{{ row.kilometrage || row.status || row.type || row.avgSpeed }}</td>
                         }
                       </tr>
                     }

@@ -336,6 +336,9 @@ export class ReportsComponent implements OnInit {
       case 'distance':
         this.processDistanceReport(sorted);
         break;
+      case 'trips':
+        this.processTripReport(sorted);
+        break;
       default:
         this.processFuelReport(sorted);
     }
@@ -531,7 +534,8 @@ export class ReportsComponent implements OnInit {
           }),
           distance: `${totalDistance.toFixed(2)} km`,
           speed: `${(curr.speedKph || 0).toFixed(1)} km/h`,
-          location: `${curr.latitude.toFixed(5)}, ${curr.longitude.toFixed(5)}`
+          location: `${curr.latitude.toFixed(5)}, ${curr.longitude.toFixed(5)}`,
+          kilometrage: `${totalDistance.toFixed(2)} km`
         });
       }
     }
@@ -545,6 +549,124 @@ export class ReportsComponent implements OnInit {
     this.statisticsData = {
       'Distance totale': `${totalDistance.toFixed(2)} km`,
       'Points GPS': positions.length.toString()
+    };
+  }
+
+  processTripReport(positions: any[]) {
+    if (!positions.length) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = { 'Information': 'Aucune donnée pour cette période' };
+      return;
+    }
+
+    const gapMinutes = 10;
+    const trips: {
+      start: any;
+      end: any;
+      distanceCalculated: number;
+    }[] = [];
+
+    let currentTrip: {
+      start: any;
+      end: any;
+      distanceCalculated: number;
+    } | null = null;
+
+    const resetTrip = (pos: any) => ({
+      start: pos,
+      end: pos,
+      distanceCalculated: 0
+    });
+
+    for (let i = 0; i < positions.length; i++) {
+      const pos = positions[i];
+      if (!currentTrip) {
+        currentTrip = resetTrip(pos);
+        continue;
+      }
+
+      const prev = positions[i - 1];
+      currentTrip.end = pos;
+
+      const dist = this.haversineDistance(prev.latitude, prev.longitude, pos.latitude, pos.longitude);
+      if (!Number.isNaN(dist)) {
+        currentTrip.distanceCalculated += dist;
+      }
+
+      const gap = (new Date(pos.recordedAt).getTime() - new Date(prev.recordedAt).getTime()) / 60000;
+      const ignitionDrop = prev.ignitionOn && pos.ignitionOn === false;
+      const extendedStop = (prev.speedKph || 0) < 2 && (pos.speedKph || 0) < 2 && gap >= 5;
+
+      if (gap >= gapMinutes || ignitionDrop || extendedStop) {
+        trips.push(currentTrip);
+        currentTrip = resetTrip(pos);
+      }
+    }
+
+    if (currentTrip) {
+      trips.push(currentTrip);
+    }
+
+    const meaningfulTrips = trips.filter(trip => {
+      const durationMinutes = (new Date(trip.end.recordedAt).getTime() - new Date(trip.start.recordedAt).getTime()) / 60000;
+      return durationMinutes >= 2 || trip.distanceCalculated >= 0.2;
+    });
+
+    if (!meaningfulTrips.length) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = { 'Information': 'Aucun trajet significatif détecté' };
+      return;
+    }
+
+    const summaries = meaningfulTrips.map((trip, index) => {
+      const startTime = new Date(trip.start.recordedAt);
+      const endTime = new Date(trip.end.recordedAt);
+      const durationMinutes = Math.max(1, (endTime.getTime() - startTime.getTime()) / 60000);
+
+      let distanceKm = trip.distanceCalculated;
+      if (trip.start.odometerKm && trip.end.odometerKm && trip.end.odometerKm >= trip.start.odometerKm) {
+        distanceKm = trip.end.odometerKm - trip.start.odometerKm;
+      }
+
+      const avgSpeed = durationMinutes > 0 ? distanceKm / (durationMinutes / 60) : 0;
+      const startLocation = trip.start.address || `${trip.start.latitude.toFixed(4)}°, ${trip.start.longitude.toFixed(4)}°`;
+      const endLocation = trip.end.address || `${trip.end.latitude.toFixed(4)}°, ${trip.end.longitude.toFixed(4)}°`;
+
+      const kilometrageLabel = trip.end.odometerKm
+        ? `${Number(trip.end.odometerKm).toLocaleString('fr-FR')} km`
+        : `+${distanceKm.toFixed(2)} km`;
+
+      return {
+        row: {
+          time: `${startTime.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} → ${endTime.toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+          distance: `${distanceKm.toFixed(2)} km`,
+          trips: `${Math.round(durationMinutes)} min | ${avgSpeed.toFixed(1)} km/h`,
+          location: `${startLocation} → ${endLocation}`,
+          kilometrage: kilometrageLabel
+        },
+        distanceKm,
+        durationMinutes,
+        label: `Trajet ${index + 1}`
+      };
+    });
+
+    this.tableData = summaries.map(summary => summary.row);
+    this.chartData = summaries.map(summary => ({
+      label: summary.label,
+      value: summary.distanceKm
+    }));
+
+    const totalDistance = summaries.reduce((sum, s) => sum + s.distanceKm, 0);
+    const totalDuration = summaries.reduce((sum, s) => sum + s.durationMinutes, 0);
+    const avgSpeed = totalDuration > 0 ? totalDistance / (totalDuration / 60) : 0;
+
+    this.statisticsData = {
+      'Nombre de trajets': summaries.length.toString(),
+      'Distance totale': `${totalDistance.toFixed(2)} km`,
+      'Durée totale': `${Math.round(totalDuration)} min`,
+      'Vitesse moyenne': `${avgSpeed.toFixed(1)} km/h`
     };
   }
 
