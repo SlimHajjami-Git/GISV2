@@ -52,7 +52,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:5000
-      ConnectionStrings__DefaultConnection: Host=postgres;Database=gis_v2;Username=postgres;Password=${POSTGRES_PASSWORD:-your_secure_password_here}
+      ConnectionStrings__DefaultConnection: Host=postgres;Database=gis_v2;Username=postgres;Password=${POSTGRES_PASSWORD:Calypso@2026+}
       Jwt__Key: ${JWT_SECRET_KEY:-YourSuperSecretKeyForProductionAtLeast32Characters!}
       Jwt__Issuer: GisAPI
       Jwt__Audience: GisAPI
