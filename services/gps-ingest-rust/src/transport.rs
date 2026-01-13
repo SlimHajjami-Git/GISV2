@@ -209,14 +209,16 @@ async fn route_payload(
         "Processing batch of frames"
     );
 
-    // Log each frame for debugging (can be removed in production)
+    // Log each received frame (preview only to avoid flooding logs)
     for (idx, frame_str) in frames.iter().enumerate() {
-        tracing::debug!(
+        let preview_len = std::cmp::min(64, frame_str.len());
+        let preview = &frame_str[..preview_len];
+        tracing::info!(
             protocol,
             frame_idx = idx,
             frame_len = frame_str.len(),
-            frame_start = &frame_str[..std::cmp::min(20, frame_str.len())],
-            "Frame to process"
+            preview = %preview,
+            "Telemetry frame received"
         );
     }
 
