@@ -328,6 +328,7 @@ async fn process_single_frame(
                 // If timestamp is before 2016-01-01, apply correction offset
                 const THRESHOLD_2016: i64 = 1451606400; // 2016-01-01 00:00:00 UTC
                 const TIME_OFFSET: i64 = 619315200;     // ~19.6 years correction
+                const LOCAL_TIME_OFFSET_MINUTES: i64 = 60; // GISV1 AddHours(1) => UTC+1 (Tunisia)
                 
                 let unix_time = frame.recorded_at.and_utc().timestamp();
                 if unix_time < THRESHOLD_2016 {
@@ -343,6 +344,23 @@ async fn process_single_frame(
                         new_time = %frame.recorded_at,
                         "Atime correction applied (same as GISV1)"
                     );
+                }
+
+                // Apply local timezone offset (GISV1 stored TakenAt +1h)
+                if LOCAL_TIME_OFFSET_MINUTES != 0 {
+                    if let Some(adjusted) = frame
+                        .recorded_at
+                        .checked_add_signed(chrono::Duration::minutes(LOCAL_TIME_OFFSET_MINUTES))
+                    {
+                        frame.recorded_at = adjusted;
+                    } else {
+                        warn!(
+                            imei = %resolved_uid,
+                            original = %frame.recorded_at,
+                            offset_minutes = LOCAL_TIME_OFFSET_MINUTES,
+                            "Failed to apply local time offset"
+                        );
+                    }
                 }
                 
                 // --- From AAP.cs lines 840-844 ---
