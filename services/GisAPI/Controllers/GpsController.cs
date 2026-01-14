@@ -19,6 +19,7 @@ public class GpsController : ControllerBase
 {
     private readonly GisDbContext _context;
     private readonly IGeocodingService _geocodingService;
+    private const int RealTimeDelayToleranceSeconds = 60;
 
     public GpsController(GisDbContext context, IGeocodingService geocodingService)
     {
@@ -52,7 +53,9 @@ public class GpsController : ControllerBase
                 DeviceUid = v.GpsDevice != null ? v.GpsDevice.DeviceUid : null,
                 LastPosition = v.GpsDevice != null 
                     ? _context.GpsPositions
-                        .Where(p => p.DeviceId == v.GpsDeviceId && p.CreatedAt == p.RecordedAt)
+                        .Where(p => p.DeviceId == v.GpsDeviceId &&
+                                    (p.IsRealTime ||
+                                     EF.Functions.DateDiffSecond(p.RecordedAt, p.CreatedAt) <= RealTimeDelayToleranceSeconds))
                         .OrderByDescending(p => p.RecordedAt)
                         .Select(p => new PositionDto
                         {
@@ -96,7 +99,9 @@ public class GpsController : ControllerBase
             return Ok(new { message = "Vehicle has no GPS device assigned" });
 
         var lastPosition = await _context.GpsPositions
-            .Where(p => p.DeviceId == vehicle.GpsDeviceId && p.CreatedAt == p.RecordedAt)
+            .Where(p => p.DeviceId == vehicle.GpsDeviceId &&
+                        (p.IsRealTime ||
+                         EF.Functions.DateDiffSecond(p.RecordedAt, p.CreatedAt) <= RealTimeDelayToleranceSeconds))
             .OrderByDescending(p => p.RecordedAt)
             .FirstOrDefaultAsync();
 
@@ -154,7 +159,8 @@ public class GpsController : ControllerBase
             .Where(p => p.DeviceId == vehicle.GpsDeviceId &&
                         p.RecordedAt >= from &&
                         p.RecordedAt <= to &&
-                        p.CreatedAt == p.RecordedAt)
+                        (p.IsRealTime ||
+                         EF.Functions.DateDiffSecond(p.RecordedAt, p.CreatedAt) <= RealTimeDelayToleranceSeconds))
             .OrderBy(p => p.RecordedAt)
             .Take(limit)
             .Select(p => new PositionDto
@@ -200,7 +206,8 @@ public class GpsController : ControllerBase
             .Where(p => p.DeviceId == device.Id &&
                         p.RecordedAt >= from &&
                         p.RecordedAt <= to &&
-                        p.CreatedAt == p.RecordedAt)
+                        (p.IsRealTime ||
+                         EF.Functions.DateDiffSecond(p.RecordedAt, p.CreatedAt) <= RealTimeDelayToleranceSeconds))
             .OrderBy(p => p.RecordedAt)
             .Take(limit)
             .Select(p => new PositionDto
