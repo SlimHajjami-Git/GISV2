@@ -150,27 +150,60 @@ input, select, textarea {
   background: var(--bg-card);
 }
 
+.custom-vehicle-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
 .vehicle-marker {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   border: 3px solid white;
-  animation: pulse 2s infinite;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-@keyframes pulse {
+.vehicle-marker:hover {
+  transform: scale(1.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.vehicle-marker .marker-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.vehicle-marker .marker-icon svg {
+  width: 18px;
+  height: auto;
+  fill: #fff;
+}
+
+.vehicle-marker.vehicle-marker--moving {
+  animation: vehicle-pulse 2s ease-in-out infinite;
+}
+
+.vehicle-marker.vehicle-marker--stopped {
+  animation: none;
+}
+
+.vehicle-marker.vehicle-marker--offline {
+  opacity: 0.8;
+}
+
+@keyframes vehicle-pulse {
   0%, 100% {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     transform: scale(1);
   }
   50% {
+    box-shadow: 0 2px 16px rgba(76, 175, 80, 0.6);
     transform: scale(1.05);
   }
-}
-
-.vehicle-marker.moving {
-  animation: pulse 1s infinite;
 }

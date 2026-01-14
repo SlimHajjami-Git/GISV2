@@ -7,6 +7,7 @@ import { ApiService } from '../services/api.service';
 import { SignalRService, PositionUpdate } from '../services/signalr.service';
 import { Vehicle } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { getVehicleIcon } from './shared/vehicle-icons';
 import * as L from 'leaflet';
 import 'leaflet-routing-machine';
 
@@ -46,6 +47,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   playbackSpeed = 1;
   playbackSpeeds = [0.5, 1, 2, 4, 8];
   playbackPositions: any[] = [];
+  playbackRawCount = 0;
   playbackIndex = 0;
   playbackInterval: any = null;
   playbackPolyline: L.Polyline | null = null;
@@ -306,23 +308,24 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   createVehicleIcon(vehicle: any, isMoving: boolean): L.DivIcon {
-    const type = this.getVehicleType(vehicle);
+    const vehicleType = vehicle.type || vehicle.vehicleType || this.getVehicleType(vehicle);
     let color = '#9e9e9e';
+    let statusClass = 'offline';
+
     if (vehicle.isOnline) {
-      color = isMoving ? '#4caf50' : '#ff9800';
+      if (isMoving) {
+        color = '#4caf50';
+        statusClass = 'moving';
+      } else {
+        color = '#ff9800';
+        statusClass = 'stopped';
+      }
     }
 
-    let iconSvg = '';
-    if (type === 'truck') {
-      iconSvg = `<svg width="18" height="12" viewBox="0 0 24 16" fill="white"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v7h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-4l-3-4z"/></svg>`;
-    } else if (type === 'van') {
-      iconSvg = `<svg width="18" height="12" viewBox="0 0 24 16" fill="white"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5H15V3H5v2H3.5C2.67 5 2 5.67 2 6.5V14h1c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3.08-2.99z"/></svg>`;
-    } else {
-      iconSvg = `<svg width="16" height="10" viewBox="0 0 24 14" fill="white"><path d="M18.92 2.01C18.72 1.42 18.16 1 17.5 1h-11c-.66 0-1.21.42-1.42 1.01L3 8v6c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1V8l-2.08-5.99z"/></svg>`;
-    }
+    const iconSvg = getVehicleIcon(vehicleType);
 
     const iconHtml = `
-      <div class="vehicle-marker ${isMoving ? 'moving' : 'stopped'}" style="background-color: ${color};">
+      <div class="vehicle-marker vehicle-marker--${statusClass}" style="background-color: ${color};">
         <div class="marker-icon">${iconSvg}</div>
       </div>
     `;
@@ -347,7 +350,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   selectVehicle(vehicle: any) {
+    const isNewVehicle = this.selectedVehicle?.id !== vehicle.id;
     this.selectedVehicle = vehicle;
+    if (isNewVehicle) {
+      this.clearPlayback();
+    }
     this.activeTab = 'details';
     this.popupPosition = { x: 0, y: 0 }; // Reset position to center
     this.isDragging = false;
@@ -497,11 +504,41 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const fromDate = new Date(this.playbackFromDate);
     const toDate = new Date(this.playbackToDate);
     const vehicleId = parseInt(this.selectedVehicle.id, 10);
+    const fromTime = fromDate.getTime();
+    const toTime = toDate.getTime();
 
     this.apiService.getVehicleHistory(vehicleId, fromDate, toDate).subscribe({
       next: (positions) => {
+        this.playbackRawCount = positions.length;
+
+        // Keep only real-time points (ignore historical replays)
+        const realtimePositions = positions.filter((position: any) => {
+          if (typeof position.isRealTime === 'boolean') {
+            return position.isRealTime;
+          }
+          if (position.recordedAt && position.createdAt) {
+            return position.recordedAt === position.createdAt;
+          }
+          return false;
+        });
+
+        // Ensure we only keep points strictly within the requested range
+        const filteredPositions = realtimePositions.filter((position: any) => {
+          const recordedAt = new Date(position.recordedAt).getTime();
+          if (isNaN(recordedAt)) {
+            return false;
+          }
+          if (!isNaN(fromTime) && recordedAt < fromTime) {
+            return false;
+          }
+          if (!isNaN(toTime) && recordedAt > toTime) {
+            return false;
+          }
+          return true;
+        });
+
         // Positions are now returned as a direct array
-        this.playbackPositions = [...positions].sort((a: any, b: any) => 
+        this.playbackPositions = [...filteredPositions].sort((a: any, b: any) => 
           new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime()
         );
         
@@ -830,6 +867,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.isPlaybackLoaded = false;
     this.isPlaying = false;
     this.playbackPositions = [];
+    this.playbackRawCount = 0;
     this.playbackIndex = 0;
     this.playbackProgress = 0;
     this.filteredBirdFlights = 0;

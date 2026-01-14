@@ -1079,30 +1079,55 @@
 }
 
 :global(.vehicle-marker) {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 3px solid #fff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+:global(.vehicle-marker:hover) {
+  transform: scale(1.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 :global(.vehicle-marker .marker-icon) {
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
 }
 
-:global(.vehicle-marker.moving) {
+:global(.vehicle-marker .marker-icon svg) {
+  width: 18px;
+  height: auto;
+  fill: #fff;
+}
+
+:global(.vehicle-marker.vehicle-marker--moving) {
   animation: pulse-marker 2s ease-in-out infinite;
+}
+
+:global(.vehicle-marker.vehicle-marker--stopped) {
+  animation: none;
+}
+
+:global(.vehicle-marker.vehicle-marker--offline) {
+  opacity: 0.8;
 }
 
 @keyframes pulse-marker {
   0%, 100% {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    transform: scale(1);
   }
   50% {
-    box-shadow: 0 2px 16px rgba(76, 175, 80, 0.5);
+    box-shadow: 0 2px 16px rgba(76, 175, 80, 0.6);
+    transform: scale(1.05);
   }
 }
 

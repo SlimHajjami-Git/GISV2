@@ -52,7 +52,7 @@ public class GpsController : ControllerBase
                 DeviceUid = v.GpsDevice != null ? v.GpsDevice.DeviceUid : null,
                 LastPosition = v.GpsDevice != null 
                     ? _context.GpsPositions
-                        .Where(p => p.DeviceId == v.GpsDeviceId)
+                        .Where(p => p.DeviceId == v.GpsDeviceId && p.CreatedAt == p.RecordedAt)
                         .OrderByDescending(p => p.RecordedAt)
                         .Select(p => new PositionDto
                         {
@@ -96,7 +96,7 @@ public class GpsController : ControllerBase
             return Ok(new { message = "Vehicle has no GPS device assigned" });
 
         var lastPosition = await _context.GpsPositions
-            .Where(p => p.DeviceId == vehicle.GpsDeviceId)
+            .Where(p => p.DeviceId == vehicle.GpsDeviceId && p.CreatedAt == p.RecordedAt)
             .OrderByDescending(p => p.RecordedAt)
             .FirstOrDefaultAsync();
 
@@ -153,7 +153,8 @@ public class GpsController : ControllerBase
         var positions = await _context.GpsPositions
             .Where(p => p.DeviceId == vehicle.GpsDeviceId &&
                         p.RecordedAt >= from &&
-                        p.RecordedAt <= to)
+                        p.RecordedAt <= to &&
+                        p.CreatedAt == p.RecordedAt)
             .OrderBy(p => p.RecordedAt)
             .Take(limit)
             .Select(p => new PositionDto
@@ -198,7 +199,8 @@ public class GpsController : ControllerBase
         var positions = await _context.GpsPositions
             .Where(p => p.DeviceId == device.Id &&
                         p.RecordedAt >= from &&
-                        p.RecordedAt <= to)
+                        p.RecordedAt <= to &&
+                        p.CreatedAt == p.RecordedAt)
             .OrderBy(p => p.RecordedAt)
             .Take(limit)
             .Select(p => new PositionDto
