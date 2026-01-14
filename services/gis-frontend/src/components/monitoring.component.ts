@@ -7,14 +7,13 @@ import { ApiService } from '../services/api.service';
 import { SignalRService, PositionUpdate } from '../services/signalr.service';
 import { Vehicle } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
-import { StatCardComponent, ButtonComponent, CardComponent } from './shared/ui';
 import * as L from 'leaflet';
 import 'leaflet-routing-machine';
 
 @Component({
   selector: 'app-monitoring',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, StatCardComponent, ButtonComponent, CardComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent],
   templateUrl: './monitoring.component.html',
   styleUrls: ['./monitoring.component.css']
 })
@@ -76,6 +75,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     stopped: 0,
     offline: 0
   };
+
+  showLayersMenu = false;
 
   constructor(
     private router: Router,
@@ -305,10 +306,24 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   createVehicleIcon(vehicle: any, isMoving: boolean): L.DivIcon {
-    const color = isMoving ? '#48bb78' : '#f56565';
+    const type = this.getVehicleType(vehicle);
+    let color = '#9e9e9e';
+    if (vehicle.isOnline) {
+      color = isMoving ? '#4caf50' : '#ff9800';
+    }
+
+    let iconSvg = '';
+    if (type === 'truck') {
+      iconSvg = `<svg width="18" height="12" viewBox="0 0 24 16" fill="white"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v7h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-4l-3-4z"/></svg>`;
+    } else if (type === 'van') {
+      iconSvg = `<svg width="18" height="12" viewBox="0 0 24 16" fill="white"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5H15V3H5v2H3.5C2.67 5 2 5.67 2 6.5V14h1c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3.08-2.99z"/></svg>`;
+    } else {
+      iconSvg = `<svg width="16" height="10" viewBox="0 0 24 14" fill="white"><path d="M18.92 2.01C18.72 1.42 18.16 1 17.5 1h-11c-.66 0-1.21.42-1.42 1.01L3 8v6c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1V8l-2.08-5.99z"/></svg>`;
+    }
+
     const iconHtml = `
       <div class="vehicle-marker ${isMoving ? 'moving' : 'stopped'}" style="background-color: ${color};">
-        <div class="marker-icon">🚗</div>
+        <div class="marker-icon">${iconSvg}</div>
       </div>
     `;
 
@@ -402,9 +417,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   changeMapStyle(style: 'streets' | 'satellite' | 'terrain') {
     this.mapStyle = style;
+    this.showLayersMenu = false;
     if (this.map) {
       this.map.remove();
       this.map = null;
+      this.mapReady = false;
       this.initializeMap();
     }
   }
@@ -874,5 +891,107 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   stopDrag() {
     this.isDragging = false;
+  }
+
+  getVehicleType(vehicle: any): string {
+    const type = (vehicle.type || '').toLowerCase();
+    const brand = (vehicle.brand || '').toLowerCase();
+    const model = (vehicle.model || '').toLowerCase();
+
+    if (type.includes('truck') || type.includes('camion') || brand.includes('man') ||
+        brand.includes('scania') || brand.includes('volvo') || model.includes('actros') ||
+        model.includes('tge')) {
+      return 'truck';
+    }
+    if (type.includes('van') || type.includes('fourgon') || type.includes('utilitaire') ||
+        model.includes('sprinter') || model.includes('transit') || model.includes('vito')) {
+      return 'van';
+    }
+    return 'car';
+  }
+
+  getVehicleTypeClass(vehicle: any): string {
+    const type = this.getVehicleType(vehicle);
+    const status = this.getVehicleStatusState(vehicle);
+    return `${type}-${status}`;
+  }
+
+  private getVehicleStatusState(vehicle: any): string {
+    if (!vehicle.isOnline) return 'offline';
+    if ((vehicle.currentSpeed || 0) > 5) return 'moving';
+    return 'stopped';
+  }
+
+  getStatusTag(vehicle: any): string {
+    if (!vehicle.isOnline) return 'Not available';
+    return 'Allowed';
+  }
+
+  getStatusColorClass(vehicle: any): string {
+    if (!vehicle.isOnline) return 'status-offline';
+    if ((vehicle.currentSpeed || 0) > 5) return 'status-moving';
+    return 'status-stopped';
+  }
+
+  isVehicleMoving(vehicle: any): boolean {
+    return vehicle.isOnline && (vehicle.currentSpeed || 0) > 5;
+  }
+
+  getLastUpdateTime(vehicle: any): string {
+    const lastComm = (vehicle as any).lastCommunication;
+    if (lastComm) {
+      const date = new Date(lastComm);
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffSec = Math.floor(diffMs / 1000);
+
+      if (diffSec < 60) {
+        return `${diffSec} s ago, ${date.toLocaleDateString('en-GB')} ${date.toLocaleTimeString('en-GB')}`;
+      }
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) {
+        return `${diffMin} min ago, ${date.toLocaleDateString('en-GB')} ${date.toLocaleTimeString('en-GB')}`;
+      }
+      return date.toLocaleDateString('en-GB') + ' ' + date.toLocaleTimeString('en-GB');
+    }
+    return 'Unknown';
+  }
+
+  getVehicleAddress(vehicle: any): string {
+    if (vehicle.currentLocation) {
+      return `${vehicle.currentLocation.lat.toFixed(4)}, ${vehicle.currentLocation.lng.toFixed(4)}`;
+    }
+    return 'Location unavailable';
+  }
+
+  getCurrentTime(): string {
+    const now = new Date();
+    const offset = now.getTimezoneOffset();
+    const offsetHours = Math.abs(Math.floor(offset / 60));
+    const sign = offset <= 0 ? '+' : '-';
+    return `${now.toLocaleTimeString('en-GB')} (${sign}${offsetHours.toString().padStart(2, '0')})`;
+  }
+
+  toggleLayersMenu() {
+    this.showLayersMenu = !this.showLayersMenu;
+  }
+
+  zoomIn() {
+    if (this.map) {
+      this.map.zoomIn();
+    }
+  }
+
+  zoomOut() {
+    if (this.map) {
+      this.map.zoomOut();
+    }
+  }
+
+  centerOnVehicles() {
+    if (this.map && this.vehicleMarkers.size > 0) {
+      const group = new L.FeatureGroup(Array.from(this.vehicleMarkers.values()));
+      this.map.fitBounds(group.getBounds().pad(0.1));
+    }
   }
 }

@@ -1,173 +1,290 @@
 <app-layout>
-  <div class="monitoring-page">
-    <!-- Stats Bar -->
-    <div class="stats-bar">
-      <div class="stat-item total">
-        <div class="stat-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M5 17h-2v-6l2-5h9l4 5v6h-2"/>
-            <circle cx="7" cy="17" r="2"/>
-            <circle cx="17" cy="17" r="2"/>
-          </svg>
-        </div>
-        <span class="stat-value">{{ stats.total }}</span>
-        <span class="stat-label">Total</span>
-      </div>
-      <div class="stat-item online">
-        <div class="stat-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
-          </svg>
-        </div>
-        <span class="stat-value">{{ stats.online }}</span>
-        <span class="stat-label">En ligne</span>
-      </div>
-      <div class="stat-item moving">
-        <div class="stat-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="9 11 12 14 22 4"/>
-            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-          </svg>
-        </div>
-        <span class="stat-value">{{ stats.moving }}</span>
-        <span class="stat-label">En mouvement</span>
-      </div>
-      <div class="stat-item stopped">
-        <div class="stat-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
-          </svg>
-        </div>
-        <span class="stat-value">{{ stats.stopped }}</span>
-        <span class="stat-label">Arrêtés</span>
-      </div>
-      <div class="stat-item offline">
-        <div class="stat-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-          </svg>
-        </div>
-        <span class="stat-value">{{ stats.offline }}</span>
-        <span class="stat-label">Hors ligne</span>
-      </div>
-    </div>
-
-    <div class="monitoring-layout">
-      <!-- Collapsible Left Panel -->
-      <aside class="vehicles-panel" [class.collapsed]="isPanelCollapsed">
-        <button class="panel-toggle" (click)="togglePanel()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline [attr.points]="isPanelCollapsed ? '9 18 15 12 9 6' : '15 18 9 12 15 6'"/>
-          </svg>
-        </button>
-
-        <div class="panel-content" *ngIf="!isPanelCollapsed">
-          <div class="panel-header">
+  <div class="wialon-monitoring">
+    <div class="monitoring-container">
+      <aside class="vehicles-sidebar" [class.collapsed]="isPanelCollapsed">
+        <div class="sidebar-header">
+          <div class="search-box">
+            <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
             <input
               type="text"
-              class="search-input"
-              placeholder="Rechercher..."
+              placeholder="Search"
               [value]="searchQuery"
               (input)="onSearchChange($any($event.target).value)"
             />
-            <select
-              class="filter-select"
-              [value]="filterStatus"
-              (change)="onFilterStatusChange($any($event.target).value)"
-            >
-              <option value="all">Tous</option>
-              <option value="online">En ligne</option>
-              <option value="moving">En mouvement</option>
-              <option value="stopped">Arrêtés</option>
-              <option value="offline">Hors ligne</option>
-            </select>
           </div>
-
-          <div class="vehicles-list">
-            <div
-              class="vehicle-item"
-              *ngFor="let vehicle of filteredVehicles; trackBy: trackByVehicleId"
-              [class.selected]="selectedVehicle?.id === vehicle.id"
-              (click)="selectVehicle(vehicle)"
-            >
-              <div class="vehicle-status" [class]="getVehicleStatusClass(vehicle)"></div>
-              <div class="vehicle-details">
-                <span class="vehicle-name">{{ vehicle.brand }} {{ vehicle.model }}</span>
-                <span class="vehicle-plate">{{ vehicle.plate }}</span>
-              </div>
-              <span class="vehicle-speed" *ngIf="vehicle.isOnline">
-                {{ vehicle.currentSpeed || 0 }} km/h
-              </span>
-            </div>
-
-            <div class="empty-state" *ngIf="filteredVehicles.length === 0">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-              </svg>
-              <p>Aucun véhicule</p>
-            </div>
-          </div>
+          <button class="menu-btn" title="Options">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+            </svg>
+          </button>
         </div>
-      </aside>
 
-      <!-- Map Container -->
-      <div class="map-container">
-        <div class="map-toolbar">
-          <div class="toolbar-left">
-            <button class="toolbar-btn" [class.active]="mapStyle === 'streets'" (click)="changeMapStyle('streets')">
+        <div class="sidebar-toolbar">
+          <div class="toolbar-group">
+            <button class="tool-btn" [class.active]="filterStatus === 'all'" (click)="onFilterStatusChange('all')" title="All">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4z"/><path d="M8 2v16M16 6v16"/>
+                <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
               </svg>
-              Plan
             </button>
-            <button class="toolbar-btn" [class.active]="mapStyle === 'satellite'" (click)="changeMapStyle('satellite')">
+            <button class="tool-btn add-btn" title="Add">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/><path d="M12 2a7 7 0 1 0 10 10"/>
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
-              Satellite
             </button>
-            <button class="toolbar-btn" [class.active]="mapStyle === 'terrain'" (click)="changeMapStyle('terrain')">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="m3 8 4-4 4 4 4-4 4 4v13H3V8z"/>
-              </svg>
-              Terrain
-            </button>
-          </div>
-          <div class="toolbar-right">
-            <button class="toolbar-btn icon-only" (click)="refresh()" title="Actualiser">
+            <button class="tool-btn" (click)="refresh()" title="Refresh">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
                 <path d="M21 3v5h-5"/>
               </svg>
             </button>
+            <button class="tool-btn" title="Show on map">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 0 0-8 8c0 5 8 12 8 12s8-7 8-12a8 8 0 0 0-8-8z"/>
+              </svg>
+            </button>
           </div>
+          <div class="toolbar-group">
+            <button class="tool-btn" [class.active]="filterStatus === 'moving'" (click)="onFilterStatusChange('moving')" title="Moving">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </button>
+            <button class="tool-btn" [class.active]="filterStatus === 'stopped'" (click)="onFilterStatusChange('stopped')" title="Stopped">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6"/>
+              </svg>
+            </button>
+            <button class="tool-btn" [class.active]="filterStatus === 'offline'" (click)="onFilterStatusChange('offline')" title="Offline">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+              </svg>
+            </button>
+          </div>
+          <div class="toolbar-group">
+            <button class="tool-btn" title="Report">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+              </svg>
+            </button>
+            <button class="tool-btn" title="Track">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+              </svg>
+            </button>
+            <button class="tool-btn" title="Commands">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+              </svg>
+            </button>
+            <button class="tool-btn" title="Message">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="vehicles-list" *ngIf="!isPanelCollapsed">
+          <div
+            class="vehicle-row"
+            *ngFor="let vehicle of filteredVehicles; trackBy: trackByVehicleId"
+            [class.selected]="selectedVehicle?.id === vehicle.id"
+            (click)="selectVehicle(vehicle)"
+          >
+            <input type="checkbox" class="vehicle-checkbox" [checked]="selectedVehicle?.id === vehicle.id" (click)="$event.stopPropagation()">
+            <div class="vehicle-type-icon" [ngClass]="getVehicleTypeClass(vehicle)">
+              <ng-container [ngSwitch]="getVehicleType(vehicle)">
+                <svg *ngSwitchCase="'truck'" width="20" height="14" viewBox="0 0 24 16" fill="currentColor">
+                  <path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v7h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-4l-3-4zM6 14.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-8.5l1.96 2.5H17V6h2.5zm-1.5 8.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+                </svg>
+                <svg *ngSwitchCase="'van'" width="20" height="14" viewBox="0 0 24 16" fill="currentColor">
+                  <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5H15V3H5v2H3.5C2.67 5 2 5.67 2 6.5V14h1c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3.08-2.99zM6 15.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM18 7l1.5 1.5H17V7h1zm0 8.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+                </svg>
+                <svg *ngSwitchDefault width="18" height="12" viewBox="0 0 24 14" fill="currentColor">
+                  <path d="M18.92 2.01C18.72 1.42 18.16 1 17.5 1h-11c-.66 0-1.21.42-1.42 1.01L3 8v6c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1V8l-2.08-5.99zM6.5 11c-.83 0-1.5-.67-1.5-1.5S5.67 8 6.5 8 8 8.67 8 9.5 7.33 11 6.5 11zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 7l1.5-4.5h11L19 7H5z"/>
+                </svg>
+              </ng-container>
+            </div>
+            <div class="vehicle-info">
+              <span class="vehicle-name">{{ vehicle.brand }} {{ vehicle.model }}</span>
+              <span class="vehicle-plate-tag">{{ getStatusTag(vehicle) }}</span>
+            </div>
+            <div class="vehicle-indicators">
+              <span class="indicator gps" [class.active]="vehicle.hasGPS" title="GPS">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
+                </svg>
+              </span>
+              <span class="indicator ignition" [class.active]="vehicle.isOnline" title="Ignition">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="6" width="4" height="12" rx="1"/><rect x="14" y="6" width="4" height="12" rx="1"/>
+                </svg>
+              </span>
+              <span class="indicator signal" [class.active]="vehicle.isOnline" [class.moving]="isVehicleMoving(vehicle)" title="Signal">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </span>
+              <span class="indicator status-color" [ngClass]="getStatusColorClass(vehicle)"></span>
+              <span class="indicator connection" [class.active]="vehicle.isOnline" title="Connection">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.58 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/>
+                </svg>
+              </span>
+              <span class="indicator route" title="Route">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+              </span>
+              <span class="indicator gps-tag" [class.active]="vehicle.hasGPS">gps</span>
+              <span class="indicator driver" title="Driver">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                  <circle cx="12" cy="7" r="4"/>
+                </svg>
+              </span>
+              <span class="indicator flag" title="Flag">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                  <line x1="4" y1="22" x2="4" y2="15"/>
+                </svg>
+              </span>
+              <span class="indicator wrench" title="Maintenance">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                </svg>
+              </span>
+              <span class="indicator location" title="Location">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="10" r="3"/>
+                  <path d="M12 2a8 8 0 0 0-8 8c0 5 8 12 8 12s8-7 8-12a8 8 0 0 0-8-8z"/>
+                </svg>
+              </span>
+            </div>
+          </div>
+
+          <div class="empty-state" *ngIf="filteredVehicles.length === 0 && !loading">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            <p>No vehicles found</p>
+          </div>
+
+          <div class="loading-state" *ngIf="loading">
+            <div class="spinner"></div>
+            <p>Loading vehicles...</p>
+          </div>
+        </div>
+
+        <div class="sidebar-footer">
+          <button class="view-toggle" title="List view">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+              <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
+              <line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+            </svg>
+          </button>
+          <button class="view-toggle" title="Grid view">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+              <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+            </svg>
+          </button>
+        </div>
+
+        <button class="panel-collapse-btn" (click)="togglePanel()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline [attr.points]="isPanelCollapsed ? '9 18 15 12 9 6' : '15 18 9 12 15 6'"/>
+          </svg>
+        </button>
+      </aside>
+
+      <div class="map-area">
+        <div class="map-controls-left">
+          <button class="map-control-btn" title="Search">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+          </button>
+          <button class="map-control-btn" title="Layers" (click)="toggleLayersMenu()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/>
+              <polyline points="2 12 12 17 22 12"/>
+            </svg>
+          </button>
+          <div class="layers-menu" *ngIf="showLayersMenu">
+            <button (click)="changeMapStyle('streets')" [class.active]="mapStyle === 'streets'">Streets</button>
+            <button (click)="changeMapStyle('satellite')" [class.active]="mapStyle === 'satellite'">Satellite</button>
+            <button (click)="changeMapStyle('terrain')" [class.active]="mapStyle === 'terrain'">Terrain</button>
+          </div>
+          <button class="map-control-btn" title="Ruler">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>
+              <path d="M22 12A10 10 0 0 0 12 2v10z"/>
+            </svg>
+          </button>
+          <button class="map-control-btn" title="Draw">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+              <path d="M2 2l7.586 7.586"/>
+            </svg>
+          </button>
+          <div class="control-separator"></div>
+          <button class="map-control-btn" title="Zoom In" (click)="zoomIn()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
+          <button class="map-control-btn" title="Zoom Out" (click)="zoomOut()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
         </div>
 
         <div id="tracking-map" class="map"></div>
 
-        <!-- Vehicle Popup on Map -->
-        <div 
-          class="vehicle-popup-panel" 
-          *ngIf="selectedVehicle"
-          [class.dragging]="isDragging"
-          [class.dragged]="popupPosition.x !== 0 || popupPosition.y !== 0"
-          [ngStyle]="(popupPosition.x !== 0 || popupPosition.y !== 0) ? {'left': popupPosition.x + 'px', 'top': popupPosition.y + 'px'} : {}"
-          (mousemove)="onDrag($event)"
-          (mouseup)="stopDrag()"
-          (mouseleave)="stopDrag()">
-          <div class="popup-header" (mousedown)="startDrag($event)">
-            <div class="popup-title">
-              <div class="popup-status" [class]="getVehicleStatusClass(selectedVehicle)"></div>
-              <span class="popup-name">{{ selectedVehicle.brand }} {{ selectedVehicle.model }}</span>
+        <div class="vehicle-info-panel" *ngIf="selectedVehicle">
+          <div class="info-panel-header">
+            <div class="vehicle-icon-large" [ngClass]="getVehicleTypeClass(selectedVehicle)">
+              <ng-container [ngSwitch]="getVehicleType(selectedVehicle)">
+                <svg *ngSwitchCase="'truck'" width="24" height="18" viewBox="0 0 24 16" fill="currentColor">
+                  <path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v7h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-4l-3-4zM6 14.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-8.5l1.96 2.5H17V6h2.5zm-1.5 8.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+                </svg>
+                <svg *ngSwitchCase="'van'" width="24" height="18" viewBox="0 0 24 16" fill="currentColor">
+                  <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5H15V3H5v2H3.5C2.67 5 2 5.67 2 6.5V14h1c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3.08-2.99zM6 15.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM18 7l1.5 1.5H17V7h1zm0 8.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+                </svg>
+                <svg *ngSwitchDefault width="24" height="16" viewBox="0 0 24 14" fill="currentColor">
+                  <path d="M18.92 2.01C18.72 1.42 18.16 1 17.5 1h-11c-.66 0-1.21.42-1.42 1.01L3 8v6c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1V8l-2.08-5.99zM6.5 11c-.83 0-1.5-.67-1.5-1.5S5.67 8 6.5 8 8 8.67 8 9.5 7.33 11 6.5 11zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 7l1.5-4.5h11L19 7H5z"/>
+                </svg>
+              </ng-container>
             </div>
-            <div class="popup-actions">
-              <button class="popup-action-btn" title="Centrer" (mousedown)="$event.stopPropagation()">
+            <span class="vehicle-title">{{ selectedVehicle.brand }} {{ selectedVehicle.model }}</span>
+            <div class="header-actions">
+              <button class="header-btn" title="List">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>
+                  <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+                  <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
                 </svg>
               </button>
-              <button class="popup-action-btn" (click)="selectedVehicle = null; popupPosition = {x: 0, y: 0}" (mousedown)="$event.stopPropagation()" title="Fermer">
+              <button class="header-btn" title="Refresh">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+                  <path d="M21 3v5h-5"/>
+                </svg>
+              </button>
+              <button class="header-btn" title="Playback" (click)="activeTab = 'playback'">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+              </button>
+              <button class="header-btn close-btn" (click)="selectedVehicle = null" title="Close">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
@@ -175,113 +292,193 @@
             </div>
           </div>
 
-          <!-- Tabs -->
-          <div class="popup-tabs">
-            <button class="popup-tab" [class.active]="activeTab === 'details'" (click)="activeTab = 'details'">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
+          <div class="info-panel-toolbar">
+            <span class="indicator-icon" [class.active]="selectedVehicle?.hasGPS" title="GPS">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06z"/>
               </svg>
-              Détails
-            </button>
-            <button class="popup-tab" [class.active]="activeTab === 'playback'" (click)="activeTab = 'playback'">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="5 3 19 12 5 21 5 3"/>
+            </span>
+            <span class="indicator-icon ignition" [class.active]="selectedVehicle.isOnline">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>
               </svg>
-              Playback
-            </button>
-            <button class="popup-tab" [class.active]="activeTab === 'message'" (click)="activeTab = 'message'">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </span>
+            <span class="status-box" [ngClass]="getStatusColorClass(selectedVehicle)"></span>
+            <span class="status-box secondary"></span>
+            <span class="indicator-icon signal" [class.active]="selectedVehicle.isOnline">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="12" r="4"/>
               </svg>
-              Message
-            </button>
+            </span>
+            <span class="indicator-icon connection">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+              </svg>
+            </span>
+            <span class="gps-badge" [class.active]="selectedVehicle.hasGPS">gps</span>
+            <span class="indicator-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+              </svg>
+            </span>
           </div>
 
-          <!-- Tab Content -->
-          <div class="popup-content">
-            <!-- Details Tab -->
+          <div class="info-panel-content">
             <div class="tab-content" *ngIf="activeTab === 'details'">
-              <div class="info-grid">
-                <div class="info-item">
-                  <span class="info-label">Plaque</span>
-                  <span class="info-value plate">{{ selectedVehicle.plate }}</span>
+              <div class="timestamp-row">
+                <div class="timestamp-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="3" width="20" height="18" rx="2"/><path d="M8 3v3M16 3v3M2 9h20"/>
+                  </svg>
                 </div>
-                <div class="info-item">
-                  <span class="info-label">Vitesse</span>
-                  <span class="info-value">{{ selectedVehicle.currentSpeed || 0 }} km/h</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">État</span>
-                  <span class="info-value status" [class]="getVehicleStatusClass(selectedVehicle)">
-                    {{ getVehicleStatusLabel(selectedVehicle) }}
-                  </span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">Température</span>
-                  <span class="info-value">{{ $any(selectedVehicle).temperature || 22 }} °C</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">Kilométrage</span>
-                  <span class="info-value">{{ selectedVehicle.mileage || 0 }} km</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">Carburant</span>
-                  <span class="info-value">{{ $any(selectedVehicle).fuelLevel || 75 }} L</span>
+                <span class="timestamp-text">{{ getLastUpdateTime(selectedVehicle) }}</span>
+              </div>
+
+              <div class="location-row">
+                <span class="location-text">{{ getVehicleAddress(selectedVehicle) }}</span>
+                <div class="location-actions">
+                  <button class="location-btn" title="Copy">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                  </button>
+                  <button class="location-btn" title="Open in Maps">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                      <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
+
+              <div class="stats-grid">
+                <div class="stat-item">
+                  <div class="stat-icon speed-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+                    </svg>
+                  </div>
+                  <div class="stat-info">
+                    <span class="stat-value">{{ selectedVehicle.currentSpeed || 0 }} km/h</span>
+                  </div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-icon altitude-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="m3 8 4-4 4 4 4-4 4 4v13H3V8z"/>
+                    </svg>
+                  </div>
+                  <div class="stat-info">
+                    <span class="stat-value">{{ $any(selectedVehicle).altitude || 121 }} m</span>
+                  </div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-icon odometer-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="11" width="18" height="10" rx="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                  </div>
+                  <div class="stat-info">
+                    <span class="stat-value">{{ selectedVehicle.mileage || 0 }} km</span>
+                  </div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-icon hours-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                  </div>
+                  <div class="stat-info">
+                    <span class="stat-value">{{ $any(selectedVehicle).engineHours || '2081.15' }} h</span>
+                  </div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-icon satellites-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4z"/>
+                    </svg>
+                  </div>
+                  <div class="stat-info">
+                    <span class="stat-value">{{ $any(selectedVehicle).satellites || 17 }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="sensors-section">
+                <div class="section-header">
+                  <span>Sensor values:</span>
+                </div>
+                <div class="sensors-grid">
+                  <div class="sensor-item">
+                    <span class="sensor-label">Fuel Level</span>
+                    <span class="sensor-value">{{ $any(selectedVehicle).fuelLevel || 75 }}%</span>
+                  </div>
+                  <div class="sensor-item">
+                    <span class="sensor-label">Temperature</span>
+                    <span class="sensor-value">{{ $any(selectedVehicle).temperature || 22 }}&#176;C</span>
+                  </div>
+                  <div class="sensor-item">
+                    <span class="sensor-label">Battery</span>
+                    <span class="sensor-value">{{ $any(selectedVehicle).batteryVoltage || 12.8 }}V</span>
+                  </div>
+                </div>
+              </div>
+
               <div class="driver-section" *ngIf="selectedVehicle.assignedDriverId">
-                <span class="section-label">Conducteur</span>
+                <div class="section-header">
+                  <span>Driver:</span>
+                </div>
                 <div class="driver-info">
                   <div class="driver-avatar">{{ getDriverInitial(selectedVehicle) }}</div>
-                  <span class="driver-name">{{ $any(selectedVehicle).driverName || 'Conducteur assigné' }}</span>
+                  <span class="driver-name">{{ selectedVehicle.assignedDriverName || 'Assigned Driver' }}</span>
                 </div>
               </div>
             </div>
 
-            <!-- Playback Tab -->
             <div class="tab-content" *ngIf="activeTab === 'playback'">
               <div class="playback-section">
                 <div class="date-range">
                   <div class="date-field">
-                    <label>De</label>
+                    <label>From</label>
                     <input type="datetime-local" [(ngModel)]="playbackFromDate">
                   </div>
                   <div class="date-field">
-                    <label>À</label>
+                    <label>To</label>
                     <input type="datetime-local" [(ngModel)]="playbackToDate">
                   </div>
                 </div>
-                <button class="load-route-btn" (click)="loadPlaybackRoute()">
+                <button class="load-route-btn" (click)="loadPlaybackRoute()" [disabled]="playbackLoading">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polygon points="5 3 19 12 5 21 5 3"/>
                   </svg>
-                  Charger le trajet
+                  {{ playbackLoading ? 'Loading...' : 'Load Track' }}
                 </button>
-                
-                <!-- Road Snapping Toggle -->
+
                 <div class="road-snapping-toggle">
                   <label class="toggle-label">
                     <input type="checkbox" [checked]="useRoadSnapping" (change)="toggleRoadSnapping()">
                     <span class="toggle-slider"></span>
-                    <span class="toggle-text">Suivre les routes</span>
+                    <span class="toggle-text">Snap to roads</span>
                   </label>
                 </div>
+
                 <div class="playback-controls" *ngIf="isPlaybackLoaded">
                   <div class="playback-info">
                     <span>Point {{ playbackIndex + 1 }} / {{ playbackPositions.length }}</span>
                   </div>
                   <div class="control-buttons">
-                    <button class="control-btn" (click)="resetPlayback()" title="Retour au début">
+                    <button class="control-btn" (click)="resetPlayback()" title="Start">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/>
                       </svg>
                     </button>
-                    <button class="control-btn" (click)="previousPoint()" title="Point précédent">
+                    <button class="control-btn" (click)="previousPoint()" title="Previous">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="15 18 9 12 15 6"/>
                       </svg>
                     </button>
-                    <button class="control-btn play" (click)="togglePlayback()" title="{{ isPlaying ? 'Pause' : 'Lecture' }}">
+                    <button class="control-btn play" (click)="togglePlayback()">
                       <svg *ngIf="!isPlaying" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                         <polygon points="5 3 19 12 5 21 5 3"/>
                       </svg>
@@ -289,12 +486,12 @@
                         <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
                       </svg>
                     </button>
-                    <button class="control-btn" (click)="nextPoint()" title="Point suivant">
+                    <button class="control-btn" (click)="nextPoint()" title="Next">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="9 18 15 12 9 6"/>
                       </svg>
                     </button>
-                    <button class="control-btn" (click)="skipToEnd()" title="Aller à la fin">
+                    <button class="control-btn" (click)="skipToEnd()" title="End">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
                       </svg>
@@ -302,32 +499,33 @@
                   </div>
                   <input type="range" class="progress-slider" [min]="0" [max]="100" [ngModel]="playbackProgress" (ngModelChange)="onPlaybackProgressChange($event)">
                   <div class="speed-selector">
-                    <span>Vitesse:</span>
+                    <span>Speed:</span>
                     <button *ngFor="let s of playbackSpeeds" [class.active]="playbackSpeed === s" (click)="onPlaybackSpeedChange(s)">{{ s }}x</button>
                   </div>
                 </div>
               </div>
             </div>
-
-            <!-- Message Tab -->
-            <div class="tab-content" *ngIf="activeTab === 'message'">
-              <div class="message-section">
-                <textarea 
-                  class="message-input" 
-                  placeholder="Écrire un message au conducteur..."
-                  [(ngModel)]="driverMessage"
-                  rows="4"
-                ></textarea>
-                <button class="send-message-btn" (click)="sendMessageToDriver()">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                  </svg>
-                  Envoyer
-                </button>
-              </div>
-            </div>
           </div>
         </div>
+
+        <button class="tracking-fab" title="Center on vehicles" (click)="centerOnVehicles()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <span class="copyright">&#169; FleetTrack</span>
+      <div class="status-indicators">
+        <span class="connection-status" [class.connected]="connectionStatus === 'Connected'">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="12" r="6"/>
+          </svg>
+          {{ connectionStatus }}
+        </span>
+        <span class="timestamp">{{ getCurrentTime() }}</span>
       </div>
     </div>
   </div>

@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Observable, BehaviorSubject, tap, of, map } from 'rxjs';
 import { MockDataService } from './mock-data.service';
+import { environment } from '../environments/environment';
 
 export interface LoginRequest {
   email: string;
@@ -65,8 +66,11 @@ export class ApiService {
   }
 
   private getApiUrl(): string {
-    // Always use relative path - nginx proxies to backend
     return '/api';
+  }
+
+  private getMonitoringApiUrl(): string {
+    return environment.monitoringApiUrl || environment.apiUrl;
   }
 
   private loadStoredUser() {
@@ -195,8 +199,7 @@ export class ApiService {
   }
 
   getVehiclesWithPositions(): Observable<any[]> {
-    // Always use real API for monitoring - no mock data
-    return this.http.get<any[]>(`${this.API_URL}/vehicles/with-positions`, { headers: this.getHeaders() });
+    return this.http.get<any[]>(`${this.getMonitoringApiUrl()}/vehicles/with-positions`, { headers: this.getHeaders() });
   }
 
   getVehicle(id: number): Observable<any> {
@@ -470,11 +473,11 @@ export class ApiService {
   // ==================== GPS TRACKING (Real-time) ====================
 
   getLatestPositions(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.API_URL}/gps/positions/latest`, { headers: this.getHeaders() });
+    return this.http.get<any[]>(`${this.getMonitoringApiUrl()}/gps/positions/latest`, { headers: this.getHeaders() });
   }
 
   getVehiclePosition(vehicleId: number): Observable<any> {
-    return this.http.get<any>(`${this.API_URL}/gps/vehicles/${vehicleId}/position`, { headers: this.getHeaders() });
+    return this.http.get<any>(`${this.getMonitoringApiUrl()}/gps/vehicles/${vehicleId}/position`, { headers: this.getHeaders() });
   }
 
   getVehicleHistory(vehicleId: number, from?: Date, to?: Date, limit = 10000): Observable<PositionDto[]> {
@@ -482,7 +485,7 @@ export class ApiService {
     if (from) params = params.set('from', from.toISOString());
     if (to) params = params.set('to', to.toISOString());
     params = params.set('limit', limit.toString());
-    return this.http.get<PositionDto[]>(`${this.API_URL}/gps/vehicles/${vehicleId}/history`, { headers: this.getHeaders(), params });
+    return this.http.get<PositionDto[]>(`${this.getMonitoringApiUrl()}/gps/vehicles/${vehicleId}/history`, { headers: this.getHeaders(), params });
   }
 
   getDeviceHistory(deviceUid: string, from?: Date, to?: Date, limit = 10000): Observable<PositionDto[]> {
@@ -490,18 +493,18 @@ export class ApiService {
     if (from) params = params.set('from', from.toISOString());
     if (to) params = params.set('to', to.toISOString());
     params = params.set('limit', limit.toString());
-    return this.http.get<any[]>(`${this.API_URL}/gps/devices/${deviceUid}/history`, { headers: this.getHeaders(), params });
+    return this.http.get<any[]>(`${this.getMonitoringApiUrl()}/gps/devices/${deviceUid}/history`, { headers: this.getHeaders(), params });
   }
 
   getVehicleGpsStats(vehicleId: number, from?: Date, to?: Date): Observable<any> {
     let params = new HttpParams();
     if (from) params = params.set('from', from.toISOString());
     if (to) params = params.set('to', to.toISOString());
-    return this.http.get<any>(`${this.API_URL}/gps/vehicles/${vehicleId}/stats`, { headers: this.getHeaders(), params });
+    return this.http.get<any>(`${this.getMonitoringApiUrl()}/gps/vehicles/${vehicleId}/stats`, { headers: this.getHeaders(), params });
   }
 
   getFleetOverview(): Observable<any> {
-    return this.http.get<any>(`${this.API_URL}/gps/fleet/overview`, { headers: this.getHeaders() });
+    return this.http.get<any>(`${this.getMonitoringApiUrl()}/gps/fleet/overview`, { headers: this.getHeaders() });
   }
 
   // ==================== GPS DEVICES ====================

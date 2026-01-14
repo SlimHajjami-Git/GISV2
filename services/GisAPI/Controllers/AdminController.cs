@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using System.Text.Json;
+using MediatR;
+using GisAPI.Application.Features.Admin.Vehicles.Queries.GetAdminVehicles;
 
 namespace GisAPI.Controllers;
 
@@ -13,13 +15,15 @@ namespace GisAPI.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly GisDbContext _context;
+    private readonly IMediator _mediator;
     private readonly IConfiguration _configuration;
     private static MaintenanceModeDto _maintenanceMode = new() { Enabled = false, Pages = new List<string>(), Message = "" };
 
-    public AdminController(GisDbContext context, IConfiguration configuration)
+    public AdminController(GisDbContext context, IConfiguration configuration, IMediator mediator)
     {
         _context = context;
         _configuration = configuration;
+        _mediator = mediator;
     }
 
     // ==================== SUBSCRIPTIONS ====================
@@ -402,54 +406,8 @@ public class AdminController : ControllerBase
     [HttpGet("vehicles")]
     public async Task<ActionResult<List<AdminVehicleDto>>> GetVehicles([FromQuery] string? search, [FromQuery] int? companyId, [FromQuery] string? status)
     {
-        var query = _context.Vehicles
-            .Include(v => v.Company)
-            .Include(v => v.GpsDevice)
-            .Include(v => v.AssignedDriver)
-            .AsQueryable();
-
-        if (!string.IsNullOrEmpty(search))
-        {
-            query = query.Where(v => v.Name.Contains(search) || (v.Plate != null && v.Plate.Contains(search)));
-        }
-
-        if (companyId.HasValue)
-        {
-            query = query.Where(v => v.CompanyId == companyId.Value);
-        }
-
-        if (!string.IsNullOrEmpty(status) && status != "all")
-        {
-            query = query.Where(v => v.Status == status);
-        }
-
-        var vehicles = await query.OrderByDescending(v => v.CreatedAt).ToListAsync();
-
-        return Ok(vehicles.Select(v => new AdminVehicleDto
-        {
-            Id = v.Id,
-            Name = v.Name,
-            Type = v.Type,
-            Brand = v.Brand,
-            Model = v.Model,
-            Plate = v.Plate,
-            Year = v.Year,
-            Color = v.Color,
-            Status = v.Status,
-            HasGps = v.HasGps,
-            Mileage = v.Mileage,
-            CompanyId = v.CompanyId,
-            CompanyName = v.Company?.Name,
-            GpsDeviceId = v.GpsDeviceId,
-            GpsImei = v.GpsDevice?.DeviceUid,
-            GpsMat = v.GpsDevice?.Mat,
-            GpsModel = v.GpsDevice?.Model,
-            GpsFirmwareVersion = v.GpsDevice?.FirmwareVersion,
-            AssignedDriverId = v.AssignedDriverId,
-            AssignedDriverName = v.AssignedDriver?.Name,
-            CreatedAt = v.CreatedAt,
-            UpdatedAt = v.UpdatedAt
-        }));
+        var vehicles = await _mediator.Send(new GetAdminVehiclesQuery(search, companyId, status));
+        return Ok(vehicles);
     }
 
     [HttpGet("vehicles/{id}")]
