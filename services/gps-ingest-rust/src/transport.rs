@@ -332,9 +332,9 @@ async fn process_single_frame(
                 let unix_time = frame.recorded_at.and_utc().timestamp();
                 if unix_time < THRESHOLD_2016 {
                     let corrected = unix_time + TIME_OFFSET;
-                    // Apply correction + 1h timezone adjustment
+                    // Apply correction (no artificial timezone offset)
                     frame.recorded_at = chrono::DateTime::from_timestamp(corrected, 0)
-                        .map(|dt| dt.naive_utc() + chrono::Duration::hours(1))
+                        .map(|dt| dt.naive_utc())
                         .unwrap_or(frame.recorded_at);
                     info!(
                         imei = %resolved_uid,
@@ -343,9 +343,6 @@ async fn process_single_frame(
                         new_time = %frame.recorded_at,
                         "Atime correction applied (same as GISV1)"
                     );
-                } else {
-                    // --- From SaveDynData: Add +1h timezone adjustment ---
-                    frame.recorded_at = frame.recorded_at + chrono::Duration::hours(1);
                 }
                 
                 // --- From AAP.cs lines 840-844 ---

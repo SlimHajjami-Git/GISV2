@@ -37,5 +37,7 @@ public record GpsDeviceDto(
     string Status,
     DateTime? LastCommunication,
     int? BatteryLevel,
-    int? SignalStrength
+    int? SignalStrength,
+    string? Model,
+    string? FirmwareVersion
 );

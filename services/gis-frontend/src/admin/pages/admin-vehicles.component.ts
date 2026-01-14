@@ -77,7 +77,7 @@ import { AdminService, AdminVehicle, Client } from '../services/admin.service';
                 </div>
               </div>
 
-              <div class="gps-info" *ngIf="vehicle.hasGps && (vehicle.gpsImei || vehicle.gpsDeviceId)">
+              <div class="gps-info" *ngIf="vehicle.hasGps && (vehicle.gpsImei || vehicle.gpsDeviceId || vehicle.gpsModel || vehicle.gpsFirmwareVersion)">
                 <div class="gps-row" *ngIf="vehicle.gpsImei">
                   <span class="gps-label">IMEI:</span>
                   <span class="gps-value">{{ vehicle.gpsImei }}</span>
@@ -85,6 +85,13 @@ import { AdminService, AdminVehicle, Client } from '../services/admin.service';
                 <div class="gps-row" *ngIf="vehicle.gpsDeviceId">
                   <span class="gps-label">Device ID:</span>
                   <span class="gps-value">{{ vehicle.gpsDeviceId }}</span>
+                </div>
+                <div class="gps-row" *ngIf="vehicle.gpsModel">
+                  <span class="gps-label">Model:</span>
+                  <span class="gps-value">
+                    {{ vehicle.gpsModel }}
+                    <span *ngIf="vehicle.gpsFirmwareVersion">({{ vehicle.gpsFirmwareVersion }})</span>
+                  </span>
                 </div>
               </div>
             </div>
@@ -137,90 +144,88 @@ import { AdminService, AdminVehicle, Client } from '../services/admin.service';
             </div>
 
             <div class="modal-body" *ngIf="!showViewModal">
-              <h4 class="section-title">Vehicle Information</h4>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Vehicle Name *</label>
-                  <input type="text" [(ngModel)]="vehicleForm.name" placeholder="Vehicle name" />
+              <div class="vehicle-form-grid">
+                <div class="form-block">
+                  <label>Nom du véhicule *</label>
+                  <input type="text" [(ngModel)]="vehicleForm.name" placeholder="Ex: Opel Can" />
                 </div>
-                <div class="form-group">
-                  <label>Plate Number</label>
-                  <input type="text" [(ngModel)]="vehicleForm.plate" placeholder="ABC-1234" />
+                <div class="form-block">
+                  <label>Plaque d'immatriculation *</label>
+                  <input type="text" [(ngModel)]="vehicleForm.plate" placeholder="A-123456-MA" />
                 </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
+                <div class="form-block">
+                  <label>Marque *</label>
+                  <input type="text" [(ngModel)]="vehicleForm.brand" placeholder="Opel" />
+                </div>
+                <div class="form-block">
+                  <label>Modèle *</label>
+                  <input type="text" [(ngModel)]="vehicleForm.model" placeholder="Combo" />
+                </div>
+                <div class="form-block">
                   <label>Type *</label>
                   <select [(ngModel)]="vehicleForm.type">
-                    <option value="camion">Camion</option>
                     <option value="citadine">Citadine</option>
+                    <option value="camion">Camion</option>
                     <option value="suv">SUV</option>
                     <option value="utilitaire">Utilitaire</option>
-                    <option value="other">Other</option>
+                    <option value="other">Autre</option>
                   </select>
                 </div>
-                <div class="form-group">
-                  <label>Status</label>
+                <div class="form-block">
+                  <label>Status *</label>
                   <select [(ngModel)]="vehicleForm.status">
-                    <option value="available">Available</option>
-                    <option value="in_use">In Use</option>
+                    <option value="available">Disponible</option>
+                    <option value="in_use">En service</option>
                     <option value="maintenance">Maintenance</option>
                   </select>
                 </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Brand</label>
-                  <input type="text" [(ngModel)]="vehicleForm.brand" placeholder="Toyota, Ford..." />
+                <div class="form-block">
+                  <label>Année *</label>
+                  <input type="number" [(ngModel)]="vehicleForm.year" placeholder="2020" />
                 </div>
-                <div class="form-group">
-                  <label>Model</label>
-                  <input type="text" [(ngModel)]="vehicleForm.model" placeholder="Corolla, F-150..." />
+                <div class="form-block">
+                  <label>Couleur</label>
+                  <input type="text" [(ngModel)]="vehicleForm.color" placeholder="Blanc" />
                 </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Year</label>
-                  <input type="number" [(ngModel)]="vehicleForm.year" placeholder="2024" />
-                </div>
-                <div class="form-group">
-                  <label>Color</label>
-                  <input type="text" [(ngModel)]="vehicleForm.color" placeholder="White, Black..." />
-                </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Mileage (km)</label>
-                  <input type="number" [(ngModel)]="vehicleForm.mileage" placeholder="0" />
+                <div class="form-block full">
+                  <label>Kilométrage (km)</label>
+                  <input type="number" [(ngModel)]="vehicleForm.mileage" placeholder="45000" />
                 </div>
               </div>
 
-              <h4 class="section-title">GPS Information</h4>
-              <div class="form-group checkbox-group">
-                <label class="checkbox-label">
-                  <input type="checkbox" [(ngModel)]="vehicleForm.hasGps" />
-                  <span>This vehicle has GPS tracking</span>
-                </label>
-              </div>
-              <div class="gps-fields" *ngIf="vehicleForm.hasGps">
-                <div class="form-row">
-                  <div class="form-group">
+              <div class="gps-section">
+                <div class="gps-header">
+                  <span>GPS INFORMATION</span>
+                  <label class="switch-label">
+                    <input type="checkbox" [(ngModel)]="vehicleForm.hasGps" />
+                    <span>Ce véhicule dispose d'un GPS</span>
+                  </label>
+                </div>
+
+                <div class="gps-grid" *ngIf="vehicleForm.hasGps">
+                  <div class="form-block">
                     <label>GPS IMEI</label>
-                    <input type="text" [(ngModel)]="vehicleForm.gpsImei" placeholder="358762109054321" />
-                    <small class="help-text">IMEI du boîtier physique (DeviceUid)</small>
+                    <input type="text" [(ngModel)]="vehicleForm.gpsImei" placeholder="861041071579620" />
+                    <small>IMEI du boîtier physique (DeviceUid)</small>
                   </div>
-                  <div class="form-group">
+                  <div class="form-block">
                     <label>GPS MAT</label>
                     <input type="text" [(ngModel)]="vehicleForm.gpsMat" placeholder="NR08G0663" />
-                    <small class="help-text">Identifiant logique MAT envoyé dans les trames</small>
+                    <small>Identifiant logique MAT envoyé dans les trames</small>
                   </div>
-                </div>
-                <div class="form-group">
-                  <label>GPS Device ID</label>
-                  <input type="number" [(ngModel)]="vehicleForm.gpsDeviceId" placeholder="ID d'un GPS existant (optionnel)" />
-                  <small class="help-text">
-                    Laisser vide pour créer/associer automatiquement via IMEI/MAT
-                  </small>
+                  <div class="form-block">
+                    <label>GPS Device ID</label>
+                    <input type="number" [(ngModel)]="vehicleForm.gpsDeviceId" placeholder="1" />
+                    <small>Laisser vide pour créer/associer automatiquement via IMEI/MAT</small>
+                  </div>
+                  <div class="form-block">
+                    <label>Modèle GPS</label>
+                    <input type="text" [(ngModel)]="vehicleForm.gpsModel" placeholder="NEMS" />
+                  </div>
+                  <div class="form-block">
+                    <label>Version GPS</label>
+                    <input type="text" [(ngModel)]="vehicleForm.gpsFirmwareVersion" placeholder="L / S" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -262,6 +267,13 @@ import { AdminService, AdminVehicle, Client } from '../services/admin.service';
                 <div class="view-row"><span>IMEI:</span><span>{{ selectedVehicle.gpsImei || 'N/A' }}</span></div>
                 <div class="view-row"><span>MAT:</span><span>{{ selectedVehicle.gpsMat || 'N/A' }}</span></div>
                 <div class="view-row"><span>Device ID:</span><span>{{ selectedVehicle.gpsDeviceId || 'N/A' }}</span></div>
+                <div class="view-row" *ngIf="selectedVehicle.gpsModel || selectedVehicle.gpsFirmwareVersion">
+                  <span>Model / Firmware:</span>
+                  <span>
+                    {{ selectedVehicle.gpsModel || 'Unknown' }}
+                    <span *ngIf="selectedVehicle.gpsFirmwareVersion">({{ selectedVehicle.gpsFirmwareVersion }})</span>
+                  </span>
+                </div>
               </div>
 
               <div class="view-section">
@@ -636,18 +648,17 @@ import { AdminService, AdminVehicle, Client } from '../services/admin.service';
     }
 
     .modal {
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: 20px;
-      width: 100%;
-      max-width: 520px;
-      max-height: 90vh;
-      overflow-y: auto;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-    }
-
-    .modal.large {
-      max-width: 640px;
+      background: white;
+      border-radius: 18px;
+      width: 760px;
+      max-width: 96vw;
+      max-height: 92vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+      transform: translateY(0);
+      transition: transform 0.3s ease, opacity 0.3s ease;
     }
 
     .modal.delete-modal {
@@ -950,7 +961,9 @@ export class AdminVehiclesComponent implements OnInit {
     hasGps: false,
     gpsDeviceId: undefined as number | undefined,
     gpsImei: '',
-    gpsMat: ''
+    gpsMat: '',
+    gpsModel: '',
+    gpsFirmwareVersion: ''
   };
 
   constructor(
@@ -1023,7 +1036,9 @@ export class AdminVehiclesComponent implements OnInit {
       hasGps: vehicle.hasGps,
       gpsDeviceId: vehicle.gpsDeviceId,
       gpsImei: vehicle.gpsImei || '',
-      gpsMat: vehicle.gpsMat || ''
+      gpsMat: vehicle.gpsMat || '',
+      gpsModel: vehicle.gpsModel || '',
+      gpsFirmwareVersion: vehicle.gpsFirmwareVersion || ''
     };
     this.showViewModal = false;
     this.showEditModal = true;
@@ -1065,7 +1080,9 @@ export class AdminVehiclesComponent implements OnInit {
       hasGps: this.vehicleForm.hasGps,
       gpsDeviceId: this.vehicleForm.hasGps ? this.vehicleForm.gpsDeviceId : undefined,
       gpsImei: this.vehicleForm.hasGps ? this.vehicleForm.gpsImei || undefined : undefined,
-      gpsMat: this.vehicleForm.hasGps ? this.vehicleForm.gpsMat || undefined : undefined
+      gpsMat: this.vehicleForm.hasGps ? this.vehicleForm.gpsMat || undefined : undefined,
+      gpsModel: this.vehicleForm.hasGps ? this.vehicleForm.gpsModel || undefined : undefined,
+      gpsFirmwareVersion: this.vehicleForm.hasGps ? this.vehicleForm.gpsFirmwareVersion || undefined : undefined
     };
 
     if (this.showEditModal && this.selectedVehicle) {
@@ -1113,7 +1130,9 @@ export class AdminVehiclesComponent implements OnInit {
       hasGps: false,
       gpsDeviceId: undefined,
       gpsImei: '',
-      gpsMat: ''
+      gpsMat: '',
+      gpsModel: '',
+      gpsFirmwareVersion: ''
     };
   }
 

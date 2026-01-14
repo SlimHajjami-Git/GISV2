@@ -285,19 +285,16 @@ fn parse_v3(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhF
     // GISV1 Logic: If base fuel is 0, try multiple FMS positions as fallback
     // V3 (NR08/NR09) can have fuel at positions: 54, 70, 82, 86, 90, 94 (2 hex chars each)
     let fuel_final = if base_fuel == 0 {
-        let possible_positions: &[usize] = &[54, 70, 82, 86, 90, 94];
+        let possible_positions: &[usize] = &[70, 94];
         let mut found_fuel: Option<u8> = None;
-        
+        let mut traces = Vec::new();
+
         for &pos in possible_positions {
             if payload.len() >= pos + 2 {
                 if let Some(raw) = payload.get(pos..pos+2) {
                     if let Ok(val) = u8::from_str_radix(raw, 16) {
                         if val > 0 && val <= 100 {
-                            tracing::info!(
-                                position = pos,
-                                fuel_value = val,
-                                "V3: FMS Fuel found"
-                            );
+                            traces.push((pos, val));
                             found_fuel = Some(val);
                             break;
                         }

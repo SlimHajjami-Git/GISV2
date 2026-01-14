@@ -6,7 +6,7 @@ use sqlx::{postgres::PgPool, Row};
 use crate::{
     ports::TelemetryStore,
     services::geofence_detector::{Geofence, GeofenceEvent, GeofenceType, Point},
-    telemetry::model::{HhFrame, HhInfoFrame},
+    telemetry::model::{HhFrame, HhInfoFrame, ProtocolMetadata},
 };
 
 pub struct Database {
@@ -20,7 +20,10 @@ impl Database {
         protocol_type: &str,
         frame: &HhFrame,
     ) -> Result<()> {
-        let device_id = self.ensure_device(device_uid, protocol_type).await?;
+        let metadata = ProtocolMetadata::from_protocol(protocol_type);
+        let device_id = self
+            .ensure_device(device_uid, protocol_type, metadata)
+            .await?;
         let _position_id = self.insert_position(device_id, frame).await?;
 
         // Insert alert if send_flag indicates an event
@@ -47,6 +50,13 @@ impl Database {
             .trim()
             .to_string();
 
+        let protocol_metadata = ProtocolMetadata::from_protocol(protocol_type);
+        let model_value: Option<String> = protocol_metadata.model_name.map(|m| m.to_string());
+        let firmware_value: String = protocol_metadata
+            .firmware_flavor
+            .map(|f| f.to_string())
+            .unwrap_or_else(|| firmware.clone());
+
         // MAT is the GPS logical identifier (e.g., "NR08G0663"), distinct from vehicle plate_number
         let mat = info.mat.as_ref().map(|m| m.trim().to_string());
 
@@ -56,13 +66,34 @@ impl Database {
         
         sqlx::query(
             r#"
-            INSERT INTO gps_devices (device_uid, mat, label, protocol_type, firmware_version, status, last_communication, company_id, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, 'unassigned', NOW(), $6, NOW(), NOW())
+            INSERT INTO gps_devices (
+                device_uid,
+                mat,
+                label,
+                protocol_type,
+                firmware_version,
+                model,
+                status,
+                last_communication,
+                company_id,
+                created_at,
+                updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, 'unassigned', NOW(), $7, NOW(), NOW())
             ON CONFLICT (device_uid) DO UPDATE
                 SET mat = COALESCE(EXCLUDED.mat, gps_devices.mat),
                     label = COALESCE(gps_devices.label, EXCLUDED.label),
                     protocol_type = EXCLUDED.protocol_type,
-                    firmware_version = EXCLUDED.firmware_version,
+                    firmware_version = CASE
+                        WHEN gps_devices.firmware_version IS NULL OR gps_devices.firmware_version = ''
+                            THEN EXCLUDED.firmware_version
+                        ELSE gps_devices.firmware_version
+                    END,
+                    model = CASE
+                        WHEN gps_devices.model IS NULL OR gps_devices.model = ''
+                            THEN EXCLUDED.model
+                        ELSE gps_devices.model
+                    END,
                     last_communication = NOW(),
                     updated_at = NOW()
             "#,
@@ -71,7 +102,8 @@ impl Database {
         .bind(&mat)
         .bind(&firmware)
         .bind(protocol_type)
-        .bind(&firmware)
+        .bind(&firmware_value)
+        .bind(&model_value)
         .bind(DEFAULT_COMPANY_ID)
         .execute(&self.pool)
         .await?;
@@ -372,23 +404,42 @@ impl Database {
         Self { pool }
     }
 
-    async fn ensure_device(&self, device_uid: &str, protocol_type: &str) -> Result<i32> {
+    async fn ensure_device(
+        &self,
+        device_uid: &str,
+        protocol_type: &str,
+        metadata: ProtocolMetadata,
+    ) -> Result<i32> {
         // Use gps_devices table with EF Core column naming (PascalCase)
         // Default CompanyId = 1 (Belive) for testing
         const DEFAULT_COMPANY_ID: i32 = 1; // Belive company
-        
+        let model = metadata.model_name;
+        let firmware = metadata.firmware_flavor;
+
         let row = sqlx::query(
             r#"
-            INSERT INTO gps_devices (device_uid, protocol_type, status, company_id, created_at, updated_at)
-            VALUES ($1, $2, 'unassigned', $3, NOW(), NOW())
+            INSERT INTO gps_devices (device_uid, protocol_type, model, firmware_version, status, company_id, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, 'unassigned', $5, NOW(), NOW())
             ON CONFLICT (device_uid) DO UPDATE
                 SET protocol_type = EXCLUDED.protocol_type,
+                    model = CASE
+                        WHEN gps_devices.model IS NULL OR gps_devices.model = ''
+                            THEN EXCLUDED.model
+                        ELSE gps_devices.model
+                    END,
+                    firmware_version = CASE
+                        WHEN gps_devices.firmware_version IS NULL OR gps_devices.firmware_version = ''
+                            THEN EXCLUDED.firmware_version
+                        ELSE gps_devices.firmware_version
+                    END,
                     updated_at = NOW()
             RETURNING id
             "#,
         )
         .bind(device_uid)
         .bind(protocol_type)
+        .bind(model)
+        .bind(firmware)
         .bind(DEFAULT_COMPANY_ID)
         .fetch_one(&self.pool)
         .await?;

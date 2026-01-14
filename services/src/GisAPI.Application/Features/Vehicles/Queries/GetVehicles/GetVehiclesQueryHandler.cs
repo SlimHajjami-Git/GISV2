@@ -68,7 +68,9 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
                     v.GpsDevice.Status,
                     v.GpsDevice.LastCommunication,
                     v.GpsDevice.BatteryLevel,
-                    v.GpsDevice.SignalStrength
+                    v.GpsDevice.SignalStrength,
+                    v.GpsDevice.Model,
+                    v.GpsDevice.FirmwareVersion
                 ) : null,
                 v.CreatedAt
             ));

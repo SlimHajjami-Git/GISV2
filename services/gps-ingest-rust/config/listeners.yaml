@@ -1,4 +1,7 @@
 listeners:
+  # NOTE: protocol controls which decoder AND which GPS model metadata we infer.
+  # gps_type_1 => NEMS model (legacy "L" firmware), gps_type_2 => NEMS "S" firmware.
+  # Add new entries for future trackers to automatically tag the devices.
   - port: 6100
     protocol: gps_type_1
     transport: tcp

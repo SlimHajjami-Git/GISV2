@@ -52,3 +52,30 @@ pub struct HhInfoFrame {
     pub imei: Option<String>,
     pub mat: Option<String>, // MAT (GPS logical identifier, distinct from vehicle plate_number)
 }
+
+/// Metadata inferred from the TCP listener protocol.
+/// Used to automatically tag devices with the correct GPS model / firmware flavor.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ProtocolMetadata {
+    pub model_name: Option<&'static str>,
+    pub firmware_flavor: Option<&'static str>,
+}
+
+impl ProtocolMetadata {
+    pub fn from_protocol(protocol: &str) -> Self {
+        match protocol {
+            // gps_type_1 => NEMS model, legacy "L" firmware
+            "gps_type_1" => Self {
+                model_name: Some("NEMS"),
+                firmware_flavor: Some("L"),
+            },
+            // gps_type_2 => NEMS model, "S" firmware
+            "gps_type_2" => Self {
+                model_name: Some("NEMS"),
+                firmware_flavor: Some("S"),
+            },
+            // Future types can be added here as soon as new GPS models are supported
+            _ => Self::default(),
+        }
+    }
+}

@@ -443,6 +443,8 @@ public class AdminController : ControllerBase
             GpsDeviceId = v.GpsDeviceId,
             GpsImei = v.GpsDevice?.DeviceUid,
             GpsMat = v.GpsDevice?.Mat,
+            GpsModel = v.GpsDevice?.Model,
+            GpsFirmwareVersion = v.GpsDevice?.FirmwareVersion,
             AssignedDriverId = v.AssignedDriverId,
             AssignedDriverName = v.AssignedDriver?.Name,
             CreatedAt = v.CreatedAt,
@@ -1211,6 +1213,8 @@ public class AdminVehicleDto
     public int? GpsDeviceId { get; set; }
     public string? GpsImei { get; set; }
     public string? GpsMat { get; set; }
+    public string? GpsModel { get; set; }
+    public string? GpsFirmwareVersion { get; set; }
     public int? AssignedDriverId { get; set; }
     public string? AssignedDriverName { get; set; }
     public DateTime CreatedAt { get; set; }
