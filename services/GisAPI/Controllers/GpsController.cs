@@ -55,7 +55,7 @@ public class GpsController : ControllerBase
                     ? _context.GpsPositions
                         .Where(p => p.DeviceId == v.GpsDeviceId &&
                                     (p.IsRealTime ||
-                                     EF.Functions.DateDiffSecond(p.RecordedAt, p.CreatedAt) <= RealTimeDelayToleranceSeconds))
+                                     p.CreatedAt <= p.RecordedAt.AddSeconds(RealTimeDelayToleranceSeconds)))
                         .OrderByDescending(p => p.RecordedAt)
                         .Select(p => new PositionDto
                         {
@@ -101,7 +101,7 @@ public class GpsController : ControllerBase
         var lastPosition = await _context.GpsPositions
             .Where(p => p.DeviceId == vehicle.GpsDeviceId &&
                         (p.IsRealTime ||
-                         EF.Functions.DateDiffSecond(p.RecordedAt, p.CreatedAt) <= RealTimeDelayToleranceSeconds))
+                         p.CreatedAt <= p.RecordedAt.AddSeconds(RealTimeDelayToleranceSeconds)))
             .OrderByDescending(p => p.RecordedAt)
             .FirstOrDefaultAsync();
 
@@ -160,7 +160,7 @@ public class GpsController : ControllerBase
                         p.RecordedAt >= from &&
                         p.RecordedAt <= to &&
                         (p.IsRealTime ||
-                         EF.Functions.DateDiffSecond(p.RecordedAt, p.CreatedAt) <= RealTimeDelayToleranceSeconds))
+                         p.CreatedAt <= p.RecordedAt.AddSeconds(RealTimeDelayToleranceSeconds)))
             .OrderBy(p => p.RecordedAt)
             .Take(limit)
             .Select(p => new PositionDto
@@ -207,7 +207,7 @@ public class GpsController : ControllerBase
                         p.RecordedAt >= from &&
                         p.RecordedAt <= to &&
                         (p.IsRealTime ||
-                         EF.Functions.DateDiffSecond(p.RecordedAt, p.CreatedAt) <= RealTimeDelayToleranceSeconds))
+                         p.CreatedAt <= p.RecordedAt.AddSeconds(RealTimeDelayToleranceSeconds)))
             .OrderBy(p => p.RecordedAt)
             .Take(limit)
             .Select(p => new PositionDto
