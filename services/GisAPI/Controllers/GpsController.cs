@@ -104,9 +104,7 @@ public class GpsController : ControllerBase
             })
             .ToListAsync();
 
-        var filteredPositions = FilterPositionsByRecordedGap(positions);
-
-        return Ok(filteredPositions);
+        return Ok(positions);
     }
 
     /// <summary>
