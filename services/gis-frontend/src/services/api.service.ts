@@ -70,7 +70,7 @@ export class ApiService {
   }
 
   private getMonitoringApiUrl(): string {
-    return environment.monitoringApiUrl || environment.apiUrl;
+    return environment.apiUrl;
   }
 
   private loadStoredUser() {
