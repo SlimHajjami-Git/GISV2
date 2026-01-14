@@ -199,11 +199,10 @@ impl TelemetryStore for Database {
         .bind(stop.fuel_level_start)
         .bind(stop.fuel_level_end)
         .bind(company_id)
-        .fetch_optional(&self.pool)
+        .fetch_one(&self.pool)
         .await?;
 
-        row.map(|r| r.get::<i64, _>("id"))
-            .ok_or_else(|| anyhow::anyhow!("Duplicate GPS position ignored"))
+        Ok(row.get::<i64, _>("id"))
     }
 
     async fn insert_fuel_record(
@@ -504,8 +503,6 @@ impl Database {
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(),
                 $15, $16, $17, $18, $19, $20, $21, $22, $23
             )
-            ON CONFLICT (device_id, recorded_at, latitude, longitude)
-            DO NOTHING
             RETURNING id
             "#,
         )
