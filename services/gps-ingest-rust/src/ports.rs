@@ -14,6 +14,7 @@ pub trait TelemetryStore: Send + Sync {
         device_uid: &str,
         protocol_type: &str,
         frame: &HhFrame,
+        event_key: &str,
     ) -> anyhow::Result<()>;
 
     /// Get device_id from IMEI
@@ -25,8 +26,14 @@ pub trait TelemetryStore: Send + Sync {
     /// Insert a fuel event record
     async fn insert_fuel_record(&self, event: &FuelEvent, vehicle_id: Option<i32>, company_id: i32) -> anyhow::Result<i64>;
 
-    /// Get vehicle_id and company_id for a device
+    /// Get device_id and company_id for a device
     async fn get_device_vehicle_info(&self, device_id: i32) -> anyhow::Result<(Option<i32>, i32)>;
+
+    /// Get the most recent position for a device (used for anti-spam filtering)
+    async fn get_last_position(
+        &self,
+        device_id: i32,
+    ) -> anyhow::Result<Option<crate::db::LastKnownPosition>>;
 
     /// Load all active geofences from database
     async fn load_geofences(&self) -> anyhow::Result<Vec<Geofence>>;
