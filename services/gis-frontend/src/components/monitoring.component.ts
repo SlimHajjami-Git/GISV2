@@ -62,6 +62,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Progressive trace drawing
   progressivePolylines: L.Polyline[] = []; // Colored segments for progressive drawing
   traceDrawnUpToIndex = 0; // Track how much of the trace has been drawn
+  
+  // Live marker visibility during playback
+  hiddenLiveMarker: L.Marker | null = null; // Store hidden live marker during playback
+  hiddenLiveMarkerId: string | null = null; // Track which marker is hidden
 
   // Message
   driverMessage = '';
@@ -359,16 +363,48 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   selectVehicle(vehicle: any) {
     const isNewVehicle = this.selectedVehicle?.id !== vehicle.id;
-    this.selectedVehicle = vehicle;
-    if (isNewVehicle) {
+    
+    // If switching vehicles during active playback, stop and clear everything
+    if (isNewVehicle && (this.isPlaybackLoaded || this.isPlaying)) {
+      console.log('Vehicle switch during playback - stopping current playback');
+      this.stopPlaybackAnimation();
+      this.restoreLiveMarker(); // Restore hidden live marker of previous vehicle
       this.clearPlayback();
     }
+    
+    this.selectedVehicle = vehicle;
     this.activeTab = 'details';
     this.popupPosition = { x: 0, y: 0 }; // Reset position to center
     this.isDragging = false;
 
     if (this.map && vehicle.currentLocation) {
       this.map.setView([vehicle.currentLocation.lat, vehicle.currentLocation.lng], 12);
+    }
+  }
+
+  // Hide the live marker of the selected vehicle during playback
+  hideLiveMarker(vehicleId: string) {
+    if (!this.map) return;
+    
+    const marker = this.vehicleMarkers.get(vehicleId);
+    if (marker) {
+      marker.remove();
+      this.hiddenLiveMarker = marker;
+      this.hiddenLiveMarkerId = vehicleId;
+      console.log(`Live marker hidden for vehicle: ${vehicleId}`);
+    }
+  }
+
+  // Restore the hidden live marker when playback ends
+  restoreLiveMarker() {
+    if (this.hiddenLiveMarker && this.hiddenLiveMarkerId && this.map) {
+      // Re-add the marker to the map
+      this.hiddenLiveMarker.addTo(this.map);
+      console.log(`Live marker restored for vehicle: ${this.hiddenLiveMarkerId}`);
+      
+      // Clear the hidden marker references
+      this.hiddenLiveMarker = null;
+      this.hiddenLiveMarkerId = null;
     }
   }
 
@@ -563,6 +599,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         this.playbackIndex = 0;
         this.playbackProgress = 0;
         this.playbackLoading = false;
+
+        // Hide the live marker of the selected vehicle during playback
+        this.hideLiveMarker(vehicleId.toString());
 
         // Draw the complete route polyline
         this.drawPlaybackRoute();
@@ -851,8 +890,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
             // Force change detection to update UI
             this.cdr.detectChanges();
           } else {
+            // Playback reached the end - auto-complete
             this.isPlaying = false;
             this.stopPlaybackAnimation();
+            
+            // Show completion message and offer to end playback
+            console.log('Playback completed - trace remains visible until user ends playback');
             this.cdr.detectChanges();
           }
         });
@@ -870,6 +913,20 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // Determine color based on vehicle status at the destination point
     const color = this.getStatusColor(toPos);
     
+    // Use OSRM for road snapping if enabled, otherwise draw straight line
+    if (this.useRoadSnapping) {
+      this.drawRoutedSegment(fromPos, toPos, color);
+    } else {
+      this.drawStraightSegment(fromPos, toPos, color);
+    }
+    
+    this.traceDrawnUpToIndex = toIndex;
+  }
+
+  // Draw a straight line segment between two points
+  private drawStraightSegment(fromPos: any, toPos: any, color: string) {
+    if (!this.map) return;
+    
     const segment = L.polyline(
       [
         [fromPos.latitude, fromPos.longitude],
@@ -885,9 +942,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     ).addTo(this.map);
 
     this.progressivePolylines.push(segment);
-    this.traceDrawnUpToIndex = toIndex;
     
-    // Also add a small point marker at the position
+    // Add a small point marker at the destination
     const pointMarker = L.circleMarker([toPos.latitude, toPos.longitude], {
       radius: 4,
       fillColor: color,
@@ -898,6 +954,60 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }).addTo(this.map);
     
     this.pointMarkers.push(pointMarker);
+  }
+
+  // Draw a road-snapped segment between two consecutive points using OSRM
+  private async drawRoutedSegment(fromPos: any, toPos: any, color: string) {
+    if (!this.map) return;
+    
+    // OSRM API expects lon,lat format
+    const coordsStr = `${fromPos.longitude},${fromPos.latitude};${toPos.longitude},${toPos.latitude}`;
+    const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
+
+    try {
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`OSRM API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.code === 'Ok' && data.routes && data.routes[0] && data.routes[0].geometry) {
+        // Convert GeoJSON coordinates to Leaflet LatLng array
+        const routeCoords: L.LatLngExpression[] = data.routes[0].geometry.coordinates.map(
+          (c: number[]) => [c[1], c[0]] as L.LatLngExpression
+        );
+
+        const segment = L.polyline(routeCoords, {
+          color: color,
+          weight: 5,
+          opacity: 0.9,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(this.map!);
+
+        this.progressivePolylines.push(segment);
+        
+        // Add a small point marker at the destination
+        const pointMarker = L.circleMarker([toPos.latitude, toPos.longitude], {
+          radius: 4,
+          fillColor: color,
+          color: '#ffffff',
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.9
+        }).addTo(this.map!);
+        
+        this.pointMarkers.push(pointMarker);
+      } else {
+        throw new Error('Invalid OSRM response');
+      }
+    } catch (error) {
+      // Fallback to straight line if OSRM fails
+      console.warn('OSRM segment routing failed, using straight line:', error);
+      this.drawStraightSegment(fromPos, toPos, color);
+    }
   }
 
   // Get color based on vehicle status: green=moving, orange=stopped in traffic, red=parked
@@ -1056,6 +1166,17 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
+  // End playback - called when user clicks "Terminer" button
+  endPlayback() {
+    console.log('Ending playback - restoring live view');
+    this.clearPlayback();
+    
+    // Center map on the live vehicle position
+    if (this.map && this.selectedVehicle?.currentLocation) {
+      this.map.setView([this.selectedVehicle.currentLocation.lat, this.selectedVehicle.currentLocation.lng], 14);
+    }
+  }
+
   clearPlayback() {
     this.stopPlaybackAnimation();
     this.isPlaybackLoaded = false;
@@ -1066,6 +1187,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.playbackProgress = 0;
     this.playbackVehicleId = null; // Reset vehicle tracking
     this.filteredBirdFlights = 0;
+
+    // Restore the live marker that was hidden during playback
+    this.restoreLiveMarker();
 
     // Clear route display (polyline and routing control)
     this.clearRouteDisplay();

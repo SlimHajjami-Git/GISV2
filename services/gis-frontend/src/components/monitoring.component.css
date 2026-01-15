@@ -1296,3 +1296,36 @@
 .legend-color.moving { background: #22c55e; }
 .legend-color.traffic { background: #f97316; }
 .legend-color.parked { background: #ef4444; }
+
+/* End Playback Button */
+.end-playback-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 16px;
+  margin-top: 12px;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.end-playback-btn:hover {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.end-playback-btn:active {
+  transform: translateY(0);
+}
+
+.end-playback-btn svg {
+  flex-shrink: 0;
+}
