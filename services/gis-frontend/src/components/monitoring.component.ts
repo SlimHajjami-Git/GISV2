@@ -532,30 +532,16 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         }
         
         this.playbackRawCount = positions.length;
+        
+        console.log(`Playback: Received ${positions.length} positions from API`);
 
-        // Keep only real-time points (ignore historical replays)
-        // Filter by isRealTime flag - recordedAt is the GPS timestamp
-        const realtimePositions = positions.filter((position: any) => {
-          if (typeof position.isRealTime === 'boolean') {
-            return position.isRealTime;
-          }
-          // Default to true if isRealTime not available (backward compatibility)
-          return true;
-        });
-
-        // Ensure we only keep points strictly within the requested range
-        const filteredPositions = realtimePositions.filter((position: any) => {
+        // Note: isRealTime filter removed - all GPS positions are valid for playback
+        // The recordedAt timestamp is the GPS device timestamp
+        // Backend already filters by date range, so no additional filtering needed here
+        const filteredPositions = positions.filter((position: any) => {
+          // Just validate that recordedAt exists and is valid
           const recordedAt = new Date(position.recordedAt).getTime();
-          if (isNaN(recordedAt)) {
-            return false;
-          }
-          if (!isNaN(fromTime) && recordedAt < fromTime) {
-            return false;
-          }
-          if (!isNaN(toTime) && recordedAt > toTime) {
-            return false;
-          }
-          return true;
+          return !isNaN(recordedAt);
         });
 
         // Positions are now returned as a direct array
