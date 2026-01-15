@@ -53,6 +53,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   playbackPolyline: L.Polyline | null = null;
   playbackMarker: L.Marker | null = null;
   playbackLoading = false;
+  playbackVehicleId: number | null = null; // Track which vehicle's playback is loaded
   routingControl: any = null;
   useRoadSnapping = true; // Toggle between road-snapped route and straight lines
   pointMarkers: L.CircleMarker[] = []; // Markers for each GPS point
@@ -153,13 +154,16 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (vehicleIndex !== -1) {
       const vehicle = this.vehicles[vehicleIndex] as any;
       
-      // Update vehicle data
+      // Update vehicle data from SignalR push
       vehicle.currentLocation = {
         lat: update.latitude,
         lng: update.longitude
       };
+      // Speed is already rounded and set to 0 if ignition off by backend
       vehicle.currentSpeed = update.speedKph || 0;
       vehicle.isOnline = true;
+      vehicle.isMoving = update.isMoving;
+      vehicle.ignitionOn = update.ignitionOn;
       (vehicle as any).lastCommunication = update.timestamp;
 
       // Update the marker on the map
@@ -443,9 +447,18 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   startAutoRefresh() {
+    // Auto-refresh is now a fallback for SignalR disconnection
+    // SignalR push handles real-time updates with adaptive intervals:
+    // - Moving vehicles: 30 seconds
+    // - Stopped vehicles: 2 minutes  
+    // - Parked vehicles (ignition off): 10 minutes
+    // This polling is just a safety net every 5 minutes
     this.refreshInterval = setInterval(() => {
-      this.loadData();
-    }, 30000);
+      if (this.connectionStatus !== 'Connected') {
+        // Only poll when SignalR is not connected
+        this.loadData();
+      }
+    }, 300000); // 5 minutes fallback
   }
 
   refresh() {
@@ -507,8 +520,17 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const fromTime = fromDate.getTime();
     const toTime = toDate.getTime();
 
+    // Store the vehicle ID for this playback to ensure data isolation
+    this.playbackVehicleId = vehicleId;
+
     this.apiService.getVehicleHistory(vehicleId, fromDate, toDate).subscribe({
       next: (positions) => {
+        // Verify this is still the correct vehicle (user might have switched)
+        if (this.playbackVehicleId !== vehicleId) {
+          console.log('Vehicle changed during load, discarding results');
+          return;
+        }
+        
         this.playbackRawCount = positions.length;
 
         // Keep only real-time points (ignore historical replays)
@@ -557,11 +579,17 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         
         // Position the playback marker at start
         this.updatePlaybackMarker();
+        
+        // Force change detection to update UI with new point count
+        this.cdr.detectChanges();
+        
+        console.log(`Playback loaded for vehicle ${vehicleId}: ${this.playbackPositions.length} points`);
       },
       error: (err) => {
         console.error('Error loading playback data:', err);
         alert('Erreur lors du chargement de l\'historique');
         this.playbackLoading = false;
+        this.cdr.detectChanges();
       }
     });
   }
@@ -756,22 +784,32 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
     const intervalMs = 1000 / this.playbackSpeed;
 
-    this.playbackInterval = setInterval(() => {
-      if (this.playbackIndex < this.playbackPositions.length - 1) {
-        this.playbackIndex++;
-        this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
-        this.updatePlaybackMarker();
-        
-        // Center map on current position
-        const pos = this.playbackPositions[this.playbackIndex];
-        if (this.map && pos) {
-          this.map.panTo([pos.latitude, pos.longitude]);
-        }
-      } else {
-        this.isPlaying = false;
-        this.stopPlaybackAnimation();
-      }
-    }, intervalMs);
+    // Run setInterval inside NgZone to ensure Angular change detection triggers
+    this.ngZone.runOutsideAngular(() => {
+      this.playbackInterval = setInterval(() => {
+        // Run state updates inside Angular zone for change detection
+        this.ngZone.run(() => {
+          if (this.playbackIndex < this.playbackPositions.length - 1) {
+            this.playbackIndex++;
+            this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+            this.updatePlaybackMarker();
+            
+            // Center map on current position
+            const pos = this.playbackPositions[this.playbackIndex];
+            if (this.map && pos) {
+              this.map.panTo([pos.latitude, pos.longitude]);
+            }
+            
+            // Force change detection to update UI
+            this.cdr.detectChanges();
+          } else {
+            this.isPlaying = false;
+            this.stopPlaybackAnimation();
+            this.cdr.detectChanges();
+          }
+        });
+      }, intervalMs);
+    });
   }
 
   stopPlaybackAnimation() {
@@ -793,6 +831,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       const startPos = this.playbackPositions[0];
       this.map.setView([startPos.latitude, startPos.longitude], 14);
     }
+    
+    this.cdr.detectChanges();
   }
 
   skipToEnd() {
@@ -807,6 +847,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       const endPos = this.playbackPositions[this.playbackPositions.length - 1];
       this.map.setView([endPos.latitude, endPos.longitude], 14);
     }
+    
+    this.cdr.detectChanges();
   }
 
   onPlaybackSpeedChange(speed: number) {
@@ -829,6 +871,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.map && pos) {
       this.map.panTo([pos.latitude, pos.longitude]);
     }
+    
+    this.cdr.detectChanges();
   }
 
   previousPoint() {
@@ -843,6 +887,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       if (this.map && pos) {
         this.map.panTo([pos.latitude, pos.longitude]);
       }
+      
+      this.cdr.detectChanges();
     }
   }
 
@@ -858,6 +904,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       if (this.map && pos) {
         this.map.panTo([pos.latitude, pos.longitude]);
       }
+      
+      this.cdr.detectChanges();
     }
   }
 
@@ -869,6 +917,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.playbackRawCount = 0;
     this.playbackIndex = 0;
     this.playbackProgress = 0;
+    this.playbackVehicleId = null; // Reset vehicle tracking
     this.filteredBirdFlights = 0;
 
     // Clear route display (polyline and routing control)
@@ -878,6 +927,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.playbackMarker.remove();
       this.playbackMarker = null;
     }
+    
+    // Force UI update after clearing
+    this.cdr.detectChanges();
   }
 
   // Message

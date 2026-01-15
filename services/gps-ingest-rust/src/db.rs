@@ -21,6 +21,12 @@ pub struct LastKnownPosition {
     pub ignition_on: bool,
 }
 
+/// Minimum interval (in seconds) between position recordings for stopped vehicles
+const STOPPED_VEHICLE_INTERVAL_SECS: i64 = 20 * 60; // 20 minutes
+
+/// Speed threshold (km/h) below which vehicle is considered stopped
+const STOPPED_SPEED_THRESHOLD: f64 = 10.0;
+
 impl Database {
     async fn ingest_hh_frame_impl(
         &self,
@@ -33,6 +39,30 @@ impl Database {
         let device_id = self
             .ensure_device(device_uid, protocol_type, metadata)
             .await?;
+
+        // Check if vehicle is stopped (ignition off AND speed < 10 km/h)
+        let is_stopped = !frame.ignition_on && frame.speed_kph < STOPPED_SPEED_THRESHOLD;
+
+        // For stopped vehicles, only record every 20 minutes
+        if is_stopped {
+            if let Some(last_pos) = self.fetch_last_position(device_id).await? {
+                let elapsed_secs = (frame.recorded_at - last_pos.recorded_at).num_seconds();
+                
+                if elapsed_secs < STOPPED_VEHICLE_INTERVAL_SECS {
+                    // Skip this position - not enough time has passed
+                    tracing::debug!(
+                        device_uid,
+                        elapsed_secs,
+                        required_secs = STOPPED_VEHICLE_INTERVAL_SECS,
+                        "Skipping stopped vehicle position (interval not reached)"
+                    );
+                    // Still update last communication even if we skip the position
+                    self.update_device_last_communication(device_id).await?;
+                    return Ok(());
+                }
+            }
+        }
+
         let _position_id = self.insert_position(device_id, frame, event_key).await?;
 
         // Insert alert if send_flag indicates an event

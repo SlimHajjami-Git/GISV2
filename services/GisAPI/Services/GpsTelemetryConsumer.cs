@@ -1,22 +1,20 @@
 using System.Text;
 using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
+using MediatR;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using GisAPI.Hubs;
-using GisAPI.Infrastructure.Persistence;
+using GisAPI.Application.Features.Gps.Commands.BroadcastPosition;
 
 namespace GisAPI.Services;
 
 /// <summary>
 /// Background service that consumes GPS telemetry events from RabbitMQ
-/// and broadcasts them via SignalR for real-time updates
+/// and broadcasts them via SignalR for real-time updates using CQRS pattern
 /// </summary>
 public class GpsTelemetryConsumer : BackgroundService
 {
     private readonly ILogger<GpsTelemetryConsumer> _logger;
     private readonly IServiceProvider _serviceProvider;
-    private readonly IGpsHubService _gpsHubService;
     private readonly IConfiguration _configuration;
     private IConnection? _connection;
     private IChannel? _channel;
@@ -24,12 +22,10 @@ public class GpsTelemetryConsumer : BackgroundService
     public GpsTelemetryConsumer(
         ILogger<GpsTelemetryConsumer> logger,
         IServiceProvider serviceProvider,
-        IGpsHubService gpsHubService,
         IConfiguration configuration)
     {
         _logger = logger;
         _serviceProvider = serviceProvider;
-        _gpsHubService = gpsHubService;
         _configuration = configuration;
     }
 
@@ -148,67 +144,33 @@ public class GpsTelemetryConsumer : BackgroundService
 
             _logger.LogDebug("Processing telemetry for device: {DeviceUid}", telemetry.DeviceUid);
 
-            // Look up the device and its associated vehicle/company
+            // Use MediatR to handle the broadcast with CQRS pattern
+            // This includes adaptive interval logic based on vehicle state
             using var scope = _serviceProvider.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<GisDbContext>();
+            var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
-            var device = await context.GpsDevices
-                .Include(d => d.Vehicle)
-                .FirstOrDefaultAsync(d => d.DeviceUid == telemetry.DeviceUid);
+            var command = new BroadcastPositionCommand(
+                DeviceUid: telemetry.DeviceUid,
+                Latitude: telemetry.Latitude,
+                Longitude: telemetry.Longitude,
+                SpeedKph: telemetry.SpeedKph,
+                CourseDeg: telemetry.CourseDeg,
+                IgnitionOn: telemetry.IgnitionOn,
+                RecordedAt: telemetry.RecordedAt,
+                AlertType: telemetry.AlertType
+            );
 
-            if (device == null)
+            var result = await mediator.Send(command);
+
+            if (result.Broadcasted)
             {
-                _logger.LogDebug("Device not found in database: {DeviceUid}", telemetry.DeviceUid);
-                return;
+                _logger.LogDebug("Position broadcasted for device: {DeviceUid}, Vehicle: {VehicleId}",
+                    telemetry.DeviceUid, result.VehicleId);
             }
-
-            // Prepare position update for SignalR
-            var positionUpdate = new
+            else
             {
-                DeviceId = device.Id,
-                DeviceUid = device.DeviceUid,
-                VehicleId = device.Vehicle?.Id,
-                VehicleName = device.Vehicle?.Name,
-                Plate = device.Vehicle?.Plate,
-                Latitude = telemetry.Latitude,
-                Longitude = telemetry.Longitude,
-                SpeedKph = telemetry.SpeedKph,
-                CourseDeg = telemetry.CourseDeg,
-                IgnitionOn = telemetry.IgnitionOn,
-                RecordedAt = telemetry.RecordedAt,
-                Timestamp = DateTime.UtcNow
-            };
-
-            // Broadcast to company group
-            if (device.CompanyId > 0)
-            {
-                await _gpsHubService.SendPositionUpdateAsync(device.CompanyId, positionUpdate);
-            }
-
-            // Broadcast to specific vehicle subscribers
-            if (device.Vehicle != null)
-            {
-                await _gpsHubService.SendVehiclePositionAsync(device.Vehicle.Id, positionUpdate);
-            }
-
-            // Handle alerts if present
-            if (!string.IsNullOrEmpty(telemetry.AlertType) && telemetry.AlertType != "normal" && telemetry.AlertType != "periodic")
-            {
-                var alert = new
-                {
-                    DeviceId = device.Id,
-                    VehicleId = device.Vehicle?.Id,
-                    VehicleName = device.Vehicle?.Name,
-                    Type = telemetry.AlertType,
-                    Latitude = telemetry.Latitude,
-                    Longitude = telemetry.Longitude,
-                    Timestamp = telemetry.RecordedAt
-                };
-
-                if (device.CompanyId > 0)
-                {
-                    await _gpsHubService.SendAlertAsync(device.CompanyId, alert);
-                }
+                _logger.LogDebug("Position skipped for device: {DeviceUid}, Reason: {Reason}",
+                    telemetry.DeviceUid, result.SkipReason);
             }
         }
         catch (Exception ex)

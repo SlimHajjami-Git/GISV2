@@ -13,6 +13,7 @@ export interface PositionUpdate {
   speedKph: number;
   courseDeg: number;
   ignitionOn: boolean;
+  isMoving: boolean;
   recordedAt: string;
   timestamp: string;
 }

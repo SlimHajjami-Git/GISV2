@@ -412,23 +412,23 @@
                 <div class="sensors-grid">
                   <div class="sensor-item">
                     <span class="sensor-label">🚗 Vitesse actuelle</span>
-                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.currentSpeed || 0 }} km/h</span>
+                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.currentSpeed | number:'1.0-0' }} km/h</span>
                   </div>
                   <div class="sensor-item">
                     <span class="sensor-label">⚡ Vitesse max (24h)</span>
-                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.maxSpeed || 0 }} km/h</span>
+                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.maxSpeed | number:'1.0-0' }} km/h</span>
                   </div>
                   <div class="sensor-item">
                     <span class="sensor-label">⛽ Carburant</span>
-                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.fuelLevel ?? 'N/A' }}%</span>
+                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.fuelLevel != null ? (getVehicleStats(selectedVehicle)?.fuelLevel + '%') : 'N/A' }}</span>
                   </div>
                   <div class="sensor-item">
                     <span class="sensor-label">🌡️ Température</span>
-                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.temperature ?? 'N/A' }}°C</span>
+                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.temperature != null ? (getVehicleStats(selectedVehicle)?.temperature + '°C') : 'N/A' }}</span>
                   </div>
                   <div class="sensor-item">
                     <span class="sensor-label">🔋 Batterie</span>
-                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.batteryLevel ?? 'N/A' }}%</span>
+                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.batteryLevel != null ? (getVehicleStats(selectedVehicle)?.batteryLevel + '%') : 'N/A' }}</span>
                   </div>
                   <div class="sensor-item">
                     <span class="sensor-label">📍 Statut</span>

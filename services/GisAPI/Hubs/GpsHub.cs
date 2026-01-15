@@ -63,16 +63,8 @@ public class GpsHub : Hub
     }
 }
 
-// Service to broadcast messages from anywhere in the application
-public interface IGpsHubService
-{
-    Task SendPositionUpdateAsync(int companyId, object position);
-    Task SendVehiclePositionAsync(int vehicleId, object position);
-    Task SendAlertAsync(int companyId, object alert);
-    Task SendGeofenceEventAsync(int geofenceId, object geofenceEvent);
-}
-
-public class GpsHubService : IGpsHubService
+// Implementation of the Application layer interface
+public class GpsHubService : GisAPI.Application.Common.Interfaces.IGpsHubService
 {
     private readonly IHubContext<GpsHub> _hubContext;
 

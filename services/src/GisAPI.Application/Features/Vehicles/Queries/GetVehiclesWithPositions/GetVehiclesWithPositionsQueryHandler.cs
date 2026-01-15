@@ -82,9 +82,21 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             var isOnline = lastComm.HasValue && (DateTime.UtcNow - lastComm.Value).TotalMinutes < 30;
             var batteryLevel = v.GpsDevice?.BatteryLevel;
 
-            // Calculate current speed and moving status
-            var currentSpeed = position?.SpeedKph ?? 0.0;
-            var isMoving = currentSpeed > 5;
+            // If ignition is off, speed is 0
+            var ignitionOn = position?.IgnitionOn ?? false;
+            var rawSpeed = position?.SpeedKph ?? 0.0;
+            var currentSpeed = ignitionOn ? Math.Round(rawSpeed) : 0.0;
+            var isMoving = ignitionOn && rawSpeed > 5;
+
+            // Round max speed to whole number
+            var maxSpeed = Math.Round(stats?.MaxSpeed ?? 0.0);
+
+            // Filter invalid temperature values (-32768 is uninitialized/error value)
+            var temperature = position?.TemperatureC;
+            if (temperature.HasValue && (temperature.Value < -100 || temperature.Value > 200))
+            {
+                temperature = null;
+            }
 
             // Estimate moving/stopped time based on position counts (approx 1 min per position)
             var movingMinutes = stats?.MovingCount ?? 0;
@@ -106,19 +118,19 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                     (int)position.Id, 
                     position.Latitude,
                     position.Longitude,
-                    position.SpeedKph ?? 0.0, 
+                    ignitionOn ? Math.Round(position.SpeedKph ?? 0.0) : 0.0, 
                     position.CourseDeg ?? 0.0,
-                    position.IgnitionOn ?? false, 
+                    ignitionOn, 
                     position.RecordedAt,
                     position.FuelRaw,
-                    position.TemperatureC,
+                    temperature,
                     batteryLevel
                 ) : null,
                 new VehicleStatsDto(
                     currentSpeed,
-                    stats?.MaxSpeed ?? 0.0,
+                    maxSpeed,
                     position?.FuelRaw,
-                    position?.TemperatureC,
+                    temperature,
                     batteryLevel,
                     isMoving,
                     !isMoving,
