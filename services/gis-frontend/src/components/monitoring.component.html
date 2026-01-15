@@ -462,40 +462,45 @@
               <div class="playback-section">
                 <div class="date-range">
                   <div class="date-field">
-                    <label>From</label>
+                    <label>De</label>
                     <input type="datetime-local" [(ngModel)]="playbackFromDate">
                   </div>
                   <div class="date-field">
-                    <label>To</label>
+                    <label>À</label>
                     <input type="datetime-local" [(ngModel)]="playbackToDate">
                   </div>
                 </div>
                 <button class="load-route-btn" (click)="loadPlaybackRoute()" [disabled]="playbackLoading">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="5 3 19 12 5 21 5 3"/>
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
                   </svg>
-                  {{ playbackLoading ? 'Loading...' : 'Load Track' }}
+                  {{ playbackLoading ? 'Chargement...' : 'Charger' }}
                 </button>
 
                 <div class="road-snapping-toggle">
                   <label class="toggle-label">
                     <input type="checkbox" [checked]="useRoadSnapping" (change)="toggleRoadSnapping()">
                     <span class="toggle-slider"></span>
-                    <span class="toggle-text">Snap to roads</span>
+                    <span class="toggle-text">Suivre les routes</span>
                   </label>
                 </div>
 
                 <div class="playback-controls" *ngIf="isPlaybackLoaded">
                   <div class="playback-info">
                     <span>Point {{ playbackIndex + 1 }} / {{ playbackPositions.length }}</span>
+                    <span class="playback-status" [ngClass]="getPlaybackStatusClass()">
+                      {{ getPlaybackStatusLabel() }}
+                    </span>
                   </div>
                   <div class="control-buttons">
-                    <button class="control-btn" (click)="resetPlayback()" title="Start">
+                    <button class="control-btn" (click)="resetPlayback()" title="Début">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/>
                       </svg>
                     </button>
-                    <button class="control-btn" (click)="previousPoint()" title="Previous">
+                    <button class="control-btn" (click)="previousPoint()" title="Précédent">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="15 18 9 12 15 6"/>
                       </svg>
@@ -508,12 +513,12 @@
                         <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
                       </svg>
                     </button>
-                    <button class="control-btn" (click)="nextPoint()" title="Next">
+                    <button class="control-btn" (click)="nextPoint()" title="Suivant">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="9 18 15 12 9 6"/>
                       </svg>
                     </button>
-                    <button class="control-btn" (click)="skipToEnd()" title="End">
+                    <button class="control-btn" (click)="skipToEnd()" title="Fin">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
                       </svg>
@@ -521,8 +526,22 @@
                   </div>
                   <input type="range" class="progress-slider" [min]="0" [max]="100" [ngModel]="playbackProgress" (ngModelChange)="onPlaybackProgressChange($event)">
                   <div class="speed-selector">
-                    <span>Speed:</span>
+                    <span>Vitesse:</span>
                     <button *ngFor="let s of playbackSpeeds" [class.active]="playbackSpeed === s" (click)="onPlaybackSpeedChange(s)">{{ s }}x</button>
+                  </div>
+                  <div class="playback-legend">
+                    <div class="legend-item">
+                      <span class="legend-color moving"></span>
+                      <span>En mouvement</span>
+                    </div>
+                    <div class="legend-item">
+                      <span class="legend-color traffic"></span>
+                      <span>Arrêt trafic</span>
+                    </div>
+                    <div class="legend-item">
+                      <span class="legend-color parked"></span>
+                      <span>Stationné</span>
+                    </div>
                   </div>
                 </div>
               </div>

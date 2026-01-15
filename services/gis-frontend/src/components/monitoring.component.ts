@@ -55,9 +55,13 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   playbackLoading = false;
   playbackVehicleId: number | null = null; // Track which vehicle's playback is loaded
   routingControl: any = null;
-  useRoadSnapping = true; // Toggle between road-snapped route and straight lines
+  useRoadSnapping = false; // Toggle between road-snapped route and straight lines (disabled by default for progressive drawing)
   pointMarkers: L.CircleMarker[] = []; // Markers for each GPS point
   filteredBirdFlights = 0; // Count of filtered bird flight positions
+  
+  // Progressive trace drawing
+  progressivePolylines: L.Polyline[] = []; // Colored segments for progressive drawing
+  traceDrawnUpToIndex = 0; // Track how much of the trace has been drawn
 
   // Message
   driverMessage = '';
@@ -585,20 +589,16 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
     // Remove existing route elements
     this.clearRouteDisplay();
+    
+    // Reset progressive drawing index
+    this.traceDrawnUpToIndex = 0;
 
-    // Create route coordinates
-    const routeCoords: L.LatLng[] = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
-
-    if (this.useRoadSnapping && routeCoords.length >= 2) {
-      // Use OSRM routing to snap to roads
-      this.drawRoutedPath(routeCoords);
-    } else {
-      // Simple polyline (straight lines)
-      this.drawStraightPath(routeCoords);
-    }
-
-    // Add point markers for each GPS position
-    this.addPointMarkers();
+    // Center map on starting position and set appropriate zoom
+    const startPos = this.playbackPositions[0];
+    this.map.setView([startPos.latitude, startPos.longitude], 15);
+    
+    // Don't draw full trace - it will be drawn progressively during playback
+    // Just show the vehicle icon at the starting position
   }
 
   addPointMarkers() {
@@ -655,6 +655,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.map?.removeControl(this.routingControl);
       this.routingControl = null;
     }
+    // Clear progressive polylines
+    this.progressivePolylines.forEach(polyline => polyline.remove());
+    this.progressivePolylines = [];
+    this.traceDrawnUpToIndex = 0;
     // Clear point markers
     this.pointMarkers.forEach(marker => marker.remove());
     this.pointMarkers = [];
@@ -726,29 +730,81 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (!position) return;
 
     const latLng: L.LatLngExpression = [position.latitude, position.longitude];
+    const statusColor = this.getStatusColor(position);
+    const speed = position.speedKph || 0;
+    const heading = position.courseDeg || 0;
+
+    // Create an enhanced vehicle icon with status color and direction indicator
+    const vehicleIcon = this.createPlaybackVehicleIcon(statusColor, heading, speed);
 
     if (this.playbackMarker) {
       this.playbackMarker.setLatLng(latLng);
+      this.playbackMarker.setIcon(vehicleIcon);
     } else {
-      const icon = L.divIcon({
-        html: `<div class="playback-marker" style="background-color: #3b82f6; border: 3px solid white; border-radius: 50%; width: 20px; height: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);"></div>`,
-        className: 'custom-playback-marker',
-        iconSize: [20, 20],
-        iconAnchor: [10, 10]
-      });
-      this.playbackMarker = L.marker(latLng, { icon }).addTo(this.map);
+      this.playbackMarker = L.marker(latLng, { 
+        icon: vehicleIcon,
+        zIndexOffset: 1000 // Keep vehicle on top
+      }).addTo(this.map);
     }
 
-    // Update popup with position info
+    // Update popup with detailed position info
     const time = new Date(position.recordedAt).toLocaleString('fr-FR');
-    const speed = position.speedKph || 0;
+    const statusLabel = this.getPlaybackStatusLabel();
+    const ignitionStatus = position.ignitionOn ? 'Allumé' : 'Éteint';
+    
     this.playbackMarker.bindPopup(`
-      <div>
-        <strong>Heure:</strong> ${time}<br>
-        <strong>Vitesse:</strong> ${speed.toFixed(1)} km/h<br>
-        <strong>Position:</strong> ${position.latitude.toFixed(5)}, ${position.longitude.toFixed(5)}
+      <div style="font-family: Arial, sans-serif; min-width: 200px;">
+        <div style="font-weight: bold; color: ${statusColor}; margin-bottom: 8px; border-bottom: 2px solid ${statusColor}; padding-bottom: 4px;">
+          ${statusLabel}
+        </div>
+        <div style="font-size: 12px; line-height: 1.8;">
+          <div><strong>🕐 Heure:</strong> ${time}</div>
+          <div><strong>🚗 Vitesse:</strong> ${speed.toFixed(1)} km/h</div>
+          <div><strong>🔑 Moteur:</strong> ${ignitionStatus}</div>
+          <div><strong>🧭 Direction:</strong> ${heading}°</div>
+          <div><strong>📍 Position:</strong> ${position.latitude.toFixed(5)}, ${position.longitude.toFixed(5)}</div>
+          ${position.fuelRaw ? `<div><strong>⛽ Carburant:</strong> ${position.fuelRaw}%</div>` : ''}
+        </div>
       </div>
     `);
+  }
+
+  // Create an enhanced vehicle icon for playback with status color and direction
+  createPlaybackVehicleIcon(color: string, heading: number, speed: number): L.DivIcon {
+    // Determine if vehicle is moving for animation
+    const isMoving = speed > 5;
+    const pulseClass = isMoving ? 'pulse-animation' : '';
+    
+    // SVG vehicle icon (car shape) with rotation based on heading
+    const vehicleSvg = `
+      <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" style="transform: rotate(${heading}deg);">
+        <!-- Shadow -->
+        <ellipse cx="20" cy="38" rx="12" ry="3" fill="rgba(0,0,0,0.2)"/>
+        <!-- Car body -->
+        <g transform="translate(20,20)">
+          <!-- Main body -->
+          <path d="M-8,-15 L8,-15 L10,-8 L10,12 L-10,12 L-10,-8 Z" fill="${color}" stroke="white" stroke-width="2"/>
+          <!-- Windshield -->
+          <path d="M-6,-12 L6,-12 L7,-6 L-7,-6 Z" fill="rgba(255,255,255,0.6)"/>
+          <!-- Headlights -->
+          <circle cx="-5" cy="-14" r="2" fill="white"/>
+          <circle cx="5" cy="-14" r="2" fill="white"/>
+          <!-- Direction indicator (arrow) -->
+          <path d="M0,-18 L4,-14 L-4,-14 Z" fill="white"/>
+        </g>
+      </svg>
+    `;
+
+    return L.divIcon({
+      html: `
+        <div class="playback-vehicle-icon ${pulseClass}" style="position: relative;">
+          ${vehicleSvg}
+        </div>
+      `,
+      className: 'custom-vehicle-marker',
+      iconSize: [40, 40],
+      iconAnchor: [20, 20]
+    });
   }
 
   togglePlayback() {
@@ -776,8 +832,14 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         // Run state updates inside Angular zone for change detection
         this.ngZone.run(() => {
           if (this.playbackIndex < this.playbackPositions.length - 1) {
+            const previousIndex = this.playbackIndex;
             this.playbackIndex++;
             this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+            
+            // Draw progressive trace segment from previous position to current
+            this.drawProgressiveSegment(previousIndex, this.playbackIndex);
+            
+            // Update vehicle marker with status color
             this.updatePlaybackMarker();
             
             // Center map on current position
@@ -798,6 +860,91 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
+  // Draw a single segment of the trace with color based on vehicle status
+  drawProgressiveSegment(fromIndex: number, toIndex: number) {
+    if (!this.map || fromIndex < 0 || toIndex >= this.playbackPositions.length) return;
+
+    const fromPos = this.playbackPositions[fromIndex];
+    const toPos = this.playbackPositions[toIndex];
+    
+    // Determine color based on vehicle status at the destination point
+    const color = this.getStatusColor(toPos);
+    
+    const segment = L.polyline(
+      [
+        [fromPos.latitude, fromPos.longitude],
+        [toPos.latitude, toPos.longitude]
+      ],
+      {
+        color: color,
+        weight: 5,
+        opacity: 0.9,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }
+    ).addTo(this.map);
+
+    this.progressivePolylines.push(segment);
+    this.traceDrawnUpToIndex = toIndex;
+    
+    // Also add a small point marker at the position
+    const pointMarker = L.circleMarker([toPos.latitude, toPos.longitude], {
+      radius: 4,
+      fillColor: color,
+      color: '#ffffff',
+      weight: 2,
+      opacity: 1,
+      fillOpacity: 0.9
+    }).addTo(this.map);
+    
+    this.pointMarkers.push(pointMarker);
+  }
+
+  // Get color based on vehicle status: green=moving, orange=stopped in traffic, red=parked
+  getStatusColor(position: any): string {
+    const speed = position.speedKph || 0;
+    const ignitionOn = position.ignitionOn;
+    
+    if (!ignitionOn) {
+      // Engine off = parked (red)
+      return '#ef4444';
+    } else if (speed > 5) {
+      // Engine on + moving = moving (green)
+      return '#22c55e';
+    } else {
+      // Engine on + not moving = stopped in traffic (orange)
+      return '#f97316';
+    }
+  }
+
+  // Get status class for CSS styling
+  getPlaybackStatusClass(): string {
+    if (this.playbackPositions.length === 0 || this.playbackIndex >= this.playbackPositions.length) {
+      return '';
+    }
+    const pos = this.playbackPositions[this.playbackIndex];
+    const speed = pos?.speedKph || 0;
+    const ignitionOn = pos?.ignitionOn;
+    
+    if (!ignitionOn) return 'status-parked';
+    if (speed > 5) return 'status-moving';
+    return 'status-traffic';
+  }
+
+  // Get status label for display
+  getPlaybackStatusLabel(): string {
+    if (this.playbackPositions.length === 0 || this.playbackIndex >= this.playbackPositions.length) {
+      return '';
+    }
+    const pos = this.playbackPositions[this.playbackIndex];
+    const speed = pos?.speedKph || 0;
+    const ignitionOn = pos?.ignitionOn;
+    
+    if (!ignitionOn) return '🔴 Stationné';
+    if (speed > 5) return '🟢 En mouvement';
+    return '🟠 Arrêt trafic';
+  }
+
   stopPlaybackAnimation() {
     if (this.playbackInterval) {
       clearInterval(this.playbackInterval);
@@ -810,12 +957,20 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.isPlaying = false;
     this.playbackIndex = 0;
     this.playbackProgress = 0;
+    
+    // Clear all progressive polylines and point markers
+    this.progressivePolylines.forEach(polyline => polyline.remove());
+    this.progressivePolylines = [];
+    this.pointMarkers.forEach(marker => marker.remove());
+    this.pointMarkers = [];
+    this.traceDrawnUpToIndex = 0;
+    
     this.updatePlaybackMarker();
 
     // Center on start position
     if (this.map && this.playbackPositions.length > 0) {
       const startPos = this.playbackPositions[0];
-      this.map.setView([startPos.latitude, startPos.longitude], 14);
+      this.map.setView([startPos.latitude, startPos.longitude], 15);
     }
     
     this.cdr.detectChanges();
@@ -824,6 +979,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   skipToEnd() {
     this.stopPlaybackAnimation();
     this.isPlaying = false;
+    
+    // Draw all remaining segments
+    for (let i = this.traceDrawnUpToIndex; i < this.playbackPositions.length - 1; i++) {
+      this.drawProgressiveSegment(i, i + 1);
+    }
+    
     this.playbackIndex = this.playbackPositions.length - 1;
     this.playbackProgress = 100;
     this.updatePlaybackMarker();
