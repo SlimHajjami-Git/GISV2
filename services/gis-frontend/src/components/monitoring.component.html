@@ -407,20 +407,42 @@
 
               <div class="sensors-section">
                 <div class="section-header">
-                  <span>Sensor values:</span>
+                  <span>Statistiques véhicule:</span>
                 </div>
                 <div class="sensors-grid">
                   <div class="sensor-item">
-                    <span class="sensor-label">Fuel Level</span>
-                    <span class="sensor-value">{{ $any(selectedVehicle).fuelLevel || 75 }}%</span>
+                    <span class="sensor-label">🚗 Vitesse actuelle</span>
+                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.currentSpeed || 0 }} km/h</span>
                   </div>
                   <div class="sensor-item">
-                    <span class="sensor-label">Temperature</span>
-                    <span class="sensor-value">{{ $any(selectedVehicle).temperature || 22 }}&#176;C</span>
+                    <span class="sensor-label">⚡ Vitesse max (24h)</span>
+                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.maxSpeed || 0 }} km/h</span>
                   </div>
                   <div class="sensor-item">
-                    <span class="sensor-label">Battery</span>
-                    <span class="sensor-value">{{ $any(selectedVehicle).batteryVoltage || 12.8 }}V</span>
+                    <span class="sensor-label">⛽ Carburant</span>
+                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.fuelLevel ?? 'N/A' }}%</span>
+                  </div>
+                  <div class="sensor-item">
+                    <span class="sensor-label">🌡️ Température</span>
+                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.temperature ?? 'N/A' }}°C</span>
+                  </div>
+                  <div class="sensor-item">
+                    <span class="sensor-label">🔋 Batterie</span>
+                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.batteryLevel ?? 'N/A' }}%</span>
+                  </div>
+                  <div class="sensor-item">
+                    <span class="sensor-label">📍 Statut</span>
+                    <span class="sensor-value" [class.moving]="getVehicleStats(selectedVehicle)?.isMoving" [class.stopped]="getVehicleStats(selectedVehicle)?.isStopped">
+                      {{ getVehicleStats(selectedVehicle)?.isMoving ? 'En circulation' : 'À l\'arrêt' }}
+                    </span>
+                  </div>
+                  <div class="sensor-item">
+                    <span class="sensor-label">🚦 Temps en circulation</span>
+                    <span class="sensor-value">{{ formatDuration(getVehicleStats(selectedVehicle)?.movingTime) }}</span>
+                  </div>
+                  <div class="sensor-item">
+                    <span class="sensor-label">🅿️ Temps à l'arrêt</span>
+                    <span class="sensor-value">{{ formatDuration(getVehicleStats(selectedVehicle)?.stoppedTime) }}</span>
                   </div>
                 </div>
               </div>

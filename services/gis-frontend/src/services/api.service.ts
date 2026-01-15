@@ -45,6 +45,39 @@ export interface PositionDto {
   address?: string;
   fuelRaw?: number;
   odometerKm?: number;
+  isRealTime?: boolean;
+  temperatureC?: number;
+  batteryLevel?: number;
+}
+
+export interface VehicleStatsDto {
+  currentSpeed: number;
+  maxSpeed: number;
+  fuelLevel?: number;
+  temperature?: number;
+  batteryLevel?: number;
+  isMoving: boolean;
+  isStopped: boolean;
+  movingTime: string;   // TimeSpan as ISO string
+  stoppedTime: string;  // TimeSpan as ISO string
+  lastStopTime?: string;
+  lastMoveTime?: string;
+}
+
+export interface VehicleWithPositionDto {
+  id: number;
+  name: string;
+  type: string;
+  brand?: string;
+  model?: string;
+  plate?: string;
+  status: string;
+  hasGps: boolean;
+  deviceUid?: string;
+  lastCommunication?: string;
+  isOnline: boolean;
+  lastPosition?: PositionDto;
+  stats?: VehicleStatsDto;
 }
 
 

@@ -51,17 +51,44 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                     p.SpeedKph,
                     p.CourseDeg,
                     p.IgnitionOn,
-                    p.RecordedAt
+                    p.RecordedAt,
+                    p.FuelRaw,
+                    p.TemperatureC
                 }).FirstOrDefault()
             })
             .ToDictionaryAsync(x => x.DeviceId, x => x.Position, ct);
+
+        // Get today's stats for each device (last 24 hours)
+        var since = DateTime.UtcNow.AddHours(-24);
+        var deviceStats = await _context.GpsPositions
+            .AsNoTracking()
+            .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= since)
+            .GroupBy(p => p.DeviceId)
+            .Select(g => new {
+                DeviceId = g.Key,
+                MaxSpeed = g.Max(p => p.SpeedKph ?? 0),
+                MovingCount = g.Count(p => p.SpeedKph > 5),
+                StoppedCount = g.Count(p => p.SpeedKph <= 5),
+                TotalCount = g.Count()
+            })
+            .ToDictionaryAsync(x => x.DeviceId, ct);
 
         var result = vehicles.Select(v =>
         {
             var deviceId = v.GpsDevice?.Id ?? 0;
             latestPositions.TryGetValue(deviceId, out var position);
+            deviceStats.TryGetValue(deviceId, out var stats);
             var lastComm = v.GpsDevice?.LastCommunication;
             var isOnline = lastComm.HasValue && (DateTime.UtcNow - lastComm.Value).TotalMinutes < 30;
+            var batteryLevel = v.GpsDevice?.BatteryLevel;
+
+            // Calculate current speed and moving status
+            var currentSpeed = position?.SpeedKph ?? 0.0;
+            var isMoving = currentSpeed > 5;
+
+            // Estimate moving/stopped time based on position counts (approx 1 min per position)
+            var movingMinutes = stats?.MovingCount ?? 0;
+            var stoppedMinutes = stats?.StoppedCount ?? 0;
 
             return new VehicleWithPositionDto(
                 v.Id,
@@ -82,8 +109,24 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                     position.SpeedKph ?? 0.0, 
                     position.CourseDeg ?? 0.0,
                     position.IgnitionOn ?? false, 
-                    position.RecordedAt
-                ) : null
+                    position.RecordedAt,
+                    position.FuelRaw,
+                    position.TemperatureC,
+                    batteryLevel
+                ) : null,
+                new VehicleStatsDto(
+                    currentSpeed,
+                    stats?.MaxSpeed ?? 0.0,
+                    position?.FuelRaw,
+                    position?.TemperatureC,
+                    batteryLevel,
+                    isMoving,
+                    !isMoving,
+                    TimeSpan.FromMinutes(movingMinutes),
+                    TimeSpan.FromMinutes(stoppedMinutes),
+                    isMoving ? null : position?.RecordedAt,
+                    isMoving ? position?.RecordedAt : null
+                )
             );
         }).ToList();
 

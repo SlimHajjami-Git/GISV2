@@ -512,14 +512,13 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         this.playbackRawCount = positions.length;
 
         // Keep only real-time points (ignore historical replays)
+        // Filter by isRealTime flag - recordedAt is the GPS timestamp
         const realtimePositions = positions.filter((position: any) => {
           if (typeof position.isRealTime === 'boolean') {
             return position.isRealTime;
           }
-          if (position.recordedAt && position.createdAt) {
-            return position.recordedAt === position.createdAt;
-          }
-          return false;
+          // Default to true if isRealTime not available (backward compatibility)
+          return true;
         });
 
         // Ensure we only keep points strictly within the requested range
@@ -623,7 +622,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
             <div><strong>📍 Lon:</strong> ${position.longitude.toFixed(6)}</div>
             <div><strong>🚗 Vitesse:</strong> ${(position.speedKph || 0).toFixed(1)} km/h</div>
             <div><strong>⛽ Carburant:</strong> ${position.fuelRaw || 0}%</div>
-            <div><strong>🌡️ Température:</strong> ${position.temperature || 'N/A'}°C</div>
+            <div><strong>🌡️ Température:</strong> ${position.temperatureC != null ? position.temperatureC : 'N/A'}°C</div>
           </div>
         </div>
       `;
@@ -1031,5 +1030,31 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       const group = new L.FeatureGroup(Array.from(this.vehicleMarkers.values()));
       this.map.fitBounds(group.getBounds().pad(0.1));
     }
+  }
+
+  getVehicleStats(vehicle: any): any {
+    return vehicle?.stats || null;
+  }
+
+  formatDuration(duration: string | null | undefined): string {
+    if (!duration) return '0h 0m';
+    
+    // Parse ISO 8601 duration or TimeSpan format (e.g., "01:30:00" or "PT1H30M")
+    if (duration.includes(':')) {
+      const parts = duration.split(':');
+      const hours = parseInt(parts[0], 10) || 0;
+      const minutes = parseInt(parts[1], 10) || 0;
+      return `${hours}h ${minutes}m`;
+    }
+    
+    // Handle .NET TimeSpan serialized as total time
+    const match = duration.match(/(\d+)\.?(\d{2})?:?(\d{2})?:?(\d{2})?/);
+    if (match) {
+      const hours = parseInt(match[1], 10) || 0;
+      const minutes = parseInt(match[2], 10) || 0;
+      return `${hours}h ${minutes}m`;
+    }
+    
+    return '0h 0m';
   }
 }

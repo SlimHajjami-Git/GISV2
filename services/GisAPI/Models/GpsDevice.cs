@@ -106,6 +106,9 @@ public class GpsPosition
 
     public bool IsRealTime { get; set; }
 
+    // FMS Data
+    public short? TemperatureC { get; set; }
+
     [MaxLength(500)]
     public string? Address { get; set; }
 

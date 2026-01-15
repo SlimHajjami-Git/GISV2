@@ -18,7 +18,8 @@ public record VehicleWithPositionDto(
     string? DeviceUid,
     DateTime? LastCommunication,
     bool IsOnline,
-    PositionDto? LastPosition
+    PositionDto? LastPosition,
+    VehicleStatsDto? Stats
 );
 
 public record PositionDto(
@@ -28,5 +29,25 @@ public record PositionDto(
     double SpeedKph,
     double CourseDeg,
     bool IgnitionOn,
-    DateTime RecordedAt
+    DateTime RecordedAt,
+    int? FuelRaw,
+    short? TemperatureC,
+    int? BatteryLevel
+);
+
+/// <summary>
+/// Vehicle statistics for monitoring display
+/// </summary>
+public record VehicleStatsDto(
+    double CurrentSpeed,           // Vitesse actuelle (km/h)
+    double MaxSpeed,               // Plus grosse vitesse atteinte (km/h)
+    int? FuelLevel,                // Niveau de carburant (%)
+    short? Temperature,            // Température moteur (°C)
+    int? BatteryLevel,             // Niveau batterie (%)
+    bool IsMoving,                 // En circulation
+    bool IsStopped,                // En arrêt
+    TimeSpan MovingTime,           // Temps en circulation
+    TimeSpan StoppedTime,          // Temps en arrêt
+    DateTime? LastStopTime,        // Dernier arrêt
+    DateTime? LastMoveTime         // Dernier mouvement
 );

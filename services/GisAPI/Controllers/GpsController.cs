@@ -196,7 +196,10 @@ public class GpsController : ControllerBase
                 RecordedAt = p.RecordedAt,
                 Address = p.Address,
                 FuelRaw = p.FuelRaw,
-                OdometerKm = p.OdometerKm
+                OdometerKm = p.OdometerKm,
+                IsRealTime = p.IsRealTime,
+                TemperatureC = p.TemperatureC,
+                CreatedAt = p.CreatedAt
             })
             .ToListAsync();
 
@@ -243,7 +246,10 @@ public class GpsController : ControllerBase
                 RecordedAt = p.RecordedAt,
                 Address = p.Address,
                 FuelRaw = p.FuelRaw,
-                OdometerKm = p.OdometerKm
+                OdometerKm = p.OdometerKm,
+                IsRealTime = p.IsRealTime,
+                TemperatureC = p.TemperatureC,
+                CreatedAt = p.CreatedAt
             })
             .ToListAsync();
 
@@ -464,6 +470,9 @@ public class PositionDto
     public string? Address { get; set; }
     public int? FuelRaw { get; set; }
     public long? OdometerKm { get; set; }
+    public bool IsRealTime { get; set; }
+    public int? TemperatureC { get; set; }
+    public DateTime CreatedAt { get; set; }
 }
 
 public class GeocodeResultDto

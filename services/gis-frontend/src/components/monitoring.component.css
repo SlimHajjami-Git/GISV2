@@ -732,6 +732,20 @@
   color: #333;
 }
 
+.sensor-value.moving {
+  color: #4caf50;
+  font-weight: 700;
+}
+
+.sensor-value.stopped {
+  color: #ff9800;
+  font-weight: 700;
+}
+
+.sensors-grid {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 .driver-section {
   background: #f9f9f9;
   border-radius: 4px;

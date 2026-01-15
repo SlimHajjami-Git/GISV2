@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use serde_json::json;
 use sqlx::{postgres::PgPool, Row};
 
@@ -60,11 +60,15 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|r| LastKnownPosition {
-            latitude: r.get("latitude"),
-            longitude: r.get("longitude"),
-            recorded_at: r.get("recorded_at"),
-            ignition_on: r.get::<Option<bool>, _>("ignition_on").unwrap_or(false),
+        Ok(row.map(|r| {
+            let recorded_at: DateTime<Utc> = r.get("recorded_at");
+
+            LastKnownPosition {
+                latitude: r.get("latitude"),
+                longitude: r.get("longitude"),
+                recorded_at: recorded_at.naive_utc(),
+                ignition_on: r.get::<Option<bool>, _>("ignition_on").unwrap_or(false),
+            }
         }))
     }
 
