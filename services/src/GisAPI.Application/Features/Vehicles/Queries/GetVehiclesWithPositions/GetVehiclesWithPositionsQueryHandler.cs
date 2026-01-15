@@ -40,7 +40,7 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
         // Get latest positions using projection to avoid JSONB issues
         var latestPositions = await _context.GpsPositions
             .AsNoTracking()
-            .Where(p => deviceIds.Contains(p.DeviceId) && p.CreatedAt == p.RecordedAt)
+            .Where(p => deviceIds.Contains(p.DeviceId))
             .GroupBy(p => p.DeviceId)
             .Select(g => new {
                 DeviceId = g.Key,
