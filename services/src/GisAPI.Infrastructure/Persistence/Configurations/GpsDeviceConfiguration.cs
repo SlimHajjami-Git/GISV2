@@ -52,6 +52,9 @@ public class GpsPositionConfiguration : IEntityTypeConfiguration<GpsPosition>
         builder.Property(e => e.RecordedAt).HasColumnName("recorded_at");
         builder.Property(e => e.Latitude).HasColumnName("latitude");
         builder.Property(e => e.Longitude).HasColumnName("longitude");
+        builder.Property(e => e.EventKey)
+            .HasColumnName("event_key")
+            .HasMaxLength(128);
         builder.Property(e => e.SpeedKph).HasColumnName("speed_kph");
         builder.Property(e => e.CourseDeg).HasColumnName("course_deg");
         builder.Property(e => e.AltitudeM).HasColumnName("altitude_m");
@@ -82,6 +85,9 @@ public class GpsPositionConfiguration : IEntityTypeConfiguration<GpsPosition>
 
         builder.HasIndex(e => e.DeviceId);
         builder.HasIndex(e => e.RecordedAt).IsDescending();
+        builder.HasIndex(e => e.EventKey)
+            .IsUnique()
+            .HasDatabaseName("ux_gps_positions_event_key");
 
         builder.HasOne(e => e.Device)
             .WithMany(d => d.Positions)

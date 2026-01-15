@@ -280,6 +280,7 @@ async fn process_single_frame(
                 info!(protocol, imei, "Registered device via info frame");
             } else {
                 let mut frame = telemetry::hh::parse_frame(frame_str)?;
+                let mut frame = telemetry::hh::parse_frame(frame_str)?;
                 let resolved_uid = if let Some(peer) = peer_addr {
                     let map = connection_map.lock().await;
                     map.get(peer)
@@ -293,8 +294,41 @@ async fn process_single_frame(
                     "UNKNOWN_DEVICE".to_string()
                 };
 
+                let event_key = format!(
+                    "{}:{}:{:.6}:{:.6}",
+                    resolved_uid,
+                    frame.recorded_at,
+                    frame.latitude,
+                    frame.longitude
+                );
+
                 // Get device_id for services processing
                 let device_id_opt = database.get_device_id(&resolved_uid).await?;
+
+                // Basic anti-spam: skip if same coords within 30s and unchanged ignition
+                if let Some(device_id) = device_id_opt {
+                    if let Some(last_position) = database
+                        .get_last_position(device_id)
+                        .await?
+                    {
+                        let same_coords = (frame.latitude - last_position.latitude).abs() < f64::EPSILON
+                            && (frame.longitude - last_position.longitude).abs() < f64::EPSILON;
+                        let seconds_since_last =
+                            (frame.recorded_at - last_position.recorded_at).num_seconds();
+                        if same_coords
+                            && seconds_since_last >= 0
+                            && seconds_since_last < 30
+                            && frame.ignition_on == last_position.ignition_on
+                        {
+                            info!(
+                                device_id,
+                                seconds_since_last,
+                                "Frame skipped: duplicate immobile sample"
+                            );
+                            return Ok(());
+                        }
+                    }
+                }
 
                 // GPS Stabilization: Prevent drift when vehicle is stopped
                 // This mimics GISV1 behavior where coordinates are kept stable at anchor position
@@ -456,7 +490,7 @@ async fn process_single_frame(
 
                 // Ingest the frame into the database
                 database
-                    .ingest_hh_frame(&resolved_uid, protocol, &frame)
+                    .ingest_hh_frame(&resolved_uid, protocol, &frame, &event_key)
                     .await?;
 
                 // Log successful ingestion with key frame info for debugging

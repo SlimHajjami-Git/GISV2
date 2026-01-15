@@ -34,6 +34,7 @@ public class GpsPosition : Entity
     public DateTime RecordedAt { get; set; }
     public double Latitude { get; set; }
     public double Longitude { get; set; }
+    public string? EventKey { get; set; }
     public double? SpeedKph { get; set; }
     public double? CourseDeg { get; set; }
     public double? AltitudeM { get; set; }
