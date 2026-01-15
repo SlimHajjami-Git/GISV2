@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using GisAPI.Application;
+using GisAPI.Application.Common.Interfaces;
 using GisAPI.Infrastructure;
 using GisAPI.Middleware;
 using GisAPI.Hubs;
