@@ -135,19 +135,36 @@ import { AdminService, Client } from '../services/admin.service';
               </div>
               <div class="form-row">
                 <div class="form-group">
-                  <label>Type de société</label>
-                  <select [(ngModel)]="clientForm.type">
+                  <label>Type de société *</label>
+                  <select [(ngModel)]="clientForm.type" (change)="onCompanyTypeChange()">
                     <option value="transport">Transport</option>
                     <option value="location">Location</option>
-                    <option value="other">Autre</option>
+                    <option value="autre">Autre</option>
                   </select>
                 </div>
                 <div class="form-group">
-                  <label>Abonnement</label>
+                  <label>Abonnement *</label>
                   <select [(ngModel)]="clientForm.subscriptionId">
-                    <option [value]="null">Aucun abonnement</option>
-                    <option *ngFor="let sub of subscriptions" [value]="sub.id">{{ sub.name }} - {{ sub.price }} TND/mois</option>
+                    <option [value]="null">Sélectionner un abonnement</option>
+                    <option *ngFor="let sub of subscriptions" [value]="sub.id">{{ sub.name }} - {{ sub.price }} DT/mois</option>
                   </select>
+                </div>
+              </div>
+              <div class="form-row" *ngIf="!showEditModal">
+                <div class="form-group">
+                  <label>Cycle de facturation</label>
+                  <select [(ngModel)]="clientForm.billingCycle">
+                    <option value="monthly">Mensuel</option>
+                    <option value="quarterly">Trimestriel (-10%)</option>
+                    <option value="yearly">Annuel (-20%)</option>
+                  </select>
+                </div>
+                <div class="form-group subscription-info" *ngIf="clientForm.subscriptionId">
+                  <label>Durée de l'abonnement</label>
+                  <div class="info-box">
+                    <span class="info-icon">📅</span>
+                    <span>{{ getSubscriptionDuration() }}</span>
+                  </div>
                 </div>
               </div>
               
@@ -682,6 +699,7 @@ export class AdminClientsComponent implements OnInit {
     phone: '',
     type: 'transport',
     subscriptionId: undefined as number | undefined,
+    billingCycle: 'yearly',
     maxVehicles: 10,
     adminName: '',
     adminEmail: '',
@@ -730,6 +748,7 @@ export class AdminClientsComponent implements OnInit {
       phone: client.phone || '',
       type: client.type,
       subscriptionId: client.subscriptionId,
+      billingCycle: 'yearly',
       maxVehicles: client.maxVehicles,
       adminName: '',
       adminEmail: '',
@@ -781,7 +800,20 @@ export class AdminClientsComponent implements OnInit {
     this.showEditModal = false;
     this.showViewModal = false;
     this.selectedClient = null;
-    this.clientForm = { name: '', email: '', phone: '', type: 'transport', subscriptionId: undefined, maxVehicles: 10, adminName: '', adminEmail: '', adminPassword: '' };
+    this.clientForm = { name: '', email: '', phone: '', type: 'transport', subscriptionId: undefined, billingCycle: 'yearly', maxVehicles: 10, adminName: '', adminEmail: '', adminPassword: '' };
+  }
+
+  onCompanyTypeChange() {
+    // Could filter subscriptions based on company type if needed
+  }
+
+  getSubscriptionDuration(): string {
+    const durations: Record<string, string> = {
+      'monthly': '30 jours',
+      'quarterly': '90 jours (3 mois)',
+      'yearly': '365 jours (1 an)'
+    };
+    return durations[this.clientForm.billingCycle] || '365 jours';
   }
 
   formatDate(date: Date): string {

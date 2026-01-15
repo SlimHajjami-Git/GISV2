@@ -20,6 +20,8 @@ public class GisDbContext : DbContext, IGisDbContext
 
     // Core
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
+    public DbSet<SubscriptionType> SubscriptionTypes => Set<SubscriptionType>();
+    public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<User> Users => Set<User>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
@@ -135,6 +137,17 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<AuditLog>().ToTable("audit_logs");
         modelBuilder.Entity<VehicleStop>().ToTable("vehicle_stops");
         modelBuilder.Entity<FuelRecord>().ToTable("fuel_records");
+        modelBuilder.Entity<SubscriptionType>().ToTable("subscription_types");
+        modelBuilder.Entity<Campaign>().ToTable("campaigns");
+
+        // SubscriptionType configuration
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.MonthlyPrice).HasPrecision(10, 2);
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.QuarterlyPrice).HasPrecision(10, 2);
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.YearlyPrice).HasPrecision(10, 2);
+        modelBuilder.Entity<SubscriptionType>().HasIndex(s => s.Code).IsUnique();
+
+        // Campaign configuration
+        modelBuilder.Entity<Campaign>().Property(c => c.DiscountPercentage).HasPrecision(5, 2);
 
         // Configure unique indexes
         modelBuilder.Entity<DailyStatistics>()

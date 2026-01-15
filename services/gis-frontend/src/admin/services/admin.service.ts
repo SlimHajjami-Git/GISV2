@@ -151,6 +151,88 @@ export interface MaintenanceMode {
   scheduledEnd?: Date;
 }
 
+export interface CampaignAccessRights {
+  dashboard: boolean;
+  monitoring: boolean;
+  vehicles: boolean;
+  employees: boolean;
+  gpsDevices: boolean;
+  maintenance: boolean;
+  costs: boolean;
+  reports: boolean;
+  geofences: boolean;
+  notifications: boolean;
+  settings: boolean;
+  users: boolean;
+  apiAccess: boolean;
+  customBranding: boolean;
+  advancedReports: boolean;
+  realTimeAlerts: boolean;
+  historyPlayback: boolean;
+  fuelAnalysis: boolean;
+  drivingBehavior: boolean;
+  multiCompany: boolean;
+  maxVehicles: number;
+  maxUsers: number;
+  maxGpsDevices: number;
+  maxGeofences: number;
+  historyRetentionDays: number;
+}
+
+export interface Campaign {
+  id: number;
+  name: string;
+  description?: string;
+  type: 'standard' | 'promotional' | 'enterprise' | 'trial';
+  status: 'draft' | 'active' | 'paused' | 'ended';
+  startDate?: Date;
+  endDate?: Date;
+  discountPercentage?: number;
+  discountAmount?: number;
+  maxSubscriptions?: number;
+  currentSubscriptions: number;
+  targetSubscriptionId?: number;
+  targetSubscriptionName?: string;
+  accessRights?: CampaignAccessRights;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  createdByName?: string;
+  enrolledCompanies: number;
+}
+
+export interface SubscriptionType {
+  id: number;
+  name: string;
+  code: string;
+  description?: string;
+  targetCompanyType: string;
+  monthlyPrice: number;
+  quarterlyPrice: number;
+  yearlyPrice: number;
+  monthlyDurationDays: number;
+  quarterlyDurationDays: number;
+  yearlyDurationDays: number;
+  maxVehicles: number;
+  maxUsers: number;
+  maxGpsDevices: number;
+  maxGeofences: number;
+  gpsTracking: boolean;
+  gpsInstallation: boolean;
+  apiAccess: boolean;
+  advancedReports: boolean;
+  realTimeAlerts: boolean;
+  historyPlayback: boolean;
+  fuelAnalysis: boolean;
+  drivingBehavior: boolean;
+  historyRetentionDays: number;
+  sortOrder: number;
+  isActive: boolean;
+  defaultAccessRights?: CampaignAccessRights;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -527,5 +609,176 @@ export class AdminService {
 
   deleteSubscription(id: number): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/admin/subscriptions/${id}`, { headers: this.getHeaders() });
+  }
+
+  // ==================== CAMPAIGN MANAGEMENT ====================
+
+  getCampaigns(search?: string, status?: string, type?: string): Observable<Campaign[]> {
+    let url = `${this.apiUrl}/admin/campaigns`;
+    const params: string[] = [];
+    if (search) params.push(`search=${encodeURIComponent(search)}`);
+    if (status && status !== 'all') params.push(`status=${status}`);
+    if (type && type !== 'all') params.push(`type=${type}`);
+    if (params.length > 0) url += '?' + params.join('&');
+    
+    return this.http.get<Campaign[]>(url, { headers: this.getHeaders() }).pipe(
+      map(campaigns => campaigns.map(c => ({
+        ...c,
+        startDate: c.startDate ? new Date(c.startDate) : undefined,
+        endDate: c.endDate ? new Date(c.endDate) : undefined,
+        createdAt: new Date(c.createdAt),
+        updatedAt: new Date(c.updatedAt)
+      }))),
+      catchError(err => {
+        console.error('Error fetching campaigns:', err);
+        return of([]);
+      })
+    );
+  }
+
+  getCampaign(id: number): Observable<Campaign | undefined> {
+    return this.http.get<Campaign>(`${this.apiUrl}/admin/campaigns/${id}`, { headers: this.getHeaders() }).pipe(
+      map(c => ({
+        ...c,
+        startDate: c.startDate ? new Date(c.startDate) : undefined,
+        endDate: c.endDate ? new Date(c.endDate) : undefined,
+        createdAt: new Date(c.createdAt),
+        updatedAt: new Date(c.updatedAt)
+      })),
+      catchError(err => {
+        console.error('Error fetching campaign:', err);
+        return of(undefined);
+      })
+    );
+  }
+
+  getCampaignsByClient(clientId: number): Observable<Campaign[]> {
+    return this.http.get<Campaign[]>(`${this.apiUrl}/admin/campaigns/client/${clientId}`, { headers: this.getHeaders() }).pipe(
+      catchError(err => {
+        console.error('Error fetching client campaigns:', err);
+        return of([]);
+      })
+    );
+  }
+
+  createCampaign(campaign: Partial<Campaign>): Observable<Campaign> {
+    return this.http.post<Campaign>(`${this.apiUrl}/admin/campaigns`, campaign, { headers: this.getHeaders() });
+  }
+
+  updateCampaign(id: number, updates: Partial<Campaign>): Observable<Campaign> {
+    return this.http.put<Campaign>(`${this.apiUrl}/admin/campaigns/${id}`, updates, { headers: this.getHeaders() });
+  }
+
+  deleteCampaign(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/admin/campaigns/${id}`, { headers: this.getHeaders() });
+  }
+
+  enrollCompanyInCampaign(campaignId: number, companyId: number): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/admin/campaigns/${campaignId}/enroll/${companyId}`, {}, { headers: this.getHeaders() });
+  }
+
+  unenrollCompanyFromCampaign(campaignId: number, companyId: number): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/admin/campaigns/${campaignId}/unenroll/${companyId}`, {}, { headers: this.getHeaders() });
+  }
+
+  // ==================== SUBSCRIPTION TYPES ====================
+
+  getSubscriptionTypes(companyType?: string): Observable<SubscriptionType[]> {
+    let url = `${this.apiUrl}/admin/subscription-types`;
+    if (companyType && companyType !== 'all') {
+      url += `?companyType=${companyType}`;
+    }
+    return this.http.get<SubscriptionType[]>(url, { headers: this.getHeaders() }).pipe(
+      map(types => types.map(t => ({
+        ...t,
+        createdAt: new Date(t.createdAt),
+        updatedAt: new Date(t.updatedAt)
+      }))),
+      catchError(err => {
+        console.error('Error fetching subscription types:', err);
+        return of([]);
+      })
+    );
+  }
+
+  getSubscriptionType(id: number): Observable<SubscriptionType | undefined> {
+    return this.http.get<SubscriptionType>(`${this.apiUrl}/admin/subscription-types/${id}`, { headers: this.getHeaders() }).pipe(
+      map(t => ({
+        ...t,
+        createdAt: new Date(t.createdAt),
+        updatedAt: new Date(t.updatedAt)
+      })),
+      catchError(err => {
+        console.error('Error fetching subscription type:', err);
+        return of(undefined);
+      })
+    );
+  }
+
+  createSubscriptionType(subscriptionType: Partial<SubscriptionType>): Observable<SubscriptionType> {
+    return this.http.post<SubscriptionType>(`${this.apiUrl}/admin/subscription-types`, subscriptionType, { headers: this.getHeaders() });
+  }
+
+  updateSubscriptionType(id: number, updates: Partial<SubscriptionType>): Observable<SubscriptionType> {
+    return this.http.put<SubscriptionType>(`${this.apiUrl}/admin/subscription-types/${id}`, updates, { headers: this.getHeaders() });
+  }
+
+  deleteSubscriptionType(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/admin/subscription-types/${id}`, { headers: this.getHeaders() });
+  }
+
+  getDefaultAccessRights(): CampaignAccessRights {
+    return {
+      dashboard: true,
+      monitoring: true,
+      vehicles: true,
+      employees: true,
+      gpsDevices: true,
+      maintenance: false,
+      costs: false,
+      reports: false,
+      geofences: false,
+      notifications: true,
+      settings: true,
+      users: true,
+      apiAccess: false,
+      customBranding: false,
+      advancedReports: false,
+      realTimeAlerts: true,
+      historyPlayback: true,
+      fuelAnalysis: false,
+      drivingBehavior: false,
+      multiCompany: false,
+      maxVehicles: 10,
+      maxUsers: 5,
+      maxGpsDevices: 10,
+      maxGeofences: 20,
+      historyRetentionDays: 30
+    };
+  }
+
+  getAccessRightsList(): { key: keyof CampaignAccessRights; label: string; category: string }[] {
+    return [
+      { key: 'dashboard', label: 'Tableau de bord', category: 'Pages' },
+      { key: 'monitoring', label: 'Monitoring', category: 'Pages' },
+      { key: 'vehicles', label: 'Véhicules', category: 'Pages' },
+      { key: 'employees', label: 'Employés', category: 'Pages' },
+      { key: 'gpsDevices', label: 'Appareils GPS', category: 'Pages' },
+      { key: 'maintenance', label: 'Maintenance', category: 'Pages' },
+      { key: 'costs', label: 'Coûts', category: 'Pages' },
+      { key: 'reports', label: 'Rapports', category: 'Pages' },
+      { key: 'geofences', label: 'Géofences', category: 'Pages' },
+      { key: 'notifications', label: 'Notifications', category: 'Pages' },
+      { key: 'settings', label: 'Paramètres', category: 'Pages' },
+      { key: 'users', label: 'Utilisateurs', category: 'Pages' },
+      { key: 'apiAccess', label: 'Accès API', category: 'Fonctionnalités' },
+      { key: 'customBranding', label: 'Personnalisation', category: 'Fonctionnalités' },
+      { key: 'advancedReports', label: 'Rapports avancés', category: 'Fonctionnalités' },
+      { key: 'realTimeAlerts', label: 'Alertes temps réel', category: 'Fonctionnalités' },
+      { key: 'historyPlayback', label: 'Lecture historique', category: 'Fonctionnalités' },
+      { key: 'fuelAnalysis', label: 'Analyse carburant', category: 'Fonctionnalités' },
+      { key: 'drivingBehavior', label: 'Comportement conduite', category: 'Fonctionnalités' },
+      { key: 'multiCompany', label: 'Multi-société', category: 'Fonctionnalités' }
+    ];
   }
 }

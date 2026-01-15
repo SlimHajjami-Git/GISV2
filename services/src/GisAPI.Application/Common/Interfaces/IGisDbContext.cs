@@ -6,6 +6,8 @@ namespace GisAPI.Application.Common.Interfaces;
 public interface IGisDbContext
 {
     DbSet<Subscription> Subscriptions { get; }
+    DbSet<SubscriptionType> SubscriptionTypes { get; }
+    DbSet<Campaign> Campaigns { get; }
     DbSet<Company> Companies { get; }
     DbSet<User> Users { get; }
     DbSet<UserSettings> UserSettings { get; }

@@ -33,6 +33,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   viewMode: 'map' | 'list' | 'split' = 'split';
   mapStyle: 'streets' | 'satellite' | 'terrain' = 'streets';
+  previousMapStyle: 'streets' | 'satellite' | 'terrain' | null = null; // Store style before playback
 
   // Panel & Tabs
   isPanelCollapsed = false;
@@ -614,6 +615,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         this.playbackIndex = 0;
         this.playbackProgress = 0;
         this.playbackLoading = false;
+
+        // Switch to satellite map for better playback visualization (like Wialon)
+        if (this.mapStyle !== 'satellite') {
+          this.previousMapStyle = this.mapStyle; // Store current style to restore later
+          this.changeMapStyle('satellite');
+        }
 
         // Hide the live marker of the selected vehicle during playback
         this.hideLiveMarker(vehicleId.toString());
@@ -1311,6 +1318,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
     // Restore the live marker that was hidden during playback
     this.restoreLiveMarker();
+
+    // Restore the original map style (before playback switched to satellite)
+    if (this.previousMapStyle && this.mapStyle !== this.previousMapStyle) {
+      this.changeMapStyle(this.previousMapStyle);
+      this.previousMapStyle = null;
+    }
 
     // Clear route display (polyline and routing control)
     this.clearRouteDisplay();

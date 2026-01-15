@@ -241,7 +241,30 @@ public class AdminController : ControllerBase
             return BadRequest(new { message = "Une société avec cet email existe déjà" });
         }
 
-        var subscription = await _context.Subscriptions.FindAsync(request.SubscriptionId);
+        var subscription = await _context.Subscriptions
+            .Include(s => s.SubscriptionType)
+            .FirstOrDefaultAsync(s => s.Id == request.SubscriptionId);
+
+        // Calculate subscription dates based on billing cycle
+        var billingCycle = request.BillingCycle ?? "yearly";
+        var startDate = DateTime.UtcNow;
+        var durationDays = billingCycle switch
+        {
+            "monthly" => subscription?.SubscriptionType?.MonthlyDurationDays ?? 30,
+            "quarterly" => subscription?.SubscriptionType?.QuarterlyDurationDays ?? 90,
+            "yearly" => subscription?.SubscriptionType?.YearlyDurationDays ?? 365,
+            _ => 365
+        };
+        var expiresAt = startDate.AddDays(durationDays);
+
+        // Calculate price based on billing cycle
+        var price = billingCycle switch
+        {
+            "monthly" => subscription?.SubscriptionType?.MonthlyPrice ?? subscription?.Price ?? 0,
+            "quarterly" => subscription?.SubscriptionType?.QuarterlyPrice ?? (subscription?.Price ?? 0) * 3 * 0.9m,
+            "yearly" => subscription?.SubscriptionType?.YearlyPrice ?? (subscription?.Price ?? 0) * 12 * 0.8m,
+            _ => subscription?.Price ?? 0
+        };
 
         var company = new Company
         {
@@ -251,7 +274,11 @@ public class AdminController : ControllerBase
             Type = request.Type ?? "transport",
             SubscriptionId = request.SubscriptionId > 0 ? request.SubscriptionId : 1,
             IsActive = true,
-            SubscriptionExpiresAt = DateTime.UtcNow.AddYears(1),
+            SubscriptionStartedAt = startDate,
+            SubscriptionExpiresAt = expiresAt,
+            BillingCycle = billingCycle,
+            SubscriptionStatus = "active",
+            NextPaymentAmount = price,
             Settings = new CompanySettings
             {
                 Currency = "DT",
@@ -295,7 +322,11 @@ public class AdminController : ControllerBase
             CurrentVehicles = 0,
             CurrentUsers = !string.IsNullOrEmpty(request.AdminEmail) ? 1 : 0,
             Status = "active",
-            CreatedAt = company.CreatedAt
+            CreatedAt = company.CreatedAt,
+            SubscriptionStatus = company.SubscriptionStatus,
+            SubscriptionStartedAt = company.SubscriptionStartedAt,
+            SubscriptionExpiresAt = company.SubscriptionExpiresAt,
+            BillingCycle = company.BillingCycle
         });
     }
 
@@ -1129,6 +1160,15 @@ public class AdminCompanyDto
     public string Status { get; set; } = "active";
     public DateTime CreatedAt { get; set; }
     public DateTime? LastActivity { get; set; }
+    
+    // Subscription status fields
+    public string SubscriptionStatus { get; set; } = "active";
+    public DateTime SubscriptionStartedAt { get; set; }
+    public DateTime? SubscriptionExpiresAt { get; set; }
+    public string BillingCycle { get; set; } = "yearly";
+    public decimal? NextPaymentAmount { get; set; }
+    public DateTime? LastPaymentAt { get; set; }
+    public int? DaysUntilExpiration { get; set; }
 }
 
 public class CreateAdminCompanyRequest
@@ -1138,6 +1178,7 @@ public class CreateAdminCompanyRequest
     public string? Phone { get; set; }
     public string? Type { get; set; }
     public int SubscriptionId { get; set; }
+    public string? BillingCycle { get; set; } // monthly, quarterly, yearly
     public string? AdminName { get; set; }
     public string? AdminEmail { get; set; }
     public string? AdminPassword { get; set; }

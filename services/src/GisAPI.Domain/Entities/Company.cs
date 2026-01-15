@@ -18,10 +18,20 @@ public class Company : AuditableEntity
     public string? RC { get; set; }
     public string? IF { get; set; }
     public bool IsActive { get; set; } = true;
+    
+    // Subscription dates and status
+    public DateTime SubscriptionStartedAt { get; set; } = DateTime.UtcNow;
     public DateTime? SubscriptionExpiresAt { get; set; }
+    public string BillingCycle { get; set; } = "yearly";
+    public string SubscriptionStatus { get; set; } = "active";
+    public DateTime? LastPaymentAt { get; set; }
+    public decimal? NextPaymentAmount { get; set; }
     
     public int SubscriptionId { get; set; }
     public Subscription? Subscription { get; set; }
+    
+    public int? CampaignId { get; set; }
+    public Campaign? Campaign { get; set; }
 
     public ICollection<User> Users { get; set; } = new List<User>();
     public ICollection<Vehicle> Vehicles { get; set; } = new List<Vehicle>();

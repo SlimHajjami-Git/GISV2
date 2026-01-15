@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, AdminVehicle, Client } from '../services/admin.service';
+import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.component';
 
 @Component({
   selector: 'admin-vehicles',
   standalone: true,
-  imports: [CommonModule, FormsModule, AdminLayoutComponent],
+  imports: [CommonModule, FormsModule, AdminLayoutComponent, VehiclePopupComponent],
   template: `
     <admin-layout pageTitle="Vehicle Management">
       <div class="vehicles-page">
@@ -132,10 +133,19 @@ import { AdminService, AdminVehicle, Client } from '../services/admin.service';
           <p>Try adjusting your search or filters</p>
         </div>
 
-        <div class="modal-overlay" *ngIf="showAddModal || showEditModal || showViewModal" (click)="closeModals()">
-          <div class="modal" [class.large]="!showViewModal" (click)="$event.stopPropagation()">
+        <!-- Vehicle Add/Edit Popup (reused from /vehicule) -->
+        <app-vehicle-popup
+          [isOpen]="showAddModal || showEditModal"
+          [vehicle]="selectedVehicleForPopup"
+          (closed)="closeModals()"
+          (saved)="onVehicleSaved($event)">
+        </app-vehicle-popup>
+
+        <!-- View Modal (kept for viewing details) -->
+        <div class="modal-overlay" *ngIf="showViewModal" (click)="closeModals()">
+          <div class="modal" (click)="$event.stopPropagation()">
             <div class="modal-header">
-              <h2>{{ showViewModal ? 'Vehicle Details' : (showEditModal ? 'Edit Vehicle' : 'Add New Vehicle') }}</h2>
+              <h2>Vehicle Details</h2>
               <button class="close-btn" (click)="closeModals()">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -143,94 +153,7 @@ import { AdminService, AdminVehicle, Client } from '../services/admin.service';
               </button>
             </div>
 
-            <div class="modal-body" *ngIf="!showViewModal">
-              <div class="vehicle-form-grid">
-                <div class="form-block">
-                  <label>Nom du véhicule *</label>
-                  <input type="text" [(ngModel)]="vehicleForm.name" placeholder="Ex: Opel Can" />
-                </div>
-                <div class="form-block">
-                  <label>Plaque d'immatriculation *</label>
-                  <input type="text" [(ngModel)]="vehicleForm.plate" placeholder="A-123456-MA" />
-                </div>
-                <div class="form-block">
-                  <label>Marque *</label>
-                  <input type="text" [(ngModel)]="vehicleForm.brand" placeholder="Opel" />
-                </div>
-                <div class="form-block">
-                  <label>Modèle *</label>
-                  <input type="text" [(ngModel)]="vehicleForm.model" placeholder="Combo" />
-                </div>
-                <div class="form-block">
-                  <label>Type *</label>
-                  <select [(ngModel)]="vehicleForm.type">
-                    <option value="citadine">Citadine</option>
-                    <option value="camion">Camion</option>
-                    <option value="suv">SUV</option>
-                    <option value="utilitaire">Utilitaire</option>
-                    <option value="other">Autre</option>
-                  </select>
-                </div>
-                <div class="form-block">
-                  <label>Status *</label>
-                  <select [(ngModel)]="vehicleForm.status">
-                    <option value="available">Disponible</option>
-                    <option value="in_use">En service</option>
-                    <option value="maintenance">Maintenance</option>
-                  </select>
-                </div>
-                <div class="form-block">
-                  <label>Année *</label>
-                  <input type="number" [(ngModel)]="vehicleForm.year" placeholder="2020" />
-                </div>
-                <div class="form-block">
-                  <label>Couleur</label>
-                  <input type="text" [(ngModel)]="vehicleForm.color" placeholder="Blanc" />
-                </div>
-                <div class="form-block full">
-                  <label>Kilométrage (km)</label>
-                  <input type="number" [(ngModel)]="vehicleForm.mileage" placeholder="45000" />
-                </div>
-              </div>
-
-              <div class="gps-section">
-                <div class="gps-header">
-                  <span>GPS INFORMATION</span>
-                  <label class="switch-label">
-                    <input type="checkbox" [(ngModel)]="vehicleForm.hasGps" />
-                    <span>Ce véhicule dispose d'un GPS</span>
-                  </label>
-                </div>
-
-                <div class="gps-grid" *ngIf="vehicleForm.hasGps">
-                  <div class="form-block">
-                    <label>GPS IMEI</label>
-                    <input type="text" [(ngModel)]="vehicleForm.gpsImei" placeholder="861041071579620" />
-                    <small>IMEI du boîtier physique (DeviceUid)</small>
-                  </div>
-                  <div class="form-block">
-                    <label>GPS MAT</label>
-                    <input type="text" [(ngModel)]="vehicleForm.gpsMat" placeholder="NR08G0663" />
-                    <small>Identifiant logique MAT envoyé dans les trames</small>
-                  </div>
-                  <div class="form-block">
-                    <label>GPS Device ID</label>
-                    <input type="number" [(ngModel)]="vehicleForm.gpsDeviceId" placeholder="1" />
-                    <small>Laisser vide pour créer/associer automatiquement via IMEI/MAT</small>
-                  </div>
-                  <div class="form-block">
-                    <label>Modèle GPS</label>
-                    <input type="text" [(ngModel)]="vehicleForm.gpsModel" placeholder="NEMS" />
-                  </div>
-                  <div class="form-block">
-                    <label>Version GPS</label>
-                    <input type="text" [(ngModel)]="vehicleForm.gpsFirmwareVersion" placeholder="L / S" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="modal-body view-mode" *ngIf="showViewModal && selectedVehicle">
+            <div class="modal-body view-mode" *ngIf="selectedVehicle">
               <div class="view-header">
                 <div class="vehicle-avatar large">
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -283,13 +206,7 @@ import { AdminService, AdminVehicle, Client } from '../services/admin.service';
               </div>
             </div>
 
-            <div class="modal-footer" *ngIf="!showViewModal">
-              <button class="btn-secondary" (click)="closeModals()">Cancel</button>
-              <button class="btn-primary" (click)="saveVehicle()" [disabled]="!isFormValid()">
-                {{ showEditModal ? 'Update' : 'Create' }} Vehicle
-              </button>
-            </div>
-            <div class="modal-footer" *ngIf="showViewModal">
+            <div class="modal-footer">
               <button class="btn-secondary" (click)="closeModals()">Close</button>
               <button class="btn-primary" (click)="editVehicle(selectedVehicle!)">Edit Vehicle</button>
             </div>
@@ -947,6 +864,24 @@ export class AdminVehiclesComponent implements OnInit {
   selectedVehicle: AdminVehicle | null = null;
   vehicleToDelete: AdminVehicle | null = null;
 
+  // Getter for the popup component - converts AdminVehicle to the format expected by VehiclePopupComponent
+  get selectedVehicleForPopup(): any {
+    if (!this.showEditModal || !this.selectedVehicle) return null;
+    return {
+      id: this.selectedVehicle.id,
+      name: this.selectedVehicle.name,
+      plate: this.selectedVehicle.plate,
+      brand: this.selectedVehicle.brand,
+      model: this.selectedVehicle.model,
+      year: this.selectedVehicle.year,
+      type: this.selectedVehicle.type,
+      status: this.selectedVehicle.status,
+      mileage: this.selectedVehicle.mileage,
+      hasGPS: this.selectedVehicle.hasGps,
+      gpsDeviceId: this.selectedVehicle.gpsDeviceId
+    };
+  }
+
   vehicleForm = {
     name: '',
     type: 'citadine',
@@ -1059,6 +994,50 @@ export class AdminVehiclesComponent implements OnInit {
       this.adminService.deleteVehicle(this.vehicleToDelete.id).subscribe(() => {
         this.loadData();
         this.closeDeleteModal();
+      });
+    }
+  }
+
+  // Handler for VehiclePopupComponent saved event
+  onVehicleSaved(formData: any) {
+    const vehicleData: Partial<AdminVehicle> = {
+      name: formData.name,
+      type: formData.type,
+      brand: formData.brand || undefined,
+      model: formData.model || undefined,
+      plate: formData.plate || undefined,
+      year: formData.year || undefined,
+      status: formData.status,
+      mileage: formData.mileage || 0,
+      companyId: 1,
+      hasGps: formData.hasGPS || false,
+      gpsDeviceId: formData.hasGPS ? formData.gpsDeviceId : undefined,
+      gpsImei: formData.hasGPS ? formData.gpsImei || undefined : undefined,
+      gpsModel: formData.hasGPS ? formData.gpsBrand || undefined : undefined,
+      gpsFirmwareVersion: formData.hasGPS ? formData.gpsModel || undefined : undefined
+    };
+
+    if (this.showEditModal && this.selectedVehicle) {
+      this.adminService.updateVehicle(this.selectedVehicle.id, vehicleData).subscribe({
+        next: () => {
+          this.loadData();
+          this.closeModals();
+        },
+        error: (err) => {
+          console.error('Error updating vehicle:', err);
+          alert('Erreur lors de la mise à jour du véhicule');
+        }
+      });
+    } else {
+      this.adminService.createVehicle(vehicleData).subscribe({
+        next: () => {
+          this.loadData();
+          this.closeModals();
+        },
+        error: (err) => {
+          console.error('Error creating vehicle:', err);
+          alert('Erreur lors de la création du véhicule');
+        }
       });
     }
   }

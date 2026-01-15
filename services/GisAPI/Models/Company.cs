@@ -12,8 +12,11 @@ public class Company
     [MaxLength(200)]
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Company type: transport, location, autre
+    /// </summary>
     [MaxLength(50)]
-    public string Type { get; set; } = "transport"; // location, transport, other
+    public string Type { get; set; } = "transport"; // transport, location, autre
 
     [MaxLength(200)]
     public string? Address { get; set; }
@@ -44,7 +47,38 @@ public class Company
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// Subscription start date (auto-set when company is created)
+    /// </summary>
+    public DateTime SubscriptionStartedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Subscription expiration date (auto-calculated based on billing cycle)
+    /// </summary>
     public DateTime? SubscriptionExpiresAt { get; set; }
+
+    /// <summary>
+    /// Current billing cycle: monthly, quarterly, yearly
+    /// </summary>
+    [MaxLength(20)]
+    public string BillingCycle { get; set; } = "yearly";
+
+    /// <summary>
+    /// Subscription status: active, expired, pending_renewal, cancelled, suspended
+    /// </summary>
+    [MaxLength(30)]
+    public string SubscriptionStatus { get; set; } = "active";
+
+    /// <summary>
+    /// Last payment date
+    /// </summary>
+    public DateTime? LastPaymentAt { get; set; }
+
+    /// <summary>
+    /// Next payment amount
+    /// </summary>
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal? NextPaymentAmount { get; set; }
 
     // Settings stored as JSON
     [Column(TypeName = "jsonb")]
@@ -54,6 +88,12 @@ public class Company
 
     [ForeignKey("SubscriptionId")]
     public Subscription? Subscription { get; set; }
+
+    // Campaign relationship (optional - company may be enrolled in a campaign)
+    public int? CampaignId { get; set; }
+
+    [ForeignKey("CampaignId")]
+    public Campaign? Campaign { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

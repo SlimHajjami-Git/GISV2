@@ -13,6 +13,8 @@ public class GisDbContext : DbContext
     // CORE ENTITIES
     // ============================================
     public DbSet<Subscription> Subscriptions { get; set; }
+    public DbSet<SubscriptionType> SubscriptionTypes { get; set; }
+    public DbSet<Campaign> Campaigns { get; set; }
     public DbSet<Company> Companies { get; set; }
     public DbSet<User> Users { get; set; }
     public DbSet<UserSettings> UserSettings { get; set; }
@@ -89,6 +91,8 @@ public class GisDbContext : DbContext
         // TABLE NAMING (snake_case for PostgreSQL)
         // ============================================
         modelBuilder.Entity<Subscription>().ToTable("subscriptions");
+        modelBuilder.Entity<SubscriptionType>().ToTable("subscription_types");
+        modelBuilder.Entity<Campaign>().ToTable("campaigns");
         modelBuilder.Entity<Company>().ToTable("companies");
         modelBuilder.Entity<User>().ToTable("users");
         modelBuilder.Entity<UserSettings>().ToTable("user_settings");
@@ -498,8 +502,53 @@ public class GisDbContext : DbContext
             .HasDatabaseName("idx_driving_events_vehicle_timestamp");
 
         // ============================================
+        // RELATIONSHIPS - CAMPAIGN & SUBSCRIPTION TYPE
+        // ============================================
+        modelBuilder.Entity<Campaign>()
+            .HasOne(c => c.TargetSubscription)
+            .WithMany()
+            .HasForeignKey(c => c.TargetSubscriptionId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Campaign>()
+            .HasOne(c => c.CreatedBy)
+            .WithMany()
+            .HasForeignKey(c => c.CreatedById)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Company>()
+            .HasOne(c => c.Campaign)
+            .WithMany(camp => camp.Companies)
+            .HasForeignKey(c => c.CampaignId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Subscription>()
+            .HasOne(s => s.SubscriptionType)
+            .WithMany(st => st.Subscriptions)
+            .HasForeignKey(s => s.SubscriptionTypeId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Campaign indexes
+        modelBuilder.Entity<Campaign>()
+            .HasIndex(c => c.Status)
+            .HasDatabaseName("idx_campaigns_status");
+
+        modelBuilder.Entity<Campaign>()
+            .HasIndex(c => c.IsActive)
+            .HasDatabaseName("idx_campaigns_is_active");
+
+        // ============================================
         // JSON COLUMN CONFIGURATION (PostgreSQL)
         // ============================================
+        modelBuilder.Entity<Campaign>()
+            .OwnsOne(c => c.AccessRights, builder => builder.ToJson());
+
+        modelBuilder.Entity<Subscription>()
+            .OwnsOne(s => s.AccessRights, builder => builder.ToJson());
+
+        modelBuilder.Entity<SubscriptionType>()
+            .OwnsOne(st => st.DefaultAccessRights, builder => builder.ToJson());
+
         modelBuilder.Entity<Company>()
             .OwnsOne(c => c.Settings, builder => builder.ToJson());
 
