@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Utc};
 use tracing::{info, debug};
 
 use crate::telemetry::model::HhFrame;
@@ -92,7 +92,7 @@ impl StopDetector {
 
         if is_stopped || ignition_off {
             // Vehicle is stopped or ignition off
-            if let Some(existing) = stops.get(&device_id) {
+            if let Some(_existing) = stops.get(&device_id) {
                 // Already tracking a stop, update if ignition changed
                 debug!(device_id, "Vehicle still stopped");
                 None

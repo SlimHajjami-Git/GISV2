@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use chrono::NaiveDateTime;
 use serde_json::json;
 use sqlx::{postgres::PgPool, Row};
 
@@ -13,18 +14,26 @@ pub struct Database {
     pool: PgPool,
 }
 
+pub struct LastKnownPosition {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub recorded_at: NaiveDateTime,
+    pub ignition_on: bool,
+}
+
 impl Database {
     async fn ingest_hh_frame_impl(
         &self,
         device_uid: &str,
         protocol_type: &str,
         frame: &HhFrame,
+        event_key: &str,
     ) -> Result<()> {
         let metadata = ProtocolMetadata::from_protocol(protocol_type);
         let device_id = self
             .ensure_device(device_uid, protocol_type, metadata)
             .await?;
-        let _position_id = self.insert_position(device_id, frame).await?;
+        let _position_id = self.insert_position(device_id, frame, event_key).await?;
 
         // Insert alert if send_flag indicates an event
         if frame.send_flag != 0 {
@@ -35,6 +44,28 @@ impl Database {
         self.update_device_last_communication(device_id).await?;
 
         Ok(())
+    }
+
+    async fn fetch_last_position(&self, device_id: i32) -> Result<Option<LastKnownPosition>> {
+        let row = sqlx::query(
+            r#"
+            SELECT latitude, longitude, recorded_at, ignition_on
+            FROM gps_positions
+            WHERE device_id = $1
+            ORDER BY recorded_at DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(device_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| LastKnownPosition {
+            latitude: r.get("latitude"),
+            longitude: r.get("longitude"),
+            recorded_at: r.get("recorded_at"),
+            ignition_on: r.get::<Option<bool>, _>("ignition_on").unwrap_or(false),
+        }))
     }
 
     async fn ingest_info_frame_impl(&self, protocol_type: &str, info: &HhInfoFrame) -> Result<String> {
@@ -137,8 +168,11 @@ impl TelemetryStore for Database {
         device_uid: &str,
         protocol_type: &str,
         frame: &HhFrame,
+        event_key: &str,
     ) -> Result<()> {
-        self.ingest_hh_frame_impl(device_uid, protocol_type, frame).await
+        self
+            .ingest_hh_frame_impl(device_uid, protocol_type, frame, event_key)
+            .await
     }
 
     async fn get_device_id(&self, imei: &str) -> Result<Option<i32>> {
@@ -397,6 +431,10 @@ impl TelemetryStore for Database {
 
         Ok(row.get::<i32, _>("id"))
     }
+
+    async fn get_last_position(&self, device_id: i32) -> Result<Option<LastKnownPosition>> {
+        self.fetch_last_position(device_id).await
+    }
 }
 
 impl Database {
@@ -447,7 +485,7 @@ impl Database {
         Ok(row.get::<i32, _>("id"))
     }
 
-    async fn insert_position(&self, device_id: i32, frame: &HhFrame) -> Result<i64> {
+    async fn insert_position(&self, device_id: i32, frame: &HhFrame, event_key: &str) -> Result<i64> {
         // Metadata for additional fields not in dedicated columns
         let metadata = json!({
             "power_source_rescue": frame.power_source_rescue,
@@ -479,6 +517,7 @@ impl Database {
                 recorded_at,
                 latitude,
                 longitude,
+                event_key,
                 speed_kph,
                 course_deg,
                 altitude_m,
@@ -500,9 +539,10 @@ impl Database {
                 protocol_version,
                 address
             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(),
-                $15, $16, $17, $18, $19, $20, $21, $22, $23
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(),
+                $16, $17, $18, $19, $20, $21, $22, $23, $24
             )
+            ON CONFLICT (event_key) DO NOTHING
             RETURNING id
             "#,
         )
@@ -510,6 +550,7 @@ impl Database {
         .bind(frame.recorded_at)
         .bind(frame.latitude)
         .bind(frame.longitude)
+        .bind(event_key)
         .bind(frame.speed_kph)
         .bind(frame.heading_deg)
         .bind(Option::<f64>::None) // AltitudeM
@@ -530,10 +571,10 @@ impl Database {
         .bind(frame.send_flag as i16)
         .bind(protocol_version)
         .bind(&frame.address) // Geocoded address
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.get::<i64, _>("id"))
+        Ok(row.map(|r| r.get::<i64, _>("id")).unwrap_or(0))
     }
 
     async fn insert_alert(&self, device_id: i32, frame: &HhFrame) -> Result<i32> {

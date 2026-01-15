@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use chrono::{DateTime, Utc, Timelike, Weekday, Datelike};
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn, debug};
+use tracing::{info, debug};
 
 /// Geofence types
 #[derive(Debug, Clone, PartialEq)]

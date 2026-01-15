@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::{anyhow, Context, Result};
+use chrono::Duration;
 use tokio::{
     io::AsyncReadExt,
     net::{TcpListener, TcpStream},
@@ -280,7 +281,6 @@ async fn process_single_frame(
                 info!(protocol, imei, "Registered device via info frame");
             } else {
                 let mut frame = telemetry::hh::parse_frame(frame_str)?;
-                let mut frame = telemetry::hh::parse_frame(frame_str)?;
                 let resolved_uid = if let Some(peer) = peer_addr {
                     let map = connection_map.lock().await;
                     map.get(peer)
@@ -307,17 +307,13 @@ async fn process_single_frame(
 
                 // Basic anti-spam: skip if same coords within 30s and unchanged ignition
                 if let Some(device_id) = device_id_opt {
-                    if let Some(last_position) = database
-                        .get_last_position(device_id)
-                        .await?
-                    {
+                    if let Some(last_position) = database.get_last_position(device_id).await? {
                         let same_coords = (frame.latitude - last_position.latitude).abs() < f64::EPSILON
                             && (frame.longitude - last_position.longitude).abs() < f64::EPSILON;
                         let seconds_since_last =
                             (frame.recorded_at - last_position.recorded_at).num_seconds();
                         if same_coords
-                            && seconds_since_last >= 0
-                            && seconds_since_last < 30
+                            && seconds_since_last.abs() < 30
                             && frame.ignition_on == last_position.ignition_on
                         {
                             info!(

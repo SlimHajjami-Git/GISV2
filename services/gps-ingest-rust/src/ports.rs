@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+use crate::db::LastKnownPosition;
 use crate::services::fuel_tracker::FuelEvent;
 use crate::services::geofence_detector::{Geofence, GeofenceEvent};
 use crate::services::stop_detector::CompletedStop;
@@ -33,7 +34,7 @@ pub trait TelemetryStore: Send + Sync {
     async fn get_last_position(
         &self,
         device_id: i32,
-    ) -> anyhow::Result<Option<crate::db::LastKnownPosition>>;
+    ) -> anyhow::Result<Option<LastKnownPosition>>;
 
     /// Load all active geofences from database
     async fn load_geofences(&self) -> anyhow::Result<Vec<Geofence>>;

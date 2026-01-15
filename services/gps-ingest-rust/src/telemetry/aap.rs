@@ -4,7 +4,7 @@
 //! It supports protocol versions 1, 2, and 3 with FMS and MEMS data parsing.
 
 use anyhow::{bail, Context, Result};
-use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 
 /// Supported protocol headers
 const VALID_HEADERS: [&str; 2] = ["HH", "AA"];
