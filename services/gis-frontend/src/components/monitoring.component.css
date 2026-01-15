@@ -13,7 +13,7 @@
 }
 
 .vehicles-sidebar {
-  width: 460px;
+  width: 360px;
   background: #ffffff;
   display: flex;
   flex-direction: column;
@@ -135,6 +135,61 @@
 
 .tool-btn.add-btn:hover {
   background: #43a047;
+}
+
+/* Simplified toolbar with status dots */
+.sidebar-toolbar.simplified {
+  padding: 6px 8px;
+  gap: 8px;
+}
+
+.sidebar-toolbar.simplified .filter-buttons {
+  gap: 4px;
+}
+
+.status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: block;
+}
+
+.status-dot.moving {
+  background: #4caf50;
+  box-shadow: 0 0 4px rgba(76, 175, 80, 0.5);
+}
+
+.status-dot.stopped {
+  background: #ff9800;
+  box-shadow: 0 0 4px rgba(255, 152, 0, 0.5);
+}
+
+.status-dot.offline {
+  background: #9e9e9e;
+  box-shadow: 0 0 4px rgba(158, 158, 158, 0.5);
+}
+
+.tool-btn.filter-moving.active {
+  background: rgba(76, 175, 80, 0.15);
+  border: 1px solid #4caf50;
+}
+
+.tool-btn.filter-stopped.active {
+  background: rgba(255, 152, 0, 0.15);
+  border: 1px solid #ff9800;
+}
+
+.tool-btn.filter-offline.active {
+  background: rgba(158, 158, 158, 0.15);
+  border: 1px solid #9e9e9e;
+}
+
+/* Simplified vehicle indicators */
+.vehicle-indicators.simplified {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
 }
 
 .vehicles-list {
@@ -366,7 +421,7 @@
 
 .map-controls-left {
   position: absolute;
-  top: 50px;
+  bottom: 20px;
   left: 10px;
   z-index: 500;
   display: flex;
@@ -438,14 +493,24 @@
 
 .vehicle-info-panel {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 320px;
+  bottom: 20px;
+  left: 60px;
+  width: 380px;
   background: #ffffff;
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   z-index: 600;
   overflow: hidden;
+  user-select: none;
+}
+
+.vehicle-info-panel.dragging {
+  opacity: 0.9;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.vehicle-info-panel .drag-handle {
+  cursor: move;
 }
 
 .info-panel-header {
