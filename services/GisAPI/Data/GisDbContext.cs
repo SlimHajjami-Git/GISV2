@@ -522,11 +522,39 @@ public class GisDbContext : DbContext
             .HasForeignKey(c => c.CampaignId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // Company column mappings (snake_case)
+        modelBuilder.Entity<Company>().Property(c => c.SubscriptionStartedAt).HasColumnName("subscription_started_at");
+        modelBuilder.Entity<Company>().Property(c => c.SubscriptionExpiresAt).HasColumnName("subscription_expires_at");
+        modelBuilder.Entity<Company>().Property(c => c.BillingCycle).HasColumnName("billing_cycle");
+        modelBuilder.Entity<Company>().Property(c => c.SubscriptionStatus).HasColumnName("subscription_status");
+        modelBuilder.Entity<Company>().Property(c => c.LastPaymentAt).HasColumnName("last_payment_at");
+        modelBuilder.Entity<Company>().Property(c => c.NextPaymentAmount).HasColumnName("next_payment_amount");
+        modelBuilder.Entity<Company>().Property(c => c.CampaignId).HasColumnName("campaign_id");
+        modelBuilder.Entity<Company>().Property(c => c.IsActive).HasColumnName("is_active");
+        modelBuilder.Entity<Company>().Property(c => c.LogoUrl).HasColumnName("logo_url");
+        modelBuilder.Entity<Company>().Property(c => c.TaxId).HasColumnName("tax_id");
+
         modelBuilder.Entity<Subscription>()
             .HasOne(s => s.SubscriptionType)
             .WithMany(st => st.Subscriptions)
             .HasForeignKey(s => s.SubscriptionTypeId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // Subscription column mappings (snake_case)
+        modelBuilder.Entity<Subscription>().Property(s => s.BillingCycle).HasColumnName("billing_cycle");
+        modelBuilder.Entity<Subscription>().Property(s => s.AutoRenew).HasColumnName("auto_renew");
+        modelBuilder.Entity<Subscription>().Property(s => s.RenewalReminderDays).HasColumnName("renewal_reminder_days");
+        modelBuilder.Entity<Subscription>().Property(s => s.LastRenewalNotificationAt).HasColumnName("last_renewal_notification_at");
+        modelBuilder.Entity<Subscription>().Property(s => s.SubscriptionTypeId).HasColumnName("subscription_type_id");
+        modelBuilder.Entity<Subscription>().Property(s => s.GpsTracking).HasColumnName("gps_tracking");
+        modelBuilder.Entity<Subscription>().Property(s => s.GpsInstallation).HasColumnName("gps_installation");
+        modelBuilder.Entity<Subscription>().Property(s => s.MaxVehicles).HasColumnName("max_vehicles");
+        modelBuilder.Entity<Subscription>().Property(s => s.MaxUsers).HasColumnName("max_users");
+        modelBuilder.Entity<Subscription>().Property(s => s.MaxGpsDevices).HasColumnName("max_gps_devices");
+        modelBuilder.Entity<Subscription>().Property(s => s.MaxGeofences).HasColumnName("max_geofences");
+        modelBuilder.Entity<Subscription>().Property(s => s.IsActive).HasColumnName("is_active");
+        modelBuilder.Entity<Subscription>().Property(s => s.CreatedAt).HasColumnName("created_at");
+        modelBuilder.Entity<Subscription>().Property(s => s.UpdatedAt).HasColumnName("updated_at");
 
         // Campaign indexes
         modelBuilder.Entity<Campaign>()
