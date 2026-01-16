@@ -149,6 +149,23 @@ public class GisDbContext : DbContext, IGisDbContext
         // Campaign configuration
         modelBuilder.Entity<Campaign>().Property(c => c.DiscountPercentage).HasPrecision(5, 2);
 
+        // Company column mappings (snake_case)
+        modelBuilder.Entity<Company>().Property(c => c.SubscriptionStartedAt).HasColumnName("subscription_started_at");
+        modelBuilder.Entity<Company>().Property(c => c.SubscriptionExpiresAt).HasColumnName("subscription_expires_at");
+        modelBuilder.Entity<Company>().Property(c => c.BillingCycle).HasColumnName("billing_cycle");
+        modelBuilder.Entity<Company>().Property(c => c.SubscriptionStatus).HasColumnName("subscription_status");
+        modelBuilder.Entity<Company>().Property(c => c.LastPaymentAt).HasColumnName("last_payment_at");
+        modelBuilder.Entity<Company>().Property(c => c.NextPaymentAmount).HasColumnName("next_payment_amount");
+        modelBuilder.Entity<Company>().Property(c => c.CampaignId).HasColumnName("campaign_id");
+
+        // Subscription column mappings (snake_case)
+        modelBuilder.Entity<Subscription>().Property(s => s.BillingCycle).HasColumnName("billing_cycle");
+        modelBuilder.Entity<Subscription>().Property(s => s.AutoRenew).HasColumnName("auto_renew");
+        modelBuilder.Entity<Subscription>().Property(s => s.RenewalReminderDays).HasColumnName("renewal_reminder_days");
+        modelBuilder.Entity<Subscription>().Property(s => s.LastRenewalNotificationAt).HasColumnName("last_renewal_notification_at");
+        modelBuilder.Entity<Subscription>().Property(s => s.SubscriptionTypeId).HasColumnName("subscription_type_id");
+        modelBuilder.Entity<Subscription>().Property(s => s.UpdatedAt).HasColumnName("updated_at");
+
         // Configure unique indexes
         modelBuilder.Entity<DailyStatistics>()
             .HasIndex(s => new { s.VehicleId, s.Date })
