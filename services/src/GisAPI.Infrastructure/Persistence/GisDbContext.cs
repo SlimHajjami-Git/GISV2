@@ -157,6 +157,14 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<Company>().Property(c => c.LastPaymentAt).HasColumnName("last_payment_at");
         modelBuilder.Entity<Company>().Property(c => c.NextPaymentAmount).HasColumnName("next_payment_amount");
         modelBuilder.Entity<Company>().Property(c => c.CampaignId).HasColumnName("campaign_id");
+        modelBuilder.Entity<Company>().Property(c => c.IsActive).HasColumnName("is_active");
+        modelBuilder.Entity<Company>().Property(c => c.LogoUrl).HasColumnName("logo_url");
+        modelBuilder.Entity<Company>().Property(c => c.TaxId).HasColumnName("tax_id");
+        modelBuilder.Entity<Company>().Property(c => c.RC).HasColumnName("rc");
+        modelBuilder.Entity<Company>().Property(c => c.IF).HasColumnName("if");
+        modelBuilder.Entity<Company>().Property(c => c.SubscriptionId).HasColumnName("subscription_id");
+        modelBuilder.Entity<Company>().Property(c => c.CreatedAt).HasColumnName("created_at");
+        modelBuilder.Entity<Company>().Property(c => c.UpdatedAt).HasColumnName("updated_at");
 
         // Subscription column mappings (snake_case)
         modelBuilder.Entity<Subscription>().Property(s => s.BillingCycle).HasColumnName("billing_cycle");
