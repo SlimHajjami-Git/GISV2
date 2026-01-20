@@ -127,7 +127,7 @@ BEGIN
         -- Update existing admin
         UPDATE users SET
             name = 'Super Admin',
-            password_hash = '$2a$11$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.S7WaGdFTTl5lNu',
+            password_hash = '$2a$11$SSFnYGBW31exSV45qir0KutzLHPu3BJo/ZPVfzUlJtPe30T.9g9Rm',
             roles = ARRAY['super_admin', 'platform_admin'],
             permissions = ARRAY['all', 'admin', 'manage_companies', 'manage_subscriptions', 'manage_users', 'manage_vehicles', 'manage_devices', 'manage_geofences', 'view_reports', 'manage_settings'],
             status = 'active',
@@ -149,7 +149,7 @@ BEGIN
             'Super Admin',
             'admin@belive.tn',
             '+212 600 000000',
-            '$2a$11$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.S7WaGdFTTl5lNu',
+            '$2a$11$SSFnYGBW31exSV45qir0KutzLHPu3BJo/ZPVfzUlJtPe30T.9g9Rm',
             ARRAY['super_admin', 'platform_admin'],
             ARRAY['all', 'admin', 'manage_companies', 'manage_subscriptions', 'manage_users', 'manage_vehicles', 'manage_devices', 'manage_geofences', 'view_reports', 'manage_settings'],
             ARRAY[]::integer[],
