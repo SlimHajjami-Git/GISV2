@@ -19,5 +19,5 @@ public class VehicleCost : TenantEntity
     public int? CreatedByUserId { get; set; }
     public User? CreatedByUser { get; set; }
 
-    public Company? Company { get; set; }
+    public Societe? Societe { get; set; }
 }

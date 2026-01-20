@@ -305,25 +305,33 @@ async fn process_single_frame(
                 // Get device_id for services processing
                 let device_id_opt = database.get_device_id(&resolved_uid).await?;
 
-                // Basic anti-spam: skip if same coords within 30s and unchanged ignition
+                // Ignition-off throttling: when vehicle is stopped (ignition off + slow speed),
+                // only store one position every 30 minutes to reduce database bloat
+                // This replaces the old "duplicate immobile sample" logic
+                const STOPPED_SPEED_THRESHOLD_KPH: f64 = 20.0;
+                const STOPPED_MIN_INTERVAL_SECS: i64 = 30 * 60; // 30 minutes
+                
                 if let Some(device_id) = device_id_opt {
-                    if let Some(last_position) = database.get_last_position(device_id).await? {
-                        let same_coords = (frame.latitude - last_position.latitude).abs() < f64::EPSILON
-                            && (frame.longitude - last_position.longitude).abs() < f64::EPSILON;
-                        let seconds_since_last =
-                            (frame.recorded_at - last_position.recorded_at).num_seconds();
-                        if same_coords
-                            && seconds_since_last.abs() < 30
-                            && frame.ignition_on == last_position.ignition_on
-                        {
-                            info!(
-                                device_id,
-                                seconds_since_last,
-                                "Frame skipped: duplicate immobile sample"
-                            );
-                            return Ok(());
+                    // Only apply throttling when ignition is OFF and speed is low
+                    if !frame.ignition_on && frame.speed_kph < STOPPED_SPEED_THRESHOLD_KPH {
+                        if let Some(last_position) = database.get_last_position(device_id).await? {
+                            let seconds_since_last =
+                                (frame.recorded_at - last_position.recorded_at).num_seconds();
+                            
+                            // Skip if less than 30 minutes have passed since last stored position
+                            if seconds_since_last.abs() < STOPPED_MIN_INTERVAL_SECS {
+                                info!(
+                                    device_id,
+                                    seconds_since_last,
+                                    speed_kph = frame.speed_kph,
+                                    min_interval_secs = STOPPED_MIN_INTERVAL_SECS,
+                                    "Frame skipped: ignition-off throttling (30 min interval not reached)"
+                                );
+                                return Ok(());
+                            }
                         }
                     }
+                    // When ignition is ON or speed >= 20 km/h, all frames are stored (no throttling)
                 }
 
                 // GPS Stabilization: Prevent drift when vehicle is stopped

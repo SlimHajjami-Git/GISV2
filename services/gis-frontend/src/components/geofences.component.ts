@@ -1,4 +1,4 @@
-import { Component, OnInit, AfterViewInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, AfterViewInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -1148,13 +1148,14 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
   private overviewMap: L.Map | null = null;
   private drawMap: L.Map | null = null;
   private overviewLayers: L.FeatureGroup = L.featureGroup();
-  private drawingLayer: L.Circle | L.Polygon | null = null;
+  private drawingLayer: L.Circle | L.Polygon | L.Polyline | null = null;
   private markers: L.CircleMarker[] = [];
   private defaultCenter: L.LatLngExpression = [36.8065, 10.1815]; // Tunis, Tunisie
 
   constructor(
     private router: Router,
-    private apiService: ApiService
+    private apiService: ApiService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit() {
@@ -1167,11 +1168,16 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   loadData() {
+    console.log('[Geofences] loadData() called');
     this.apiService.getGeofences().subscribe({
       next: (geofences) => {
-        this.allGeofences = geofences;
+        console.log('[Geofences] Received geofences:', geofences?.length, geofences);
+        this.allGeofences = geofences || [];
         this.geofences = [...this.allGeofences];
+        this.filterGeofences();
         this.renderGeofencesOnMap();
+        // Force Angular to detect changes and update the view
+        this.cdr.detectChanges();
       },
       error: (err) => console.error('Error loading geofences:', err)
     });
@@ -1231,10 +1237,20 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     }).addTo(this.overviewMap);
 
     this.overviewLayers.addTo(this.overviewMap);
+    
+    // Render geofences now that map is ready
+    // Data may have loaded before map init, so we render here
     this.renderGeofencesOnMap();
   }
 
   private renderGeofencesOnMap() {
+    console.log('[Geofences] renderGeofencesOnMap() called, map exists:', !!this.overviewMap, 'geofences:', this.allGeofences?.length);
+    // Guard: only render if map is initialized
+    if (!this.overviewMap) {
+      console.log('[Geofences] Map not ready, skipping render');
+      return;
+    }
+    
     this.overviewLayers.clearLayers();
 
     this.allGeofences.forEach(g => {
@@ -1416,7 +1432,7 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       } else if (this.geofenceForm.coordinates.length === 2) {
         // Draw line between 2 points
         const latLngs = this.geofenceForm.coordinates.map((c: GeofencePoint) => [c.lat, c.lng] as L.LatLngExpression);
-        L.polyline(latLngs, { color: this.geofenceForm.color, weight: 2, dashArray: '5,5' }).addTo(this.drawMap);
+        this.drawingLayer = L.polyline(latLngs, { color: this.geofenceForm.color, weight: 2, dashArray: '5,5' }).addTo(this.drawMap);
       }
     }
   }
@@ -1621,29 +1637,27 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
   saveGeofence() {
     if (!this.canSave()) return;
 
-    const geofenceData: Partial<Geofence> = {
-      companyId: this.company?.id || '',
+    const geofenceData: any = {
       name: this.geofenceForm.name,
-      description: this.geofenceForm.description,
+      description: this.geofenceForm.description || null,
       type: this.geofenceForm.type,
       color: this.geofenceForm.color,
       isActive: this.geofenceForm.isActive,
       alertOnEntry: this.geofenceForm.alertOnEntry,
       alertOnExit: this.geofenceForm.alertOnExit,
-      alertSpeed: this.geofenceForm.alertSpeed || undefined
+      alertSpeedLimit: this.geofenceForm.alertSpeed || null
     };
 
     if (this.geofenceForm.type === 'circle') {
-      geofenceData.center = {
-        lat: this.geofenceForm.centerLat,
-        lng: this.geofenceForm.centerLng
-      };
+      geofenceData.centerLat = this.geofenceForm.centerLat;
+      geofenceData.centerLng = this.geofenceForm.centerLng;
       geofenceData.radius = this.geofenceForm.radius;
-      geofenceData.coordinates = undefined;
+      geofenceData.coordinates = null;
     } else {
       geofenceData.coordinates = [...this.geofenceForm.coordinates];
-      geofenceData.center = undefined;
-      geofenceData.radius = undefined;
+      geofenceData.centerLat = null;
+      geofenceData.centerLng = null;
+      geofenceData.radius = null;
     }
 
     if (this.editingGeofence) {
@@ -1656,10 +1670,7 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
         error: (err) => console.error('Error updating geofence:', err)
       });
     } else {
-      this.apiService.createGeofence({
-        ...geofenceData,
-        createdAt: new Date()
-      }).subscribe({
+      this.apiService.createGeofence(geofenceData).subscribe({
         next: () => {
           this.refreshData();
           this.renderGeofencesOnMap();

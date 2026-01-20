@@ -31,33 +31,18 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResp
         if (existingUser != null)
             throw new ConflictException("User with this email already exists");
 
-        var defaultSubscription = await _context.Subscriptions
-            .FirstOrDefaultAsync(s => s.Type == "parc", ct);
+        // Get default subscription type
+        var defaultSubscriptionType = await _context.SubscriptionTypes
+            .FirstOrDefaultAsync(st => st.IsActive, ct);
 
-        if (defaultSubscription == null)
-        {
-            defaultSubscription = new Subscription
-            {
-                Name = "Parc Basic",
-                Type = "parc",
-                Price = 0,
-                MaxVehicles = 10,
-                GpsTracking = false,
-                GpsInstallation = false,
-                Features = ["Vehicle Management", "Basic Reports"]
-            };
-            _context.Subscriptions.Add(defaultSubscription);
-            await _context.SaveChangesAsync(ct);
-        }
-
-        var company = new Company
+        var societe = new Societe
         {
             Name = request.CompanyName,
             Type = "transport",
-            SubscriptionId = defaultSubscription.Id,
-            Settings = new CompanySettings()
+            SubscriptionTypeId = defaultSubscriptionType?.Id,
+            Settings = new SocieteSettings()
         };
-        _context.Companies.Add(company);
+        _context.Societes.Add(societe);
         await _context.SaveChangesAsync(ct);
 
         var user = new User
@@ -66,7 +51,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResp
             Email = request.Email.ToLower(),
             Phone = request.Phone,
             PasswordHash = _passwordHasher.HashPassword(request.Password),
-            CompanyId = company.Id,
+            CompanyId = societe.Id,
             Roles = ["admin"],
             Permissions = ["dashboard", "monitoring", "vehicles", "employees", "gps-devices", 
                           "maintenance", "costs", "reports", "geofences", "settings", "users"],
@@ -89,7 +74,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResp
                 user.Roles,
                 user.Permissions,
                 user.CompanyId,
-                company.Name
+                societe.Name
             )
         );
     }

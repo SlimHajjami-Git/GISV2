@@ -6,6 +6,7 @@ using GisAPI.Domain.Entities;
 using System.Text.Json;
 using MediatR;
 using GisAPI.Application.Features.Admin.Vehicles.Queries.GetAdminVehicles;
+using GisAPI.Application.Common.Interfaces;
 
 namespace GisAPI.Controllers;
 
@@ -17,32 +18,35 @@ public class AdminController : ControllerBase
     private readonly GisDbContext _context;
     private readonly IMediator _mediator;
     private readonly IConfiguration _configuration;
+    private readonly IPermissionService _permissionService;
     private static MaintenanceModeDto _maintenanceMode = new() { Enabled = false, Pages = new List<string>(), Message = "" };
 
-    public AdminController(GisDbContext context, IConfiguration configuration, IMediator mediator)
+    public AdminController(GisDbContext context, IConfiguration configuration, IMediator mediator, IPermissionService permissionService)
     {
         _context = context;
         _configuration = configuration;
         _mediator = mediator;
+        _permissionService = permissionService;
     }
 
-    // ==================== SUBSCRIPTIONS ====================
+    // ==================== SUBSCRIPTIONS (Legacy - use SubscriptionTypes) ====================
 
     [HttpGet("subscriptions")]
     public async Task<ActionResult<List<SubscriptionDto>>> GetSubscriptions()
     {
-        var subscriptions = await _context.Subscriptions
-            .OrderBy(s => s.Price)
+        var subscriptions = await _context.SubscriptionTypes
+            .Where(s => s.IsActive)
+            .OrderBy(s => s.YearlyPrice)
             .Select(s => new SubscriptionDto
             {
                 Id = s.Id,
                 Name = s.Name,
-                Type = s.Type,
-                Price = s.Price,
+                Type = s.TargetCompanyType,
+                Price = s.YearlyPrice,
                 MaxVehicles = s.MaxVehicles,
                 GpsTracking = s.GpsTracking,
                 GpsInstallation = s.GpsInstallation,
-                Features = GetSubscriptionFeatures(s)
+                Features = GetSubscriptionTypeFeatures(s)
             })
             .ToListAsync();
 
@@ -52,7 +56,7 @@ public class AdminController : ControllerBase
     [HttpGet("subscriptions/{id}")]
     public async Task<ActionResult<SubscriptionDto>> GetSubscription(int id)
     {
-        var subscription = await _context.Subscriptions.FindAsync(id);
+        var subscription = await _context.SubscriptionTypes.FindAsync(id);
         if (subscription == null)
             return NotFound();
 
@@ -60,57 +64,60 @@ public class AdminController : ControllerBase
         {
             Id = subscription.Id,
             Name = subscription.Name,
-            Type = subscription.Type,
-            Price = subscription.Price,
+            Type = subscription.TargetCompanyType,
+            Price = subscription.YearlyPrice,
             MaxVehicles = subscription.MaxVehicles,
             GpsTracking = subscription.GpsTracking,
             GpsInstallation = subscription.GpsInstallation,
-            Features = GetSubscriptionFeatures(subscription)
+            Features = GetSubscriptionTypeFeatures(subscription)
         });
     }
 
     [HttpPost("subscriptions")]
     public async Task<ActionResult<SubscriptionDto>> CreateSubscription([FromBody] CreateSubscriptionRequest request)
     {
-        var subscription = new Subscription
+        var subscription = new SubscriptionType
         {
             Name = request.Name,
-            Type = request.Type ?? "parc",
-            Price = request.Price,
+            Code = request.Name.ToLower().Replace(" ", "-"),
+            TargetCompanyType = request.Type ?? "all",
+            YearlyPrice = request.Price,
             MaxVehicles = request.MaxVehicles,
             GpsTracking = request.GpsTracking,
-            GpsInstallation = request.GpsInstallation
+            GpsInstallation = request.GpsInstallation,
+            IsActive = true
         };
 
-        _context.Subscriptions.Add(subscription);
+        _context.SubscriptionTypes.Add(subscription);
         await _context.SaveChangesAsync();
 
         return CreatedAtAction(nameof(GetSubscription), new { id = subscription.Id }, new SubscriptionDto
         {
             Id = subscription.Id,
             Name = subscription.Name,
-            Type = subscription.Type,
-            Price = subscription.Price,
+            Type = subscription.TargetCompanyType,
+            Price = subscription.YearlyPrice,
             MaxVehicles = subscription.MaxVehicles,
             GpsTracking = subscription.GpsTracking,
             GpsInstallation = subscription.GpsInstallation,
-            Features = GetSubscriptionFeatures(subscription)
+            Features = GetSubscriptionTypeFeatures(subscription)
         });
     }
 
     [HttpPut("subscriptions/{id}")]
     public async Task<ActionResult<SubscriptionDto>> UpdateSubscription(int id, [FromBody] CreateSubscriptionRequest request)
     {
-        var subscription = await _context.Subscriptions.FindAsync(id);
+        var subscription = await _context.SubscriptionTypes.FindAsync(id);
         if (subscription == null)
             return NotFound();
 
         subscription.Name = request.Name;
-        subscription.Type = request.Type ?? subscription.Type;
-        subscription.Price = request.Price;
+        subscription.TargetCompanyType = request.Type ?? subscription.TargetCompanyType;
+        subscription.YearlyPrice = request.Price;
         subscription.MaxVehicles = request.MaxVehicles;
         subscription.GpsTracking = request.GpsTracking;
         subscription.GpsInstallation = request.GpsInstallation;
+        subscription.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
@@ -118,35 +125,35 @@ public class AdminController : ControllerBase
         {
             Id = subscription.Id,
             Name = subscription.Name,
-            Type = subscription.Type,
-            Price = subscription.Price,
+            Type = subscription.TargetCompanyType,
+            Price = subscription.YearlyPrice,
             MaxVehicles = subscription.MaxVehicles,
             GpsTracking = subscription.GpsTracking,
             GpsInstallation = subscription.GpsInstallation,
-            Features = GetSubscriptionFeatures(subscription)
+            Features = GetSubscriptionTypeFeatures(subscription)
         });
     }
 
     [HttpDelete("subscriptions/{id}")]
     public async Task<ActionResult> DeleteSubscription(int id)
     {
-        var subscription = await _context.Subscriptions.FindAsync(id);
+        var subscription = await _context.SubscriptionTypes.FindAsync(id);
         if (subscription == null)
             return NotFound();
 
-        var companiesUsingSubscription = await _context.Companies.CountAsync(c => c.SubscriptionId == id);
+        var companiesUsingSubscription = await _context.Societes.CountAsync(c => c.SubscriptionTypeId == id);
         if (companiesUsingSubscription > 0)
         {
             return BadRequest(new { message = $"Impossible de supprimer: {companiesUsingSubscription} société(s) utilisent cet abonnement" });
         }
 
-        _context.Subscriptions.Remove(subscription);
+        _context.SubscriptionTypes.Remove(subscription);
         await _context.SaveChangesAsync();
 
         return Ok(new { message = "Abonnement supprimé" });
     }
 
-    private static List<string> GetSubscriptionFeatures(Subscription s)
+    private static List<string> GetSubscriptionTypeFeatures(SubscriptionType s)
     {
         var features = new List<string> { "Gestion du parc" };
         if (s.GpsTracking) features.Add("Suivi GPS temps réel");
@@ -162,8 +169,8 @@ public class AdminController : ControllerBase
     [HttpGet("company")]
     public async Task<ActionResult<List<AdminCompanyDto>>> GetCompanies([FromQuery] string? search, [FromQuery] string? status)
     {
-        var query = _context.Companies
-            .Include(c => c.Subscription)
+        var query = _context.Societes
+            .Include(c => c.SubscriptionType)
             .Include(c => c.Vehicles)
             .Include(c => c.Users)
             .AsQueryable();
@@ -192,9 +199,9 @@ public class AdminController : ControllerBase
             Email = c.Email,
             Phone = c.Phone,
             Type = c.Type,
-            SubscriptionId = c.SubscriptionId,
-            SubscriptionName = c.Subscription?.Name,
-            MaxVehicles = c.Subscription?.MaxVehicles ?? 0,
+            SubscriptionId = c.SubscriptionTypeId,
+            SubscriptionName = c.SubscriptionType?.Name,
+            MaxVehicles = c.SubscriptionType?.MaxVehicles ?? 0,
             CurrentVehicles = c.Vehicles?.Count ?? 0,
             CurrentUsers = c.Users?.Count ?? 0,
             Status = c.IsActive ? "active" : "suspended",
@@ -206,8 +213,8 @@ public class AdminController : ControllerBase
     [HttpGet("company/{id}")]
     public async Task<ActionResult<AdminCompanyDto>> GetCompany(int id)
     {
-        var company = await _context.Companies
-            .Include(c => c.Subscription)
+        var company = await _context.Societes
+            .Include(c => c.SubscriptionType)
             .Include(c => c.Vehicles)
             .Include(c => c.Users)
             .FirstOrDefaultAsync(c => c.Id == id);
@@ -222,9 +229,9 @@ public class AdminController : ControllerBase
             Email = company.Email,
             Phone = company.Phone,
             Type = company.Type,
-            SubscriptionId = company.SubscriptionId,
-            SubscriptionName = company.Subscription?.Name,
-            MaxVehicles = company.Subscription?.MaxVehicles ?? 0,
+            SubscriptionId = company.SubscriptionTypeId,
+            SubscriptionName = company.SubscriptionType?.Name,
+            MaxVehicles = company.SubscriptionType?.MaxVehicles ?? 0,
             CurrentVehicles = company.Vehicles?.Count ?? 0,
             CurrentUsers = company.Users?.Count ?? 0,
             Status = company.IsActive ? "active" : "suspended",
@@ -233,16 +240,63 @@ public class AdminController : ControllerBase
         });
     }
 
+    [HttpGet("company/{id}/roles")]
+    public async Task<ActionResult<List<AdminRoleDto>>> GetCompanyRoles(int id)
+    {
+        var company = await _context.Societes.FindAsync(id);
+        if (company == null)
+            return NotFound();
+
+        // Project directly to DTO to avoid JSONB deserialization issues
+        var roles = await _context.Roles
+            .Where(r => r.SocieteId == id || r.IsSystem)
+            .Select(r => new AdminRoleDto
+            {
+                Id = r.Id,
+                Name = r.Name,
+                Description = r.Description,
+                RoleType = r.RoleType,
+                Permissions = null, // Skip permissions to avoid JSONB issues
+                IsSystem = r.IsSystem,
+                IsDefault = r.IsDefault,
+                UserCount = _context.Users.Count(u => u.RoleId == r.Id),
+                CreatedAt = r.CreatedAt,
+                UpdatedAt = r.UpdatedAt
+            })
+            .ToListAsync();
+
+        return Ok(roles);
+    }
+
+    // ==================== PERMISSIONS ====================
+
+    [HttpGet("permissions/template")]
+    public ActionResult<Dictionary<string, object>> GetPermissionTemplate()
+    {
+        var template = _permissionService.GetPermissionTemplate();
+        return Ok(template);
+    }
+
+    [HttpGet("permissions/subscription/{subscriptionId}")]
+    public async Task<ActionResult<Dictionary<string, object>>> GetSubscriptionPermissions(int subscriptionId)
+    {
+        var subscription = await _context.SubscriptionTypes.FindAsync(subscriptionId);
+        if (subscription == null)
+            return NotFound();
+
+        var permissions = _permissionService.GetSubscriptionPermissions(subscription);
+        return Ok(permissions);
+    }
+
     [HttpPost("company")]
     public async Task<ActionResult<AdminCompanyDto>> CreateCompany([FromBody] CreateAdminCompanyRequest request)
     {
-        if (!string.IsNullOrEmpty(request.Email) && await _context.Companies.AnyAsync(c => c.Email == request.Email))
+        if (!string.IsNullOrEmpty(request.Email) && await _context.Societes.AnyAsync(c => c.Email == request.Email))
         {
             return BadRequest(new { message = "Une société avec cet email existe déjà" });
         }
 
-        var subscription = await _context.Subscriptions
-            .Include(s => s.SubscriptionType)
+        var subscriptionType = await _context.SubscriptionTypes
             .FirstOrDefaultAsync(s => s.Id == request.SubscriptionId);
 
         // Calculate subscription dates based on billing cycle
@@ -250,9 +304,9 @@ public class AdminController : ControllerBase
         var startDate = DateTime.UtcNow;
         var durationDays = billingCycle switch
         {
-            "monthly" => subscription?.SubscriptionType?.MonthlyDurationDays ?? 30,
-            "quarterly" => subscription?.SubscriptionType?.QuarterlyDurationDays ?? 90,
-            "yearly" => subscription?.SubscriptionType?.YearlyDurationDays ?? 365,
+            "monthly" => subscriptionType?.MonthlyDurationDays ?? 30,
+            "quarterly" => subscriptionType?.QuarterlyDurationDays ?? 90,
+            "yearly" => subscriptionType?.YearlyDurationDays ?? 365,
             _ => 365
         };
         var expiresAt = startDate.AddDays(durationDays);
@@ -260,26 +314,26 @@ public class AdminController : ControllerBase
         // Calculate price based on billing cycle
         var price = billingCycle switch
         {
-            "monthly" => subscription?.SubscriptionType?.MonthlyPrice ?? subscription?.Price ?? 0,
-            "quarterly" => subscription?.SubscriptionType?.QuarterlyPrice ?? (subscription?.Price ?? 0) * 3 * 0.9m,
-            "yearly" => subscription?.SubscriptionType?.YearlyPrice ?? (subscription?.Price ?? 0) * 12 * 0.8m,
-            _ => subscription?.Price ?? 0
+            "monthly" => subscriptionType?.MonthlyPrice ?? 0,
+            "quarterly" => subscriptionType?.QuarterlyPrice ?? 0,
+            "yearly" => subscriptionType?.YearlyPrice ?? 0,
+            _ => subscriptionType?.YearlyPrice ?? 0
         };
 
-        var company = new Company
+        var company = new Societe
         {
             Name = request.Name,
             Email = request.Email,
             Phone = request.Phone,
             Type = request.Type ?? "transport",
-            SubscriptionId = request.SubscriptionId > 0 ? request.SubscriptionId : 1,
+            SubscriptionTypeId = request.SubscriptionId > 0 ? request.SubscriptionId : null,
             IsActive = true,
             SubscriptionStartedAt = startDate,
             SubscriptionExpiresAt = expiresAt,
             BillingCycle = billingCycle,
             SubscriptionStatus = "active",
             NextPaymentAmount = price,
-            Settings = new CompanySettings
+            Settings = new SocieteSettings
             {
                 Currency = "DT",
                 Timezone = "Africa/Tunis",
@@ -287,7 +341,7 @@ public class AdminController : ControllerBase
             }
         };
 
-        _context.Companies.Add(company);
+        _context.Societes.Add(company);
         await _context.SaveChangesAsync();
 
         // Create admin user if provided
@@ -316,9 +370,9 @@ public class AdminController : ControllerBase
             Email = company.Email,
             Phone = company.Phone,
             Type = company.Type,
-            SubscriptionId = company.SubscriptionId,
-            SubscriptionName = subscription?.Name,
-            MaxVehicles = subscription?.MaxVehicles ?? 0,
+            SubscriptionId = company.SubscriptionTypeId,
+            SubscriptionName = subscriptionType?.Name,
+            MaxVehicles = subscriptionType?.MaxVehicles ?? 0,
             CurrentVehicles = 0,
             CurrentUsers = !string.IsNullOrEmpty(request.AdminEmail) ? 1 : 0,
             Status = "active",
@@ -333,8 +387,8 @@ public class AdminController : ControllerBase
     [HttpPut("company/{id}")]
     public async Task<ActionResult<AdminCompanyDto>> UpdateCompany(int id, [FromBody] UpdateAdminCompanyRequest request)
     {
-        var company = await _context.Companies
-            .Include(c => c.Subscription)
+        var company = await _context.Societes
+            .Include(c => c.SubscriptionType)
             .Include(c => c.Vehicles)
             .Include(c => c.Users)
             .FirstOrDefaultAsync(c => c.Id == id);
@@ -346,7 +400,7 @@ public class AdminController : ControllerBase
         if (request.Email != null) company.Email = request.Email;
         if (request.Phone != null) company.Phone = request.Phone;
         if (request.Type != null) company.Type = request.Type;
-        if (request.SubscriptionId.HasValue) company.SubscriptionId = request.SubscriptionId.Value;
+        if (request.SubscriptionId.HasValue) company.SubscriptionTypeId = request.SubscriptionId.Value;
 
         company.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
@@ -358,9 +412,9 @@ public class AdminController : ControllerBase
             Email = company.Email,
             Phone = company.Phone,
             Type = company.Type,
-            SubscriptionId = company.SubscriptionId,
-            SubscriptionName = company.Subscription?.Name,
-            MaxVehicles = company.Subscription?.MaxVehicles ?? 0,
+            SubscriptionId = company.SubscriptionTypeId,
+            SubscriptionName = company.SubscriptionType?.Name,
+            MaxVehicles = company.SubscriptionType?.MaxVehicles ?? 0,
             CurrentVehicles = company.Vehicles?.Count ?? 0,
             CurrentUsers = company.Users?.Count ?? 0,
             Status = company.IsActive ? "active" : "suspended",
@@ -372,7 +426,7 @@ public class AdminController : ControllerBase
     [HttpPost("company/{id}/suspend")]
     public async Task<ActionResult> SuspendCompany(int id)
     {
-        var company = await _context.Companies.FindAsync(id);
+        var company = await _context.Societes.FindAsync(id);
         if (company == null) return NotFound();
 
         company.IsActive = false;
@@ -385,7 +439,7 @@ public class AdminController : ControllerBase
     [HttpPost("company/{id}/activate")]
     public async Task<ActionResult> ActivateCompany(int id)
     {
-        var company = await _context.Companies.FindAsync(id);
+        var company = await _context.Societes.FindAsync(id);
         if (company == null) return NotFound();
 
         company.IsActive = true;
@@ -398,10 +452,10 @@ public class AdminController : ControllerBase
     [HttpDelete("company/{id}")]
     public async Task<ActionResult> DeleteCompany(int id)
     {
-        var company = await _context.Companies.FindAsync(id);
+        var company = await _context.Societes.FindAsync(id);
         if (company == null) return NotFound();
 
-        _context.Companies.Remove(company);
+        _context.Societes.Remove(company);
         await _context.SaveChangesAsync();
 
         return Ok(new { message = "Société supprimée" });
@@ -412,7 +466,8 @@ public class AdminController : ControllerBase
     {
         var users = await _context.Users
             .Where(u => u.CompanyId == companyId)
-            .Include(u => u.Company)
+            .Include(u => u.Societe)
+            .Include(u => u.Role)
             .ToListAsync();
 
         return Ok(users.Select(u => new AdminUserDto
@@ -421,10 +476,15 @@ public class AdminController : ControllerBase
             Name = u.Name,
             Email = u.Email,
             Phone = u.Phone,
+            DateOfBirth = u.DateOfBirth,
+            CIN = u.CIN,
             CompanyId = u.CompanyId,
-            CompanyName = u.Company?.Name ?? "",
+            CompanyName = u.Societe?.Name ?? "",
+            RoleId = u.RoleId,
+            RoleName = u.Role?.Name,
             Roles = u.Roles,
             Permissions = u.Permissions,
+            AssignedVehicleIds = u.AssignedVehicleIds,
             Status = u.Status,
             LastLoginAt = u.LastLoginAt,
             CreatedAt = u.CreatedAt,
@@ -445,7 +505,7 @@ public class AdminController : ControllerBase
     public async Task<ActionResult<AdminVehicleDto>> GetVehicle(int id)
     {
         var vehicle = await _context.Vehicles
-            .Include(v => v.Company)
+            .Include(v => v.Societe)
             .Include(v => v.GpsDevice)
             .Include(v => v.AssignedDriver)
             .FirstOrDefaultAsync(v => v.Id == id);
@@ -467,7 +527,7 @@ public class AdminController : ControllerBase
             HasGps = vehicle.HasGps,
             Mileage = vehicle.Mileage,
             CompanyId = vehicle.CompanyId,
-            CompanyName = vehicle.Company?.Name,
+            CompanyName = vehicle.Societe?.Name,
             GpsDeviceId = vehicle.GpsDeviceId,
             GpsImei = vehicle.GpsDevice?.DeviceUid,
             GpsMat = vehicle.GpsDevice?.Mat,
@@ -481,7 +541,7 @@ public class AdminController : ControllerBase
     [HttpPost("vehicles")]
     public async Task<ActionResult<AdminVehicleDto>> CreateVehicle([FromBody] CreateAdminVehicleRequest request)
     {
-        var company = await _context.Companies.FindAsync(request.CompanyId);
+        var company = await _context.Societes.FindAsync(request.CompanyId);
         if (company == null)
             return BadRequest(new { message = "Société non trouvée" });
 
@@ -561,7 +621,7 @@ public class AdminController : ControllerBase
     public async Task<ActionResult<AdminVehicleDto>> UpdateVehicle(int id, [FromBody] UpdateAdminVehicleRequest request)
     {
         var vehicle = await _context.Vehicles
-            .Include(v => v.Company)
+            .Include(v => v.Societe)
             .Include(v => v.GpsDevice)
             .Include(v => v.AssignedDriver)
             .FirstOrDefaultAsync(v => v.Id == id);
@@ -642,7 +702,7 @@ public class AdminController : ControllerBase
             HasGps = vehicle.HasGps,
             Mileage = vehicle.Mileage,
             CompanyId = vehicle.CompanyId,
-            CompanyName = vehicle.Company?.Name,
+            CompanyName = vehicle.Societe?.Name,
             GpsDeviceId = vehicle.GpsDeviceId,
             GpsImei = vehicle.GpsDevice?.DeviceUid,
             GpsMat = vehicle.GpsDevice?.Mat,
@@ -670,7 +730,7 @@ public class AdminController : ControllerBase
     {
         var vehicles = await _context.Vehicles
             .Where(v => v.CompanyId == companyId)
-            .Include(v => v.Company)
+            .Include(v => v.Societe)
             .Include(v => v.GpsDevice)
             .Include(v => v.AssignedDriver)
             .OrderByDescending(v => v.CreatedAt)
@@ -690,7 +750,7 @@ public class AdminController : ControllerBase
             HasGps = v.HasGps,
             Mileage = v.Mileage,
             CompanyId = v.CompanyId,
-            CompanyName = v.Company?.Name,
+            CompanyName = v.Societe?.Name,
             GpsDeviceId = v.GpsDeviceId,
             GpsImei = v.GpsDevice?.DeviceUid,
             GpsMat = v.GpsDevice?.Mat,
@@ -901,7 +961,7 @@ public class AdminController : ControllerBase
                 UserId = u.Id,
                 UserName = u.Name,
                 CompanyId = u.CompanyId,
-                CompanyName = u.Company != null ? u.Company.Name : "Unknown",
+                CompanyName = u.Societe != null ? u.Societe.Name : "Unknown",
                 Action = "login",
                 Details = "Connexion utilisateur",
                 IpAddress = "N/A",
@@ -919,7 +979,7 @@ public class AdminController : ControllerBase
                 UserId = 0,
                 UserName = "System",
                 CompanyId = v.CompanyId,
-                CompanyName = v.Company != null ? v.Company.Name : "Unknown",
+                CompanyName = v.Societe != null ? v.Societe.Name : "Unknown",
                 Action = "update_vehicle",
                 Details = $"Mise à jour véhicule: {v.Plate}",
                 IpAddress = "N/A",
@@ -957,15 +1017,15 @@ public class AdminController : ControllerBase
     {
         var today = DateTime.UtcNow.Date;
         
-        var totalClients = await _context.Companies.CountAsync();
-        var activeClients = await _context.Companies.CountAsync(c => c.IsActive);
+        var totalClients = await _context.Societes.CountAsync();
+        var activeClients = await _context.Societes.CountAsync(c => c.IsActive);
         var totalUsers = await _context.Users.CountAsync();
         var totalVehicles = await _context.Vehicles.CountAsync();
         var activeDevices = await _context.GpsDevices.CountAsync();
         var totalPositionsToday = await _context.GpsPositions.CountAsync(p => p.RecordedAt >= today);
         
         var firstOfMonth = new DateTime(today.Year, today.Month, 1);
-        var newClientsThisMonth = await _context.Companies.CountAsync(c => c.CreatedAt >= firstOfMonth);
+        var newClientsThisMonth = await _context.Societes.CountAsync(c => c.CreatedAt >= firstOfMonth);
 
         return Ok(new DashboardStatsDto
         {
@@ -1169,6 +1229,20 @@ public class AdminCompanyDto
     public decimal? NextPaymentAmount { get; set; }
     public DateTime? LastPaymentAt { get; set; }
     public int? DaysUntilExpiration { get; set; }
+}
+
+public class AdminRoleDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string RoleType { get; set; } = "employee";
+    public Dictionary<string, object>? Permissions { get; set; }
+    public bool IsSystem { get; set; }
+    public bool IsDefault { get; set; }
+    public int UserCount { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
 }
 
 public class CreateAdminCompanyRequest

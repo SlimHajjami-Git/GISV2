@@ -22,7 +22,7 @@ public class MaintenanceRecord : TenantEntity
     public string? InvoiceUrl { get; set; }
     public string? Notes { get; set; }
 
-    public Company? Company { get; set; }
+    public Societe? Societe { get; set; }
     
     public ICollection<MaintenancePart> Parts { get; set; } = new List<MaintenancePart>();
 }

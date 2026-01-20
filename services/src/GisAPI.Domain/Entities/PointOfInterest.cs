@@ -33,7 +33,7 @@ public class PointOfInterest : TenantEntity
     public bool? HasDiesel { get; set; }
     public bool? HasGasoline { get; set; }
     public bool? HasElectricCharging { get; set; }
-    public Company? Company { get; set; }
+    public Societe? Societe { get; set; }
     public ICollection<PoiVisit> Visits { get; set; } = new List<PoiVisit>();
 }
 

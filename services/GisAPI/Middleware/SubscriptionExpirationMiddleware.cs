@@ -57,7 +57,7 @@ public class SubscriptionExpirationMiddleware
         }
 
         // Check company subscription status
-        var company = await dbContext.Companies
+        var company = await dbContext.Societes
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == companyId);
 
@@ -73,7 +73,7 @@ public class SubscriptionExpirationMiddleware
             // Update company status if not already expired
             if (company.SubscriptionStatus != "expired")
             {
-                var companyToUpdate = await dbContext.Companies.FindAsync(companyId);
+                var companyToUpdate = await dbContext.Societes.FindAsync(companyId);
                 if (companyToUpdate != null)
                 {
                     companyToUpdate.SubscriptionStatus = "expired";

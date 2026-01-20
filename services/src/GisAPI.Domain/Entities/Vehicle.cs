@@ -17,15 +17,15 @@ public class Vehicle : TenantEntity
     public int? RentalMileage { get; set; }
     
     public int? AssignedDriverId { get; set; }
-    public Employee? AssignedDriver { get; set; }
+    public User? AssignedDriver { get; set; }
     
     public int? AssignedSupervisorId { get; set; }
-    public Employee? AssignedSupervisor { get; set; }
+    public User? AssignedSupervisor { get; set; }
     
     public int? GpsDeviceId { get; set; }
     public GpsDevice? GpsDevice { get; set; }
 
-    public Company? Company { get; set; }
+    public Societe? Societe { get; set; }
     
     public string? DriverName { get; set; }
     public string? DriverPhone { get; set; }

@@ -25,11 +25,25 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(e => e.UpdatedAt).HasColumnName("updated_at");
         builder.Property(e => e.LastLoginAt).HasColumnName("last_login_at");
         builder.Property(e => e.UserSettingsId).HasColumnName("user_settings_id");
+        
+        // Personal information
+        builder.Property(e => e.DateOfBirth).HasColumnName("date_of_birth");
+        builder.Property(e => e.CIN).HasColumnName("cin").HasMaxLength(50);
+        
+        // User type and role
+        builder.Property(e => e.UserType).HasColumnName("user_type").HasMaxLength(50);
+        builder.Property(e => e.RoleId).HasColumnName("role_id");
+        builder.Property(e => e.IsCompanyAdmin).HasColumnName("is_company_admin");
+        
+        // Employee fields
+        builder.Property(e => e.HireDate).HasColumnName("hire_date");
+        builder.Property(e => e.LicenseNumber).HasColumnName("license_number").HasMaxLength(50);
+        builder.Property(e => e.LicenseExpiry).HasColumnName("license_expiry");
 
         builder.HasIndex(e => e.Email).IsUnique();
         builder.HasIndex(e => e.CompanyId);
 
-        builder.HasOne(e => e.Company)
+        builder.HasOne(e => e.Societe)
             .WithMany(c => c.Users)
             .HasForeignKey(e => e.CompanyId);
 

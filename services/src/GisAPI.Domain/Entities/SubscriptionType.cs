@@ -38,10 +38,13 @@ public class SubscriptionType : Entity
     public int HistoryRetentionDays { get; set; } = 30;
     public int SortOrder { get; set; }
     public bool IsActive { get; set; } = true;
+    
+    // Access rights for features (JSONB in PostgreSQL)
+    public Dictionary<string, object>? AccessRights { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation
-    public ICollection<Subscription> Subscriptions { get; set; } = new List<Subscription>();
+    public ICollection<Societe> Societes { get; set; } = new List<Societe>();
 }

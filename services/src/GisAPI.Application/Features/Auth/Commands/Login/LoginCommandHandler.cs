@@ -24,7 +24,7 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
     public async Task<LoginResponse> Handle(LoginCommand request, CancellationToken ct)
     {
         var user = await _context.Users
-            .Include(u => u.Company)
+            .Include(u => u.Societe)
             .FirstOrDefaultAsync(u => u.Email.ToLower() == request.Email.ToLower(), ct);
 
         if (user == null)
@@ -50,7 +50,7 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
                 user.Roles,
                 user.Permissions,
                 user.CompanyId,
-                user.Company?.Name ?? ""
+                user.Societe?.Name ?? ""
             )
         );
     }

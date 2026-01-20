@@ -25,7 +25,7 @@ public class Geofence : TenantEntity
     public int? GroupId { get; set; }
     public GeofenceGroup? Group { get; set; }
 
-    public Company? Company { get; set; }
+    public Societe? Societe { get; set; }
     
     public ICollection<GeofenceVehicle> AssignedVehicles { get; set; } = new List<GeofenceVehicle>();
     public ICollection<GeofenceEvent> Events { get; set; } = new List<GeofenceEvent>();
@@ -70,6 +70,6 @@ public class GeofenceGroup : TenantEntity
     public string? Description { get; set; }
     public string Color { get; set; } = "#6b7280";
     public string? IconName { get; set; }
-    public Company? Company { get; set; }
+    public Societe? Societe { get; set; }
     public ICollection<Geofence> Geofences { get; set; } = new List<Geofence>();
 }

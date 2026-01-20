@@ -20,7 +20,7 @@ interface NavItem {
         <div class="sidebar-header">
           <div class="logo" *ngIf="!sidebarCollapsed">
             <span class="logo-icon">B</span>
-            <span class="logo-text">Belive<span class="highlight">Admin</span></span>
+            <span class="logo-text">Calypso<span class="highlight">Admin</span></span>
           </div>
           <button class="collapse-btn" (click)="toggleSidebar()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -456,7 +456,7 @@ export class AdminLayoutComponent implements OnInit {
     },
     {
       icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
-      label: 'Clients',
+      label: 'Sociétés',
       route: 'clients'
     },
     {
@@ -464,12 +464,7 @@ export class AdminLayoutComponent implements OnInit {
       label: 'Abonnements',
       route: 'subscriptions'
     },
-    {
-      icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>',
-      label: 'Campagnes',
-      route: 'campaigns'
-    },
-    {
+        {
       icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
       label: 'Users',
       route: 'users',

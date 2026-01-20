@@ -2,7 +2,7 @@ import { Component, OnInit, ViewChild, ElementRef, NgZone, ChangeDetectorRef, Ap
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { ApiService, FuelRecordsResult, FuelRecord } from '../services/api.service';
+import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport } from '../services/api.service';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
@@ -19,6 +19,20 @@ Chart.register(...registerables);
 })
 export class ReportsComponent implements OnInit {
   @ViewChild('chartCanvas') chartCanvas?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('kmBarChart') kmBarChartRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('fuelPieChart') fuelPieChartRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('maintenanceAreaChart') maintenanceAreaChartRef?: ElementRef<HTMLCanvasElement>;
+  
+  // Chart instances for monthly report
+  private kmBarChart?: Chart;
+  private fuelPieChart?: Chart;
+  private maintenanceAreaChart?: Chart;
+  
+  // Chart color palette
+  chartColors = [
+    '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
+    '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1'
+  ];
 
   templates = [
     {
@@ -51,10 +65,10 @@ export class ReportsComponent implements OnInit {
     },
     {
       id: '5',
-      name: 'Rapport de distance',
-      type: 'distance',
+      name: 'Rapport kilométrique',
+      type: 'mileage',
       icon: '📏',
-      description: 'Kilométrage parcouru'
+      description: 'Kilométrage détaillé avec analyses journalières, hebdomadaires et mensuelles'
     },
     {
       id: '6',
@@ -69,6 +83,20 @@ export class ReportsComponent implements OnInit {
       type: 'maintenance',
       icon: '🔧',
       description: 'Historique des maintenances'
+    },
+    {
+      id: '8',
+      name: 'Rapport journalier',
+      type: 'daily',
+      icon: '📅',
+      description: 'Activité journalière détaillée (démarrages, arrêts, trajets)'
+    },
+    {
+      id: '9',
+      name: 'Rapport mensuel flotte',
+      type: 'monthly',
+      icon: '📊',
+      description: 'Rapport complet avec KPIs, graphiques et analyses statistiques'
     }
   ];
 
@@ -121,6 +149,34 @@ export class ReportsComponent implements OnInit {
   chartData: any[] = [];
   tableData: any[] = [];
   statisticsData: any = {};
+  
+  // Daily report data
+  dailyReport: DailyActivityReport | null = null;
+  
+  // Mileage report data
+  mileageReport: MileageReport | null = null;
+  
+  // Monthly fleet report data
+  monthlyReport: MonthlyFleetReport | null = null;
+  monthlyActiveSection = 'summary';
+  monthlySections = [
+    { id: 'summary', label: 'Résumé', icon: '📊' },
+    { id: 'fleet', label: 'Flotte', icon: '🚗' },
+    { id: 'utilization', label: 'Utilisation', icon: '📈' },
+    { id: 'fuel', label: 'Carburant', icon: '⛽' },
+    { id: 'drivers', label: 'Conducteurs', icon: '👤' },
+    { id: 'costs', label: 'Coûts', icon: '💰' },
+    { id: 'kpis', label: 'KPIs', icon: '🎯' }
+  ];
+  selectedMonthlyYear: number = new Date().getFullYear();
+  selectedMonthlyMonth: number = new Date().getMonth(); // Previous month
+  monthlyYears: number[] = [];
+  monthlyMonths = [
+    { value: 1, label: 'Janvier' }, { value: 2, label: 'Février' }, { value: 3, label: 'Mars' },
+    { value: 4, label: 'Avril' }, { value: 5, label: 'Mai' }, { value: 6, label: 'Juin' },
+    { value: 7, label: 'Juillet' }, { value: 8, label: 'Août' }, { value: 9, label: 'Septembre' },
+    { value: 10, label: 'Octobre' }, { value: 11, label: 'Novembre' }, { value: 12, label: 'Décembre' }
+  ];
 
   private chart?: Chart;
 
@@ -138,6 +194,15 @@ export class ReportsComponent implements OnInit {
       this.router.navigate(['/login']);
       return;
     }
+
+    // Initialize monthly report years (last 3 years)
+    const currentYear = new Date().getFullYear();
+    this.monthlyYears = [currentYear, currentYear - 1, currentYear - 2];
+    // Default to previous month
+    const lastMonth = new Date();
+    lastMonth.setMonth(lastMonth.getMonth() - 1);
+    this.selectedMonthlyYear = lastMonth.getFullYear();
+    this.selectedMonthlyMonth = lastMonth.getMonth() + 1;
 
     this.ngZone.run(() => {
       this.loadData();
@@ -263,20 +328,661 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
-    if (!this.selectedVehicleId && this.selectedTemplate.type === 'fuel') {
-      console.warn('No vehicle selected for fuel report');
+    if (!this.selectedVehicleId && (this.selectedTemplate.type === 'fuel' || this.selectedTemplate.type === 'daily' || this.selectedTemplate.type === 'mileage')) {
+      console.warn('No vehicle selected');
       return;
     }
 
     this.loading = true;
     this.expandedSections['result'] = true;
+    this.dailyReport = null;
+    this.mileageReport = null;
+    this.monthlyReport = null;
 
     const startDate = this.fromDate ? new Date(this.fromDate) : undefined;
     const endDate = this.toDate ? new Date(this.toDate) : undefined;
     const vehicleId = this.selectedVehicleId ? parseInt(this.selectedVehicleId) : undefined;
 
-    // All report types use vehicle history API
+    // Handle daily report separately
+    if (this.selectedTemplate.type === 'daily') {
+      this.executeDailyReport(vehicleId!, startDate);
+      return;
+    }
+
+    // Handle mileage report separately
+    if (this.selectedTemplate.type === 'mileage') {
+      this.executeMileageReport(vehicleId!, startDate, endDate);
+      return;
+    }
+
+    // Handle monthly fleet report inline
+    if (this.selectedTemplate.type === 'monthly') {
+      this.executeMonthlyReport();
+      return;
+    }
+
+    // All other report types use vehicle history API
     this.executeVehicleReport(vehicleId, startDate, endDate);
+  }
+
+  executeDailyReport(vehicleId: number, date?: Date) {
+    const reportDate = date || new Date();
+    
+    this.apiService.getDailyReport(vehicleId, reportDate).subscribe({
+      next: (report) => {
+        this.ngZone.run(() => {
+          this.dailyReport = report;
+          this.processDailyReport(report);
+          this.reportGenerated = true;
+          this.loading = false;
+          this.activeTab = 'table';
+          this.currentPage = 1;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
+      },
+      error: (err) => {
+        this.ngZone.run(() => {
+          console.error('Error loading daily report:', err);
+          this.dailyReport = null;
+          this.tableData = [];
+          this.chartData = [];
+          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport journalier' };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
+      }
+    });
+  }
+
+  processDailyReport(report: DailyActivityReport) {
+    if (!report.hasActivity) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = {
+        'Véhicule': report.vehicleName,
+        'Date': new Date(report.reportDate).toLocaleDateString('fr-FR'),
+        'Information': 'Aucune activité enregistrée pour cette journée'
+      };
+      return;
+    }
+
+    // Convert activities to table data
+    this.tableData = report.activities.map((activity: ActivitySegment) => ({
+      time: `${this.formatTime(activity.startTime)}${activity.endTime ? ' → ' + this.formatTime(activity.endTime) : ''}`,
+      type: activity.type === 'drive' ? '🚗 Trajet' : '🅿️ Arrêt',
+      duration: activity.durationFormatted,
+      details: activity.type === 'drive' 
+        ? `${activity.distanceKm} km | ⌀ ${activity.avgSpeedKph} km/h | max ${activity.maxSpeedKph} km/h`
+        : `${activity.startLocation.address || 'Adresse inconnue'}`,
+      location: activity.type === 'drive'
+        ? `${activity.startLocation.address || '?'} → ${activity.endLocation?.address || '?'}`
+        : activity.startLocation.address || `${activity.startLocation.latitude.toFixed(4)}°, ${activity.startLocation.longitude.toFixed(4)}°`,
+      isDrive: activity.type === 'drive'
+    }));
+
+    // Chart data - show duration of each activity
+    this.chartData = report.activities.map((activity: ActivitySegment, index: number) => ({
+      label: `${activity.type === 'drive' ? 'Trajet' : 'Arrêt'} ${activity.sequenceNumber}`,
+      value: Math.round(activity.durationSeconds / 60) // duration in minutes
+    }));
+
+    // Statistics
+    this.statisticsData = {
+      'Véhicule': `${report.vehicleName}${report.plate ? ' (' + report.plate + ')' : ''}`,
+      'Date': new Date(report.reportDate).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+      'Premier démarrage': report.firstStart ? this.formatTime(report.firstStart.timestamp) : 'N/A',
+      'Temps de conduite': report.summary.totalDrivingFormatted,
+      'Temps d\'arrêt': report.summary.totalStoppedFormatted,
+      'Distance totale': `${report.summary.totalDistanceKm} km`,
+      'Nombre de trajets': report.summary.driveCount.toString(),
+      'Nombre d\'arrêts': report.summary.stopCount.toString(),
+      'Vitesse max': `${report.summary.maxSpeedKph} km/h`,
+      'Vitesse moyenne': `${report.summary.avgSpeedKph} km/h`
+    };
+  }
+
+  formatTime(dateStr: string): string {
+    return new Date(dateStr).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  executeMileageReport(vehicleId: number, startDate?: Date, endDate?: Date) {
+    const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // Default: last 30 days
+    const end = endDate || new Date();
+    
+    this.apiService.getMileageReport(vehicleId, start, end).subscribe({
+      next: (report) => {
+        this.ngZone.run(() => {
+          this.mileageReport = report;
+          this.processMileageReport(report);
+          this.reportGenerated = true;
+          this.loading = false;
+          this.activeTab = 'table';
+          this.currentPage = 1;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+          setTimeout(() => this.createMileageChart(), 100);
+        });
+      },
+      error: (err) => {
+        this.ngZone.run(() => {
+          console.error('Error loading mileage report:', err);
+          this.mileageReport = null;
+          this.tableData = [];
+          this.chartData = [];
+          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport kilométrique' };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
+      }
+    });
+  }
+
+  processMileageReport(report: MileageReport) {
+    if (!report.hasData) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = {
+        'Véhicule': report.vehicleName,
+        'Période': `${new Date(report.startDate).toLocaleDateString('fr-FR')} - ${new Date(report.endDate).toLocaleDateString('fr-FR')}`,
+        'Information': 'Aucune donnée disponible pour cette période'
+      };
+      return;
+    }
+
+    // Convert daily breakdown to table data
+    this.tableData = report.dailyBreakdown.map((day: DailyMileage) => ({
+      date: new Date(day.date).toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' }),
+      dayOfWeek: day.dayOfWeek,
+      distance: `${day.distanceKm.toFixed(1)} km`,
+      distanceValue: day.distanceKm,
+      tripCount: day.tripCount,
+      drivingTime: this.formatMinutes(day.drivingMinutes),
+      avgSpeed: `${day.avgSpeedKph.toFixed(1)} km/h`,
+      maxSpeed: `${day.maxSpeedKph.toFixed(1)} km/h`,
+      odometer: day.endOdometerKm ? `${day.endOdometerKm.toFixed(0)} km` : '-'
+    }));
+
+    // Chart data - daily distances
+    this.chartData = report.dailyBreakdown.map((day: DailyMileage) => ({
+      label: new Date(day.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
+      value: day.distanceKm
+    }));
+
+    // Statistics
+    this.statisticsData = {
+      'Véhicule': `${report.vehicleName}${report.plate ? ' (' + report.plate + ')' : ''}`,
+      'Période': `${new Date(report.startDate).toLocaleDateString('fr-FR')} - ${new Date(report.endDate).toLocaleDateString('fr-FR')}`,
+      'Distance totale': `${report.summary.totalDistanceKm.toFixed(1)} km`,
+      'Moyenne journalière': `${report.summary.averageDailyKm.toFixed(1)} km`,
+      'Max journalier': report.summary.maxDailyDate 
+        ? `${report.summary.maxDailyKm.toFixed(1)} km (${new Date(report.summary.maxDailyDate).toLocaleDateString('fr-FR')})`
+        : `${report.summary.maxDailyKm.toFixed(1)} km`,
+      'Nombre de trajets': report.summary.totalTripCount.toString(),
+      'Temps de conduite': report.summary.totalDrivingFormatted,
+      'Vitesse max': `${report.summary.maxSpeedKph.toFixed(1)} km/h`,
+      'Vitesse moyenne': `${report.summary.avgSpeedKph.toFixed(1)} km/h`,
+      'Jours actifs': `${report.summary.daysWithActivity}/${report.summary.totalDays} (${report.summary.activityPercentage.toFixed(0)}%)`
+    };
+
+    // Add comparison if available
+    if (report.previousPeriodComparison) {
+      const comp = report.previousPeriodComparison;
+      const trendIcon = comp.trend === 'increase' ? '📈' : comp.trend === 'decrease' ? '📉' : '➡️';
+      const sign = comp.differenceKm >= 0 ? '+' : '';
+      this.statisticsData['Évolution vs période précédente'] = 
+        `${trendIcon} ${sign}${comp.differenceKm.toFixed(1)} km (${sign}${comp.percentageChange.toFixed(1)}%)`;
+    }
+
+    // Add odometer if available
+    if (report.startOdometerKm && report.endOdometerKm) {
+      this.statisticsData['Compteur début'] = `${report.startOdometerKm.toFixed(0)} km`;
+      this.statisticsData['Compteur fin'] = `${report.endOdometerKm.toFixed(0)} km`;
+    }
+  }
+
+  formatMinutes(minutes: number): string {
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  }
+
+  createMileageChart() {
+    if (!this.chartCanvas?.nativeElement || !this.chartData.length) return;
+
+    if (this.chart) {
+      this.chart.destroy();
+    }
+
+    const ctx = this.chartCanvas.nativeElement.getContext('2d');
+    if (!ctx) return;
+
+    this.chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: this.chartData.map(d => d.label),
+        datasets: [{
+          label: 'Distance (km)',
+          data: this.chartData.map(d => d.value),
+          backgroundColor: 'rgba(59, 130, 246, 0.7)',
+          borderColor: 'rgba(59, 130, 246, 1)',
+          borderWidth: 1,
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top'
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => `${(context.parsed.y ?? 0).toFixed(1)} km`
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: 'Distance (km)'
+            }
+          },
+          x: {
+            title: {
+              display: true,
+              text: 'Date'
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // ==================== MONTHLY FLEET REPORT ====================
+
+  executeMonthlyReport() {
+    this.apiService.getMonthlyFleetReport(this.selectedMonthlyYear, this.selectedMonthlyMonth).subscribe({
+      next: (report) => {
+        this.ngZone.run(() => {
+          this.monthlyReport = report;
+          this.processMonthlyReport(report);
+          this.reportGenerated = true;
+          this.loading = false;
+          this.activeTab = 'table';
+          this.monthlyActiveSection = 'summary';
+          this.cdr.detectChanges();
+          this.appRef.tick();
+          setTimeout(() => this.createMonthlyCharts(), 100);
+        });
+      },
+      error: (err) => {
+        this.ngZone.run(() => {
+          console.error('Error loading monthly report:', err);
+          this.monthlyReport = null;
+          this.tableData = [];
+          this.chartData = [];
+          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport mensuel' };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
+      }
+    });
+  }
+
+  onMonthlyPeriodChange() {
+    if (this.selectedTemplate?.type === 'monthly') {
+      this.executeMonthlyReport();
+    }
+  }
+
+  setMonthlySection(sectionId: string) {
+    this.monthlyActiveSection = sectionId;
+    setTimeout(() => this.createMonthlyCharts(), 100);
+  }
+
+  processMonthlyReport(report: MonthlyFleetReport) {
+    // Build statistics from executive summary
+    this.statisticsData = {
+      'Période': report.reportPeriod,
+      'Véhicules totaux': report.executiveSummary.totalVehicles.toString(),
+      'Véhicules actifs': report.executiveSummary.activeVehicles.toString(),
+      'Distance totale': `${this.formatNumber(report.executiveSummary.totalDistanceKm)} km`,
+      'Carburant consommé': `${this.formatNumber(report.executiveSummary.totalFuelConsumedLiters)} L`,
+      'Coût total': this.formatCurrency(report.executiveSummary.totalOperationalCost),
+      'Taux utilisation': `${report.executiveSummary.fleetUtilizationRate.toFixed(1)}%`,
+      'Trajets': report.executiveSummary.totalTrips.toString()
+    };
+
+    // Calculate fleet averages for variance calculations
+    const fleetAvgConsumption = report.fuelAnalytics.averageConsumptionPer100Km;
+    const totalMaintenanceCost = report.maintenance.totalMaintenanceCost;
+    const avgMaintenanceCost = report.utilization.byVehicle.length > 0 
+      ? totalMaintenanceCost / report.utilization.byVehicle.length : 0;
+
+    // Build enhanced table data with fuel consumption, variance, and cost metrics
+    this.tableData = report.utilization.byVehicle.map((v, index) => {
+      // Get fuel data for this vehicle
+      const fuelData = report.fuelAnalytics.byVehicle?.find(f => f.vehicleId === v.vehicleId);
+      const consumption = fuelData?.consumptionPer100Km || 0;
+      const consumptionVariance = fleetAvgConsumption > 0 
+        ? ((consumption - fleetAvgConsumption) / fleetAvgConsumption) * 100 : 0;
+      
+      // Get maintenance data for this vehicle
+      const maintenanceData = report.maintenance.byVehicle?.find(m => m.vehicleId === v.vehicleId);
+      const maintenanceCost = maintenanceData?.totalCost || 0;
+      const costVariance = avgMaintenanceCost > 0 
+        ? ((maintenanceCost - avgMaintenanceCost) / avgMaintenanceCost) * 100 : 0;
+
+      return {
+        vehicleId: v.vehicleId,
+        vehicleName: v.vehicleName,
+        plate: v.plate || '-',
+        utilizationRate: v.utilizationRate,
+        utilizationRateFormatted: `${v.utilizationRate.toFixed(1)}%`,
+        totalDistanceKm: v.totalDistanceKm,
+        totalDistanceFormatted: `${this.formatNumber(v.totalDistanceKm)} km`,
+        totalTrips: v.totalTrips,
+        operatingDays: v.operatingDays,
+        avgDailyKm: `${this.formatNumber(v.avgDailyKm)} km`,
+        // Enhanced columns
+        fuelConsumption: consumption,
+        fuelConsumptionFormatted: `${consumption.toFixed(1)} L/100km`,
+        consumptionVariance: consumptionVariance,
+        consumptionVarianceFormatted: `${consumptionVariance >= 0 ? '+' : ''}${consumptionVariance.toFixed(1)}%`,
+        maintenanceCost: maintenanceCost,
+        maintenanceCostFormatted: this.formatCurrency(maintenanceCost),
+        costVariance: costVariance,
+        costVarianceFormatted: `${costVariance >= 0 ? '+' : ''}${costVariance.toFixed(1)}%`,
+        colorIndex: index
+      };
+    });
+
+    // Build chart data from daily trend
+    this.chartData = report.utilization.dailyTrend.map(d => ({
+      label: new Date(d.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
+      value: d.totalDistanceKm
+    }));
+  }
+
+  createMonthlyCharts() {
+    if (!this.monthlyReport) return;
+
+    // Destroy existing charts
+    this.destroyMonthlyCharts();
+
+    // Create all charts with slight delay to ensure DOM is ready
+    setTimeout(() => {
+      this.createKmBarChart();
+      this.createFuelPieChart();
+      this.createMaintenanceAreaChart();
+      this.createMainLineChart();
+    }, 100);
+  }
+
+  destroyMonthlyCharts() {
+    if (this.chart) { this.chart.destroy(); this.chart = undefined; }
+    if (this.kmBarChart) { this.kmBarChart.destroy(); this.kmBarChart = undefined; }
+    if (this.fuelPieChart) { this.fuelPieChart.destroy(); this.fuelPieChart = undefined; }
+    if (this.maintenanceAreaChart) { this.maintenanceAreaChart.destroy(); this.maintenanceAreaChart = undefined; }
+  }
+
+  // Bar Chart: Kilometers per vehicle
+  createKmBarChart() {
+    if (!this.kmBarChartRef?.nativeElement || !this.monthlyReport) return;
+    
+    const ctx = this.kmBarChartRef.nativeElement.getContext('2d');
+    if (!ctx) return;
+
+    const vehicleData = this.monthlyReport.utilization.byVehicle;
+    
+    this.kmBarChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: vehicleData.map(v => v.vehicleName),
+        datasets: [{
+          label: 'Kilomètres parcourus',
+          data: vehicleData.map(v => v.totalDistanceKm),
+          backgroundColor: vehicleData.map((_, i) => this.chartColors[i % this.chartColors.length]),
+          borderColor: vehicleData.map((_, i) => this.chartColors[i % this.chartColors.length]),
+          borderWidth: 1,
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `${(ctx.parsed.y ?? 0).toLocaleString('fr-FR')} km`
+            }
+          }
+        },
+        scales: {
+          x: { 
+            title: { display: true, text: 'Véhicule' },
+            ticks: { maxRotation: 45, minRotation: 45 }
+          },
+          y: { 
+            beginAtZero: true, 
+            title: { display: true, text: 'Distance (km)' },
+            ticks: { callback: (value) => `${value.toLocaleString('fr-FR')}` }
+          }
+        }
+      }
+    });
+  }
+
+  // Pie Chart: Fuel consumption distribution
+  createFuelPieChart() {
+    if (!this.fuelPieChartRef?.nativeElement || !this.monthlyReport) return;
+    
+    const ctx = this.fuelPieChartRef.nativeElement.getContext('2d');
+    if (!ctx) return;
+
+    const fuelData = this.monthlyReport.fuelAnalytics.byVehicle || [];
+    const totalFuel = fuelData.reduce((sum, v) => sum + (v.totalConsumedLiters || 0), 0);
+    
+    this.fuelPieChart = new Chart(ctx, {
+      type: 'pie',
+      data: {
+        labels: fuelData.map(v => v.vehicleName),
+        datasets: [{
+          data: fuelData.map(v => v.totalConsumedLiters || 0),
+          backgroundColor: fuelData.map((_, i) => this.chartColors[i % this.chartColors.length]),
+          borderColor: '#ffffff',
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { 
+            display: true, 
+            position: 'right',
+            labels: { 
+              usePointStyle: true,
+              padding: 15,
+              font: { size: 11 }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const value = ctx.parsed;
+                const percentage = totalFuel > 0 ? ((value / totalFuel) * 100).toFixed(1) : 0;
+                return `${ctx.label}: ${value.toLocaleString('fr-FR')} L (${percentage}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Area Chart: Maintenance costs over time
+  createMaintenanceAreaChart() {
+    if (!this.maintenanceAreaChartRef?.nativeElement || !this.monthlyReport) return;
+    
+    const ctx = this.maintenanceAreaChartRef.nativeElement.getContext('2d');
+    if (!ctx) return;
+
+    // Use daily trend or generate mock maintenance data based on report
+    const maintenanceByVehicle = this.monthlyReport.maintenance.byVehicle || [];
+    const daysInMonth = new Date(this.monthlyReport.year, this.monthlyReport.month, 0).getDate();
+    
+    // Generate labels for each week of the month
+    const weekLabels = ['Semaine 1', 'Semaine 2', 'Semaine 3', 'Semaine 4'];
+    
+    // Create datasets for each vehicle with maintenance costs distributed over weeks
+    const datasets = maintenanceByVehicle.slice(0, 5).map((vehicle, index) => {
+      const weeklyData = [0, 0, 0, 0];
+      // Distribute maintenance cost across weeks (simulated breakdown)
+      const totalCost = vehicle.totalCost || 0;
+      weeklyData[0] = totalCost * 0.25;
+      weeklyData[1] = totalCost * 0.30;
+      weeklyData[2] = totalCost * 0.20;
+      weeklyData[3] = totalCost * 0.25;
+      
+      return {
+        label: vehicle.vehicleName,
+        data: weeklyData,
+        backgroundColor: this.hexToRgba(this.chartColors[index % this.chartColors.length], 0.3),
+        borderColor: this.chartColors[index % this.chartColors.length],
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4
+      };
+    });
+
+    this.maintenanceAreaChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: weekLabels,
+        datasets: datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { 
+            display: true, 
+            position: 'top',
+            labels: { usePointStyle: true }
+          },
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ${(ctx.parsed.y ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} TND`
+            }
+          }
+        },
+        scales: {
+          x: { title: { display: true, text: 'Période' } },
+          y: { 
+            beginAtZero: true, 
+            stacked: true,
+            title: { display: true, text: 'Coût maintenance (TND)' },
+            ticks: { callback: (value) => `${value.toLocaleString('fr-FR')} TND` }
+          }
+        },
+        interaction: {
+          mode: 'nearest',
+          axis: 'x',
+          intersect: false
+        }
+      }
+    });
+  }
+
+  // Main line chart (distance + utilization trends)
+  createMainLineChart() {
+    if (!this.chartCanvas?.nativeElement || !this.monthlyReport) return;
+
+    const ctx = this.chartCanvas.nativeElement.getContext('2d');
+    if (!ctx) return;
+
+    const chartData = this.monthlyReport.utilization.dailyTrend;
+    
+    this.chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: chartData.map(d => new Date(d.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })),
+        datasets: [{
+          label: 'Distance (km)',
+          data: chartData.map(d => d.totalDistanceKm),
+          borderColor: '#3B82F6',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          fill: true,
+          tension: 0.4
+        }, {
+          label: 'Utilisation (%)',
+          data: chartData.map(d => d.utilizationRate),
+          borderColor: '#10B981',
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          fill: false,
+          tension: 0.4,
+          yAxisID: 'y1'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, position: 'top' }
+        },
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: 'Distance (km)' } },
+          y1: { beginAtZero: true, position: 'right', max: 100, title: { display: true, text: 'Utilisation (%)' }, grid: { drawOnChartArea: false } }
+        }
+      }
+    });
+  }
+
+  hexToRgba(hex: string, alpha: number): string {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  formatNumber(value: number, decimals = 0): string {
+    return value.toLocaleString('fr-FR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  }
+
+  formatCurrency(value: number): string {
+    return value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' TND';
+  }
+
+  getKpiStatusClass(status: string): string {
+    return status === 'OnTarget' ? 'kpi-success' : status === 'Above' ? 'kpi-warning' : 'kpi-danger';
+  }
+
+  getAlertSeverityClass(severity: string): string {
+    switch (severity.toLowerCase()) {
+      case 'critical': return 'alert-critical';
+      case 'warning': return 'alert-warning';
+      default: return 'alert-info';
+    }
+  }
+
+  getTrendIcon(trend: string): string {
+    return trend === 'increase' ? '📈' : trend === 'decrease' ? '📉' : '➡️';
   }
 
   executeVehicleReport(vehicleId?: number, startDate?: Date, endDate?: Date) {

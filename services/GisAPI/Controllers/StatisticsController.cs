@@ -131,7 +131,7 @@ public class StatisticsController : ControllerBase
         startDate ??= DateTime.UtcNow.AddDays(-30);
         endDate ??= DateTime.UtcNow;
 
-        var driver = await _context.Employees
+        var driver = await _context.Users
             .FirstOrDefaultAsync(e => e.Id == driverId && e.CompanyId == companyId);
 
         if (driver == null)

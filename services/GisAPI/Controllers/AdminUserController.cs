@@ -25,7 +25,7 @@ public class AdminUserController : ControllerBase
         [FromQuery] int? companyId = null)
     {
         var query = _context.Users
-            .Include(u => u.Company)
+            .Include(u => u.Societe)
             .AsQueryable();
 
         if (!string.IsNullOrEmpty(search))
@@ -33,7 +33,7 @@ public class AdminUserController : ControllerBase
             query = query.Where(u =>
                 u.Name.ToLower().Contains(search.ToLower()) ||
                 u.Email.ToLower().Contains(search.ToLower()) ||
-                (u.Company != null && u.Company.Name.ToLower().Contains(search.ToLower())));
+                (u.Societe != null && u.Societe.Name.ToLower().Contains(search.ToLower())));
         }
 
         if (!string.IsNullOrEmpty(status) && status != "all")
@@ -54,10 +54,15 @@ public class AdminUserController : ControllerBase
                 Name = u.Name,
                 Email = u.Email,
                 Phone = u.Phone,
+                DateOfBirth = u.DateOfBirth,
+                CIN = u.CIN,
                 CompanyId = u.CompanyId,
-                CompanyName = u.Company != null ? u.Company.Name : null,
+                CompanyName = u.Societe != null ? u.Societe.Name : null,
+                RoleId = u.RoleId,
+                RoleName = u.Role != null ? u.Role.Name : null,
                 Roles = u.Roles,
                 Permissions = u.Permissions,
+                AssignedVehicleIds = u.AssignedVehicleIds,
                 Status = u.Status,
                 LastLoginAt = u.LastLoginAt,
                 CreatedAt = u.CreatedAt,
@@ -72,7 +77,7 @@ public class AdminUserController : ControllerBase
     public async Task<ActionResult<AdminUserDto>> GetUser(int id)
     {
         var user = await _context.Users
-            .Include(u => u.Company)
+            .Include(u => u.Societe)
             .FirstOrDefaultAsync(u => u.Id == id);
 
         if (user == null)
@@ -84,10 +89,15 @@ public class AdminUserController : ControllerBase
             Name = user.Name,
             Email = user.Email,
             Phone = user.Phone,
+            DateOfBirth = user.DateOfBirth,
+            CIN = user.CIN,
             CompanyId = user.CompanyId,
-            CompanyName = user.Company?.Name,
+            CompanyName = user.Societe?.Name,
+            RoleId = user.RoleId,
+            RoleName = user.Role?.Name,
             Roles = user.Roles,
             Permissions = user.Permissions,
+            AssignedVehicleIds = user.AssignedVehicleIds,
             Status = user.Status,
             LastLoginAt = user.LastLoginAt,
             CreatedAt = user.CreatedAt,
@@ -103,7 +113,7 @@ public class AdminUserController : ControllerBase
             return BadRequest(new { message = "Un utilisateur avec cet email existe déjà" });
         }
 
-        var company = await _context.Companies.FindAsync(request.CompanyId);
+        var company = await _context.Societes.FindAsync(request.CompanyId);
         if (company == null)
         {
             return BadRequest(new { message = "Société non trouvée" });
@@ -114,12 +124,39 @@ public class AdminUserController : ControllerBase
             return BadRequest(new { message = "Impossible de créer un utilisateur pour une société suspendue" });
         }
 
+        // Validate RoleId if provided
+        Role? role = null;
+        if (request.RoleId.HasValue)
+        {
+            role = await _context.Roles.FindAsync(request.RoleId.Value);
+            if (role == null || (role.SocieteId.HasValue && role.SocieteId != request.CompanyId))
+            {
+                return BadRequest(new { message = "Rôle non trouvé ou non accessible" });
+            }
+        }
+
+        // Validate AssignedVehicleIds if provided
+        if (request.AssignedVehicleIds != null && request.AssignedVehicleIds.Length > 0)
+        {
+            var vehicleCount = await _context.Vehicles
+                .Where(v => request.AssignedVehicleIds.Contains(v.Id) && v.CompanyId == request.CompanyId)
+                .CountAsync();
+            if (vehicleCount != request.AssignedVehicleIds.Length)
+            {
+                return BadRequest(new { message = "Un ou plusieurs véhicules sont invalides ou n'appartiennent pas à cette société" });
+            }
+        }
+
         var user = new User
         {
             Name = request.Name,
             Email = request.Email,
             Phone = request.Phone,
+            DateOfBirth = request.DateOfBirth,
+            CIN = request.CIN,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+            RoleId = request.RoleId,
+            AssignedVehicleIds = request.AssignedVehicleIds ?? [],
             Roles = request.Roles ?? new[] { "user" },
             Permissions = request.Permissions ?? new[] { "dashboard", "monitoring" },
             CompanyId = request.CompanyId,
@@ -135,10 +172,15 @@ public class AdminUserController : ControllerBase
             Name = user.Name,
             Email = user.Email,
             Phone = user.Phone,
+            DateOfBirth = user.DateOfBirth,
+            CIN = user.CIN,
             CompanyId = user.CompanyId,
             CompanyName = company.Name,
+            RoleId = user.RoleId,
+            RoleName = role?.Name,
             Roles = user.Roles,
             Permissions = user.Permissions,
+            AssignedVehicleIds = user.AssignedVehicleIds,
             Status = user.Status,
             CreatedAt = user.CreatedAt,
             IsOnline = false
@@ -149,7 +191,7 @@ public class AdminUserController : ControllerBase
     public async Task<ActionResult<AdminUserDto>> UpdateUser(int id, [FromBody] UpdateAdminUserRequest request)
     {
         var user = await _context.Users
-            .Include(u => u.Company)
+            .Include(u => u.Societe)
             .FirstOrDefaultAsync(u => u.Id == id);
 
         if (user == null)
@@ -183,7 +225,7 @@ public class AdminUserController : ControllerBase
             Email = user.Email,
             Phone = user.Phone,
             CompanyId = user.CompanyId,
-            CompanyName = user.Company?.Name,
+            CompanyName = user.Societe?.Name,
             Roles = user.Roles,
             Permissions = user.Permissions,
             Status = user.Status,
@@ -239,13 +281,13 @@ public class AdminUserController : ControllerBase
     public async Task<ActionResult> ActivateUser(int id)
     {
         var user = await _context.Users
-            .Include(u => u.Company)
+            .Include(u => u.Societe)
             .FirstOrDefaultAsync(u => u.Id == id);
 
         if (user == null)
             return NotFound();
 
-        if (user.Company != null && !user.Company.IsActive)
+        if (user.Societe != null && !user.Societe.IsActive)
         {
             return BadRequest(new { message = "Impossible d'activer un utilisateur d'une société suspendue" });
         }
@@ -294,8 +336,8 @@ public class AdminUserController : ControllerBase
         var onlineUsers = await _context.Users.CountAsync(u => u.LastLoginAt != null && u.LastLoginAt > onlineThreshold);
 
         var usersByCompany = await _context.Users
-            .Include(u => u.Company)
-            .GroupBy(u => new { u.CompanyId, CompanyName = u.Company != null ? u.Company.Name : "Unknown" })
+            .Include(u => u.Societe)
+            .GroupBy(u => new { u.CompanyId, CompanyName = u.Societe != null ? u.Societe.Name : "Unknown" })
             .Select(g => new CompanyUserCount
             {
                 CompanyId = g.Key.CompanyId,
@@ -361,10 +403,15 @@ public class AdminUserDto
     public string Name { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string? Phone { get; set; }
+    public DateTime? DateOfBirth { get; set; }
+    public string? CIN { get; set; }
     public int CompanyId { get; set; }
     public string? CompanyName { get; set; }
+    public int? RoleId { get; set; }
+    public string? RoleName { get; set; }
     public string[] Roles { get; set; } = [];
     public string[] Permissions { get; set; } = [];
+    public int[] AssignedVehicleIds { get; set; } = [];
     public string Status { get; set; } = "active";
     public DateTime? LastLoginAt { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -377,7 +424,11 @@ public class CreateAdminUserRequest
     public string Email { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
     public string? Phone { get; set; }
+    public DateTime? DateOfBirth { get; set; }
+    public string? CIN { get; set; }
     public int CompanyId { get; set; }
+    public int? RoleId { get; set; }
+    public int[]? AssignedVehicleIds { get; set; }
     public string[]? Roles { get; set; }
     public string[]? Permissions { get; set; }
 }

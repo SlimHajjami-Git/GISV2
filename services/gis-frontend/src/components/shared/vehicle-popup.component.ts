@@ -4,6 +4,11 @@ import { FormsModule } from '@angular/forms';
 import { Vehicle } from '../../models/types';
 import { ApiService } from '../../services/api.service';
 
+export interface CompanyOption {
+  id: number;
+  name: string;
+}
+
 @Component({
   selector: 'app-vehicle-popup',
   standalone: true,
@@ -22,6 +27,23 @@ import { ApiService } from '../../services/api.service';
         </div>
 
         <form class="popup-body" (ngSubmit)="onSubmit()">
+          <!-- Company Selection (Admin only) -->
+          <div class="form-group full-width company-select" *ngIf="companies && companies.length > 0">
+            <label for="companyId">Société *</label>
+            <select
+              id="companyId"
+              name="companyId"
+              [(ngModel)]="formData.companyId"
+              required
+              class="company-dropdown"
+            >
+              <option [value]="null" disabled>-- Sélectionner une société --</option>
+              <option *ngFor="let company of companies" [value]="company.id">
+                {{ company.name }}
+              </option>
+            </select>
+          </div>
+
           <div class="form-grid">
             <div class="form-group">
               <label for="name">Nom du véhicule *</label>
@@ -403,6 +425,29 @@ import { ApiService } from '../../services/api.service';
       color: #1e293b;
     }
 
+    .company-select {
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .company-dropdown {
+      width: 100%;
+      padding: 10px 12px;
+      background: white;
+      border: 1px solid #3b82f6;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #1e293b;
+      font-weight: 500;
+    }
+
+    .company-dropdown:focus {
+      outline: none;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+
     .gps-section {
       margin-top: 20px;
       padding-top: 20px;
@@ -532,6 +577,8 @@ import { ApiService } from '../../services/api.service';
 export class VehiclePopupComponent implements OnInit, OnChanges {
   @Input() isOpen = false;
   @Input() vehicle: Vehicle | null = null;
+  @Input() companies: CompanyOption[] = [];
+  @Input() defaultCompanyId: number | null = null;
   @Output() closed = new EventEmitter<void>();
   @Output() saved = new EventEmitter<Partial<Vehicle>>();
 
@@ -547,6 +594,7 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     type: 'citadine',
     status: 'available',
     mileage: 0,
+    companyId: null,
     hasGPS: false,
     gpsDeviceId: undefined,
     gpsImei: '',
@@ -567,10 +615,15 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
         this.gpsMode = 'existing';
       }
     }
+    if (this.defaultCompanyId && !this.formData.companyId) {
+      this.formData.companyId = this.defaultCompanyId;
+    }
   }
 
   ngOnChanges(changes: SimpleChanges) {
     if (changes['isOpen'] && changes['isOpen'].currentValue) {
+      console.log('Popup opened - companies received:', this.companies);
+      console.log('Default company ID:', this.defaultCompanyId);
       this.loadAvailableDevices();
       if (this.vehicle) {
         this.formData = { ...this.vehicle };
@@ -648,6 +701,7 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       type: 'citadine',
       status: 'available',
       mileage: 0,
+      companyId: this.defaultCompanyId,
       hasGPS: false,
       gpsDeviceId: undefined,
       gpsImei: '',

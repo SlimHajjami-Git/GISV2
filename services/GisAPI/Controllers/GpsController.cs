@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
-using GisAPI.Services;
+using GisAPI.Domain.Interfaces;
 
 namespace GisAPI.Controllers;
 
@@ -19,40 +19,11 @@ public class GpsController : ControllerBase
 {
     private readonly GisDbContext _context;
     private readonly IGeocodingService _geocodingService;
-    private const double MovementSpeedThresholdKph = 5.0;
-    private const int MinGapSecondsMoving = 5;
-    private const int MinGapSecondsStopped = 20;
 
     public GpsController(GisDbContext context, IGeocodingService geocodingService)
     {
         _context = context;
         _geocodingService = geocodingService;
-    }
-
-    private List<PositionDto> FilterPositionsByRecordedGap(List<PositionDto> positions)
-    {
-        if (positions.Count <= 1)
-            return positions;
-
-        var filtered = new List<PositionDto>(positions.Count);
-        DateTime? lastAcceptedRecordedAt = null;
-
-        foreach (var position in positions)
-        {
-            var speed = position.SpeedKph ?? 0.0;
-            var requiredGapSeconds = speed >= MovementSpeedThresholdKph
-                ? MinGapSecondsMoving
-                : MinGapSecondsStopped;
-
-            if (!lastAcceptedRecordedAt.HasValue ||
-                (position.RecordedAt - lastAcceptedRecordedAt.Value).TotalSeconds >= requiredGapSeconds)
-            {
-                filtered.Add(position);
-                lastAcceptedRecordedAt = position.RecordedAt;
-            }
-        }
-
-        return filtered;
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
@@ -208,9 +179,7 @@ public class GpsController : ControllerBase
             })
             .ToListAsync();
 
-        var filteredPositions = FilterPositionsByRecordedGap(positions);
-
-        return Ok(filteredPositions);
+        return Ok(positions);
     }
 
     /// <summary>

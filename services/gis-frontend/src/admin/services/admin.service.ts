@@ -44,14 +44,31 @@ export interface SystemUser {
   name: string;
   email: string;
   phone?: string;
+  dateOfBirth?: Date;
+  cin?: string;
   companyId: number;
   companyName: string;
+  roleId?: number;
+  roleName?: string;
   roles: string[];
   permissions: string[];
+  assignedVehicleIds: number[];
   status: 'active' | 'inactive' | 'suspended';
-  lastLogin?: Date;
+  lastLoginAt?: Date;
   createdAt: Date;
   isOnline: boolean;
+}
+
+export interface CreateUserRequest {
+  name: string;
+  email: string;
+  password: string;
+  phone?: string;
+  dateOfBirth?: Date;
+  cin: string;
+  companyId: number;
+  roleId?: number;
+  assignedVehicleIds?: number[];
 }
 
 export interface AdminVehicle {
@@ -151,54 +168,46 @@ export interface MaintenanceMode {
   scheduledEnd?: Date;
 }
 
-export interface CampaignAccessRights {
-  dashboard: boolean;
-  monitoring: boolean;
-  vehicles: boolean;
-  employees: boolean;
-  gpsDevices: boolean;
-  maintenance: boolean;
-  costs: boolean;
-  reports: boolean;
-  geofences: boolean;
-  notifications: boolean;
-  settings: boolean;
-  users: boolean;
-  apiAccess: boolean;
-  customBranding: boolean;
-  advancedReports: boolean;
-  realTimeAlerts: boolean;
-  historyPlayback: boolean;
-  fuelAnalysis: boolean;
-  drivingBehavior: boolean;
-  multiCompany: boolean;
-  maxVehicles: number;
-  maxUsers: number;
-  maxGpsDevices: number;
-  maxGeofences: number;
-  historyRetentionDays: number;
-}
-
-export interface Campaign {
+export interface Role {
   id: number;
   name: string;
   description?: string;
-  type: 'standard' | 'promotional' | 'enterprise' | 'trial';
-  status: 'draft' | 'active' | 'paused' | 'ended';
-  startDate?: Date;
-  endDate?: Date;
-  discountPercentage?: number;
-  discountAmount?: number;
-  maxSubscriptions?: number;
-  currentSubscriptions: number;
-  targetSubscriptionId?: number;
-  targetSubscriptionName?: string;
-  accessRights?: CampaignAccessRights;
-  isActive: boolean;
+  roleType: 'system_admin' | 'company_admin' | 'employee' | 'custom';
+  permissions?: Record<string, any>;
+  societeId?: number;
+  isSystem: boolean;
+  isDefault: boolean;
+  usersCount: number;
   createdAt: Date;
   updatedAt: Date;
-  createdByName?: string;
-  enrolledCompanies: number;
+}
+
+export interface Societe {
+  id: number;
+  name: string;
+  type: string;
+  description?: string;
+  address?: string;
+  city?: string;
+  country: string;
+  phone?: string;
+  email?: string;
+  logoUrl?: string;
+  taxId?: string;
+  rc?: string;
+  if?: string;
+  isActive: boolean;
+  subscriptionStatus: string;
+  billingCycle: string;
+  subscriptionStartedAt: Date;
+  subscriptionExpiresAt?: Date;
+  subscriptionTypeId?: number;
+  subscriptionTypeName?: string;
+  usersCount: number;
+  vehiclesCount: number;
+  rolesCount: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface SubscriptionType {
@@ -228,7 +237,7 @@ export interface SubscriptionType {
   historyRetentionDays: number;
   sortOrder: number;
   isActive: boolean;
-  defaultAccessRights?: CampaignAccessRights;
+  permissions?: Record<string, any>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -421,8 +430,17 @@ export class AdminService {
     return this.getUsers(undefined, undefined, companyId);
   }
 
-  createUser(user: { name: string; email: string; password: string; phone?: string; companyId: number; roles?: string[]; permissions?: string[] }): Observable<SystemUser> {
+  createUser(user: CreateUserRequest): Observable<SystemUser> {
     return this.http.post<SystemUser>(`${this.apiUrl}/admin/users`, user, { headers: this.getHeaders() });
+  }
+
+  getCompanyUsers(companyId: number): Observable<SystemUser[]> {
+    return this.http.get<SystemUser[]>(`${this.apiUrl}/admin/company/${companyId}/users`, { headers: this.getHeaders() }).pipe(
+      catchError(err => {
+        console.error('Error fetching company users:', err);
+        return of([]);
+      })
+    );
   }
 
   updateUser(id: number, updates: Partial<SystemUser> & { password?: string }): Observable<SystemUser> {
@@ -611,76 +629,6 @@ export class AdminService {
     return this.http.delete<void>(`${this.apiUrl}/admin/subscriptions/${id}`, { headers: this.getHeaders() });
   }
 
-  // ==================== CAMPAIGN MANAGEMENT ====================
-
-  getCampaigns(search?: string, status?: string, type?: string): Observable<Campaign[]> {
-    let url = `${this.apiUrl}/admin/campaigns`;
-    const params: string[] = [];
-    if (search) params.push(`search=${encodeURIComponent(search)}`);
-    if (status && status !== 'all') params.push(`status=${status}`);
-    if (type && type !== 'all') params.push(`type=${type}`);
-    if (params.length > 0) url += '?' + params.join('&');
-    
-    return this.http.get<Campaign[]>(url, { headers: this.getHeaders() }).pipe(
-      map(campaigns => campaigns.map(c => ({
-        ...c,
-        startDate: c.startDate ? new Date(c.startDate) : undefined,
-        endDate: c.endDate ? new Date(c.endDate) : undefined,
-        createdAt: new Date(c.createdAt),
-        updatedAt: new Date(c.updatedAt)
-      }))),
-      catchError(err => {
-        console.error('Error fetching campaigns:', err);
-        return of([]);
-      })
-    );
-  }
-
-  getCampaign(id: number): Observable<Campaign | undefined> {
-    return this.http.get<Campaign>(`${this.apiUrl}/admin/campaigns/${id}`, { headers: this.getHeaders() }).pipe(
-      map(c => ({
-        ...c,
-        startDate: c.startDate ? new Date(c.startDate) : undefined,
-        endDate: c.endDate ? new Date(c.endDate) : undefined,
-        createdAt: new Date(c.createdAt),
-        updatedAt: new Date(c.updatedAt)
-      })),
-      catchError(err => {
-        console.error('Error fetching campaign:', err);
-        return of(undefined);
-      })
-    );
-  }
-
-  getCampaignsByClient(clientId: number): Observable<Campaign[]> {
-    return this.http.get<Campaign[]>(`${this.apiUrl}/admin/campaigns/client/${clientId}`, { headers: this.getHeaders() }).pipe(
-      catchError(err => {
-        console.error('Error fetching client campaigns:', err);
-        return of([]);
-      })
-    );
-  }
-
-  createCampaign(campaign: Partial<Campaign>): Observable<Campaign> {
-    return this.http.post<Campaign>(`${this.apiUrl}/admin/campaigns`, campaign, { headers: this.getHeaders() });
-  }
-
-  updateCampaign(id: number, updates: Partial<Campaign>): Observable<Campaign> {
-    return this.http.put<Campaign>(`${this.apiUrl}/admin/campaigns/${id}`, updates, { headers: this.getHeaders() });
-  }
-
-  deleteCampaign(id: number): Observable<void> {
-    return this.http.delete<void>(`${this.apiUrl}/admin/campaigns/${id}`, { headers: this.getHeaders() });
-  }
-
-  enrollCompanyInCampaign(campaignId: number, companyId: number): Observable<void> {
-    return this.http.post<void>(`${this.apiUrl}/admin/campaigns/${campaignId}/enroll/${companyId}`, {}, { headers: this.getHeaders() });
-  }
-
-  unenrollCompanyFromCampaign(campaignId: number, companyId: number): Observable<void> {
-    return this.http.post<void>(`${this.apiUrl}/admin/campaigns/${campaignId}/unenroll/${companyId}`, {}, { headers: this.getHeaders() });
-  }
-
   // ==================== SUBSCRIPTION TYPES ====================
 
   getSubscriptionTypes(companyType?: string): Observable<SubscriptionType[]> {
@@ -727,58 +675,165 @@ export class AdminService {
     return this.http.delete<void>(`${this.apiUrl}/admin/subscription-types/${id}`, { headers: this.getHeaders() });
   }
 
-  getDefaultAccessRights(): CampaignAccessRights {
-    return {
-      dashboard: true,
-      monitoring: true,
-      vehicles: true,
-      employees: true,
-      gpsDevices: true,
-      maintenance: false,
-      costs: false,
-      reports: false,
-      geofences: false,
-      notifications: true,
-      settings: true,
-      users: true,
-      apiAccess: false,
-      customBranding: false,
-      advancedReports: false,
-      realTimeAlerts: true,
-      historyPlayback: true,
-      fuelAnalysis: false,
-      drivingBehavior: false,
-      multiCompany: false,
-      maxVehicles: 10,
-      maxUsers: 5,
-      maxGpsDevices: 10,
-      maxGeofences: 20,
-      historyRetentionDays: 30
-    };
+  // ==================== ROLES MANAGEMENT ====================
+
+  getRoles(includeSystem: boolean = true): Observable<Role[]> {
+    return this.http.get<Role[]>(`${this.apiUrl}/roles?includeSystem=${includeSystem}`, { headers: this.getHeaders() }).pipe(
+      map(roles => roles.map(r => ({
+        ...r,
+        createdAt: new Date(r.createdAt),
+        updatedAt: new Date(r.updatedAt)
+      }))),
+      catchError(err => {
+        console.error('Error fetching roles:', err);
+        return of([]);
+      })
+    );
   }
 
-  getAccessRightsList(): { key: keyof CampaignAccessRights; label: string; category: string }[] {
-    return [
-      { key: 'dashboard', label: 'Tableau de bord', category: 'Pages' },
-      { key: 'monitoring', label: 'Monitoring', category: 'Pages' },
-      { key: 'vehicles', label: 'Véhicules', category: 'Pages' },
-      { key: 'employees', label: 'Employés', category: 'Pages' },
-      { key: 'gpsDevices', label: 'Appareils GPS', category: 'Pages' },
-      { key: 'maintenance', label: 'Maintenance', category: 'Pages' },
-      { key: 'costs', label: 'Coûts', category: 'Pages' },
-      { key: 'reports', label: 'Rapports', category: 'Pages' },
-      { key: 'geofences', label: 'Géofences', category: 'Pages' },
-      { key: 'notifications', label: 'Notifications', category: 'Pages' },
-      { key: 'settings', label: 'Paramètres', category: 'Pages' },
-      { key: 'users', label: 'Utilisateurs', category: 'Pages' },
-      { key: 'apiAccess', label: 'Accès API', category: 'Fonctionnalités' },
-      { key: 'customBranding', label: 'Personnalisation', category: 'Fonctionnalités' },
-      { key: 'advancedReports', label: 'Rapports avancés', category: 'Fonctionnalités' },
-      { key: 'realTimeAlerts', label: 'Alertes temps réel', category: 'Fonctionnalités' },
-      { key: 'historyPlayback', label: 'Lecture historique', category: 'Fonctionnalités' },
-      { key: 'fuelAnalysis', label: 'Analyse carburant', category: 'Fonctionnalités' },
-      { key: 'drivingBehavior', label: 'Comportement conduite', category: 'Fonctionnalités' },
-      { key: 'multiCompany', label: 'Multi-société', category: 'Fonctionnalités' }
-    ];
+  getRole(id: number): Observable<Role | undefined> {
+    return this.http.get<Role>(`${this.apiUrl}/roles/${id}`, { headers: this.getHeaders() }).pipe(
+      map(r => ({
+        ...r,
+        createdAt: new Date(r.createdAt),
+        updatedAt: new Date(r.updatedAt)
+      })),
+      catchError(err => {
+        console.error('Error fetching role:', err);
+        return of(undefined);
+      })
+    );
   }
+
+  createRole(role: { name: string; description?: string; roleType?: string; permissions?: Record<string, any>; isDefault?: boolean }): Observable<Role> {
+    return this.http.post<Role>(`${this.apiUrl}/roles`, role, { headers: this.getHeaders() });
+  }
+
+  updateRole(id: number, updates: Partial<Role>): Observable<Role> {
+    return this.http.put<Role>(`${this.apiUrl}/roles/${id}`, updates, { headers: this.getHeaders() });
+  }
+
+  deleteRole(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/roles/${id}`, { headers: this.getHeaders() });
+  }
+
+  getCompanyRoles(companyId: number): Observable<Role[]> {
+    return this.http.get<Role[]>(`${this.apiUrl}/admin/company/${companyId}/roles`, { headers: this.getHeaders() }).pipe(
+      map(roles => roles.map(r => ({
+        ...r,
+        createdAt: new Date(r.createdAt),
+        updatedAt: new Date(r.updatedAt)
+      }))),
+      catchError(err => {
+        console.error('Error fetching company roles:', err);
+        return of([]);
+      })
+    );
+  }
+
+  // ==================== SOCIETES MANAGEMENT (ADMIN) ====================
+
+  getSocietes(search?: string, status?: string, page: number = 1, pageSize: number = 20): Observable<{ items: Societe[]; totalCount: number }> {
+    let url = `${this.apiUrl}/admin/societes?page=${page}&pageSize=${pageSize}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    if (status && status !== 'all') url += `&status=${status}`;
+    
+    return this.http.get<{ items: Societe[]; totalCount: number }>(url, { headers: this.getHeaders() }).pipe(
+      map(response => ({
+        ...response,
+        items: response.items.map(s => ({
+          ...s,
+          createdAt: new Date(s.createdAt),
+          updatedAt: new Date(s.updatedAt),
+          subscriptionStartedAt: new Date(s.subscriptionStartedAt),
+          subscriptionExpiresAt: s.subscriptionExpiresAt ? new Date(s.subscriptionExpiresAt) : undefined
+        }))
+      })),
+      catchError(err => {
+        console.error('Error fetching societes:', err);
+        return of({ items: [], totalCount: 0 });
+      })
+    );
+  }
+
+  getSociete(id: number): Observable<Societe | undefined> {
+    return this.http.get<Societe>(`${this.apiUrl}/admin/societes/${id}`, { headers: this.getHeaders() }).pipe(
+      map(s => ({
+        ...s,
+        createdAt: new Date(s.createdAt),
+        updatedAt: new Date(s.updatedAt)
+      })),
+      catchError(err => {
+        console.error('Error fetching societe:', err);
+        return of(undefined);
+      })
+    );
+  }
+
+  createSociete(societe: {
+    name: string;
+    type?: string;
+    description?: string;
+    address?: string;
+    city?: string;
+    country?: string;
+    phone?: string;
+    email?: string;
+    subscriptionTypeId?: number;
+    adminName: string;
+    adminEmail: string;
+    adminPassword: string;
+  }): Observable<Societe> {
+    return this.http.post<Societe>(`${this.apiUrl}/admin/societes`, societe, { headers: this.getHeaders() });
+  }
+
+  updateSociete(id: number, updates: Partial<Societe>): Observable<Societe> {
+    return this.http.put<Societe>(`${this.apiUrl}/admin/societes/${id}`, updates, { headers: this.getHeaders() });
+  }
+
+  deleteSociete(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/admin/societes/${id}`, { headers: this.getHeaders() });
+  }
+
+  suspendSociete(id: number): Observable<Societe> {
+    return this.http.post<Societe>(`${this.apiUrl}/admin/societes/${id}/suspend`, {}, { headers: this.getHeaders() });
+  }
+
+  activateSociete(id: number): Observable<Societe> {
+    return this.http.post<Societe>(`${this.apiUrl}/admin/societes/${id}/activate`, {}, { headers: this.getHeaders() });
+  }
+
+  // ==================== PERMISSIONS ====================
+
+  getPermissionTemplate(): Observable<PermissionTemplate> {
+    return this.http.get<PermissionTemplate>(`${this.apiUrl}/admin/permissions/template`, { headers: this.getHeaders() });
+  }
+
+  getSubscriptionPermissions(subscriptionId: number): Observable<SubscriptionPermissions> {
+    return this.http.get<SubscriptionPermissions>(`${this.apiUrl}/admin/permissions/subscription/${subscriptionId}`, { headers: this.getHeaders() });
+  }
+
+}
+
+// Permission interfaces
+export interface PermissionCategoryMeta {
+  name: string;
+  icon: string;
+  isBase: boolean;
+  requiresFeature: string;
+}
+
+export interface PermissionTemplateCategory {
+  _meta: PermissionCategoryMeta;
+  subPermissions: string[];
+}
+
+export interface PermissionTemplate {
+  [key: string]: PermissionTemplateCategory;
+}
+
+export interface SubscriptionPermissions {
+  [key: string]: { [subKey: string]: boolean } | { [key: string]: any };
+  features: { [key: string]: boolean };
+  limits: { [key: string]: number };
 }

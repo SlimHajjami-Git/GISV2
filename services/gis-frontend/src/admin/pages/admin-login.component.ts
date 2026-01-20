@@ -20,7 +20,7 @@ import { AdminService } from '../services/admin.service';
           <div class="logo">
             <span class="logo-icon">B</span>
             <div class="logo-text">
-              <span class="brand">BeliveGIS</span>
+              <span class="brand">CalypsoGIS</span>
               <span class="subtitle">Admin Portal</span>
             </div>
           </div>
@@ -40,7 +40,7 @@ import { AdminService } from '../services/admin.service';
                 id="email"
                 [(ngModel)]="email"
                 name="email"
-                placeholder="admin@belive.tn"
+                placeholder="admin@Calypso.tn"
                 required
               />
             </div>
@@ -105,7 +105,7 @@ import { AdminService } from '../services/admin.service';
             </svg>
             <span>Secured Access - Admin Only</span>
           </div>
-          <p class="copyright">2024 BeliveGIS. All rights reserved.</p>
+          <p class="copyright">2024 CalypsoGIS. All rights reserved.</p>
         </div>
       </div>
 

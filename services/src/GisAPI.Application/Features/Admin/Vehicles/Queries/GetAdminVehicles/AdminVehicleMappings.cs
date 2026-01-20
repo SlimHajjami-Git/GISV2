@@ -20,7 +20,7 @@ internal static class AdminVehicleMappings
             HasGps = vehicle.HasGps,
             Mileage = vehicle.Mileage,
             CompanyId = vehicle.CompanyId,
-            CompanyName = vehicle.Company?.Name,
+            CompanyName = vehicle.Societe?.Name,
             GpsDeviceId = vehicle.GpsDeviceId,
             GpsImei = vehicle.GpsDevice?.DeviceUid,
             GpsMat = vehicle.GpsDevice?.Mat,

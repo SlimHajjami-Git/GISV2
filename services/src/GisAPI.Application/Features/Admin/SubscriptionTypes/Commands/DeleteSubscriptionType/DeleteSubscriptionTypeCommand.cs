@@ -25,13 +25,13 @@ public class DeleteSubscriptionTypeCommandHandler : IRequestHandler<DeleteSubscr
             throw new InvalidOperationException("Type d'abonnement non trouvé");
         }
 
-        // Check if any subscriptions are using this type
-        var subscriptionsCount = await _context.Subscriptions
+        // Check if any societes are using this type
+        var societesCount = await _context.Societes
             .CountAsync(s => s.SubscriptionTypeId == request.Id, cancellationToken);
 
-        if (subscriptionsCount > 0)
+        if (societesCount > 0)
         {
-            throw new InvalidOperationException($"Impossible de supprimer: {subscriptionsCount} abonnement(s) utilisent ce type");
+            throw new InvalidOperationException($"Impossible de supprimer: {societesCount} société(s) utilisent ce type");
         }
 
         _context.SubscriptionTypes.Remove(subscriptionType);

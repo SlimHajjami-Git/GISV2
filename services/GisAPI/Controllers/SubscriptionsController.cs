@@ -22,20 +22,20 @@ public class SubscriptionsController : ControllerBase
 
     [HttpGet]
     [AllowAnonymous]
-    public async Task<ActionResult<List<Subscription>>> GetSubscriptions()
+    public async Task<ActionResult<List<SubscriptionType>>> GetSubscriptions()
     {
-        var subscriptions = await _context.Subscriptions
+        var subscriptions = await _context.SubscriptionTypes
             .Where(s => s.IsActive)
-            .OrderBy(s => s.Price)
+            .OrderBy(s => s.YearlyPrice)
             .ToListAsync();
 
         return Ok(subscriptions);
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<Subscription>> GetSubscription(int id)
+    public async Task<ActionResult<SubscriptionType>> GetSubscription(int id)
     {
-        var subscription = await _context.Subscriptions.FindAsync(id);
+        var subscription = await _context.SubscriptionTypes.FindAsync(id);
 
         if (subscription == null)
             return NotFound();
@@ -48,8 +48,8 @@ public class SubscriptionsController : ControllerBase
     {
         var companyId = GetCompanyId();
 
-        var company = await _context.Companies
-            .Include(c => c.Subscription)
+        var company = await _context.Societes
+            .Include(c => c.SubscriptionType)
             .FirstOrDefaultAsync(c => c.Id == companyId);
 
         if (company == null)
@@ -73,13 +73,13 @@ public class SubscriptionsController : ControllerBase
 
         return Ok(new
         {
-            Subscription = company.Subscription,
+            SubscriptionType = company.SubscriptionType,
             Usage = new
             {
-                Vehicles = new { Current = vehicleCount, Max = company.Subscription?.MaxVehicles ?? 0 },
-                Users = new { Current = userCount, Max = company.Subscription?.MaxUsers ?? 0 },
-                Devices = new { Current = deviceCount, Max = company.Subscription?.MaxGpsDevices ?? 0 },
-                Geofences = new { Current = geofenceCount, Max = company.Subscription?.MaxGeofences ?? 0 }
+                Vehicles = new { Current = vehicleCount, Max = company.SubscriptionType?.MaxVehicles ?? 0 },
+                Users = new { Current = userCount, Max = company.SubscriptionType?.MaxUsers ?? 0 },
+                Devices = new { Current = deviceCount, Max = company.SubscriptionType?.MaxGpsDevices ?? 0 },
+                Geofences = new { Current = geofenceCount, Max = company.SubscriptionType?.MaxGeofences ?? 0 }
             },
             ExpiresAt = company.SubscriptionExpiresAt
         });
@@ -90,15 +90,15 @@ public class SubscriptionsController : ControllerBase
     {
         var companyId = GetCompanyId();
 
-        var company = await _context.Companies.FindAsync(companyId);
+        var company = await _context.Societes.FindAsync(companyId);
         if (company == null)
             return NotFound();
 
-        var subscription = await _context.Subscriptions.FindAsync(request.SubscriptionId);
-        if (subscription == null)
-            return NotFound(new { message = "Subscription not found" });
+        var subscriptionType = await _context.SubscriptionTypes.FindAsync(request.SubscriptionTypeId);
+        if (subscriptionType == null)
+            return NotFound(new { message = "Subscription type not found" });
 
-        company.SubscriptionId = request.SubscriptionId;
+        company.SubscriptionTypeId = request.SubscriptionTypeId;
         company.SubscriptionExpiresAt = DateTime.UtcNow.AddMonths(request.Months);
         company.UpdatedAt = DateTime.UtcNow;
 
@@ -108,4 +108,4 @@ public class SubscriptionsController : ControllerBase
     }
 }
 
-public record UpgradeRequest(int SubscriptionId, int Months = 1);
+public record UpgradeRequest(int SubscriptionTypeId, int Months = 1);

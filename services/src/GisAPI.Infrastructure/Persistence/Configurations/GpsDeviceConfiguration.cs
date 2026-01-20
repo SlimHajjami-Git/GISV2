@@ -34,7 +34,7 @@ public class GpsDeviceConfiguration : IEntityTypeConfiguration<GpsDevice>
         builder.HasIndex(e => e.Mat);
         builder.HasIndex(e => e.CompanyId);
 
-        builder.HasOne(e => e.Company)
+        builder.HasOne(e => e.Societe)
             .WithMany(c => c.GpsDevices)
             .HasForeignKey(e => e.CompanyId);
     }

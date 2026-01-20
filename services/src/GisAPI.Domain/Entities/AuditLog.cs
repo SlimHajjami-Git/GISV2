@@ -8,7 +8,7 @@ public class AuditLog : Entity
     public int? UserId { get; set; }
     public User? User { get; set; }
     public int? CompanyId { get; set; }
-    public Company? Company { get; set; }
+    public Societe? Societe { get; set; }
     public string Action { get; set; } = string.Empty;
     public string EntityType { get; set; } = string.Empty;
     public int? EntityId { get; set; }

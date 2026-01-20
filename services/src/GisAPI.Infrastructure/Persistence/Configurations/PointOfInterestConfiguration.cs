@@ -48,7 +48,7 @@ public class PointOfInterestConfiguration : IEntityTypeConfiguration<PointOfInte
         builder.HasIndex(e => e.CompanyId);
         builder.HasIndex(e => e.Category);
 
-        builder.HasOne(e => e.Company)
+        builder.HasOne(e => e.Societe)
             .WithMany()
             .HasForeignKey(e => e.CompanyId);
     }

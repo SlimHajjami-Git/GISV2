@@ -1,8 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using GisAPI.Data;
-using GisAPI.Models;
+using GisAPI.Infrastructure.Persistence;
+using GisAPI.Domain.Entities;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -49,7 +49,7 @@ public class TramOnLineController : ControllerBase
                 existingDevice.Vehicle?.GpsDeviceId ?? existingDevice.Id));
         }
 
-        var companyId = await _context.Companies
+        var companyId = await _context.Societes
             .OrderBy(c => c.Id)
             .Select(c => c.Id)
             .FirstOrDefaultAsync();

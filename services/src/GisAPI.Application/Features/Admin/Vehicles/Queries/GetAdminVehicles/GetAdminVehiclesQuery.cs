@@ -18,7 +18,7 @@ public class GetAdminVehiclesQueryHandler : IRequestHandler<GetAdminVehiclesQuer
     public async Task<List<AdminVehicleDto>> Handle(GetAdminVehiclesQuery request, CancellationToken cancellationToken)
     {
         var query = _context.Vehicles
-            .Include(v => v.Company)
+            .Include(v => v.Societe)
             .Include(v => v.GpsDevice)
             .Include(v => v.AssignedDriver)
             .AsNoTracking()
@@ -59,7 +59,7 @@ public class GetAdminVehiclesQueryHandler : IRequestHandler<GetAdminVehiclesQuer
             HasGps = v.HasGps,
             Mileage = v.Mileage,
             CompanyId = v.CompanyId,
-            CompanyName = v.Company?.Name,
+            CompanyName = v.Societe?.Name,
             GpsDeviceId = v.GpsDeviceId,
             GpsImei = v.GpsDevice?.DeviceUid,
             GpsMat = v.GpsDevice?.Mat,

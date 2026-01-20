@@ -327,7 +327,9 @@ export class ApiService {
     if (this.isMockUser()) {
       return this.mockDataService.getGeofences();
     }
-    return this.http.get<any[]>(`${this.API_URL}/geofences`, { headers: this.getHeaders() });
+    return this.http.get<any[]>(`${this.API_URL}/geofences`, { headers: this.getHeaders() }).pipe(
+      map(geofences => geofences.map(g => this.transformGeofence(g)))
+    );
   }
 
   getGeofence(id: number): Observable<any> {
@@ -336,7 +338,16 @@ export class ApiService {
         map(geofences => geofences.find(g => g.id === id.toString()))
       );
     }
-    return this.http.get<any>(`${this.API_URL}/geofences/${id}`, { headers: this.getHeaders() });
+    return this.http.get<any>(`${this.API_URL}/geofences/${id}`, { headers: this.getHeaders() }).pipe(
+      map(g => this.transformGeofence(g))
+    );
+  }
+
+  private transformGeofence(g: any): any {
+    return {
+      ...g,
+      center: (g.centerLat != null && g.centerLng != null) ? { lat: g.centerLat, lng: g.centerLng } : undefined
+    };
   }
 
   createGeofence(geofence: any): Observable<any> {
@@ -773,6 +784,64 @@ export class ApiService {
     return this.http.get<any[]>(`${this.API_URL}/dashboard/activity`, { headers: this.getHeaders(), params });
   }
 
+  // ==================== NEW DASHBOARD API (CQRS) ====================
+
+  /**
+   * Get lightweight KPI data for quick dashboard loading
+   */
+  getDashboardKpis(year?: number, month?: number, vehicleIds?: number[]): Observable<DashboardKpis> {
+    let params = new HttpParams();
+    if (year) params = params.set('year', year.toString());
+    if (month) params = params.set('month', month.toString());
+    if (vehicleIds?.length) {
+      vehicleIds.forEach(id => params = params.append('vehicleIds', id.toString()));
+    }
+    return this.http.get<DashboardKpis>(`${this.API_URL}/dashboard/kpis`, { headers: this.getHeaders(), params });
+  }
+
+  /**
+   * Get chart-ready data for dashboard visualizations
+   */
+  getDashboardCharts(year?: number, month?: number, vehicleIds?: number[]): Observable<DashboardCharts> {
+    let params = new HttpParams();
+    if (year) params = params.set('year', year.toString());
+    if (month) params = params.set('month', month.toString());
+    if (vehicleIds?.length) {
+      vehicleIds.forEach(id => params = params.append('vehicleIds', id.toString()));
+    }
+    return this.http.get<DashboardCharts>(`${this.API_URL}/dashboard/charts`, { headers: this.getHeaders(), params });
+  }
+
+  /**
+   * Get detailed fleet statistics with pagination
+   */
+  getFleetStatistics(options?: {
+    year?: number;
+    month?: number;
+    groupBy?: string;
+    vehicleIds?: number[];
+    pageNumber?: number;
+    pageSize?: number;
+  }): Observable<FleetStatistics> {
+    let params = new HttpParams();
+    if (options?.year) params = params.set('year', options.year.toString());
+    if (options?.month) params = params.set('month', options.month.toString());
+    if (options?.groupBy) params = params.set('groupBy', options.groupBy);
+    if (options?.pageNumber) params = params.set('pageNumber', options.pageNumber.toString());
+    if (options?.pageSize) params = params.set('pageSize', options.pageSize.toString());
+    if (options?.vehicleIds?.length) {
+      options.vehicleIds.forEach(id => params = params.append('vehicleIds', id.toString()));
+    }
+    return this.http.get<FleetStatistics>(`${this.API_URL}/dashboard/fleet-statistics`, { headers: this.getHeaders(), params });
+  }
+
+  /**
+   * Refresh dashboard cache
+   */
+  refreshDashboardCache(): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/dashboard/refresh-cache`, {}, { headers: this.getHeaders() });
+  }
+
   // ==================== SUBSCRIPTIONS ====================
 
   getSubscriptions(): Observable<any[]> {
@@ -893,6 +962,56 @@ export class ApiService {
     if (endDate) params = params.set('endDate', endDate.toISOString());
     return this.http.get<FuelReport>(`${this.API_URL}/fuelrecords/vehicle/${vehicleId}/report`, { headers: this.getHeaders(), params });
   }
+
+  // ==================== DAILY ACTIVITY REPORTS ====================
+
+  getDailyReport(vehicleId: number, date?: Date, minStopDurationSeconds?: number): Observable<DailyActivityReport> {
+    let params = new HttpParams();
+    if (date) params = params.set('date', date.toISOString().split('T')[0]);
+    if (minStopDurationSeconds) params = params.set('minStopDurationSeconds', minStopDurationSeconds.toString());
+    return this.http.get<DailyActivityReport>(`${this.API_URL}/reports/daily/${vehicleId}`, { headers: this.getHeaders(), params });
+  }
+
+  getDailyReports(date?: Date, vehicleIds?: number[], minStopDurationSeconds?: number): Observable<DailyActivityReport[]> {
+    let params = new HttpParams();
+    if (date) params = params.set('date', date.toISOString().split('T')[0]);
+    if (vehicleIds?.length) {
+      vehicleIds.forEach(id => params = params.append('vehicleIds', id.toString()));
+    }
+    if (minStopDurationSeconds) params = params.set('minStopDurationSeconds', minStopDurationSeconds.toString());
+    return this.http.get<DailyActivityReport[]>(`${this.API_URL}/reports/daily`, { headers: this.getHeaders(), params });
+  }
+
+  // ==================== MILEAGE REPORTS ====================
+
+  getMileageReport(vehicleId: number, startDate?: Date, endDate?: Date): Observable<MileageReport> {
+    let params = new HttpParams();
+    if (startDate) params = params.set('startDate', startDate.toISOString().split('T')[0]);
+    if (endDate) params = params.set('endDate', endDate.toISOString().split('T')[0]);
+    return this.http.get<MileageReport>(`${this.API_URL}/reports/mileage/${vehicleId}`, { headers: this.getHeaders(), params });
+  }
+
+  getMileageReports(startDate?: Date, endDate?: Date, vehicleIds?: number[]): Observable<MileageReport[]> {
+    let params = new HttpParams();
+    if (startDate) params = params.set('startDate', startDate.toISOString().split('T')[0]);
+    if (endDate) params = params.set('endDate', endDate.toISOString().split('T')[0]);
+    if (vehicleIds?.length) {
+      vehicleIds.forEach(id => params = params.append('vehicleIds', id.toString()));
+    }
+    return this.http.get<MileageReport[]>(`${this.API_URL}/reports/mileage`, { headers: this.getHeaders(), params });
+  }
+
+  // ==================== MONTHLY FLEET REPORTS ====================
+
+  getMonthlyFleetReport(year?: number, month?: number, vehicleIds?: number[]): Observable<MonthlyFleetReport> {
+    let params = new HttpParams();
+    if (year) params = params.set('year', year.toString());
+    if (month) params = params.set('month', month.toString());
+    if (vehicleIds?.length) {
+      vehicleIds.forEach(id => params = params.append('vehicleIds', id.toString()));
+    }
+    return this.http.get<MonthlyFleetReport>(`${this.API_URL}/reports/monthly`, { headers: this.getHeaders(), params });
+  }
 }
 
 // ==================== FUEL RECORDS INTERFACES ====================
@@ -978,4 +1097,755 @@ export interface FuelReport {
   averageConsumptionLPer100Km?: number;
   refuels: RefuelEvent[];
   anomalies: AnomalyEvent[];
+}
+
+// ==================== DAILY ACTIVITY REPORT INTERFACES ====================
+
+export interface DailyActivityReport {
+  vehicleId: number;
+  vehicleName: string;
+  plate?: string;
+  driverName?: string;
+  reportDate: string;
+  hasActivity: boolean;
+  firstStart?: DailyStartEvent;
+  lastPosition?: DailyEndEvent;
+  activities: ActivitySegment[];
+  summary: DailySummary;
+}
+
+export interface DailyStartEvent {
+  timestamp: string;
+  latitude: number;
+  longitude: number;
+  address?: string;
+}
+
+export interface DailyEndEvent {
+  timestamp: string;
+  latitude: number;
+  longitude: number;
+  address?: string;
+  ignitionOn: boolean;
+}
+
+export interface ActivitySegment {
+  type: 'drive' | 'stop';
+  sequenceNumber: number;
+  startTime: string;
+  endTime?: string;
+  durationSeconds: number;
+  durationFormatted: string;
+  startLocation: LocationInfo;
+  endLocation?: LocationInfo;
+  distanceKm?: number;
+  avgSpeedKph?: number;
+  maxSpeedKph?: number;
+}
+
+export interface LocationInfo {
+  latitude: number;
+  longitude: number;
+  address?: string;
+}
+
+export interface DailySummary {
+  totalActiveSeconds: number;
+  totalDrivingSeconds: number;
+  totalStoppedSeconds: number;
+  totalActiveFormatted: string;
+  totalDrivingFormatted: string;
+  totalStoppedFormatted: string;
+  totalDistanceKm: number;
+  stopCount: number;
+  driveCount: number;
+  maxSpeedKph: number;
+  avgSpeedKph: number;
+  positionCount: number;
+}
+
+// ==================== MILEAGE REPORT INTERFACES ====================
+
+export interface MileageReport {
+  vehicleId: number;
+  vehicleName: string;
+  plate?: string;
+  driverName?: string;
+  vehicleType?: string;
+  startDate: string;
+  endDate: string;
+  hasData: boolean;
+  startOdometerKm?: number;
+  endOdometerKm?: number;
+  odometerDifferenceKm?: number;
+  totalDistanceKm: number;
+  averageDailyKm: number;
+  dailyBreakdown: DailyMileage[];
+  weeklyBreakdown: WeeklyMileage[];
+  monthlyBreakdown: MonthlyMileage[];
+  previousPeriodComparison?: PeriodComparison;
+  summary: MileageSummary;
+}
+
+export interface DailyMileage {
+  date: string;
+  dayOfWeek: string;
+  distanceKm: number;
+  startOdometerKm?: number;
+  endOdometerKm?: number;
+  tripCount: number;
+  drivingMinutes: number;
+  maxSpeedKph: number;
+  avgSpeedKph: number;
+}
+
+export interface WeeklyMileage {
+  weekNumber: number;
+  weekStart: string;
+  weekEnd: string;
+  distanceKm: number;
+  averageDailyKm: number;
+  tripCount: number;
+  drivingMinutes: number;
+}
+
+export interface MonthlyMileage {
+  year: number;
+  month: number;
+  monthName: string;
+  distanceKm: number;
+  averageDailyKm: number;
+  tripCount: number;
+  daysWithActivity: number;
+}
+
+export interface PeriodComparison {
+  previousPeriodDistanceKm: number;
+  currentPeriodDistanceKm: number;
+  differenceKm: number;
+  percentageChange: number;
+  trend: 'increase' | 'decrease' | 'stable';
+}
+
+export interface MileageSummary {
+  totalDistanceKm: number;
+  averageDailyKm: number;
+  maxDailyKm: number;
+  minDailyKm: number;
+  maxDailyDate?: string;
+  minDailyDate?: string;
+  totalTripCount: number;
+  totalDrivingMinutes: number;
+  totalDrivingFormatted: string;
+  maxSpeedKph: number;
+  avgSpeedKph: number;
+  daysWithActivity: number;
+  totalDays: number;
+  activityPercentage: number;
+}
+
+// ==================== MONTHLY FLEET REPORT INTERFACES ====================
+
+export interface MonthlyFleetReport {
+  year: number;
+  month: number;
+  monthName: string;
+  generatedAt: string;
+  reportPeriod: string;
+  executiveSummary: ExecutiveSummary;
+  fleetOverview: FleetOverview;
+  utilization: VehicleUtilization;
+  fuelAnalytics: FuelAnalytics;
+  maintenance: MaintenanceAnalytics;
+  driverPerformance: DriverPerformance;
+  efficiency: OperationalEfficiency;
+  costAnalysis: CostAnalysis;
+  monthOverMonth: FleetPeriodComparison;
+  yearOverYear?: FleetPeriodComparison;
+  alerts: FleetAlert[];
+  keyPerformanceIndicators: Kpi[];
+  charts: ChartDataCollection;
+}
+
+export interface ExecutiveSummary {
+  totalVehicles: number;
+  activeVehicles: number;
+  totalDistanceKm: number;
+  totalFuelConsumedLiters: number;
+  totalOperationalCost: number;
+  fleetUtilizationRate: number;
+  averageFuelEfficiency: number;
+  totalTrips: number;
+  totalDrivingHours: number;
+  keyInsights: string[];
+  recommendations: string[];
+}
+
+export interface FleetOverview {
+  totalVehicles: number;
+  activeVehicles: number;
+  inactiveVehicles: number;
+  inMaintenanceVehicles: number;
+  byType: VehicleTypeSummary[];
+  byStatus: VehicleStatusSummary[];
+  byDepartment: DepartmentSummary[];
+}
+
+export interface VehicleTypeSummary {
+  type: string;
+  count: number;
+  percentage: number;
+  totalDistanceKm: number;
+  avgDistanceKm: number;
+}
+
+export interface VehicleStatusSummary {
+  status: string;
+  count: number;
+  percentage: number;
+}
+
+export interface DepartmentSummary {
+  department: string;
+  vehicleCount: number;
+  totalDistanceKm: number;
+  totalCost: number;
+}
+
+export interface VehicleUtilization {
+  overallUtilizationRate: number;
+  averageDailyUsageHours: number;
+  averageDailyDistanceKm: number;
+  totalOperatingDays: number;
+  totalIdleDays: number;
+  dailyTrend: DailyUtilization[];
+  byVehicle: VehicleUtilizationDetail[];
+  statistics: StatisticalMetrics;
+}
+
+export interface DailyUtilization {
+  date: string;
+  utilizationRate: number;
+  activeVehicles: number;
+  totalDistanceKm: number;
+  totalTrips: number;
+}
+
+export interface VehicleUtilizationDetail {
+  vehicleId: number;
+  vehicleName: string;
+  plate?: string;
+  utilizationRate: number;
+  totalDistanceKm: number;
+  totalTrips: number;
+  operatingDays: number;
+  avgDailyKm: number;
+}
+
+export interface FuelAnalytics {
+  totalFuelConsumedLiters: number;
+  totalFuelCost: number;
+  averageConsumptionPer100Km: number;
+  averageFuelEfficiencyKmPerLiter: number;
+  dailyTrend: DailyFuelConsumption[];
+  byVehicle: VehicleFuelConsumption[];
+  refuelEvents: FuelEvent[];
+  anomalies: FuelAnomaly[];
+  statistics: StatisticalMetrics;
+}
+
+export interface DailyFuelConsumption {
+  date: string;
+  consumptionLiters: number;
+  distanceKm: number;
+  efficiencyKmPerLiter: number;
+}
+
+export interface VehicleFuelConsumption {
+  vehicleId: number;
+  vehicleName: string;
+  totalConsumedLiters: number;
+  totalDistanceKm: number;
+  efficiencyKmPerLiter: number;
+  consumptionPer100Km: number;
+  efficiencyRating: string;
+}
+
+export interface FuelEvent {
+  timestamp: string;
+  vehicleId: number;
+  vehicleName: string;
+  amountLiters: number;
+  cost?: number;
+  location: string;
+}
+
+export interface FuelAnomaly {
+  detectedAt: string;
+  vehicleId: number;
+  vehicleName: string;
+  anomalyType: string;
+  description: string;
+  severity: string;
+}
+
+export interface MaintenanceAnalytics {
+  totalMaintenanceEvents: number;
+  totalMaintenanceCost: number;
+  scheduledMaintenances: number;
+  unscheduledMaintenances: number;
+  avgMaintenanceCostPerVehicle: number;
+  byType: MaintenanceTypeBreakdown[];
+  byVehicle: VehicleMaintenance[];
+  recentEvents: MaintenanceEvent[];
+  upcoming: UpcomingMaintenance[];
+}
+
+export interface MaintenanceTypeBreakdown {
+  type: string;
+  count: number;
+  totalCost: number;
+  percentage: number;
+}
+
+export interface VehicleMaintenance {
+  vehicleId: number;
+  vehicleName: string;
+  maintenanceCount: number;
+  totalCost: number;
+  lastMaintenanceDate?: string;
+}
+
+export interface MaintenanceEvent {
+  id: number;
+  vehicleId: number;
+  vehicleName: string;
+  type: string;
+  date: string;
+  cost: number;
+  description: string;
+}
+
+export interface UpcomingMaintenance {
+  vehicleId: number;
+  vehicleName: string;
+  maintenanceType: string;
+  dueDate: string;
+  daysUntilDue: number;
+}
+
+export interface DriverPerformance {
+  totalDrivers: number;
+  activeDrivers: number;
+  averagePerformanceScore: number;
+  driverMetrics: DriverMetrics[];
+  topPerformers: DriverRanking[];
+  needsImprovement: DriverRanking[];
+  eventsSummary: DrivingEventSummary[];
+  statistics: StatisticalMetrics;
+}
+
+export interface DriverMetrics {
+  driverId: number;
+  driverName: string;
+  totalDistanceKm: number;
+  totalTrips: number;
+  avgSpeedKph: number;
+  harshBrakingEvents: number;
+  harshAccelerationEvents: number;
+  speedingEvents: number;
+  fuelEfficiency: number;
+  performanceScore: number;
+  rating: string;
+}
+
+export interface DriverRanking {
+  rank: number;
+  driverId: number;
+  driverName: string;
+  score: number;
+  trend: string;
+}
+
+export interface DrivingEventSummary {
+  eventType: string;
+  totalCount: number;
+  uniqueDrivers: number;
+  avgPerDriver: number;
+}
+
+export interface OperationalEfficiency {
+  overallEfficiencyScore: number;
+  fleetAvailabilityRate: number;
+  onTimeDeliveryRate: number;
+  idleTimePercentage: number;
+  averageRouteEfficiency: number;
+  dailyTrend: DailyEfficiency[];
+  metrics: EfficiencyMetric[];
+}
+
+export interface DailyEfficiency {
+  date: string;
+  efficiencyScore: number;
+  availabilityRate: number;
+  idleTimePercent: number;
+}
+
+export interface EfficiencyMetric {
+  name: string;
+  value: number;
+  target: number;
+  variance: number;
+  status: string;
+}
+
+export interface CostAnalysis {
+  totalOperationalCost: number;
+  fuelCost: number;
+  maintenanceCost: number;
+  insuranceCost: number;
+  otherCosts: number;
+  costPerKm: number;
+  costPerVehicle: number;
+  byCategory: CostBreakdown[];
+  dailyTrend: DailyCost[];
+  byVehicle: VehicleCost[];
+}
+
+export interface CostBreakdown {
+  category: string;
+  amount: number;
+  percentage: number;
+}
+
+export interface DailyCost {
+  date: string;
+  totalCost: number;
+  fuelCost: number;
+  maintenanceCost: number;
+}
+
+export interface VehicleCost {
+  vehicleId: number;
+  vehicleName: string;
+  totalCost: number;
+  fuelCost: number;
+  maintenanceCost: number;
+  costPerKm: number;
+}
+
+export interface FleetPeriodComparison {
+  comparisonPeriod: string;
+  distance: ComparisonMetric;
+  fuelConsumption: ComparisonMetric;
+  cost: ComparisonMetric;
+  utilization: ComparisonMetric;
+  efficiency: ComparisonMetric;
+  trips: ComparisonMetric;
+}
+
+export interface ComparisonMetric {
+  metricName: string;
+  currentValue: number;
+  previousValue: number;
+  change: number;
+  changePercent: number;
+  trend: string;
+  isPositiveTrend: boolean;
+}
+
+export interface FleetAlert {
+  id: string;
+  type: string;
+  severity: string;
+  title: string;
+  description: string;
+  detectedAt: string;
+  vehicleId?: number;
+  vehicleName?: string;
+  recommendedAction: string;
+}
+
+export interface Kpi {
+  name: string;
+  category: string;
+  value: number;
+  target: number;
+  variance: number;
+  variancePercent: number;
+  unit: string;
+  status: string;
+  trend: string;
+}
+
+export interface StatisticalMetrics {
+  mean: number;
+  median: number;
+  standardDeviation: number;
+  variance: number;
+  min: number;
+  max: number;
+  range: number;
+  percentile25: number;
+  percentile75: number;
+  interquartileRange: number;
+}
+
+export interface ChartDataCollection {
+  utilizationByVehicleType: ChartData;
+  maintenanceCostByType: ChartData;
+  distanceByDepartment: ChartData;
+  fuelConsumptionTrend: MultiSeriesChartData;
+  driverPerformanceTrend: MultiSeriesChartData;
+  efficiencyTrend: MultiSeriesChartData;
+  dailyDistanceTrend: MultiSeriesChartData;
+  fleetComposition: ChartData;
+  costDistribution: ChartData;
+  maintenanceTypeBreakdown: ChartData;
+  vehicleStatusDistribution: ChartData;
+  departmentComparison: ChartData;
+  vehiclePerformanceRanking: ChartData;
+  driverRanking: ChartData;
+}
+
+export interface ChartData {
+  title: string;
+  type: string;
+  labels: string[];
+  values: number[];
+  unit?: string;
+  colors?: string[];
+}
+
+export interface MultiSeriesChartData {
+  title: string;
+  type: string;
+  labels: string[];
+  series: ChartSeries[];
+  xAxisLabel?: string;
+  yAxisLabel?: string;
+}
+
+export interface ChartSeries {
+  name: string;
+  data: number[];
+  color?: string;
+}
+
+// ==================== NEW DASHBOARD API INTERFACES ====================
+
+export interface DashboardKpis {
+  generatedAt: string;
+  period: string;
+  fleet: FleetKpis;
+  operations: OperationalKpis;
+  financial: FinancialKpis;
+  performance: PerformanceKpis;
+  trends: TrendIndicators;
+}
+
+export interface FleetKpis {
+  totalVehicles: number;
+  activeVehicles: number;
+  inactiveVehicles: number;
+  inMaintenance: number;
+  availabilityRate: number;
+  utilizationRate: number;
+}
+
+export interface OperationalKpis {
+  totalDistanceKm: number;
+  totalTrips: number;
+  totalDrivingHours: number;
+  avgDailyDistanceKm: number;
+  avgTripsPerVehicle: number;
+  activeDrivers: number;
+}
+
+export interface FinancialKpis {
+  totalOperationalCost: number;
+  fuelCost: number;
+  maintenanceCost: number;
+  costPerKm: number;
+  costPerVehicle: number;
+  fuelCostPerKm: number;
+}
+
+export interface PerformanceKpis {
+  fuelEfficiencyKmPerLiter: number;
+  avgConsumptionPer100Km: number;
+  driverPerformanceScore: number;
+  safetyIncidents: number;
+  onTimeDeliveryRate: number;
+  idleTimePercentage: number;
+}
+
+export interface TrendIndicators {
+  distance: Trend;
+  fuelConsumption: Trend;
+  cost: Trend;
+  utilization: Trend;
+  efficiency: Trend;
+}
+
+export interface Trend {
+  currentValue: number;
+  previousValue: number;
+  changePercent: number;
+  direction: 'up' | 'down' | 'stable';
+  isPositive: boolean;
+}
+
+export interface DashboardCharts {
+  generatedAt: string;
+  period: string;
+  distanceByVehicle: BarChartData;
+  fuelDistribution: PieChartData;
+  maintenanceTrend: AreaChartData;
+  dailyDistanceTrend: LineChartData;
+  utilizationTrend: LineChartData;
+  costBreakdown: PieChartData;
+  vehicleStatusChart: BarChartData;
+  topVehicles: BarChartData;
+}
+
+export interface BarChartData {
+  title: string;
+  xAxisLabel: string;
+  yAxisLabel: string;
+  unit: string;
+  data: BarChartItem[];
+}
+
+export interface BarChartItem {
+  label: string;
+  value: number;
+  color: string;
+  id?: number;
+}
+
+export interface PieChartData {
+  title: string;
+  unit: string;
+  total: number;
+  slices: PieChartSlice[];
+}
+
+export interface PieChartSlice {
+  label: string;
+  value: number;
+  percentage: number;
+  color: string;
+  id?: number;
+}
+
+export interface LineChartData {
+  title: string;
+  xAxisLabel: string;
+  yAxisLabel: string;
+  labels: string[];
+  series: LineChartSeriesData[];
+}
+
+export interface LineChartSeriesData {
+  name: string;
+  color: string;
+  values: number[];
+  fill: boolean;
+}
+
+export interface AreaChartData {
+  title: string;
+  xAxisLabel: string;
+  yAxisLabel: string;
+  unit: string;
+  labels: string[];
+  series: AreaChartSeriesData[];
+}
+
+export interface AreaChartSeriesData {
+  name: string;
+  color: string;
+  backgroundColor: string;
+  values: number[];
+  vehicleId?: number;
+}
+
+export interface FleetStatistics {
+  generatedAt: string;
+  period: string;
+  groupedBy: string;
+  summary: FleetSummary;
+  vehicleStats: VehicleStatistics[];
+  pagination: Pagination;
+  analysis: StatisticalAnalysis;
+}
+
+export interface FleetSummary {
+  totalRecords: number;
+  totalDistanceKm: number;
+  totalFuelLiters: number;
+  totalCost: number;
+  totalTrips: number;
+  totalHours: number;
+  avgUtilizationRate: number;
+  avgEfficiency: number;
+}
+
+export interface VehicleStatistics {
+  vehicleId: number;
+  vehicleName: string;
+  plate?: string;
+  vehicleType?: string;
+  department?: string;
+  driverName?: string;
+  totalDistanceKm: number;
+  avgDailyDistanceKm: number;
+  maxDailyDistanceKm: number;
+  utilizationRate: number;
+  operatingDays: number;
+  idleDays: number;
+  totalDrivingHours: number;
+  totalFuelLiters: number;
+  avgConsumptionPer100Km: number;
+  fuelEfficiencyKmPerLiter: number;
+  fuelVariancePercent: number;
+  totalCost: number;
+  fuelCost: number;
+  maintenanceCost: number;
+  costPerKm: number;
+  costVariancePercent: number;
+  totalTrips: number;
+  avgSpeedKph: number;
+  maxSpeedKph: number;
+  safetyIncidents: number;
+  distanceRank: number;
+  efficiencyRank: number;
+  costRank: number;
+}
+
+export interface Pagination {
+  currentPage: number;
+  pageSize: number;
+  totalPages: number;
+  totalRecords: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface StatisticalAnalysis {
+  distanceMean: number;
+  distanceMedian: number;
+  distanceStdDev: number;
+  distanceMin: number;
+  distanceMax: number;
+  fuelMean: number;
+  fuelMedian: number;
+  fuelStdDev: number;
+  costMean: number;
+  costMedian: number;
+  costStdDev: number;
+  highDistanceOutliers: number[];
+  highFuelOutliers: number[];
+  highCostOutliers: number[];
 }

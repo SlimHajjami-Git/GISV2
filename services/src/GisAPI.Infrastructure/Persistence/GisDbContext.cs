@@ -19,18 +19,17 @@ public class GisDbContext : DbContext, IGisDbContext
     }
 
     // Core
-    public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<SubscriptionType> SubscriptionTypes => Set<SubscriptionType>();
-    public DbSet<Campaign> Campaigns => Set<Campaign>();
-    public DbSet<Company> Companies => Set<Company>();
+    public DbSet<Societe> Societes => Set<Societe>();
+    public DbSet<Role> Roles => Set<Role>();
     public DbSet<User> Users => Set<User>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
-    // Vehicles & Employees
+    // Vehicles
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<VehicleDocument> VehicleDocuments => Set<VehicleDocument>();
-    public DbSet<Employee> Employees => Set<Employee>();
+    public DbSet<VehicleAssignment> VehicleAssignments => Set<VehicleAssignment>();
     public DbSet<DriverAssignment> DriverAssignments => Set<DriverAssignment>();
     public DbSet<DriverScore> DriverScores => Set<DriverScore>();
     public DbSet<UserVehicle> UserVehicles => Set<UserVehicle>();
@@ -88,7 +87,6 @@ public class GisDbContext : DbContext, IGisDbContext
         if (_tenantService?.CompanyId != null)
         {
             modelBuilder.Entity<Vehicle>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
-            modelBuilder.Entity<Employee>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
             modelBuilder.Entity<User>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
             modelBuilder.Entity<GpsDevice>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
             modelBuilder.Entity<Geofence>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
@@ -137,42 +135,101 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<AuditLog>().ToTable("audit_logs");
         modelBuilder.Entity<VehicleStop>().ToTable("vehicle_stops");
         modelBuilder.Entity<FuelRecord>().ToTable("fuel_records");
+        modelBuilder.Entity<VehicleAssignment>().ToTable("vehicle_user_assignments");
         modelBuilder.Entity<SubscriptionType>().ToTable("subscription_types");
-        modelBuilder.Entity<Campaign>().ToTable("campaigns");
+        modelBuilder.Entity<Societe>().ToTable("societes");
+        modelBuilder.Entity<Role>().ToTable("roles");
 
-        // SubscriptionType configuration
-        modelBuilder.Entity<SubscriptionType>().Property(s => s.MonthlyPrice).HasPrecision(10, 2);
-        modelBuilder.Entity<SubscriptionType>().Property(s => s.QuarterlyPrice).HasPrecision(10, 2);
-        modelBuilder.Entity<SubscriptionType>().Property(s => s.YearlyPrice).HasPrecision(10, 2);
+        // SubscriptionType configuration - all column mappings for PostgreSQL snake_case
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.Id).HasColumnName("id");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.Name).HasColumnName("name");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.Code).HasColumnName("code");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.Description).HasColumnName("description");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.TargetCompanyType).HasColumnName("target_company_type");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.MonthlyPrice).HasColumnName("monthly_price").HasPrecision(10, 2);
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.QuarterlyPrice).HasColumnName("quarterly_price").HasPrecision(10, 2);
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.YearlyPrice).HasColumnName("yearly_price").HasPrecision(10, 2);
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.MonthlyDurationDays).HasColumnName("monthly_duration_days");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.QuarterlyDurationDays).HasColumnName("quarterly_duration_days");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.YearlyDurationDays).HasColumnName("yearly_duration_days");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.MaxVehicles).HasColumnName("max_vehicles");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.MaxUsers).HasColumnName("max_users");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.MaxGpsDevices).HasColumnName("max_gps_devices");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.MaxGeofences).HasColumnName("max_geofences");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.GpsTracking).HasColumnName("gps_tracking");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.GpsInstallation).HasColumnName("gps_installation");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ApiAccess).HasColumnName("api_access");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.AdvancedReports).HasColumnName("advanced_reports");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.RealTimeAlerts).HasColumnName("real_time_alerts");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.HistoryPlayback).HasColumnName("history_playback");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.FuelAnalysis).HasColumnName("fuel_analysis");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.DrivingBehavior).HasColumnName("driving_behavior");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.HistoryRetentionDays).HasColumnName("history_retention_days");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.SortOrder).HasColumnName("sort_order");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.IsActive).HasColumnName("is_active");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.AccessRights).HasColumnType("jsonb").HasColumnName("access_rights");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.CreatedAt).HasColumnName("created_at");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.UpdatedAt).HasColumnName("updated_at");
         modelBuilder.Entity<SubscriptionType>().HasIndex(s => s.Code).IsUnique();
+        
+        // VehicleAssignment configuration
+        modelBuilder.Entity<VehicleAssignment>().Property(a => a.VehicleId).HasColumnName("vehicle_id");
+        modelBuilder.Entity<VehicleAssignment>().Property(a => a.UserId).HasColumnName("user_id");
+        modelBuilder.Entity<VehicleAssignment>().Property(a => a.AssignedAt).HasColumnName("assigned_at");
+        modelBuilder.Entity<VehicleAssignment>().Property(a => a.UnassignedAt).HasColumnName("unassigned_at");
+        modelBuilder.Entity<VehicleAssignment>().Property(a => a.IsActive).HasColumnName("is_active");
+        modelBuilder.Entity<VehicleAssignment>().Property(a => a.AssignedBy).HasColumnName("assigned_by");
+        modelBuilder.Entity<VehicleAssignment>().HasOne(a => a.Vehicle).WithMany().HasForeignKey(a => a.VehicleId);
+        modelBuilder.Entity<VehicleAssignment>().HasOne(a => a.User).WithMany().HasForeignKey(a => a.UserId);
 
-        // Campaign configuration
-        modelBuilder.Entity<Campaign>().Property(c => c.DiscountPercentage).HasPrecision(5, 2);
+        // Role configuration
+        modelBuilder.Entity<Role>().Property(r => r.Id).HasColumnName("id");
+        modelBuilder.Entity<Role>().Property(r => r.Name).HasColumnName("name");
+        modelBuilder.Entity<Role>().Property(r => r.Description).HasColumnName("description");
+        modelBuilder.Entity<Role>().Property(r => r.RoleType).HasColumnName("role_type");
+        modelBuilder.Entity<Role>().Property(r => r.SocieteId).HasColumnName("societe_id");
+        modelBuilder.Entity<Role>().Property(r => r.IsSystem).HasColumnName("is_system");
+        modelBuilder.Entity<Role>().Property(r => r.IsDefault).HasColumnName("is_default");
+        modelBuilder.Entity<Role>().Property(r => r.CreatedAt).HasColumnName("created_at");
+        modelBuilder.Entity<Role>().Property(r => r.UpdatedAt).HasColumnName("updated_at");
+        modelBuilder.Entity<Role>().Property(r => r.Permissions).HasColumnType("jsonb").HasColumnName("permissions");
+        modelBuilder.Entity<Role>().HasOne(r => r.Societe).WithMany(s => s.Roles).HasForeignKey(r => r.SocieteId);
 
-        // Company column mappings (snake_case)
-        modelBuilder.Entity<Company>().Property(c => c.SubscriptionStartedAt).HasColumnName("subscription_started_at");
-        modelBuilder.Entity<Company>().Property(c => c.SubscriptionExpiresAt).HasColumnName("subscription_expires_at");
-        modelBuilder.Entity<Company>().Property(c => c.BillingCycle).HasColumnName("billing_cycle");
-        modelBuilder.Entity<Company>().Property(c => c.SubscriptionStatus).HasColumnName("subscription_status");
-        modelBuilder.Entity<Company>().Property(c => c.LastPaymentAt).HasColumnName("last_payment_at");
-        modelBuilder.Entity<Company>().Property(c => c.NextPaymentAmount).HasColumnName("next_payment_amount");
-        modelBuilder.Entity<Company>().Property(c => c.CampaignId).HasColumnName("campaign_id");
-        modelBuilder.Entity<Company>().Property(c => c.IsActive).HasColumnName("is_active");
-        modelBuilder.Entity<Company>().Property(c => c.LogoUrl).HasColumnName("logo_url");
-        modelBuilder.Entity<Company>().Property(c => c.TaxId).HasColumnName("tax_id");
-        modelBuilder.Entity<Company>().Property(c => c.RC).HasColumnName("rc");
-        modelBuilder.Entity<Company>().Property(c => c.IF).HasColumnName("if");
-        modelBuilder.Entity<Company>().Property(c => c.SubscriptionId).HasColumnName("subscription_id");
-        modelBuilder.Entity<Company>().Property(c => c.CreatedAt).HasColumnName("created_at");
-        modelBuilder.Entity<Company>().Property(c => c.UpdatedAt).HasColumnName("updated_at");
+        // Societe column mappings (match actual DB schema)
+        modelBuilder.Entity<Societe>().Property(c => c.Id).HasColumnName("id");
+        modelBuilder.Entity<Societe>().Property(c => c.Name).HasColumnName("name");
+        modelBuilder.Entity<Societe>().Property(c => c.Type).HasColumnName("type");
+        modelBuilder.Entity<Societe>().Property(c => c.Description).HasColumnName("description");
+        modelBuilder.Entity<Societe>().Property(c => c.Address).HasColumnName("address");
+        modelBuilder.Entity<Societe>().Property(c => c.City).HasColumnName("city");
+        modelBuilder.Entity<Societe>().Property(c => c.Country).HasColumnName("country");
+        modelBuilder.Entity<Societe>().Property(c => c.Phone).HasColumnName("phone");
+        modelBuilder.Entity<Societe>().Property(c => c.Email).HasColumnName("email");
+        modelBuilder.Entity<Societe>().Property(c => c.SubscriptionStartedAt).HasColumnName("subscription_started_at");
+        modelBuilder.Entity<Societe>().Property(c => c.SubscriptionExpiresAt).HasColumnName("SubscriptionExpiresAt");
+        modelBuilder.Entity<Societe>().Property(c => c.BillingCycle).HasColumnName("billing_cycle");
+        modelBuilder.Entity<Societe>().Property(c => c.SubscriptionStatus).HasColumnName("subscription_status");
+        modelBuilder.Entity<Societe>().Property(c => c.LastPaymentAt).HasColumnName("last_payment_at");
+        modelBuilder.Entity<Societe>().Property(c => c.NextPaymentAmount).HasColumnName("next_payment_amount");
+        modelBuilder.Entity<Societe>().Property(c => c.SubscriptionTypeId).HasColumnName("subscription_type_id");
+        modelBuilder.Entity<Societe>().Property(c => c.IsActive).HasColumnName("IsActive");
+        modelBuilder.Entity<Societe>().Property(c => c.LogoUrl).HasColumnName("LogoUrl");
+        modelBuilder.Entity<Societe>().Property(c => c.TaxId).HasColumnName("TaxId");
+        modelBuilder.Entity<Societe>().Property(c => c.RC).HasColumnName("RC");
+        modelBuilder.Entity<Societe>().Property(c => c.IF).HasColumnName("IF");
+        modelBuilder.Entity<Societe>().Property(c => c.CreatedAt).HasColumnName("created_at");
+        modelBuilder.Entity<Societe>().Property(c => c.UpdatedAt).HasColumnName("updated_at");
+        modelBuilder.Entity<Societe>().OwnsOne(c => c.Settings, b => b.ToJson("settings"));
 
-        // Subscription column mappings (snake_case)
-        modelBuilder.Entity<Subscription>().Property(s => s.BillingCycle).HasColumnName("billing_cycle");
-        modelBuilder.Entity<Subscription>().Property(s => s.AutoRenew).HasColumnName("auto_renew");
-        modelBuilder.Entity<Subscription>().Property(s => s.RenewalReminderDays).HasColumnName("renewal_reminder_days");
-        modelBuilder.Entity<Subscription>().Property(s => s.LastRenewalNotificationAt).HasColumnName("last_renewal_notification_at");
-        modelBuilder.Entity<Subscription>().Property(s => s.SubscriptionTypeId).HasColumnName("subscription_type_id");
-        modelBuilder.Entity<Subscription>().Property(s => s.UpdatedAt).HasColumnName("updated_at");
+        // User column mappings for new fields
+        modelBuilder.Entity<User>().Property(u => u.UserType).HasColumnName("user_type");
+        modelBuilder.Entity<User>().Property(u => u.RoleId).HasColumnName("role_id");
+        modelBuilder.Entity<User>().Property(u => u.IsCompanyAdmin).HasColumnName("is_company_admin");
+        modelBuilder.Entity<User>().Property(u => u.HireDate).HasColumnName("hire_date");
+        modelBuilder.Entity<User>().Property(u => u.LicenseNumber).HasColumnName("license_number");
+        modelBuilder.Entity<User>().Property(u => u.LicenseExpiry).HasColumnName("license_expiry");
+        modelBuilder.Entity<User>().HasOne(u => u.Societe).WithMany(s => s.Users).HasForeignKey(u => u.CompanyId);
+        modelBuilder.Entity<User>().HasOne(u => u.Role).WithMany(r => r.Users).HasForeignKey(u => u.RoleId);
 
         // Configure unique indexes
         modelBuilder.Entity<DailyStatistics>()

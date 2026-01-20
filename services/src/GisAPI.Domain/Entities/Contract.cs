@@ -37,7 +37,7 @@ public class Reservation : TenantEntity
     public int? RequestedByUserId { get; set; }
     public User? RequestedByUser { get; set; }
     public int? AssignedDriverId { get; set; }
-    public Employee? AssignedDriver { get; set; }
+    public User? AssignedDriver { get; set; }
     public string? Purpose { get; set; }
     public string? Destination { get; set; }
     public DateTime StartDateTime { get; set; }

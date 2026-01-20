@@ -9,16 +9,18 @@ import { AdminFeatureControlComponent } from './pages/admin-feature-control.comp
 import { AdminEstimatesComponent } from './pages/admin-estimates.component';
 import { AdminActivityComponent } from './pages/admin-activity.component';
 import { AdminSettingsComponent } from './pages/admin-settings.component';
-import { AdminCampaignsComponent } from './pages/admin-campaigns.component';
 import { AdminSubscriptionsComponent } from './pages/admin-subscriptions.component';
+import { AdminRolesComponent } from './pages/admin-roles.component';
+import { AdminCompanyDetailsComponent } from './pages/admin-company-details.component';
 
 export const adminRoutes: Routes = [
   { path: '', redirectTo: 'login', pathMatch: 'full' },
   { path: 'login', component: AdminLoginComponent },
   { path: 'dashboard', component: AdminDashboardComponent },
   { path: 'clients', component: AdminClientsComponent },
+  { path: 'clients/:id', component: AdminCompanyDetailsComponent },
   { path: 'subscriptions', component: AdminSubscriptionsComponent },
-  { path: 'campaigns', component: AdminCampaignsComponent },
+  { path: 'roles', component: AdminRolesComponent },
   { path: 'users', component: AdminUsersComponent },
   { path: 'vehicles', component: AdminVehiclesComponent },
   { path: 'health', component: AdminHealthComponent },

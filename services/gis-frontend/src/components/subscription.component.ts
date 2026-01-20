@@ -17,7 +17,7 @@ import { Subscription, Company } from '../models/types';
               <rect width="40" height="40" rx="8" fill="#2563eb"/>
               <path d="M12 20L18 26L28 14" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <span>FleetTrack</span>
+            <span>Calypso</span>
           </div>
         </div>
         <nav class="sidebar-nav">

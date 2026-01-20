@@ -37,7 +37,7 @@ public class GeofenceConfiguration : IEntityTypeConfiguration<Geofence>
 
         builder.HasIndex(e => e.CompanyId);
 
-        builder.HasOne(e => e.Company)
+        builder.HasOne(e => e.Societe)
             .WithMany(c => c.Geofences)
             .HasForeignKey(e => e.CompanyId);
 
@@ -117,7 +117,7 @@ public class GeofenceGroupConfiguration : IEntityTypeConfiguration<GeofenceGroup
 
         builder.HasIndex(e => e.CompanyId);
 
-        builder.HasOne(e => e.Company)
+        builder.HasOne(e => e.Societe)
             .WithMany()
             .HasForeignKey(e => e.CompanyId);
     }

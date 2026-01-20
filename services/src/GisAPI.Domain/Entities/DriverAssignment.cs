@@ -7,7 +7,7 @@ public class DriverAssignment : TenantEntity
     public int VehicleId { get; set; }
     public Vehicle? Vehicle { get; set; }
     public int DriverId { get; set; }
-    public Employee? Driver { get; set; }
+    public User? Driver { get; set; }
     public int? AssignedByUserId { get; set; }
     public User? AssignedByUser { get; set; }
     public DateTime StartDate { get; set; }
@@ -22,7 +22,7 @@ public class DriverAssignment : TenantEntity
 public class DriverScore : TenantEntity
 {
     public int DriverId { get; set; }
-    public Employee? Driver { get; set; }
+    public User? Driver { get; set; }
     public DateOnly Date { get; set; }
     public int OverallScore { get; set; }
     public int SpeedingScore { get; set; }

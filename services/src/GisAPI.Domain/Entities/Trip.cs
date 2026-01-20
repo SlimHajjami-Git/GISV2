@@ -8,7 +8,7 @@ public class Trip : TenantEntity
     public int VehicleId { get; set; }
     public Vehicle? Vehicle { get; set; }
     public int? DriverId { get; set; }
-    public Employee? Driver { get; set; }
+    public User? Driver { get; set; }
     
     public DateTime StartTime { get; set; }
     public double StartLatitude { get; set; }

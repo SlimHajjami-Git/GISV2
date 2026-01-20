@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Services;
 using GisAPI.Domain.Interfaces;
 using GisAPI.Infrastructure.Messaging;
 using GisAPI.Infrastructure.MultiTenancy;
@@ -19,11 +20,16 @@ public static class DependencyInjection
         // Multi-tenancy - scoped per request
         services.AddScoped<ICurrentTenantService, CurrentTenantService>();
 
-        // Database
+        // Database - Configure Npgsql data source with dynamic JSON support
+        var connectionString = configuration.GetConnectionString("DefaultConnection");
+        var dataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
+        dataSourceBuilder.EnableDynamicJson(); // Required for Dictionary<string, object> with jsonb
+        var dataSource = dataSourceBuilder.Build();
+
         services.AddDbContext<GisDbContext>((sp, options) =>
         {
             options.UseNpgsql(
-                configuration.GetConnectionString("DefaultConnection"),
+                dataSource,
                 npgsqlOptions =>
                 {
                     npgsqlOptions.MigrationsAssembly(typeof(GisDbContext).Assembly.FullName);
@@ -39,6 +45,7 @@ public static class DependencyInjection
         // Services
         services.AddScoped<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IJwtService, JwtService>();
+        services.AddScoped<IPermissionService, PermissionService>();
         services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
 
         // RabbitMQ Messaging

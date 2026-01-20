@@ -8,13 +8,29 @@ public class User : TenantEntity
     public string Email { get; set; } = string.Empty;
     public string? Phone { get; set; }
     public string PasswordHash { get; set; } = string.Empty;
-    public string[] Roles { get; set; } = [];
+    public string[] Roles { get; set; } = []; // Legacy - kept for backward compatibility
     public string[] Permissions { get; set; } = [];
     public int[] AssignedVehicleIds { get; set; } = [];
     public string Status { get; set; } = "active";
     public DateTime? LastLoginAt { get; set; }
+    
+    // User type and role (Calypso)
+    public string UserType { get; set; } = "user"; // admin, company_admin, employee
+    public int? RoleId { get; set; }
+    public Role? Role { get; set; }
+    public bool IsCompanyAdmin { get; set; } = false;
+    
+    // Personal information
+    public DateTime? DateOfBirth { get; set; }
+    public string? CIN { get; set; } // National ID number
+    
+    // Employee fields (merged from employees table)
+    public DateTime? HireDate { get; set; }
+    public string? LicenseNumber { get; set; }
+    public DateTime? LicenseExpiry { get; set; }
 
-    public Company? Company { get; set; }
+    // Navigation
+    public Societe? Societe { get; set; }
     
     public int? UserSettingsId { get; set; }
     public UserSettings? Settings { get; set; }

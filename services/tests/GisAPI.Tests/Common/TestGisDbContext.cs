@@ -18,13 +18,13 @@ public class TestGisDbContext : DbContext, IGisDbContext
         _tenantService = tenantService;
     }
 
-    public DbSet<Subscription> Subscriptions => Set<Subscription>();
-    public DbSet<Company> Companies => Set<Company>();
+    public DbSet<SubscriptionType> SubscriptionTypes => Set<SubscriptionType>();
+    public DbSet<Societe> Societes => Set<Societe>();
+    public DbSet<Role> Roles => Set<Role>();
     public DbSet<User> Users => Set<User>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<VehicleDocument> VehicleDocuments => Set<VehicleDocument>();
-    public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<GpsDevice> GpsDevices => Set<GpsDevice>();
     public DbSet<GpsPosition> GpsPositions => Set<GpsPosition>();
     public DbSet<GpsAlert> GpsAlerts => Set<GpsAlert>();
@@ -36,16 +36,16 @@ public class TestGisDbContext : DbContext, IGisDbContext
     public DbSet<VehicleCost> VehicleCosts => Set<VehicleCost>();
     public DbSet<VehicleStop> VehicleStops => Set<VehicleStop>();
     public DbSet<FuelRecord> FuelRecords => Set<FuelRecord>();
+    public DbSet<VehicleAssignment> VehicleAssignments => Set<VehicleAssignment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
         // Minimal configuration for testing - ignore complex types
-        modelBuilder.Entity<Subscription>().Ignore(s => s.Features);
         modelBuilder.Entity<User>().Ignore(u => u.Roles).Ignore(u => u.Permissions);
         modelBuilder.Entity<Geofence>().Ignore(g => g.Coordinates);
-        modelBuilder.Entity<Company>().Ignore(c => c.Settings);
+        modelBuilder.Entity<Societe>().Ignore(c => c.Settings);
         
         // Configure owned types as ignored for InMemory
         modelBuilder.Entity<User>().Ignore(u => u.Settings);

@@ -2,8 +2,12 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using MediatR;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
+using GisAPI.Application.Features.Reports.Queries.GetDailyActivityReport;
+using GisAPI.Application.Features.Reports.Queries.GetMileageReport;
+using GisAPI.Application.Features.Reports.Queries.GetMonthlyFleetReport;
 
 namespace GisAPI.Controllers;
 
@@ -13,10 +17,15 @@ namespace GisAPI.Controllers;
 public class ReportsController : ControllerBase
 {
     private readonly GisDbContext _context;
+    private readonly IMediator _mediator;
+    
+    private const double DefaultStopSpeedThresholdKph = 3.0;
+    private const int DefaultMinStopDurationSeconds = 120;
 
-    public ReportsController(GisDbContext context)
+    public ReportsController(GisDbContext context, IMediator mediator)
     {
         _context = context;
+        _mediator = mediator;
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
@@ -235,6 +244,141 @@ public class ReportsController : ControllerBase
         if (targetDate.Add(time) <= now)
             targetDate = targetDate.AddMonths(1);
         return targetDate.Add(time);
+    }
+
+    // ==================== DAILY ACTIVITY REPORT ====================
+
+    /// <summary>
+    /// Get daily activity report for a vehicle
+    /// Tracks ignition events, stops, drives, and durations throughout the day
+    /// </summary>
+    [HttpGet("daily/{vehicleId}")]
+    public async Task<ActionResult<DailyActivityReportDto>> GetDailyReport(
+        int vehicleId,
+        [FromQuery] DateTime? date = null,
+        [FromQuery] int minStopDurationSeconds = DefaultMinStopDurationSeconds,
+        [FromQuery] double stopSpeedThresholdKph = DefaultStopSpeedThresholdKph)
+    {
+        var companyId = GetCompanyId();
+        var reportDate = date?.Date ?? DateTime.UtcNow.Date;
+
+        // Verify vehicle belongs to company
+        var vehicleExists = await _context.Vehicles
+            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
+
+        if (!vehicleExists)
+            return NotFound(new { message = "Vehicle not found" });
+
+        var result = await _mediator.Send(new GetDailyActivityReportQuery(
+            vehicleId,
+            reportDate,
+            minStopDurationSeconds,
+            stopSpeedThresholdKph));
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Get daily reports for multiple vehicles
+    /// </summary>
+    [HttpGet("daily")]
+    public async Task<ActionResult<List<DailyActivityReportDto>>> GetDailyReports(
+        [FromQuery] DateTime? date = null,
+        [FromQuery] int[]? vehicleIds = null,
+        [FromQuery] int minStopDurationSeconds = DefaultMinStopDurationSeconds,
+        [FromQuery] double stopSpeedThresholdKph = DefaultStopSpeedThresholdKph)
+    {
+        var reportDate = date?.Date ?? DateTime.UtcNow.Date;
+
+        var result = await _mediator.Send(new GetDailyActivityReportsQuery(
+            reportDate,
+            vehicleIds,
+            minStopDurationSeconds,
+            stopSpeedThresholdKph));
+
+        return Ok(result);
+    }
+
+    // ==================== MILEAGE REPORT ====================
+
+    /// <summary>
+    /// Get mileage report for a vehicle
+    /// Tracks distance traveled, odometer readings, and provides daily/weekly/monthly breakdowns
+    /// </summary>
+    [HttpGet("mileage/{vehicleId}")]
+    public async Task<ActionResult<MileageReportDto>> GetMileageReport(
+        int vehicleId,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null)
+    {
+        var companyId = GetCompanyId();
+
+        // Verify vehicle belongs to company
+        var vehicleExists = await _context.Vehicles
+            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
+
+        if (!vehicleExists)
+            return NotFound(new { message = "Vehicle not found" });
+
+        var start = startDate?.Date ?? DateTime.UtcNow.Date.AddDays(-30);
+        var end = endDate?.Date ?? DateTime.UtcNow.Date;
+
+        var result = await _mediator.Send(new GetMileageReportQuery(vehicleId, start, end));
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Get mileage reports for multiple vehicles
+    /// </summary>
+    [HttpGet("mileage")]
+    public async Task<ActionResult<List<MileageReportDto>>> GetMileageReports(
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] int[]? vehicleIds = null)
+    {
+        var start = startDate?.Date ?? DateTime.UtcNow.Date.AddDays(-30);
+        var end = endDate?.Date ?? DateTime.UtcNow.Date;
+
+        var result = await _mediator.Send(new GetMileageReportsQuery(start, end, vehicleIds));
+
+        return Ok(result);
+    }
+
+    // ==================== MONTHLY FLEET REPORT ====================
+
+    /// <summary>
+    /// Get comprehensive monthly fleet report with analytics, charts, and KPIs
+    /// Includes: fleet overview, utilization, fuel analytics, maintenance, driver performance,
+    /// operational efficiency, cost analysis, MoM/YoY comparisons, alerts, and chart data
+    /// </summary>
+    [HttpGet("monthly")]
+    public async Task<ActionResult<MonthlyFleetReportDto>> GetMonthlyFleetReport(
+        [FromQuery] int? year = null,
+        [FromQuery] int? month = null,
+        [FromQuery] int? vehicleTypeFilter = null,
+        [FromQuery] int? departmentFilter = null,
+        [FromQuery] int[]? vehicleIds = null)
+    {
+        var reportYear = year ?? DateTime.UtcNow.Year;
+        var reportMonth = month ?? DateTime.UtcNow.Month;
+
+        // If current month, use previous month to have complete data
+        if (year == null && month == null)
+        {
+            var lastMonth = DateTime.UtcNow.AddMonths(-1);
+            reportYear = lastMonth.Year;
+            reportMonth = lastMonth.Month;
+        }
+
+        var result = await _mediator.Send(new GetMonthlyFleetReportQuery(
+            reportYear,
+            reportMonth,
+            vehicleTypeFilter,
+            departmentFilter,
+            vehicleIds));
+
+        return Ok(result);
     }
 }
 

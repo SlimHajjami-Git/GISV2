@@ -12,7 +12,7 @@ public static class SeedBelive
     public static async Task ExecuteAsync(GisDbContext context)
     {
         // Check if Belive already exists
-        var existingCompany = await context.Companies
+        var existingCompany = await context.Societes
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(c => c.Name == "Belive");
 
@@ -22,32 +22,31 @@ public static class SeedBelive
             return;
         }
 
-        // Create subscription
-        var subscription = await context.Subscriptions.FirstOrDefaultAsync(s => s.Name == "Plan Pro");
-        if (subscription == null)
+        // Create subscription type
+        var subscriptionType = await context.SubscriptionTypes.FirstOrDefaultAsync(s => s.Name == "Plan Pro");
+        if (subscriptionType == null)
         {
-            subscription = new Subscription
+            subscriptionType = new SubscriptionType
             {
                 Name = "Plan Pro",
-                Type = "parc_gps",
-                Price = 999.00m,
-                Features = new[] { "gps_tracking", "geofencing", "reports", "alerts", "maintenance" },
+                Code = "plan-pro",
+                TargetCompanyType = "all",
+                YearlyPrice = 999.00m,
                 GpsTracking = true,
                 GpsInstallation = true,
                 MaxVehicles = 100,
                 MaxUsers = 20,
                 MaxGpsDevices = 100,
                 MaxGeofences = 50,
-                BillingCycle = "monthly",
                 IsActive = true
             };
-            context.Subscriptions.Add(subscription);
+            context.SubscriptionTypes.Add(subscriptionType);
             await context.SaveChangesAsync();
-            Console.WriteLine($"Created subscription: {subscription.Name} (Id: {subscription.Id})");
+            Console.WriteLine($"Created subscription type: {subscriptionType.Name} (Id: {subscriptionType.Id})");
         }
 
         // Create Belive company
-        var company = new Company
+        var company = new Societe
         {
             Name = "Belive",
             Type = "transport",
@@ -56,11 +55,11 @@ public static class SeedBelive
             Country = "MA",
             Phone = "+212 522 123456",
             Email = "contact@belive.ma",
-            SubscriptionId = subscription.Id,
+            SubscriptionTypeId = subscriptionType.Id,
             IsActive = true,
             SubscriptionExpiresAt = DateTime.UtcNow.AddYears(1)
         };
-        context.Companies.Add(company);
+        context.Societes.Add(company);
         await context.SaveChangesAsync();
         Console.WriteLine($"Created company: {company.Name} (Id: {company.Id})");
 

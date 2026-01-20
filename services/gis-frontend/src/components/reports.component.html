@@ -14,8 +14,8 @@
           </select>
         </div>
 
-        <!-- Vehicle Selector -->
-        <div class="sidebar-row">
+        <!-- Vehicle Selector (hidden for monthly reports) -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly'">
           <label class="field-label">Véhicule</label>
           <select class="field-select" [(ngModel)]="selectedVehicleId">
             <option value="">Tous les véhicules</option>
@@ -25,15 +25,28 @@
           </select>
         </div>
 
-        <!-- Period Buttons -->
-        <div class="period-row">
+        <!-- Monthly Report Period Selector -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'monthly'">
+          <label class="field-label">Période du rapport</label>
+          <div class="monthly-period-row">
+            <select class="field-select" [(ngModel)]="selectedMonthlyMonth" (change)="onMonthlyPeriodChange()">
+              <option *ngFor="let m of monthlyMonths" [value]="m.value">{{ m.label }}</option>
+            </select>
+            <select class="field-select" [(ngModel)]="selectedMonthlyYear" (change)="onMonthlyPeriodChange()">
+              <option *ngFor="let y of monthlyYears" [value]="y">{{ y }}</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Period Buttons (hidden for monthly reports) -->
+        <div class="period-row" *ngIf="selectedTemplate?.type !== 'monthly'">
           <button *ngFor="let p of periods" 
             [class.active]="selectedPeriod === p.value"
             (click)="selectPeriod(p.value)">{{ p.label }}</button>
         </div>
 
-        <!-- Interval -->
-        <div class="sidebar-row">
+        <!-- Interval (hidden for monthly reports) -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly'">
           <label class="field-label">Intervalle</label>
           <div class="interval-row">
             <select class="field-select small" [(ngModel)]="intervalType">
@@ -49,8 +62,8 @@
           </div>
         </div>
 
-        <!-- Including current -->
-        <div class="sidebar-row">
+        <!-- Including current (hidden for monthly reports) -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly'">
           <label class="checkbox-row">
             <input type="checkbox" [(ngModel)]="includeCurrent">
             <span>Inclure période en cours</span>
@@ -159,7 +172,84 @@
             <h3>Générer un rapport</h3>
             <p>Sélectionnez un template et un véhicule, puis cliquez sur Exécuter</p>
           </div>
+        } @else if (selectedTemplate?.type === 'monthly' && monthlyReport) {
+          <!-- ========== MONTHLY REPORT DEDICATED SECTION ========== -->
+          <div class="monthly-report-workspace">
+            <!-- Charts Row 1: Trend -->
+            <ui-card title="📈 Tendance distance et utilisation" [showHeader]="true">
+              <div class="monthly-chart-container">
+                <canvas #chartCanvas></canvas>
+              </div>
+            </ui-card>
+
+            <!-- Charts Row 2: Bar + Pie side by side -->
+            <div class="monthly-charts-row">
+              <ui-card title="📊 Kilomètres par véhicule" [showHeader]="true">
+                <div class="monthly-chart-container">
+                  <canvas #kmBarChart></canvas>
+                </div>
+              </ui-card>
+              
+              <ui-card title="⛽ Répartition carburant" [showHeader]="true">
+                <div class="monthly-chart-container">
+                  <canvas #fuelPieChart></canvas>
+                </div>
+              </ui-card>
+            </div>
+
+            <!-- Charts Row 3: Maintenance -->
+            <ui-card title="🔧 Coûts de maintenance par période" [showHeader]="true">
+              <div class="monthly-chart-container">
+                <canvas #maintenanceAreaChart></canvas>
+              </div>
+            </ui-card>
+
+            <!-- Data Table -->
+            <ui-card title="Rapport mensuel flotte" [showHeader]="true" [noPadding]="true">
+              <div card-actions>
+                <button class="export-btn-sm" (click)="exportReport('excel')">Export Excel</button>
+              </div>
+              <div class="monthly-table-wrapper">
+                <table class="data-table monthly-table">
+                  <thead>
+                    <tr>
+                      <th>Véhicule</th>
+                      <th>Plaque</th>
+                      <th>Distance</th>
+                      <th>Utilisation</th>
+                      <th>Conso. moy.</th>
+                      <th>Var. conso.</th>
+                      <th>Coût maint.</th>
+                      <th>Var. coût</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (row of tableData; track row.vehicleId) {
+                      <tr>
+                        <td class="vehicle-cell">
+                          <span class="vehicle-color" [style.background-color]="chartColors[row.colorIndex % chartColors.length]"></span>
+                          {{ row.vehicleName }}
+                        </td>
+                        <td class="plate-cell">{{ row.plate }}</td>
+                        <td class="distance-cell">{{ row.totalDistanceFormatted }}</td>
+                        <td class="utilization-cell">{{ row.utilizationRateFormatted }}</td>
+                        <td class="consumption-cell">{{ row.fuelConsumptionFormatted }}</td>
+                        <td class="variance-cell" [class.positive]="row.consumptionVariance < 0" [class.negative]="row.consumptionVariance > 0">
+                          {{ row.consumptionVarianceFormatted }}
+                        </td>
+                        <td class="cost-cell">{{ row.maintenanceCostFormatted }}</td>
+                        <td class="variance-cell" [class.positive]="row.costVariance < 0" [class.negative]="row.costVariance > 0">
+                          {{ row.costVarianceFormatted }}
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </ui-card>
+          </div>
         } @else {
+          <!-- ========== OTHER REPORTS SECTION ========== -->
           <div class="workspace-content">
             <!-- Chart Section -->
             <div class="chart-section">
@@ -201,7 +291,7 @@
               </div>
             </div>
 
-            <!-- Table Section -->
+            <!-- Table Section for non-monthly reports -->
             <div class="table-section">
               <div class="section-toolbar">
                 <div class="toolbar-left">
@@ -244,6 +334,20 @@
                         <th>Position</th>
                         <th>Vitesse</th>
                         <th>Odomètre</th>
+                      } @else if (selectedTemplate?.type === 'daily') {
+                        <th>Horaire</th>
+                        <th>Type</th>
+                        <th>Durée</th>
+                        <th>Détails</th>
+                        <th>Lieu</th>
+                      } @else if (selectedTemplate?.type === 'mileage') {
+                        <th>Date</th>
+                        <th>Distance</th>
+                        <th>Trajets</th>
+                        <th>Temps conduite</th>
+                        <th>Vitesse moy.</th>
+                        <th>Vitesse max</th>
+                        <th>Odomètre</th>
                       } @else {
                         <th>Date/Heure</th>
                         <th>Valeur</th>
@@ -254,7 +358,7 @@
                   </thead>
                   <tbody>
                     @for (row of paginatedData; track $index) {
-                      <tr [class.highlighted]="row.isAnomaly" [class.anomaly-row]="row.isAnomaly">
+                      <tr [class.highlighted]="row.isAnomaly" [class.anomaly-row]="row.isAnomaly" [class.drive-row]="row.isDrive">
                         @if (selectedTemplate?.type === 'fuel') {
                           <td class="time-cell">{{ row.time }}</td>
                           <td class="value-cell">{{ row.fuelPercent }}</td>
@@ -263,6 +367,20 @@
                           <td class="location-cell">{{ row.location }}</td>
                           <td>{{ row.speed }}</td>
                           <td>{{ row.odometer }}</td>
+                        } @else if (selectedTemplate?.type === 'daily') {
+                          <td class="time-cell">{{ row.time }}</td>
+                          <td class="type-cell">{{ row.type }}</td>
+                          <td class="duration-cell">{{ row.duration }}</td>
+                          <td class="details-cell">{{ row.details }}</td>
+                          <td class="location-cell">{{ row.location }}</td>
+                        } @else if (selectedTemplate?.type === 'mileage') {
+                          <td class="date-cell">{{ row.date }}</td>
+                          <td class="distance-cell" [class.high-mileage]="row.distanceValue > 100">{{ row.distance }}</td>
+                          <td class="trips-cell">{{ row.tripCount }}</td>
+                          <td class="duration-cell">{{ row.drivingTime }}</td>
+                          <td class="speed-cell">{{ row.avgSpeed }}</td>
+                          <td class="speed-cell">{{ row.maxSpeed }}</td>
+                          <td class="odometer-cell">{{ row.odometer }}</td>
                         } @else {
                           <td class="time-cell">{{ row.time || row.date }}</td>
                           <td class="value-cell">{{ row.level || row.speed || row.distance }}</td>

@@ -27,6 +27,10 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
               <option value="in_use">In Use</option>
               <option value="maintenance">Maintenance</option>
             </select>
+            <select class="filter-select" [(ngModel)]="companyFilter" (change)="filterVehicles()">
+              <option value="all">All Companies</option>
+              <option *ngFor="let company of companies" [value]="company.id">{{ company.name }}</option>
+            </select>
           </div>
           <button class="add-btn" (click)="openAddModal()">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -50,6 +54,7 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
               <div class="vehicle-info">
                 <h3>{{ vehicle.name }}</h3>
                 <span class="vehicle-plate">{{ vehicle.plate || 'N/A' }}</span>
+                <span class="company-badge" *ngIf="vehicle.companyName">{{ vehicle.companyName }}</span>
               </div>
               <div class="status-badge" [class]="vehicle.status">{{ getStatusLabel(vehicle.status) }}</div>
             </div>
@@ -137,6 +142,8 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
         <app-vehicle-popup
           [isOpen]="showAddModal || showEditModal"
           [vehicle]="selectedVehicleForPopup"
+          [companies]="companiesForPopup"
+          [defaultCompanyId]="companies.length > 0 ? companies[0].id : null"
           (closed)="closeModals()"
           (saved)="onVehicleSaved($event)">
         </app-vehicle-popup>
@@ -181,7 +188,8 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
               </div>
 
               <div class="view-section">
-                <h4>Assignments</h4>
+                <h4>Company & Assignments</h4>
+                <div class="view-row"><span>Company:</span><span>{{ selectedVehicle.companyName || 'N/A' }}</span></div>
                 <div class="view-row"><span>Assigned Driver:</span><span>{{ selectedVehicle.assignedDriverName || 'None' }}</span></div>
               </div>
 
@@ -382,6 +390,17 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
       font-size: 13px;
       color: #64748b;
       font-family: monospace;
+    }
+
+    .company-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      background: rgba(59, 130, 246, 0.12);
+      color: #3b82f6;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 500;
+      margin-top: 4px;
     }
 
     .status-badge {
@@ -877,9 +896,15 @@ export class AdminVehiclesComponent implements OnInit {
       type: this.selectedVehicle.type,
       status: this.selectedVehicle.status,
       mileage: this.selectedVehicle.mileage,
+      companyId: this.selectedVehicle.companyId,
       hasGPS: this.selectedVehicle.hasGps,
       gpsDeviceId: this.selectedVehicle.gpsDeviceId
     };
+  }
+
+  // Getter to convert companies for the popup
+  get companiesForPopup(): { id: number; name: string }[] {
+    return this.companies.map(c => ({ id: c.id, name: c.name }));
   }
 
   vehicleForm = {
@@ -920,8 +945,16 @@ export class AdminVehiclesComponent implements OnInit {
       this.filterVehicles();
     });
 
-    this.adminService.getClients().subscribe(clients => {
-      this.companies = clients.filter(c => c.status === 'active');
+    this.adminService.getClients().subscribe({
+      next: (clients) => {
+        console.log('Loaded companies for vehicle assignment:', clients);
+        // Include all companies, not just active ones
+        this.companies = clients;
+        console.log('Companies available:', this.companies.length);
+      },
+      error: (err) => {
+        console.error('Error loading companies:', err);
+      }
     });
   }
 
@@ -1000,6 +1033,11 @@ export class AdminVehiclesComponent implements OnInit {
 
   // Handler for VehiclePopupComponent saved event
   onVehicleSaved(formData: any) {
+    // Use selected companyId from form, fallback to first company or 1
+    const selectedCompanyId = formData.companyId 
+      ? parseInt(formData.companyId, 10) 
+      : (this.companies.length > 0 ? this.companies[0].id : 1);
+
     const vehicleData: Partial<AdminVehicle> = {
       name: formData.name,
       type: formData.type,
@@ -1009,7 +1047,7 @@ export class AdminVehiclesComponent implements OnInit {
       year: formData.year || undefined,
       status: formData.status,
       mileage: formData.mileage || 0,
-      companyId: 1,
+      companyId: selectedCompanyId,
       hasGps: formData.hasGPS || false,
       gpsDeviceId: formData.hasGPS ? formData.gpsDeviceId : undefined,
       gpsImei: formData.hasGPS ? formData.gpsImei || undefined : undefined,

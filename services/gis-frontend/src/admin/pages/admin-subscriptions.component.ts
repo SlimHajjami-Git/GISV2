@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, SubscriptionType } from '../services/admin.service';
+import { SubscriptionFeaturesEditorComponent, SubscriptionFeatures } from '../components/subscription-features-editor.component';
 
 @Component({
   selector: 'admin-subscriptions',
   standalone: true,
-  imports: [CommonModule, FormsModule, AdminLayoutComponent],
+  imports: [CommonModule, FormsModule, AdminLayoutComponent, SubscriptionFeaturesEditorComponent],
   template: `
     <admin-layout pageTitle="Gestion des Abonnements">
       <div class="subscriptions-page">
@@ -53,8 +54,7 @@ import { AdminService, SubscriptionType } from '../services/admin.service';
             <div class="card-header">
               <div class="type-info">
                 <h3>{{ type.name }}</h3>
-                <span class="type-code">{{ type.code }}</span>
-              </div>
+                              </div>
               <div class="type-badges">
                 <span class="badge" [class]="'badge-' + type.targetCompanyType">
                   {{ getCompanyTypeLabel(type.targetCompanyType) }}
@@ -69,19 +69,9 @@ import { AdminService, SubscriptionType } from '../services/admin.service';
 
             <div class="pricing-section">
               <h4>Tarification</h4>
-              <div class="price-grid">
-                <div class="price-item">
-                  <span class="price-label">Mensuel</span>
-                  <span class="price-value">{{ type.monthlyPrice | number:'1.2-2' }} DT</span>
-                </div>
-                <div class="price-item">
-                  <span class="price-label">Trimestriel</span>
-                  <span class="price-value">{{ type.quarterlyPrice | number:'1.2-2' }} DT</span>
-                </div>
-                <div class="price-item">
-                  <span class="price-label">Annuel</span>
-                  <span class="price-value">{{ type.yearlyPrice | number:'1.2-2' }} DT</span>
-                </div>
+              <div class="price-single">
+                <span class="price-value-large">{{ type.yearlyPrice | number:'1.2-2' }} DT</span>
+                <span class="price-period">/an</span>
               </div>
             </div>
 
@@ -199,18 +189,25 @@ import { AdminService, SubscriptionType } from '../services/admin.service';
       </div>
 
       <!-- Add/Edit Modal -->
-      <div class="modal-overlay" *ngIf="showAddModal || showEditModal" (click)="closeModals()">
-        <div class="modal" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>{{ showEditModal ? 'Modifier le Type' : 'Nouveau Type d\'Abonnement' }}</h3>
-            <button class="btn-close" (click)="closeModals()">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <div class="popup-overlay" *ngIf="showAddModal || showEditModal" (click)="closeModals()">
+        <div class="popup-container subscription-popup" (click)="$event.stopPropagation()">
+          <div class="popup-header">
+            <div class="header-title">
+              <div class="header-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+                </svg>
+              </div>
+              <h2>{{ showEditModal ? 'Modifier l\'abonnement' : 'Nouvel abonnement' }}</h2>
+            </div>
+            <button class="close-btn" (click)="closeModals()" title="Fermer">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
             </button>
           </div>
 
-          <div class="modal-body">
+          <div class="popup-body">
             <div class="form-tabs">
               <button [class.active]="activeTab === 'general'" (click)="activeTab = 'general'">Général</button>
               <button [class.active]="activeTab === 'pricing'" (click)="activeTab = 'pricing'">Tarification</button>
@@ -220,86 +217,53 @@ import { AdminService, SubscriptionType } from '../services/admin.service';
 
             <!-- General Tab -->
             <div class="tab-content" *ngIf="activeTab === 'general'">
-              <div class="form-group">
-                <label>Nom *</label>
-                <input type="text" [(ngModel)]="form.name" placeholder="Ex: Standard, Premium, Enterprise..." />
-              </div>
-              <div class="form-group">
-                <label>Code *</label>
-                <input type="text" [(ngModel)]="form.code" placeholder="Ex: standard, premium..." [disabled]="showEditModal" />
-                <small>Identifiant unique (non modifiable après création)</small>
-              </div>
-              <div class="form-group">
-                <label>Description</label>
-                <textarea [(ngModel)]="form.description" rows="3" placeholder="Description du type d'abonnement..."></textarea>
-              </div>
-              <div class="form-group">
-                <label>Type de société cible</label>
-                <select [(ngModel)]="form.targetCompanyType">
-                  <option value="all">Tous les types</option>
-                  <option value="transport">Transport</option>
-                  <option value="location">Location</option>
-                  <option value="autre">Autre</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>Ordre d'affichage</label>
-                <input type="number" [(ngModel)]="form.sortOrder" min="0" />
+              <div class="form-section">
+                <div class="section-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                  </svg>
+                  <span>Informations générales</span>
+                </div>
+                <div class="form-grid">
+                  <div class="form-group full-width">
+                    <label>Nom <span class="required">*</span></label>
+                    <input type="text" [(ngModel)]="form.name" placeholder="Ex: Standard, Premium, Enterprise..." />
+                  </div>
+                  <div class="form-group full-width">
+                    <label>Description</label>
+                    <textarea [(ngModel)]="form.description" rows="3" placeholder="Description du type d'abonnement..."></textarea>
+                  </div>
+                  <div class="form-group full-width">
+                    <label>Type de société cible</label>
+                    <select [(ngModel)]="form.targetCompanyType">
+                      <option value="all">Tous les types</option>
+                      <option value="transport">Transport</option>
+                      <option value="location">Location</option>
+                      <option value="autre">Autre</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             </div>
 
             <!-- Pricing Tab -->
             <div class="tab-content" *ngIf="activeTab === 'pricing'">
-              <h4 class="section-title">Tarifs</h4>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Prix Mensuel (DT) *</label>
-                  <input type="number" [(ngModel)]="form.monthlyPrice" min="0" step="0.01" />
+              <div class="form-section">
+                <div class="section-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                  </svg>
+                  <span>Tarif Annuel</span>
                 </div>
-                <div class="form-group">
-                  <label>Durée Mensuelle (jours)</label>
-                  <input type="number" [(ngModel)]="form.monthlyDurationDays" min="1" />
-                </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Prix Trimestriel (DT)</label>
-                  <input type="number" [(ngModel)]="form.quarterlyPrice" min="0" step="0.01" />
-                  <small>Laissez vide pour -10% automatique</small>
-                </div>
-                <div class="form-group">
-                  <label>Durée Trimestrielle (jours)</label>
-                  <input type="number" [(ngModel)]="form.quarterlyDurationDays" min="1" />
-                </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Prix Annuel (DT)</label>
-                  <input type="number" [(ngModel)]="form.yearlyPrice" min="0" step="0.01" />
-                  <small>Laissez vide pour -20% automatique</small>
-                </div>
-                <div class="form-group">
-                  <label>Durée Annuelle (jours)</label>
-                  <input type="number" [(ngModel)]="form.yearlyDurationDays" min="1" />
-                </div>
-              </div>
-
-              <div class="price-preview">
-                <h4>Aperçu des tarifs</h4>
-                <div class="preview-grid">
-                  <div class="preview-item">
-                    <span class="cycle">Mensuel</span>
-                    <span class="price">{{ form.monthlyPrice || 0 | number:'1.2-2' }} DT/mois</span>
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label>Prix Annuel (DT) <span class="required">*</span></label>
+                    <input type="number" [(ngModel)]="form.yearlyPrice" min="0" step="0.01" />
                   </div>
-                  <div class="preview-item">
-                    <span class="cycle">Trimestriel</span>
-                    <span class="price">{{ (form.quarterlyPrice || form.monthlyPrice * 3 * 0.9) | number:'1.2-2' }} DT/3 mois</span>
-                    <span class="savings">-10%</span>
-                  </div>
-                  <div class="preview-item">
-                    <span class="cycle">Annuel</span>
-                    <span class="price">{{ (form.yearlyPrice || form.monthlyPrice * 12 * 0.8) | number:'1.2-2' }} DT/an</span>
-                    <span class="savings">-20%</span>
+                  <div class="form-group">
+                    <label>Durée (jours)</label>
+                    <input type="number" [(ngModel)]="form.yearlyDurationDays" min="1" />
+                    <small class="hint">Par défaut: 365 jours</small>
                   </div>
                 </div>
               </div>
@@ -307,77 +271,56 @@ import { AdminService, SubscriptionType } from '../services/admin.service';
 
             <!-- Limits Tab -->
             <div class="tab-content" *ngIf="activeTab === 'limits'">
-              <h4 class="section-title">Limites de ressources</h4>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Véhicules maximum</label>
-                  <input type="number" [(ngModel)]="form.maxVehicles" min="1" />
+              <div class="form-section">
+                <div class="section-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/>
+                  </svg>
+                  <span>Limites de ressources</span>
                 </div>
-                <div class="form-group">
-                  <label>Utilisateurs maximum</label>
-                  <input type="number" [(ngModel)]="form.maxUsers" min="1" />
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label>Véhicules maximum</label>
+                    <input type="number" [(ngModel)]="form.maxVehicles" min="1" />
+                  </div>
+                  <div class="form-group">
+                    <label>Utilisateurs maximum</label>
+                    <input type="number" [(ngModel)]="form.maxUsers" min="1" />
+                  </div>
+                  <div class="form-group">
+                    <label>Appareils GPS maximum</label>
+                    <input type="number" [(ngModel)]="form.maxGpsDevices" min="0" />
+                  </div>
+                  <div class="form-group">
+                    <label>Géofences maximum</label>
+                    <input type="number" [(ngModel)]="form.maxGeofences" min="0" />
+                  </div>
+                  <div class="form-group full-width">
+                    <label>Rétention historique (jours)</label>
+                    <input type="number" [(ngModel)]="form.historyRetentionDays" min="1" />
+                    <small class="hint">Durée de conservation des données de position GPS</small>
+                  </div>
                 </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Appareils GPS maximum</label>
-                  <input type="number" [(ngModel)]="form.maxGpsDevices" min="0" />
-                </div>
-                <div class="form-group">
-                  <label>Géofences maximum</label>
-                  <input type="number" [(ngModel)]="form.maxGeofences" min="0" />
-                </div>
-              </div>
-              <div class="form-group">
-                <label>Rétention historique (jours)</label>
-                <input type="number" [(ngModel)]="form.historyRetentionDays" min="1" />
-                <small>Durée de conservation des données de position GPS</small>
               </div>
             </div>
 
             <!-- Features Tab -->
-            <div class="tab-content" *ngIf="activeTab === 'features'">
-              <h4 class="section-title">Fonctionnalités incluses</h4>
-              <div class="features-form">
-                <label class="toggle-item">
-                  <input type="checkbox" [(ngModel)]="form.gpsTracking" />
-                  <span class="toggle-label">Suivi GPS temps réel</span>
-                </label>
-                <label class="toggle-item">
-                  <input type="checkbox" [(ngModel)]="form.gpsInstallation" />
-                  <span class="toggle-label">Installation GPS incluse</span>
-                </label>
-                <label class="toggle-item">
-                  <input type="checkbox" [(ngModel)]="form.realTimeAlerts" />
-                  <span class="toggle-label">Alertes temps réel</span>
-                </label>
-                <label class="toggle-item">
-                  <input type="checkbox" [(ngModel)]="form.historyPlayback" />
-                  <span class="toggle-label">Historique des trajets</span>
-                </label>
-                <label class="toggle-item">
-                  <input type="checkbox" [(ngModel)]="form.advancedReports" />
-                  <span class="toggle-label">Rapports avancés</span>
-                </label>
-                <label class="toggle-item">
-                  <input type="checkbox" [(ngModel)]="form.fuelAnalysis" />
-                  <span class="toggle-label">Analyse de carburant</span>
-                </label>
-                <label class="toggle-item">
-                  <input type="checkbox" [(ngModel)]="form.drivingBehavior" />
-                  <span class="toggle-label">Comportement de conduite</span>
-                </label>
-                <label class="toggle-item">
-                  <input type="checkbox" [(ngModel)]="form.apiAccess" />
-                  <span class="toggle-label">Accès API</span>
-                </label>
+            <div class="tab-content features-tab" *ngIf="activeTab === 'features'">
+              <div class="form-section">
+                <subscription-features-editor
+                  [initialFeatures]="getFormFeatures()"
+                  (featuresChange)="onFeaturesChange($event)">
+                </subscription-features-editor>
               </div>
             </div>
           </div>
 
-          <div class="modal-footer">
+          <div class="popup-footer">
             <button class="btn-secondary" (click)="closeModals()">Annuler</button>
-            <button class="btn-primary" (click)="saveType()" [disabled]="!form.name || !form.code">
+            <button class="btn-primary" (click)="saveType()" [disabled]="!form.name || !form.yearlyPrice">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              </svg>
               {{ showEditModal ? 'Mettre à jour' : 'Créer' }}
             </button>
           </div>
@@ -539,6 +482,18 @@ import { AdminService, SubscriptionType } from '../services/admin.service';
     .price-label { display: block; font-size: 11px; color: #64748b; margin-bottom: 4px; }
     .price-value { display: block; font-size: 14px; font-weight: 600; color: #1f2937; }
 
+    .price-single {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 4px;
+      padding: 16px;
+      background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+      border-radius: 8px;
+    }
+    .price-value-large { font-size: 28px; font-weight: 700; color: #16a34a; }
+    .price-period { font-size: 14px; color: #64748b; }
+
     .limits-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -610,30 +565,299 @@ import { AdminService, SubscriptionType } from '../services/admin.service';
     .empty-state h3 { margin: 0 0 8px 0; color: #64748b; }
     .empty-state p { margin: 0 0 20px 0; color: #94a3b8; }
 
-    /* Modal Styles */
+    /* Enhanced Popup Styles */
+    .popup-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .popup-container {
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      max-width: 700px;
+      width: 100%;
+      max-height: 85vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .subscription-popup {
+      max-width: 700px;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(30px) scale(0.97); opacity: 0; }
+      to { transform: translateY(0) scale(1); opacity: 1; }
+    }
+
+    .popup-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-icon {
+      width: 36px;
+      height: 36px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+
+    .popup-header h2 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: white;
+    }
+
+    .popup-header .close-btn {
+      background: rgba(255, 255, 255, 0.15);
+      border: none;
+      color: white;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .popup-header .close-btn:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    .popup-body {
+      padding: 0;
+      overflow-y: auto;
+      flex: 1;
+      background: #f8fafc;
+    }
+
+    .form-section {
+      padding: 20px 24px;
+      background: white;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .form-section:last-child {
+      border-bottom: none;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .section-title svg {
+      color: #6366f1;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    .form-grid .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 0;
+    }
+
+    .form-grid .form-group.full-width {
+      grid-column: 1 / -1;
+    }
+
+    .form-grid .form-group label {
+      font-size: 12px;
+      font-weight: 500;
+      color: #475569;
+      margin-bottom: 0;
+    }
+
+    .form-grid .form-group input,
+    .form-grid .form-group select,
+    .form-grid .form-group textarea {
+      padding: 10px 14px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      color: #1e293b;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+
+    .form-grid .form-group input:focus,
+    .form-grid .form-group select:focus,
+    .form-grid .form-group textarea:focus {
+      outline: none;
+      border-color: #6366f1;
+      background: white;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    .required { color: #ef4444; }
+    .hint { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+
+    .popup-footer {
+      padding: 16px 24px;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      background: white;
+    }
+
+    .popup-footer .btn-secondary,
+    .btn-secondary {
+      padding: 10px 20px;
+      background: white;
+      color: #64748b;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .popup-footer .btn-secondary:hover,
+    .btn-secondary:hover {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+    }
+
+    .popup-footer .btn-primary {
+      padding: 10px 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+      box-shadow: 0 2px 4px rgba(102, 126, 234, 0.25);
+    }
+
+    .popup-footer .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.35);
+    }
+
+    .popup-footer .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .form-tabs {
+      display: flex;
+      gap: 8px;
+      padding: 16px 24px;
+      background: white;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .form-tabs button {
+      padding: 8px 16px;
+      border: none;
+      background: #f1f5f9;
+      color: #64748b;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+    .form-tabs button:hover { background: #e2e8f0; }
+    .form-tabs button.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
+
+    .tab-content { padding: 0; }
+
+    .features-tab {
+      padding: 0 !important;
+    }
+
+    .features-tab subscription-features-editor {
+      display: block;
+    }
+
+    .features-tab .form-section {
+      padding: 0;
+    }
+
+    /* Legacy Modal Styles for Delete Confirmation */
     .modal-overlay {
       position: fixed;
       top: 0;
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0, 0, 0, 0.5);
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(4px);
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 1000;
       padding: 20px;
+      animation: fadeIn 0.2s ease-out;
     }
 
     .modal {
       background: #fff;
-      border-radius: 16px;
+      border-radius: 12px;
       width: 100%;
       max-width: 700px;
       max-height: 90vh;
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .modal.modal-small { max-width: 450px; }
 
@@ -664,34 +888,6 @@ import { AdminService, SubscriptionType } from '../services/admin.service';
       flex: 1;
       overflow-y: auto;
       padding: 24px;
-    }
-
-    .form-tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 24px;
-      border-bottom: 1px solid #e2e8f0;
-      padding-bottom: 12px;
-    }
-    .form-tabs button {
-      padding: 8px 16px;
-      border: none;
-      background: transparent;
-      color: #64748b;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      border-radius: 6px;
-      transition: all 0.2s;
-    }
-    .form-tabs button:hover { background: #f1f5f9; }
-    .form-tabs button.active { background: #00d4aa; color: #fff; }
-
-    .section-title {
-      margin: 0 0 16px 0;
-      font-size: 14px;
-      color: #1f2937;
-      font-weight: 600;
     }
 
     .form-group {
@@ -851,8 +1047,7 @@ export class AdminSubscriptionsComponent implements OnInit {
   filterTypes() {
     this.filteredTypes = this.subscriptionTypes.filter(type => {
       const matchesSearch = !this.searchQuery ||
-        type.name.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
-        type.code.toLowerCase().includes(this.searchQuery.toLowerCase());
+        type.name.toLowerCase().includes(this.searchQuery.toLowerCase());
       const matchesCompanyType = this.companyTypeFilter === 'all' || 
         type.targetCompanyType === 'all' || 
         type.targetCompanyType === this.companyTypeFilter;
@@ -924,14 +1119,10 @@ export class AdminSubscriptionsComponent implements OnInit {
   saveType() {
     const data: any = {
       name: this.form.name,
-      code: this.form.code,
+      code: this.form.name.toLowerCase().replace(/\s+/g, '-'),
       description: this.form.description || undefined,
       targetCompanyType: this.form.targetCompanyType,
-      monthlyPrice: this.form.monthlyPrice,
-      quarterlyPrice: this.form.quarterlyPrice || undefined,
-      yearlyPrice: this.form.yearlyPrice || undefined,
-      monthlyDurationDays: this.form.monthlyDurationDays,
-      quarterlyDurationDays: this.form.quarterlyDurationDays,
+      yearlyPrice: this.form.yearlyPrice,
       yearlyDurationDays: this.form.yearlyDurationDays,
       maxVehicles: this.form.maxVehicles,
       maxUsers: this.form.maxUsers,
@@ -945,8 +1136,7 @@ export class AdminSubscriptionsComponent implements OnInit {
       historyPlayback: this.form.historyPlayback,
       fuelAnalysis: this.form.fuelAnalysis,
       drivingBehavior: this.form.drivingBehavior,
-      historyRetentionDays: this.form.historyRetentionDays,
-      sortOrder: this.form.sortOrder
+      historyRetentionDays: this.form.historyRetentionDays
     };
 
     if (this.showEditModal && this.selectedType) {
@@ -986,18 +1176,37 @@ export class AdminSubscriptionsComponent implements OnInit {
     this.typeToDelete = null;
   }
 
+  getFormFeatures(): SubscriptionFeatures {
+    return {
+      gpsTracking: this.form.gpsTracking,
+      gpsInstallation: this.form.gpsInstallation,
+      realTimeAlerts: this.form.realTimeAlerts,
+      historyPlayback: this.form.historyPlayback,
+      advancedReports: this.form.advancedReports,
+      fuelAnalysis: this.form.fuelAnalysis,
+      drivingBehavior: this.form.drivingBehavior,
+      apiAccess: this.form.apiAccess
+    };
+  }
+
+  onFeaturesChange(features: SubscriptionFeatures) {
+    this.form.gpsTracking = features.gpsTracking;
+    this.form.gpsInstallation = features.gpsInstallation;
+    this.form.realTimeAlerts = features.realTimeAlerts;
+    this.form.historyPlayback = features.historyPlayback;
+    this.form.advancedReports = features.advancedReports;
+    this.form.fuelAnalysis = features.fuelAnalysis;
+    this.form.drivingBehavior = features.drivingBehavior;
+    this.form.apiAccess = features.apiAccess;
+  }
+
   private getEmptyForm() {
     return {
       id: 0,
       name: '',
-      code: '',
       description: '',
       targetCompanyType: 'all',
-      monthlyPrice: 0,
-      quarterlyPrice: 0,
       yearlyPrice: 0,
-      monthlyDurationDays: 30,
-      quarterlyDurationDays: 90,
       yearlyDurationDays: 365,
       maxVehicles: 10,
       maxUsers: 5,
@@ -1012,7 +1221,6 @@ export class AdminSubscriptionsComponent implements OnInit {
       fuelAnalysis: false,
       drivingBehavior: false,
       historyRetentionDays: 30,
-      sortOrder: 0,
       isActive: true,
       createdAt: new Date(),
       updatedAt: new Date()

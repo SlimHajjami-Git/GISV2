@@ -9,6 +9,7 @@ import { GpsComponent } from './components/gps.component';
 import { SubscriptionComponent } from './components/subscription.component';
 import { MonitoringComponent } from './components/monitoring.component';
 import { ReportsComponent } from './components/reports.component';
+import { MonthlyReportComponent } from './components/monthly-report.component';
 import { GeofencesComponent } from './components/geofences.component';
 import { NotificationsComponent } from './components/notifications.component';
 import { GPSDevicesComponent } from './components/gps-devices.component';
@@ -35,6 +36,7 @@ export const routes: Routes = [
   { path: 'subscription', component: SubscriptionComponent },
   { path: 'monitoring', component: MonitoringComponent },
   { path: 'reports', component: ReportsComponent },
+  { path: 'reports/monthly', component: MonthlyReportComponent },
   { path: 'geofences', component: GeofencesComponent },
   { path: 'notifications', component: NotificationsComponent },
   { path: 'profile', component: ProfileComponent },

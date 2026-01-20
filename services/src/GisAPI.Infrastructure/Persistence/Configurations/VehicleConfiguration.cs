@@ -35,17 +35,17 @@ public class VehicleConfiguration : IEntityTypeConfiguration<Vehicle>
         builder.HasIndex(e => e.CompanyId);
         builder.HasIndex(e => e.Plate).HasDatabaseName("idx_vehicles_plate_number");
 
-        builder.HasOne(e => e.Company)
+        builder.HasOne(e => e.Societe)
             .WithMany(c => c.Vehicles)
             .HasForeignKey(e => e.CompanyId);
 
         builder.HasOne(e => e.AssignedDriver)
-            .WithMany(e => e.AssignedVehiclesAsDriver)
+            .WithMany()
             .HasForeignKey(e => e.AssignedDriverId)
             .OnDelete(DeleteBehavior.SetNull);
 
         builder.HasOne(e => e.AssignedSupervisor)
-            .WithMany(e => e.AssignedVehiclesAsSupervisor)
+            .WithMany()
             .HasForeignKey(e => e.AssignedSupervisorId)
             .OnDelete(DeleteBehavior.SetNull);
 

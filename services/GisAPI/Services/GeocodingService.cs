@@ -1,13 +1,8 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using GisAPI.Domain.Interfaces;
 
 namespace GisAPI.Services;
-
-public interface IGeocodingService
-{
-    Task<string?> ReverseGeocodeAsync(double latitude, double longitude);
-    (int CacheHits, int CacheMisses, int CacheSize) GetCacheStats();
-}
 
 public class GeocodingService : IGeocodingService
 {

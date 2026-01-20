@@ -8,7 +8,7 @@ public class DrivingEvent : TenantEntity
     public int VehicleId { get; set; }
     public Vehicle? Vehicle { get; set; }
     public int? DriverId { get; set; }
-    public Employee? Driver { get; set; }
+    public User? Driver { get; set; }
     public long? TripId { get; set; }
     public Trip? Trip { get; set; }
     public string Type { get; set; } = string.Empty;

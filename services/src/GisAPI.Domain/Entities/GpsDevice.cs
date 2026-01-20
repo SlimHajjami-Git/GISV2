@@ -19,7 +19,7 @@ public class GpsDevice : TenantEntity
     public int? BatteryLevel { get; set; }
     public int? SignalStrength { get; set; }
 
-    public Company? Company { get; set; }
+    public Societe? Societe { get; set; }
     public Vehicle? Vehicle { get; set; }
     
     public ICollection<GpsPosition> Positions { get; set; } = new List<GpsPosition>();

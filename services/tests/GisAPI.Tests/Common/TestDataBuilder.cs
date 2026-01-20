@@ -4,31 +4,32 @@ namespace GisAPI.Tests.Common;
 
 public static class TestDataBuilder
 {
-    public static Subscription CreateSubscription(int id = 1)
+    public static SubscriptionType CreateSubscriptionType(int id = 1)
     {
-        return new Subscription
+        return new SubscriptionType
         {
             Id = id,
             Name = "Test Subscription",
-            Type = "parc",
-            Price = 100,
+            Code = "test",
+            YearlyPrice = 1200,
             MaxVehicles = 50,
+            MaxUsers = 10,
             GpsTracking = true,
-            Features = new[] { "Feature1", "Feature2" }
+            IsActive = true
         };
     }
 
-    public static Company CreateCompany(int id = 1, int subscriptionId = 1)
+    public static Societe CreateSociete(int id = 1, int? subscriptionTypeId = 1)
     {
-        return new Company
+        return new Societe
         {
             Id = id,
             Name = "Test Company",
             Type = "transport",
-            SubscriptionId = subscriptionId,
+            SubscriptionTypeId = subscriptionTypeId,
             Email = "company@test.com",
             Phone = "+212600000000",
-            Settings = new CompanySettings()
+            Settings = new SocieteSettings()
         };
     }
 
@@ -65,15 +66,16 @@ public static class TestDataBuilder
         };
     }
 
-    public static Employee CreateEmployee(int id = 1, int companyId = 1, string name = "Test Driver")
+    public static User CreateDriver(int id = 1, int companyId = 1, string name = "Test Driver")
     {
-        return new Employee
+        return new User
         {
             Id = id,
             Name = name,
             Email = "driver@test.com",
             Phone = "+212600000001",
-            Role = "driver",
+            Roles = new[] { "driver" },
+            UserType = "employee",
             Status = "active",
             CompanyId = companyId,
             LicenseNumber = "ABC123",

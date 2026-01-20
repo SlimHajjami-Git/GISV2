@@ -17,7 +17,7 @@ import { Subscription } from '../models/types';
               <rect width="40" height="40" rx="8" fill="#2563eb"/>
               <path d="M12 20L18 26L28 14" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <span>FleetTrack Pro</span>
+            <span>Calypso</span>
           </div>
           <nav>
             <a href="#features">Fonctionnalités</a>
@@ -175,7 +175,7 @@ import { Subscription } from '../models/types';
                   <rect width="40" height="40" rx="8" fill="#2563eb"/>
                   <path d="M12 20L18 26L28 14" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
-                <span>FleetTrack Pro</span>
+                <span>Calypso</span>
               </div>
               <p>Solution professionnelle de gestion de parc automobile</p>
             </div>
@@ -199,7 +199,7 @@ import { Subscription } from '../models/types';
             </div>
           </div>
           <div class="footer-bottom">
-            <p>&copy; 2024 FleetTrack Pro. Tous droits réservés.</p>
+            <p>&copy; 2024 Calypso. Tous droits réservés.</p>
           </div>
         </div>
       </footer>

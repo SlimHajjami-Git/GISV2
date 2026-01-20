@@ -27,7 +27,7 @@ public class AuthController : ControllerBase
     public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest request)
     {
         var user = await _context.Users
-            .Include(u => u.Company)
+            .Include(u => u.Societe)
             .FirstOrDefaultAsync(u => u.Email == request.Email);
 
         if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
@@ -57,7 +57,7 @@ public class AuthController : ControllerBase
                 user.Roles,
                 user.Permissions,
                 user.CompanyId,
-                user.Company?.Name ?? ""
+                user.Societe?.Name ?? ""
             )
         ));
     }
@@ -70,31 +70,33 @@ public class AuthController : ControllerBase
             return BadRequest(new { message = "Cet email est déjà utilisé" });
         }
 
-        // Get default subscription
-        var subscription = await _context.Subscriptions.FirstOrDefaultAsync();
-        if (subscription == null)
+        // Get default subscription type
+        var subscriptionType = await _context.SubscriptionTypes.FirstOrDefaultAsync();
+        if (subscriptionType == null)
         {
-            subscription = new Subscription
+            subscriptionType = new SubscriptionType
             {
                 Name = "Plan Gratuit",
-                Type = "parc",
-                Price = 0,
+                Code = "plan-gratuit",
+                TargetCompanyType = "all",
+                YearlyPrice = 0,
                 MaxVehicles = 5,
                 GpsTracking = false,
-                GpsInstallation = false
+                GpsInstallation = false,
+                IsActive = true
             };
-            _context.Subscriptions.Add(subscription);
+            _context.SubscriptionTypes.Add(subscriptionType);
             await _context.SaveChangesAsync();
         }
 
         // Create company
-        var company = new Company
+        var company = new Societe
         {
             Name = request.CompanyName,
             Type = "transport",
-            SubscriptionId = subscription.Id
+            SubscriptionTypeId = subscriptionType.Id
         };
-        _context.Companies.Add(company);
+        _context.Societes.Add(company);
         await _context.SaveChangesAsync();
 
         // Create admin user
@@ -196,34 +198,33 @@ public class AuthController : ControllerBase
                 return Ok(new { message = "User admin@belive.ma updated", password = "Calypso@2026+" });
             }
 
-            // Create subscription
-            var subscription = await _context.Subscriptions.FirstOrDefaultAsync();
-            if (subscription == null)
+            // Create subscription type
+            var subscriptionType = await _context.SubscriptionTypes.FirstOrDefaultAsync();
+            if (subscriptionType == null)
             {
-                subscription = new Subscription
+                subscriptionType = new SubscriptionType
                 {
                     Name = "Plan Pro",
-                    Type = "parc_gps",
-                    Price = 999.00m,
-                    Features = new[] { "gps_tracking", "geofencing", "reports", "alerts", "maintenance" },
+                    Code = "plan-pro",
+                    TargetCompanyType = "all",
+                    YearlyPrice = 999.00m,
                     GpsTracking = true,
                     GpsInstallation = true,
                     MaxVehicles = 100,
                     MaxUsers = 20,
                     MaxGpsDevices = 100,
                     MaxGeofences = 50,
-                    BillingCycle = "monthly",
                     IsActive = true
                 };
-                _context.Subscriptions.Add(subscription);
+                _context.SubscriptionTypes.Add(subscriptionType);
                 await _context.SaveChangesAsync();
             }
 
             // Create company
-            var company = await _context.Companies.FirstOrDefaultAsync(c => c.Name == "Belive");
+            var company = await _context.Societes.FirstOrDefaultAsync(c => c.Name == "Belive");
             if (company == null)
             {
-                company = new Company
+                company = new Societe
                 {
                     Name = "Belive",
                     Type = "transport",
@@ -232,11 +233,11 @@ public class AuthController : ControllerBase
                     Country = "TN",
                     Phone = "+216 74 000 000",
                     Email = "contact@belive.tn",
-                    SubscriptionId = subscription.Id,
+                    SubscriptionTypeId = subscriptionType.Id,
                     IsActive = true,
                     SubscriptionExpiresAt = DateTime.UtcNow.AddYears(1)
                 };
-                _context.Companies.Add(company);
+                _context.Societes.Add(company);
                 await _context.SaveChangesAsync();
             }
 

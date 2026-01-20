@@ -10,6 +10,7 @@
         "dependencies": {
           "BCrypt.Net-Next": "4.0.3",
           "GisAPI.Application": "1.0.0",
+          "GisAPI.Domain": "1.0.0",
           "GisAPI.Infrastructure": "1.0.0",
           "GisAPI.Shared": "1.0.0",
           "Microsoft.AspNetCore.Authentication.JwtBearer": "9.0.0",

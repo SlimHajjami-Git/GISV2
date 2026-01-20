@@ -7,7 +7,7 @@ using GisAPI.Domain.Entities;
 namespace GisAPI.Controllers;
 
 [ApiController]
-[Route("api/admin/[controller]")]
+[Route("api/companies")]
 [Authorize(Roles = "admin,super_admin")]
 public class CompanyController : ControllerBase
 {
@@ -23,8 +23,8 @@ public class CompanyController : ControllerBase
         [FromQuery] string? search = null,
         [FromQuery] string? status = null)
     {
-        var query = _context.Companies
-            .Include(c => c.Subscription)
+        var query = _context.Societes
+            .Include(c => c.SubscriptionType)
             .Include(c => c.Users)
             .Include(c => c.Vehicles)
             .AsQueryable();
@@ -60,9 +60,9 @@ public class CompanyController : ControllerBase
                 LogoUrl = c.LogoUrl,
                 IsActive = c.IsActive,
                 Status = c.IsActive ? "active" : "suspended",
-                SubscriptionId = c.SubscriptionId,
-                SubscriptionName = c.Subscription != null ? c.Subscription.Name : null,
-                MaxVehicles = c.Subscription != null ? c.Subscription.MaxVehicles : 0,
+                SubscriptionId = c.SubscriptionTypeId ?? 0,
+                SubscriptionName = c.SubscriptionType != null ? c.SubscriptionType.Name : null,
+                MaxVehicles = c.SubscriptionType != null ? c.SubscriptionType.MaxVehicles : 0,
                 CurrentVehicles = c.Vehicles.Count,
                 CurrentUsers = c.Users.Count,
                 SubscriptionExpiresAt = c.SubscriptionExpiresAt,
@@ -77,8 +77,8 @@ public class CompanyController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<CompanyDto>> GetCompany(int id)
     {
-        var company = await _context.Companies
-            .Include(c => c.Subscription)
+        var company = await _context.Societes
+            .Include(c => c.SubscriptionType)
             .Include(c => c.Users)
             .Include(c => c.Vehicles)
             .FirstOrDefaultAsync(c => c.Id == id);
@@ -100,9 +100,9 @@ public class CompanyController : ControllerBase
             LogoUrl = company.LogoUrl,
             IsActive = company.IsActive,
             Status = company.IsActive ? "active" : "suspended",
-            SubscriptionId = company.SubscriptionId,
-            SubscriptionName = company.Subscription?.Name,
-            MaxVehicles = company.Subscription?.MaxVehicles ?? 0,
+            SubscriptionId = company.SubscriptionTypeId ?? 0,
+            SubscriptionName = company.SubscriptionType?.Name,
+            MaxVehicles = company.SubscriptionType?.MaxVehicles ?? 0,
             CurrentVehicles = company.Vehicles.Count,
             CurrentUsers = company.Users.Count,
             SubscriptionExpiresAt = company.SubscriptionExpiresAt,
@@ -114,18 +114,18 @@ public class CompanyController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<CompanyDto>> CreateCompany([FromBody] CreateCompanyRequest request)
     {
-        if (await _context.Companies.AnyAsync(c => c.Email == request.Email))
+        if (await _context.Societes.AnyAsync(c => c.Email == request.Email))
         {
             return BadRequest(new { message = "Une société avec cet email existe déjà" });
         }
 
-        var subscription = await _context.Subscriptions.FindAsync(request.SubscriptionId);
-        if (subscription == null && request.SubscriptionId > 0)
+        var subscriptionType = await _context.SubscriptionTypes.FindAsync(request.SubscriptionId);
+        if (subscriptionType == null && request.SubscriptionId > 0)
         {
             return BadRequest(new { message = "Abonnement non trouvé" });
         }
 
-        var company = new Company
+        var company = new Societe
         {
             Name = request.Name,
             Email = request.Email,
@@ -135,10 +135,10 @@ public class CompanyController : ControllerBase
             City = request.City,
             Country = request.Country ?? "TN",
             TaxId = request.TaxId,
-            SubscriptionId = request.SubscriptionId > 0 ? request.SubscriptionId : 1,
+            SubscriptionTypeId = request.SubscriptionId > 0 ? request.SubscriptionId : null,
             IsActive = true,
             SubscriptionExpiresAt = DateTime.UtcNow.AddYears(1),
-            Settings = new CompanySettings
+            Settings = new SocieteSettings
             {
                 Currency = "DT",
                 Timezone = "Africa/Tunis",
@@ -146,7 +146,7 @@ public class CompanyController : ControllerBase
             }
         };
 
-        _context.Companies.Add(company);
+        _context.Societes.Add(company);
         await _context.SaveChangesAsync();
 
         // Create default admin user for the company if requested
@@ -176,9 +176,9 @@ public class CompanyController : ControllerBase
             Type = company.Type,
             IsActive = company.IsActive,
             Status = "active",
-            SubscriptionId = company.SubscriptionId,
-            SubscriptionName = subscription?.Name,
-            MaxVehicles = subscription?.MaxVehicles ?? 0,
+            SubscriptionId = company.SubscriptionTypeId ?? 0,
+            SubscriptionName = subscriptionType?.Name,
+            MaxVehicles = subscriptionType?.MaxVehicles ?? 0,
             CurrentVehicles = 0,
             CurrentUsers = !string.IsNullOrEmpty(request.AdminEmail) ? 1 : 0,
             CreatedAt = company.CreatedAt
@@ -188,8 +188,8 @@ public class CompanyController : ControllerBase
     [HttpPut("{id}")]
     public async Task<ActionResult<CompanyDto>> UpdateCompany(int id, [FromBody] UpdateCompanyRequest request)
     {
-        var company = await _context.Companies
-            .Include(c => c.Subscription)
+        var company = await _context.Societes
+            .Include(c => c.SubscriptionType)
             .Include(c => c.Vehicles)
             .Include(c => c.Users)
             .FirstOrDefaultAsync(c => c.Id == id);
@@ -199,7 +199,7 @@ public class CompanyController : ControllerBase
 
         if (!string.IsNullOrEmpty(request.Email) && request.Email != company.Email)
         {
-            if (await _context.Companies.AnyAsync(c => c.Email == request.Email && c.Id != id))
+            if (await _context.Societes.AnyAsync(c => c.Email == request.Email && c.Id != id))
             {
                 return BadRequest(new { message = "Une société avec cet email existe déjà" });
             }
@@ -215,13 +215,13 @@ public class CompanyController : ControllerBase
         if (request.TaxId != null) company.TaxId = request.TaxId;
         if (request.SubscriptionId.HasValue && request.SubscriptionId > 0)
         {
-            company.SubscriptionId = request.SubscriptionId.Value;
+            company.SubscriptionTypeId = request.SubscriptionId.Value;
         }
 
         company.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
-        var subscription = await _context.Subscriptions.FindAsync(company.SubscriptionId);
+        var subscriptionType = await _context.SubscriptionTypes.FindAsync(company.SubscriptionTypeId);
 
         return Ok(new CompanyDto
         {
@@ -236,9 +236,9 @@ public class CompanyController : ControllerBase
             TaxId = company.TaxId,
             IsActive = company.IsActive,
             Status = company.IsActive ? "active" : "suspended",
-            SubscriptionId = company.SubscriptionId,
-            SubscriptionName = subscription?.Name,
-            MaxVehicles = subscription?.MaxVehicles ?? 0,
+            SubscriptionId = company.SubscriptionTypeId ?? 0,
+            SubscriptionName = subscriptionType?.Name,
+            MaxVehicles = subscriptionType?.MaxVehicles ?? 0,
             CurrentVehicles = company.Vehicles.Count,
             CurrentUsers = company.Users.Count,
             CreatedAt = company.CreatedAt,
@@ -249,7 +249,7 @@ public class CompanyController : ControllerBase
     [HttpPost("{id}/suspend")]
     public async Task<ActionResult> SuspendCompany(int id)
     {
-        var company = await _context.Companies.FindAsync(id);
+        var company = await _context.Societes.FindAsync(id);
         if (company == null)
             return NotFound();
 
@@ -270,7 +270,7 @@ public class CompanyController : ControllerBase
     [HttpPost("{id}/activate")]
     public async Task<ActionResult> ActivateCompany(int id)
     {
-        var company = await _context.Companies.FindAsync(id);
+        var company = await _context.Societes.FindAsync(id);
         if (company == null)
             return NotFound();
 
@@ -291,7 +291,7 @@ public class CompanyController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<ActionResult> DeleteCompany(int id)
     {
-        var company = await _context.Companies
+        var company = await _context.Societes
             .Include(c => c.Users)
             .Include(c => c.Vehicles)
             .FirstOrDefaultAsync(c => c.Id == id);
@@ -304,7 +304,7 @@ public class CompanyController : ControllerBase
             return BadRequest(new { message = "Impossible de supprimer une société avec des utilisateurs ou véhicules actifs. Veuillez d'abord les supprimer ou les transférer." });
         }
 
-        _context.Companies.Remove(company);
+        _context.Societes.Remove(company);
         await _context.SaveChangesAsync();
 
         return Ok(new { message = "Société supprimée avec succès" });
@@ -313,7 +313,7 @@ public class CompanyController : ControllerBase
     [HttpGet("{id}/users")]
     public async Task<ActionResult<List<CompanyUserDto>>> GetCompanyUsers(int id)
     {
-        var company = await _context.Companies.FindAsync(id);
+        var company = await _context.Societes.FindAsync(id);
         if (company == null)
             return NotFound();
 
@@ -339,7 +339,7 @@ public class CompanyController : ControllerBase
     [HttpGet("{id}/stats")]
     public async Task<ActionResult<CompanyStatsDto>> GetCompanyStats(int id)
     {
-        var company = await _context.Companies
+        var company = await _context.Societes
             .Include(c => c.Users)
             .Include(c => c.Vehicles)
             .Include(c => c.GpsDevices)

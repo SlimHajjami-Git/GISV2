@@ -92,7 +92,7 @@ import { AdminService, SystemUser, Client } from '../services/admin.service';
                   <span class="status-badge" [class]="user.status">{{ user.status | titlecase }}</span>
                 </td>
                 <td>
-                  <span class="last-login">{{ formatDate(user.lastLogin) }}</span>
+                  <span class="last-login">{{ formatDate(user.lastLoginAt) }}</span>
                 </td>
                 <td>
                   <div class="actions">
@@ -117,48 +117,67 @@ import { AdminService, SystemUser, Client } from '../services/admin.service';
           </table>
         </div>
 
-        <div class="modal-overlay" *ngIf="showPermissionsModal" (click)="closeModal()">
-          <div class="modal permissions-modal" (click)="$event.stopPropagation()">
-            <div class="modal-header">
-              <h2>Edit User Permissions</h2>
-              <button class="close-btn" (click)="closeModal()">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <div class="popup-overlay" *ngIf="showPermissionsModal" (click)="closeModal()">
+          <div class="popup-container permissions-popup" (click)="$event.stopPropagation()">
+            <div class="popup-header">
+              <div class="header-title">
+                <div class="header-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                </div>
+                <h2>Modifier les permissions</h2>
+              </div>
+              <button class="close-btn" (click)="closeModal()" title="Fermer">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
               </button>
             </div>
 
-            <div class="modal-body" *ngIf="selectedUser">
-              <div class="user-header">
-                <div class="user-avatar large">{{ selectedUser.name.charAt(0) }}</div>
-                <div>
-                  <h3>{{ selectedUser.name }}</h3>
-                  <span class="user-company">{{ selectedUser.companyName }}</span>
+            <div class="popup-body" *ngIf="selectedUser">
+              <div class="form-section">
+                <div class="user-header">
+                  <div class="user-avatar large">{{ selectedUser.name.charAt(0) }}</div>
+                  <div>
+                    <h3>{{ selectedUser.name }}</h3>
+                    <span class="user-company">{{ selectedUser.companyName }}</span>
+                  </div>
                 </div>
               </div>
 
-              <div class="permissions-section">
-                <h4>Page Access Permissions</h4>
-                <p class="section-desc">Select which pages this user can access</p>
+              <div class="form-section">
+                <div class="section-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                  <span>Accès aux pages</span>
+                </div>
+                <p class="section-desc">Sélectionnez les pages auxquelles cet utilisateur peut accéder</p>
 
                 <div class="permissions-grid">
-                  <label class="permission-item" *ngFor="let page of allPages">
+                  <label class="permission-item" *ngFor="let page of allPages" [class.selected]="selectedPermissions.includes(page)">
                     <input type="checkbox" [checked]="selectedPermissions.includes(page)" (change)="togglePermission(page)" />
                     <span class="checkmark"></span>
                     <span class="permission-label">{{ formatPageName(page) }}</span>
                   </label>
                 </div>
-              </div>
 
-              <div class="quick-actions">
-                <button class="quick-btn" (click)="selectAll()">Select All</button>
-                <button class="quick-btn" (click)="deselectAll()">Deselect All</button>
+                <div class="quick-actions">
+                  <button class="quick-btn" (click)="selectAll()">Tout sélectionner</button>
+                  <button class="quick-btn" (click)="deselectAll()">Tout désélectionner</button>
+                </div>
               </div>
             </div>
 
-            <div class="modal-footer">
-              <button class="btn-secondary" (click)="closeModal()">Cancel</button>
-              <button class="btn-primary" (click)="savePermissions()">Save Permissions</button>
+            <div class="popup-footer">
+              <button class="btn-secondary" (click)="closeModal()">Annuler</button>
+              <button class="btn-primary" (click)="savePermissions()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                </svg>
+                Enregistrer
+              </button>
             </div>
           </div>
         </div>
@@ -459,72 +478,191 @@ import { AdminService, SystemUser, Client } from '../services/admin.service';
       transform: scale(1.1);
     }
 
-    .modal-overlay {
+    /* Enhanced Popup Styles */
+    .popup-overlay {
       position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.7);
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(4px);
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 1000;
       padding: 20px;
+      animation: fadeIn 0.2s ease-out;
     }
 
-    .modal {
-      background: linear-gradient(135deg, #1a1f2e 0%, #141824 100%);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 20px;
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .popup-container {
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      max-width: 600px;
       width: 100%;
-      max-width: 560px;
-      max-height: 90vh;
-      overflow-y: auto;
+      max-height: 85vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    .modal-header {
+    @keyframes slideUp {
+      from { transform: translateY(30px) scale(0.97); opacity: 0; }
+      to { transform: translateY(0) scale(1); opacity: 1; }
+    }
+
+    .popup-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid #e2e8f0;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 20px 24px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
 
-    .modal-header h2 {
-      margin: 0;
-      font-size: 18px;
-      font-weight: 600;
-      color: #e7e9ea;
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
 
-    .close-btn {
+    .header-icon {
       width: 36px;
       height: 36px;
-      border: none;
-      background: rgba(255, 255, 255, 0.05);
+      background: rgba(255, 255, 255, 0.2);
       border-radius: 10px;
-      color: #8b98a5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+
+    .popup-header h2 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: white;
+    }
+
+    .popup-header .close-btn {
+      background: rgba(255, 255, 255, 0.15);
+      border: none;
+      color: white;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: all 0.2s;
     }
 
-    .modal-body {
-      padding: 24px;
+    .popup-header .close-btn:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    .popup-body {
+      padding: 0;
+      overflow-y: auto;
+      flex: 1;
+      background: #f8fafc;
+    }
+
+    .form-section {
+      padding: 20px 24px;
+      background: white;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .form-section:last-child {
+      border-bottom: none;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .section-title svg {
+      color: #6366f1;
+    }
+
+    .popup-footer {
+      padding: 16px 24px;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      background: white;
+    }
+
+    .popup-footer .btn-secondary,
+    .btn-secondary {
+      padding: 10px 20px;
+      background: white;
+      color: #64748b;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .popup-footer .btn-secondary:hover,
+    .btn-secondary:hover {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+    }
+
+    .popup-footer .btn-primary,
+    .btn-primary {
+      padding: 10px 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+      box-shadow: 0 2px 4px rgba(102, 126, 234, 0.25);
+    }
+
+    .popup-footer .btn-primary:hover,
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.35);
     }
 
     .user-header {
       display: flex;
       align-items: center;
       gap: 16px;
-      padding-bottom: 20px;
-      margin-bottom: 20px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     }
 
     .user-header h3 {
       margin: 0 0 4px 0;
       font-size: 18px;
-      color: #e7e9ea;
+      color: #1e293b;
     }
 
     .user-company {
