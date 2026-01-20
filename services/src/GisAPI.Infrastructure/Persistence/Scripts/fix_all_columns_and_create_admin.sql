@@ -1,0 +1,228 @@
+-- ============================================================================
+-- COMPLETE FIX: All column names + Platform Admin creation
+-- Date: 2026-01-20
+-- ============================================================================
+
+-- ========== 1. FIX SOCIETES TABLE COLUMNS ==========
+DO $$
+BEGIN
+    -- Rename PascalCase columns to snake_case
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'societes' AND column_name = 'IF') THEN
+        ALTER TABLE societes RENAME COLUMN "IF" TO "if";
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'societes' AND column_name = 'IsActive') THEN
+        ALTER TABLE societes RENAME COLUMN "IsActive" TO is_active;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'societes' AND column_name = 'LogoUrl') THEN
+        ALTER TABLE societes RENAME COLUMN "LogoUrl" TO logo_url;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'societes' AND column_name = 'SubscriptionExpiresAt') THEN
+        ALTER TABLE societes RENAME COLUMN "SubscriptionExpiresAt" TO subscription_expires_at;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'societes' AND column_name = 'TaxId') THEN
+        ALTER TABLE societes RENAME COLUMN "TaxId" TO tax_id;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'societes' AND column_name = 'RC') THEN
+        ALTER TABLE societes RENAME COLUMN "RC" TO rc;
+    END IF;
+END $$;
+
+-- Add missing columns to societes
+ALTER TABLE societes ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE societes ADD COLUMN IF NOT EXISTS logo_url TEXT;
+ALTER TABLE societes ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ;
+ALTER TABLE societes ADD COLUMN IF NOT EXISTS tax_id TEXT;
+ALTER TABLE societes ADD COLUMN IF NOT EXISTS rc TEXT;
+ALTER TABLE societes ADD COLUMN IF NOT EXISTS "if" TEXT;
+ALTER TABLE societes ADD COLUMN IF NOT EXISTS billing_cycle TEXT;
+ALTER TABLE societes ADD COLUMN IF NOT EXISTS subscription_started_at TIMESTAMPTZ;
+ALTER TABLE societes ADD COLUMN IF NOT EXISTS subscription_status TEXT;
+ALTER TABLE societes ADD COLUMN IF NOT EXISTS last_payment_at TIMESTAMPTZ;
+ALTER TABLE societes ADD COLUMN IF NOT EXISTS next_payment_amount NUMERIC(10,2);
+ALTER TABLE societes ADD COLUMN IF NOT EXISTS settings JSONB;
+
+-- ========== 2. FIX SUBSCRIPTION_TYPES TABLE COLUMNS ==========
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'subscription_types' AND column_name = 'advancedreports') THEN
+        ALTER TABLE subscription_types RENAME COLUMN advancedreports TO advanced_reports;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'subscription_types' AND column_name = 'apiaccess') THEN
+        ALTER TABLE subscription_types RENAME COLUMN apiaccess TO api_access;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'subscription_types' AND column_name = 'gpstracking') THEN
+        ALTER TABLE subscription_types RENAME COLUMN gpstracking TO gps_tracking;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'subscription_types' AND column_name = 'gpsinstallation') THEN
+        ALTER TABLE subscription_types RENAME COLUMN gpsinstallation TO gps_installation;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'subscription_types' AND column_name = 'maxvehicles') THEN
+        ALTER TABLE subscription_types RENAME COLUMN maxvehicles TO max_vehicles;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'subscription_types' AND column_name = 'maxusers') THEN
+        ALTER TABLE subscription_types RENAME COLUMN maxusers TO max_users;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'subscription_types' AND column_name = 'maxgpsdevices') THEN
+        ALTER TABLE subscription_types RENAME COLUMN maxgpsdevices TO max_gps_devices;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'subscription_types' AND column_name = 'maxgeofences') THEN
+        ALTER TABLE subscription_types RENAME COLUMN maxgeofences TO max_geofences;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'subscription_types' AND column_name = 'isactive') THEN
+        ALTER TABLE subscription_types RENAME COLUMN isactive TO is_active;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'subscription_types' AND column_name = 'historyretentiondays') THEN
+        ALTER TABLE subscription_types RENAME COLUMN historyretentiondays TO history_retention_days;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'subscription_types' AND column_name = 'realtimealerts') THEN
+        ALTER TABLE subscription_types RENAME COLUMN realtimealerts TO real_time_alerts;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'subscription_types' AND column_name = 'historyplayback') THEN
+        ALTER TABLE subscription_types RENAME COLUMN historyplayback TO history_playback;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'subscription_types' AND column_name = 'fuelanalysis') THEN
+        ALTER TABLE subscription_types RENAME COLUMN fuelanalysis TO fuel_analysis;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'subscription_types' AND column_name = 'drivingbehavior') THEN
+        ALTER TABLE subscription_types RENAME COLUMN drivingbehavior TO driving_behavior;
+    END IF;
+END $$;
+
+-- Add missing columns to subscription_types
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS access_rights JSONB;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS target_company_type TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS monthly_duration_days INTEGER NOT NULL DEFAULT 30;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS quarterly_duration_days INTEGER NOT NULL DEFAULT 90;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS yearly_duration_days INTEGER NOT NULL DEFAULT 365;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS monthly_price NUMERIC(10,2) NOT NULL DEFAULT 0;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS quarterly_price NUMERIC(10,2) NOT NULL DEFAULT 0;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS yearly_price NUMERIC(10,2) NOT NULL DEFAULT 0;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS driving_behavior BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS fuel_analysis BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS history_playback BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS real_time_alerts BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS advanced_reports BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS api_access BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS gps_tracking BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS gps_installation BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS history_retention_days INTEGER NOT NULL DEFAULT 90;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS max_vehicles INTEGER NOT NULL DEFAULT 10;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS max_users INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS max_gps_devices INTEGER NOT NULL DEFAULT 10;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS max_geofences INTEGER NOT NULL DEFAULT 20;
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+-- ========== 3. CREATE PLATFORM SUBSCRIPTION TYPE ==========
+INSERT INTO subscription_types (
+    name, code, description, target_company_type,
+    monthly_price, quarterly_price, yearly_price,
+    monthly_duration_days, quarterly_duration_days, yearly_duration_days,
+    max_vehicles, max_users, max_gps_devices, max_geofences,
+    gps_tracking, gps_installation, api_access, advanced_reports,
+    real_time_alerts, history_playback, fuel_analysis, driving_behavior,
+    history_retention_days, is_active, sort_order,
+    created_at, updated_at
+) VALUES (
+    'Platform Unlimited', 'platform-unlimited', 'Unlimited access for platform administrators', 'all',
+    0, 0, 0,
+    36500, 36500, 36500,
+    999999, 999999, 999999, 999999,
+    true, true, true, true,
+    true, true, true, true,
+    36500, true, 0,
+    NOW(), NOW()
+) ON CONFLICT (code) DO UPDATE SET
+    max_vehicles = 999999,
+    max_users = 999999,
+    max_gps_devices = 999999,
+    max_geofences = 999999,
+    history_retention_days = 36500,
+    updated_at = NOW();
+
+-- ========== 4. CREATE PLATFORM ADMIN COMPANY ==========
+INSERT INTO societes (
+    name, type, address, city, country, phone, email,
+    subscription_type_id, is_active, subscription_expires_at,
+    created_at, updated_at
+) 
+SELECT 
+    'Platform Admin', 'platform', 'System', 'System', 'MA', '', 'platform@gis.ma',
+    (SELECT id FROM subscription_types WHERE code = 'platform-unlimited' LIMIT 1),
+    true, '2099-12-31'::timestamp,
+    NOW(), NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM societes WHERE name = 'Platform Admin'
+);
+
+-- ========== 5. CREATE SUPER ADMIN USER ==========
+DO $$
+DECLARE
+    v_company_id INTEGER;
+    v_user_id INTEGER;
+BEGIN
+    -- Get Platform Admin company ID
+    SELECT id INTO v_company_id FROM societes WHERE name = 'Platform Admin' LIMIT 1;
+    
+    IF v_company_id IS NULL THEN
+        RAISE EXCEPTION 'Platform Admin company not found';
+    END IF;
+    
+    -- Check if admin already exists
+    SELECT id INTO v_user_id FROM users WHERE email = 'admin@belive.tn';
+    
+    IF v_user_id IS NOT NULL THEN
+        -- Update existing admin
+        UPDATE users SET
+            name = 'Super Admin',
+            password_hash = '$2a$11$SSFnYGBW31exSV45qir0KutzLHPu3BJo/ZPVfzUlJtPe30T.9g9Rm',
+            roles = ARRAY['super_admin', 'platform_admin'],
+            permissions = ARRAY['all', 'admin', 'manage_companies', 'manage_subscriptions', 'manage_users', 'manage_vehicles', 'manage_devices', 'manage_geofences', 'view_reports', 'manage_settings'],
+            status = 'active',
+            user_type = 'platform_admin',
+            is_company_admin = true,
+            company_id = v_company_id,
+            updated_at = NOW()
+        WHERE id = v_user_id;
+        
+        RAISE NOTICE 'Updated existing admin user (Id: %)', v_user_id;
+    ELSE
+        -- Create new admin
+        INSERT INTO users (
+            name, email, phone, password_hash,
+            roles, permissions, assigned_vehicle_ids,
+            status, user_type, is_company_admin,
+            company_id, created_at, updated_at
+        ) VALUES (
+            'Super Admin',
+            'admin@belive.tn',
+            '+212 600 000000',
+            '$2a$11$SSFnYGBW31exSV45qir0KutzLHPu3BJo/ZPVfzUlJtPe30T.9g9Rm',
+            ARRAY['super_admin', 'platform_admin'],
+            ARRAY['all', 'admin', 'manage_companies', 'manage_subscriptions', 'manage_users', 'manage_vehicles', 'manage_devices', 'manage_geofences', 'view_reports', 'manage_settings'],
+            ARRAY[]::integer[],
+            'active',
+            'platform_admin',
+            true,
+            v_company_id,
+            NOW(), NOW()
+        ) RETURNING id INTO v_user_id;
+        
+        RAISE NOTICE 'Created new admin user (Id: %)', v_user_id;
+    END IF;
+END $$;
+
+-- ========== 6. VERIFICATION ==========
+SELECT '=== COLUMN FIXES COMPLETE ===' as status;
+SELECT '=== PLATFORM ADMIN SETUP COMPLETE ===' as status;
+SELECT 'Subscription Type:' as info, id, name, code FROM subscription_types WHERE code = 'platform-unlimited';
+SELECT 'Company:' as info, id, name, type, is_active FROM societes WHERE name = 'Platform Admin';
+SELECT 'Admin User:' as info, id, name, email, status, company_id FROM users WHERE email = 'admin@belive.tn';
+
+SELECT '' as line;
+SELECT '========================================' as info;
+SELECT 'LOGIN: admin@belive.tn' as info;
+SELECT 'PASSWORD: (same as before)' as info;
+SELECT '========================================' as info;
