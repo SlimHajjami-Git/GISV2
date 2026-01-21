@@ -226,40 +226,40 @@ impl DailyStatisticsCalculator {
                             POWER((longitude - prev_lng) * COS(RADIANS(latitude)), 2)
                         )
                     ELSE 0 END
-                ), 0) as total_distance_km,
+                ), 0)::FLOAT8 as total_distance_km,
                 -- Speed stats
-                COALESCE(AVG(CASE WHEN speed_kph > 0 THEN speed_kph END), 0) as avg_speed,
-                COALESCE(MAX(speed_kph), 0) as max_speed,
+                COALESCE(AVG(CASE WHEN speed_kph > 0 THEN speed_kph END), 0)::FLOAT8 as avg_speed,
+                COALESCE(MAX(speed_kph), 0)::FLOAT8 as max_speed,
                 -- Time calculations
                 COALESCE(SUM(
                     CASE WHEN prev_time IS NOT NULL AND speed_kph > 5 THEN
                         EXTRACT(EPOCH FROM (recorded_at - prev_time)) / 60.0
                     ELSE 0 END
-                ), 0) as driving_time_minutes,
+                ), 0)::FLOAT8 as driving_time_minutes,
                 COALESCE(SUM(
                     CASE WHEN prev_time IS NOT NULL AND speed_kph <= 5 AND COALESCE(ignition_on, false) = true THEN
                         EXTRACT(EPOCH FROM (recorded_at - prev_time)) / 60.0
                     ELSE 0 END
-                ), 0) as idle_time_minutes,
+                ), 0)::FLOAT8 as idle_time_minutes,
                 COALESCE(SUM(
                     CASE WHEN prev_time IS NOT NULL AND COALESCE(ignition_on, false) = false THEN
                         EXTRACT(EPOCH FROM (recorded_at - prev_time)) / 60.0
                     ELSE 0 END
-                ), 0) as stopped_time_minutes,
+                ), 0)::FLOAT8 as stopped_time_minutes,
                 -- Engine time
                 COALESCE(SUM(
                     CASE WHEN prev_time IS NOT NULL AND COALESCE(ignition_on, false) = true THEN
                         EXTRACT(EPOCH FROM (recorded_at - prev_time)) / 60.0
                     ELSE 0 END
-                ), 0) as engine_on_minutes,
+                ), 0)::FLOAT8 as engine_on_minutes,
                 COALESCE(SUM(
                     CASE WHEN prev_time IS NOT NULL AND COALESCE(ignition_on, false) = false THEN
                         EXTRACT(EPOCH FROM (recorded_at - prev_time)) / 60.0
                     ELSE 0 END
-                ), 0) as engine_off_minutes,
+                ), 0)::FLOAT8 as engine_off_minutes,
                 -- Mileage
-                COALESCE(MIN(odometer_km), 0) as start_mileage,
-                COALESCE(MAX(odometer_km), 0) as end_mileage
+                COALESCE(MIN(odometer_km), 0)::INT as start_mileage,
+                COALESCE(MAX(odometer_km), 0)::INT as end_mileage
             FROM ordered_positions
             "#,
         )
