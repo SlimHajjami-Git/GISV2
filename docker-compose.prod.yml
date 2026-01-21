@@ -10,7 +10,7 @@ services:
       retries: 5
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your_secure_password_here}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Calypso@2026+}
       POSTGRES_DB: gis_v2
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -28,7 +28,7 @@ services:
       start_period: 10s
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-gisadmin}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-your_secure_password_here}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-Calypso@2026+}
       RABBITMQ_LOOPBACK_USERS: none
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
@@ -77,11 +77,11 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-your_secure_password_here}@postgres:5432/gis_v2
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-Calypso@2026+}@postgres:5432/gis_v2
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       RABBITMQ_USERNAME: ${RABBITMQ_USER:-gisadmin}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-your_secure_password_here}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-Calypso@2026+}
       RABBITMQ_EXCHANGE: telemetry.raw
       RABBITMQ_ROUTING_KEY: hh
       API_PORT: 3000
