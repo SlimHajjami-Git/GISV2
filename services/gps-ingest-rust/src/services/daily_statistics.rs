@@ -113,7 +113,7 @@ impl DailyStatisticsCalculator {
         let trip_count: i64 = sqlx::query_scalar(
             r#"
             SELECT COUNT(*) FROM trips 
-            WHERE vehicle_id = $1 AND DATE(start_time) = $2
+            WHERE "VehicleId" = $1 AND DATE("StartTime") = $2
             "#,
         )
         .bind(vehicle_id)
@@ -128,7 +128,7 @@ impl DailyStatisticsCalculator {
         let geofence_events_count: i64 = sqlx::query_scalar(
             r#"
             SELECT COUNT(*) FROM geofence_events 
-            WHERE vehicle_id = $1 AND DATE(timestamp) = $2
+            WHERE "VehicleId" = $1 AND DATE("Timestamp") = $2
             "#,
         )
         .bind(vehicle_id)
@@ -304,12 +304,12 @@ impl DailyStatisticsCalculator {
         let row = sqlx::query(
             r#"
             SELECT 
-                COALESCE(SUM(CASE WHEN type = 'harsh_braking' THEN 1 ELSE 0 END), 0) as harsh_braking,
-                COALESCE(SUM(CASE WHEN type = 'harsh_acceleration' THEN 1 ELSE 0 END), 0) as harsh_acceleration,
-                COALESCE(SUM(CASE WHEN type IN ('sharp_turn', 'cornering') THEN 1 ELSE 0 END), 0) as sharp_turns,
-                COALESCE(SUM(CASE WHEN type = 'overspeeding' THEN 1 ELSE 0 END), 0) as overspeeding
+                COALESCE(SUM(CASE WHEN "Type" = 'harsh_braking' THEN 1 ELSE 0 END), 0) as harsh_braking,
+                COALESCE(SUM(CASE WHEN "Type" = 'harsh_acceleration' THEN 1 ELSE 0 END), 0) as harsh_acceleration,
+                COALESCE(SUM(CASE WHEN "Type" IN ('sharp_turn', 'cornering') THEN 1 ELSE 0 END), 0) as sharp_turns,
+                COALESCE(SUM(CASE WHEN "Type" = 'overspeeding' THEN 1 ELSE 0 END), 0) as overspeeding
             FROM driving_events
-            WHERE vehicle_id = $1 AND DATE(timestamp) = $2
+            WHERE "VehicleId" = $1 AND DATE("Timestamp") = $2
             "#,
         )
         .bind(vehicle_id)
