@@ -14,24 +14,28 @@ use crate::{
     config::{AppConfig, ListenerConfig, TransportKind},
     ports::{TelemetryEventPublisher, TelemetryStore},
     services::{
+        driving_events::DrivingEventsDetector,
         fuel_tracker::FuelTracker,
         geofence_detector::GeofenceDetector,
         geocoding::GeocodingService,
         gps_stabilizer::GpsStabilizer,
         stop_detector::StopDetector,
+        trip_detector::TripDetector,
     },
     telemetry,
 };
 
 type ConnectionMap = Arc<Mutex<HashMap<String, String>>>;
 
-/// Shared services for stop detection, fuel tracking, geocoding, geofencing, and GPS stabilization
+/// Shared services for stop detection, fuel tracking, geocoding, geofencing, GPS stabilization, trip detection, and driving events
 pub struct TelemetryServices {
     pub stop_detector: StopDetector,
     pub fuel_tracker: FuelTracker,
     pub geocoding: GeocodingService,
     pub geofence_detector: GeofenceDetector,
     pub gps_stabilizer: GpsStabilizer,
+    pub trip_detector: TripDetector,
+    pub driving_events_detector: DrivingEventsDetector,
 }
 
 pub async fn run_listeners(
@@ -64,8 +68,10 @@ pub async fn run_listeners(
         geocoding: GeocodingService::new(nominatim_url),
         geofence_detector,
         gps_stabilizer: GpsStabilizer::new(),
+        trip_detector: TripDetector::new(),
+        driving_events_detector: DrivingEventsDetector::new(),
     });
-    info!("Telemetry services initialized (StopDetector, FuelTracker, Geocoding, GeofenceDetector, GpsStabilizer)");
+    info!("Telemetry services initialized (StopDetector, FuelTracker, Geocoding, GeofenceDetector, GpsStabilizer, TripDetector, DrivingEventsDetector)");
 
     let mut handles = Vec::new();
     for listener in &config.listeners {
@@ -585,6 +591,48 @@ async fn process_single_frame(
                                     );
                                 }
                             }
+                        }
+                    }
+
+                    // Process trip detection
+                    if let Some(completed_trip) = services.trip_detector.process_frame(
+                        device_id,
+                        vehicle_id,
+                        company_id,
+                        &frame,
+                    ).await {
+                        if let Err(err) = database.insert_trip(&completed_trip).await {
+                            warn!(?err, device_id, "Failed to insert trip");
+                        } else {
+                            info!(
+                                device_id,
+                                vehicle_id = ?completed_trip.vehicle_id,
+                                distance_km = completed_trip.distance_km,
+                                duration_min = completed_trip.duration_minutes,
+                                "Trip recorded"
+                            );
+                        }
+                    }
+
+                    // Process driving events detection
+                    let driving_events = services.driving_events_detector.process_frame(
+                        device_id,
+                        vehicle_id,
+                        company_id,
+                        &frame,
+                    ).await;
+
+                    for event in driving_events {
+                        if let Err(err) = database.insert_driving_event(&event).await {
+                            warn!(?err, device_id, event_type = event.event_type.as_str(), "Failed to insert driving event");
+                        } else {
+                            info!(
+                                device_id,
+                                event_type = event.event_type.as_str(),
+                                severity = event.severity.as_str(),
+                                g_force = event.g_force,
+                                "Driving event recorded"
+                            );
                         }
                     }
                 }

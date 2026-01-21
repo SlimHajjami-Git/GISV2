@@ -7,12 +7,72 @@ mod telemetry;
 mod transport;
 
 use anyhow::Result;
+use chrono::NaiveDate;
 use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
-use tracing::{info, warn, Level};
+use tracing::{info, warn, error, Level};
 
 use crate::ports::{TelemetryEventPublisher, TelemetryStore};
+use crate::services::daily_statistics::DailyStatisticsCalculator;
+
+/// CLI arguments
+#[derive(Debug)]
+enum Command {
+    /// Run GPS ingestion service (default)
+    Ingest,
+    /// Calculate daily statistics for yesterday
+    CalculateDaily,
+    /// Calculate daily statistics for a specific date
+    CalculateDailyFor(NaiveDate),
+    /// Show help
+    Help,
+}
+
+fn parse_args() -> Command {
+    let args: Vec<String> = std::env::args().collect();
+    
+    if args.len() < 2 {
+        return Command::Ingest;
+    }
+
+    match args[1].as_str() {
+        "--calculate-daily" | "-d" => {
+            if args.len() >= 3 {
+                // Parse date argument (YYYY-MM-DD)
+                match NaiveDate::parse_from_str(&args[2], "%Y-%m-%d") {
+                    Ok(date) => Command::CalculateDailyFor(date),
+                    Err(_) => {
+                        eprintln!("Invalid date format. Use YYYY-MM-DD (e.g., 2026-01-20)");
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                Command::CalculateDaily
+            }
+        }
+        "--help" | "-h" => Command::Help,
+        _ => Command::Ingest,
+    }
+}
+
+fn print_help() {
+    println!("GPS Ingest Rust Service");
+    println!();
+    println!("USAGE:");
+    println!("    gps-ingest-rust [COMMAND]");
+    println!();
+    println!("COMMANDS:");
+    println!("    (none)                    Run GPS ingestion service (default)");
+    println!("    --calculate-daily, -d     Calculate daily statistics for yesterday");
+    println!("    --calculate-daily DATE    Calculate daily statistics for specific date (YYYY-MM-DD)");
+    println!("    --help, -h                Show this help message");
+    println!();
+    println!("EXAMPLES:");
+    println!("    gps-ingest-rust                           # Run ingestion service");
+    println!("    gps-ingest-rust --calculate-daily         # Calculate stats for yesterday");
+    println!("    gps-ingest-rust -d 2026-01-20             # Calculate stats for Jan 20, 2026");
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -20,6 +80,14 @@ async fn main() -> Result<()> {
         .with_max_level(Level::INFO)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
+
+    let command = parse_args();
+
+    // Handle help first (no DB needed)
+    if matches!(command, Command::Help) {
+        print_help();
+        return Ok(());
+    }
 
     info!("gps-ingest-rust bootstrap starting");
 
@@ -33,29 +101,72 @@ async fn main() -> Result<()> {
         .await?;
     info!("Connected to PostgreSQL successfully");
 
-    let database: Arc<dyn TelemetryStore> = Arc::new(db::Database::new(db_pool));
-
-    let publisher: Option<Arc<dyn TelemetryEventPublisher>> = match publisher::TelemetryPublisher::from_env().await? {
-        Some(p) => {
-            info!("Telemetry publisher connected to RabbitMQ");
-            Some(Arc::new(p))
+    match command {
+        Command::CalculateDaily => {
+            // Calculate for yesterday
+            let calculator = DailyStatisticsCalculator::new(db_pool);
+            info!("Running daily statistics calculation for yesterday...");
+            match calculator.run_daily_job().await {
+                Ok(count) => {
+                    info!(count, "Daily statistics calculation completed successfully");
+                    println!("✅ Calculated daily statistics for {} vehicles", count);
+                }
+                Err(e) => {
+                    error!(?e, "Daily statistics calculation failed");
+                    eprintln!("❌ Error: {}", e);
+                    std::process::exit(1);
+                }
+            }
         }
-        None => {
-            warn!("Telemetry publisher disabled (RABBITMQ_HOST not set)");
-            None
+        Command::CalculateDailyFor(date) => {
+            // Calculate for specific date
+            let calculator = DailyStatisticsCalculator::new(db_pool);
+            info!(%date, "Running daily statistics calculation for specific date...");
+            match calculator.calculate_for_date(date).await {
+                Ok(stats) => {
+                    let mut saved_count = 0;
+                    for stat in &stats {
+                        if let Err(e) = calculator.save_statistics(stat).await {
+                            warn!(?e, vehicle_id = stat.vehicle_id, "Failed to save statistics");
+                        } else {
+                            saved_count += 1;
+                        }
+                    }
+                    info!(saved_count, total = stats.len(), "Daily statistics calculation completed");
+                    println!("✅ Calculated daily statistics for {} vehicles (date: {})", saved_count, date);
+                }
+                Err(e) => {
+                    error!(?e, "Daily statistics calculation failed");
+                    eprintln!("❌ Error: {}", e);
+                    std::process::exit(1);
+                }
+            }
         }
-    };
+        Command::Ingest | Command::Help => {
+            // Run normal ingestion service
+            let database: Arc<dyn TelemetryStore> = Arc::new(db::Database::new(db_pool));
 
-    // Note: REST API removed - GPS data is now served by .NET GisAPI
-    // Rust service is now WRITE-ONLY (ingestion + RabbitMQ publishing)
-    info!("GPS Ingest service running in WRITE-ONLY mode (API served by .NET)");
+            let publisher: Option<Arc<dyn TelemetryEventPublisher>> = match publisher::TelemetryPublisher::from_env().await? {
+                Some(p) => {
+                    info!("Telemetry publisher connected to RabbitMQ");
+                    Some(Arc::new(p))
+                }
+                None => {
+                    warn!("Telemetry publisher disabled (RABBITMQ_HOST not set)");
+                    None
+                }
+            };
 
-    let app_config = config::load_config("config/listeners.yaml")?;
-    if app_config.listeners.is_empty() {
-        warn!("No listeners configured; service will idle");
+            info!("GPS Ingest service running in WRITE-ONLY mode (API served by .NET)");
+
+            let app_config = config::load_config("config/listeners.yaml")?;
+            if app_config.listeners.is_empty() {
+                warn!("No listeners configured; service will idle");
+            }
+
+            transport::run_listeners(&app_config, database, publisher).await?;
+        }
     }
-
-    transport::run_listeners(&app_config, database, publisher).await?;
 
     Ok(())
 }

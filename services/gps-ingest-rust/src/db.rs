@@ -469,6 +469,99 @@ impl TelemetryStore for Database {
     async fn get_last_position(&self, device_id: i32) -> Result<Option<LastKnownPosition>> {
         self.fetch_last_position(device_id).await
     }
+
+    async fn insert_driving_event(&self, event: &crate::services::driving_events::DrivingEventRecord) -> Result<i64> {
+        let row = sqlx::query(
+            r#"
+            INSERT INTO driving_events (
+                vehicle_id,
+                type,
+                severity,
+                g_force,
+                speed_kph,
+                latitude,
+                longitude,
+                timestamp,
+                company_id,
+                created_at,
+                updated_at
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()
+            )
+            RETURNING id
+            "#,
+        )
+        .bind(event.vehicle_id)
+        .bind(event.event_type.as_str())
+        .bind(event.severity.as_str())
+        .bind(event.g_force)
+        .bind(event.speed_kph)
+        .bind(event.latitude)
+        .bind(event.longitude)
+        .bind(event.timestamp)
+        .bind(event.company_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.get::<i64, _>("id"))
+    }
+
+    async fn insert_trip(&self, trip: &crate::services::trip_detector::CompletedTrip) -> Result<i64> {
+        let row = sqlx::query(
+            r#"
+            INSERT INTO trips (
+                vehicle_id,
+                driver_id,
+                start_time,
+                end_time,
+                start_latitude,
+                start_longitude,
+                end_latitude,
+                end_longitude,
+                distance_km,
+                duration_minutes,
+                average_speed_kph,
+                max_speed_kph,
+                fuel_consumed_liters,
+                start_odometer_km,
+                end_odometer_km,
+                harsh_braking_count,
+                harsh_acceleration_count,
+                overspeeding_count,
+                status,
+                company_id,
+                created_at,
+                updated_at
+            ) VALUES (
+                $1, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW()
+            )
+            RETURNING id
+            "#,
+        )
+        .bind(trip.vehicle_id.unwrap_or(0))
+        .bind(trip.start_time)
+        .bind(trip.end_time)
+        .bind(trip.start_lat)
+        .bind(trip.start_lng)
+        .bind(trip.end_lat)
+        .bind(trip.end_lng)
+        .bind(trip.distance_km)
+        .bind(trip.duration_minutes)
+        .bind(trip.avg_speed_kph)
+        .bind(trip.max_speed_kph)
+        .bind(trip.fuel_consumed)
+        .bind(trip.start_odometer.map(|o| o as i64))
+        .bind(trip.end_odometer.map(|o| o as i64))
+        .bind(trip.harsh_braking_count)
+        .bind(trip.harsh_accel_count)
+        .bind(trip.overspeeding_count)
+        .bind(&trip.status)
+        .bind(trip.company_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.get::<i64, _>("id"))
+    }
 }
 
 impl Database {

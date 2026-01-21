@@ -1,9 +1,11 @@
 use async_trait::async_trait;
 
 use crate::db::LastKnownPosition;
+use crate::services::driving_events::DrivingEventRecord;
 use crate::services::fuel_tracker::FuelEvent;
 use crate::services::geofence_detector::{Geofence, GeofenceEvent};
 use crate::services::stop_detector::CompletedStop;
+use crate::services::trip_detector::CompletedTrip;
 use crate::telemetry::model::{HhFrame, HhInfoFrame};
 
 #[async_trait]
@@ -41,6 +43,12 @@ pub trait TelemetryStore: Send + Sync {
 
     /// Insert a geofence event (entry/exit)
     async fn insert_geofence_event(&self, event: &GeofenceEvent, duration_seconds: Option<i32>) -> anyhow::Result<i32>;
+
+    /// Insert a completed trip
+    async fn insert_trip(&self, trip: &CompletedTrip) -> anyhow::Result<i64>;
+
+    /// Insert a driving event
+    async fn insert_driving_event(&self, event: &DrivingEventRecord) -> anyhow::Result<i64>;
 }
 
 #[async_trait]
