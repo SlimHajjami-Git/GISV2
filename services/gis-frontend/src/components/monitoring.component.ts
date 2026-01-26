@@ -187,6 +187,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       // Update stats
       this.updateStats();
       
+      // Update filtered vehicles to reflect changes in sidebar
+      this.updateFilteredVehicle(vehicle);
+      
       // If this vehicle is selected, update the panel
       if (this.selectedVehicle?.id === vehicle.id) {
         this.selectedVehicle = { ...vehicle };
@@ -197,12 +200,26 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
+  // Update a single vehicle in filteredVehicles without re-filtering all
+  private updateFilteredVehicle(vehicle: any) {
+    const index = this.filteredVehicles.findIndex(v => v.id === vehicle.id);
+    if (index !== -1) {
+      // Create new array reference to trigger Angular change detection
+      this.filteredVehicles = [
+        ...this.filteredVehicles.slice(0, index),
+        vehicle,
+        ...this.filteredVehicles.slice(index + 1)
+      ];
+    }
+  }
+
   updateSingleVehicleMarker(vehicle: any) {
     if (!this.map || !this.mapReady || !vehicle.currentLocation) return;
 
     const markerId = vehicle.id?.toString();
     const existingMarker = this.vehicleMarkers.get(markerId);
-    const isMoving = (vehicle.currentSpeed || 0) > 5;
+    // Use vehicle.isMoving from SignalR if available, otherwise calculate from speed
+    const isMoving = vehicle.isMoving ?? (vehicle.currentSpeed || 0) > 3;
     const icon = this.createVehicleIcon(vehicle, isMoving);
     const newLatLng = L.latLng(vehicle.currentLocation.lat, vehicle.currentLocation.lng);
 
@@ -308,7 +325,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
     this.filteredVehicles.forEach((vehicle: any) => {
       if (vehicle.currentLocation) {
-        const isMoving = (vehicle.currentSpeed || 0) > 5;
+        const isMoving = vehicle.isMoving ?? (vehicle.currentSpeed || 0) > 3;
         const icon = this.createVehicleIcon(vehicle, isMoving);
 
         const marker = L.marker([vehicle.currentLocation.lat, vehicle.currentLocation.lng], { icon })

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using GisAPI.Application.Common.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -7,7 +6,8 @@ using Microsoft.Extensions.Logging;
 namespace GisAPI.Application.Features.Gps.Commands.BroadcastPosition;
 
 /// <summary>
-/// Handler for broadcasting GPS position updates with adaptive interval logic
+/// Handler for broadcasting GPS position updates in real-time
+/// Every GPS frame received is immediately broadcasted to connected clients
 /// </summary>
 public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPositionCommand, BroadcastPositionResult>
 {
@@ -15,14 +15,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
     private readonly IGpsHubService _gpsHubService;
     private readonly ILogger<BroadcastPositionCommandHandler> _logger;
 
-    // Adaptive interval configuration (in seconds)
-    private const int MOVING_VEHICLE_INTERVAL = 30;        // 30 seconds for moving vehicles
-    private const int STOPPED_VEHICLE_INTERVAL = 120;      // 2 minutes for stopped (ignition on, speed < 10)
-    private const int PARKED_VEHICLE_INTERVAL = 600;       // 10 minutes for parked (ignition off)
-    private const double SPEED_THRESHOLD = 10.0;           // km/h threshold for "moving"
-
-    // In-memory cache of last broadcast times per device
-    private static readonly ConcurrentDictionary<string, LastBroadcastInfo> _lastBroadcasts = new();
+    private const double SPEED_THRESHOLD = 10.0; // km/h threshold for "moving"
 
     public BroadcastPositionCommandHandler(
         IGisDbContext context,
@@ -36,29 +29,8 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
 
     public async Task<BroadcastPositionResult> Handle(BroadcastPositionCommand request, CancellationToken ct)
     {
-        // Determine vehicle state and required interval
         var ignitionOn = request.IgnitionOn ?? false;
         var speed = request.SpeedKph ?? 0;
-        var requiredInterval = GetRequiredInterval(ignitionOn, speed);
-
-        // Check if enough time has passed since last broadcast
-        if (_lastBroadcasts.TryGetValue(request.DeviceUid, out var lastBroadcast))
-        {
-            var elapsed = (DateTime.UtcNow - lastBroadcast.Timestamp).TotalSeconds;
-            
-            if (elapsed < requiredInterval)
-            {
-                _logger.LogDebug(
-                    "Skipping broadcast for {DeviceUid}: elapsed={Elapsed}s, required={Required}s",
-                    request.DeviceUid, elapsed, requiredInterval);
-                
-                return new BroadcastPositionResult(
-                    Broadcasted: false,
-                    VehicleId: null,
-                    SkipReason: $"Interval not reached ({elapsed:F0}s / {requiredInterval}s)"
-                );
-            }
-        }
 
         // Look up device and vehicle
         var device = await _context.GpsDevices
@@ -127,48 +99,15 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             }
         }
 
-        // Update last broadcast time
-        _lastBroadcasts[request.DeviceUid] = new LastBroadcastInfo
-        {
-            Timestamp = DateTime.UtcNow,
-            IgnitionOn = ignitionOn,
-            Speed = speed
-        };
-
         _logger.LogDebug(
-            "Broadcasted position for {DeviceUid} (Vehicle: {VehicleName}, Speed: {Speed} km/h, Interval: {Interval}s)",
-            request.DeviceUid, device.Vehicle?.Name, displaySpeed, requiredInterval);
+            "Broadcasted position for {DeviceUid} (Vehicle: {VehicleName}, Speed: {Speed} km/h)",
+            request.DeviceUid, device.Vehicle?.Name, displaySpeed);
 
         return new BroadcastPositionResult(
             Broadcasted: true,
             VehicleId: device.Vehicle?.Id,
             SkipReason: null
         );
-    }
-
-    private static int GetRequiredInterval(bool ignitionOn, double speed)
-    {
-        if (!ignitionOn)
-        {
-            // Parked vehicle (ignition off)
-            return PARKED_VEHICLE_INTERVAL;
-        }
-        
-        if (speed < SPEED_THRESHOLD)
-        {
-            // Stopped but ignition on (traffic, delivery, etc.)
-            return STOPPED_VEHICLE_INTERVAL;
-        }
-
-        // Moving vehicle
-        return MOVING_VEHICLE_INTERVAL;
-    }
-
-    private class LastBroadcastInfo
-    {
-        public DateTime Timestamp { get; set; }
-        public bool IgnitionOn { get; set; }
-        public double Speed { get; set; }
     }
 }
 
