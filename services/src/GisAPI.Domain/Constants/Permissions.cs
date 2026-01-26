@@ -13,6 +13,7 @@ public static class Permissions
     public const string Maintenance = "maintenance";
     public const string Costs = "costs";
     public const string Reports = "reports";
+    public const string MileageReports = "mileage-reports";
     public const string Settings = "settings";
     public const string Users = "users";
 
@@ -29,6 +30,7 @@ public static class Permissions
         Maintenance,
         Costs,
         Reports,
+        MileageReports,
         Settings,
         Users
     ];

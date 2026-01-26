@@ -8,6 +8,7 @@ using GisAPI.Domain.Entities;
 using GisAPI.Application.Features.Reports.Queries.GetDailyActivityReport;
 using GisAPI.Application.Features.Reports.Queries.GetMileageReport;
 using GisAPI.Application.Features.Reports.Queries.GetMonthlyFleetReport;
+using GisAPI.Application.Features.Reports.Queries.GetMileagePeriodReport;
 
 namespace GisAPI.Controllers;
 
@@ -377,6 +378,64 @@ public class ReportsController : ControllerBase
             vehicleTypeFilter,
             departmentFilter,
             vehicleIds));
+
+        return Ok(result);
+    }
+
+    // ==================== MILEAGE PERIOD REPORT (Hour/Day/Month) ====================
+
+    /// <summary>
+    /// Get mileage report broken down by period (Hour, Day, or Month)
+    /// - Hour: 24-hour breakdown for a specific date
+    /// - Day: Daily breakdown between two dates
+    /// - Month: Monthly breakdown for date range
+    /// </summary>
+    [HttpGet("mileage-period/{vehicleId}")]
+    public async Task<ActionResult<MileagePeriodReportDto>> GetMileagePeriodReport(
+        int vehicleId,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] string periodType = "day")
+    {
+        var companyId = GetCompanyId();
+
+        // Verify vehicle belongs to company
+        var vehicleExists = await _context.Vehicles
+            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
+
+        if (!vehicleExists)
+            return NotFound(new { message = "Vehicle not found" });
+
+        // Parse period type
+        var period = periodType.ToLower() switch
+        {
+            "hour" => MileagePeriodType.Hour,
+            "day" => MileagePeriodType.Day,
+            "month" => MileagePeriodType.Month,
+            _ => MileagePeriodType.Day
+        };
+
+        // Set default dates based on period type
+        var start = startDate?.Date ?? DateTime.UtcNow.Date;
+        var end = endDate?.Date ?? DateTime.UtcNow.Date;
+
+        // For hourly report, use same day if no end date specified
+        if (period == MileagePeriodType.Hour && endDate == null)
+        {
+            end = start;
+        }
+        // For daily report, default to last 30 days
+        else if (period == MileagePeriodType.Day && startDate == null)
+        {
+            start = DateTime.UtcNow.Date.AddDays(-30);
+        }
+        // For monthly report, default to last 12 months
+        else if (period == MileagePeriodType.Month && startDate == null)
+        {
+            start = DateTime.UtcNow.Date.AddMonths(-12);
+        }
+
+        var result = await _mediator.Send(new GetMileagePeriodReportQuery(vehicleId, start, end, period));
 
         return Ok(result);
     }

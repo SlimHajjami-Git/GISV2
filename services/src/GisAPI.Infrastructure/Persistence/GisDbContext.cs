@@ -66,6 +66,7 @@ public class GisDbContext : DbContext, IGisDbContext
 
     // Inventory & Suppliers
     public DbSet<Supplier> Suppliers => Set<Supplier>();
+    public DbSet<SupplierService> SupplierServices => Set<SupplierService>();
     public DbSet<PartInventory> PartInventory => Set<PartInventory>();
     public DbSet<PartTransaction> PartTransactions => Set<PartTransaction>();
 
@@ -74,6 +75,16 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<ReportSchedule> ReportSchedules => Set<ReportSchedule>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
+    // Accident Claims
+    public DbSet<AccidentClaim> AccidentClaims => Set<AccidentClaim>();
+    public DbSet<AccidentClaimThirdParty> AccidentClaimThirdParties => Set<AccidentClaimThirdParty>();
+    public DbSet<AccidentClaimDocument> AccidentClaimDocuments => Set<AccidentClaimDocument>();
+
+    // Maintenance Templates
+    public DbSet<MaintenanceTemplate> MaintenanceTemplates => Set<MaintenanceTemplate>();
+    public DbSet<VehicleMaintenanceSchedule> VehicleMaintenanceSchedules => Set<VehicleMaintenanceSchedule>();
+    public DbSet<MaintenanceLog> MaintenanceLogs => Set<MaintenanceLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -108,6 +119,8 @@ public class GisDbContext : DbContext, IGisDbContext
             modelBuilder.Entity<Notification>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
             modelBuilder.Entity<VehicleStop>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
             modelBuilder.Entity<FuelRecord>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
+            modelBuilder.Entity<AccidentClaim>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
+            modelBuilder.Entity<MaintenanceTemplate>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
         }
 
         // Configure composite keys

@@ -24,6 +24,14 @@ public interface IGisDbContext
     DbSet<VehicleStop> VehicleStops { get; }
     DbSet<FuelRecord> FuelRecords { get; }
     DbSet<VehicleAssignment> VehicleAssignments { get; }
+    DbSet<Supplier> Suppliers { get; }
+    DbSet<SupplierService> SupplierServices { get; }
+    DbSet<AccidentClaim> AccidentClaims { get; }
+    DbSet<AccidentClaimThirdParty> AccidentClaimThirdParties { get; }
+    DbSet<AccidentClaimDocument> AccidentClaimDocuments { get; }
+    DbSet<MaintenanceTemplate> MaintenanceTemplates { get; }
+    DbSet<VehicleMaintenanceSchedule> VehicleMaintenanceSchedules { get; }
+    DbSet<MaintenanceLog> MaintenanceLogs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

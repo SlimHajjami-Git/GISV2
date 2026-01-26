@@ -29,6 +29,13 @@ public class Vehicle : TenantEntity
     
     public string? DriverName { get; set; }
     public string? DriverPhone { get; set; }
+    
+    // Document expiry dates
+    public DateTime? InsuranceExpiry { get; set; }
+    public DateTime? TechnicalInspectionExpiry { get; set; }
+    public DateTime? TaxExpiry { get; set; }
+    public DateTime? RegistrationExpiry { get; set; }
+    public DateTime? TransportPermitExpiry { get; set; }
 
     public ICollection<VehicleDocument> Documents { get; set; } = new List<VehicleDocument>();
     public ICollection<MaintenanceRecord> MaintenanceRecords { get; set; } = new List<MaintenanceRecord>();

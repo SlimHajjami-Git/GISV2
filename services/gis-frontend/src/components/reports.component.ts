@@ -2,7 +2,7 @@ import { Component, OnInit, ViewChild, ElementRef, NgZone, ChangeDetectorRef, Ap
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport } from '../services/api.service';
+import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto } from '../services/api.service';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
@@ -22,11 +22,13 @@ export class ReportsComponent implements OnInit {
   @ViewChild('kmBarChart') kmBarChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('fuelPieChart') fuelPieChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('maintenanceAreaChart') maintenanceAreaChartRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('mileagePeriodChart') mileagePeriodChartRef?: ElementRef<HTMLCanvasElement>;
   
   // Chart instances for monthly report
   private kmBarChart?: Chart;
   private fuelPieChart?: Chart;
   private maintenanceAreaChart?: Chart;
+  private mileagePeriodChart?: Chart;
   
   // Chart color palette
   chartColors = [
@@ -97,6 +99,27 @@ export class ReportsComponent implements OnInit {
       type: 'monthly',
       icon: '📊',
       description: 'Rapport complet avec KPIs, graphiques et analyses statistiques'
+    },
+    {
+      id: '10',
+      name: 'Kilométrage heure/jour/mois',
+      type: 'mileage-period',
+      icon: '📈',
+      description: 'Analyse du kilométrage par heure, jour ou mois avec graphiques'
+    },
+    {
+      id: '11',
+      name: 'Rapport infractions vitesse',
+      type: 'speed-infraction',
+      icon: '⚠️',
+      description: 'Véhicules dépassant la limite de vitesse configurée'
+    },
+    {
+      id: '12',
+      name: 'Rapport comportement conduite',
+      type: 'driving-behavior',
+      icon: '🚗',
+      description: 'Analyse des incidents de conduite: accélérations, freinages, virages brusques'
     }
   ];
 
@@ -106,16 +129,85 @@ export class ReportsComponent implements OnInit {
   selectedVehicleId = '';
   selectedVehicleIds: string[] = [];
 
-  // Period
-  periods = [
+  // Mileage Period Report options
+  mileagePeriodTypes = [
+    { value: 'hour', label: 'Par heure (24h)' },
+    { value: 'day', label: 'Par jour' },
+    { value: 'month', label: 'Par mois' }
+  ];
+  selectedMileagePeriodType: MileagePeriodType = 'day';
+  mileagePeriodReport: MileagePeriodReport | null = null;
+  
+  // Mileage Period specific dates
+  mileagePeriodDate = '';           // For hourly report (single date)
+  mileagePeriodStartDate = '';      // For daily report (range start)
+  mileagePeriodEndDate = '';        // For daily report (range end)
+  mileagePeriodMonth = new Date().getMonth() + 1;  // For monthly report
+  mileagePeriodYear = new Date().getFullYear();    // For monthly report
+  availableYears: number[] = [];
+
+  // Period filters for standard reports (fuel, daily, mileage, etc.)
+  standardPeriods = [
     { value: 'today', label: 'Today' },
-    { value: 'yesterday', label: 'Yesterday' },
     { value: 'week', label: 'Week' },
     { value: 'month', label: 'Month' }
   ];
-  selectedPeriod = 'week';
+  selectedStandardPeriod = 'today';
   
-  // Interval
+  // Period filters for stops report
+  stopsPeriods = [
+    { value: 'today', label: 'Today' },
+    { value: 'week', label: 'Week' },
+    { value: 'month', label: 'Month' },
+    { value: 'custom', label: 'Personnalisé' }
+  ];
+  selectedStopsPeriod = 'today';
+  
+  // Custom period for stops report
+  stopsCustomPeriodType: 'hour' | 'day' | 'month' = 'day';
+  stopsCustomDate = '';           // For hourly
+  stopsCustomStartDate = '';      // For daily range start
+  stopsCustomEndDate = '';        // For daily range end
+  stopsCustomMonth = new Date().getMonth() + 1;
+  stopsCustomYear = new Date().getFullYear();
+  
+  // Speed Infraction Report options
+  speedInfractionPeriodType: 'hour' | 'day' | 'month' = 'day';
+  speedInfractionDate = '';           // For hourly (single date)
+  speedInfractionStartDate = '';      // For daily range start
+  speedInfractionEndDate = '';        // For daily range end
+  speedInfractionMonth = new Date().getMonth() + 1;
+  speedInfractionYear = new Date().getFullYear();
+  speedLimit = 90;                    // Default speed limit in km/h
+  
+  // Driving Behavior Report options
+  selectedDrivingBehaviorPeriod = 'today';
+  drivingBehaviorPeriodType: 'hour' | 'day' | 'month' = 'day';
+  drivingBehaviorDate = '';
+  drivingBehaviorStartDate = '';
+  drivingBehaviorEndDate = '';
+  drivingBehaviorMonth = new Date().getMonth() + 1;
+  drivingBehaviorYear = new Date().getFullYear();
+  
+  // Incident type filters (checkboxes)
+  drivingBehaviorFilters: { [key: string]: boolean } = {
+    harshAcceleration: true,
+    harshBraking: true,
+    sharpSteering: true,
+    overspeed: true,
+    highRpm: true
+  };
+  
+  // Incident type definitions with colors
+  incidentTypes = [
+    { key: 'harshAcceleration', label: 'Accélérations brusques', color: '#FF6B6B', icon: '⚡' },
+    { key: 'harshBraking', label: 'Freinages brusques', color: '#4ECDC4', icon: '🛑' },
+    { key: 'sharpSteering', label: 'Virages brusques', color: '#45B7D1', icon: '↩️' },
+    { key: 'overspeed', label: 'Vitesse > 130 km/h', color: '#FFA07A', icon: '🏎️' },
+    { key: 'highRpm', label: 'RPM > 3500', color: '#9B59B6', icon: '⚙️' }
+  ];
+  
+  // Interval for standard reports
   intervalType = 'previous';
   intervalValue = 1;
   intervalUnit = 'months';
@@ -204,10 +296,40 @@ export class ReportsComponent implements OnInit {
     this.selectedMonthlyYear = lastMonth.getFullYear();
     this.selectedMonthlyMonth = lastMonth.getMonth() + 1;
 
+    // Initialize mileage period report dates
+    this.availableYears = [currentYear, currentYear - 1, currentYear - 2];
+    this.initializeMileagePeriodDates();
+
     this.ngZone.run(() => {
       this.loadData();
       this.initializeDates();
     });
+  }
+
+  initializeMileagePeriodDates() {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const weekAgo = new Date(today);
+    weekAgo.setDate(today.getDate() - 7);
+    
+    // Hourly: default to yesterday
+    this.mileagePeriodDate = yesterday.toISOString().split('T')[0];
+    
+    // Daily: default to last 7 days
+    this.mileagePeriodStartDate = weekAgo.toISOString().split('T')[0];
+    this.mileagePeriodEndDate = today.toISOString().split('T')[0];
+    
+    // Monthly: default to current month/year
+    this.mileagePeriodMonth = today.getMonth() + 1;
+    this.mileagePeriodYear = today.getFullYear();
+    
+    // Initialize stops custom dates (same logic)
+    this.stopsCustomDate = yesterday.toISOString().split('T')[0];
+    this.stopsCustomStartDate = weekAgo.toISOString().split('T')[0];
+    this.stopsCustomEndDate = today.toISOString().split('T')[0];
+    this.stopsCustomMonth = today.getMonth() + 1;
+    this.stopsCustomYear = today.getFullYear();
   }
 
   loadData() {
@@ -218,11 +340,11 @@ export class ReportsComponent implements OnInit {
   }
 
   initializeDates() {
-    this.selectPeriod('today');
+    this.selectStandardPeriod('today');
   }
 
-  selectPeriod(period: string) {
-    this.selectedPeriod = period;
+  selectStandardPeriod(period: string) {
+    this.selectedStandardPeriod = period;
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -230,12 +352,6 @@ export class ReportsComponent implements OnInit {
       case 'today':
         this.fromDate = this.toDateTime(today);
         this.toDate = this.toDateTime(now);
-        break;
-      case 'yesterday':
-        const yesterday = new Date(today);
-        yesterday.setDate(today.getDate() - 1);
-        this.fromDate = this.toDateTime(yesterday);
-        this.toDate = this.toDateTime(today);
         break;
       case 'week':
         const weekAgo = new Date(today);
@@ -250,6 +366,16 @@ export class ReportsComponent implements OnInit {
         this.toDate = this.toDateTime(now);
         break;
     }
+  }
+
+  selectStopsPeriod(period: string) {
+    this.selectedStopsPeriod = period;
+    // For stops report, dates are calculated in executeReport based on the period
+  }
+
+  selectDrivingBehaviorPeriod(period: string) {
+    this.selectedDrivingBehaviorPeriod = period;
+    // For driving behavior report, dates are calculated in executeReport based on the period
   }
 
   toDateTime(date: Date): string {
@@ -280,7 +406,8 @@ export class ReportsComponent implements OnInit {
     this.selectedTemplateId = '';
     this.selectedTemplate = null;
     this.selectedVehicleId = '';
-    this.selectedPeriod = 'week';
+    this.selectedStandardPeriod = 'today';
+    this.selectedStopsPeriod = 'today';
     this.intervalValue = 1;
     this.intervalUnit = 'months';
     this.includeCurrent = false;
@@ -328,7 +455,7 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
-    if (!this.selectedVehicleId && (this.selectedTemplate.type === 'fuel' || this.selectedTemplate.type === 'daily' || this.selectedTemplate.type === 'mileage')) {
+    if (!this.selectedVehicleId && (this.selectedTemplate.type === 'fuel' || this.selectedTemplate.type === 'daily' || this.selectedTemplate.type === 'mileage' || this.selectedTemplate.type === 'mileage-period')) {
       console.warn('No vehicle selected');
       return;
     }
@@ -338,10 +465,68 @@ export class ReportsComponent implements OnInit {
     this.dailyReport = null;
     this.mileageReport = null;
     this.monthlyReport = null;
+    this.mileagePeriodReport = null;
 
-    const startDate = this.fromDate ? new Date(this.fromDate) : undefined;
-    const endDate = this.toDate ? new Date(this.toDate) : undefined;
+    let startDate = this.fromDate ? new Date(this.fromDate) : undefined;
+    let endDate = this.toDate ? new Date(this.toDate) : undefined;
     const vehicleId = this.selectedVehicleId ? parseInt(this.selectedVehicleId) : undefined;
+
+    // Handle stops report with its own period logic
+    if (this.selectedTemplate.type === 'stops') {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      switch (this.selectedStopsPeriod) {
+        case 'today':
+          startDate = today;
+          endDate = now;
+          break;
+        case 'week':
+          const weekAgo = new Date(today);
+          weekAgo.setDate(today.getDate() - 7);
+          startDate = weekAgo;
+          endDate = now;
+          break;
+        case 'month':
+          const monthAgo = new Date(today);
+          monthAgo.setMonth(today.getMonth() - 1);
+          startDate = monthAgo;
+          endDate = now;
+          break;
+        case 'custom':
+          console.log('Custom period for stops:', {
+            periodType: this.stopsCustomPeriodType,
+            customDate: this.stopsCustomDate,
+            customStartDate: this.stopsCustomStartDate,
+            customEndDate: this.stopsCustomEndDate,
+            customMonth: this.stopsCustomMonth,
+            customYear: this.stopsCustomYear
+          });
+          
+          switch (this.stopsCustomPeriodType) {
+            case 'hour':
+              if (this.stopsCustomDate) {
+                const hourDate = new Date(this.stopsCustomDate + 'T00:00:00');
+                startDate = new Date(hourDate.getFullYear(), hourDate.getMonth(), hourDate.getDate(), 0, 0, 0);
+                endDate = new Date(hourDate.getFullYear(), hourDate.getMonth(), hourDate.getDate(), 23, 59, 59);
+              }
+              break;
+            case 'day':
+              if (this.stopsCustomStartDate && this.stopsCustomEndDate) {
+                startDate = new Date(this.stopsCustomStartDate + 'T00:00:00');
+                endDate = new Date(this.stopsCustomEndDate + 'T23:59:59');
+              }
+              break;
+            case 'month':
+              startDate = new Date(this.stopsCustomYear, this.stopsCustomMonth - 1, 1);
+              endDate = new Date(this.stopsCustomYear, this.stopsCustomMonth, 0, 23, 59, 59);
+              break;
+          }
+          break;
+      }
+      
+      console.log('Final dates for stops:', { startDate, endDate });
+    }
 
     // Handle daily report separately
     if (this.selectedTemplate.type === 'daily') {
@@ -355,14 +540,580 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
+    // Handle mileage period report (Hour/Day/Month)
+    if (this.selectedTemplate.type === 'mileage-period') {
+      this.executeMileagePeriodReport(vehicleId!, startDate, endDate);
+      return;
+    }
+
     // Handle monthly fleet report inline
     if (this.selectedTemplate.type === 'monthly') {
       this.executeMonthlyReport();
       return;
     }
 
+    // Handle stops report using VehicleStops API
+    if (this.selectedTemplate.type === 'stops') {
+      this.executeStopsReport(vehicleId!, startDate, endDate);
+      return;
+    }
+
+    // Handle speed infraction report
+    if (this.selectedTemplate.type === 'speed-infraction') {
+      this.executeSpeedInfractionReport();
+      return;
+    }
+
+    // Handle driving behavior report
+    if (this.selectedTemplate.type === 'driving-behavior') {
+      this.executeDrivingBehaviorReport();
+      return;
+    }
+
     // All other report types use vehicle history API
     this.executeVehicleReport(vehicleId, startDate, endDate);
+  }
+
+  executeStopsReport(vehicleId: number, startDate?: Date, endDate?: Date) {
+    console.log('executeStopsReport called with:', { vehicleId, startDate, endDate });
+    this.apiService.getVehicleStops(vehicleId, startDate, endDate).subscribe({
+      next: (result) => {
+        this.ngZone.run(() => {
+          this.processStopsFromApi(result);
+          this.reportGenerated = true;
+          this.loading = false;
+          this.activeTab = 'table';
+          this.currentPage = 1;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
+      },
+      error: (err) => {
+        this.ngZone.run(() => {
+          console.error('Error loading stops report:', err);
+          this.tableData = [];
+          this.chartData = [];
+          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport des arrêts' };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
+      }
+    });
+  }
+
+  executeSpeedInfractionReport() {
+    // Calculate date range based on period type
+    let startDate: Date;
+    let endDate: Date;
+    const now = new Date();
+    
+    switch (this.speedInfractionPeriodType) {
+      case 'hour':
+        if (this.speedInfractionDate) {
+          const date = new Date(this.speedInfractionDate + 'T00:00:00');
+          startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0);
+          endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59);
+        } else {
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+          endDate = now;
+        }
+        break;
+      case 'day':
+        if (this.speedInfractionStartDate && this.speedInfractionEndDate) {
+          startDate = new Date(this.speedInfractionStartDate + 'T00:00:00');
+          endDate = new Date(this.speedInfractionEndDate + 'T23:59:59');
+        } else {
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7, 0, 0, 0);
+          endDate = now;
+        }
+        break;
+      case 'month':
+        startDate = new Date(this.speedInfractionYear, this.speedInfractionMonth - 1, 1);
+        endDate = new Date(this.speedInfractionYear, this.speedInfractionMonth, 0, 23, 59, 59);
+        break;
+      default:
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+        endDate = now;
+    }
+    
+    console.log('executeSpeedInfractionReport:', { startDate, endDate, speedLimit: this.speedLimit });
+    
+    // Fetch all vehicles' GPS positions and filter by speed
+    this.apiService.getVehicles().subscribe({
+      next: (vehicles) => {
+        const allInfractions: any[] = [];
+        let completedRequests = 0;
+        const totalVehicles = vehicles.length;
+        
+        if (totalVehicles === 0) {
+          this.ngZone.run(() => {
+            this.processSpeedInfractionReport([]);
+            this.reportGenerated = true;
+            this.loading = false;
+            this.activeTab = 'table';
+            this.currentPage = 1;
+            this.cdr.detectChanges();
+          });
+          return;
+        }
+        
+        vehicles.forEach(vehicle => {
+          this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 10000).subscribe({
+            next: (positions) => {
+              const infractions = positions
+                .filter((p: any) => (p.speedKph || 0) > this.speedLimit)
+                .map((p: any) => ({
+                  vehicleId: vehicle.id,
+                  vehicleName: vehicle.name || vehicle.plate,
+                  vehiclePlate: vehicle.plate,
+                  time: p.recordedAt,
+                  latitude: p.latitude,
+                  longitude: p.longitude,
+                  address: p.address,
+                  speed: p.speedKph || 0,
+                  limit: this.speedLimit,
+                  excess: (p.speedKph || 0) - this.speedLimit
+                }));
+              allInfractions.push(...infractions);
+              completedRequests++;
+              
+              if (completedRequests === totalVehicles) {
+                this.ngZone.run(() => {
+                  this.processSpeedInfractionReport(allInfractions);
+                  this.reportGenerated = true;
+                  this.loading = false;
+                  this.activeTab = 'table';
+                  this.currentPage = 1;
+                  this.cdr.detectChanges();
+                  this.appRef.tick();
+                });
+              }
+            },
+            error: () => {
+              completedRequests++;
+              if (completedRequests === totalVehicles) {
+                this.ngZone.run(() => {
+                  this.processSpeedInfractionReport(allInfractions);
+                  this.reportGenerated = true;
+                  this.loading = false;
+                  this.activeTab = 'table';
+                  this.currentPage = 1;
+                  this.cdr.detectChanges();
+                  this.appRef.tick();
+                });
+              }
+            }
+          });
+        });
+      },
+      error: (err) => {
+        console.error('Error fetching vehicles:', err);
+        this.ngZone.run(() => {
+          this.tableData = [];
+          this.chartData = [];
+          this.statisticsData = { 'Erreur': 'Impossible de charger les véhicules' };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+        });
+      }
+    });
+  }
+
+  processSpeedInfractionReport(infractions: any[]) {
+    // Sort by time descending
+    infractions.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+    
+    if (infractions.length === 0) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = { 'Information': `Aucune infraction au-dessus de ${this.speedLimit} km/h` };
+      return;
+    }
+    
+    // Process table data
+    this.tableData = infractions.map(inf => ({
+      vehicle: inf.vehicleName || inf.vehiclePlate,
+      time: new Date(inf.time).toLocaleString('fr-FR', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      }),
+      address: inf.address || `${inf.latitude.toFixed(5)}, ${inf.longitude.toFixed(5)}`,
+      latitude: inf.latitude,
+      longitude: inf.longitude,
+      speed: `${inf.speed.toFixed(1)} km/h`,
+      limit: `${inf.limit} km/h`,
+      excess: `+${inf.excess.toFixed(1)} km/h`,
+      excessValue: inf.excess,
+      isAnomaly: inf.excess > 30
+    }));
+    
+    // Fetch addresses for rows without one
+    this.enrichSpeedInfractionAddresses();
+    
+    // Chart data - group by vehicle
+    const byVehicle: { [key: string]: number } = {};
+    infractions.forEach(inf => {
+      const name = inf.vehicleName || inf.vehiclePlate;
+      byVehicle[name] = (byVehicle[name] || 0) + 1;
+    });
+    
+    this.chartData = Object.entries(byVehicle)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([label, value]) => ({ label, value }));
+    
+    // Statistics
+    const maxSpeed = Math.max(...infractions.map(i => i.speed));
+    const avgExcess = infractions.reduce((sum, i) => sum + i.excess, 0) / infractions.length;
+    const severeCount = infractions.filter(i => i.excess > 30).length;
+    
+    this.statisticsData = {
+      'Total infractions': infractions.length.toString(),
+      'Vitesse max': `${maxSpeed.toFixed(1)} km/h`,
+      'Excès moyen': `+${avgExcess.toFixed(1)} km/h`,
+      'Infractions graves (>30 km/h)': severeCount.toString(),
+      'Véhicules concernés': Object.keys(byVehicle).length.toString()
+    };
+  }
+
+  enrichSpeedInfractionAddresses() {
+    this.tableData.forEach((row: any, index: number) => {
+      if (row.address?.includes(',') && row.latitude && row.longitude) {
+        this.geocodingService.reverseGeocode(row.latitude, row.longitude).subscribe({
+          next: (address) => {
+            if (address) {
+              this.ngZone.run(() => {
+                this.tableData[index] = { ...this.tableData[index], address };
+                this.cdr.detectChanges();
+              });
+            }
+          }
+        });
+      }
+    });
+  }
+
+  executeDrivingBehaviorReport() {
+    // Calculate date range based on selected period (like stops report)
+    let startDate: Date;
+    let endDate: Date;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    switch (this.selectedDrivingBehaviorPeriod) {
+      case 'today':
+        startDate = today;
+        endDate = now;
+        break;
+      case 'week':
+        const weekAgo = new Date(today);
+        weekAgo.setDate(today.getDate() - 7);
+        startDate = weekAgo;
+        endDate = now;
+        break;
+      case 'month':
+        const monthAgo = new Date(today);
+        monthAgo.setMonth(today.getMonth() - 1);
+        startDate = monthAgo;
+        endDate = now;
+        break;
+      case 'custom':
+        switch (this.drivingBehaviorPeriodType) {
+          case 'hour':
+            if (this.drivingBehaviorDate) {
+              const date = new Date(this.drivingBehaviorDate + 'T00:00:00');
+              startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0);
+              endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59);
+            } else {
+              startDate = today;
+              endDate = now;
+            }
+            break;
+          case 'day':
+            if (this.drivingBehaviorStartDate && this.drivingBehaviorEndDate) {
+              startDate = new Date(this.drivingBehaviorStartDate + 'T00:00:00');
+              endDate = new Date(this.drivingBehaviorEndDate + 'T23:59:59');
+            } else {
+              startDate = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+              endDate = now;
+            }
+            break;
+          case 'month':
+            startDate = new Date(this.drivingBehaviorYear, this.drivingBehaviorMonth - 1, 1);
+            endDate = new Date(this.drivingBehaviorYear, this.drivingBehaviorMonth, 0, 23, 59, 59);
+            break;
+          default:
+            startDate = today;
+            endDate = now;
+        }
+        break;
+      default:
+        startDate = today;
+        endDate = now;
+    }
+    
+    console.log('executeDrivingBehaviorReport:', { selectedPeriod: this.selectedDrivingBehaviorPeriod, startDate, endDate, filters: this.drivingBehaviorFilters });
+    
+    // Fetch all vehicles' GPS positions and detect driving incidents
+    this.apiService.getVehicles().subscribe({
+      next: (vehicles) => {
+        const allIncidents: any[] = [];
+        let completedRequests = 0;
+        const totalVehicles = vehicles.length;
+        
+        if (totalVehicles === 0) {
+          this.ngZone.run(() => {
+            this.processDrivingBehaviorReport([]);
+            this.reportGenerated = true;
+            this.loading = false;
+            this.activeTab = 'table';
+            this.currentPage = 1;
+            this.cdr.detectChanges();
+          });
+          return;
+        }
+        
+        vehicles.forEach(vehicle => {
+          this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 10000).subscribe({
+            next: (positions) => {
+              const incidents = this.detectDrivingIncidents(positions, vehicle);
+              allIncidents.push(...incidents);
+              completedRequests++;
+              
+              if (completedRequests === totalVehicles) {
+                this.ngZone.run(() => {
+                  this.processDrivingBehaviorReport(allIncidents);
+                  this.reportGenerated = true;
+                  this.loading = false;
+                  this.activeTab = 'table';
+                  this.currentPage = 1;
+                  this.cdr.detectChanges();
+                  this.appRef.tick();
+                });
+              }
+            },
+            error: () => {
+              completedRequests++;
+              if (completedRequests === totalVehicles) {
+                this.ngZone.run(() => {
+                  this.processDrivingBehaviorReport(allIncidents);
+                  this.reportGenerated = true;
+                  this.loading = false;
+                  this.activeTab = 'table';
+                  this.currentPage = 1;
+                  this.cdr.detectChanges();
+                  this.appRef.tick();
+                });
+              }
+            }
+          });
+        });
+      },
+      error: (err) => {
+        console.error('Error fetching vehicles:', err);
+        this.ngZone.run(() => {
+          this.tableData = [];
+          this.chartData = [];
+          this.statisticsData = { 'Erreur': 'Impossible de charger les véhicules' };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+        });
+      }
+    });
+  }
+
+  detectDrivingIncidents(positions: any[], vehicle: any): any[] {
+    const incidents: any[] = [];
+    
+    for (let i = 1; i < positions.length; i++) {
+      const prev = positions[i - 1];
+      const curr = positions[i];
+      
+      const timeDiff = (new Date(curr.recordedAt).getTime() - new Date(prev.recordedAt).getTime()) / 1000;
+      if (timeDiff <= 0 || timeDiff > 300) continue; // Skip if time gap is invalid or too large
+      
+      const speedDiff = (curr.speedKph || 0) - (prev.speedKph || 0);
+      const acceleration = speedDiff / timeDiff * 3.6; // m/s² approximation
+      
+      // Detect harsh acceleration (> 3 m/s²)
+      if (this.drivingBehaviorFilters['harshAcceleration'] && acceleration > 3) {
+        incidents.push({
+          type: 'harshAcceleration',
+          vehicleId: vehicle.id,
+          vehicleName: vehicle.name || vehicle.plate,
+          time: curr.recordedAt,
+          latitude: curr.latitude,
+          longitude: curr.longitude,
+          address: curr.address,
+          value: acceleration,
+          valueFormatted: `+${acceleration.toFixed(1)} m/s²`,
+          severity: acceleration > 5 ? 'high' : acceleration > 4 ? 'medium' : 'low'
+        });
+      }
+      
+      // Detect harsh braking (< -3 m/s²)
+      if (this.drivingBehaviorFilters['harshBraking'] && acceleration < -3) {
+        incidents.push({
+          type: 'harshBraking',
+          vehicleId: vehicle.id,
+          vehicleName: vehicle.name || vehicle.plate,
+          time: curr.recordedAt,
+          latitude: curr.latitude,
+          longitude: curr.longitude,
+          address: curr.address,
+          value: Math.abs(acceleration),
+          valueFormatted: `${acceleration.toFixed(1)} m/s²`,
+          severity: acceleration < -5 ? 'high' : acceleration < -4 ? 'medium' : 'low'
+        });
+      }
+      
+      // Detect sharp steering (heading change > 45° in short time)
+      if (this.drivingBehaviorFilters['sharpSteering'] && prev.heading !== undefined && curr.heading !== undefined) {
+        let headingDiff = Math.abs(curr.heading - prev.heading);
+        if (headingDiff > 180) headingDiff = 360 - headingDiff;
+        
+        if (headingDiff > 45 && (curr.speedKph || 0) > 20) {
+          incidents.push({
+            type: 'sharpSteering',
+            vehicleId: vehicle.id,
+            vehicleName: vehicle.name || vehicle.plate,
+            time: curr.recordedAt,
+            latitude: curr.latitude,
+            longitude: curr.longitude,
+            address: curr.address,
+            value: headingDiff,
+            valueFormatted: `${headingDiff.toFixed(0)}°`,
+            severity: headingDiff > 90 ? 'high' : headingDiff > 60 ? 'medium' : 'low'
+          });
+        }
+      }
+      
+      // Detect overspeed (> 130 km/h)
+      if (this.drivingBehaviorFilters['overspeed'] && (curr.speedKph || 0) > 130) {
+        incidents.push({
+          type: 'overspeed',
+          vehicleId: vehicle.id,
+          vehicleName: vehicle.name || vehicle.plate,
+          time: curr.recordedAt,
+          latitude: curr.latitude,
+          longitude: curr.longitude,
+          address: curr.address,
+          value: curr.speedKph,
+          valueFormatted: `${curr.speedKph.toFixed(0)} km/h`,
+          severity: curr.speedKph > 160 ? 'high' : curr.speedKph > 145 ? 'medium' : 'low'
+        });
+      }
+      
+      // Detect high RPM (> 3500)
+      if (this.drivingBehaviorFilters['highRpm'] && curr.rpm && curr.rpm > 3500) {
+        incidents.push({
+          type: 'highRpm',
+          vehicleId: vehicle.id,
+          vehicleName: vehicle.name || vehicle.plate,
+          time: curr.recordedAt,
+          latitude: curr.latitude,
+          longitude: curr.longitude,
+          address: curr.address,
+          value: curr.rpm,
+          valueFormatted: `${curr.rpm} RPM`,
+          severity: curr.rpm > 5000 ? 'high' : curr.rpm > 4000 ? 'medium' : 'low'
+        });
+      }
+    }
+    
+    return incidents;
+  }
+
+  processDrivingBehaviorReport(incidents: any[]) {
+    // Sort by time descending
+    incidents.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+    
+    if (incidents.length === 0) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = { 'Information': 'Aucun incident de conduite détecté' };
+      return;
+    }
+    
+    // Get incident type info
+    const getIncidentInfo = (type: string) => {
+      return this.incidentTypes.find(i => i.key === type) || { label: type, color: '#888', icon: '❓' };
+    };
+    
+    // Process table data
+    this.tableData = incidents.map(inc => {
+      const info = getIncidentInfo(inc.type);
+      return {
+        vehicle: inc.vehicleName,
+        time: new Date(inc.time).toLocaleString('fr-FR', {
+          day: '2-digit', month: '2-digit', year: 'numeric',
+          hour: '2-digit', minute: '2-digit'
+        }),
+        incidentType: info.label,
+        incidentIcon: info.icon,
+        incidentColor: info.color,
+        address: inc.address || `${inc.latitude.toFixed(5)}, ${inc.longitude.toFixed(5)}`,
+        latitude: inc.latitude,
+        longitude: inc.longitude,
+        value: inc.valueFormatted,
+        severity: inc.severity,
+        severityLabel: inc.severity === 'high' ? '🔴 Grave' : inc.severity === 'medium' ? '🟡 Modéré' : '🟢 Léger'
+      };
+    });
+    
+    // Fetch addresses for rows without one
+    this.enrichDrivingBehaviorAddresses();
+    
+    // Chart data - group by incident type
+    const byType: { [key: string]: number } = {};
+    incidents.forEach(inc => {
+      const info = getIncidentInfo(inc.type);
+      byType[info.label] = (byType[info.label] || 0) + 1;
+    });
+    
+    this.chartData = Object.entries(byType)
+      .map(([label, value]) => ({ label, value }));
+    
+    // Statistics
+    const bySeverity = {
+      high: incidents.filter(i => i.severity === 'high').length,
+      medium: incidents.filter(i => i.severity === 'medium').length,
+      low: incidents.filter(i => i.severity === 'low').length
+    };
+    
+    const byVehicle: { [key: string]: number } = {};
+    incidents.forEach(inc => {
+      byVehicle[inc.vehicleName] = (byVehicle[inc.vehicleName] || 0) + 1;
+    });
+    
+    this.statisticsData = {
+      'Total incidents': incidents.length.toString(),
+      '🔴 Incidents graves': bySeverity.high.toString(),
+      '🟡 Incidents modérés': bySeverity.medium.toString(),
+      '🟢 Incidents légers': bySeverity.low.toString(),
+      'Véhicules concernés': Object.keys(byVehicle).length.toString()
+    };
+  }
+
+  enrichDrivingBehaviorAddresses() {
+    this.tableData.forEach((row: any, index: number) => {
+      if (row.address?.includes(',') && row.latitude && row.longitude) {
+        this.geocodingService.reverseGeocode(row.latitude, row.longitude).subscribe({
+          next: (address) => {
+            if (address) {
+              this.ngZone.run(() => {
+                this.tableData[index] = { ...this.tableData[index], address };
+                this.cdr.detectChanges();
+              });
+            }
+          }
+        });
+      }
+    });
   }
 
   executeDailyReport(vehicleId: number, date?: Date) {
@@ -606,6 +1357,262 @@ export class ReportsComponent implements OnInit {
         }
       }
     });
+  }
+
+  // ==================== MILEAGE PERIOD REPORT (Hour/Day/Month) ====================
+
+  executeMileagePeriodReport(vehicleId: number, startDate?: Date, endDate?: Date) {
+    let start: Date;
+    let end: Date;
+    
+    // Determine dates based on period type
+    switch (this.selectedMileagePeriodType) {
+      case 'hour':
+        // For hourly report, use single date
+        start = this.mileagePeriodDate ? new Date(this.mileagePeriodDate) : new Date();
+        end = start;
+        break;
+      case 'day':
+        // For daily report, use date range
+        start = this.mileagePeriodStartDate ? new Date(this.mileagePeriodStartDate) : new Date();
+        end = this.mileagePeriodEndDate ? new Date(this.mileagePeriodEndDate) : new Date();
+        break;
+      case 'month':
+        // For monthly report, use first day of selected month to last day
+        start = new Date(this.mileagePeriodYear, this.mileagePeriodMonth - 1, 1);
+        end = new Date(this.mileagePeriodYear, this.mileagePeriodMonth, 0); // Last day of month
+        break;
+      default:
+        start = startDate || new Date();
+        end = endDate || new Date();
+    }
+    
+    this.apiService.getMileagePeriodReport(vehicleId, this.selectedMileagePeriodType, start, end).subscribe({
+      next: (report) => {
+        this.ngZone.run(() => {
+          this.mileagePeriodReport = report;
+          this.processMileagePeriodReport(report);
+          this.reportGenerated = true;
+          this.loading = false;
+          this.activeTab = 'table';
+          this.currentPage = 1;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+          setTimeout(() => this.createMileagePeriodChart(), 100);
+        });
+      },
+      error: (err) => {
+        this.ngZone.run(() => {
+          console.error('Error loading mileage period report:', err);
+          this.mileagePeriodReport = null;
+          this.tableData = [];
+          this.chartData = [];
+          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport kilométrique par période' };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
+      }
+    });
+  }
+
+  processMileagePeriodReport(report: MileagePeriodReport) {
+    console.log('Processing mileage period report:', report);
+    console.log('Report hasData:', report.hasData);
+    console.log('Report periodType:', report.periodType);
+    
+    if (!report.hasData) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = {
+        'Véhicule': report.vehicleName,
+        'Période': `${new Date(report.startDate).toLocaleDateString('fr-FR')} - ${new Date(report.endDate).toLocaleDateString('fr-FR')}`,
+        'Type': this.getMileagePeriodTypeLabel(report.periodType),
+        'Information': 'Aucune donnée disponible pour cette période'
+      };
+      return;
+    }
+
+    // Normalize periodType to lowercase for comparison
+    const periodType = (report.periodType || '').toString().toLowerCase() as MileagePeriodType;
+    console.log('Normalized periodType:', periodType);
+
+    // Process based on period type
+    switch (periodType) {
+      case 'hour':
+        console.log('Processing hourly data:', report.hourlyBreakdown?.length, 'items');
+        this.tableData = (report.hourlyBreakdown || []).map((h: HourlyMileagePeriod) => ({
+          period: h.hourLabel,
+          distance: `${h.distanceKm.toFixed(1)} km`,
+          distanceValue: h.distanceKm,
+          tripCount: h.tripCount,
+          drivingTime: this.formatMinutes(h.drivingMinutes),
+          avgSpeed: `${h.avgSpeedKph.toFixed(1)} km/h`,
+          maxSpeed: `${h.maxSpeedKph.toFixed(1)} km/h`
+        }));
+        break;
+      case 'day':
+        console.log('Processing daily data:', report.dailyBreakdown?.length, 'items');
+        this.tableData = (report.dailyBreakdown || []).map((d: DailyMileagePeriod) => ({
+          period: d.dateLabel,
+          dayOfWeek: d.dayOfWeek,
+          distance: `${d.distanceKm.toFixed(1)} km`,
+          distanceValue: d.distanceKm,
+          tripCount: d.tripCount,
+          drivingTime: this.formatMinutes(d.drivingMinutes),
+          avgSpeed: `${d.avgSpeedKph.toFixed(1)} km/h`,
+          maxSpeed: `${d.maxSpeedKph.toFixed(1)} km/h`
+        }));
+        break;
+      case 'month':
+        console.log('Processing monthly data:', report.monthlyBreakdown?.length, 'items');
+        this.tableData = (report.monthlyBreakdown || []).map((m: MonthlyMileagePeriod) => ({
+          period: m.monthLabel,
+          distance: `${m.distanceKm.toFixed(1)} km`,
+          distanceValue: m.distanceKm,
+          avgDaily: `${m.averageDailyKm.toFixed(1)} km/jour`,
+          tripCount: m.tripCount,
+          drivingTime: this.formatMinutes(m.drivingMinutes),
+          activeDays: `${m.daysWithActivity}/${m.totalDays}`
+        }));
+        break;
+      default:
+        console.warn('Unknown periodType:', periodType);
+        this.tableData = [];
+    }
+
+    console.log('tableData after processing:', this.tableData.length, 'items');
+
+    // Chart data from report
+    this.chartData = report.chartData.map(d => ({
+      label: d.label,
+      value: d.value,
+      tooltip: d.tooltip
+    }));
+
+    // Statistics
+    this.statisticsData = {
+      'Véhicule': `${report.vehicleName}${report.plate ? ' (' + report.plate + ')' : ''}`,
+      'Période': `${new Date(report.startDate).toLocaleDateString('fr-FR')} - ${new Date(report.endDate).toLocaleDateString('fr-FR')}`,
+      'Type de rapport': this.getMileagePeriodTypeLabel(report.periodType),
+      'Distance totale': `${report.totalDistanceKm.toFixed(1)} km`,
+      'Moyenne': `${report.averageDistanceKm.toFixed(1)} km`,
+      'Maximum': `${report.maxDistanceKm.toFixed(1)} km`,
+      'Minimum': `${report.minDistanceKm.toFixed(1)} km`,
+      'Nombre de trajets': report.totalTripCount.toString(),
+      'Temps de conduite': report.totalDrivingFormatted
+    };
+  }
+
+  getMileagePeriodTypeLabel(type: MileagePeriodType): string {
+    const labels: Record<MileagePeriodType, string> = {
+      'hour': 'Par heure (24h)',
+      'day': 'Par jour',
+      'month': 'Par mois'
+    };
+    return labels[type] || type;
+  }
+
+  createMileagePeriodChart() {
+    const canvas = this.mileagePeriodChartRef?.nativeElement || this.chartCanvas?.nativeElement;
+    if (!canvas || !this.chartData.length) return;
+
+    if (this.mileagePeriodChart) {
+      this.mileagePeriodChart.destroy();
+    }
+    if (this.chart) {
+      this.chart.destroy();
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const periodType = this.mileagePeriodReport?.periodType || 'day';
+    const chartConfig = this.getMileagePeriodChartConfig(periodType);
+
+    this.mileagePeriodChart = new Chart(ctx, chartConfig);
+    this.chart = this.mileagePeriodChart;
+  }
+
+  getMileagePeriodChartConfig(periodType: MileagePeriodType): ChartConfiguration {
+    const labels = this.chartData.map(d => d.label);
+    const data = this.chartData.map(d => d.value);
+    
+    const xAxisLabel = periodType === 'hour' ? 'Heure' : periodType === 'day' ? 'Date' : 'Mois';
+    const chartType = periodType === 'hour' ? 'line' : 'bar';
+    
+    return {
+      type: chartType as any,
+      data: {
+        labels,
+        datasets: [{
+          label: 'Distance (km)',
+          data,
+          backgroundColor: periodType === 'hour' 
+            ? 'rgba(16, 185, 129, 0.2)' 
+            : this.chartColors.map(c => c + 'CC'),
+          borderColor: periodType === 'hour' 
+            ? 'rgba(16, 185, 129, 1)' 
+            : this.chartColors,
+          borderWidth: periodType === 'hour' ? 2 : 1,
+          borderRadius: periodType === 'hour' ? 0 : 6,
+          fill: periodType === 'hour',
+          tension: 0.3,
+          pointRadius: periodType === 'hour' ? 4 : 0,
+          pointHoverRadius: periodType === 'hour' ? 6 : 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'x',
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top'
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                const value = context.parsed.y ?? context.parsed.x ?? 0;
+                return `${value.toFixed(1)} km`;
+              },
+              afterLabel: (context) => {
+                const dataPoint = this.chartData[context.dataIndex];
+                return dataPoint?.tooltip || '';
+              }
+            }
+          },
+          title: {
+            display: true,
+            text: `Kilométrage par ${xAxisLabel.toLowerCase()}`,
+            font: { size: 14 }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: 'Distance (km)'
+            },
+            grid: {
+              color: 'rgba(0, 0, 0, 0.05)'
+            }
+          },
+          x: {
+            title: {
+              display: true,
+              text: xAxisLabel
+            },
+            grid: {
+              display: false
+            }
+          }
+        }
+      }
+    };
   }
 
   // ==================== MONTHLY FLEET REPORT ====================
@@ -1196,16 +2203,34 @@ export class ReportsComponent implements OnInit {
     }
 
     this.tableData = stops.slice(0, 50).map((stop: any) => {
-      const duration = (new Date(stop.end.recordedAt).getTime() - new Date(stop.start.recordedAt).getTime()) / 60000;
+      const durationMs = new Date(stop.end.recordedAt).getTime() - new Date(stop.start.recordedAt).getTime();
+      const durationMinutes = durationMs / 60000;
+      
+      // Format duration as "Xh Ymin" or "Ymin"
+      let formattedDuration: string;
+      if (durationMinutes >= 60) {
+        const hours = Math.floor(durationMinutes / 60);
+        const mins = Math.round(durationMinutes % 60);
+        formattedDuration = mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+      } else {
+        formattedDuration = `${Math.round(durationMinutes)}min`;
+      }
+      
       return {
         time: new Date(stop.start.recordedAt).toLocaleString('fr-FR', {
-          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+          day: '2-digit', month: '2-digit', year: 'numeric',
+          hour: '2-digit', minute: '2-digit'
         }),
-        duration: `${Math.round(duration)} min`,
-        location: `${stop.start.latitude.toFixed(5)}, ${stop.start.longitude.toFixed(5)}`,
-        type: 'Arrêt'
+        duration: formattedDuration,
+        address: stop.start.address || 'Chargement...',
+        latitude: stop.start.latitude,
+        longitude: stop.start.longitude,
+        type: durationMinutes > 30 ? '🅿️ Arrêt prolongé' : '⏸️ Arrêt'
       };
     });
+
+    // Fetch addresses asynchronously for stops without address
+    this.enrichStopsWithAddresses();
 
     this.chartData = stops.slice(0, 20).map((stop: any, i: number) => ({
       label: `Arrêt ${i + 1}`,
@@ -1215,10 +2240,114 @@ export class ReportsComponent implements OnInit {
     const totalDuration = stops.reduce((sum: number, s: any) => 
       sum + (new Date(s.end.recordedAt).getTime() - new Date(s.start.recordedAt).getTime()), 0) / 60000;
 
+    // Format total duration
+    let totalFormatted: string;
+    if (totalDuration >= 60) {
+      const hours = Math.floor(totalDuration / 60);
+      const mins = Math.round(totalDuration % 60);
+      totalFormatted = mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+    } else {
+      totalFormatted = `${Math.round(totalDuration)}min`;
+    }
+
+    // Format average duration
+    let avgFormatted = 'N/A';
+    if (stops.length > 0) {
+      const avgMinutes = totalDuration / stops.length;
+      if (avgMinutes >= 60) {
+        const hours = Math.floor(avgMinutes / 60);
+        const mins = Math.round(avgMinutes % 60);
+        avgFormatted = mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+      } else {
+        avgFormatted = `${Math.round(avgMinutes)}min`;
+      }
+    }
+
     this.statisticsData = {
       'Nombre d\'arrêts': stops.length.toString(),
-      'Durée totale': `${Math.round(totalDuration)} min`,
-      'Durée moyenne': stops.length > 0 ? `${Math.round(totalDuration / stops.length)} min` : 'N/A'
+      'Durée totale': totalFormatted,
+      'Durée moyenne': avgFormatted
+    };
+  }
+
+  enrichStopsWithAddresses() {
+    // Fetch addresses for stops that don't have one
+    this.tableData.forEach((row: any, index: number) => {
+      if (row.address === 'Chargement...' && row.latitude && row.longitude) {
+        this.geocodingService.reverseGeocode(row.latitude, row.longitude).subscribe({
+          next: (address) => {
+            this.ngZone.run(() => {
+              this.tableData[index] = { ...this.tableData[index], address: address || `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}` };
+              this.cdr.detectChanges();
+            });
+          },
+          error: () => {
+            this.ngZone.run(() => {
+              this.tableData[index] = { ...this.tableData[index], address: `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}` };
+              this.cdr.detectChanges();
+            });
+          }
+        });
+      }
+    });
+  }
+
+  processStopsFromApi(result: VehicleStopsResult) {
+    const stops = result.items;
+    
+    if (!stops || stops.length === 0) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = { 'Information': 'Aucun arrêt trouvé pour cette période' };
+      return;
+    }
+
+    // Format duration helper
+    const formatDuration = (seconds: number): string => {
+      const minutes = seconds / 60;
+      if (minutes >= 60) {
+        const hours = Math.floor(minutes / 60);
+        const mins = Math.round(minutes % 60);
+        return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+      }
+      return `${Math.round(minutes)}min`;
+    };
+
+    // Process stops into table data
+    this.tableData = stops.map((stop: VehicleStopDto) => {
+      const durationMinutes = stop.durationSeconds / 60;
+      return {
+        time: new Date(stop.startTime).toLocaleString('fr-FR', {
+          day: '2-digit', month: '2-digit', year: 'numeric',
+          hour: '2-digit', minute: '2-digit'
+        }),
+        duration: formatDuration(stop.durationSeconds),
+        address: stop.address || `${stop.latitude.toFixed(5)}, ${stop.longitude.toFixed(5)}`,
+        latitude: stop.latitude,
+        longitude: stop.longitude,
+        type: durationMinutes > 30 ? '🅿️ Arrêt prolongé' : '⏸️ Arrêt',
+        ignitionOff: stop.ignitionOff,
+        stopType: stop.stopType
+      };
+    });
+
+    // Fetch addresses for stops without one
+    this.enrichStopsWithAddresses();
+
+    // Chart data - top 20 stops by duration
+    this.chartData = stops.slice(0, 20).map((stop: VehicleStopDto, i: number) => ({
+      label: `Arrêt ${i + 1}`,
+      value: Math.round(stop.durationSeconds / 60)
+    }));
+
+    // Statistics
+    const totalDurationSeconds = stops.reduce((sum, s) => sum + s.durationSeconds, 0);
+    const avgDurationSeconds = stops.length > 0 ? totalDurationSeconds / stops.length : 0;
+
+    this.statisticsData = {
+      'Nombre d\'arrêts': stops.length.toString(),
+      'Durée totale': formatDuration(totalDurationSeconds),
+      'Durée moyenne': formatDuration(avgDurationSeconds)
     };
   }
 

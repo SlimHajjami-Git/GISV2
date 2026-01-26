@@ -5,9 +5,10 @@ namespace GisAPI.Domain.Entities;
 public class Supplier : TenantEntity
 {
     public string Name { get; set; } = string.Empty;
-    public string Type { get; set; } = "general";
+    public string Type { get; set; } = "general"; // general, parts, fuel, tires, service, garage
     public string? Address { get; set; }
     public string? City { get; set; }
+    public string? PostalCode { get; set; }
     public string? ContactName { get; set; }
     public string? Phone { get; set; }
     public string? Email { get; set; }
@@ -16,10 +17,25 @@ public class Supplier : TenantEntity
     public string? BankAccount { get; set; }
     public string PaymentTerms { get; set; } = "net30";
     public decimal? DiscountPercent { get; set; }
-    public int? Rating { get; set; }
+    public decimal Rating { get; set; } = 0; // 0.0 - 5.0
     public string? Notes { get; set; }
     public bool IsActive { get; set; } = true;
+    
+    // Navigation properties
     public ICollection<PartInventory> Parts { get; set; } = new List<PartInventory>();
+    public ICollection<SupplierService> Services { get; set; } = new List<SupplierService>();
+    public ICollection<MaintenanceRecord> MaintenanceRecords { get; set; } = new List<MaintenanceRecord>();
+}
+
+/// <summary>
+/// Services offered by a supplier/garage (N:N relationship)
+/// </summary>
+public class SupplierService : Entity
+{
+    public int SupplierId { get; set; }
+    public Supplier? Supplier { get; set; }
+    public string ServiceCode { get; set; } = string.Empty; // mecanique, carrosserie, electricite, pneumatique, vidange, climatisation, diagnostic
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
 public class PartInventory : TenantEntity

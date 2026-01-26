@@ -1,0 +1,287 @@
+================================================================================
+                    RÉSUMÉ DES TRAVAUX - 26 JANVIER 2026
+                    GIS V2 - Modules Backend & Frontend
+================================================================================
+
+Date: 26 Janvier 2026
+Auteur: Cascade AI Assistant
+
+================================================================================
+                         1. MODULES BACKEND IMPLÉMENTÉS
+================================================================================
+
+4 modules complets avec architecture CQRS (Command Query Responsibility Segregation)
+
+------------------------------------------------------------------------------
+A) MODULE FOURNISSEURS / GARAGES
+------------------------------------------------------------------------------
+Fichiers créés:
+- Domain: Supplier.cs (entité avec services associés)
+- Commands: CreateSupplierCommand, UpdateSupplierCommand, DeleteSupplierCommand
+- Queries: GetSuppliersQuery, GetSupplierStatsQuery, GetGaragesQuery
+- Controller: SuppliersController.cs
+
+Endpoints API:
+  GET    /api/suppliers              - Liste avec filtres (type, searchTerm, isActive)
+  GET    /api/suppliers/{id}         - Détail fournisseur
+  GET    /api/suppliers/stats        - Statistiques
+  GET    /api/suppliers/garages      - Liste des garages uniquement
+  POST   /api/suppliers              - Créer fournisseur
+  PUT    /api/suppliers/{id}         - Modifier fournisseur
+  DELETE /api/suppliers/{id}         - Supprimer fournisseur
+  GET    /api/suppliers/{id}/services    - Services du fournisseur
+  PUT    /api/suppliers/{id}/services    - Mettre à jour services
+
+Types de fournisseurs: garage, fuel_station, parts_supplier, insurance, other
+
+------------------------------------------------------------------------------
+B) MODULE ÉCHÉANCES & DOCUMENTS
+------------------------------------------------------------------------------
+Fichiers créés:
+- Commands: RenewDocumentCommand
+- Queries: GetExpiriesQuery, GetExpiryStatsQuery, GetRenewalHistoryQuery, GetExpiryAlertsQuery
+- Controller: DocumentsController.cs
+
+Endpoints API:
+  GET    /api/documents/expiries           - Liste des échéances avec filtres
+  GET    /api/documents/expiries/stats     - Statistiques (expired, expiring_soon, ok)
+  GET    /api/documents/vehicle/{id}/expiries  - Échéances d'un véhicule
+  POST   /api/documents/vehicle/{id}/renew     - Renouveler un document
+  GET    /api/documents/vehicle/{id}/history   - Historique des renouvellements
+  GET    /api/documents/alerts             - Alertes (documents expirant bientôt)
+
+Types de documents gérés:
+- insurance (Assurance)
+- technical_inspection (Visite technique)
+- vignette (Vignette fiscale)
+- road_tax (Taxe circulation)
+- permit (Autorisation)
+
+Statuts: expired, expiring_soon (< 30 jours), ok
+
+------------------------------------------------------------------------------
+C) MODULE SINISTRES & ACCIDENTS
+------------------------------------------------------------------------------
+Fichiers créés:
+- Domain: AccidentClaim.cs, AccidentClaimThirdParty.cs, AccidentClaimDocument.cs
+- Commands: CreateAccidentClaimCommand, UpdateAccidentClaimCommand, 
+            DeleteAccidentClaimCommand, SubmitAccidentClaimCommand,
+            ApproveAccidentClaimCommand, RejectAccidentClaimCommand,
+            CloseAccidentClaimCommand
+- Queries: GetAccidentClaimsQuery, GetAccidentClaimByIdQuery, GetAccidentClaimStatsQuery
+- Controller: AccidentClaimsController.cs
+- Migration: 20260125232000_AddAccidentClaims.cs
+
+Endpoints API:
+  GET    /api/accident-claims              - Liste avec filtres
+  GET    /api/accident-claims/{id}         - Détail sinistre
+  GET    /api/accident-claims/stats        - Statistiques
+  GET    /api/accident-claims/vehicle/{id} - Sinistres d'un véhicule
+  POST   /api/accident-claims              - Créer sinistre
+  PUT    /api/accident-claims/{id}         - Modifier sinistre (brouillon)
+  DELETE /api/accident-claims/{id}         - Supprimer (brouillon)
+  POST   /api/accident-claims/{id}/submit  - Soumettre pour validation
+  POST   /api/accident-claims/{id}/approve - Approuver
+  POST   /api/accident-claims/{id}/reject  - Rejeter
+  POST   /api/accident-claims/{id}/close   - Clôturer
+
+Workflow des statuts:
+  draft -> submitted -> under_review -> approved/rejected -> closed
+
+Niveaux de gravité: minor, moderate, major, total_loss
+
+------------------------------------------------------------------------------
+D) MODULE ENTRETIENS MAÎTRES
+------------------------------------------------------------------------------
+Fichiers créés:
+- Domain: MaintenanceTemplate.cs, VehicleMaintenanceSchedule.cs, MaintenanceLog.cs
+- Commands: CreateMaintenanceTemplateCommand, UpdateMaintenanceTemplateCommand,
+            DeleteMaintenanceTemplateCommand, AssignMaintenanceTemplateCommand,
+            RemoveMaintenanceScheduleCommand, MarkMaintenanceDoneCommand
+- Queries: GetMaintenanceTemplatesQuery, GetVehicleMaintenanceQuery,
+           GetMaintenanceAlertsQuery, GetMaintenanceStatsQuery
+- Controllers: MaintenanceTemplatesController.cs, VehicleMaintenanceController.cs
+- Migration: 20260126000000_AddMaintenanceTemplates.cs
+
+Endpoints API - Templates:
+  GET    /api/maintenance-templates           - Liste des modèles
+  GET    /api/maintenance-templates/{id}      - Détail modèle
+  GET    /api/maintenance-templates/categories - Catégories disponibles
+  POST   /api/maintenance-templates           - Créer modèle
+  PUT    /api/maintenance-templates/{id}      - Modifier modèle
+  DELETE /api/maintenance-templates/{id}      - Supprimer modèle
+
+Endpoints API - Planning véhicules:
+  GET    /api/vehicle-maintenance             - Planning tous véhicules
+  GET    /api/vehicle-maintenance/vehicle/{id} - Planning d'un véhicule
+  GET    /api/vehicle-maintenance/alerts      - Alertes (retard/à faire)
+  GET    /api/vehicle-maintenance/stats       - Statistiques
+  POST   /api/vehicle-maintenance/assign      - Assigner modèle à véhicule
+  DELETE /api/vehicle-maintenance/{id}        - Retirer du planning
+  POST   /api/vehicle-maintenance/mark-done   - Marquer effectué
+
+Catégories: Moteur, Freinage, Transmission, Filtres, Électrique, 
+            Suspension, Carrosserie, Autre
+Priorités: low, medium, high, critical
+Statuts: overdue, due, upcoming, ok
+
+Règles de calcul des statuts:
+- overdue: km dépassé OU date dépassée
+- due: < 1000 km OU < 30 jours
+- upcoming: < 5000 km OU < 90 jours
+- ok: sinon
+
+
+================================================================================
+                         2. FRONTEND - API CONNECTÉ
+================================================================================
+
+Fichier modifié: services/gis-frontend/src/services/api.service.ts
+
+Nouvelles méthodes API ajoutées (~200 lignes):
+
+SUPPLIERS (9 méthodes):
+- getSuppliers(), getSupplier(), getSupplierStats(), getGarages()
+- createSupplier(), updateSupplier(), deleteSupplier()
+- getSupplierServices(), updateSupplierServices()
+
+DOCUMENTS (6 méthodes):
+- getDocumentExpiries(), getExpiryStats(), getVehicleExpiries()
+- renewDocument(), getRenewalHistory(), getExpiryAlerts()
+
+ACCIDENT CLAIMS (11 méthodes):
+- getAccidentClaims(), getAccidentClaim(), getAccidentClaimStats()
+- getVehicleAccidentClaims(), createAccidentClaim(), updateAccidentClaim()
+- deleteAccidentClaim(), submitAccidentClaim(), approveAccidentClaim()
+- rejectAccidentClaim(), closeAccidentClaim()
+
+MAINTENANCE TEMPLATES (6 méthodes):
+- getMaintenanceTemplates(), getMaintenanceTemplate(), getMaintenanceCategories()
+- createMaintenanceTemplate(), updateMaintenanceTemplate(), deleteMaintenanceTemplate()
+
+VEHICLE MAINTENANCE (7 méthodes):
+- getVehicleMaintenanceSchedule(), getVehicleMaintenanceStatus()
+- getMaintenanceAlerts(), getMaintenanceStats()
+- assignMaintenanceTemplate(), removeMaintenanceSchedule(), markMaintenanceDone()
+
+Interfaces TypeScript ajoutées (~300 lignes):
+- PaginatedResult<T>
+- SupplierDto, SupplierStatsDto, CreateSupplierRequest, UpdateSupplierRequest
+- VehicleExpiryDto, ExpiryStatsDto, RenewDocumentRequest, RenewalHistoryDto
+- AccidentClaimDto, AccidentClaimThirdPartyDto, AccidentClaimDocumentDto
+- AccidentClaimStatsDto, CreateAccidentClaimRequest, UpdateAccidentClaimRequest
+- MaintenanceTemplateDto, CreateMaintenanceTemplateRequest, UpdateMaintenanceTemplateRequest
+- VehicleMaintenanceStatusDto, MaintenanceItemDto, MaintenanceStatsDto
+- MarkMaintenanceDoneRequest
+
+
+================================================================================
+                         3. TESTS UNITAIRES
+================================================================================
+
+Fichiers de tests créés (7 fichiers, 40 tests):
+
+tests/GisAPI.Tests/Application/Suppliers/
+  - SupplierCommandsTests.cs (6 tests)
+  - SupplierQueriesTests.cs (5 tests)
+
+tests/GisAPI.Tests/Application/AccidentClaims/
+  - AccidentClaimCommandsTests.cs (6 tests)
+  - AccidentClaimQueriesTests.cs (5 tests)
+
+tests/GisAPI.Tests/Application/MaintenanceTemplates/
+  - MaintenanceTemplateTests.cs (5 tests)
+  - VehicleMaintenanceTests.cs (6 tests)
+
+tests/GisAPI.Tests/Application/Documents/
+  - DocumentExpiriesTests.cs (7 tests)
+
+Résultats:
+  ✅ Domain/Infrastructure: 46 tests passés
+  ⚠️ Application: Tests créés, infra InMemory à revoir (problème préexistant)
+
+
+================================================================================
+                         4. MIGRATIONS SQL
+================================================================================
+
+Nouvelles migrations créées:
+
+1. 20260125230000_AddSupplierServicesAndOptimizations.sql
+   - Table supplier_services (relation N-N fournisseur/services)
+   - Index optimisés
+
+2. 20260125232000_AddAccidentClaims.sql
+   - Table accident_claims
+   - Table accident_claim_third_parties
+   - Table accident_claim_documents
+   - Index et contraintes FK
+
+3. 20260126000000_AddMaintenanceTemplates.sql
+   - Table maintenance_templates
+   - Table vehicle_maintenance_schedules
+   - Table maintenance_logs
+   - Contraintes (au moins un intervalle km ou mois)
+   - Index sur status et dates
+
+
+================================================================================
+                         5. STATISTIQUES GLOBALES
+================================================================================
+
+Backend:
+  - 4 modules implémentés
+  - 56 fichiers créés/modifiés
+  - 39 endpoints API
+  - 3 migrations SQL
+
+Frontend:
+  - 39 méthodes API ajoutées
+  - 20+ interfaces TypeScript
+
+Tests:
+  - 7 fichiers de tests
+  - 40 nouveaux tests
+  - 46 tests existants validés
+
+Build:
+  ✅ Backend compile sans erreur
+  ✅ Frontend compile sans erreur (warnings mineurs)
+
+
+================================================================================
+                         6. COMPOSANTS FRONTEND EXISTANTS
+================================================================================
+
+Les composants suivants existent déjà et peuvent utiliser les nouvelles APIs:
+  - suppliers.component.ts
+  - documents.component.ts
+  - accident-claims.component.ts
+  - maintenance-templates.component.ts
+
+
+================================================================================
+                         7. NOTES TECHNIQUES
+================================================================================
+
+Architecture:
+- Pattern CQRS avec MediatR
+- Multi-tenancy par CompanyId
+- Validation dans les handlers
+- DTOs pour les réponses API
+- Pagination standardisée (PaginatedList<T>)
+
+Base de données:
+- PostgreSQL avec EF Core
+- Migrations code-first
+- Index sur colonnes fréquemment filtrées
+- Contraintes CHECK pour validation
+
+Sécurité:
+- Authentification JWT
+- Filtrage automatique par tenant
+- Validation des permissions
+
+================================================================================
+                              FIN DU RÉSUMÉ
+================================================================================

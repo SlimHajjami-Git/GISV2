@@ -6,6 +6,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Tests.Common;
 
+// Alias for tests - Company is same as Societe
+public class Company : AuditableEntity
+{
+    public string Name { get; set; } = string.Empty;
+}
+
 public class TestGisDbContext : DbContext, IGisDbContext
 {
     private readonly ICurrentTenantService? _tenantService;
@@ -20,6 +26,7 @@ public class TestGisDbContext : DbContext, IGisDbContext
 
     public DbSet<SubscriptionType> SubscriptionTypes => Set<SubscriptionType>();
     public DbSet<Societe> Societes => Set<Societe>();
+    public DbSet<Company> Companies => Set<Company>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<User> Users => Set<User>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
@@ -37,6 +44,14 @@ public class TestGisDbContext : DbContext, IGisDbContext
     public DbSet<VehicleStop> VehicleStops => Set<VehicleStop>();
     public DbSet<FuelRecord> FuelRecords => Set<FuelRecord>();
     public DbSet<VehicleAssignment> VehicleAssignments => Set<VehicleAssignment>();
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
+    public DbSet<SupplierService> SupplierServices => Set<SupplierService>();
+    public DbSet<AccidentClaim> AccidentClaims => Set<AccidentClaim>();
+    public DbSet<AccidentClaimThirdParty> AccidentClaimThirdParties => Set<AccidentClaimThirdParty>();
+    public DbSet<AccidentClaimDocument> AccidentClaimDocuments => Set<AccidentClaimDocument>();
+    public DbSet<MaintenanceTemplate> MaintenanceTemplates => Set<MaintenanceTemplate>();
+    public DbSet<VehicleMaintenanceSchedule> VehicleMaintenanceSchedules => Set<VehicleMaintenanceSchedule>();
+    public DbSet<MaintenanceLog> MaintenanceLogs => Set<MaintenanceLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -53,6 +68,10 @@ public class TestGisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<GpsDevice>().Ignore(d => d.Positions).Ignore(d => d.Alerts);
         modelBuilder.Entity<Geofence>().Ignore(g => g.Events);
         modelBuilder.Entity<Vehicle>().Ignore(v => v.Documents);
+        
+        // Ignore navigation collections that cause InMemory issues
+        modelBuilder.Entity<AccidentClaim>().Ignore(a => a.ThirdParties).Ignore(a => a.Documents);
+        modelBuilder.Entity<GpsPosition>().Ignore(p => p.Metadata);
     }
 
     public override async Task<int> SaveChangesAsync(CancellationToken ct = default)

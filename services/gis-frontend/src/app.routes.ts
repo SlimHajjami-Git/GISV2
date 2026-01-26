@@ -18,6 +18,10 @@ import { VehicleCostsComponent } from './components/vehicle-costs.component';
 import { ProfileComponent } from './components/profile.component';
 import { SettingsComponent } from './components/settings.component';
 import { UserManagementComponent } from './components/user-management.component';
+import { SuppliersComponent } from './components/suppliers.component';
+import { DocumentsComponent } from './components/documents.component';
+import { AccidentClaimsComponent } from './components/accident-claims.component';
+import { MaintenanceTemplatesComponent } from './components/maintenance-templates.component';
 import { adminRoutes } from './admin/admin.routes';
 
 export const routes: Routes = [
@@ -42,6 +46,14 @@ export const routes: Routes = [
   { path: 'profile', component: ProfileComponent },
   { path: 'settings', component: SettingsComponent },
   { path: 'users', component: UserManagementComponent },
+  { path: 'suppliers', component: SuppliersComponent },
+  { path: 'fournisseurs', component: SuppliersComponent },
+  { path: 'documents', component: DocumentsComponent },
+  { path: 'echeances', component: DocumentsComponent },
+  { path: 'accidents', component: AccidentClaimsComponent },
+  { path: 'sinistres', component: AccidentClaimsComponent },
+  { path: 'entretiens-maitres', component: MaintenanceTemplatesComponent },
+  { path: 'maintenance-templates', component: MaintenanceTemplatesComponent },
   { path: 'admin', children: adminRoutes },
   { path: '**', redirectTo: '' },
 ];

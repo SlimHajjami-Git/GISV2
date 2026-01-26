@@ -1,0 +1,140 @@
+================================================================================
+                    RÉSUMÉ DES TRAVAUX - 22 Janvier 2026
+                    GPS Tracking System (GISV2) - Rust Services
+================================================================================
+
+OBJECTIF PRINCIPAL:
+-------------------
+Déboguer et corriger 4 services critiques du système GPS qui ne généraient pas
+de données dans leurs tables respectives.
+
+================================================================================
+                              SERVICES IMPLÉMENTÉS
+================================================================================
+
+1. TRIP DETECTOR (Détection de trajets)
+   -------------------------------------
+   Fichier: services/gps-ingest-rust/src/services/trip_detector.rs
+   
+   Fonctionnalités:
+   - Détecte le début d'un trajet (ignition ON + vitesse > 5 km/h)
+   - Calcule distance, durée, vitesse max/moyenne en temps réel
+   - Termine un trajet après 5 minutes d'arrêt
+   - Compte les événements de conduite pendant le trajet
+   - Insère automatiquement dans la table "trips"
+   
+   Mode: TEMPS RÉEL (automatique à chaque trame GPS)
+
+
+2. DRIVING EVENTS DETECTOR (Détection événements de conduite)
+   ----------------------------------------------------------
+   Fichier: services/gps-ingest-rust/src/services/driving_events.rs
+   
+   Événements détectés:
+   - Harsh Braking (freinage brusque): < -4 m/s² ou MEMS X < -0.4G
+   - Harsh Acceleration (accélération brusque): > 3.5 m/s² ou MEMS X > 0.4G
+   - Sharp Turn (virage serré): changement heading > 45° en < 10s
+   - Cornering (virage): MEMS Y > 0.4G
+   - Overspeeding (excès de vitesse): > 120 km/h
+   - Speed Bump (dos d'âne): MEMS Z > 0.5G (si vitesse > 30 km/h)
+   - Pothole (nid de poule): MEMS Z < -0.6G
+   
+   Cooldown: 10 secondes entre événements du même type
+   Mode: TEMPS RÉEL (automatique)
+
+
+3. DAILY STATISTICS CALCULATOR (Calcul statistiques quotidiennes)
+   ---------------------------------------------------------------
+   Fichier: services/gps-ingest-rust/src/services/daily_statistics.rs
+   
+   Statistiques calculées:
+   - Distance parcourue (km)
+   - Temps de conduite, ralenti, arrêt (minutes)
+   - Nombre de trajets
+   - Vitesse moyenne/max
+   - Événements d'excès de vitesse
+   - Consommation carburant
+   - Compteurs harsh braking/acceleration/sharp turns
+   - Kilométrage début/fin
+   - Temps moteur allumé/éteint
+   - Alertes et événements geofence
+   - Score conducteur (0-100)
+   
+   Mode: CRON JOB (tous les jours à 2h du matin)
+   
+   Commande CLI ajoutée:
+   - gps-ingest-rust --calculate-daily       (calcule pour hier)
+   - gps-ingest-rust -d 2026-01-20           (calcule pour date spécifique)
+
+
+4. GEOFENCE EVENTS (Correction)
+   ----------------------------
+   Problème: Aucun véhicule n'était assigné aux geofences
+   Solution: Assignation des 8 véhicules au geofence "Karim" via SQL
+   
+   INSERT INTO geofence_vehicles (geofence_id, vehicle_id, assigned_at)
+   SELECT 1, id, NOW() FROM vehicles WHERE company_id = 1;
+
+================================================================================
+                           FICHIERS MODIFIÉS/CRÉÉS
+================================================================================
+
+NOUVEAUX FICHIERS:
+- services/gps-ingest-rust/src/services/trip_detector.rs
+- services/gps-ingest-rust/src/services/driving_events.rs
+- services/gps-ingest-rust/src/services/daily_statistics.rs
+
+FICHIERS MODIFIÉS:
+- services/gps-ingest-rust/src/services/mod.rs (ajout modules)
+- services/gps-ingest-rust/src/main.rs (CLI --calculate-daily)
+- services/gps-ingest-rust/src/transport.rs (intégration pipeline)
+- services/gps-ingest-rust/src/ports.rs (nouveaux traits DB)
+- services/gps-ingest-rust/src/db.rs (implémentation insertions)
+- docker-compose.prod.yml (correction mots de passe)
+
+================================================================================
+                              COMMITS GIT
+================================================================================
+
+1. c9ede00 - feat(gps-ingest): add Trip Detection, Driving Events Detection, 
+             and Daily Statistics services
+             
+2. a9c4586 - fix: correct default passwords in docker-compose.prod.yml
+
+3. 7d05bf4 - fix(daily-statistics): use PascalCase column names for EF Core tables
+
+4. cb06862 - fix(daily-statistics): cast NUMERIC to FLOAT8 for Rust type compatibility
+
+================================================================================
+                         CONFIGURATION PRODUCTION
+================================================================================
+
+CRON JOB configuré sur vm-belive-1:
+0 2 * * * cd /root/GISV2 && docker compose -f docker-compose.prod.yml exec -T gps-ingest /usr/local/bin/gps-ingest-rust --calculate-daily >> /var/log/daily-stats.log 2>&1
+
+Logs: /var/log/daily-stats.log
+
+================================================================================
+                              RÉSUMÉ DES TABLES
+================================================================================
+
+| Table             | Service                    | Remplissage      |
+|-------------------|----------------------------|------------------|
+| gps_positions     | (existant)                 | ✅ Temps réel    |
+| vehicle_stops     | StopDetector               | ✅ Temps réel    |
+| fuel_records      | FuelTracker                | ✅ Temps réel    |
+| geofence_events   | GeofenceDetector           | ✅ Temps réel    |
+| trips             | TripDetector (NOUVEAU)     | ✅ Temps réel    |
+| driving_events    | DrivingEventsDetector (NEW)| ✅ Temps réel    |
+| daily_statistics  | DailyStatisticsCalculator  | ⏰ CRON (2h)     |
+
+================================================================================
+                              NOTES TECHNIQUES
+================================================================================
+
+- Les colonnes EF Core utilisent PascalCase avec guillemets ("VehicleId")
+- Les colonnes gps_positions utilisent snake_case (device_id)
+- Le binaire Rust est installé à /usr/local/bin/gps-ingest-rust dans Docker
+- Mot de passe PostgreSQL: Calypso@2026+
+
+================================================================================

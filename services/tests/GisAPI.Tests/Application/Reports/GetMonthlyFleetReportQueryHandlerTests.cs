@@ -35,7 +35,7 @@ public class GetMonthlyFleetReportQueryHandlerTests
         var company = new Company { Id = 1, Name = "Test Company" };
         context.Companies.Add(company);
 
-        var device = new GpsDevice { Id = 1, Uid = "TEST001", CompanyId = 1 };
+        var device = new GpsDevice { Id = 1, DeviceUid = "TEST001", CompanyId = 1 };
         context.GpsDevices.Add(device);
 
         var vehicles = new List<Vehicle>
@@ -70,7 +70,7 @@ public class GetMonthlyFleetReportQueryHandlerTests
         var company = new Company { Id = 1, Name = "Test Company" };
         context.Companies.Add(company);
 
-        var device = new GpsDevice { Id = 1, Uid = "TEST001", CompanyId = 1 };
+        var device = new GpsDevice { Id = 1, DeviceUid = "TEST001", CompanyId = 1 };
         context.GpsDevices.Add(device);
 
         var vehicle = new Vehicle 

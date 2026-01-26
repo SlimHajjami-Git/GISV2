@@ -18,6 +18,11 @@ public class VehicleCost : TenantEntity
     public decimal? PricePerLiter { get; set; }
     public int? CreatedByUserId { get; set; }
     public User? CreatedByUser { get; set; }
+    
+    // Document renewal fields
+    public DateTime? ExpiryDate { get; set; }
+    public string? DocumentNumber { get; set; }
+    public string? DocumentUrl { get; set; }
 
     public Societe? Societe { get; set; }
 }

@@ -21,6 +21,10 @@ public class MaintenanceRecord : TenantEntity
     public string? InvoiceNumber { get; set; }
     public string? InvoiceUrl { get; set; }
     public string? Notes { get; set; }
+    
+    // Link to garage/supplier who performed the maintenance
+    public int? SupplierId { get; set; }
+    public Supplier? Supplier { get; set; }
 
     public Societe? Societe { get; set; }
     

@@ -656,6 +656,17 @@ export class ApiService {
     return this.http.get<any[]>(`${this.API_URL}/trips`, { headers: this.getHeaders(), params });
   }
 
+  // ==================== VEHICLE STOPS ====================
+
+  getVehicleStops(vehicleId: number, startDate?: Date, endDate?: Date, pageSize = 500): Observable<VehicleStopsResult> {
+    let params = new HttpParams()
+      .set('vehicleId', vehicleId.toString())
+      .set('pageSize', pageSize.toString());
+    if (startDate) params = params.set('startDate', startDate.toISOString());
+    if (endDate) params = params.set('endDate', endDate.toISOString());
+    return this.http.get<VehicleStopsResult>(`${this.API_URL}/vehiclestops`, { headers: this.getHeaders(), params });
+  }
+
   getTrip(id: number): Observable<any> {
     return this.http.get<any>(`${this.API_URL}/trips/${id}`, { headers: this.getHeaders() });
   }
@@ -1012,6 +1023,220 @@ export class ApiService {
     }
     return this.http.get<MonthlyFleetReport>(`${this.API_URL}/reports/monthly`, { headers: this.getHeaders(), params });
   }
+
+  // ==================== MILEAGE PERIOD REPORTS (Hour/Day/Month) ====================
+
+  getMileagePeriodReport(
+    vehicleId: number, 
+    periodType: 'hour' | 'day' | 'month' = 'day',
+    startDate?: Date, 
+    endDate?: Date
+  ): Observable<MileagePeriodReport> {
+    let params = new HttpParams().set('periodType', periodType);
+    if (startDate) params = params.set('startDate', startDate.toISOString().split('T')[0]);
+    if (endDate) params = params.set('endDate', endDate.toISOString().split('T')[0]);
+    return this.http.get<MileagePeriodReport>(`${this.API_URL}/reports/mileage-period/${vehicleId}`, { headers: this.getHeaders(), params });
+  }
+
+  // ==================== SUPPLIERS / GARAGES ====================
+
+  getSuppliers(options?: { searchTerm?: string; type?: string; isActive?: boolean; page?: number; pageSize?: number }): Observable<PaginatedResult<SupplierDto>> {
+    let params = new HttpParams();
+    if (options?.searchTerm) params = params.set('searchTerm', options.searchTerm);
+    if (options?.type) params = params.set('type', options.type);
+    if (options?.isActive !== undefined) params = params.set('isActive', options.isActive.toString());
+    if (options?.page) params = params.set('page', options.page.toString());
+    if (options?.pageSize) params = params.set('pageSize', options.pageSize.toString());
+    return this.http.get<PaginatedResult<SupplierDto>>(`${this.API_URL}/suppliers`, { headers: this.getHeaders(), params });
+  }
+
+  getSupplier(id: number): Observable<SupplierDto> {
+    return this.http.get<SupplierDto>(`${this.API_URL}/suppliers/${id}`, { headers: this.getHeaders() });
+  }
+
+  getSupplierStats(): Observable<SupplierStatsDto> {
+    return this.http.get<SupplierStatsDto>(`${this.API_URL}/suppliers/stats`, { headers: this.getHeaders() });
+  }
+
+  getGarages(options?: { searchTerm?: string; isActive?: boolean; page?: number; pageSize?: number }): Observable<PaginatedResult<SupplierDto>> {
+    let params = new HttpParams();
+    if (options?.searchTerm) params = params.set('searchTerm', options.searchTerm);
+    if (options?.isActive !== undefined) params = params.set('isActive', options.isActive.toString());
+    if (options?.page) params = params.set('page', options.page.toString());
+    if (options?.pageSize) params = params.set('pageSize', options.pageSize.toString());
+    return this.http.get<PaginatedResult<SupplierDto>>(`${this.API_URL}/suppliers/garages`, { headers: this.getHeaders(), params });
+  }
+
+  createSupplier(supplier: CreateSupplierRequest): Observable<number> {
+    return this.http.post<number>(`${this.API_URL}/suppliers`, supplier, { headers: this.getHeaders() });
+  }
+
+  updateSupplier(id: number, supplier: UpdateSupplierRequest): Observable<void> {
+    return this.http.put<void>(`${this.API_URL}/suppliers/${id}`, supplier, { headers: this.getHeaders() });
+  }
+
+  deleteSupplier(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.API_URL}/suppliers/${id}`, { headers: this.getHeaders() });
+  }
+
+  getSupplierServices(id: number): Observable<string[]> {
+    return this.http.get<string[]>(`${this.API_URL}/suppliers/${id}/services`, { headers: this.getHeaders() });
+  }
+
+  updateSupplierServices(id: number, services: string[]): Observable<void> {
+    return this.http.put<void>(`${this.API_URL}/suppliers/${id}/services`, { services }, { headers: this.getHeaders() });
+  }
+
+  // ==================== DOCUMENTS / EXPIRIES ====================
+
+  getDocumentExpiries(options?: { documentType?: string; status?: string; vehicleId?: number; page?: number; pageSize?: number }): Observable<PaginatedResult<VehicleExpiryDto>> {
+    let params = new HttpParams();
+    if (options?.documentType) params = params.set('documentType', options.documentType);
+    if (options?.status) params = params.set('status', options.status);
+    if (options?.vehicleId) params = params.set('vehicleId', options.vehicleId.toString());
+    if (options?.page) params = params.set('page', options.page.toString());
+    if (options?.pageSize) params = params.set('pageSize', options.pageSize.toString());
+    return this.http.get<PaginatedResult<VehicleExpiryDto>>(`${this.API_URL}/documents/expiries`, { headers: this.getHeaders(), params });
+  }
+
+  getExpiryStats(): Observable<ExpiryStatsDto> {
+    return this.http.get<ExpiryStatsDto>(`${this.API_URL}/documents/expiries/stats`, { headers: this.getHeaders() });
+  }
+
+  getVehicleExpiries(vehicleId: number): Observable<VehicleExpiryDto[]> {
+    return this.http.get<VehicleExpiryDto[]>(`${this.API_URL}/documents/vehicle/${vehicleId}/expiries`, { headers: this.getHeaders() });
+  }
+
+  renewDocument(vehicleId: number, request: RenewDocumentRequest): Observable<{ costId: number; message: string }> {
+    return this.http.post<{ costId: number; message: string }>(`${this.API_URL}/documents/vehicle/${vehicleId}/renew`, request, { headers: this.getHeaders() });
+  }
+
+  getRenewalHistory(vehicleId: number): Observable<RenewalHistoryDto[]> {
+    return this.http.get<RenewalHistoryDto[]>(`${this.API_URL}/documents/vehicle/${vehicleId}/history`, { headers: this.getHeaders() });
+  }
+
+  getExpiryAlerts(daysThreshold = 30): Observable<VehicleExpiryDto[]> {
+    const params = new HttpParams().set('daysThreshold', daysThreshold.toString());
+    return this.http.get<VehicleExpiryDto[]>(`${this.API_URL}/documents/alerts`, { headers: this.getHeaders(), params });
+  }
+
+  // ==================== ACCIDENT CLAIMS ====================
+
+  getAccidentClaims(options?: { searchTerm?: string; status?: string; severity?: string; vehicleId?: number; page?: number; pageSize?: number }): Observable<PaginatedResult<AccidentClaimDto>> {
+    let params = new HttpParams();
+    if (options?.searchTerm) params = params.set('searchTerm', options.searchTerm);
+    if (options?.status) params = params.set('status', options.status);
+    if (options?.severity) params = params.set('severity', options.severity);
+    if (options?.vehicleId) params = params.set('vehicleId', options.vehicleId.toString());
+    if (options?.page) params = params.set('page', options.page.toString());
+    if (options?.pageSize) params = params.set('pageSize', options.pageSize.toString());
+    return this.http.get<PaginatedResult<AccidentClaimDto>>(`${this.API_URL}/accident-claims`, { headers: this.getHeaders(), params });
+  }
+
+  getAccidentClaim(id: number): Observable<AccidentClaimDto> {
+    return this.http.get<AccidentClaimDto>(`${this.API_URL}/accident-claims/${id}`, { headers: this.getHeaders() });
+  }
+
+  getAccidentClaimStats(): Observable<AccidentClaimStatsDto> {
+    return this.http.get<AccidentClaimStatsDto>(`${this.API_URL}/accident-claims/stats`, { headers: this.getHeaders() });
+  }
+
+  getVehicleAccidentClaims(vehicleId: number): Observable<PaginatedResult<AccidentClaimDto>> {
+    return this.http.get<PaginatedResult<AccidentClaimDto>>(`${this.API_URL}/accident-claims/vehicle/${vehicleId}`, { headers: this.getHeaders() });
+  }
+
+  createAccidentClaim(claim: CreateAccidentClaimRequest): Observable<number> {
+    return this.http.post<number>(`${this.API_URL}/accident-claims`, claim, { headers: this.getHeaders() });
+  }
+
+  updateAccidentClaim(id: number, claim: UpdateAccidentClaimRequest): Observable<void> {
+    return this.http.put<void>(`${this.API_URL}/accident-claims/${id}`, claim, { headers: this.getHeaders() });
+  }
+
+  deleteAccidentClaim(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.API_URL}/accident-claims/${id}`, { headers: this.getHeaders() });
+  }
+
+  submitAccidentClaim(id: number): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.API_URL}/accident-claims/${id}/submit`, {}, { headers: this.getHeaders() });
+  }
+
+  approveAccidentClaim(id: number, approvedAmount: number): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.API_URL}/accident-claims/${id}/approve`, { approvedAmount }, { headers: this.getHeaders() });
+  }
+
+  rejectAccidentClaim(id: number, reason?: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.API_URL}/accident-claims/${id}/reject`, { reason }, { headers: this.getHeaders() });
+  }
+
+  closeAccidentClaim(id: number): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.API_URL}/accident-claims/${id}/close`, {}, { headers: this.getHeaders() });
+  }
+
+  // ==================== MAINTENANCE TEMPLATES ====================
+
+  getMaintenanceTemplates(options?: { category?: string; isActive?: boolean; page?: number; pageSize?: number }): Observable<PaginatedResult<MaintenanceTemplateDto>> {
+    let params = new HttpParams();
+    if (options?.category) params = params.set('category', options.category);
+    if (options?.isActive !== undefined) params = params.set('isActive', options.isActive.toString());
+    if (options?.page) params = params.set('page', options.page.toString());
+    if (options?.pageSize) params = params.set('pageSize', options.pageSize.toString());
+    return this.http.get<PaginatedResult<MaintenanceTemplateDto>>(`${this.API_URL}/maintenance-templates`, { headers: this.getHeaders(), params });
+  }
+
+  getMaintenanceTemplate(id: number): Observable<MaintenanceTemplateDto> {
+    return this.http.get<MaintenanceTemplateDto>(`${this.API_URL}/maintenance-templates/${id}`, { headers: this.getHeaders() });
+  }
+
+  getMaintenanceCategories(): Observable<string[]> {
+    return this.http.get<string[]>(`${this.API_URL}/maintenance-templates/categories`, { headers: this.getHeaders() });
+  }
+
+  createMaintenanceTemplate(template: CreateMaintenanceTemplateRequest): Observable<number> {
+    return this.http.post<number>(`${this.API_URL}/maintenance-templates`, template, { headers: this.getHeaders() });
+  }
+
+  updateMaintenanceTemplate(id: number, template: UpdateMaintenanceTemplateRequest): Observable<void> {
+    return this.http.put<void>(`${this.API_URL}/maintenance-templates/${id}`, template, { headers: this.getHeaders() });
+  }
+
+  deleteMaintenanceTemplate(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.API_URL}/maintenance-templates/${id}`, { headers: this.getHeaders() });
+  }
+
+  // ==================== VEHICLE MAINTENANCE SCHEDULE ====================
+
+  getVehicleMaintenanceSchedule(options?: { status?: string; page?: number; pageSize?: number }): Observable<PaginatedResult<VehicleMaintenanceStatusDto>> {
+    let params = new HttpParams();
+    if (options?.status) params = params.set('status', options.status);
+    if (options?.page) params = params.set('page', options.page.toString());
+    if (options?.pageSize) params = params.set('pageSize', options.pageSize.toString());
+    return this.http.get<PaginatedResult<VehicleMaintenanceStatusDto>>(`${this.API_URL}/vehicle-maintenance`, { headers: this.getHeaders(), params });
+  }
+
+  getVehicleMaintenanceStatus(vehicleId: number): Observable<VehicleMaintenanceStatusDto> {
+    return this.http.get<VehicleMaintenanceStatusDto>(`${this.API_URL}/vehicle-maintenance/vehicle/${vehicleId}`, { headers: this.getHeaders() });
+  }
+
+  getMaintenanceAlerts(): Observable<MaintenanceItemDto[]> {
+    return this.http.get<MaintenanceItemDto[]>(`${this.API_URL}/vehicle-maintenance/alerts`, { headers: this.getHeaders() });
+  }
+
+  getMaintenanceStats(): Observable<MaintenanceStatsDto> {
+    return this.http.get<MaintenanceStatsDto>(`${this.API_URL}/vehicle-maintenance/stats`, { headers: this.getHeaders() });
+  }
+
+  assignMaintenanceTemplate(vehicleId: number, templateId: number): Observable<{ scheduleId: number }> {
+    return this.http.post<{ scheduleId: number }>(`${this.API_URL}/vehicle-maintenance/assign`, { vehicleId, templateId }, { headers: this.getHeaders() });
+  }
+
+  removeMaintenanceSchedule(scheduleId: number): Observable<void> {
+    return this.http.delete<void>(`${this.API_URL}/vehicle-maintenance/${scheduleId}`, { headers: this.getHeaders() });
+  }
+
+  markMaintenanceDone(request: MarkMaintenanceDoneRequest): Observable<{ logId: number; message: string }> {
+    return this.http.post<{ logId: number; message: string }>(`${this.API_URL}/vehicle-maintenance/mark-done`, request, { headers: this.getHeaders() });
+  }
 }
 
 // ==================== FUEL RECORDS INTERFACES ====================
@@ -1242,6 +1467,72 @@ export interface MileageSummary {
   daysWithActivity: number;
   totalDays: number;
   activityPercentage: number;
+}
+
+// ==================== MILEAGE PERIOD REPORT INTERFACES (Hour/Day/Month) ====================
+
+export type MileagePeriodType = 'hour' | 'day' | 'month';
+
+export interface MileagePeriodReport {
+  vehicleId: number;
+  vehicleName: string;
+  plate?: string;
+  driverName?: string;
+  vehicleType?: string;
+  startDate: string;
+  endDate: string;
+  periodType: MileagePeriodType;
+  hasData: boolean;
+  totalDistanceKm: number;
+  averageDistanceKm: number;
+  maxDistanceKm: number;
+  minDistanceKm: number;
+  totalTripCount: number;
+  totalDrivingMinutes: number;
+  totalDrivingFormatted: string;
+  hourlyBreakdown: HourlyMileagePeriod[];
+  dailyBreakdown: DailyMileagePeriod[];
+  monthlyBreakdown: MonthlyMileagePeriod[];
+  chartData: ChartDataPointPeriod[];
+}
+
+export interface HourlyMileagePeriod {
+  hour: number;
+  hourLabel: string;
+  distanceKm: number;
+  tripCount: number;
+  drivingMinutes: number;
+  maxSpeedKph: number;
+  avgSpeedKph: number;
+}
+
+export interface DailyMileagePeriod {
+  date: string;
+  dateLabel: string;
+  dayOfWeek: string;
+  distanceKm: number;
+  tripCount: number;
+  drivingMinutes: number;
+  maxSpeedKph: number;
+  avgSpeedKph: number;
+}
+
+export interface MonthlyMileagePeriod {
+  year: number;
+  month: number;
+  monthLabel: string;
+  distanceKm: number;
+  averageDailyKm: number;
+  tripCount: number;
+  drivingMinutes: number;
+  daysWithActivity: number;
+  totalDays: number;
+}
+
+export interface ChartDataPointPeriod {
+  label: string;
+  value: number;
+  tooltip?: string;
 }
 
 // ==================== MONTHLY FLEET REPORT INTERFACES ====================
@@ -1848,4 +2139,344 @@ export interface StatisticalAnalysis {
   highDistanceOutliers: number[];
   highFuelOutliers: number[];
   highCostOutliers: number[];
+}
+
+// ==================== VEHICLE STOPS ====================
+export interface VehicleStopDto {
+  id: number;
+  vehicleId: number;
+  vehicleName?: string;
+  vehiclePlate?: string;
+  driverId?: number;
+  driverName?: string;
+  startTime: string;
+  endTime?: string;
+  durationSeconds: number;
+  latitude: number;
+  longitude: number;
+  address?: string;
+  stopType: string;
+  ignitionOff: boolean;
+  isAuthorized: boolean;
+  fuelLevelStart?: number;
+  fuelLevelEnd?: number;
+  fuelConsumed?: number;
+  insideGeofence: boolean;
+  geofenceName?: string;
+  notes?: string;
+}
+
+export interface VehicleStopsResult {
+  items: VehicleStopDto[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+// ==================== GENERIC PAGINATED RESULT ====================
+export interface PaginatedResult<T> {
+  items: T[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+// ==================== SUPPLIERS / GARAGES ====================
+export interface SupplierDto {
+  id: number;
+  name: string;
+  type: string;
+  address?: string;
+  city?: string;
+  postalCode?: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  taxId?: string;
+  bankAccount?: string;
+  paymentTerms?: string;
+  discountPercent?: number;
+  rating?: number;
+  notes?: string;
+  isActive: boolean;
+  services: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SupplierStatsDto {
+  totalSuppliers: number;
+  activeSuppliers: number;
+  byType: { [key: string]: number };
+}
+
+export interface CreateSupplierRequest {
+  name: string;
+  type: string;
+  address?: string;
+  city?: string;
+  postalCode?: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  taxId?: string;
+  bankAccount?: string;
+  paymentTerms?: string;
+  discountPercent?: number;
+  rating?: number;
+  notes?: string;
+  isActive?: boolean;
+  services?: string[];
+}
+
+export interface UpdateSupplierRequest {
+  name?: string;
+  type?: string;
+  address?: string;
+  city?: string;
+  postalCode?: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  taxId?: string;
+  bankAccount?: string;
+  paymentTerms?: string;
+  discountPercent?: number;
+  rating?: number;
+  notes?: string;
+  isActive?: boolean;
+  services?: string[];
+}
+
+// ==================== DOCUMENTS / EXPIRIES ====================
+export interface VehicleExpiryDto {
+  vehicleId: number;
+  vehicleName: string;
+  vehiclePlate?: string;
+  documentType: string;
+  expiryDate?: string;
+  status: string;
+  daysUntilExpiry: number;
+  lastRenewalDate?: string;
+  lastRenewalCost?: number;
+  documentNumber?: string;
+}
+
+export interface ExpiryStatsDto {
+  expiredCount: number;
+  expiringSoonCount: number;
+  okCount: number;
+  totalCount: number;
+}
+
+export interface RenewDocumentRequest {
+  vehicleId: number;
+  documentType: string;
+  amount: number;
+  paymentDate: string;
+  newExpiryDate: string;
+  documentNumber?: string;
+  provider?: string;
+  notes?: string;
+  documentUrl?: string;
+}
+
+export interface RenewalHistoryDto {
+  id: number;
+  documentType: string;
+  amount: number;
+  paymentDate: string;
+  expiryDate?: string;
+  documentNumber?: string;
+  provider?: string;
+  notes?: string;
+  documentUrl?: string;
+}
+
+// ==================== ACCIDENT CLAIMS ====================
+export interface AccidentClaimDto {
+  id: number;
+  claimNumber: string;
+  vehicleId: number;
+  vehicleName: string;
+  vehiclePlate?: string;
+  driverId?: number;
+  driverName?: string;
+  accidentDate: string;
+  accidentTime: string;
+  location: string;
+  latitude?: number;
+  longitude?: number;
+  description: string;
+  severity: string;
+  estimatedDamage: number;
+  approvedAmount?: number;
+  status: string;
+  thirdPartyInvolved: boolean;
+  policeReportNumber?: string;
+  mileageAtAccident?: number;
+  damagedZones?: string[];
+  createdAt: string;
+  updatedAt: string;
+  thirdParties: AccidentClaimThirdPartyDto[];
+  documents: AccidentClaimDocumentDto[];
+}
+
+export interface AccidentClaimThirdPartyDto {
+  id: number;
+  name?: string;
+  phone?: string;
+  vehiclePlate?: string;
+  vehicleModel?: string;
+  insuranceCompany?: string;
+  insuranceNumber?: string;
+}
+
+export interface AccidentClaimDocumentDto {
+  id: number;
+  documentType: string;
+  fileName: string;
+  fileUrl: string;
+  fileSize?: number;
+  mimeType?: string;
+  uploadedAt: string;
+}
+
+export interface AccidentClaimStatsDto {
+  totalClaims: number;
+  draftCount: number;
+  submittedCount: number;
+  underReviewCount: number;
+  approvedCount: number;
+  rejectedCount: number;
+  closedCount: number;
+  totalEstimatedDamage: number;
+  totalApprovedAmount: number;
+}
+
+export interface CreateAccidentClaimRequest {
+  vehicleId: number;
+  driverId?: number;
+  accidentDate: string;
+  accidentTime: string;
+  location: string;
+  latitude?: number;
+  longitude?: number;
+  description: string;
+  severity: string;
+  estimatedDamage: number;
+  damagedZones?: string[];
+  thirdPartyInvolved?: boolean;
+  thirdPartyName?: string;
+  thirdPartyPhone?: string;
+  thirdPartyVehiclePlate?: string;
+  thirdPartyVehicleModel?: string;
+  thirdPartyInsurance?: string;
+  thirdPartyInsuranceNumber?: string;
+  policeReportNumber?: string;
+  mileageAtAccident?: number;
+  witnesses?: string;
+  additionalNotes?: string;
+}
+
+export interface UpdateAccidentClaimRequest {
+  vehicleId?: number;
+  driverId?: number;
+  accidentDate?: string;
+  accidentTime?: string;
+  location?: string;
+  latitude?: number;
+  longitude?: number;
+  description?: string;
+  severity?: string;
+  estimatedDamage?: number;
+  damagedZones?: string[];
+  thirdPartyInvolved?: boolean;
+  policeReportNumber?: string;
+  mileageAtAccident?: number;
+  witnesses?: string;
+  additionalNotes?: string;
+}
+
+// ==================== MAINTENANCE TEMPLATES ====================
+export interface MaintenanceTemplateDto {
+  id: number;
+  name: string;
+  description?: string;
+  category: string;
+  priority: string;
+  intervalKm?: number;
+  intervalMonths?: number;
+  estimatedCost?: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateMaintenanceTemplateRequest {
+  name: string;
+  description?: string;
+  category: string;
+  priority?: string;
+  intervalKm?: number;
+  intervalMonths?: number;
+  estimatedCost?: number;
+  isActive?: boolean;
+}
+
+export interface UpdateMaintenanceTemplateRequest {
+  name?: string;
+  description?: string;
+  category?: string;
+  priority?: string;
+  intervalKm?: number;
+  intervalMonths?: number;
+  estimatedCost?: number;
+  isActive?: boolean;
+}
+
+// ==================== VEHICLE MAINTENANCE SCHEDULE ====================
+export interface VehicleMaintenanceStatusDto {
+  vehicleId: number;
+  vehicleName: string;
+  vehiclePlate?: string;
+  currentMileage: number;
+  maintenanceItems: MaintenanceItemDto[];
+}
+
+export interface MaintenanceItemDto {
+  scheduleId: number;
+  templateId: number;
+  templateName: string;
+  category: string;
+  priority: string;
+  lastDoneDate?: string;
+  lastDoneKm?: number;
+  nextDueDate?: string;
+  nextDueKm?: number;
+  status: string;
+  kmUntilDue?: number;
+  daysUntilDue?: number;
+}
+
+export interface MaintenanceStatsDto {
+  totalSchedules: number;
+  overdueCount: number;
+  dueCount: number;
+  upcomingCount: number;
+  okCount: number;
+}
+
+export interface MarkMaintenanceDoneRequest {
+  vehicleId: number;
+  templateId: number;
+  date: string;
+  mileage: number;
+  cost: number;
+  supplierId?: number;
+  notes?: string;
 }
