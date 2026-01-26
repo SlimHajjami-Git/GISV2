@@ -352,12 +352,114 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   createPopupContent(vehicle: any): string {
+    const isOnline = vehicle.isOnline;
+    const statusColor = isOnline ? '#10b981' : '#6b7280';
+    const statusBg = isOnline ? 'rgba(16, 185, 129, 0.1)' : 'rgba(107, 114, 128, 0.1)';
+    const statusText = isOnline ? 'En ligne' : 'Hors ligne';
+    const speed = vehicle.currentSpeed || 0;
+    const isMoving = speed > 3;
+    
     return `
-      <div class="vehicle-popup">
-        <h3>${vehicle.brand} ${vehicle.model}</h3>
-        <p><strong>Immatriculation:</strong> ${vehicle.plate}</p>
-        <p><strong>Vitesse:</strong> ${vehicle.currentSpeed || 0} km/h</p>
-        <p><strong>Statut:</strong> ${vehicle.isOnline ? 'En ligne' : 'Hors ligne'}</p>
+      <div style="
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        min-width: 220px;
+        padding: 0;
+        margin: -14px -20px;
+      ">
+        <!-- Header with gradient -->
+        <div style="
+          background: linear-gradient(135deg, #1e3a5f 0%, #0f2744 100%);
+          padding: 14px 16px;
+          border-radius: 8px 8px 0 0;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        ">
+          <div style="
+            width: 40px;
+            height: 40px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          ">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">
+              <rect x="1" y="3" width="15" height="13" rx="2"/>
+              <path d="M16 8h4l3 3v5a2 2 0 0 1-2 2h-1"/>
+              <circle cx="5.5" cy="18.5" r="2.5"/>
+              <circle cx="18.5" cy="18.5" r="2.5"/>
+            </svg>
+          </div>
+          <div style="flex: 1;">
+            <div style="font-weight: 600; font-size: 14px; color: #fff; margin-bottom: 2px;">
+              ${vehicle.name || vehicle.brand + ' ' + vehicle.model}
+            </div>
+            <div style="font-size: 12px; color: rgba(255,255,255,0.7); font-family: monospace;">
+              ${vehicle.plate || 'N/A'}
+            </div>
+          </div>
+        </div>
+        
+        <!-- Status bar -->
+        <div style="
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 16px;
+          background: ${statusBg};
+          border-bottom: 1px solid #e5e7eb;
+        ">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <div style="
+              width: 8px;
+              height: 8px;
+              background: ${statusColor};
+              border-radius: 50%;
+              ${isOnline ? 'box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);' : ''}
+            "></div>
+            <span style="font-size: 12px; font-weight: 500; color: ${statusColor};">${statusText}</span>
+          </div>
+          ${isMoving ? `
+            <div style="
+              display: flex;
+              align-items: center;
+              gap: 4px;
+              padding: 3px 8px;
+              background: rgba(59, 130, 246, 0.1);
+              border-radius: 12px;
+            ">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="#3b82f6" stroke="none">
+                <path d="M12 2L4.5 20.3l.7.7 6.8-3 6.8 3 .7-.7L12 2z"/>
+              </svg>
+              <span style="font-size: 11px; font-weight: 600; color: #3b82f6;">En mouvement</span>
+            </div>
+          ` : ''}
+        </div>
+        
+        <!-- Info grid -->
+        <div style="padding: 12px 16px 14px; background: #fff; border-radius: 0 0 8px 8px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div style="
+              background: #f8fafc;
+              padding: 10px 12px;
+              border-radius: 8px;
+              border: 1px solid #e2e8f0;
+            ">
+              <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Vitesse</div>
+              <div style="font-size: 18px; font-weight: 700; color: #1e293b;">${speed}<span style="font-size: 11px; font-weight: 500; color: #64748b;"> km/h</span></div>
+            </div>
+            <div style="
+              background: #f8fafc;
+              padding: 10px 12px;
+              border-radius: 8px;
+              border: 1px solid #e2e8f0;
+            ">
+              <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Type</div>
+              <div style="font-size: 13px; font-weight: 600; color: #1e293b;">${vehicle.type || 'Véhicule'}</div>
+            </div>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -686,18 +788,96 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       });
 
       // Create popup content with details
+      const speed = position.speedKph || 0;
+      const isMoving = speed > 3;
+      const speedColor = speed > 80 ? '#ef4444' : speed > 50 ? '#f59e0b' : '#10b981';
+      
       const popupContent = `
-        <div style="font-family: Arial, sans-serif; min-width: 180px;">
-          <div style="font-weight: bold; color: #3b82f6; margin-bottom: 8px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px;">
-            Point ${index + 1}
+        <div style="
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          min-width: 200px;
+          padding: 0;
+          margin: -14px -20px;
+        ">
+          <!-- Header -->
+          <div style="
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            padding: 10px 14px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+          ">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="
+                width: 24px;
+                height: 24px;
+                background: rgba(255,255,255,0.2);
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 11px;
+                font-weight: 700;
+                color: #fff;
+              ">${index + 1}</div>
+              <span style="font-weight: 500; font-size: 12px; color: #fff;">Point de trace</span>
+            </div>
+            <span style="font-size: 11px; color: rgba(255,255,255,0.8);">${time.split(' ')[1] || ''}</span>
           </div>
-          <div style="font-size: 12px; line-height: 1.6;">
-            <div><strong>🕐 Heure:</strong> ${time}</div>
-            <div><strong>📍 Lat:</strong> ${position.latitude.toFixed(6)}</div>
-            <div><strong>📍 Lon:</strong> ${position.longitude.toFixed(6)}</div>
-            <div><strong>🚗 Vitesse:</strong> ${(position.speedKph || 0).toFixed(1)} km/h</div>
-            <div><strong>⛽ Carburant:</strong> ${position.fuelRaw || 0}%</div>
-            <div><strong>🌡️ Température:</strong> ${position.temperatureC != null ? position.temperatureC : 'N/A'}°C</div>
+          
+          <!-- Speed highlight -->
+          <div style="
+            background: #fff;
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid #e5e7eb;
+          ">
+            <div style="
+              width: 44px;
+              height: 44px;
+              background: ${speedColor}15;
+              border-radius: 10px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              border: 2px solid ${speedColor};
+            ">
+              <span style="font-size: 16px; font-weight: 700; color: ${speedColor};">${speed.toFixed(0)}</span>
+            </div>
+            <div>
+              <div style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Vitesse</div>
+              <div style="font-size: 14px; font-weight: 600; color: #1e293b;">${speed.toFixed(1)} km/h</div>
+            </div>
+          </div>
+          
+          <!-- Details grid -->
+          <div style="padding: 10px 14px; background: #f8fafc; border-radius: 0 0 8px 8px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px;">
+              <div style="background: #fff; padding: 8px 10px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                <div style="color: #64748b; margin-bottom: 2px;">⛽ Carburant</div>
+                <div style="font-weight: 600; color: #1e293b;">${position.fuelRaw || 0}%</div>
+              </div>
+              <div style="background: #fff; padding: 8px 10px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                <div style="color: #64748b; margin-bottom: 2px;">🌡️ Température</div>
+                <div style="font-weight: 600; color: #1e293b;">${position.temperatureC != null ? position.temperatureC + '°C' : 'N/A'}</div>
+              </div>
+            </div>
+            <div style="
+              margin-top: 8px;
+              padding: 6px 10px;
+              background: #fff;
+              border-radius: 4px;
+              border: 1px solid #e2e8f0;
+              font-size: 10px;
+              color: #64748b;
+              font-family: 'SF Mono', Monaco, monospace;
+              text-align: center;
+            ">
+              ${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)}
+            </div>
           </div>
         </div>
       `;
@@ -817,18 +997,141 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const statusLabel = this.getPlaybackStatusLabel();
     const ignitionStatus = position.ignitionOn ? 'Allumé' : 'Éteint';
     
+    const ignitionColor = position.ignitionOn ? '#10b981' : '#ef4444';
+    const ignitionBg = position.ignitionOn ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+    
     this.playbackMarker.bindPopup(`
-      <div style="font-family: Arial, sans-serif; min-width: 200px;">
-        <div style="font-weight: bold; color: ${statusColor}; margin-bottom: 8px; border-bottom: 2px solid ${statusColor}; padding-bottom: 4px;">
-          ${statusLabel}
+      <div style="
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        min-width: 260px;
+        padding: 0;
+        margin: -14px -20px;
+      ">
+        <!-- Header -->
+        <div style="
+          background: linear-gradient(135deg, ${statusColor} 0%, ${statusColor}dd 100%);
+          padding: 12px 16px;
+          border-radius: 8px 8px 0 0;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        ">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            <span style="font-weight: 600; font-size: 13px; color: #fff;">${statusLabel}</span>
+          </div>
+          <div style="
+            background: rgba(255,255,255,0.2);
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #fff;
+          ">${time.split(' ')[1] || time}</div>
         </div>
-        <div style="font-size: 12px; line-height: 1.8;">
-          <div><strong>🕐 Heure:</strong> ${time}</div>
-          <div><strong>🚗 Vitesse:</strong> ${speed.toFixed(1)} km/h</div>
-          <div><strong>🔑 Moteur:</strong> ${ignitionStatus}</div>
-          <div><strong>🧭 Direction:</strong> ${heading}°</div>
-          <div><strong>📍 Position:</strong> ${position.latitude.toFixed(5)}, ${position.longitude.toFixed(5)}</div>
-          ${position.fuelRaw ? `<div><strong>⛽ Carburant:</strong> ${position.fuelRaw}%</div>` : ''}
+        
+        <!-- Speed display -->
+        <div style="
+          background: #fff;
+          padding: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 16px;
+          border-bottom: 1px solid #e5e7eb;
+        ">
+          <div style="text-align: center;">
+            <div style="font-size: 32px; font-weight: 700; color: #1e293b; line-height: 1;">${speed.toFixed(0)}</div>
+            <div style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">km/h</div>
+          </div>
+          <div style="width: 1px; height: 40px; background: #e5e7eb;"></div>
+          <div style="text-align: center;">
+            <div style="font-size: 24px; font-weight: 600; color: #1e293b; line-height: 1;">${heading}°</div>
+            <div style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Direction</div>
+          </div>
+        </div>
+        
+        <!-- Info grid -->
+        <div style="padding: 12px 16px; background: #f8fafc;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <!-- Ignition -->
+            <div style="
+              background: ${ignitionBg};
+              padding: 10px 12px;
+              border-radius: 8px;
+              display: flex;
+              align-items: center;
+              gap: 8px;
+            ">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${ignitionColor}" stroke-width="2">
+                <path d="M15 7h3a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-3"/>
+                <path d="M9 17H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              <div>
+                <div style="font-size: 10px; color: #64748b;">Moteur</div>
+                <div style="font-size: 12px; font-weight: 600; color: ${ignitionColor};">${ignitionStatus}</div>
+              </div>
+            </div>
+            
+            <!-- Fuel -->
+            ${position.fuelRaw ? `
+            <div style="
+              background: rgba(245, 158, 11, 0.1);
+              padding: 10px 12px;
+              border-radius: 8px;
+              display: flex;
+              align-items: center;
+              gap: 8px;
+            ">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+                <path d="M3 22V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/>
+                <path d="M15 11h3.5a2 2 0 0 1 2 2v3a1.5 1.5 0 0 0 3 0v-7l-3-3"/>
+                <path d="M5 10h8"/>
+              </svg>
+              <div>
+                <div style="font-size: 10px; color: #64748b;">Carburant</div>
+                <div style="font-size: 12px; font-weight: 600; color: #f59e0b;">${position.fuelRaw}%</div>
+              </div>
+            </div>
+            ` : `
+            <div style="
+              background: rgba(100, 116, 139, 0.1);
+              padding: 10px 12px;
+              border-radius: 8px;
+              display: flex;
+              align-items: center;
+              gap: 8px;
+            ">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <div>
+                <div style="font-size: 10px; color: #64748b;">Carburant</div>
+                <div style="font-size: 12px; font-weight: 600; color: #64748b;">N/A</div>
+              </div>
+            </div>
+            `}
+          </div>
+          
+          <!-- Coordinates -->
+          <div style="
+            margin-top: 8px;
+            padding: 8px 10px;
+            background: #fff;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+            font-size: 11px;
+            color: #64748b;
+            font-family: 'SF Mono', Monaco, monospace;
+            text-align: center;
+          ">
+            📍 ${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)}
+          </div>
         </div>
       </div>
     `);
