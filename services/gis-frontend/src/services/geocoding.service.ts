@@ -45,10 +45,10 @@ export class GeocodingService {
       if (firstKey) this.cache.delete(firstKey);
     }
 
-    const request$ = this.http.get<NominatimResponse>(
-      `/api/nominatim/reverse?lat=${lat}&lon=${lon}&format=json&zoom=18`
+    const request$ = this.http.get<{latitude: number; longitude: number; address: string | null}>(
+      `/api/gps/geocode/reverse?lat=${lat}&lon=${lon}`
     ).pipe(
-      map(response => this.formatAddress(response)),
+      map(response => response.address || `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`),
       catchError(() => of(`${lat.toFixed(4)}°, ${lon.toFixed(4)}°`)),
       shareReplay(1)
     );
