@@ -62,6 +62,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   pointMarkers: L.CircleMarker[] = []; // Markers for each GPS point
   filteredBirdFlights = 0; // Count of filtered bird flight positions
   
+  // Smooth animation properties
+  private animationFrameId: number | null = null;
+  private animationStartTime: number = 0;
+  private animationFromPos: { lat: number; lng: number } | null = null;
+  private animationToPos: { lat: number; lng: number } | null = null;
+  private segmentDuration: number = 1000; // Base duration per segment in ms
+  private isAnimatingSegment: boolean = false;
+  smoothFollowCamera: boolean = true; // Enable smooth camera following
+  
   // Progressive trace drawing
   progressivePolylines: L.Polyline[] = []; // Colored segments for progressive drawing
   traceDrawnUpToIndex = 0; // Track how much of the trace has been drawn
@@ -1362,45 +1371,127 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.playbackInterval) {
       clearInterval(this.playbackInterval);
     }
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
 
-    const intervalMs = 1000 / this.playbackSpeed;
+    // Start smooth animation to next point
+    this.animateToNextPoint();
+  }
 
-    // Run setInterval inside NgZone to ensure Angular change detection triggers
-    this.ngZone.runOutsideAngular(() => {
-      this.playbackInterval = setInterval(() => {
-        // Run state updates inside Angular zone for change detection
-        this.ngZone.run(() => {
-          if (this.playbackIndex < this.playbackPositions.length - 1) {
-            const previousIndex = this.playbackIndex;
-            this.playbackIndex++;
-            this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
-            
-            // Draw progressive trace segment from previous position to current
-            this.drawProgressiveSegment(previousIndex, this.playbackIndex);
-            
-            // Update vehicle marker with status color
-            this.updatePlaybackMarker();
-            
-            // Center map on current position
-            const pos = this.playbackPositions[this.playbackIndex];
-            if (this.map && pos) {
-              this.map.panTo([pos.latitude, pos.longitude]);
-            }
-            
-            // Force change detection to update UI
-            this.cdr.detectChanges();
-          } else {
-            // Playback reached the end - auto-complete
-            this.isPlaying = false;
-            this.stopPlaybackAnimation();
-            
-            // Show completion message and offer to end playback
-            console.log('Playback completed - trace remains visible until user ends playback');
-            this.cdr.detectChanges();
-          }
-        });
-      }, intervalMs);
-    });
+  // Smooth animation using requestAnimationFrame
+  private animateToNextPoint() {
+    if (!this.isPlaying || this.playbackIndex >= this.playbackPositions.length - 1) {
+      // Playback complete
+      this.ngZone.run(() => {
+        this.isPlaying = false;
+        this.isAnimatingSegment = false;
+        console.log('Playback completed - trace remains visible until user ends playback');
+        this.cdr.detectChanges();
+      });
+      return;
+    }
+
+    const fromPos = this.playbackPositions[this.playbackIndex];
+    const toPos = this.playbackPositions[this.playbackIndex + 1];
+    
+    // Calculate distance to determine animation duration
+    const distance = this.calculateDistance(
+      fromPos.latitude, fromPos.longitude,
+      toPos.latitude, toPos.longitude
+    );
+    
+    // Adaptive duration based on distance (faster for short distances, slower for long)
+    // Base: 500ms per 100m at speed 1x
+    const baseDuration = Math.max(200, Math.min(2000, (distance / 100) * 500));
+    const duration = baseDuration / this.playbackSpeed;
+    
+    this.animationFromPos = { lat: fromPos.latitude, lng: fromPos.longitude };
+    this.animationToPos = { lat: toPos.latitude, lng: toPos.longitude };
+    this.animationStartTime = performance.now();
+    this.segmentDuration = duration;
+    this.isAnimatingSegment = true;
+
+    // Start the animation loop
+    this.animateFrame();
+  }
+
+  // Animation frame loop for smooth interpolation
+  private animateFrame() {
+    if (!this.isPlaying || !this.animationFromPos || !this.animationToPos) {
+      this.isAnimatingSegment = false;
+      return;
+    }
+
+    const elapsed = performance.now() - this.animationStartTime;
+    const progress = Math.min(1, elapsed / this.segmentDuration);
+    
+    // Easing function for smooth movement (ease-in-out)
+    const easedProgress = this.easeInOutCubic(progress);
+    
+    // Interpolate position
+    const currentLat = this.animationFromPos.lat + 
+      (this.animationToPos.lat - this.animationFromPos.lat) * easedProgress;
+    const currentLng = this.animationFromPos.lng + 
+      (this.animationToPos.lng - this.animationFromPos.lng) * easedProgress;
+
+    // Update marker position smoothly
+    if (this.playbackMarker) {
+      this.playbackMarker.setLatLng([currentLat, currentLng]);
+    }
+
+    // Smooth camera follow
+    if (this.map && this.smoothFollowCamera) {
+      this.map.panTo([currentLat, currentLng], {
+        animate: true,
+        duration: 0.1,
+        easeLinearity: 0.5
+      });
+    }
+
+    if (progress < 1) {
+      // Continue animation
+      this.animationFrameId = requestAnimationFrame(() => this.animateFrame());
+    } else {
+      // Segment complete - move to next point
+      this.ngZone.run(() => {
+        const previousIndex = this.playbackIndex;
+        this.playbackIndex++;
+        this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+        
+        // Draw the trace segment now that animation is complete
+        this.drawProgressiveSegment(previousIndex, this.playbackIndex);
+        
+        // Update marker icon (for status color changes)
+        this.updatePlaybackMarker();
+        
+        this.cdr.detectChanges();
+        
+        // Continue to next segment
+        this.isAnimatingSegment = false;
+        this.animateToNextPoint();
+      });
+    }
+  }
+
+  // Easing function for natural movement
+  private easeInOutCubic(t: number): number {
+    return t < 0.5 
+      ? 4 * t * t * t 
+      : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
+  // Calculate distance between two coordinates in meters
+  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371000; // Earth radius in meters
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
   }
 
   // Draw a single segment of the trace with color based on vehicle status
@@ -1560,6 +1651,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       clearInterval(this.playbackInterval);
       this.playbackInterval = null;
     }
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+    this.isAnimatingSegment = false;
   }
 
   resetPlayback() {
@@ -1687,6 +1783,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.playbackProgress = 0;
     this.playbackVehicleId = null; // Reset vehicle tracking
     this.filteredBirdFlights = 0;
+    
+    // Reset smooth animation state
+    this.animationFromPos = null;
+    this.animationToPos = null;
+    this.isAnimatingSegment = false;
 
     // Restore the live marker that was hidden during playback
     this.restoreLiveMarker();
