@@ -195,13 +195,30 @@ public class GpsTelemetryConsumer : BackgroundService
 
 public class TelemetryMessage
 {
+    [System.Text.Json.Serialization.JsonPropertyName("device_uid")]
     public string DeviceUid { get; set; } = string.Empty;
+    
+    [System.Text.Json.Serialization.JsonPropertyName("protocol")]
     public string Protocol { get; set; } = string.Empty;
+    
+    [System.Text.Json.Serialization.JsonPropertyName("latitude")]
     public double Latitude { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("longitude")]
     public double Longitude { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("speed_kph")]
     public double? SpeedKph { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("heading_deg")]
     public double? CourseDeg { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("ignition_on")]
     public bool? IgnitionOn { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("recorded_at")]
     public DateTime RecordedAt { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("alert_type")]
     public string? AlertType { get; set; }
 }
