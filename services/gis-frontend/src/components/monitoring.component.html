@@ -230,22 +230,6 @@
                     {{ playbackLoading ? 'Chargement...' : 'Charger' }}
                   </button>
 
-                  <div class="road-snapping-toggle">
-                    <label class="toggle-label">
-                      <input type="checkbox" [checked]="useRoadSnapping" (change)="toggleRoadSnapping()" (click)="$event.stopPropagation()">
-                      <span class="toggle-slider"></span>
-                      <span class="toggle-text">Suivre les routes</span>
-                    </label>
-                  </div>
-
-                  <div class="road-snapping-toggle">
-                    <label class="toggle-label">
-                      <input type="checkbox" [checked]="smoothFollowCamera" (change)="smoothFollowCamera = !smoothFollowCamera" (click)="$event.stopPropagation()">
-                      <span class="toggle-slider"></span>
-                      <span class="toggle-text">Suivi fluide caméra</span>
-                    </label>
-                  </div>
-
                   <div class="playback-controls" *ngIf="isPlaybackLoaded">
                     <div class="playback-info">
                       <span>Point {{ playbackIndex + 1 }} / {{ playbackPositions.length }}</span>
@@ -500,22 +484,6 @@
                   </svg>
                   {{ playbackLoading ? 'Chargement...' : 'Charger' }}
                 </button>
-
-                <div class="road-snapping-toggle">
-                  <label class="toggle-label">
-                    <input type="checkbox" [checked]="useRoadSnapping" (change)="toggleRoadSnapping()">
-                    <span class="toggle-slider"></span>
-                    <span class="toggle-text">Suivre les routes</span>
-                  </label>
-                </div>
-
-                <div class="road-snapping-toggle">
-                  <label class="toggle-label">
-                    <input type="checkbox" [checked]="smoothFollowCamera" (change)="smoothFollowCamera = !smoothFollowCamera">
-                    <span class="toggle-slider"></span>
-                    <span class="toggle-text">Suivi fluide caméra</span>
-                  </label>
-                </div>
 
                 <div class="playback-controls" *ngIf="isPlaybackLoaded">
                   <div class="playback-info">

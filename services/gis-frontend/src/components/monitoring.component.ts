@@ -58,7 +58,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   playbackLoading = false;
   playbackVehicleId: number | null = null; // Track which vehicle's playback is loaded
   routingControl: any = null;
-  useRoadSnapping = false; // Toggle between road-snapped route and straight lines (disabled by default for progressive drawing)
+  useRoadSnapping = true; // OSRM road snapping enabled by default
   pointMarkers: L.CircleMarker[] = []; // Markers for each GPS point
   filteredBirdFlights = 0; // Count of filtered bird flight positions
   
@@ -70,6 +70,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   private segmentDuration: number = 1000; // Base duration per segment in ms
   private isAnimatingSegment: boolean = false;
   smoothFollowCamera: boolean = true; // Enable smooth camera following
+  
+  // OSRM route animation
+  private currentRouteCoords: L.LatLng[] = []; // Coordinates of current OSRM route segment
+  private routeAnimationIndex: number = 0; // Current position in route animation
   
   // Progressive trace drawing
   progressivePolylines: L.Polyline[] = []; // Colored segments for progressive drawing
@@ -1381,7 +1385,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   // Smooth animation using requestAnimationFrame
-  private animateToNextPoint() {
+  private async animateToNextPoint() {
     if (!this.isPlaying || this.playbackIndex >= this.playbackPositions.length - 1) {
       // Playback complete
       this.ngZone.run(() => {
@@ -1396,19 +1400,23 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const fromPos = this.playbackPositions[this.playbackIndex];
     const toPos = this.playbackPositions[this.playbackIndex + 1];
     
-    // Calculate distance to determine animation duration
-    const distance = this.calculateDistance(
-      fromPos.latitude, fromPos.longitude,
-      toPos.latitude, toPos.longitude
-    );
+    // Fetch OSRM route for smooth road-following animation
+    this.currentRouteCoords = await this.fetchOSRMRoute(fromPos, toPos);
+    this.routeAnimationIndex = 0;
     
-    // Adaptive duration based on distance (faster for short distances, slower for long)
-    // Base: 500ms per 100m at speed 1x
-    const baseDuration = Math.max(200, Math.min(2000, (distance / 100) * 500));
+    // Calculate total route distance for animation duration
+    let totalDistance = 0;
+    for (let i = 1; i < this.currentRouteCoords.length; i++) {
+      const prev = this.currentRouteCoords[i - 1];
+      const curr = this.currentRouteCoords[i];
+      totalDistance += this.calculateDistance(prev.lat, prev.lng, curr.lat, curr.lng);
+    }
+    
+    // Adaptive duration based on route distance
+    // Base: 300ms per 100m at speed 1x (faster for smoother feel)
+    const baseDuration = Math.max(300, Math.min(3000, (totalDistance / 100) * 300));
     const duration = baseDuration / this.playbackSpeed;
     
-    this.animationFromPos = { lat: fromPos.latitude, lng: fromPos.longitude };
-    this.animationToPos = { lat: toPos.latitude, lng: toPos.longitude };
     this.animationStartTime = performance.now();
     this.segmentDuration = duration;
     this.isAnimatingSegment = true;
@@ -1417,9 +1425,36 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.animateFrame();
   }
 
-  // Animation frame loop for smooth interpolation
+  // Fetch OSRM route between two GPS points
+  private async fetchOSRMRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
+    try {
+      const coordsStr = `${fromPos.longitude},${fromPos.latitude};${toPos.longitude},${toPos.latitude}`;
+      const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
+      
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`OSRM error: ${response.status}`);
+      
+      const data = await response.json();
+      
+      if (data.code === 'Ok' && data.routes?.[0]?.geometry?.coordinates) {
+        return data.routes[0].geometry.coordinates.map(
+          (c: number[]) => L.latLng(c[1], c[0])
+        );
+      }
+    } catch (error) {
+      console.warn('OSRM route fetch failed, using straight line:', error);
+    }
+    
+    // Fallback to straight line if OSRM fails
+    return [
+      L.latLng(fromPos.latitude, fromPos.longitude),
+      L.latLng(toPos.latitude, toPos.longitude)
+    ];
+  }
+
+  // Animation frame loop for smooth interpolation along OSRM route
   private animateFrame() {
-    if (!this.isPlaying || !this.animationFromPos || !this.animationToPos) {
+    if (!this.isPlaying || this.currentRouteCoords.length === 0) {
       this.isAnimatingSegment = false;
       return;
     }
@@ -1427,26 +1462,32 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const elapsed = performance.now() - this.animationStartTime;
     const progress = Math.min(1, elapsed / this.segmentDuration);
     
-    // Easing function for smooth movement (ease-in-out)
+    // Easing function for smooth movement
     const easedProgress = this.easeInOutCubic(progress);
     
-    // Interpolate position
-    const currentLat = this.animationFromPos.lat + 
-      (this.animationToPos.lat - this.animationFromPos.lat) * easedProgress;
-    const currentLng = this.animationFromPos.lng + 
-      (this.animationToPos.lng - this.animationFromPos.lng) * easedProgress;
+    // Calculate position along the route based on progress
+    const { lat, lng, heading } = this.getPositionAlongRoute(easedProgress);
 
     // Update marker position smoothly
     if (this.playbackMarker) {
-      this.playbackMarker.setLatLng([currentLat, currentLng]);
+      this.playbackMarker.setLatLng([lat, lng]);
+      
+      // Update marker rotation based on heading
+      const currentPos = this.playbackPositions[this.playbackIndex];
+      const speed = currentPos?.speedKph || 0;
+      const statusColor = this.getStatusColor(currentPos);
+      const vehicleType = this.selectedVehicle?.type || 'car';
+      const vehicleName = this.selectedVehicle?.plate || '';
+      const icon = this.createPlaybackVehicleIcon(statusColor, heading, speed, vehicleType, vehicleName);
+      this.playbackMarker.setIcon(icon);
     }
 
     // Smooth camera follow
     if (this.map && this.smoothFollowCamera) {
-      this.map.panTo([currentLat, currentLng], {
+      this.map.panTo([lat, lng], {
         animate: true,
-        duration: 0.1,
-        easeLinearity: 0.5
+        duration: 0.15,
+        easeLinearity: 0.25
       });
     }
 
@@ -1473,6 +1514,70 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         this.animateToNextPoint();
       });
     }
+  }
+
+  // Get interpolated position along the OSRM route
+  private getPositionAlongRoute(progress: number): { lat: number; lng: number; heading: number } {
+    if (this.currentRouteCoords.length < 2) {
+      const pos = this.currentRouteCoords[0] || L.latLng(0, 0);
+      return { lat: pos.lat, lng: pos.lng, heading: 0 };
+    }
+
+    // Calculate total route length
+    let totalLength = 0;
+    const segmentLengths: number[] = [];
+    
+    for (let i = 1; i < this.currentRouteCoords.length; i++) {
+      const prev = this.currentRouteCoords[i - 1];
+      const curr = this.currentRouteCoords[i];
+      const len = this.calculateDistance(prev.lat, prev.lng, curr.lat, curr.lng);
+      segmentLengths.push(len);
+      totalLength += len;
+    }
+
+    // Find position at progress along route
+    const targetDistance = totalLength * progress;
+    let accumulatedDistance = 0;
+    
+    for (let i = 0; i < segmentLengths.length; i++) {
+      if (accumulatedDistance + segmentLengths[i] >= targetDistance) {
+        // Interpolate within this segment
+        const segmentProgress = (targetDistance - accumulatedDistance) / segmentLengths[i];
+        const from = this.currentRouteCoords[i];
+        const to = this.currentRouteCoords[i + 1];
+        
+        const lat = from.lat + (to.lat - from.lat) * segmentProgress;
+        const lng = from.lng + (to.lng - from.lng) * segmentProgress;
+        
+        // Calculate heading
+        const heading = this.calculateHeading(from.lat, from.lng, to.lat, to.lng);
+        
+        return { lat, lng, heading };
+      }
+      accumulatedDistance += segmentLengths[i];
+    }
+
+    // Return last position if we somehow exceeded
+    const lastPos = this.currentRouteCoords[this.currentRouteCoords.length - 1];
+    const prevPos = this.currentRouteCoords[this.currentRouteCoords.length - 2];
+    const heading = this.calculateHeading(prevPos.lat, prevPos.lng, lastPos.lat, lastPos.lng);
+    return { lat: lastPos.lat, lng: lastPos.lng, heading };
+  }
+
+  // Calculate heading/bearing between two points in degrees
+  private calculateHeading(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const lat1Rad = lat1 * Math.PI / 180;
+    const lat2Rad = lat2 * Math.PI / 180;
+    
+    const y = Math.sin(dLon) * Math.cos(lat2Rad);
+    const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - 
+              Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+    
+    let heading = Math.atan2(y, x) * 180 / Math.PI;
+    heading = (heading + 360) % 360; // Normalize to 0-360
+    
+    return heading;
   }
 
   // Easing function for natural movement
@@ -1788,6 +1893,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.animationFromPos = null;
     this.animationToPos = null;
     this.isAnimatingSegment = false;
+    this.currentRouteCoords = [];
+    this.routeAnimationIndex = 0;
 
     // Restore the live marker that was hidden during playback
     this.restoreLiveMarker();
