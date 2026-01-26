@@ -714,8 +714,16 @@ public class AdminController : ControllerBase
     [HttpDelete("vehicles/{id}")]
     public async Task<ActionResult> DeleteVehicle(int id)
     {
-        var vehicle = await _context.Vehicles.FindAsync(id);
+        var vehicle = await _context.Vehicles
+            .Include(v => v.GpsDevice)
+            .FirstOrDefaultAsync(v => v.Id == id);
         if (vehicle == null) return NotFound();
+
+        // Release GPS device before deleting vehicle
+        if (vehicle.GpsDeviceId.HasValue)
+        {
+            await ReleaseGpsDeviceAsync(vehicle.GpsDeviceId);
+        }
 
         _context.Vehicles.Remove(vehicle);
         await _context.SaveChangesAsync();
@@ -779,17 +787,32 @@ public class AdminController : ControllerBase
         var normalizedImei = gpsImei?.Trim();
         if (!string.IsNullOrEmpty(normalizedImei))
         {
-            var device = await _context.GpsDevices.FirstOrDefaultAsync(d => d.DeviceUid == normalizedImei);
+            var device = await _context.GpsDevices
+                .Include(d => d.Vehicle)
+                .FirstOrDefaultAsync(d => d.DeviceUid == normalizedImei);
             if (device != null)
             {
+                // If device belongs to another company, update it to new company
+                // This allows reusing GPS devices across companies
                 if (device.CompanyId != companyId)
-                    return (null, "Un appareil avec cet IMEI appartient déjà à une autre société.");
+                {
+                    device.CompanyId = companyId;
+                }
 
-                if (!string.IsNullOrWhiteSpace(gpsMat) && string.IsNullOrWhiteSpace(device.Mat))
+                // Always update Mat if provided (overwrites existing)
+                if (!string.IsNullOrWhiteSpace(gpsMat))
                 {
                     device.Mat = gpsMat.Trim();
                 }
 
+                // Release from previous vehicle if any
+                if (device.Vehicle != null)
+                {
+                    device.Vehicle.GpsDeviceId = null;
+                    device.Vehicle.HasGps = false;
+                }
+
+                device.UpdatedAt = DateTime.UtcNow;
                 return (device, null);
             }
 

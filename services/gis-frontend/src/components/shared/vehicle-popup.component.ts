@@ -203,10 +203,10 @@ export interface CompanyOption {
             <!-- Existing GPS Device Selection -->
             <div class="form-group" *ngIf="gpsMode === 'existing'">
               <label for="gpsDeviceId">Appareil GPS disponible</label>
-              <select id="gpsDeviceId" name="gpsDeviceId" [(ngModel)]="formData.gpsDeviceId" class="gps-select">
+              <select id="gpsDeviceId" name="gpsDeviceId" [(ngModel)]="formData.gpsDeviceId" (change)="onExistingDeviceSelected()" class="gps-select">
                 <option [value]="null">-- Sélectionner un appareil --</option>
                 <option *ngFor="let device of availableGpsDevices" [value]="device.id">
-                  {{ device.deviceUid }} {{ device.brand ? '(' + device.brand + ' ' + device.model + ')' : '' }}
+                  {{ device.deviceUid }} {{ device.mat ? '(MAT: ' + device.mat + ')' : '' }}
                   {{ device.lastCommunication ? '- Dernière comm: ' + formatDate(device.lastCommunication) : '- Jamais connecté' }}
                 </option>
               </select>
@@ -711,6 +711,23 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       this.formData.gpsMat = '';
     } else {
       this.formData.gpsDeviceId = undefined;
+    }
+  }
+
+  onExistingDeviceSelected() {
+    // When selecting an existing device, copy its IMEI and Mat to formData
+    // so they are sent to the backend and not lost
+    if (this.formData.gpsDeviceId) {
+      const selectedDevice = this.availableGpsDevices.find(
+        d => d.id === Number(this.formData.gpsDeviceId)
+      );
+      if (selectedDevice) {
+        this.formData.gpsImei = selectedDevice.deviceUid || '';
+        this.formData.gpsMat = selectedDevice.mat || '';
+      }
+    } else {
+      this.formData.gpsImei = '';
+      this.formData.gpsMat = '';
     }
   }
 
