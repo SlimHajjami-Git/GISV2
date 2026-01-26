@@ -56,10 +56,13 @@ services:
       Jwt__Key: ${JWT_SECRET_KEY:-YourSuperSecretKeyForProductionAtLeast32Characters!}
       Jwt__Issuer: GisAPI
       Jwt__Audience: GisAPI
-      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__Host: rabbitmq
       RabbitMQ__Port: 5672
-      RabbitMQ__UserName: ${RABBITMQ_USER:-gisadmin}
-      RabbitMQ__Password: ${RABBITMQ_PASSWORD:-your_secure_password_here}
+      RabbitMQ__Username: ${RABBITMQ_USER:-gisadmin}
+      RabbitMQ__Password: ${RABBITMQ_PASSWORD:-Calypso@2026+}
+      RabbitMQ__Exchange: telemetry.raw
+      RabbitMQ__Queue: gps.telemetry.dotnet
+      RabbitMQ__RoutingKey: hh
     restart: unless-stopped
 
   gps-ingest:
