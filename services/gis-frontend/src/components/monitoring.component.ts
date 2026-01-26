@@ -1466,7 +1466,16 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const easedProgress = this.easeInOutCubic(progress);
     
     // Calculate position along the route based on progress
-    const { lat, lng, heading } = this.getPositionAlongRoute(easedProgress);
+    const position = this.getPositionAlongRoute(easedProgress);
+    
+    // Skip if position is invalid
+    if (!position) {
+      // Continue to next frame anyway
+      this.animationFrameId = requestAnimationFrame(() => this.animateFrame());
+      return;
+    }
+    
+    const { lat, lng, heading } = position;
 
     // Update marker position smoothly
     if (this.playbackMarker) {
@@ -1517,9 +1526,16 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   // Get interpolated position along the OSRM route
-  private getPositionAlongRoute(progress: number): { lat: number; lng: number; heading: number } {
-    if (this.currentRouteCoords.length < 2) {
-      const pos = this.currentRouteCoords[0] || L.latLng(0, 0);
+  private getPositionAlongRoute(progress: number): { lat: number; lng: number; heading: number } | null {
+    // Validate route coords exist
+    if (!this.currentRouteCoords || this.currentRouteCoords.length === 0) {
+      return null;
+    }
+    
+    // If only one point, return it
+    if (this.currentRouteCoords.length === 1) {
+      const pos = this.currentRouteCoords[0];
+      if (!pos || isNaN(pos.lat) || isNaN(pos.lng)) return null;
       return { lat: pos.lat, lng: pos.lng, heading: 0 };
     }
 
@@ -1530,9 +1546,17 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     for (let i = 1; i < this.currentRouteCoords.length; i++) {
       const prev = this.currentRouteCoords[i - 1];
       const curr = this.currentRouteCoords[i];
+      if (!prev || !curr || isNaN(prev.lat) || isNaN(curr.lat)) continue;
       const len = this.calculateDistance(prev.lat, prev.lng, curr.lat, curr.lng);
       segmentLengths.push(len);
       totalLength += len;
+    }
+
+    // Handle zero-length route
+    if (totalLength === 0 || segmentLengths.length === 0) {
+      const pos = this.currentRouteCoords[0];
+      if (!pos || isNaN(pos.lat) || isNaN(pos.lng)) return null;
+      return { lat: pos.lat, lng: pos.lng, heading: 0 };
     }
 
     // Find position at progress along route
@@ -1542,17 +1566,22 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     for (let i = 0; i < segmentLengths.length; i++) {
       if (accumulatedDistance + segmentLengths[i] >= targetDistance) {
         // Interpolate within this segment
-        const segmentProgress = (targetDistance - accumulatedDistance) / segmentLengths[i];
+        const segmentLen = segmentLengths[i];
+        const segmentProgress = segmentLen > 0 ? (targetDistance - accumulatedDistance) / segmentLen : 0;
         const from = this.currentRouteCoords[i];
         const to = this.currentRouteCoords[i + 1];
+        
+        if (!from || !to) continue;
         
         const lat = from.lat + (to.lat - from.lat) * segmentProgress;
         const lng = from.lng + (to.lng - from.lng) * segmentProgress;
         
+        if (isNaN(lat) || isNaN(lng)) continue;
+        
         // Calculate heading
         const heading = this.calculateHeading(from.lat, from.lng, to.lat, to.lng);
         
-        return { lat, lng, heading };
+        return { lat, lng, heading: isNaN(heading) ? 0 : heading };
       }
       accumulatedDistance += segmentLengths[i];
     }
@@ -1560,8 +1589,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // Return last position if we somehow exceeded
     const lastPos = this.currentRouteCoords[this.currentRouteCoords.length - 1];
     const prevPos = this.currentRouteCoords[this.currentRouteCoords.length - 2];
-    const heading = this.calculateHeading(prevPos.lat, prevPos.lng, lastPos.lat, lastPos.lng);
-    return { lat: lastPos.lat, lng: lastPos.lng, heading };
+    if (!lastPos || isNaN(lastPos.lat) || isNaN(lastPos.lng)) return null;
+    
+    const heading = prevPos ? this.calculateHeading(prevPos.lat, prevPos.lng, lastPos.lat, lastPos.lng) : 0;
+    return { lat: lastPos.lat, lng: lastPos.lng, heading: isNaN(heading) ? 0 : heading };
   }
 
   // Calculate heading/bearing between two points in degrees
