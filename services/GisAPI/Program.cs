@@ -15,8 +15,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
-// SignalR for real-time updates
-builder.Services.AddSignalR();
+// SignalR for real-time updates with camelCase JSON
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options =>
+    {
+        options.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+    });
 builder.Services.AddSingleton<IGpsHubService, GpsHubService>();
 
 // GPS Telemetry Consumer (RabbitMQ -> SignalR)
