@@ -557,8 +557,7 @@ public class AdminController : ControllerBase
             Status = request.Status ?? "available",
             HasGps = request.HasGps,
             Mileage = request.Mileage ?? 0,
-            CompanyId = request.CompanyId,
-            AssignedDriverId = request.AssignedDriverId
+            CompanyId = request.CompanyId
         };
 
         if (request.HasGps)
@@ -640,7 +639,6 @@ public class AdminController : ControllerBase
         if (request.HasGps.HasValue) vehicle.HasGps = request.HasGps.Value;
         if (request.Mileage.HasValue) vehicle.Mileage = request.Mileage.Value;
         if (request.CompanyId.HasValue) vehicle.CompanyId = request.CompanyId.Value;
-        if (request.AssignedDriverId.HasValue) vehicle.AssignedDriverId = request.AssignedDriverId.Value;
 
         var targetCompanyId = request.CompanyId ?? vehicle.CompanyId;
 
@@ -1313,7 +1311,6 @@ public class CreateAdminVehicleRequest
     public int? GpsDeviceId { get; set; }
     public string? GpsImei { get; set; }
     public string? GpsMat { get; set; }
-    public int? AssignedDriverId { get; set; }
 }
 
 public class UpdateAdminVehicleRequest
@@ -1333,6 +1330,5 @@ public class UpdateAdminVehicleRequest
     public int? GpsDeviceId { get; set; }
     public string? GpsImei { get; set; }
     public string? GpsMat { get; set; }
-    public int? AssignedDriverId { get; set; }
 }
 

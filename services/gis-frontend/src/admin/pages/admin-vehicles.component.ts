@@ -188,9 +188,8 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
               </div>
 
               <div class="view-section">
-                <h4>Company & Assignments</h4>
+                <h4>Company</h4>
                 <div class="view-row"><span>Company:</span><span>{{ selectedVehicle.companyName || 'N/A' }}</span></div>
-                <div class="view-row"><span>Assigned Driver:</span><span>{{ selectedVehicle.assignedDriverName || 'None' }}</span></div>
               </div>
 
               <div class="view-section" *ngIf="selectedVehicle.hasGps">

@@ -142,6 +142,29 @@ export interface CompanyOption {
               />
             </div>
 
+            <div class="form-group">
+              <label for="color">Couleur</label>
+              <input
+                type="text"
+                id="color"
+                name="color"
+                [(ngModel)]="formData.color"
+                placeholder="Ex: Blanc"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="fuelType">Type de carburant</label>
+              <select id="fuelType" name="fuelType" [(ngModel)]="formData.fuelType">
+                <option value="">Sélectionner</option>
+                <option value="essence">Essence</option>
+                <option value="diesel">Diesel</option>
+                <option value="electrique">Électrique</option>
+                <option value="hybride">Hybride</option>
+                <option value="gpl">GPL</option>
+              </select>
+            </div>
+
             <div class="form-group full-width">
               <label class="checkbox-label">
                 <input
@@ -254,6 +277,17 @@ export interface CompanyOption {
                   id="gpsInstallationDate"
                   name="gpsInstallationDate"
                   [(ngModel)]="formData.gpsInstallationDate"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="gpsMat">Matricule GPS</label>
+                <input
+                  type="text"
+                  id="gpsMat"
+                  name="gpsMat"
+                  [(ngModel)]="formData.gpsMat"
+                  placeholder="Ex: MAT-001"
                 />
               </div>
             </div>
@@ -594,6 +628,8 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     type: 'citadine',
     status: 'available',
     mileage: 0,
+    color: '',
+    fuelType: '',
     companyId: null,
     hasGPS: false,
     gpsDeviceId: undefined,
@@ -602,7 +638,8 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     gpsSimOperator: undefined,
     gpsBrand: '',
     gpsModel: '',
-    gpsInstallationDate: undefined
+    gpsInstallationDate: undefined,
+    gpsMat: ''
   };
 
   constructor(private apiService: ApiService) {}
@@ -660,6 +697,7 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       this.formData.gpsBrand = '';
       this.formData.gpsModel = '';
       this.formData.gpsInstallationDate = undefined;
+      this.formData.gpsMat = '';
     }
   }
 
@@ -670,6 +708,7 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       this.formData.gpsSimOperator = undefined;
       this.formData.gpsBrand = '';
       this.formData.gpsModel = '';
+      this.formData.gpsMat = '';
     } else {
       this.formData.gpsDeviceId = undefined;
     }
@@ -701,6 +740,8 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       type: 'citadine',
       status: 'available',
       mileage: 0,
+      color: '',
+      fuelType: '',
       companyId: this.defaultCompanyId,
       hasGPS: false,
       gpsDeviceId: undefined,
@@ -709,7 +750,8 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       gpsSimOperator: undefined,
       gpsBrand: '',
       gpsModel: '',
-      gpsInstallationDate: undefined
+      gpsInstallationDate: undefined,
+      gpsMat: ''
     };
     this.gpsMode = 'existing';
   }
