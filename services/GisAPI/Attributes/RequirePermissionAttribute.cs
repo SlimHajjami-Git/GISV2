@@ -41,8 +41,8 @@ public class RequirePermissionAttribute : Attribute, IAsyncAuthorizationFilter
             return;
         }
 
-        // System admin has all permissions
-        if (user.UserType == "system_admin")
+        // System admin has all permissions (supports both legacy and new naming)
+        if (user.UserType == "system_admin" || user.UserType == "platform_admin")
             return;
 
         // Check role-based access
@@ -101,12 +101,14 @@ public class RequirePermissionAttribute : Attribute, IAsyncAuthorizationFilter
 }
 
 // Shortcut attributes
+// RequireAdmin: Only system_admin/platform_admin can access (for /api/admin routes)
 public class RequireAdminAttribute : RequirePermissionAttribute
 {
-    public RequireAdminAttribute() : base("", "system_admin") { }
+    public RequireAdminAttribute() : base("", "system_admin", "platform_admin") { }
 }
 
+// RequireCompanyAdmin: company_admin can access company-level management features
 public class RequireCompanyAdminAttribute : RequirePermissionAttribute
 {
-    public RequireCompanyAdminAttribute() : base("", "system_admin", "company_admin") { }
+    public RequireCompanyAdminAttribute() : base("", "system_admin", "platform_admin", "company_admin") { }
 }

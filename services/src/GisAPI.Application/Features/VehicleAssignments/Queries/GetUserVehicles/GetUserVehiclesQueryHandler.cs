@@ -24,7 +24,8 @@ public class GetUserVehiclesQueryHandler : IRequestHandler<GetUserVehiclesQuery,
         // Si l'utilisateur est admin ou chef de société, retourner tous les véhicules de la société
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
         
-        if (user != null && (user.UserType == "system_admin" || user.IsCompanyAdmin))
+        var isSystemAdmin = user?.UserType == "system_admin" || user?.UserType == "platform_admin";
+        if (user != null && (isSystemAdmin || user.IsCompanyAdmin))
         {
             // Retourner tous les véhicules de la société
             return await _context.Vehicles

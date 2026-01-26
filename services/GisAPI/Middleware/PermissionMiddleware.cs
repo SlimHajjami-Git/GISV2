@@ -32,8 +32,10 @@ public class PermissionMiddleware
             {
                 var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId);
                 
-                // Only system_admin or company_admin can access /api/admin routes
-                if (user == null || (user.UserType != "system_admin" && !user.IsCompanyAdmin))
+                // Only system_admin or platform_admin can access /api/admin routes
+                // This is reserved for application administrators and developers only
+                var isSystemAdmin = user?.UserType == "system_admin" || user?.UserType == "platform_admin";
+                if (user == null || !isSystemAdmin)
                 {
                     context.Response.StatusCode = 403;
                     await context.Response.WriteAsJsonAsync(new { message = "Accès réservé aux administrateurs" });

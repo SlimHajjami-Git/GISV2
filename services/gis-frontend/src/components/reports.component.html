@@ -25,6 +25,44 @@
           </select>
         </div>
 
+        <!-- Mileage Period Type Selector -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'mileage-period'">
+          <label class="field-label">Type de période</label>
+          <select class="field-select" [(ngModel)]="selectedMileagePeriodType">
+            <option *ngFor="let pt of mileagePeriodTypes" [value]="pt.value">{{ pt.label }}</option>
+          </select>
+        </div>
+
+        <!-- Mileage Period Date Inputs based on period type -->
+        <!-- Hourly: Single date picker -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'mileage-period' && selectedMileagePeriodType === 'hour'">
+          <label class="field-label">Date</label>
+          <input type="date" class="field-input" [(ngModel)]="mileagePeriodDate">
+        </div>
+
+        <!-- Daily: Date range picker -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'mileage-period' && selectedMileagePeriodType === 'day'">
+          <label class="field-label">Date début</label>
+          <input type="date" class="field-input" [(ngModel)]="mileagePeriodStartDate">
+        </div>
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'mileage-period' && selectedMileagePeriodType === 'day'">
+          <label class="field-label">Date fin</label>
+          <input type="date" class="field-input" [(ngModel)]="mileagePeriodEndDate">
+        </div>
+
+        <!-- Monthly: Month/Year selector -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'mileage-period' && selectedMileagePeriodType === 'month'">
+          <label class="field-label">Mois</label>
+          <div class="monthly-period-row">
+            <select class="field-select" [(ngModel)]="mileagePeriodMonth">
+              <option *ngFor="let m of monthlyMonths" [value]="m.value">{{ m.label }}</option>
+            </select>
+            <select class="field-select" [(ngModel)]="mileagePeriodYear">
+              <option *ngFor="let y of availableYears" [value]="y">{{ y }}</option>
+            </select>
+          </div>
+        </div>
+
         <!-- Monthly Report Period Selector -->
         <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'monthly'">
           <label class="field-label">Période du rapport</label>
@@ -38,15 +76,155 @@
           </div>
         </div>
 
-        <!-- Period Buttons (hidden for monthly reports) -->
-        <div class="period-row" *ngIf="selectedTemplate?.type !== 'monthly'">
-          <button *ngFor="let p of periods" 
-            [class.active]="selectedPeriod === p.value"
-            (click)="selectPeriod(p.value)">{{ p.label }}</button>
+        <!-- Period Buttons for Standard Reports (not monthly, mileage-period, stops, speed-infraction, or driving-behavior) -->
+        <div class="period-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'mileage-period' && selectedTemplate?.type !== 'stops' && selectedTemplate?.type !== 'speed-infraction' && selectedTemplate?.type !== 'driving-behavior'">
+          <button *ngFor="let p of standardPeriods" 
+            [class.active]="selectedStandardPeriod === p.value"
+            (click)="selectStandardPeriod(p.value)">{{ p.label }}</button>
         </div>
 
-        <!-- Interval (hidden for monthly reports) -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly'">
+        <!-- Period Buttons for Stops Report -->
+        <div class="period-row" *ngIf="selectedTemplate?.type === 'stops'">
+          <button *ngFor="let p of stopsPeriods" 
+            [class.active]="selectedStopsPeriod === p.value"
+            (click)="selectStopsPeriod(p.value)">{{ p.label }}</button>
+        </div>
+
+        <!-- Period Buttons for Driving Behavior Report (same as stops) -->
+        <div class="period-row" *ngIf="selectedTemplate?.type === 'driving-behavior'">
+          <button *ngFor="let p of stopsPeriods" 
+            [class.active]="selectedDrivingBehaviorPeriod === p.value"
+            (click)="selectDrivingBehaviorPeriod(p.value)">{{ p.label }}</button>
+        </div>
+
+        <!-- Custom Period Type Selector for Stops Report -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'stops' && selectedStopsPeriod === 'custom'">
+          <label class="field-label">Type de période</label>
+          <select class="field-select" [(ngModel)]="stopsCustomPeriodType">
+            <option value="hour">Par heure</option>
+            <option value="day">Par jour</option>
+            <option value="month">Par mois</option>
+          </select>
+        </div>
+
+        <!-- Custom Period Date Inputs for Stops Report -->
+        <!-- Hourly: Single date picker -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'stops' && selectedStopsPeriod === 'custom' && stopsCustomPeriodType === 'hour'">
+          <label class="field-label">Date</label>
+          <input type="date" class="field-input" [(ngModel)]="stopsCustomDate">
+        </div>
+
+        <!-- Daily: Date range picker -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'stops' && selectedStopsPeriod === 'custom' && stopsCustomPeriodType === 'day'">
+          <label class="field-label">Date début</label>
+          <input type="date" class="field-input" [(ngModel)]="stopsCustomStartDate">
+        </div>
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'stops' && selectedStopsPeriod === 'custom' && stopsCustomPeriodType === 'day'">
+          <label class="field-label">Date fin</label>
+          <input type="date" class="field-input" [(ngModel)]="stopsCustomEndDate">
+        </div>
+
+        <!-- Monthly: Month/Year selector -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'stops' && selectedStopsPeriod === 'custom' && stopsCustomPeriodType === 'month'">
+          <label class="field-label">Mois</label>
+          <div class="monthly-period-row">
+            <select class="field-select" [(ngModel)]="stopsCustomMonth">
+              <option *ngFor="let m of monthlyMonths" [value]="m.value">{{ m.label }}</option>
+            </select>
+            <select class="field-select" [(ngModel)]="stopsCustomYear">
+              <option *ngFor="let y of availableYears" [value]="y">{{ y }}</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Speed Infraction Report Filters -->
+        <!-- Period Type Selector -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'speed-infraction'">
+          <label class="field-label">Type de période</label>
+          <select class="field-select" [(ngModel)]="speedInfractionPeriodType">
+            <option value="hour">Par heure (journée)</option>
+            <option value="day">Par jour (plage)</option>
+            <option value="month">Par mois</option>
+          </select>
+        </div>
+
+        <!-- Speed Limit Input -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'speed-infraction'">
+          <label class="field-label">Limite de vitesse (km/h)</label>
+          <input type="number" class="field-input" [(ngModel)]="speedLimit" min="1" max="300" placeholder="90">
+        </div>
+
+        <!-- Hourly: Single date picker -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'speed-infraction' && speedInfractionPeriodType === 'hour'">
+          <label class="field-label">Date</label>
+          <input type="date" class="field-input" [(ngModel)]="speedInfractionDate">
+        </div>
+
+        <!-- Daily: Date range picker -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'speed-infraction' && speedInfractionPeriodType === 'day'">
+          <label class="field-label">Date début</label>
+          <input type="date" class="field-input" [(ngModel)]="speedInfractionStartDate">
+        </div>
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'speed-infraction' && speedInfractionPeriodType === 'day'">
+          <label class="field-label">Date fin</label>
+          <input type="date" class="field-input" [(ngModel)]="speedInfractionEndDate">
+        </div>
+
+        <!-- Monthly: Month/Year selector -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'speed-infraction' && speedInfractionPeriodType === 'month'">
+          <label class="field-label">Mois</label>
+          <div class="monthly-period-row">
+            <select class="field-select" [(ngModel)]="speedInfractionMonth">
+              <option *ngFor="let m of monthlyMonths" [value]="m.value">{{ m.label }}</option>
+            </select>
+            <select class="field-select" [(ngModel)]="speedInfractionYear">
+              <option *ngFor="let y of availableYears" [value]="y">{{ y }}</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Driving Behavior Report Custom Period Filters (like stops report) -->
+        <!-- Custom Period Type Selector -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'driving-behavior' && selectedDrivingBehaviorPeriod === 'custom'">
+          <label class="field-label">Type de période</label>
+          <select class="field-select" [(ngModel)]="drivingBehaviorPeriodType">
+            <option value="hour">Par heure</option>
+            <option value="day">Par jour</option>
+            <option value="month">Par mois</option>
+          </select>
+        </div>
+
+        <!-- Hourly: Single date picker -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'driving-behavior' && selectedDrivingBehaviorPeriod === 'custom' && drivingBehaviorPeriodType === 'hour'">
+          <label class="field-label">Date</label>
+          <input type="date" class="field-input" [(ngModel)]="drivingBehaviorDate">
+        </div>
+
+        <!-- Daily: Date range picker -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'driving-behavior' && selectedDrivingBehaviorPeriod === 'custom' && drivingBehaviorPeriodType === 'day'">
+          <label class="field-label">Date début</label>
+          <input type="date" class="field-input" [(ngModel)]="drivingBehaviorStartDate">
+        </div>
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'driving-behavior' && selectedDrivingBehaviorPeriod === 'custom' && drivingBehaviorPeriodType === 'day'">
+          <label class="field-label">Date fin</label>
+          <input type="date" class="field-input" [(ngModel)]="drivingBehaviorEndDate">
+        </div>
+
+        <!-- Monthly: Month/Year selector -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'driving-behavior' && selectedDrivingBehaviorPeriod === 'custom' && drivingBehaviorPeriodType === 'month'">
+          <label class="field-label">Mois</label>
+          <div class="monthly-period-row">
+            <select class="field-select" [(ngModel)]="drivingBehaviorMonth">
+              <option *ngFor="let m of monthlyMonths" [value]="m.value">{{ m.label }}</option>
+            </select>
+            <select class="field-select" [(ngModel)]="drivingBehaviorYear">
+              <option *ngFor="let y of availableYears" [value]="y">{{ y }}</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Interval (hidden for monthly, mileage-period, stops, speed-infraction, and driving-behavior) -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'mileage-period' && selectedTemplate?.type !== 'stops' && selectedTemplate?.type !== 'speed-infraction' && selectedTemplate?.type !== 'driving-behavior'">
           <label class="field-label">Intervalle</label>
           <div class="interval-row">
             <select class="field-select small" [(ngModel)]="intervalType">
@@ -62,8 +240,8 @@
           </div>
         </div>
 
-        <!-- Including current (hidden for monthly reports) -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly'">
+        <!-- Including current (hidden for monthly, mileage-period, stops, speed-infraction, and driving-behavior) -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'mileage-period' && selectedTemplate?.type !== 'stops' && selectedTemplate?.type !== 'speed-infraction' && selectedTemplate?.type !== 'driving-behavior'">
           <label class="checkbox-row">
             <input type="checkbox" [(ngModel)]="includeCurrent">
             <span>Inclure période en cours</span>
@@ -82,7 +260,7 @@
         </div>
         @if (!selectedTemplateId) {
           <div class="validation-hint">⚠️ Sélectionnez un template</div>
-        } @else if (!selectedVehicleId && selectedTemplate?.type === 'fuel') {
+        } @else if (!selectedVehicleId && (selectedTemplate?.type === 'fuel' || selectedTemplate?.type === 'mileage-period')) {
           <div class="validation-hint">⚠️ Sélectionnez un véhicule</div>
         }
 
@@ -93,6 +271,20 @@
             <svg [class.rotated]="expandedSections['templates']" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="6 9 12 15 18 9"/>
             </svg>
+          </div>
+        </div>
+
+        <!-- Incident Type Filters under accordion (for driving-behavior) -->
+        <div class="accordion-section" *ngIf="selectedTemplate?.type === 'driving-behavior'">
+          <div class="accordion-header active">
+            <span>Types d'incidents</span>
+          </div>
+          <div class="accordion-content incident-accordion">
+            <label *ngFor="let incident of incidentTypes" class="incident-checkbox" [style.border-left-color]="incident.color">
+              <input type="checkbox" [(ngModel)]="drivingBehaviorFilters[incident.key]">
+              <span class="incident-icon">{{ incident.icon }}</span>
+              <span class="incident-label">{{ incident.label }}</span>
+            </label>
           </div>
         </div>
 
@@ -323,7 +515,7 @@
                 </div>
               </div>
               <div class="table-wrapper">
-                <table class="data-table">
+                <table class="data-table" [class.mileage-period-table]="selectedTemplate?.type === 'mileage-period'">
                   <thead>
                     <tr>
                       @if (selectedTemplate?.type === 'fuel') {
@@ -348,6 +540,41 @@
                         <th>Vitesse moy.</th>
                         <th>Vitesse max</th>
                         <th>Odomètre</th>
+                      } @else if (selectedTemplate?.type === 'mileage-period') {
+                        <th>Période</th>
+                        @if (selectedMileagePeriodType === 'day') {
+                          <th>Jour</th>
+                        }
+                        <th>Distance</th>
+                        @if (selectedMileagePeriodType === 'month') {
+                          <th>Moy. jour</th>
+                          <th>Jours actifs</th>
+                        }
+                        <th>Trajets</th>
+                        <th>Temps conduite</th>
+                        @if (selectedMileagePeriodType !== 'month') {
+                          <th>Vitesse moy.</th>
+                          <th>Vitesse max</th>
+                        }
+                      } @else if (selectedTemplate?.type === 'stops') {
+                        <th>Date/Heure</th>
+                        <th>Période</th>
+                        <th>Adresse</th>
+                        <th>Type</th>
+                      } @else if (selectedTemplate?.type === 'speed-infraction') {
+                        <th>Véhicule</th>
+                        <th>Date/Heure</th>
+                        <th>Adresse</th>
+                        <th>Vitesse</th>
+                        <th>Limite</th>
+                        <th>Excès</th>
+                      } @else if (selectedTemplate?.type === 'driving-behavior') {
+                        <th>Véhicule</th>
+                        <th>Date/Heure</th>
+                        <th>Type d'incident</th>
+                        <th>Adresse</th>
+                        <th>Valeur</th>
+                        <th>Sévérité</th>
                       } @else {
                         <th>Date/Heure</th>
                         <th>Valeur</th>
@@ -381,6 +608,45 @@
                           <td class="speed-cell">{{ row.avgSpeed }}</td>
                           <td class="speed-cell">{{ row.maxSpeed }}</td>
                           <td class="odometer-cell">{{ row.odometer }}</td>
+                        } @else if (selectedTemplate?.type === 'mileage-period') {
+                          <td class="period-cell">{{ row.period }}</td>
+                          @if (selectedMileagePeriodType === 'day') {
+                            <td class="day-cell">{{ row.dayOfWeek }}</td>
+                          }
+                          <td class="distance-cell" [class.high-mileage]="row.distanceValue > 100">{{ row.distance }}</td>
+                          @if (selectedMileagePeriodType === 'month') {
+                            <td class="avg-cell">{{ row.avgDaily }}</td>
+                            <td class="active-days-cell">{{ row.activeDays }}</td>
+                          }
+                          <td class="trips-cell">{{ row.tripCount }}</td>
+                          <td class="duration-cell">{{ row.drivingTime }}</td>
+                          @if (selectedMileagePeriodType !== 'month') {
+                            <td class="speed-cell">{{ row.avgSpeed }}</td>
+                            <td class="speed-cell">{{ row.maxSpeed }}</td>
+                          }
+                        } @else if (selectedTemplate?.type === 'stops') {
+                          <td class="time-cell">{{ row.time }}</td>
+                          <td class="duration-cell">{{ row.duration }}</td>
+                          <td class="location-cell">{{ row.address }}</td>
+                          <td class="type-cell">{{ row.type }}</td>
+                        } @else if (selectedTemplate?.type === 'speed-infraction') {
+                          <td class="vehicle-cell">{{ row.vehicle }}</td>
+                          <td class="time-cell">{{ row.time }}</td>
+                          <td class="location-cell">{{ row.address }}</td>
+                          <td class="speed-cell anomaly">{{ row.speed }}</td>
+                          <td class="limit-cell">{{ row.limit }}</td>
+                          <td class="excess-cell" [class.severe]="row.excessValue > 30">{{ row.excess }}</td>
+                        } @else if (selectedTemplate?.type === 'driving-behavior') {
+                          <td class="vehicle-cell">{{ row.vehicle }}</td>
+                          <td class="time-cell">{{ row.time }}</td>
+                          <td class="incident-type-cell" [style.background-color]="row.incidentColor + '20'" [style.border-left]="'4px solid ' + row.incidentColor">
+                            <span class="incident-icon">{{ row.incidentIcon }}</span> {{ row.incidentType }}
+                          </td>
+                          <td class="location-cell">{{ row.address }}</td>
+                          <td class="value-cell">{{ row.value }}</td>
+                          <td class="severity-cell" [class.severity-low]="row.severity === 'low'" [class.severity-medium]="row.severity === 'medium'" [class.severity-high]="row.severity === 'high'">
+                            {{ row.severityLabel }}
+                          </td>
                         } @else {
                           <td class="time-cell">{{ row.time || row.date }}</td>
                           <td class="value-cell">{{ row.level || row.speed || row.distance }}</td>
@@ -391,6 +657,15 @@
                     }
                   </tbody>
                 </table>
+                @if (paginatedData.length === 0) {
+                  <div class="table-empty-state">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <path d="M9 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5"/>
+                      <line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+                    </svg>
+                    <p>Aucune donnée disponible pour cette période</p>
+                  </div>
+                }
               </div>
             </div>
           </div>

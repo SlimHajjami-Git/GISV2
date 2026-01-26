@@ -12,7 +12,7 @@ namespace GisAPI.Controllers;
 
 [ApiController]
 [Route("api/admin")]
-[Authorize(Roles = "admin,super_admin")]
+[Authorize(Roles = "super_admin,platform_admin")]
 public class AdminController : ControllerBase
 {
     private readonly GisDbContext _context;

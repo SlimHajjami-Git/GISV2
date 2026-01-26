@@ -160,7 +160,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("SubscriptionId");
 
-                    b.ToTable("companies", (string)null);
+                    b.ToTable("societes", (string)null);
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Contract", b =>
@@ -2028,7 +2028,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("subscriptions", (string)null);
+                    b.ToTable("subscription_types", (string)null);
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Supplier", b =>

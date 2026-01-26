@@ -144,12 +144,21 @@ public class AuthController : ControllerBase
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Email, user.Email),
             new(ClaimTypes.Name, user.Name),
-            new("companyId", user.CompanyId.ToString())
+            new("companyId", user.CompanyId.ToString()),
+            new("userType", user.UserType ?? "user")
         };
 
+        // Add roles from user.Roles array
         foreach (var role in user.Roles)
         {
             claims.Add(new Claim(ClaimTypes.Role, role));
+        }
+
+        // Ensure system/platform admins have super_admin role claim for authorization
+        if ((user.UserType == "system_admin" || user.UserType == "platform_admin") 
+            && !user.Roles.Contains("super_admin"))
+        {
+            claims.Add(new Claim(ClaimTypes.Role, "super_admin"));
         }
 
         foreach (var permission in user.Permissions)
