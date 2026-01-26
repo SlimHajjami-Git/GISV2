@@ -5,6 +5,7 @@ import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { SignalRService, PositionUpdate } from '../services/signalr.service';
+import { GeocodingService } from '../services/geocoding.service';
 import { Vehicle } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { getVehicleIcon } from './shared/vehicle-icons';
@@ -38,6 +39,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Panel & Tabs
   isPanelCollapsed = false;
   activeTab: 'details' | 'playback' | 'message' = 'details';
+  showInlinePlayback = false;
 
   // Playback
   playbackFromDate = '';
@@ -90,10 +92,14 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   showLayersMenu = false;
 
+  // Address cache for reverse geocoding
+  private addressCache = new Map<string, string>();
+
   constructor(
     private router: Router,
     private apiService: ApiService,
     private signalRService: SignalRService,
+    private geocodingService: GeocodingService,
     private cdr: ChangeDetectorRef,
     private ngZone: NgZone,
     private appRef: ApplicationRef
@@ -465,6 +471,13 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   selectVehicle(vehicle: any) {
+    // Toggle behavior: if same vehicle clicked, collapse panel
+    if (this.selectedVehicle?.id === vehicle.id) {
+      this.selectedVehicle = null;
+      this.showInlinePlayback = false;
+      return;
+    }
+
     const isNewVehicle = this.selectedVehicle?.id !== vehicle.id;
     
     // If switching vehicles during active playback, stop and clear everything
@@ -477,11 +490,47 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     
     this.selectedVehicle = vehicle;
     this.activeTab = 'details';
+    this.showInlinePlayback = false; // Reset playback panel on vehicle switch
     this.popupPosition = { x: 0, y: 0 }; // Reset position to center
     this.isDragging = false;
 
     if (this.map && vehicle.currentLocation) {
       this.map.setView([vehicle.currentLocation.lat, vehicle.currentLocation.lng], 12);
+    }
+  }
+
+  // Monitoring indicator helpers
+  isFuelLow(vehicle: any): boolean {
+    const stats = this.getVehicleStats(vehicle);
+    return stats?.fuelLevel != null && stats.fuelLevel < 20;
+  }
+
+  isBatteryLow(vehicle: any): boolean {
+    const stats = this.getVehicleStats(vehicle);
+    return stats?.batteryLevel != null && stats.batteryLevel < 20;
+  }
+
+  isTemperatureHigh(vehicle: any): boolean {
+    const stats = this.getVehicleStats(vehicle);
+    return stats?.temperature != null && stats.temperature >= 90;
+  }
+
+  isOverSpeeding(vehicle: any): boolean {
+    return (vehicle.currentSpeed || 0) > 130;
+  }
+
+  toggleInlinePlayback(vehicle: any) {
+    if (this.showInlinePlayback && this.selectedVehicle?.id === vehicle.id) {
+      this.showInlinePlayback = false;
+    } else {
+      this.showInlinePlayback = true;
+      // Initialize dates if not set
+      if (!this.playbackFromDate || !this.playbackToDate) {
+        const now = new Date();
+        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        this.playbackFromDate = yesterday.toISOString().slice(0, 16);
+        this.playbackToDate = now.toISOString().slice(0, 16);
+      }
     }
   }
 
@@ -1767,10 +1816,34 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   getVehicleAddress(vehicle: any): string {
-    if (vehicle.currentLocation) {
-      return `${vehicle.currentLocation.lat.toFixed(4)}, ${vehicle.currentLocation.lng.toFixed(4)}`;
+    if (!vehicle.currentLocation) {
+      return 'Position non disponible';
     }
-    return 'Location unavailable';
+    
+    const lat = vehicle.currentLocation.lat;
+    const lng = vehicle.currentLocation.lng;
+    const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+    
+    // Return cached address if available
+    if (this.addressCache.has(cacheKey)) {
+      return this.addressCache.get(cacheKey)!;
+    }
+    
+    // Set temporary placeholder and fetch address
+    this.addressCache.set(cacheKey, `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`);
+    
+    // Async reverse geocoding
+    this.geocodingService.reverseGeocode(lat, lng).subscribe({
+      next: (address) => {
+        this.addressCache.set(cacheKey, address);
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        // Keep coordinates as fallback
+      }
+    });
+    
+    return this.addressCache.get(cacheKey)!;
   }
 
   getCurrentTime(): string {
@@ -1801,6 +1874,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.map && this.vehicleMarkers.size > 0) {
       const group = new L.FeatureGroup(Array.from(this.vehicleMarkers.values()));
       this.map.fitBounds(group.getBounds().pad(0.1));
+    }
+  }
+
+  centerOnVehicle(vehicle: any) {
+    if (this.map && vehicle?.currentLocation) {
+      this.map.setView([vehicle.currentLocation.latitude, vehicle.currentLocation.longitude], 16);
     }
   }
 

@@ -55,38 +55,255 @@
         </div>
 
         <div class="vehicles-list" *ngIf="!isPanelCollapsed">
-          <div
-            class="vehicle-row"
-            *ngFor="let vehicle of filteredVehicles; trackBy: trackByVehicleId"
-            [class.selected]="selectedVehicle?.id === vehicle.id"
-            (click)="selectVehicle(vehicle)"
-          >
-            <input type="checkbox" class="vehicle-checkbox" [checked]="selectedVehicle?.id === vehicle.id" (click)="$event.stopPropagation()">
-            <div class="vehicle-type-icon" [ngClass]="getVehicleTypeClass(vehicle)">
-              <ng-container [ngSwitch]="getVehicleType(vehicle)">
-                <svg *ngSwitchCase="'truck'" width="20" height="14" viewBox="0 0 24 16" fill="currentColor">
-                  <path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v7h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-4l-3-4zM6 14.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-8.5l1.96 2.5H17V6h2.5zm-1.5 8.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+          <div class="vehicle-item" *ngFor="let vehicle of filteredVehicles; trackBy: trackByVehicleId">
+            <div
+              class="vehicle-row"
+              [class.selected]="selectedVehicle?.id === vehicle.id"
+              [class.expanded]="selectedVehicle?.id === vehicle.id"
+              [class.row-moving]="(vehicle.currentSpeed || 0) > 3 && vehicle.isOnline"
+              [class.row-stationary]="(vehicle.currentSpeed || 0) <= 3 && vehicle.isOnline"
+              [class.row-stopped]="!vehicle.isOnline"
+              (click)="selectVehicle(vehicle)"
+            >
+              <input type="checkbox" class="vehicle-checkbox" [checked]="selectedVehicle?.id === vehicle.id" (click)="$event.stopPropagation()">
+              <div class="vehicle-type-icon" [ngClass]="getVehicleTypeClass(vehicle)">
+                <ng-container [ngSwitch]="getVehicleType(vehicle)">
+                  <svg *ngSwitchCase="'truck'" width="20" height="14" viewBox="0 0 24 16" fill="currentColor">
+                    <path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v7h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-4l-3-4zM6 14.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-8.5l1.96 2.5H17V6h2.5zm-1.5 8.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+                  </svg>
+                  <svg *ngSwitchCase="'van'" width="20" height="14" viewBox="0 0 24 16" fill="currentColor">
+                    <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5H15V3H5v2H3.5C2.67 5 2 5.67 2 6.5V14h1c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3.08-2.99zM6 15.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM18 7l1.5 1.5H17V7h1zm0 8.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+                  </svg>
+                  <svg *ngSwitchDefault width="18" height="12" viewBox="0 0 24 14" fill="currentColor">
+                    <path d="M18.92 2.01C18.72 1.42 18.16 1 17.5 1h-11c-.66 0-1.21.42-1.42 1.01L3 8v6c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1V8l-2.08-5.99zM6.5 11c-.83 0-1.5-.67-1.5-1.5S5.67 8 6.5 8 8 8.67 8 9.5 7.33 11 6.5 11zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 7l1.5-4.5h11L19 7H5z"/>
+                  </svg>
+                </ng-container>
+              </div>
+              <div class="vehicle-info">
+                <span class="vehicle-name">{{ vehicle.brand }} {{ vehicle.model }}</span>
+                <span class="vehicle-plate-tag">{{ getStatusTag(vehicle) }}</span>
+              </div>
+              <div class="vehicle-indicators simplified">
+                <!-- Fuel Warning -->
+                <span class="indicator alert-icon fuel-alert" *ngIf="isFuelLow(vehicle)" title="Carburant bas (< 20%)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19.77 7.23l.01-.01-3.72-3.72L15 4.56l2.11 2.11c-.94.36-1.61 1.26-1.61 2.33 0 1.38 1.12 2.5 2.5 2.5.36 0 .69-.08 1-.21v7.21c0 .55-.45 1-1 1s-1-.45-1-1V14c0-1.1-.9-2-2-2h-1V5c0-1.1-.9-2-2-2H6c-1.1 0-2 .9-2 2v16h10v-7.5h1.5v5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V9c0-.69-.28-1.32-.73-1.77zM12 10H6V5h6v5z"/>
+                  </svg>
+                </span>
+                <!-- Battery Warning -->
+                <span class="indicator alert-icon battery-alert" *ngIf="isBatteryLow(vehicle)" title="Batterie faible (< 20%)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4zM13 18h-2v-2h2v2zm0-4h-2V9h2v5z"/>
+                  </svg>
+                </span>
+                <!-- Temperature Indicator -->
+                <span class="indicator alert-icon temp-indicator" [class.high]="isTemperatureHigh(vehicle)" [class.normal]="!isTemperatureHigh(vehicle)" title="{{ isTemperatureHigh(vehicle) ? 'Température élevée (≥ 90°)' : 'Température normale' }}">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M15 13V5c0-1.66-1.34-3-3-3S9 3.34 9 5v8c-1.21.91-2 2.37-2 4 0 2.76 2.24 5 5 5s5-2.24 5-5c0-1.63-.79-3.09-2-4zm-4-8c0-.55.45-1 1-1s1 .45 1 1h-1v1h1v2h-1v1h1v2h-2V5z"/>
+                  </svg>
+                </span>
+                <!-- Speed Alert -->
+                <span class="indicator alert-icon speed-alert" *ngIf="isOverSpeeding(vehicle)" title="Excès de vitesse (> 130 km/h)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                  </svg>
+                </span>
+                <!-- Network Signal -->
+                <span class="indicator network-signal" [class.strong]="vehicle.isOnline && vehicle.hasGPS" [class.weak]="vehicle.isOnline && !vehicle.hasGPS" [class.offline]="!vehicle.isOnline" title="{{ vehicle.isOnline ? (vehicle.hasGPS ? 'Signal fort' : 'Signal faible') : 'Hors ligne' }}">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/>
+                  </svg>
+                </span>
+                <span class="indicator ignition" [class.active]="vehicle.isOnline" title="Moteur">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="6" width="4" height="12" rx="1"/><rect x="14" y="6" width="4" height="12" rx="1"/>
+                  </svg>
+                </span>
+                <span class="indicator gps-tag" [class.active]="vehicle.hasGPS">gps</span>
+                <svg class="expand-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" [class.rotated]="selectedVehicle?.id === vehicle.id">
+                  <polyline points="6 9 12 15 18 9"/>
                 </svg>
-                <svg *ngSwitchCase="'van'" width="20" height="14" viewBox="0 0 24 16" fill="currentColor">
-                  <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5H15V3H5v2H3.5C2.67 5 2 5.67 2 6.5V14h1c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3.08-2.99zM6 15.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM18 7l1.5 1.5H17V7h1zm0 8.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
-                </svg>
-                <svg *ngSwitchDefault width="18" height="12" viewBox="0 0 24 14" fill="currentColor">
-                  <path d="M18.92 2.01C18.72 1.42 18.16 1 17.5 1h-11c-.66 0-1.21.42-1.42 1.01L3 8v6c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1V8l-2.08-5.99zM6.5 11c-.83 0-1.5-.67-1.5-1.5S5.67 8 6.5 8 8 8.67 8 9.5 7.33 11 6.5 11zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 7l1.5-4.5h11L19 7H5z"/>
-                </svg>
-              </ng-container>
+              </div>
             </div>
-            <div class="vehicle-info">
-              <span class="vehicle-name">{{ vehicle.brand }} {{ vehicle.model }}</span>
-              <span class="vehicle-plate-tag">{{ getStatusTag(vehicle) }}</span>
-            </div>
-            <div class="vehicle-indicators simplified">
-              <span class="indicator status-color" [ngClass]="getStatusColorClass(vehicle)"></span>
-              <span class="indicator ignition" [class.active]="vehicle.isOnline" title="Moteur">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="6" y="6" width="4" height="12" rx="1"/><rect x="14" y="6" width="4" height="12" rx="1"/>
-                </svg>
-              </span>
-              <span class="indicator gps-tag" [class.active]="vehicle.hasGPS">gps</span>
+            
+            <!-- Inline Expandable Details - Using original popup components -->
+            <div class="vehicle-details-inline" [class.expanded]="selectedVehicle?.id === vehicle.id">
+              <div class="inline-panel-content" *ngIf="selectedVehicle?.id === vehicle.id">
+                
+                <!-- Toolbar - Same as popup -->
+                <div class="info-panel-toolbar inline-toolbar">
+                  <span class="indicator-icon" [class.active]="vehicle.hasGPS" title="GPS">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06z"/>
+                    </svg>
+                  </span>
+                  <span class="indicator-icon ignition" [class.active]="vehicle.isOnline">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>
+                    </svg>
+                  </span>
+                  <span class="status-box" [ngClass]="getStatusColorClass(vehicle)"></span>
+                  <span class="status-box secondary"></span>
+                  <span class="indicator-icon signal" [class.active]="vehicle.isOnline">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <circle cx="12" cy="12" r="4"/>
+                    </svg>
+                  </span>
+                  <span class="gps-badge" [class.active]="vehicle.hasGPS">gps</span>
+                </div>
+                
+                <!-- Timestamp and Location - Same as popup -->
+                <div class="timestamp-row">
+                  <div class="timestamp-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="2" y="3" width="20" height="18" rx="2"/><path d="M8 3v3M16 3v3M2 9h20"/>
+                    </svg>
+                  </div>
+                  <span class="timestamp-text">{{ getLastUpdateTime(vehicle) }}</span>
+                </div>
+
+                <div class="location-row">
+                  <span class="location-text">{{ getVehicleAddress(vehicle) }}</span>
+                </div>
+
+                <!-- Sensors Section - Same as popup -->
+                <div class="sensors-section">
+                  <div class="section-header">
+                    <span>Statistiques véhicule:</span>
+                  </div>
+                  <div class="sensors-grid">
+                    <div class="sensor-item">
+                      <span class="sensor-label">🚗 Vitesse actuelle</span>
+                      <span class="sensor-value">{{ getVehicleStats(vehicle)?.currentSpeed | number:'1.0-0' }} km/h</span>
+                    </div>
+                    <div class="sensor-item">
+                      <span class="sensor-label">⚡ Vitesse max (24h)</span>
+                      <span class="sensor-value">{{ getVehicleStats(vehicle)?.maxSpeed | number:'1.0-0' }} km/h</span>
+                    </div>
+                    <div class="sensor-item">
+                      <span class="sensor-label">⛽ Carburant</span>
+                      <span class="sensor-value">{{ getVehicleStats(vehicle)?.fuelLevel != null ? (getVehicleStats(vehicle)?.fuelLevel + '%') : 'N/A' }}</span>
+                    </div>
+                    <div class="sensor-item">
+                      <span class="sensor-label">🌡️ Température</span>
+                      <span class="sensor-value">{{ getVehicleStats(vehicle)?.temperature != null ? (getVehicleStats(vehicle)?.temperature + '°C') : 'N/A' }}</span>
+                    </div>
+                    <div class="sensor-item">
+                      <span class="sensor-label">🔋 Batterie</span>
+                      <span class="sensor-value">{{ getVehicleStats(vehicle)?.batteryLevel != null ? (getVehicleStats(vehicle)?.batteryLevel + '%') : 'N/A' }}</span>
+                    </div>
+                    <div class="sensor-item">
+                      <span class="sensor-label">📍 Statut</span>
+                      <span class="sensor-value" [class.moving]="getVehicleStats(vehicle)?.isMoving" [class.stopped]="getVehicleStats(vehicle)?.isStopped">
+                        {{ getVehicleStats(vehicle)?.isMoving ? 'En circulation' : 'À l\'arrêt' }}
+                      </span>
+                    </div>
+                    <div class="sensor-item">
+                      <span class="sensor-label">🚦 Temps en circulation</span>
+                      <span class="sensor-value">{{ formatDuration(getVehicleStats(vehicle)?.movingTime) }}</span>
+                    </div>
+                    <div class="sensor-item">
+                      <span class="sensor-label">🅿️ Temps à l'arrêt</span>
+                      <span class="sensor-value">{{ formatDuration(getVehicleStats(vehicle)?.stoppedTime) }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Playback Section - Same as popup -->
+                <div class="playback-section inline-playback">
+                  <div class="date-range">
+                    <div class="date-field">
+                      <label>De</label>
+                      <input type="datetime-local" [(ngModel)]="playbackFromDate" (click)="$event.stopPropagation()">
+                    </div>
+                    <div class="date-field">
+                      <label>À</label>
+                      <input type="datetime-local" [(ngModel)]="playbackToDate" (click)="$event.stopPropagation()">
+                    </div>
+                  </div>
+                  <button class="load-route-btn" (click)="loadPlaybackRoute(); $event.stopPropagation()" [disabled]="playbackLoading">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/>
+                      <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    {{ playbackLoading ? 'Chargement...' : 'Charger' }}
+                  </button>
+
+                  <div class="road-snapping-toggle">
+                    <label class="toggle-label">
+                      <input type="checkbox" [checked]="useRoadSnapping" (change)="toggleRoadSnapping()" (click)="$event.stopPropagation()">
+                      <span class="toggle-slider"></span>
+                      <span class="toggle-text">Suivre les routes</span>
+                    </label>
+                  </div>
+
+                  <div class="playback-controls" *ngIf="isPlaybackLoaded">
+                    <div class="playback-info">
+                      <span>Point {{ playbackIndex + 1 }} / {{ playbackPositions.length }}</span>
+                      <span class="playback-status" [ngClass]="getPlaybackStatusClass()">
+                        {{ getPlaybackStatusLabel() }}
+                      </span>
+                    </div>
+                    <div class="control-buttons">
+                      <button class="control-btn" (click)="resetPlayback(); $event.stopPropagation()" title="Début">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/>
+                        </svg>
+                      </button>
+                      <button class="control-btn" (click)="previousPoint(); $event.stopPropagation()" title="Précédent">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <polyline points="15 18 9 12 15 6"/>
+                        </svg>
+                      </button>
+                      <button class="control-btn play" (click)="togglePlayback(); $event.stopPropagation()">
+                        <svg *ngIf="!isPlaying" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                          <polygon points="5 3 19 12 5 21 5 3"/>
+                        </svg>
+                        <svg *ngIf="isPlaying" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                          <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+                        </svg>
+                      </button>
+                      <button class="control-btn" (click)="nextPoint(); $event.stopPropagation()" title="Suivant">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <polyline points="9 18 15 12 9 6"/>
+                        </svg>
+                      </button>
+                      <button class="control-btn" (click)="skipToEnd(); $event.stopPropagation()" title="Fin">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
+                        </svg>
+                      </button>
+                    </div>
+                    <input type="range" class="progress-slider" [min]="0" [max]="100" [ngModel]="playbackProgress" (ngModelChange)="onPlaybackProgressChange($event)" (click)="$event.stopPropagation()">
+                    <div class="speed-selector">
+                      <span>Vitesse:</span>
+                      <button *ngFor="let s of playbackSpeeds" [class.active]="playbackSpeed === s" (click)="onPlaybackSpeedChange(s); $event.stopPropagation()">{{ s }}x</button>
+                    </div>
+                    <div class="playback-legend">
+                      <div class="legend-item">
+                        <span class="legend-color moving"></span>
+                        <span>En mouvement</span>
+                      </div>
+                      <div class="legend-item">
+                        <span class="legend-color traffic"></span>
+                        <span>Arrêt trafic</span>
+                      </div>
+                      <div class="legend-item">
+                        <span class="legend-color parked"></span>
+                        <span>Stationné</span>
+                      </div>
+                    </div>
+                    <button class="end-playback-btn" (click)="endPlayback(); $event.stopPropagation()" title="Terminer la lecture">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                      </svg>
+                      Terminer
+                    </button>
+                  </div>
+                </div>
+                
+              </div>
             </div>
           </div>
 
@@ -171,7 +388,8 @@
 
         <div id="tracking-map" class="map"></div>
 
-        <div class="vehicle-info-panel" *ngIf="selectedVehicle"
+        <!-- Popup désactivé - détails affichés inline dans la liste -->
+        <div class="vehicle-info-panel" *ngIf="selectedVehicle && activeTab === 'playback'"
              [style.left.px]="popupPosition.x || null"
              [style.top.px]="popupPosition.y || null"
              [style.bottom]="popupPosition.y ? 'auto' : '20px'"
@@ -253,141 +471,8 @@
           </div>
 
           <div class="info-panel-content">
-            <div class="tab-content" *ngIf="activeTab === 'details'">
-              <div class="timestamp-row">
-                <div class="timestamp-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="2" y="3" width="20" height="18" rx="2"/><path d="M8 3v3M16 3v3M2 9h20"/>
-                  </svg>
-                </div>
-                <span class="timestamp-text">{{ getLastUpdateTime(selectedVehicle) }}</span>
-              </div>
-
-              <div class="location-row">
-                <span class="location-text">{{ getVehicleAddress(selectedVehicle) }}</span>
-                <div class="location-actions">
-                  <button class="location-btn" title="Copy">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                    </svg>
-                  </button>
-                  <button class="location-btn" title="Open in Maps">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                      <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <div class="stats-grid">
-                <div class="stat-item">
-                  <div class="stat-icon speed-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
-                    </svg>
-                  </div>
-                  <div class="stat-info">
-                    <span class="stat-value">{{ selectedVehicle.currentSpeed || 0 }} km/h</span>
-                  </div>
-                </div>
-                <div class="stat-item">
-                  <div class="stat-icon altitude-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="m3 8 4-4 4 4 4-4 4 4v13H3V8z"/>
-                    </svg>
-                  </div>
-                  <div class="stat-info">
-                    <span class="stat-value">{{ $any(selectedVehicle).altitude || 121 }} m</span>
-                  </div>
-                </div>
-                <div class="stat-item">
-                  <div class="stat-icon odometer-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="3" y="11" width="18" height="10" rx="2"/>
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                    </svg>
-                  </div>
-                  <div class="stat-info">
-                    <span class="stat-value">{{ selectedVehicle.mileage || 0 }} km</span>
-                  </div>
-                </div>
-                <div class="stat-item">
-                  <div class="stat-icon hours-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                    </svg>
-                  </div>
-                  <div class="stat-info">
-                    <span class="stat-value">{{ $any(selectedVehicle).engineHours || '2081.15' }} h</span>
-                  </div>
-                </div>
-                <div class="stat-item">
-                  <div class="stat-icon satellites-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4z"/>
-                    </svg>
-                  </div>
-                  <div class="stat-info">
-                    <span class="stat-value">{{ $any(selectedVehicle).satellites || 17 }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="sensors-section">
-                <div class="section-header">
-                  <span>Statistiques véhicule:</span>
-                </div>
-                <div class="sensors-grid">
-                  <div class="sensor-item">
-                    <span class="sensor-label">🚗 Vitesse actuelle</span>
-                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.currentSpeed | number:'1.0-0' }} km/h</span>
-                  </div>
-                  <div class="sensor-item">
-                    <span class="sensor-label">⚡ Vitesse max (24h)</span>
-                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.maxSpeed | number:'1.0-0' }} km/h</span>
-                  </div>
-                  <div class="sensor-item">
-                    <span class="sensor-label">⛽ Carburant</span>
-                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.fuelLevel != null ? (getVehicleStats(selectedVehicle)?.fuelLevel + '%') : 'N/A' }}</span>
-                  </div>
-                  <div class="sensor-item">
-                    <span class="sensor-label">🌡️ Température</span>
-                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.temperature != null ? (getVehicleStats(selectedVehicle)?.temperature + '°C') : 'N/A' }}</span>
-                  </div>
-                  <div class="sensor-item">
-                    <span class="sensor-label">🔋 Batterie</span>
-                    <span class="sensor-value">{{ getVehicleStats(selectedVehicle)?.batteryLevel != null ? (getVehicleStats(selectedVehicle)?.batteryLevel + '%') : 'N/A' }}</span>
-                  </div>
-                  <div class="sensor-item">
-                    <span class="sensor-label">📍 Statut</span>
-                    <span class="sensor-value" [class.moving]="getVehicleStats(selectedVehicle)?.isMoving" [class.stopped]="getVehicleStats(selectedVehicle)?.isStopped">
-                      {{ getVehicleStats(selectedVehicle)?.isMoving ? 'En circulation' : 'À l\'arrêt' }}
-                    </span>
-                  </div>
-                  <div class="sensor-item">
-                    <span class="sensor-label">🚦 Temps en circulation</span>
-                    <span class="sensor-value">{{ formatDuration(getVehicleStats(selectedVehicle)?.movingTime) }}</span>
-                  </div>
-                  <div class="sensor-item">
-                    <span class="sensor-label">🅿️ Temps à l'arrêt</span>
-                    <span class="sensor-value">{{ formatDuration(getVehicleStats(selectedVehicle)?.stoppedTime) }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="driver-section" *ngIf="selectedVehicle.assignedDriverId">
-                <div class="section-header">
-                  <span>Driver:</span>
-                </div>
-                <div class="driver-info">
-                  <div class="driver-avatar">{{ getDriverInitial(selectedVehicle) }}</div>
-                  <span class="driver-name">{{ selectedVehicle.assignedDriverName || 'Assigned Driver' }}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="tab-content" *ngIf="activeTab === 'playback'">
+            <!-- Playback controls only - details shown inline in sidebar -->
+            <div class="tab-content">
               <div class="playback-section">
                 <div class="date-range">
                   <div class="date-field">
