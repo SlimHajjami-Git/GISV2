@@ -75,6 +75,7 @@ public class GpsHubService : GisAPI.Application.Common.Interfaces.IGpsHubService
 
     public async Task SendPositionUpdateAsync(int companyId, object position)
     {
+        Console.WriteLine($"📡 GpsHubService: Sending PositionUpdate to company_{companyId}");
         await _hubContext.Clients.Group($"company_{companyId}")
             .SendAsync("PositionUpdate", position);
     }

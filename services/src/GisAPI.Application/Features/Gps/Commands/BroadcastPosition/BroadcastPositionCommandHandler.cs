@@ -99,9 +99,9 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             }
         }
 
-        _logger.LogDebug(
-            "Broadcasted position for {DeviceUid} (Vehicle: {VehicleName}, Speed: {Speed} km/h)",
-            request.DeviceUid, device.Vehicle?.Name, displaySpeed);
+        _logger.LogInformation(
+            "📡 SignalR Broadcast: Device={DeviceUid}, Vehicle={VehicleName}, VehicleId={VehicleId}, CompanyId={CompanyId}, Speed={Speed}km/h, IsMoving={IsMoving}",
+            request.DeviceUid, device.Vehicle?.Name, device.Vehicle?.Id, device.CompanyId, displaySpeed, positionUpdate.IsMoving);
 
         return new BroadcastPositionResult(
             Broadcasted: true,

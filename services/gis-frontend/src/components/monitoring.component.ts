@@ -283,7 +283,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
               lat: v.lastPosition.latitude,
               lng: v.lastPosition.longitude
             } : undefined,
-            currentSpeed: v.lastPosition?.speedKph || 0
+            currentSpeed: v.lastPosition?.speedKph || 0,
+            // Use isMoving from stats, fallback to speed calculation
+            isMoving: v.stats?.isMoving ?? ((v.lastPosition?.speedKph || 0) > 5 && v.lastPosition?.ignitionOn),
+            ignitionOn: v.lastPosition?.ignitionOn ?? false
           }));
           
           // Assign to trigger change detection

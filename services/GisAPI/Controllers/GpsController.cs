@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
+using GisAPI.Application.Common.Interfaces;
 
 namespace GisAPI.Controllers;
 
@@ -19,11 +20,13 @@ public class GpsController : ControllerBase
 {
     private readonly GisDbContext _context;
     private readonly IGeocodingService _geocodingService;
+    private readonly IGpsHubService _gpsHubService;
 
-    public GpsController(GisDbContext context, IGeocodingService geocodingService)
+    public GpsController(GisDbContext context, IGeocodingService geocodingService, IGpsHubService gpsHubService)
     {
         _context = context;
         _geocodingService = geocodingService;
+        _gpsHubService = gpsHubService;
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
@@ -420,6 +423,70 @@ public class GpsController : ControllerBase
 
         return Ok(overview);
     }
+
+    // ==================== TEST ENDPOINT ====================
+
+    /// <summary>
+    /// Test endpoint to simulate SignalR position broadcast
+    /// Use this to debug real-time updates without actual GPS data
+    /// </summary>
+    [HttpPost("test/broadcast")]
+    public async Task<ActionResult> TestBroadcast([FromBody] TestPositionUpdateRequest request)
+    {
+        var companyId = GetCompanyId();
+        
+        // Find vehicle
+        var vehicle = await _context.Vehicles
+            .Include(v => v.GpsDevice)
+            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId);
+
+        if (vehicle == null)
+            return NotFound(new { message = "Vehicle not found" });
+
+        // Get last position for coordinates
+        var lastPosition = vehicle.GpsDeviceId.HasValue 
+            ? await _context.GpsPositions
+                .Where(p => p.DeviceId == vehicle.GpsDeviceId)
+                .OrderByDescending(p => p.RecordedAt)
+                .FirstOrDefaultAsync()
+            : null;
+
+        var speed = request.SpeedKph ?? 0;
+        var ignitionOn = request.IgnitionOn ?? false;
+        var isMoving = request.IsMoving ?? (ignitionOn && speed >= 10);
+
+        var positionUpdate = new
+        {
+            DeviceId = vehicle.GpsDeviceId ?? 0,
+            DeviceUid = vehicle.GpsDevice?.DeviceUid ?? "TEST",
+            VehicleId = vehicle.Id,
+            VehicleName = vehicle.Name,
+            Plate = vehicle.Plate,
+            Latitude = lastPosition?.Latitude ?? 36.8065,
+            Longitude = lastPosition?.Longitude ?? 10.1815,
+            SpeedKph = speed,
+            CourseDeg = 0,
+            IgnitionOn = ignitionOn,
+            IsMoving = isMoving,
+            RecordedAt = DateTime.UtcNow,
+            Timestamp = DateTime.UtcNow
+        };
+
+        // Broadcast to company group
+        await _gpsHubService.SendPositionUpdateAsync(companyId, positionUpdate);
+
+        // Also broadcast to vehicle group
+        await _gpsHubService.SendVehiclePositionAsync(vehicle.Id, positionUpdate);
+
+        return Ok(new { 
+            message = "Broadcast sent", 
+            companyId,
+            vehicleId = vehicle.Id,
+            isMoving,
+            speed,
+            ignitionOn
+        });
+    }
 }
 
 // ==================== DTOs ====================
@@ -475,4 +542,12 @@ public class GpsDeviceDto
     public DateTime? LastCommunication { get; set; }
     public int? AssignedVehicleId { get; set; }
     public string? AssignedVehicleName { get; set; }
+}
+
+public class TestPositionUpdateRequest
+{
+    public int VehicleId { get; set; }
+    public double? SpeedKph { get; set; }
+    public bool? IgnitionOn { get; set; }
+    public bool? IsMoving { get; set; }
 }
