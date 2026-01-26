@@ -144,7 +144,8 @@ async fn main() -> Result<()> {
         }
         Command::Ingest | Command::Help => {
             // Run normal ingestion service
-            let database: Arc<dyn TelemetryStore> = Arc::new(db::Database::new(db_pool));
+            let osrm_base_url = std::env::var("OSRM_URL").unwrap_or_else(|_| "http://osrm:5000".to_string());
+            let database: Arc<dyn TelemetryStore> = Arc::new(db::Database::new(db_pool, osrm_base_url));
 
             let publisher: Option<Arc<dyn TelemetryEventPublisher>> = match publisher::TelemetryPublisher::from_env().await? {
                 Some(p) => {
@@ -196,7 +197,8 @@ mod real_pipeline_tests {
             format!("{}?options=-c%20client_encoding%3DUTF8%20-c%20lc_messages%3Den_US.UTF-8", database_url)
         };
         let pool = PgPoolOptions::new().max_connections(1).connect(&url_with_opts).await?;
-        let database = db::Database::new(pool.clone());
+        let osrm_url = std::env::var("OSRM_URL").unwrap_or_else(|_| "http://localhost:5000".to_string());
+        let database = db::Database::new(pool.clone(), osrm_url);
         ensure_schema(&pool).await?;
 
         // RabbitMQ connection + temp queue

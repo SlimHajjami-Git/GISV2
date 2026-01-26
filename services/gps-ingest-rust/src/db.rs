@@ -6,12 +6,14 @@ use sqlx::{postgres::PgPool, Row};
 
 use crate::{
     ports::TelemetryStore,
+    services::gap_filler::{GapFiller, LastPosition},
     services::geofence_detector::{Geofence, GeofenceEvent, GeofenceType, Point},
     telemetry::model::{HhFrame, HhInfoFrame, ProtocolMetadata},
 };
 
 pub struct Database {
     pool: PgPool,
+    gap_filler: GapFiller,
 }
 
 pub struct LastKnownPosition {
@@ -59,6 +61,41 @@ impl Database {
                     // Still update last communication even if we skip the position
                     self.update_device_last_communication(device_id).await?;
                     return Ok(());
+                }
+            }
+        }
+
+        // Gap filling: Check for missing frames and interpolate if needed
+        if let Some(last_pos) = self.fetch_last_position(device_id).await? {
+            let new_time = DateTime::<Utc>::from_naive_utc_and_offset(frame.recorded_at, Utc);
+            let last_time = DateTime::<Utc>::from_naive_utc_and_offset(last_pos.recorded_at, Utc);
+            
+            let last_position = LastPosition {
+                device_id,
+                latitude: last_pos.latitude,
+                longitude: last_pos.longitude,
+                recorded_at: last_time,
+                speed_kph: 0.0, // Not stored in LastKnownPosition
+                ignition_on: last_pos.ignition_on,
+            };
+
+            // Fill gap with interpolated positions
+            match self.gap_filler.fill_gap(
+                device_id,
+                &last_position,
+                frame.latitude,
+                frame.longitude,
+                new_time,
+            ).await {
+                Ok((positions, _distance_km)) => {
+                    if !positions.is_empty() {
+                        if let Err(e) = self.gap_filler.insert_interpolated_positions(&self.pool, &positions).await {
+                            tracing::warn!(device_id, error = %e, "Failed to insert interpolated positions");
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(device_id, error = %e, "Gap filling failed");
                 }
             }
         }
@@ -565,8 +602,11 @@ impl TelemetryStore for Database {
 }
 
 impl Database {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(pool: PgPool, osrm_base_url: String) -> Self {
+        Self { 
+            pool,
+            gap_filler: GapFiller::new(osrm_base_url),
+        }
     }
 
     async fn ensure_device(
