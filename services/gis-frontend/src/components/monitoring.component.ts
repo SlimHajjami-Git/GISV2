@@ -301,7 +301,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
             ignitionOn: v.lastPosition?.ignitionOn ?? false,
             // Address from database
             lastAddress: v.lastPosition?.address || null,
-            lastRecordedAt: v.lastPosition?.recordedAt || null
+            lastRecordedAt: v.lastPosition?.recordedAt || null,
+            // Vehicle mileage
+            odometerKm: v.lastPosition?.odometerKm || null
           }));
           
           // Assign to trigger change detection
@@ -502,8 +504,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
               border-radius: 8px;
               border: 1px solid #e2e8f0;
             ">
-              <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Type</div>
-              <div style="font-size: 13px; font-weight: 600; color: #1e293b;">${vehicle.type || 'Véhicule'}</div>
+              <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Kilométrage</div>
+              <div style="font-size: 14px; font-weight: 600; color: #1e293b;">${vehicle.odometerKm ? (vehicle.odometerKm).toLocaleString() + ' km' : 'N/A'}</div>
             </div>
           </div>
         </div>

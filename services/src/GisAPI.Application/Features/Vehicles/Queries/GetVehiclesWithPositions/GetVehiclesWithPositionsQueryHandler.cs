@@ -23,6 +23,7 @@ internal class LatestPositionData
     public int? FuelRaw { get; set; }
     public short? TemperatureC { get; set; }
     public string? Address { get; set; }
+    public long? OdometerKm { get; set; }
 }
 
 public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesWithPositionsQuery, List<VehicleWithPositionDto>>
@@ -72,7 +73,8 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                     RecordedAt = p.RecordedAt,
                     FuelRaw = p.FuelRaw,
                     TemperatureC = p.TemperatureC,
-                    Address = p.Address
+                    Address = p.Address,
+                    OdometerKm = p.OdometerKm
                 })
                 .FirstOrDefaultAsync(ct);
             
@@ -149,7 +151,8 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                     position.FuelRaw,
                     temperature,
                     batteryLevel,
-                    position.Address
+                    position.Address,
+                    position.OdometerKm
                 ) : null,
                 new VehicleStatsDto(
                     currentSpeed,

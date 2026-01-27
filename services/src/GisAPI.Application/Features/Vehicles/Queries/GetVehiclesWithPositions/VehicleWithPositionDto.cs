@@ -33,7 +33,8 @@ public record PositionDto(
     int? FuelRaw,
     short? TemperatureC,
     int? BatteryLevel,
-    string? Address
+    string? Address,
+    long? OdometerKm
 );
 
 /// <summary>
