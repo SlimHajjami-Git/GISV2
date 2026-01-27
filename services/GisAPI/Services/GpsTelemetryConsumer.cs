@@ -142,6 +142,16 @@ public class GpsTelemetryConsumer : BackgroundService
                 return;
             }
 
+            // IMPORTANT: Ignore old messages (RabbitMQ may have accumulated stale data)
+            // Only process messages recorded within the last 5 minutes
+            var messageAge = DateTime.UtcNow - telemetry.RecordedAt;
+            if (messageAge.TotalMinutes > 5)
+            {
+                _logger.LogDebug("Ignoring stale message for device {DeviceUid}: recorded {Age:F1} minutes ago", 
+                    telemetry.DeviceUid, messageAge.TotalMinutes);
+                return;
+            }
+
             _logger.LogDebug("Processing telemetry for device: {DeviceUid}", telemetry.DeviceUid);
 
             // Use MediatR to handle the broadcast with CQRS pattern
