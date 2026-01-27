@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MediatR;
 using GisAPI.Application.Features.Vehicles.Queries.GetVehicles;
+using GisAPI.Application.Features.Vehicles.Queries.GetVehicleDetails;
 using GisAPI.Application.Features.Vehicles.Commands.CreateVehicle;
 using GisAPI.Application.Features.Vehicles.Commands.UpdateVehicle;
 using GisAPI.Application.Features.Vehicles.Commands.DeleteVehicle;
@@ -33,10 +34,9 @@ public class VehiclesController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<VehicleDto>> GetVehicle(int id)
+    public async Task<ActionResult<VehicleDetailsDto>> GetVehicle(int id)
     {
-        var result = await _mediator.Send(new GetVehiclesQuery(null, null, 1, 1000));
-        var vehicle = result.Items.FirstOrDefault(v => v.Id == id);
+        var vehicle = await _mediator.Send(new GetVehicleDetailsQuery(id));
         
         if (vehicle == null)
             return NotFound();

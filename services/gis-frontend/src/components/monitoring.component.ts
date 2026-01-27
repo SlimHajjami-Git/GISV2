@@ -80,8 +80,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   traceDrawnUpToIndex = 0; // Track how much of the trace has been drawn
   
   // Live marker visibility during playback
-  hiddenLiveMarker: L.Marker | null = null; // Store hidden live marker during playback
-  hiddenLiveMarkerId: string | null = null; // Track which marker is hidden
+  hiddenLiveMarkers: Map<string, L.Marker> = new Map(); // Store ALL hidden live markers during playback
 
   // Message
   driverMessage = '';
@@ -299,7 +298,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
             currentSpeed: v.lastPosition?.speedKph || 0,
             // Use isMoving from stats, fallback to speed calculation
             isMoving: v.stats?.isMoving ?? ((v.lastPosition?.speedKph || 0) > 5 && v.lastPosition?.ignitionOn),
-            ignitionOn: v.lastPosition?.ignitionOn ?? false
+            ignitionOn: v.lastPosition?.ignitionOn ?? false,
+            // Address from database
+            lastAddress: v.lastPosition?.address || null,
+            lastRecordedAt: v.lastPosition?.recordedAt || null
           }));
           
           // Assign to trigger change detection
@@ -573,38 +575,22 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     
     const idStr = vehicleId.toString();
     
-    // Try to find marker by comparing string representations
-    let marker: L.Marker | undefined;
-    let foundKey: string | undefined;
-    
-    // Iterate through the map to find the marker with matching ID
-    this.vehicleMarkers.forEach((m, key) => {
-      if (key.toString() === idStr) {
-        marker = m;
-        foundKey = key.toString();
-      }
-    });
-    
-    if (marker && foundKey) {
+    // Hide ALL live markers during playback to avoid confusion
+    this.vehicleMarkers.forEach((marker, key) => {
       marker.remove();
-      this.hiddenLiveMarker = marker;
-      this.hiddenLiveMarkerId = foundKey;
-      console.log(`Live marker hidden for vehicle: ${foundKey}`);
-    } else {
-      console.warn(`Could not find live marker for vehicle: ${vehicleId}. Available keys:`, Array.from(this.vehicleMarkers.keys()));
-    }
+      this.hiddenLiveMarkers.set(key, marker);
+    });
+    console.log(`All ${this.hiddenLiveMarkers.size} live markers hidden for playback`);
   }
 
-  // Restore the hidden live marker when playback ends
+  // Restore ALL hidden live markers when playback ends
   restoreLiveMarker() {
-    if (this.hiddenLiveMarker && this.hiddenLiveMarkerId && this.map) {
-      // Re-add the marker to the map
-      this.hiddenLiveMarker.addTo(this.map);
-      console.log(`Live marker restored for vehicle: ${this.hiddenLiveMarkerId}`);
-      
-      // Clear the hidden marker references
-      this.hiddenLiveMarker = null;
-      this.hiddenLiveMarkerId = null;
+    if (this.hiddenLiveMarkers.size > 0 && this.map) {
+      this.hiddenLiveMarkers.forEach((marker, key) => {
+        marker.addTo(this.map!);
+      });
+      console.log(`Restored ${this.hiddenLiveMarkers.size} live markers`);
+      this.hiddenLiveMarkers.clear();
     }
   }
 

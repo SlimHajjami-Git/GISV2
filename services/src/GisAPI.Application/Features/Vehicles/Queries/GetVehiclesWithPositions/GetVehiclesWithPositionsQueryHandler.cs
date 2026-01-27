@@ -37,14 +37,16 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             .Select(v => v.GpsDevice!.Id)
             .ToList();
 
-        // Get latest positions using projection to avoid JSONB issues
-        var latestPositions = await _context.GpsPositions
-            .AsNoTracking()
-            .Where(p => deviceIds.Contains(p.DeviceId))
-            .GroupBy(p => p.DeviceId)
-            .Select(g => new {
-                DeviceId = g.Key,
-                Position = g.OrderByDescending(p => p.RecordedAt).Select(p => new {
+        // Get latest positions - use raw SQL subquery for reliable "latest per device"
+        var latestPositions = new Dictionary<int, dynamic>();
+        
+        foreach (var deviceId in deviceIds)
+        {
+            var position = await _context.GpsPositions
+                .AsNoTracking()
+                .Where(p => p.DeviceId == deviceId)
+                .OrderByDescending(p => p.RecordedAt)
+                .Select(p => new {
                     p.Id,
                     p.Latitude,
                     p.Longitude,
@@ -53,10 +55,16 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                     p.IgnitionOn,
                     p.RecordedAt,
                     p.FuelRaw,
-                    p.TemperatureC
-                }).FirstOrDefault()
-            })
-            .ToDictionaryAsync(x => x.DeviceId, x => x.Position, ct);
+                    p.TemperatureC,
+                    p.Address
+                })
+                .FirstOrDefaultAsync(ct);
+            
+            if (position != null)
+            {
+                latestPositions[deviceId] = position;
+            }
+        }
 
         // Get today's stats for each device (last 24 hours)
         var since = DateTime.UtcNow.AddHours(-24);
@@ -124,7 +132,8 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                     position.RecordedAt,
                     position.FuelRaw,
                     temperature,
-                    batteryLevel
+                    batteryLevel,
+                    position.Address
                 ) : null,
                 new VehicleStatsDto(
                     currentSpeed,

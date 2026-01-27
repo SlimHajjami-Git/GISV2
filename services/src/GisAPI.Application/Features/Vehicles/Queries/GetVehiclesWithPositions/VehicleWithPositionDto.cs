@@ -32,7 +32,8 @@ public record PositionDto(
     DateTime RecordedAt,
     int? FuelRaw,
     short? TemperatureC,
-    int? BatteryLevel
+    int? BatteryLevel,
+    string? Address
 );
 
 /// <summary>

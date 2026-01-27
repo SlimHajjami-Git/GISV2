@@ -1960,10 +1960,67 @@ export class VehiclesComponent implements OnInit {
   }
 
   loadVehicleData(vehicle: Vehicle) {
-    // Load mock data for demo
-    this.vehicleExpenses = this.generateMockExpenses();
-    this.vehicleTrips = this.generateMockTrips();
-    this.calculateMonthlyExpenses();
+    // Load vehicle details from API
+    this.apiService.getVehicle(parseInt(vehicle.id)).subscribe({
+      next: (details) => {
+        if (details) {
+          // Update selectedDetailVehicle with API data
+          this.selectedDetailVehicle = {
+            ...this.selectedDetailVehicle,
+            ...details,
+            fuelLevel: details.fuelLevel || 75,
+            nextMaintenanceKm: details.nextMaintenanceKm || 5000,
+            totalTrips: details.totalTrips || 0,
+            monthlyDistance: details.monthlyDistance || 0,
+            monthlyFuelCost: details.monthlyFuelCost || 0
+          } as VehicleExtended;
+          this.cdr.detectChanges();
+        }
+      },
+      error: (err) => {
+        console.error('Failed to load vehicle details:', err);
+      }
+    });
+
+    // Load vehicle trips from API
+    const startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - 1);
+    this.apiService.getVehicleTrips(parseInt(vehicle.id), startDate, new Date()).subscribe({
+      next: (trips) => {
+        this.vehicleTrips = trips.map((t: any) => ({
+          id: t.id?.toString() || '',
+          startTime: new Date(t.startTime),
+          endTime: new Date(t.endTime),
+          distance: t.distanceKm || 0,
+          startAddress: t.startAddress || 'N/A',
+          endAddress: t.endAddress || 'N/A'
+        }));
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.vehicleTrips = [];
+      }
+    });
+
+    // Load costs/expenses from API
+    this.apiService.getCosts({ vehicleId: parseInt(vehicle.id) }).subscribe({
+      next: (costs) => {
+        this.vehicleExpenses = costs.map((c: any) => ({
+          id: c.id?.toString() || '',
+          date: new Date(c.date),
+          type: c.type || 'other',
+          description: c.description || '',
+          amount: c.amount || 0,
+          mileage: c.mileage
+        }));
+        this.calculateMonthlyExpenses();
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.vehicleExpenses = [];
+        this.calculateMonthlyExpenses();
+      }
+    });
     
     // Get current location if GPS enabled
     if (vehicle.hasGPS) {
@@ -1981,6 +2038,22 @@ export class VehiclesComponent implements OnInit {
                 }
               });
             }
+          }
+        }
+      });
+    }
+
+    // Load GPS stats for the month
+    if (vehicle.hasGPS) {
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      this.apiService.getVehicleGpsStats(parseInt(vehicle.id), monthStart, new Date()).subscribe({
+        next: (stats) => {
+          if (this.selectedDetailVehicle) {
+            this.selectedDetailVehicle.totalTrips = stats.tripCount || 0;
+            this.selectedDetailVehicle.monthlyDistance = stats.totalDistanceKm || 0;
+            this.cdr.detectChanges();
           }
         }
       });
