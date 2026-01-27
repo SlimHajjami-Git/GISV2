@@ -349,7 +349,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           .on('click', () => this.selectVehicle(vehicle));
 
         marker.addTo(this.map!);
-        this.vehicleMarkers.set(vehicle.id, marker);
+        this.vehicleMarkers.set(vehicle.id?.toString(), marker);
       }
     });
 
