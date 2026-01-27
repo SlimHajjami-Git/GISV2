@@ -368,11 +368,17 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
     if (vehicle.isOnline) {
       if (isMoving) {
+        // Moving (ignition ON + speed > 5) = GREEN
         color = '#4caf50';
         statusClass = 'moving';
-      } else {
+      } else if (vehicle.ignitionOn) {
+        // Stopped with engine ON = ORANGE
         color = '#ff9800';
         statusClass = 'stopped';
+      } else {
+        // Parked (ignition OFF) = RED
+        color = '#ef4444';
+        statusClass = 'parked';
       }
     }
 
