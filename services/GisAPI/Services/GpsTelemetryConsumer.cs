@@ -76,7 +76,13 @@ public class GpsTelemetryConsumer : BackgroundService
                 var routingKey = _configuration["RabbitMQ:RoutingKey"] ?? "hh";
 
                 await _channel.ExchangeDeclareAsync(exchange, ExchangeType.Topic, durable: true, cancellationToken: stoppingToken);
-                await _channel.QueueDeclareAsync(queue, durable: true, exclusive: false, autoDelete: false, cancellationToken: stoppingToken);
+                
+                // Configure queue with TTL: messages expire after 5 minutes (300000ms)
+                var queueArgs = new Dictionary<string, object?>
+                {
+                    { "x-message-ttl", 300000 } // 5 minutes in milliseconds
+                };
+                await _channel.QueueDeclareAsync(queue, durable: true, exclusive: false, autoDelete: false, arguments: queueArgs, cancellationToken: stoppingToken);
                 await _channel.QueueBindAsync(queue, exchange, routingKey, cancellationToken: stoppingToken);
 
                 _logger.LogInformation("Connected to RabbitMQ, consuming from queue: {Queue}", queue);
