@@ -10,6 +10,21 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions;
 
+// Internal class for query projection
+internal class LatestPositionData
+{
+    public long Id { get; set; }
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+    public double? SpeedKph { get; set; }
+    public double? CourseDeg { get; set; }
+    public bool? IgnitionOn { get; set; }
+    public DateTime RecordedAt { get; set; }
+    public int? FuelRaw { get; set; }
+    public short? TemperatureC { get; set; }
+    public string? Address { get; set; }
+}
+
 public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesWithPositionsQuery, List<VehicleWithPositionDto>>
 {
     private readonly IGisDbContext _context;
@@ -37,8 +52,8 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             .Select(v => v.GpsDevice!.Id)
             .ToList();
 
-        // Get latest positions - use raw SQL subquery for reliable "latest per device"
-        var latestPositions = new Dictionary<int, dynamic>();
+        // Get latest positions - query each device individually for reliable results
+        var latestPositions = new Dictionary<int, LatestPositionData>();
         
         foreach (var deviceId in deviceIds)
         {
@@ -46,17 +61,18 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                 .AsNoTracking()
                 .Where(p => p.DeviceId == deviceId)
                 .OrderByDescending(p => p.RecordedAt)
-                .Select(p => new {
-                    p.Id,
-                    p.Latitude,
-                    p.Longitude,
-                    p.SpeedKph,
-                    p.CourseDeg,
-                    p.IgnitionOn,
-                    p.RecordedAt,
-                    p.FuelRaw,
-                    p.TemperatureC,
-                    p.Address
+                .Select(p => new LatestPositionData
+                {
+                    Id = p.Id,
+                    Latitude = p.Latitude,
+                    Longitude = p.Longitude,
+                    SpeedKph = p.SpeedKph,
+                    CourseDeg = p.CourseDeg,
+                    IgnitionOn = p.IgnitionOn,
+                    RecordedAt = p.RecordedAt,
+                    FuelRaw = p.FuelRaw,
+                    TemperatureC = p.TemperatureC,
+                    Address = p.Address
                 })
                 .FirstOrDefaultAsync(ct);
             
