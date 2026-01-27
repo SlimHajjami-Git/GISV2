@@ -23,8 +23,8 @@ pub struct LastKnownPosition {
     pub ignition_on: bool,
 }
 
-/// Minimum interval (in seconds) between position recordings for stopped vehicles
-const STOPPED_VEHICLE_INTERVAL_SECS: i64 = 20 * 60; // 20 minutes
+/// Minimum interval (in seconds) between position recordings for stopped vehicles (ignition OFF)
+const STOPPED_VEHICLE_INTERVAL_SECS: i64 = 30; // 30 seconds when ignition OFF
 
 /// Speed threshold (km/h) below which vehicle is considered stopped
 const STOPPED_SPEED_THRESHOLD: f64 = 10.0;
@@ -45,22 +45,33 @@ impl Database {
         // Check if vehicle is stopped (ignition off AND speed < 10 km/h)
         let is_stopped = !frame.ignition_on && frame.speed_kph < STOPPED_SPEED_THRESHOLD;
 
-        // For stopped vehicles, only record every 20 minutes
+        // For stopped vehicles, apply recording interval (but always record ignition state changes)
         if is_stopped {
             if let Some(last_pos) = self.fetch_last_position(device_id).await? {
-                let elapsed_secs = (frame.recorded_at - last_pos.recorded_at).num_seconds();
+                // Always record if ignition state changed (first stop or engine turned on)
+                let ignition_changed = last_pos.ignition_on != frame.ignition_on;
                 
-                if elapsed_secs < STOPPED_VEHICLE_INTERVAL_SECS {
-                    // Skip this position - not enough time has passed
-                    tracing::debug!(
+                if !ignition_changed {
+                    let elapsed_secs = (frame.recorded_at - last_pos.recorded_at).num_seconds();
+                    
+                    if elapsed_secs < STOPPED_VEHICLE_INTERVAL_SECS {
+                        // Skip this position - not enough time has passed and ignition didn't change
+                        tracing::debug!(
+                            device_uid,
+                            elapsed_secs,
+                            required_secs = STOPPED_VEHICLE_INTERVAL_SECS,
+                            "Skipping stopped vehicle position (interval not reached)"
+                        );
+                        // Still update last communication even if we skip the position
+                        self.update_device_last_communication(device_id).await?;
+                        return Ok(());
+                    }
+                } else {
+                    tracing::info!(
                         device_uid,
-                        elapsed_secs,
-                        required_secs = STOPPED_VEHICLE_INTERVAL_SECS,
-                        "Skipping stopped vehicle position (interval not reached)"
+                        ignition_on = frame.ignition_on,
+                        "Recording position due to ignition state change"
                     );
-                    // Still update last communication even if we skip the position
-                    self.update_device_last_communication(device_id).await?;
-                    return Ok(());
                 }
             }
         }
