@@ -32,6 +32,10 @@ pub trait TelemetryStore: Send + Sync {
     /// Get device_id and company_id for a device
     async fn get_device_vehicle_info(&self, device_id: i32) -> anyhow::Result<(Option<i32>, i32)>;
 
+    /// Get fuel sensor configuration for a device
+    /// Returns (fuel_sensor_mode, tank_capacity_liters)
+    async fn get_fuel_config(&self, device_id: i32) -> anyhow::Result<(String, Option<i32>)>;
+
     /// Get the most recent position for a device (used for anti-spam filtering)
     async fn get_last_position(
         &self,

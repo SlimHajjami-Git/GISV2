@@ -215,6 +215,18 @@ export interface CompanyOption {
               </p>
             </div>
 
+            <!-- Fuel sensor mode for existing device -->
+            <div class="form-group" *ngIf="gpsMode === 'existing' && formData.gpsDeviceId">
+              <label for="gpsFuelSensorModeExisting">Mode capteur carburant</label>
+              <select id="gpsFuelSensorModeExisting" name="gpsFuelSensorModeExisting" [(ngModel)]="formData.gpsFuelSensorMode">
+                <option value="raw_255">Brut 0-255 (défaut)</option>
+                <option value="percent">Pourcentage 0-100%</option>
+                <option value="liters">Litres</option>
+                <option value="half_liter">½ Litre (1 unité = 0.5L)</option>
+              </select>
+              <p class="help-text">Définit comment interpréter les données carburant du GPS</p>
+            </div>
+
             <!-- New GPS Device Form -->
             <div class="form-grid" *ngIf="gpsMode === 'new'">
               <div class="form-group">
@@ -289,6 +301,17 @@ export interface CompanyOption {
                   [(ngModel)]="formData.gpsMat"
                   placeholder="Ex: MAT-001"
                 />
+              </div>
+
+              <div class="form-group">
+                <label for="gpsFuelSensorMode">Mode capteur carburant</label>
+                <select id="gpsFuelSensorMode" name="gpsFuelSensorMode" [(ngModel)]="formData.gpsFuelSensorMode">
+                  <option value="raw_255">Brut 0-255 (défaut)</option>
+                  <option value="percent">Pourcentage 0-100%</option>
+                  <option value="liters">Litres</option>
+                  <option value="half_liter">½ Litre (1 unité = 0.5L)</option>
+                </select>
+                <p class="help-text">Définit comment interpréter les données carburant du GPS</p>
               </div>
             </div>
           </div>
@@ -639,7 +662,8 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     gpsBrand: '',
     gpsModel: '',
     gpsInstallationDate: undefined,
-    gpsMat: ''
+    gpsMat: '',
+    gpsFuelSensorMode: 'raw_255'
   };
 
   constructor(private apiService: ApiService) {}
@@ -698,6 +722,7 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       this.formData.gpsModel = '';
       this.formData.gpsInstallationDate = undefined;
       this.formData.gpsMat = '';
+      this.formData.gpsFuelSensorMode = 'raw_255';
     }
   }
 
@@ -709,13 +734,14 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       this.formData.gpsBrand = '';
       this.formData.gpsModel = '';
       this.formData.gpsMat = '';
+      this.formData.gpsFuelSensorMode = 'raw_255';
     } else {
       this.formData.gpsDeviceId = undefined;
     }
   }
 
   onExistingDeviceSelected() {
-    // When selecting an existing device, copy its IMEI and Mat to formData
+    // When selecting an existing device, copy its IMEI, Mat and fuel sensor mode to formData
     // so they are sent to the backend and not lost
     if (this.formData.gpsDeviceId) {
       const selectedDevice = this.availableGpsDevices.find(
@@ -724,10 +750,12 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       if (selectedDevice) {
         this.formData.gpsImei = selectedDevice.deviceUid || '';
         this.formData.gpsMat = selectedDevice.mat || '';
+        this.formData.gpsFuelSensorMode = selectedDevice.fuelSensorMode || 'raw_255';
       }
     } else {
       this.formData.gpsImei = '';
       this.formData.gpsMat = '';
+      this.formData.gpsFuelSensorMode = 'raw_255';
     }
   }
 
@@ -768,7 +796,8 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       gpsBrand: '',
       gpsModel: '',
       gpsInstallationDate: undefined,
-      gpsMat: ''
+      gpsMat: '',
+      gpsFuelSensorMode: 'raw_255'
     };
     this.gpsMode = 'existing';
   }

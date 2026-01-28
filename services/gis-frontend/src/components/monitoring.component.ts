@@ -999,7 +999,20 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // Use local OSRM server (self-hosted) for road snapping
     // Format: lon,lat;lon,lat;...
     const coordsStr = coords.map(c => `${c.lng},${c.lat}`).join(';');
-    const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
+    
+    // Calculate bearings for each point to constrain OSRM to correct road direction
+    const bearings = coords.map((c, i) => {
+      if (i < coords.length - 1) {
+        const bearing = Math.round(this.calculateBearing(c.lat, c.lng, coords[i + 1].lat, coords[i + 1].lng));
+        return `${bearing},45`;
+      } else {
+        // Last point: use bearing from previous point
+        const bearing = Math.round(this.calculateBearing(coords[i - 1].lat, coords[i - 1].lng, c.lat, c.lng));
+        return `${bearing},45`;
+      }
+    }).join(';');
+    
+    const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson&bearings=${bearings}`;
 
     try {
       const response = await fetch(url);
@@ -1422,8 +1435,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Fetch OSRM route between two GPS points
   private async fetchOSRMRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
     try {
+      // Get bearing - prefer DB value, fallback to calculation
+      const bearing = this.getBearing(fromPos, toPos);
+      
       const coordsStr = `${fromPos.longitude},${fromPos.latitude};${toPos.longitude},${toPos.latitude}`;
-      const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
+      const bearingsParam = `&bearings=${bearing},45;${bearing},45`;
+      const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson${bearingsParam}`;
       
       const response = await fetch(url);
       if (!response.ok) throw new Error(`OSRM error: ${response.status}`);
@@ -1677,13 +1694,43 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.pointMarkers.push(pointMarker);
   }
 
+  // Calculate bearing between two points in degrees (0-360)
+  private calculateBearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const lat1Rad = lat1 * Math.PI / 180;
+    const lat2Rad = lat2 * Math.PI / 180;
+    
+    const y = Math.sin(dLon) * Math.cos(lat2Rad);
+    const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - 
+              Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+    
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  }
+
+  // Get bearing from position - use DB value if available, otherwise calculate
+  private getBearing(fromPos: any, toPos: any): number {
+    // Use courseDeg from database if available and valid (> 0)
+    if (fromPos.courseDeg && fromPos.courseDeg > 0) {
+      return Math.round(fromPos.courseDeg);
+    }
+    // Fallback: calculate bearing from coordinates
+    return Math.round(this.calculateBearing(
+      fromPos.latitude, fromPos.longitude,
+      toPos.latitude, toPos.longitude
+    ));
+  }
+
   // Draw a road-snapped segment between two consecutive points using OSRM
   private async drawRoutedSegment(fromPos: any, toPos: any, color: string) {
     if (!this.map) return;
     
-    // OSRM API expects lon,lat format
+    // Get bearing - prefer DB value, fallback to calculation
+    const bearing = this.getBearing(fromPos, toPos);
+    
+    // OSRM API expects lon,lat format with bearings (bearing,tolerance)
     const coordsStr = `${fromPos.longitude},${fromPos.latitude};${toPos.longitude},${toPos.latitude}`;
-    const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
+    const bearingsParam = `&bearings=${bearing},45;${bearing},45`;
+    const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson${bearingsParam}`;
 
     try {
       const response = await fetch(url);

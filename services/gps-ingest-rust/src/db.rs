@@ -164,14 +164,28 @@ impl Database {
             .to_string();
 
         let protocol_metadata = ProtocolMetadata::from_protocol(protocol_type);
-        let model_value: Option<String> = protocol_metadata.model_name.map(|m| m.to_string());
         let firmware_value: String = protocol_metadata
             .firmware_flavor
             .map(|f| f.to_string())
             .unwrap_or_else(|| firmware.clone());
 
-        // MAT is the GPS logical identifier (e.g., "NR08G0663"), distinct from vehicle plate_number
+        // MAT is the GPS logical identifier (e.g., "NR08G0664"), distinct from vehicle plate_number
         let mat = info.mat.as_ref().map(|m| m.trim().to_string());
+        
+        // Use MAT as GPS model if it looks like a model number (e.g., "NR08G0664")
+        // This is important to differentiate GPS capabilities (FMS support, etc.)
+        let model_value: Option<String> = mat.as_ref()
+            .filter(|m| m.starts_with("NR") || m.starts_with("MF"))
+            .cloned()
+            .or_else(|| protocol_metadata.model_name.map(|m| m.to_string()));
+        
+        if let Some(ref model) = model_value {
+            tracing::info!(
+                imei = %imei,
+                model = %model,
+                "GPS model detected from info frame"
+            );
+        }
 
         // Insert into gps_devices table (EF Core schema)
         // Default CompanyId = 1 (Belive) for testing - devices will be reassigned when linked to vehicles
@@ -394,6 +408,31 @@ impl TelemetryStore for Database {
             Ok((vehicle_id, company_id))
         } else {
             Ok((None, 1)) // Default company_id = 1
+        }
+    }
+
+    async fn get_fuel_config(&self, device_id: i32) -> Result<(String, Option<i32>)> {
+        // Get fuel_sensor_mode from gps_devices and tank_capacity from vehicles
+        let row = sqlx::query(
+            r#"
+            SELECT 
+                COALESCE(d.fuel_sensor_mode, 'raw_255') as fuel_sensor_mode,
+                v.tank_capacity
+            FROM gps_devices d
+            LEFT JOIN vehicles v ON v.gps_device_id = d.id
+            WHERE d.id = $1
+            "#,
+        )
+        .bind(device_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(row) = row {
+            let fuel_sensor_mode: String = row.get("fuel_sensor_mode");
+            let tank_capacity: Option<i32> = row.try_get("tank_capacity").ok();
+            Ok((fuel_sensor_mode, tank_capacity))
+        } else {
+            Ok(("raw_255".to_string(), None)) // Default mode
         }
     }
 
@@ -687,6 +726,13 @@ impl Database {
         } else {
             None
         };
+        
+        // FMS data detection: GPS without FMS sends 0 for fuel and odometer
+        // Only store if we have real data (at least one value > 0)
+        let has_fms_data = frame.fuel_raw > 0 || frame.odometer_km > 0;
+        let fuel_raw: Option<i32> = if has_fms_data { Some(i32::from(frame.fuel_raw)) } else { None };
+        let odometer_km: Option<i64> = if has_fms_data { Some(frame.odometer_km as i64) } else { None };
+        let rpm: Option<i16> = if has_fms_data { frame.rpm.map(|r| r as i16) } else { None };
 
         let row = sqlx::query(
             r#"
@@ -733,7 +779,7 @@ impl Database {
         .bind(frame.heading_deg)
         .bind(Option::<f64>::None) // AltitudeM
         .bind(frame.ignition_on)
-        .bind(i32::from(frame.fuel_raw))
+        .bind(fuel_raw)  // NULL if GPS doesn't support FMS
         .bind(i32::from(frame.power_voltage))
         .bind(frame.satellites_in_view.map(|v| i32::from(v)))
         .bind(frame.is_valid)
@@ -744,8 +790,8 @@ impl Database {
         .bind(frame.mems_y as i16)
         .bind(frame.mems_z as i16)
         .bind(temperature_c)
-        .bind(frame.odometer_km as i64)
-        .bind(frame.rpm.map(|r| r as i16))
+        .bind(odometer_km)  // NULL if GPS doesn't support FMS
+        .bind(rpm)  // NULL if GPS doesn't support FMS
         .bind(frame.send_flag as i16)
         .bind(protocol_version)
         .bind(&frame.address) // Geocoded address

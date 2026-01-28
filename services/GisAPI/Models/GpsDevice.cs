@@ -47,6 +47,12 @@ public class GpsDevice
 
     public int? SignalStrength { get; set; }
 
+    /// <summary>
+    /// Mode du capteur carburant: 'percent' (0-100%), 'raw_255' (0-255 → %), 'liters' (utiliser tank_capacity)
+    /// </summary>
+    [MaxLength(20)]
+    public string FuelSensorMode { get; set; } = "raw_255";
+
     public bool? ExternalPowerConnected { get; set; }
 
     public double? LastLatitude { get; set; }

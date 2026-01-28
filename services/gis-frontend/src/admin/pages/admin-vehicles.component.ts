@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -895,9 +895,15 @@ export class AdminVehiclesComponent implements OnInit {
       type: this.selectedVehicle.type,
       status: this.selectedVehicle.status,
       mileage: this.selectedVehicle.mileage,
+      color: this.selectedVehicle.color,
+      fuelType: this.selectedVehicle.fuelType,
       companyId: this.selectedVehicle.companyId,
       hasGPS: this.selectedVehicle.hasGps,
-      gpsDeviceId: this.selectedVehicle.gpsDeviceId
+      gpsDeviceId: this.selectedVehicle.gpsDeviceId,
+      gpsImei: this.selectedVehicle.gpsImei,
+      gpsMat: this.selectedVehicle.gpsMat,
+      gpsBrand: this.selectedVehicle.gpsModel,
+      gpsModel: this.selectedVehicle.gpsFirmwareVersion
     };
   }
 
@@ -927,7 +933,8 @@ export class AdminVehiclesComponent implements OnInit {
 
   constructor(
     private router: Router,
-    private adminService: AdminService
+    private adminService: AdminService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit() {
@@ -939,20 +946,29 @@ export class AdminVehiclesComponent implements OnInit {
   }
 
   loadData() {
-    this.adminService.getVehicles().subscribe(vehicles => {
-      this.vehicles = vehicles;
-      this.filterVehicles();
+    console.log('Loading vehicles data...');
+    this.adminService.getVehicles().subscribe({
+      next: (vehicles) => {
+        console.log('Vehicles loaded:', vehicles.length);
+        this.vehicles = vehicles;
+        this.filterVehicles();
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Error loading vehicles:', err);
+        this.vehicles = [];
+        this.filterVehicles();
+      }
     });
 
     this.adminService.getClients().subscribe({
       next: (clients) => {
-        console.log('Loaded companies for vehicle assignment:', clients);
-        // Include all companies, not just active ones
+        console.log('Loaded companies for vehicle assignment:', clients.length);
         this.companies = clients;
-        console.log('Companies available:', this.companies.length);
       },
       error: (err) => {
         console.error('Error loading companies:', err);
+        this.companies = [];
       }
     });
   }

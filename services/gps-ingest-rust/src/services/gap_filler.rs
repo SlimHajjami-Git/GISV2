@@ -188,9 +188,12 @@ impl GapFiller {
         to_lat: f64,
         to_lng: f64,
     ) -> Result<Option<OsrmRoute>> {
+        // Calculate bearing to constrain OSRM to correct road direction
+        let bearing = calculate_heading(from_lat, from_lng, to_lat, to_lng) as u16;
+        
         let url = format!(
-            "{}/route/v1/driving/{},{};{},{}?overview=full&geometries=geojson",
-            self.osrm_base_url, from_lng, from_lat, to_lng, to_lat
+            "{}/route/v1/driving/{},{};{},{}?overview=full&geometries=geojson&bearings={},45;{},45",
+            self.osrm_base_url, from_lng, from_lat, to_lng, to_lat, bearing, bearing
         );
 
         let response = self.http_client

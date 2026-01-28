@@ -26,6 +26,7 @@ public class GpsDeviceConfiguration : IEntityTypeConfiguration<GpsDevice>
         builder.Property(e => e.LastCommunication).HasColumnName("last_communication");
         builder.Property(e => e.BatteryLevel).HasColumnName("battery_level");
         builder.Property(e => e.SignalStrength).HasColumnName("signal_strength");
+        builder.Property(e => e.FuelSensorMode).HasColumnName("fuel_sensor_mode").HasMaxLength(20).HasDefaultValue("raw_255");
         builder.Property(e => e.CompanyId).HasColumnName("company_id");
         builder.Property(e => e.CreatedAt).HasColumnName("created_at");
         builder.Property(e => e.UpdatedAt).HasColumnName("updated_at");

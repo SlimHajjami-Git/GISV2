@@ -101,6 +101,7 @@ public class GpsDevicesController : ControllerBase
         device.Brand = updated.Brand;
         device.FirmwareVersion = updated.FirmwareVersion;
         device.Status = updated.Status;
+        device.FuelSensorMode = updated.FuelSensorMode ?? "raw_255";
         device.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();

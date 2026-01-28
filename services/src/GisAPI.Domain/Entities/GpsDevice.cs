@@ -18,6 +18,11 @@ public class GpsDevice : TenantEntity
     public DateTime? LastCommunication { get; set; }
     public int? BatteryLevel { get; set; }
     public int? SignalStrength { get; set; }
+    
+    /// <summary>
+    /// Mode du capteur carburant: 'percent' (0-100%), 'raw_255' (0-255 → %), 'liters' (utiliser tank_capacity)
+    /// </summary>
+    public string FuelSensorMode { get; set; } = "raw_255";
 
     public Societe? Societe { get; set; }
     public Vehicle? Vehicle { get; set; }
