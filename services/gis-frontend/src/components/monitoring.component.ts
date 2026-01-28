@@ -1434,6 +1434,18 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Fetch OSRM route between two GPS points
   private async fetchOSRMRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
+    // Calculate distance between points
+    const distance = this.calculateDistance(
+      fromPos.latitude, fromPos.longitude,
+      toPos.latitude, toPos.longitude
+    );
+    
+    // Skip OSRM for very short distances (< 15m) - return single point
+    // This prevents erratic routing for stationary vehicles with GPS noise
+    if (distance < 15) {
+      return [L.latLng(toPos.latitude, toPos.longitude)];
+    }
+    
     try {
       // Get bearing - returns null if vehicle stationary or distance too short
       const bearing = this.getBearing(fromPos, toPos);
@@ -1740,6 +1752,28 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Draw a road-snapped segment between two consecutive points using OSRM
   private async drawRoutedSegment(fromPos: any, toPos: any, color: string) {
     if (!this.map) return;
+    
+    // Calculate distance between points
+    const distance = this.calculateDistance(
+      fromPos.latitude, fromPos.longitude,
+      toPos.latitude, toPos.longitude
+    );
+    
+    // Skip OSRM for very short distances (< 15m) - just draw a point
+    // This prevents erratic routing for stationary vehicles with GPS noise
+    if (distance < 15) {
+      // Just add a point marker, no route line needed
+      const pointMarker = L.circleMarker([toPos.latitude, toPos.longitude], {
+        radius: 4,
+        fillColor: color,
+        color: '#ffffff',
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.9
+      }).addTo(this.map);
+      this.pointMarkers.push(pointMarker);
+      return;
+    }
     
     // Get bearing - returns null if vehicle stationary or distance too short
     const bearing = this.getBearing(fromPos, toPos);
