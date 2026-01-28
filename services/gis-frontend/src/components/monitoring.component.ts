@@ -1435,11 +1435,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Fetch OSRM route between two GPS points
   private async fetchOSRMRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
     try {
-      // Get bearing - prefer DB value, fallback to calculation
+      // Get bearing - returns null if vehicle stationary or distance too short
       const bearing = this.getBearing(fromPos, toPos);
       
       const coordsStr = `${fromPos.longitude},${fromPos.latitude};${toPos.longitude},${toPos.latitude}`;
-      const bearingsParam = `&bearings=${bearing},45;${bearing},45`;
+      // Only add bearings parameter if we have a valid bearing
+      const bearingsParam = bearing !== null ? `&bearings=${bearing},45;${bearing},45` : '';
       const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson${bearingsParam}`;
       
       const response = await fetch(url);
@@ -1707,12 +1708,28 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
   }
 
-  // Get bearing from position - use DB value if available, otherwise calculate
-  private getBearing(fromPos: any, toPos: any): number {
+  // Get bearing from position - returns null if vehicle is stationary or distance too short
+  private getBearing(fromPos: any, toPos: any): number | null {
+    // Check if vehicle is moving (speed > 2 km/h to filter GPS noise)
+    const speed = fromPos.speedKph || fromPos.speed || 0;
+    if (speed < 2) {
+      return null; // Don't use bearing for stationary vehicles
+    }
+    
+    // Check distance - if < 20m, bearing is unreliable due to GPS noise
+    const distance = this.calculateDistance(
+      fromPos.latitude, fromPos.longitude,
+      toPos.latitude, toPos.longitude
+    );
+    if (distance < 20) {
+      return null; // Distance too short for reliable bearing
+    }
+    
     // Use courseDeg from database if available and valid (> 0)
     if (fromPos.courseDeg && fromPos.courseDeg > 0) {
       return Math.round(fromPos.courseDeg);
     }
+    
     // Fallback: calculate bearing from coordinates
     return Math.round(this.calculateBearing(
       fromPos.latitude, fromPos.longitude,
@@ -1724,12 +1741,13 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   private async drawRoutedSegment(fromPos: any, toPos: any, color: string) {
     if (!this.map) return;
     
-    // Get bearing - prefer DB value, fallback to calculation
+    // Get bearing - returns null if vehicle stationary or distance too short
     const bearing = this.getBearing(fromPos, toPos);
     
-    // OSRM API expects lon,lat format with bearings (bearing,tolerance)
+    // OSRM API expects lon,lat format
     const coordsStr = `${fromPos.longitude},${fromPos.latitude};${toPos.longitude},${toPos.latitude}`;
-    const bearingsParam = `&bearings=${bearing},45;${bearing},45`;
+    // Only add bearings parameter if we have a valid bearing
+    const bearingsParam = bearing !== null ? `&bearings=${bearing},45;${bearing},45` : '';
     const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson${bearingsParam}`;
 
     try {
