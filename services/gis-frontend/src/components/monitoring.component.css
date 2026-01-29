@@ -236,18 +236,30 @@
   background: linear-gradient(90deg, rgba(255, 152, 0, 0.25) 0%, rgba(255, 152, 0, 0.1) 100%);
 }
 
-.vehicle-row.row-stopped {
-  background: linear-gradient(90deg, rgba(244, 67, 54, 0.15) 0%, rgba(244, 67, 54, 0.05) 100%);
-  border-left: 3px solid #f44336;
+/* Red: Parked (ignition OFF) */
+.vehicle-row.row-parked {
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.05) 100%);
+  border-left: 3px solid #ef4444;
 }
 
-.vehicle-row.row-stopped:hover {
-  background: linear-gradient(90deg, rgba(244, 67, 54, 0.25) 0%, rgba(244, 67, 54, 0.1) 100%);
+.vehicle-row.row-parked:hover {
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.25) 0%, rgba(239, 68, 68, 0.1) 100%);
+}
+
+/* Gray: Offline (no data 30+ min) */
+.vehicle-row.row-offline {
+  background: linear-gradient(90deg, rgba(158, 158, 158, 0.15) 0%, rgba(158, 158, 158, 0.05) 100%);
+  border-left: 3px solid #9e9e9e;
+}
+
+.vehicle-row.row-offline:hover {
+  background: linear-gradient(90deg, rgba(158, 158, 158, 0.25) 0%, rgba(158, 158, 158, 0.1) 100%);
 }
 
 .vehicle-row.row-moving.selected,
 .vehicle-row.row-stationary.selected,
-.vehicle-row.row-stopped.selected {
+.vehicle-row.row-parked.selected,
+.vehicle-row.row-offline.selected {
   background: #e3f2fd;
 }
 
@@ -284,6 +296,11 @@
   color: #fff;
 }
 
+.vehicle-type-icon.car-parked {
+  background: #ef4444;
+  color: #fff;
+}
+
 .vehicle-type-icon.truck-moving {
   background: #4caf50;
   color: #fff;
@@ -299,8 +316,13 @@
   color: #fff;
 }
 
+.vehicle-type-icon.truck-parked {
+  background: #ef4444;
+  color: #fff;
+}
+
 .vehicle-type-icon.van-moving {
-  background: #2196f3;
+  background: #4caf50;
   color: #fff;
 }
 
@@ -311,6 +333,11 @@
 
 .vehicle-type-icon.van-offline {
   background: #9e9e9e;
+  color: #fff;
+}
+
+.vehicle-type-icon.van-parked {
+  background: #ef4444;
   color: #fff;
 }
 
@@ -379,19 +406,59 @@
   background: #9e9e9e;
 }
 
-.vehicle-indicators .indicator.gps-tag {
-  font-size: 7px;
-  font-weight: 600;
-  padding: 1px 3px;
-  background: #e0e0e0;
-  border-radius: 2px;
-  color: #666;
-  width: auto;
+.vehicle-indicators .indicator.status-color.status-parked {
+  background: #ef4444;
 }
 
-.vehicle-indicators .indicator.gps-tag.active {
-  background: #4caf50;
-  color: #fff;
+/* Status Badge - replaces GPS tag */
+.status-badge {
+  font-size: 8px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.status-badge.status-moving {
+  background: rgba(76, 175, 80, 0.15);
+  color: #4caf50;
+}
+
+.status-badge.status-stopped {
+  background: rgba(255, 152, 0, 0.15);
+  color: #ff9800;
+}
+
+.status-badge.status-parked {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.status-badge.status-offline {
+  background: rgba(158, 158, 158, 0.15);
+  color: #9e9e9e;
+}
+
+/* Status value in sensors grid */
+.sensor-value.status-value.status-moving {
+  color: #4caf50;
+  font-weight: 600;
+}
+
+.sensor-value.status-value.status-stopped {
+  color: #ff9800;
+  font-weight: 600;
+}
+
+.sensor-value.status-value.status-parked {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.sensor-value.status-value.status-offline {
+  color: #9e9e9e;
+  font-weight: 600;
 }
 
 /* Alert Indicators */

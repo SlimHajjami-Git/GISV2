@@ -59,6 +59,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   playbackVehicleId: number | null = null; // Track which vehicle's playback is loaded
   routingControl: any = null;
   useRoadSnapping = true; // OSRM road snapping enabled by default
+  private playbackZoomLevel: number = 15; // Store zoom level during playback
   pointMarkers: L.CircleMarker[] = []; // Markers for each GPS point
   filteredBirdFlights = 0; // Count of filtered bird flight positions
   
@@ -371,22 +372,22 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   createVehicleIcon(vehicle: any, isMoving: boolean): L.DivIcon {
     const vehicleType = vehicle.type || vehicle.vehicleType || this.getVehicleType(vehicle);
-    let color = '#9e9e9e';
+    let color = '#9e9e9e'; // Gray: offline
     let statusClass = 'offline';
 
     if (vehicle.isOnline) {
-      if (isMoving) {
-        // Moving (ignition ON + speed > 5) = GREEN
-        color = '#4caf50';
-        statusClass = 'moving';
-      } else if (vehicle.ignitionOn) {
-        // Stopped with engine ON = ORANGE
-        color = '#ff9800';
-        statusClass = 'stopped';
-      } else {
-        // Parked (ignition OFF) = RED
+      if (!vehicle.ignitionOn) {
+        // RED: Ignition OFF (parked)
         color = '#ef4444';
         statusClass = 'parked';
+      } else if (isMoving || (vehicle.currentSpeed || 0) > 5) {
+        // GREEN: Moving (ignition ON + speed > 5)
+        color = '#4caf50';
+        statusClass = 'moving';
+      } else {
+        // ORANGE: Idle (ignition ON + speed <= 5)
+        color = '#ff9800';
+        statusClass = 'stopped';
       }
     }
 
@@ -408,11 +409,30 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   createPopupContent(vehicle: any): string {
     const isOnline = vehicle.isOnline;
-    const statusColor = isOnline ? '#10b981' : '#6b7280';
-    const statusBg = isOnline ? 'rgba(16, 185, 129, 0.1)' : 'rgba(107, 114, 128, 0.1)';
-    const statusText = isOnline ? 'En ligne' : 'Hors ligne';
+    const ignitionOn = vehicle.ignitionOn;
     const speed = vehicle.currentSpeed || 0;
-    const isMoving = speed > 3;
+    const isMoving = speed > 5;
+    
+    // Color-coded status: Red=parked, Orange=idle, Green=moving, Gray=offline
+    let statusColor = '#9e9e9e'; // Gray: offline
+    let statusText = 'Hors ligne';
+    let statusBg = 'rgba(158, 158, 158, 0.1)';
+    
+    if (isOnline) {
+      if (!ignitionOn) {
+        statusColor = '#ef4444'; // Red: parked
+        statusText = 'Stationné';
+        statusBg = 'rgba(239, 68, 68, 0.1)';
+      } else if (isMoving) {
+        statusColor = '#4caf50'; // Green: moving
+        statusText = 'En marche';
+        statusBg = 'rgba(76, 175, 80, 0.1)';
+      } else {
+        statusColor = '#ff9800'; // Orange: idle
+        statusText = 'Au ralenti';
+        statusBg = 'rgba(255, 152, 0, 0.1)';
+      }
+    }
     
     return `
       <div style="
@@ -492,6 +512,23 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           ` : ''}
         </div>
         
+        <!-- Address -->
+        <div style="
+          padding: 8px 16px;
+          background: #f8fafc;
+          border-bottom: 1px solid #e5e7eb;
+          font-size: 11px;
+          color: #64748b;
+          display: flex;
+          align-items: flex-start;
+          gap: 6px;
+        ">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" style="flex-shrink: 0; margin-top: 2px;">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+          </svg>
+          <span style="line-height: 1.4;">${vehicle.lastAddress || 'Adresse non disponible'}</span>
+        </div>
+        
         <!-- Info grid -->
         <div style="padding: 12px 16px 14px; background: #fff; border-radius: 0 0 8px 8px;">
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -510,8 +547,26 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
               border-radius: 8px;
               border: 1px solid #e2e8f0;
             ">
+              <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Carburant</div>
+              <div style="font-size: 14px; font-weight: 600; color: #1e293b;">${vehicle.stats?.fuelLevel != null ? vehicle.stats.fuelLevel + '%' : 'N/A'}</div>
+            </div>
+            <div style="
+              background: #f8fafc;
+              padding: 10px 12px;
+              border-radius: 8px;
+              border: 1px solid #e2e8f0;
+            ">
               <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Kilométrage</div>
-              <div style="font-size: 14px; font-weight: 600; color: #1e293b;">${vehicle.odometerKm ? (vehicle.odometerKm).toLocaleString() + ' km' : 'N/A'}</div>
+              <div style="font-size: 14px; font-weight: 600; color: #1e293b;">${vehicle.odometerKm ? (vehicle.odometerKm).toLocaleString() + ' km' : (vehicle.mileage ? vehicle.mileage.toLocaleString() + ' km' : 'N/A')}</div>
+            </div>
+            <div style="
+              background: #f8fafc;
+              padding: 10px 12px;
+              border-radius: 8px;
+              border: 1px solid #e2e8f0;
+            ">
+              <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Batterie</div>
+              <div style="font-size: 14px; font-weight: 600; color: #1e293b;">${vehicle.stats?.batteryLevel != null ? vehicle.stats.batteryLevel + '%' : 'N/A'}</div>
             </div>
           </div>
         </div>
@@ -838,9 +893,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // Reset progressive drawing index
     this.traceDrawnUpToIndex = 0;
 
-    // Center map on starting position and set appropriate zoom
+    // Save current zoom level or use default - maintain zoom during playback
+    this.playbackZoomLevel = this.map.getZoom() || 15;
+    
+    // Center map on starting position WITHOUT changing zoom level
     const startPos = this.playbackPositions[0];
-    this.map.setView([startPos.latitude, startPos.longitude], 15);
+    this.map.setView([startPos.latitude, startPos.longitude], this.playbackZoomLevel);
     
     // Don't draw full trace - it will be drawn progressively during playback
     // Just show the vehicle icon at the starting position
@@ -2014,10 +2072,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     
     this.updatePlaybackMarker();
 
-    // Center on start position
+    // Center on start position - maintain current zoom level
     if (this.map && this.playbackPositions.length > 0) {
       const startPos = this.playbackPositions[0];
-      this.map.setView([startPos.latitude, startPos.longitude], 15);
+      this.map.setView([startPos.latitude, startPos.longitude], this.playbackZoomLevel);
     }
     
     this.cdr.detectChanges();
@@ -2036,10 +2094,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.playbackProgress = 100;
     this.updatePlaybackMarker();
 
-    // Center on end position
+    // Center on end position - maintain current zoom level
     if (this.map && this.playbackPositions.length > 0) {
       const endPos = this.playbackPositions[this.playbackPositions.length - 1];
-      this.map.setView([endPos.latitude, endPos.longitude], 14);
+      this.map.setView([endPos.latitude, endPos.longitude], this.playbackZoomLevel);
     }
     
     this.cdr.detectChanges();
@@ -2106,11 +2164,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // End playback - called when user clicks "Terminer" button
   endPlayback() {
     console.log('Ending playback - restoring live view');
+    
+    // Save current zoom level before clearing
+    const currentZoom = this.map?.getZoom() || this.playbackZoomLevel;
+    
     this.clearPlayback();
     
-    // Center map on the live vehicle position
+    // Center map on the live vehicle position - maintain zoom level
     if (this.map && this.selectedVehicle?.currentLocation) {
-      this.map.setView([this.selectedVehicle.currentLocation.lat, this.selectedVehicle.currentLocation.lng], 14);
+      this.map.setView([this.selectedVehicle.currentLocation.lat, this.selectedVehicle.currentLocation.lng], currentZoom);
     }
   }
 
@@ -2243,19 +2305,32 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private getVehicleStatusState(vehicle: any): string {
+    // Gray: No data for 30+ minutes
     if (!vehicle.isOnline) return 'offline';
+    // Red: Ignition OFF (parked)
+    if (!vehicle.ignitionOn) return 'parked';
+    // Green: Ignition ON + speed > 5
     if ((vehicle.currentSpeed || 0) > 5) return 'moving';
+    // Orange: Ignition ON + speed <= 5 (idle)
     return 'stopped';
   }
 
   getStatusTag(vehicle: any): string {
-    if (!vehicle.isOnline) return 'Not available';
-    return 'Allowed';
+    // Replace "allowed/not allowed" with "online/offline"
+    if (!vehicle.isOnline) return 'Hors ligne';
+    if (!vehicle.ignitionOn) return 'Stationné';
+    if ((vehicle.currentSpeed || 0) > 5) return 'En marche';
+    return 'Au ralenti';
   }
 
   getStatusColorClass(vehicle: any): string {
+    // Gray: offline (no data 30+ min)
     if (!vehicle.isOnline) return 'status-offline';
+    // Red: ignition OFF
+    if (!vehicle.ignitionOn) return 'status-parked';
+    // Green: moving (ignition ON + speed > 5)
     if ((vehicle.currentSpeed || 0) > 5) return 'status-moving';
+    // Orange: idle (ignition ON + speed <= 5)
     return 'status-stopped';
   }
 

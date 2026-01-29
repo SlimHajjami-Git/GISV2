@@ -60,9 +60,10 @@
               class="vehicle-row"
               [class.selected]="selectedVehicle?.id === vehicle.id"
               [class.expanded]="selectedVehicle?.id === vehicle.id"
-              [class.row-moving]="(vehicle.currentSpeed || 0) > 3 && vehicle.isOnline"
-              [class.row-stationary]="(vehicle.currentSpeed || 0) <= 3 && vehicle.isOnline"
-              [class.row-stopped]="!vehicle.isOnline"
+              [class.row-moving]="vehicle.isOnline && vehicle.ignitionOn && (vehicle.currentSpeed || 0) > 5"
+              [class.row-stationary]="vehicle.isOnline && vehicle.ignitionOn && (vehicle.currentSpeed || 0) <= 5"
+              [class.row-parked]="vehicle.isOnline && !vehicle.ignitionOn"
+              [class.row-offline]="!vehicle.isOnline"
               (click)="selectVehicle(vehicle)"
             >
               <input type="checkbox" class="vehicle-checkbox" [checked]="selectedVehicle?.id === vehicle.id" (click)="$event.stopPropagation()">
@@ -109,17 +110,16 @@
                   </svg>
                 </span>
                 <!-- Network Signal -->
-                <span class="indicator network-signal" [class.strong]="vehicle.isOnline && vehicle.hasGPS" [class.weak]="vehicle.isOnline && !vehicle.hasGPS" [class.offline]="!vehicle.isOnline" title="{{ vehicle.isOnline ? (vehicle.hasGPS ? 'Signal fort' : 'Signal faible') : 'Hors ligne' }}">
+                <span class="indicator network-signal" [class.strong]="vehicle.isOnline" [class.offline]="!vehicle.isOnline" title="{{ vehicle.isOnline ? 'En ligne' : 'Hors ligne' }}">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/>
                   </svg>
                 </span>
-                <span class="indicator ignition" [class.active]="vehicle.isOnline" title="Moteur">
+                <span class="indicator ignition" [class.active]="vehicle.ignitionOn" title="{{ vehicle.ignitionOn ? 'Moteur allumé' : 'Moteur éteint' }}">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                     <rect x="6" y="6" width="4" height="12" rx="1"/><rect x="14" y="6" width="4" height="12" rx="1"/>
                   </svg>
                 </span>
-                <span class="indicator gps-tag" [class.active]="vehicle.hasGPS">gps</span>
                 <svg class="expand-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" [class.rotated]="selectedVehicle?.id === vehicle.id">
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
@@ -132,24 +132,18 @@
                 
                 <!-- Toolbar - Same as popup -->
                 <div class="info-panel-toolbar inline-toolbar">
-                  <span class="indicator-icon" [class.active]="vehicle.hasGPS" title="GPS">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06z"/>
-                    </svg>
-                  </span>
-                  <span class="indicator-icon ignition" [class.active]="vehicle.isOnline">
+                  <span class="indicator-icon ignition" [class.active]="vehicle.ignitionOn" title="{{ vehicle.ignitionOn ? 'Moteur allumé' : 'Moteur éteint' }}">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                       <rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>
                     </svg>
                   </span>
                   <span class="status-box" [ngClass]="getStatusColorClass(vehicle)"></span>
-                  <span class="status-box secondary"></span>
-                  <span class="indicator-icon signal" [class.active]="vehicle.isOnline">
+                  <span class="indicator-icon signal" [class.active]="vehicle.isOnline" title="{{ vehicle.isOnline ? 'En ligne' : 'Hors ligne' }}">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                       <circle cx="12" cy="12" r="4"/>
                     </svg>
                   </span>
-                  <span class="gps-badge" [class.active]="vehicle.hasGPS">gps</span>
+                  <span class="status-badge" [ngClass]="getStatusColorClass(vehicle)">{{ getStatusTag(vehicle) }}</span>
                 </div>
                 
                 <!-- Timestamp and Location - Same as popup -->
@@ -193,9 +187,13 @@
                       <span class="sensor-value">{{ getVehicleStats(vehicle)?.batteryLevel != null ? (getVehicleStats(vehicle)?.batteryLevel + '%') : 'N/A' }}</span>
                     </div>
                     <div class="sensor-item">
+                      <span class="sensor-label">�️ Kilométrage</span>
+                      <span class="sensor-value">{{ vehicle.odometerKm ? (vehicle.odometerKm | number:'1.0-0') + ' km' : (vehicle.mileage ? (vehicle.mileage | number:'1.0-0') + ' km' : 'N/A') }}</span>
+                    </div>
+                    <div class="sensor-item">
                       <span class="sensor-label">📍 Statut</span>
-                      <span class="sensor-value" [class.moving]="getVehicleStats(vehicle)?.isMoving" [class.stopped]="getVehicleStats(vehicle)?.isStopped">
-                        {{ getVehicleStats(vehicle)?.isMoving ? 'En circulation' : 'À l\'arrêt' }}
+                      <span class="sensor-value status-value" [ngClass]="getStatusColorClass(vehicle)">
+                        {{ getStatusTag(vehicle) }}
                       </span>
                     </div>
                     <div class="sensor-item">

@@ -47,6 +47,14 @@ export interface Vehicle {
   currentSpeed?: number;
   currentLocation?: { lat: number; lng: number };
   isOnline?: boolean;
+  ignitionOn?: boolean;
+  odometerKm?: number;
+  lastAddress?: string;
+  stats?: {
+    fuelLevel?: number;
+    batteryLevel?: number;
+    temperature?: number;
+  };
   
   // GPS Device info (embedded when hasGPS is true)
   gpsDeviceId?: string;
