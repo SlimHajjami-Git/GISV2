@@ -3,6 +3,7 @@ pub mod fuel_tracker;
 pub mod geocoding;
 pub mod geofence_detector;
 pub mod gps_stabilizer;
+pub mod gps_validator;
 pub mod trip_detector;
 pub mod driving_events;
 pub mod daily_statistics;

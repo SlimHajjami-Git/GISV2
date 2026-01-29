@@ -79,6 +79,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   progressivePolylines: L.Polyline[] = []; // Colored segments for progressive drawing
   traceDrawnUpToIndex = 0; // Track how much of the trace has been drawn
   
+  // Ignition-off anchor position: when ignition is off, all positions use this anchor
+  private ignitionOffAnchor: { latitude: number; longitude: number } | null = null;
+  
+  // Stopped anchor position: when ignition is on but speed < 5, all positions use this anchor
+  private stoppedAnchor: { latitude: number; longitude: number } | null = null;
+  
   // Live marker visibility during playback
   hiddenLiveMarkers: Map<string, L.Marker> = new Map(); // Store ALL hidden live markers during playback
 
@@ -996,22 +1002,51 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   async drawRoutedPath(coords: L.LatLng[]) {
     if (!this.map || coords.length < 2) return;
 
+    // Filter out points that are too close together (< 15m) to avoid erratic OSRM routing
+    // This is especially important for stationary vehicles with GPS jitter
+    const filteredCoords: L.LatLng[] = [coords[0]];
+    for (let i = 1; i < coords.length; i++) {
+      const lastKept = filteredCoords[filteredCoords.length - 1];
+      const distance = this.calculateDistance(lastKept.lat, lastKept.lng, coords[i].lat, coords[i].lng);
+      if (distance >= 15) {
+        filteredCoords.push(coords[i]);
+      }
+    }
+    // Always include the last point if it was filtered out
+    if (filteredCoords.length > 0 && filteredCoords[filteredCoords.length - 1] !== coords[coords.length - 1]) {
+      const lastKept = filteredCoords[filteredCoords.length - 1];
+      const lastOriginal = coords[coords.length - 1];
+      const distance = this.calculateDistance(lastKept.lat, lastKept.lng, lastOriginal.lat, lastOriginal.lng);
+      if (distance >= 5) { // Lower threshold for final point
+        filteredCoords.push(lastOriginal);
+      }
+    }
+
+    console.log(`Filtered ${coords.length} points to ${filteredCoords.length} for OSRM routing`);
+
+    // If too few points after filtering, just draw straight line
+    if (filteredCoords.length < 2) {
+      this.drawStraightPath(coords);
+      return;
+    }
+
     // Use local OSRM server (self-hosted) for road snapping
     // Format: lon,lat;lon,lat;...
-    const coordsStr = coords.map(c => `${c.lng},${c.lat}`).join(';');
+    const coordsStr = filteredCoords.map(c => `${c.lng},${c.lat}`).join(';');
     
     // Calculate bearings for each point to constrain OSRM to correct road direction
-    const bearings = coords.map((c, i) => {
-      if (i < coords.length - 1) {
-        const bearing = Math.round(this.calculateBearing(c.lat, c.lng, coords[i + 1].lat, coords[i + 1].lng));
+    const bearings = filteredCoords.map((c, i) => {
+      if (i < filteredCoords.length - 1) {
+        const bearing = Math.round(this.calculateBearing(c.lat, c.lng, filteredCoords[i + 1].lat, filteredCoords[i + 1].lng));
         return `${bearing},45`;
       } else {
         // Last point: use bearing from previous point
-        const bearing = Math.round(this.calculateBearing(coords[i - 1].lat, coords[i - 1].lng, c.lat, c.lng));
+        const bearing = Math.round(this.calculateBearing(filteredCoords[i - 1].lat, filteredCoords[i - 1].lng, c.lat, c.lng));
         return `${bearing},45`;
       }
     }).join(';');
     
+    // BIDIRECTIONAL: Let OSRM find shortest path without direction constraints
     const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson&bearings=${bearings}`;
 
     try {
@@ -1406,7 +1441,100 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
     const fromPos = this.playbackPositions[this.playbackIndex];
     const toPos = this.playbackPositions[this.playbackIndex + 1];
+    const currentSpeed = fromPos.speedKph || fromPos.speed || 0;
+    const ignitionOn = fromPos.ignitionOn !== false; // Default to true if undefined
     
+    // ===== IGNITION-OFF HANDLING =====
+    // When ignition is off, ANCHOR to first ignition_off position
+    // All subsequent positions are overwritten with the anchor position
+    if (!ignitionOn) {
+      // Set anchor to first ignition_off position (if not already set)
+      if (!this.ignitionOffAnchor) {
+        this.ignitionOffAnchor = {
+          latitude: fromPos.latitude,
+          longitude: fromPos.longitude
+        };
+        console.log('Ignition OFF - anchoring position at:', this.ignitionOffAnchor);
+      }
+      
+      // Override current position with anchor
+      fromPos.latitude = this.ignitionOffAnchor.latitude;
+      fromPos.longitude = this.ignitionOffAnchor.longitude;
+      
+      // Update marker at anchor position
+      this.updatePlaybackMarker();
+      
+      // Check if next position has ignition on
+      const nextIgnitionOn = toPos.ignitionOn !== false;
+      
+      if (!nextIgnitionOn) {
+        // Still off - continue looping at anchor position
+        this.ngZone.run(() => {
+          this.playbackIndex++;
+          this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+          this.cdr.detectChanges();
+          // Fast forward through stationary period
+          setTimeout(() => this.animateToNextPoint(), 100 / this.playbackSpeed);
+        });
+        return;
+      }
+      
+      // Ignition just turned on - clear anchor and continue
+      console.log('Ignition ON - releasing anchor');
+      this.ignitionOffAnchor = null;
+    } else {
+      // Ignition is ON - clear any existing anchor
+      if (this.ignitionOffAnchor) {
+        this.ignitionOffAnchor = null;
+      }
+    }
+    
+    // ===== STOPPED VEHICLE HANDLING (ignition ON, speed < 5) =====
+    // When ignition is on but speed < 5, ANCHOR to first stopped position
+    // All subsequent positions are overwritten with the anchor position until speed > 5
+    if (currentSpeed < 5 && ignitionOn) {
+      // Set anchor to first stopped position (if not already set)
+      if (!this.stoppedAnchor) {
+        this.stoppedAnchor = {
+          latitude: fromPos.latitude,
+          longitude: fromPos.longitude
+        };
+        console.log('Vehicle STOPPED (speed < 5) - anchoring position at:', this.stoppedAnchor);
+      }
+      
+      // Override current position with anchor
+      fromPos.latitude = this.stoppedAnchor.latitude;
+      fromPos.longitude = this.stoppedAnchor.longitude;
+      
+      // Update marker at anchor position
+      this.updatePlaybackMarker();
+      
+      // Check if next position has speed > 5
+      const nextSpeed = toPos.speedKph || toPos.speed || 0;
+      
+      if (nextSpeed <= 5) {
+        // Still stopped - continue looping at anchor position
+        this.ngZone.run(() => {
+          this.playbackIndex++;
+          this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+          this.cdr.detectChanges();
+          // Fast forward through stationary period
+          setTimeout(() => this.animateToNextPoint(), 100 / this.playbackSpeed);
+        });
+        return;
+      }
+      
+      // Vehicle just started moving (speed > 5) - clear anchor and continue
+      console.log('Vehicle MOVING (speed > 5) - releasing anchor');
+      this.stoppedAnchor = null;
+    } else {
+      // Vehicle is moving (speed >= 5) - clear any existing anchor
+      if (this.stoppedAnchor) {
+        this.stoppedAnchor = null;
+      }
+    }
+    
+    // ===== NORMAL MOVING VEHICLE =====
     // Fetch OSRM route for smooth road-following animation
     this.currentRouteCoords = await this.fetchOSRMRoute(fromPos, toPos);
     this.routeAnimationIndex = 0;
@@ -1453,6 +1581,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       const coordsStr = `${fromPos.longitude},${fromPos.latitude};${toPos.longitude},${toPos.latitude}`;
       // Only add bearings parameter if we have a valid bearing
       const bearingsParam = bearing !== null ? `&bearings=${bearing},45;${bearing},45` : '';
+      // BIDIRECTIONAL: Let OSRM find shortest path without direction constraints
       const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson${bearingsParam}`;
       
       const response = await fetch(url);
@@ -1782,6 +1911,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const coordsStr = `${fromPos.longitude},${fromPos.latitude};${toPos.longitude},${toPos.latitude}`;
     // Only add bearings parameter if we have a valid bearing
     const bearingsParam = bearing !== null ? `&bearings=${bearing},45;${bearing},45` : '';
+    // BIDIRECTIONAL: Let OSRM find shortest path without direction constraints
     const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson${bearingsParam}`;
 
     try {
@@ -1892,6 +2022,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.isPlaying = false;
     this.playbackIndex = 0;
     this.playbackProgress = 0;
+    
+    // Reset anchors
+    this.ignitionOffAnchor = null;
+    this.stoppedAnchor = null;
     
     // Clear all progressive polylines and point markers
     this.progressivePolylines.forEach(polyline => polyline.remove());
@@ -2019,6 +2153,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.isAnimatingSegment = false;
     this.currentRouteCoords = [];
     this.routeAnimationIndex = 0;
+    
+    // Reset anchors
+    this.ignitionOffAnchor = null;
+    this.stoppedAnchor = null;
 
     // Restore the live marker that was hidden during playback
     this.restoreLiveMarker();

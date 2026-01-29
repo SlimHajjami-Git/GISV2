@@ -19,6 +19,7 @@ use crate::{
         geofence_detector::GeofenceDetector,
         geocoding::GeocodingService,
         gps_stabilizer::GpsStabilizer,
+        gps_validator::GpsValidator,
         stop_detector::StopDetector,
         trip_detector::TripDetector,
     },
@@ -27,13 +28,14 @@ use crate::{
 
 type ConnectionMap = Arc<Mutex<HashMap<String, String>>>;
 
-/// Shared services for stop detection, fuel tracking, geocoding, geofencing, GPS stabilization, trip detection, and driving events
+/// Shared services for stop detection, fuel tracking, geocoding, geofencing, GPS stabilization, validation, trip detection, and driving events
 pub struct TelemetryServices {
     pub stop_detector: StopDetector,
     pub fuel_tracker: FuelTracker,
     pub geocoding: GeocodingService,
     pub geofence_detector: GeofenceDetector,
     pub gps_stabilizer: GpsStabilizer,
+    pub gps_validator: GpsValidator,
     pub trip_detector: TripDetector,
     pub driving_events_detector: DrivingEventsDetector,
 }
@@ -68,10 +70,11 @@ pub async fn run_listeners(
         geocoding: GeocodingService::new(nominatim_url),
         geofence_detector,
         gps_stabilizer: GpsStabilizer::new(),
+        gps_validator: GpsValidator::new(),
         trip_detector: TripDetector::new(),
         driving_events_detector: DrivingEventsDetector::new(),
     });
-    info!("Telemetry services initialized (StopDetector, FuelTracker, Geocoding, GeofenceDetector, GpsStabilizer, TripDetector, DrivingEventsDetector)");
+    info!("Telemetry services initialized (StopDetector, FuelTracker, Geocoding, GeofenceDetector, GpsStabilizer, GpsValidator, TripDetector, DrivingEventsDetector)");
 
     let mut handles = Vec::new();
     for listener in &config.listeners {
@@ -356,6 +359,24 @@ async fn process_single_frame(
                         );
                         frame.latitude = stabilized.latitude;
                         frame.longitude = stabilized.longitude;
+                    }
+                }
+
+                // GPS Validation: Check for aberrant points (jumps, speed incoherence)
+                if let Some(device_id) = device_id_opt {
+                    let validation = services.gps_validator.validate(device_id, &frame).await;
+                    if !validation.should_store() {
+                        if let crate::services::gps_validator::ValidationResult::Invalid { reason } = &validation {
+                            warn!(
+                                device_id,
+                                imei = %resolved_uid,
+                                lat = frame.latitude,
+                                lon = frame.longitude,
+                                reason = %reason,
+                                "Frame REJECTED by GPS validator"
+                            );
+                        }
+                        return Ok(());
                     }
                 }
 
