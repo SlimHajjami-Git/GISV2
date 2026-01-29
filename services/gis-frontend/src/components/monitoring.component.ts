@@ -1034,20 +1034,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // Format: lon,lat;lon,lat;...
     const coordsStr = filteredCoords.map(c => `${c.lng},${c.lat}`).join(';');
     
-    // Calculate bearings for each point to constrain OSRM to correct road direction
-    const bearings = filteredCoords.map((c, i) => {
-      if (i < filteredCoords.length - 1) {
-        const bearing = Math.round(this.calculateBearing(c.lat, c.lng, filteredCoords[i + 1].lat, filteredCoords[i + 1].lng));
-        return `${bearing},45`;
-      } else {
-        // Last point: use bearing from previous point
-        const bearing = Math.round(this.calculateBearing(filteredCoords[i - 1].lat, filteredCoords[i - 1].lng, c.lat, c.lng));
-        return `${bearing},45`;
-      }
-    }).join(';');
-    
-    // BIDIRECTIONAL: Let OSRM find shortest path without direction constraints
-    const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson&bearings=${bearings}`;
+    // OSRM without bearings - let it find the best route
+    const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
 
     try {
       const response = await fetch(url);
@@ -1575,14 +1563,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     
     try {
-      // Get bearing - returns null if vehicle stationary or distance too short
-      const bearing = this.getBearing(fromPos, toPos);
-      
       const coordsStr = `${fromPos.longitude},${fromPos.latitude};${toPos.longitude},${toPos.latitude}`;
-      // Only add bearings parameter if we have a valid bearing
-      const bearingsParam = bearing !== null ? `&bearings=${bearing},45;${bearing},45` : '';
-      // BIDIRECTIONAL: Let OSRM find shortest path without direction constraints
-      const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson${bearingsParam}`;
+      // OSRM without bearings - let it find the best route
+      const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
       
       const response = await fetch(url);
       if (!response.ok) throw new Error(`OSRM error: ${response.status}`);
@@ -1904,15 +1887,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
     
-    // Get bearing - returns null if vehicle stationary or distance too short
-    const bearing = this.getBearing(fromPos, toPos);
-    
     // OSRM API expects lon,lat format
     const coordsStr = `${fromPos.longitude},${fromPos.latitude};${toPos.longitude},${toPos.latitude}`;
-    // Only add bearings parameter if we have a valid bearing
-    const bearingsParam = bearing !== null ? `&bearings=${bearing},45;${bearing},45` : '';
-    // BIDIRECTIONAL: Let OSRM find shortest path without direction constraints
-    const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson${bearingsParam}`;
+    // OSRM without bearings - let it find the best route
+    const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
 
     try {
       const response = await fetch(url);
