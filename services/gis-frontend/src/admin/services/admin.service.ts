@@ -89,8 +89,12 @@ export interface AdminVehicle {
   gpsDeviceId?: number;
   gpsImei?: string;
   gpsMat?: string;
+  gpsBrand?: string;
   gpsModel?: string;
   gpsFirmwareVersion?: string;
+  gpsFuelSensorMode?: string;
+  assignedDriverId?: number;
+  assignedDriverName?: string;
   createdAt: Date;
   updatedAt: Date;
 }

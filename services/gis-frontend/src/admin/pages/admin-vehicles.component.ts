@@ -902,8 +902,9 @@ export class AdminVehiclesComponent implements OnInit {
       gpsDeviceId: this.selectedVehicle.gpsDeviceId,
       gpsImei: this.selectedVehicle.gpsImei,
       gpsMat: this.selectedVehicle.gpsMat,
-      gpsBrand: this.selectedVehicle.gpsModel,
-      gpsModel: this.selectedVehicle.gpsFirmwareVersion
+      gpsBrand: this.selectedVehicle.gpsBrand,
+      gpsModel: this.selectedVehicle.gpsModel,
+      gpsFuelSensorMode: this.selectedVehicle.gpsFuelSensorMode
     };
   }
 

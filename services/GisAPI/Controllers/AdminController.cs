@@ -526,11 +526,16 @@ public class AdminController : ControllerBase
             Status = vehicle.Status,
             HasGps = vehicle.HasGps,
             Mileage = vehicle.Mileage,
+            FuelType = vehicle.FuelType,
             CompanyId = vehicle.CompanyId,
             CompanyName = vehicle.Societe?.Name,
             GpsDeviceId = vehicle.GpsDeviceId,
             GpsImei = vehicle.GpsDevice?.DeviceUid,
             GpsMat = vehicle.GpsDevice?.Mat,
+            GpsBrand = vehicle.GpsDevice?.Brand,
+            GpsModel = vehicle.GpsDevice?.Model,
+            GpsFirmwareVersion = vehicle.GpsDevice?.FirmwareVersion,
+            GpsFuelSensorMode = vehicle.GpsDevice?.FuelSensorMode,
             AssignedDriverId = vehicle.AssignedDriverId,
             AssignedDriverName = vehicle.AssignedDriver?.Name,
             CreatedAt = vehicle.CreatedAt,
@@ -611,11 +616,16 @@ public class AdminController : ControllerBase
             Status = vehicle.Status,
             HasGps = vehicle.HasGps,
             Mileage = vehicle.Mileage,
+            FuelType = vehicle.FuelType,
             CompanyId = vehicle.CompanyId,
             CompanyName = company.Name,
             GpsDeviceId = vehicle.GpsDeviceId,
             GpsImei = vehicle.GpsDevice?.DeviceUid,
             GpsMat = vehicle.GpsDevice?.Mat,
+            GpsBrand = vehicle.GpsDevice?.Brand,
+            GpsModel = vehicle.GpsDevice?.Model,
+            GpsFirmwareVersion = vehicle.GpsDevice?.FirmwareVersion,
+            GpsFuelSensorMode = vehicle.GpsDevice?.FuelSensorMode,
             CreatedAt = vehicle.CreatedAt,
             UpdatedAt = vehicle.UpdatedAt
         });
@@ -707,11 +717,16 @@ public class AdminController : ControllerBase
             Status = vehicle.Status,
             HasGps = vehicle.HasGps,
             Mileage = vehicle.Mileage,
+            FuelType = vehicle.FuelType,
             CompanyId = vehicle.CompanyId,
             CompanyName = vehicle.Societe?.Name,
             GpsDeviceId = vehicle.GpsDeviceId,
             GpsImei = vehicle.GpsDevice?.DeviceUid,
             GpsMat = vehicle.GpsDevice?.Mat,
+            GpsBrand = vehicle.GpsDevice?.Brand,
+            GpsModel = vehicle.GpsDevice?.Model,
+            GpsFirmwareVersion = vehicle.GpsDevice?.FirmwareVersion,
+            GpsFuelSensorMode = vehicle.GpsDevice?.FuelSensorMode,
             AssignedDriverId = vehicle.AssignedDriverId,
             AssignedDriverName = vehicle.AssignedDriver?.Name,
             CreatedAt = vehicle.CreatedAt,
@@ -763,11 +778,16 @@ public class AdminController : ControllerBase
             Status = v.Status,
             HasGps = v.HasGps,
             Mileage = v.Mileage,
+            FuelType = v.FuelType,
             CompanyId = v.CompanyId,
             CompanyName = v.Societe?.Name,
             GpsDeviceId = v.GpsDeviceId,
             GpsImei = v.GpsDevice?.DeviceUid,
             GpsMat = v.GpsDevice?.Mat,
+            GpsBrand = v.GpsDevice?.Brand,
+            GpsModel = v.GpsDevice?.Model,
+            GpsFirmwareVersion = v.GpsDevice?.FirmwareVersion,
+            GpsFuelSensorMode = v.GpsDevice?.FuelSensorMode,
             AssignedDriverId = v.AssignedDriverId,
             AssignedDriverName = v.AssignedDriver?.Name,
             CreatedAt = v.CreatedAt,
@@ -1315,8 +1335,10 @@ public class AdminVehicleDto
     public int? GpsDeviceId { get; set; }
     public string? GpsImei { get; set; }
     public string? GpsMat { get; set; }
+    public string? GpsBrand { get; set; }
     public string? GpsModel { get; set; }
     public string? GpsFirmwareVersion { get; set; }
+    public string? GpsFuelSensorMode { get; set; }
     public int? AssignedDriverId { get; set; }
     public string? AssignedDriverName { get; set; }
     public DateTime CreatedAt { get; set; }

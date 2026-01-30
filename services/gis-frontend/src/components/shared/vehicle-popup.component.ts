@@ -700,18 +700,41 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
 
   ngOnChanges(changes: SimpleChanges) {
     if (changes['isOpen'] && changes['isOpen'].currentValue) {
-      this.loadBrands();
       this.loadAvailableDevices();
       if (this.vehicle) {
         this.formData = { ...this.vehicle };
         this.gpsMode = this.vehicle.gpsDeviceId ? 'existing' : 'new';
-        if (this.formData.brandId) {
-          this.loadModels(this.formData.brandId);
-        }
+        // Load brands first, then resolve brandId from brand name if needed
+        this.loadBrandsAndResolve();
       } else {
+        this.loadBrands();
         this.resetForm();
       }
     }
+  }
+
+  private loadBrandsAndResolve() {
+    this.http.get<Brand[]>('/api/brands').subscribe({
+      next: (brands) => {
+        this.brands = brands;
+        // If we have a brand name but no brandId, find the matching brand
+        if (this.formData.brand && !this.formData.brandId) {
+          const matchingBrand = brands.find(b => 
+            b.name.toLowerCase() === this.formData.brand?.toLowerCase()
+          );
+          if (matchingBrand) {
+            this.formData.brandId = matchingBrand.id;
+            this.loadModels(matchingBrand.id);
+          }
+        } else if (this.formData.brandId) {
+          this.loadModels(this.formData.brandId);
+        }
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.brands = [];
+      }
+    });
   }
 
   loadBrands() {
@@ -726,12 +749,22 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     });
   }
 
-  loadModels(brandId: number) {
+  loadModels(brandId: number, resolveModelName?: string) {
     this.loadingModels = true;
     this.http.get<VehicleModel[]>(`/api/brands/${brandId}/models`).subscribe({
       next: (models) => {
         this.models = models;
         this.loadingModels = false;
+        // If we have a model name to resolve, find the matching model
+        const modelNameToFind = resolveModelName || this.formData.model;
+        if (modelNameToFind && !this.formData.modelId) {
+          const matchingModel = models.find(m => 
+            m.name.toLowerCase() === modelNameToFind.toLowerCase()
+          );
+          if (matchingModel) {
+            this.formData.modelId = matchingModel.id;
+          }
+        }
         this.cdr.detectChanges();
       },
       error: () => {
