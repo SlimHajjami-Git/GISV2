@@ -551,57 +551,8 @@ async fn process_single_frame(
                         }
                     }
 
-                    // Process fuel tracking with fuel sensor mode conversion
-                    if let Some(mut fuel_event) = services.fuel_tracker.process_frame(device_id, &frame).await {
-                        // Get fuel sensor configuration and convert raw value to percentage
-                        if let Ok((fuel_sensor_mode, tank_capacity)) = database.get_fuel_config(device_id).await {
-                            let raw_fuel = frame.fuel_raw as i16;
-                            let converted_fuel = match fuel_sensor_mode.as_str() {
-                                "percent" => raw_fuel, // Already in percentage (0-100)
-                                "liters" => {
-                                    // Convert liters to percentage using tank capacity
-                                    if let Some(tank) = tank_capacity {
-                                        if tank > 0 {
-                                            ((raw_fuel as f64 / tank as f64) * 100.0).round() as i16
-                                        } else {
-                                            raw_fuel
-                                        }
-                                    } else {
-                                        raw_fuel // No tank capacity, keep raw
-                                    }
-                                }
-                                "half_liter" => {
-                                    // Raw value = liters * 2 (1 unit = 0.5L)
-                                    // Convert to percentage using tank capacity
-                                    let liters = raw_fuel as f64 / 2.0;
-                                    if let Some(tank) = tank_capacity {
-                                        if tank > 0 {
-                                            ((liters / tank as f64) * 100.0).round() as i16
-                                        } else {
-                                            raw_fuel
-                                        }
-                                    } else {
-                                        raw_fuel // No tank capacity, keep raw
-                                    }
-                                }
-                                _ => {
-                                    // "raw_255" (default): Convert 0-255 to 0-100%
-                                    ((raw_fuel as f64 / 255.0) * 100.0).round() as i16
-                                }
-                            };
-                            
-                            // Update fuel_event with converted percentage
-                            fuel_event.fuel_percent = converted_fuel;
-                            
-                            info!(
-                                device_id,
-                                fuel_sensor_mode = %fuel_sensor_mode,
-                                raw_fuel,
-                                converted_fuel,
-                                "Fuel value converted"
-                            );
-                        }
-                        
+                    // Process fuel tracking - store raw value as received from frame
+                    if let Some(fuel_event) = services.fuel_tracker.process_frame(device_id, &frame).await {
                         if let Err(err) = database.insert_fuel_record(&fuel_event, vehicle_id, company_id).await {
                             warn!(?err, device_id, "Failed to insert fuel record");
                         } else {

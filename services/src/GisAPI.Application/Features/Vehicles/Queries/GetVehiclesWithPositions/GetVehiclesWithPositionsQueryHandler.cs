@@ -124,6 +124,23 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                 temperature = null;
             }
 
+            // Convert fuel raw value based on fuel_sensor_mode
+            var fuelRaw = position?.FuelRaw;
+            int? fuelLevel = null;
+            if (fuelRaw.HasValue)
+            {
+                var fuelMode = v.GpsDevice?.FuelSensorMode ?? "raw_255";
+                fuelLevel = fuelMode switch
+                {
+                    "percent" => fuelRaw.Value, // Already 0-100%
+                    "raw_255" => (int)Math.Round(fuelRaw.Value / 255.0 * 100.0), // 0-255 -> 0-100%
+                    _ => fuelRaw.Value // Default: keep as-is
+                };
+                // Clamp to 0-100
+                if (fuelLevel > 100) fuelLevel = 100;
+                if (fuelLevel < 0) fuelLevel = 0;
+            }
+
             // Estimate moving/stopped time based on position counts (approx 1 min per position)
             var movingMinutes = stats?.MovingCount ?? 0;
             var stoppedMinutes = stats?.StoppedCount ?? 0;
@@ -157,7 +174,7 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                 new VehicleStatsDto(
                     currentSpeed,
                     maxSpeed,
-                    position?.FuelRaw,
+                    fuelLevel,
                     temperature,
                     batteryLevel,
                     isMoving,
