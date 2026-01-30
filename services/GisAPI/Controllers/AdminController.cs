@@ -666,17 +666,33 @@ public class AdminController : ControllerBase
         else if (request.HasGps == true ||
                  request.GpsDeviceId.HasValue ||
                  !string.IsNullOrWhiteSpace(request.GpsImei) ||
-                 !string.IsNullOrWhiteSpace(request.GpsMat))
+                 !string.IsNullOrWhiteSpace(request.GpsMat) ||
+                 !string.IsNullOrWhiteSpace(request.GpsFuelSensorMode))
         {
-            var (gpsDevice, error) = await ResolveGpsDeviceAsync(
-                targetCompanyId,
-                request.GpsDeviceId,
-                request.GpsImei,
-                request.GpsMat
-            );
+            GpsDevice? gpsDevice = null;
+            
+            // If only updating FuelSensorMode on existing device, use the vehicle's current GPS
+            if (!request.GpsDeviceId.HasValue && 
+                string.IsNullOrWhiteSpace(request.GpsImei) && 
+                string.IsNullOrWhiteSpace(request.GpsMat) &&
+                vehicle.GpsDeviceId.HasValue)
+            {
+                gpsDevice = vehicle.GpsDevice;
+            }
+            else
+            {
+                var (resolvedDevice, error) = await ResolveGpsDeviceAsync(
+                    targetCompanyId,
+                    request.GpsDeviceId,
+                    request.GpsImei,
+                    request.GpsMat
+                );
 
-            if (error != null)
-                return BadRequest(new { message = error });
+                if (error != null)
+                    return BadRequest(new { message = error });
+                    
+                gpsDevice = resolvedDevice;
+            }
 
             if (gpsDevice != null)
             {
