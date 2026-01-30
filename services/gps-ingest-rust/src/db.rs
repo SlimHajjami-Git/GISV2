@@ -412,14 +412,13 @@ impl TelemetryStore for Database {
     }
 
     async fn get_fuel_config(&self, device_id: i32) -> Result<(String, Option<i32>)> {
-        // Get fuel_sensor_mode from gps_devices and tank_capacity from vehicles
+        // Get fuel_sensor_mode from gps_devices only (tank_capacity may not exist in production)
+        // Use a safe query that doesn't depend on optional columns
         let row = sqlx::query(
             r#"
             SELECT 
-                COALESCE(d.fuel_sensor_mode, 'raw_255') as fuel_sensor_mode,
-                v.tank_capacity
+                COALESCE(d.fuel_sensor_mode, 'raw_255') as fuel_sensor_mode
             FROM gps_devices d
-            LEFT JOIN vehicles v ON v.gps_device_id = d.id
             WHERE d.id = $1
             "#,
         )
@@ -429,8 +428,9 @@ impl TelemetryStore for Database {
 
         if let Some(row) = row {
             let fuel_sensor_mode: String = row.get("fuel_sensor_mode");
-            let tank_capacity: Option<i32> = row.try_get("tank_capacity").ok();
-            Ok((fuel_sensor_mode, tank_capacity))
+            // tank_capacity is optional and may not exist in DB - default to None
+            // For now, we rely on fuel_sensor_mode only
+            Ok((fuel_sensor_mode, None))
         } else {
             Ok(("raw_255".to_string(), None)) // Default mode
         }
