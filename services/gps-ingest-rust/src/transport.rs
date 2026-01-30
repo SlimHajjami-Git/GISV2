@@ -314,6 +314,13 @@ async fn process_single_frame(
                 // Get device_id for services processing
                 let device_id_opt = database.get_device_id(&resolved_uid).await?;
 
+                // Log mat received for easy tracking
+                if let Some(device_id) = device_id_opt {
+                    if let Ok(Some(mat)) = database.get_device_mat(device_id).await {
+                        info!(mat = %mat, "Trame reçue");
+                    }
+                }
+
                 // Ignition-off throttling: when vehicle is stopped (ignition off + slow speed),
                 // only store one position every 30 minutes to reduce database bloat
                 // This replaces the old "duplicate immobile sample" logic
@@ -737,6 +744,10 @@ mod tests {
 
         async fn get_device_id(&self, _imei: &str) -> anyhow::Result<Option<i32>> {
             Ok(Some(1)) // Mock device_id
+        }
+
+        async fn get_device_mat(&self, _device_id: i32) -> anyhow::Result<Option<String>> {
+            Ok(Some("NR08G0001".to_string())) // Mock mat
         }
 
         async fn insert_vehicle_stop(&self, _stop: &CompletedStop, _vehicle_id: Option<i32>, _company_id: i32) -> anyhow::Result<i64> {

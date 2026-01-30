@@ -282,6 +282,17 @@ impl TelemetryStore for Database {
         Ok(row.map(|r| r.get::<i32, _>("id")))
     }
 
+    async fn get_device_mat(&self, device_id: i32) -> Result<Option<String>> {
+        let row = sqlx::query(
+            r#"SELECT mat FROM gps_devices WHERE id = $1"#,
+        )
+        .bind(device_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.and_then(|r| r.get::<Option<String>, _>("mat")))
+    }
+
     async fn insert_vehicle_stop(
         &self,
         stop: &crate::services::stop_detector::CompletedStop,
