@@ -738,12 +738,13 @@ impl Database {
             None
         };
         
-        // FMS data detection: GPS without FMS sends 0 for fuel and odometer
-        // Only store if we have real data (at least one value > 0)
-        let has_fms_data = frame.fuel_raw > 0 || frame.odometer_km > 0;
-        let fuel_raw: Option<i32> = if has_fms_data { Some(i32::from(frame.fuel_raw)) } else { None };
-        let odometer_km: Option<i64> = if has_fms_data { Some(frame.odometer_km as i64) } else { None };
-        let rpm: Option<i16> = if has_fms_data { frame.rpm.map(|r| r as i16) } else { None };
+        // Store fuel and odometer independently - don't skip based on combined condition
+        // fuel_raw: store if > 0 (0 means no data or empty tank - we store raw value)
+        let fuel_raw: Option<i32> = if frame.fuel_raw > 0 { Some(i32::from(frame.fuel_raw)) } else { None };
+        // odometer: always store if > 0 (independent of fuel)
+        let odometer_km: Option<i64> = if frame.odometer_km > 0 { Some(frame.odometer_km as i64) } else { None };
+        // rpm: store if available and > 0
+        let rpm: Option<i16> = frame.rpm.filter(|&r| r > 0).map(|r| r as i16);
 
         let row = sqlx::query(
             r#"
