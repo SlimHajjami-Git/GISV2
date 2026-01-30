@@ -15,3 +15,5 @@ public interface ITenantRepository<T> : IRepository<T> where T : TenantEntity
 {
     Task<IReadOnlyList<T>> GetAllForTenantAsync(CancellationToken ct = default);
 }
+
+

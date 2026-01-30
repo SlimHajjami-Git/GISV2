@@ -39,3 +39,6 @@ public class RefreshToken
     public bool IsRevoked => RevokedAt != null;
     public bool IsActive => !IsRevoked && !IsExpired;
 }
+
+
+

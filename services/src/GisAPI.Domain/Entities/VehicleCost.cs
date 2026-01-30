@@ -26,3 +26,5 @@ public class VehicleCost : TenantEntity
 
     public Societe? Societe { get; set; }
 }
+
+

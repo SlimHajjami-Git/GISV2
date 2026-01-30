@@ -32,3 +32,6 @@ public class LoggingBehaviour<TRequest, TResponse> : IPipelineBehavior<TRequest,
         return response;
     }
 }
+
+
+

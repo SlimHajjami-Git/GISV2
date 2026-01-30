@@ -23,16 +23,15 @@ public class GetRoleByIdQueryHandler : IRequestHandler<GetRoleByIdQuery, RoleDto
         var companyId = _tenantService.CompanyId;
 
         var role = await _context.Roles
-            .Where(r => r.Id == request.Id && (r.SocieteId == companyId || r.IsSystem))
+            .Where(r => r.Id == request.Id && r.SocieteId == companyId)
             .Select(r => new RoleDto(
                 r.Id,
                 r.Name,
                 r.Description,
-                r.RoleType,
-                r.Permissions,
                 r.SocieteId,
-                r.IsSystem,
-                r.IsDefault,
+                r.IsCompanyAdmin,
+                r.IsSystemRole,
+                r.Permissions,
                 r.Users.Count,
                 r.CreatedAt,
                 r.UpdatedAt
@@ -43,3 +42,6 @@ public class GetRoleByIdQueryHandler : IRequestHandler<GetRoleByIdQuery, RoleDto
         return role;
     }
 }
+
+
+

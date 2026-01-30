@@ -25,3 +25,6 @@ public interface IGpsHubService
     /// </summary>
     Task SendGeofenceEventAsync(int geofenceId, object geofenceEvent);
 }
+
+
+

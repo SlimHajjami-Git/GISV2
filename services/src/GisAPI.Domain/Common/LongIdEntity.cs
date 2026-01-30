@@ -57,3 +57,5 @@ public abstract class LongIdTenantEntity : LongIdAuditableEntity, ITenantEntity
 {
     public int CompanyId { get; set; }
 }
+
+

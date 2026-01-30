@@ -64,3 +64,6 @@ public class GetSubscriptionTypesQueryHandler : IRequestHandler<GetSubscriptionT
         }).ToList();
     }
 }
+
+
+

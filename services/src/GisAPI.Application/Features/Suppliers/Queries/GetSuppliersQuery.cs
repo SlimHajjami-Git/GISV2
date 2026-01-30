@@ -41,3 +41,6 @@ public record SupplierStatsDto(
     decimal AverageRating,
     Dictionary<string, int> ByType
 );
+
+
+

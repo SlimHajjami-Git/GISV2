@@ -41,3 +41,6 @@ public class GetMaintenanceTemplatesQueryHandler : IRequestHandler<GetMaintenanc
         return new PaginatedList<MaintenanceTemplateDto>(items, totalCount, request.Page, request.PageSize);
     }
 }
+
+
+

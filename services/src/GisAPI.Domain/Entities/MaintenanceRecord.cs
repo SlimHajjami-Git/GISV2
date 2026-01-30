@@ -41,3 +41,5 @@ public class MaintenancePart : Entity
     public decimal UnitCost { get; set; }
     public decimal TotalCost { get; set; }
 }
+
+

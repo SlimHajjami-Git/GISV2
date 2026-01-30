@@ -150,3 +150,5 @@ public class SupplierCommandsTests
         services.Select(s => s.ServiceCode).Should().Contain("electricite");
     }
 }
+
+

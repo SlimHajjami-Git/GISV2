@@ -20,3 +20,6 @@ public class CreateVehicleCommandValidator : AbstractValidator<CreateVehicleComm
             .GreaterThanOrEqualTo(0).WithMessage("Mileage cannot be negative");
     }
 }
+
+
+

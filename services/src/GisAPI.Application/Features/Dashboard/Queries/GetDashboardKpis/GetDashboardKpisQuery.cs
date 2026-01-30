@@ -91,3 +91,6 @@ public class TrendDto
     public string Direction { get; set; } = "stable"; // up, down, stable
     public bool IsPositive { get; set; }
 }
+
+
+

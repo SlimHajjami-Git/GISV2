@@ -4,36 +4,48 @@ namespace GisAPI.Domain.Entities;
 
 public class User : TenantEntity
 {
-    public string Name { get; set; } = string.Empty;
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
-    public string? Phone { get; set; }
     public string PasswordHash { get; set; } = string.Empty;
-    public string[] Roles { get; set; } = []; // Legacy - kept for backward compatibility
-    public string[] Permissions { get; set; } = [];
-    public int[] AssignedVehicleIds { get; set; } = [];
+    public string? Phone { get; set; }
+    public string? PermitNumber { get; set; }
+    public int RoleId { get; set; }
     public string Status { get; set; } = "active";
     public DateTime? LastLoginAt { get; set; }
-    
-    // User type and role (Calypso)
-    public string UserType { get; set; } = "user"; // admin, company_admin, employee
-    public int? RoleId { get; set; }
-    public Role? Role { get; set; }
-    public bool IsCompanyAdmin { get; set; } = false;
-    
-    // Personal information
-    public DateTime? DateOfBirth { get; set; }
-    public string? CIN { get; set; } // National ID number
-    
-    // Employee fields (merged from employees table)
-    public DateTime? HireDate { get; set; }
-    public string? LicenseNumber { get; set; }
-    public DateTime? LicenseExpiry { get; set; }
 
     // Navigation
-    public Societe? Societe { get; set; }
+    public Role Role { get; set; } = null!;
+    public Societe Societe { get; set; } = null!;
+    public ICollection<UserVehicle> UserVehicles { get; set; } = new List<UserVehicle>();
+
+    // Computed properties (not stored in DB)
+    public string FullName => $"{FirstName} {LastName}".Trim();
+    public bool IsCompanyAdmin => Role?.IsCompanyAdmin ?? false;
+    public bool IsSystemAdmin => Role?.IsSystemAdmin ?? false;
+    public bool IsAnyAdmin => IsSystemAdmin || IsCompanyAdmin;
     
-    public int? UserSettingsId { get; set; }
-    public UserSettings? Settings { get; set; }
+    // Legacy compatibility - getters return from Role, setters are no-op (for object initializers)
+    private string[] _rolesCache = Array.Empty<string>();
+    public string[] Roles { get => Role != null ? new[] { Role.Name } : _rolesCache; set => _rolesCache = value ?? Array.Empty<string>(); }
+    
+    private string[] _permissionsCache = Array.Empty<string>();
+    public string[] Permissions { get => Role?.Permissions?.Where(p => p.Value is bool b && b).Select(p => p.Key).ToArray() ?? _permissionsCache; set => _permissionsCache = value ?? Array.Empty<string>(); }
+    
+    private int[] _assignedVehicleIdsCache = Array.Empty<int>();
+    public int[] AssignedVehicleIds { get => UserVehicles?.Any() == true ? UserVehicles.Select(uv => uv.VehicleId).ToArray() : _assignedVehicleIdsCache; set => _assignedVehicleIdsCache = value ?? Array.Empty<int>(); }
+    
+    private string? _userTypeCache;
+    public string UserType { get => _userTypeCache ?? (Role?.IsCompanyAdmin == true ? "company_admin" : "employee"); set => _userTypeCache = value; }
+    
+    // Legacy setter for Name (splits into FirstName/LastName)
+    public string Name { get => FullName; set { var parts = (value ?? "").Split(' ', 2); FirstName = parts.Length > 0 ? parts[0] : ""; LastName = parts.Length > 1 ? parts[1] : ""; } }
+    
+    // Legacy nullable properties (not stored in DB, for backwards compatibility)
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? CIN { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public DateTime? DateOfBirth { get; set; }
 }
 
 public class UserSettings : Entity
@@ -74,3 +86,5 @@ public class DisplaySettings
     public int RefreshInterval { get; set; } = 30;
     public bool Animations { get; set; } = true;
 }
+
+

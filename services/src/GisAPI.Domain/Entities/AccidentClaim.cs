@@ -68,3 +68,5 @@ public class AccidentClaimDocument : Entity
     
     public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
 }
+
+

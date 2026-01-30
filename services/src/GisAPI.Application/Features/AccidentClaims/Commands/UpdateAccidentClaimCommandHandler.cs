@@ -50,3 +50,6 @@ public class UpdateAccidentClaimCommandHandler : IRequestHandler<UpdateAccidentC
         return true;
     }
 }
+
+
+

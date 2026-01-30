@@ -120,3 +120,6 @@ public class CompanySettings
     public string SpeedUnit { get; set; } = "kmh";
     public string VolumeUnit { get; set; } = "L";
 }
+
+
+

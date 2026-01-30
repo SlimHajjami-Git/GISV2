@@ -52,14 +52,14 @@ public class GetVehicleDetailsQueryHandler : IRequestHandler<GetVehicleDetailsQu
             
             // Driver info
             vehicle.AssignedDriverId,
-            vehicle.AssignedDriver?.Name,
+            vehicle.AssignedDriver?.FullName,
             vehicle.AssignedDriver?.Email,
             vehicle.DriverName,
             vehicle.DriverPhone,
             
             // Supervisor info
             vehicle.AssignedSupervisorId,
-            vehicle.AssignedSupervisor?.Name,
+            vehicle.AssignedSupervisor?.FullName,
             
             // GPS Device
             vehicle.GpsDevice != null ? new VehicleGpsDeviceDto(
@@ -126,3 +126,7 @@ public class GetVehicleDetailsQueryHandler : IRequestHandler<GetVehicleDetailsQu
         return "valid";
     }
 }
+
+
+
+

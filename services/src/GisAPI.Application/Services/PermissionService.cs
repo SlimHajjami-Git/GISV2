@@ -350,3 +350,6 @@ public class PermissionCategory
     public string? RequiresFeature { get; set; }
     public string[] SubPermissions { get; set; } = Array.Empty<string>();
 }
+
+
+

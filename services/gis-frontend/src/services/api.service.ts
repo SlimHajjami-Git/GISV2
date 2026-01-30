@@ -32,6 +32,12 @@ export interface UserDto {
   permissions: string[];
   companyId: number;
   companyName: string;
+  userType: string;
+  isCompanyAdmin: boolean;
+  roleId?: number;
+  roleName?: string;
+  modulePermissions?: Record<string, boolean>;
+  reportPermissions?: Record<string, boolean>;
 }
 
 export interface PositionDto {
@@ -144,7 +150,22 @@ export class ApiService {
         roles: ['admin'],
         permissions: ['all'],
         companyId: 1,
-        companyName: 'Demo Company'
+        companyName: 'Demo Company',
+        userType: 'company_admin',
+        isCompanyAdmin: true,
+        roleId: 1,
+        roleName: 'Administrateur',
+        modulePermissions: {
+          dashboard: true, monitoring: true, vehicles: true, employees: true,
+          geofences: true, maintenance: true, costs: true, reports: true,
+          settings: true, users: true, suppliers: true, documents: true,
+          accidents: true, fleet_management: true
+        },
+        reportPermissions: {
+          trips: true, fuel: true, speed: true, stops: true, mileage: true,
+          costs: true, maintenance: true, daily: true, monthly: true,
+          mileage_period: true, speed_infraction: true, driving_behavior: true
+        }
       };
       const mockResponse: AuthResponse = {
         token: 'mock-jwt-token-for-testing',

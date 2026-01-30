@@ -124,3 +124,5 @@ public class GpsAlertConfiguration : IEntityTypeConfiguration<GpsAlert>
             .HasForeignKey(e => e.DeviceId);
     }
 }
+
+

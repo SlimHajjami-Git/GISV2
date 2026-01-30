@@ -38,12 +38,12 @@ public static class TestDataBuilder
         return new User
         {
             Id = id,
-            Name = "Test User",
+            FirstName = "Test",
+            LastName = "User",
             Email = email,
             CompanyId = companyId,
             PasswordHash = "$2a$11$K5pP5P5P5P5P5P5P5P5P5OqzqzqzqzqzqzqzqzqzqzqzqzqzqzqzqzqA", // BCrypt hash
-            Roles = new[] { "admin" },
-            Permissions = new[] { "dashboard", "vehicles" },
+            RoleId = 1,
             Status = "active"
         };
     }
@@ -68,18 +68,18 @@ public static class TestDataBuilder
 
     public static User CreateDriver(int id = 1, int companyId = 1, string name = "Test Driver")
     {
+        var parts = name.Split(' ', 2);
         return new User
         {
             Id = id,
-            Name = name,
+            FirstName = parts.Length > 0 ? parts[0] : "Test",
+            LastName = parts.Length > 1 ? parts[1] : "Driver",
             Email = "driver@test.com",
             Phone = "+212600000001",
-            Roles = new[] { "driver" },
-            UserType = "employee",
+            RoleId = 2,
             Status = "active",
             CompanyId = companyId,
-            LicenseNumber = "ABC123",
-            LicenseExpiry = DateTime.UtcNow.AddYears(2)
+            PermitNumber = "ABC123"
         };
     }
 
@@ -121,3 +121,5 @@ public static class TestDataBuilder
         };
     }
 }
+
+

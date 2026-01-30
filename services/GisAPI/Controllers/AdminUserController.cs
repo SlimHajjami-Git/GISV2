@@ -8,7 +8,7 @@ namespace GisAPI.Controllers;
 
 [ApiController]
 [Route("api/admin/users")]
-[Authorize(Roles = "super_admin,platform_admin")]
+[Authorize]  // System admin check is done via PermissionMiddleware
 public class AdminUserController : ControllerBase
 {
     private readonly GisDbContext _context;
@@ -124,15 +124,11 @@ public class AdminUserController : ControllerBase
             return BadRequest(new { message = "Impossible de créer un utilisateur pour une société suspendue" });
         }
 
-        // Validate RoleId if provided
-        Role? role = null;
-        if (request.RoleId.HasValue)
+        // Validate RoleId
+        var role = await _context.Roles.FindAsync(request.RoleId);
+        if (role == null || role.SocieteId != request.CompanyId)
         {
-            role = await _context.Roles.FindAsync(request.RoleId.Value);
-            if (role == null || (role.SocieteId.HasValue && role.SocieteId != request.CompanyId))
-            {
-                return BadRequest(new { message = "Rôle non trouvé ou non accessible" });
-            }
+            return BadRequest(new { message = "Rôle non trouvé ou non accessible" });
         }
 
         // Validate AssignedVehicleIds if provided
@@ -152,13 +148,8 @@ public class AdminUserController : ControllerBase
             Name = request.Name,
             Email = request.Email,
             Phone = request.Phone,
-            DateOfBirth = request.DateOfBirth,
-            CIN = request.CIN,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
             RoleId = request.RoleId,
-            AssignedVehicleIds = request.AssignedVehicleIds ?? [],
-            Roles = request.Roles ?? new[] { "user" },
-            Permissions = request.Permissions ?? new[] { "dashboard", "monitoring" },
             CompanyId = request.CompanyId,
             Status = "active"
         };
@@ -172,8 +163,6 @@ public class AdminUserController : ControllerBase
             Name = user.Name,
             Email = user.Email,
             Phone = user.Phone,
-            DateOfBirth = user.DateOfBirth,
-            CIN = user.CIN,
             CompanyId = user.CompanyId,
             CompanyName = company.Name,
             RoleId = user.RoleId,
@@ -208,8 +197,6 @@ public class AdminUserController : ControllerBase
 
         if (!string.IsNullOrEmpty(request.Name)) user.Name = request.Name;
         if (request.Phone != null) user.Phone = request.Phone;
-        if (request.Roles != null && request.Roles.Length > 0) user.Roles = request.Roles;
-        if (request.Permissions != null) user.Permissions = request.Permissions;
         if (!string.IsNullOrEmpty(request.Password))
         {
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
@@ -235,32 +222,23 @@ public class AdminUserController : ControllerBase
         });
     }
 
-    [HttpPut("{id}/permissions")]
-    public async Task<ActionResult> UpdateUserPermissions(int id, [FromBody] UpdatePermissionsRequest request)
+    [HttpPut("{id}/role")]
+    public async Task<ActionResult> UpdateUserRole(int id, [FromBody] UpdateUserRoleRequest request)
     {
-        var user = await _context.Users.FindAsync(id);
+        var user = await _context.Users.Include(u => u.Societe).FirstOrDefaultAsync(u => u.Id == id);
         if (user == null)
             return NotFound();
 
-        user.Permissions = request.Permissions;
+        // Validate the role belongs to the same company
+        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Id == request.RoleId && r.SocieteId == user.CompanyId);
+        if (role == null)
+            return BadRequest(new { message = "Rôle invalide ou n'appartient pas à cette société" });
+
+        user.RoleId = request.RoleId;
         user.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
-        return Ok(new { message = "Permissions mises à jour" });
-    }
-
-    [HttpPut("{id}/roles")]
-    public async Task<ActionResult> UpdateUserRoles(int id, [FromBody] UpdateRolesRequest request)
-    {
-        var user = await _context.Users.FindAsync(id);
-        if (user == null)
-            return NotFound();
-
-        user.Roles = request.Roles;
-        user.UpdatedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
-
-        return Ok(new { message = "Rôles mis à jour" });
+        return Ok(new { message = "Rôle mis à jour", roleId = user.RoleId, roleName = role.Name });
     }
 
     [HttpPost("{id}/suspend")]
@@ -427,7 +405,7 @@ public class CreateAdminUserRequest
     public DateTime? DateOfBirth { get; set; }
     public string? CIN { get; set; }
     public int CompanyId { get; set; }
-    public int? RoleId { get; set; }
+    public int RoleId { get; set; }
     public int[]? AssignedVehicleIds { get; set; }
     public string[]? Roles { get; set; }
     public string[]? Permissions { get; set; }
@@ -448,9 +426,9 @@ public class UpdatePermissionsRequest
     public string[] Permissions { get; set; } = [];
 }
 
-public class UpdateRolesRequest
+public class UpdateUserRoleRequest
 {
-    public string[] Roles { get; set; } = [];
+    public int RoleId { get; set; }
 }
 
 public class ResetPasswordRequest

@@ -85,3 +85,6 @@ internal static class AdminVehicleGpsHelper
         device.UpdatedAt = DateTime.UtcNow;
     }
 }
+
+
+

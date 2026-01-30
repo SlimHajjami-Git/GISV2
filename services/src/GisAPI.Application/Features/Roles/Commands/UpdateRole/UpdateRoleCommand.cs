@@ -7,7 +7,9 @@ public record UpdateRoleCommand(
     int Id,
     string? Name,
     string? Description,
-    string? RoleType,
-    Dictionary<string, object>? Permissions,
-    bool? IsDefault
+    bool? IsCompanyAdmin,
+    Dictionary<string, object>? Permissions
 ) : ICommand<RoleDto>;
+
+
+

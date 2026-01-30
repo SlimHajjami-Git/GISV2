@@ -98,3 +98,6 @@ public class GpsHubService : GisAPI.Application.Common.Interfaces.IGpsHubService
             .SendAsync("GeofenceEvent", geofenceEvent);
     }
 }
+
+
+

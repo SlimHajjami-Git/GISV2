@@ -12,11 +12,18 @@ public record LoginResponse(
 
 public record UserDto(
     int Id,
-    string Name,
+    string FirstName,
+    string LastName,
     string Email,
     string? Phone,
-    string[] Roles,
-    string[] Permissions,
+    string? PermitNumber,
+    int RoleId,
+    string RoleName,
+    bool IsCompanyAdmin,
     int CompanyId,
-    string CompanyName
+    string CompanyName,
+    Dictionary<string, object>? Permissions
 );
+
+
+

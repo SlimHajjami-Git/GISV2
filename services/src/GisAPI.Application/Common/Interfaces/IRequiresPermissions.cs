@@ -4,3 +4,6 @@ public interface IRequiresPermissions
 {
     IReadOnlyCollection<string> RequiredPermissions { get; }
 }
+
+
+

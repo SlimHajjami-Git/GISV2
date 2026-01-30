@@ -53,3 +53,6 @@ public record FuelSummaryDto(
     decimal? TotalRefuelCost,
     double? AverageConsumptionLPer100Km
 );
+
+
+

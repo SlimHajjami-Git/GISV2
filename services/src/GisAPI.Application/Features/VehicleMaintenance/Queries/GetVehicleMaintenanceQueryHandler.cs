@@ -82,3 +82,6 @@ public class GetVehicleMaintenanceQueryHandler : IRequestHandler<GetVehicleMaint
         return new PaginatedList<VehicleMaintenanceStatusDto>(paginatedItems, totalCount, request.Page, request.PageSize);
     }
 }
+
+
+

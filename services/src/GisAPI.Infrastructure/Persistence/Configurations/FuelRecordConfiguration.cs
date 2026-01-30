@@ -54,3 +54,5 @@ public class FuelRecordConfiguration : IEntityTypeConfiguration<FuelRecord>
             .HasForeignKey(e => e.DeviceId);
     }
 }
+
+

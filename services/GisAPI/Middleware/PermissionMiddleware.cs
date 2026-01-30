@@ -24,21 +24,20 @@ public class PermissionMiddleware
 
         var path = context.Request.Path.Value?.ToLower() ?? "";
         
-        // Admin routes check
+        // Admin routes check - only System Admin can access /api/admin/*
         if (path.StartsWith("/api/admin"))
         {
             var userIdClaim = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (int.TryParse(userIdClaim, out var userId))
             {
-                var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId);
+                var user = await dbContext.Users
+                    .Include(u => u.Role)
+                    .FirstOrDefaultAsync(u => u.Id == userId);
                 
-                // Only system_admin or platform_admin can access /api/admin routes
-                // This is reserved for application administrators and developers only
-                var isSystemAdmin = user?.UserType == "system_admin" || user?.UserType == "platform_admin";
-                if (user == null || !isSystemAdmin)
+                if (user == null || user.Role == null || !user.Role.IsSystemRole)
                 {
                     context.Response.StatusCode = 403;
-                    await context.Response.WriteAsJsonAsync(new { message = "Accès réservé aux administrateurs" });
+                    await context.Response.WriteAsJsonAsync(new { message = "Accès réservé aux administrateurs système" });
                     return;
                 }
             }

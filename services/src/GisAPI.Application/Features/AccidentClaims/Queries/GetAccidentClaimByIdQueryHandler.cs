@@ -32,7 +32,7 @@ public class GetAccidentClaimByIdQueryHandler : IRequestHandler<GetAccidentClaim
             claim.Vehicle?.Name ?? "",
             claim.Vehicle?.Plate,
             claim.DriverId,
-            claim.Driver?.Name,
+            claim.Driver?.FullName,
             claim.AccidentDate,
             claim.AccidentTime.ToString(@"hh\:mm"),
             claim.Location,
@@ -58,3 +58,6 @@ public class GetAccidentClaimByIdQueryHandler : IRequestHandler<GetAccidentClaim
         );
     }
 }
+
+
+

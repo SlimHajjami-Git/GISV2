@@ -32,19 +32,22 @@ public class JwtService : IJwtService
         {
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new(JwtRegisteredClaimNames.Email, user.Email),
-            new(JwtRegisteredClaimNames.Name, user.Name),
+            new(JwtRegisteredClaimNames.Name, user.FullName),
             new("companyId", user.CompanyId.ToString()),
+            new("roleId", user.RoleId.ToString()),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
-        foreach (var role in user.Roles)
+        // Add role name as claim
+        if (user.Role != null)
         {
-            claims.Add(new Claim(ClaimTypes.Role, role));
-        }
-
-        foreach (var permission in user.Permissions)
-        {
-            claims.Add(new Claim("permission", permission));
+            claims.Add(new Claim(ClaimTypes.Role, user.Role.Name));
+            
+            // Add company_admin role if applicable
+            if (user.Role.IsCompanyAdmin)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, "company_admin"));
+            }
         }
 
         var token = new JwtSecurityToken(
@@ -66,3 +69,5 @@ public class JwtService : IJwtService
         return Convert.ToBase64String(randomNumber);
     }
 }
+
+

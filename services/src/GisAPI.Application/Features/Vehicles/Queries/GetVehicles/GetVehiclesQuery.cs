@@ -41,3 +41,6 @@ public record GpsDeviceDto(
     string? Model,
     string? FirmwareVersion
 );
+
+
+

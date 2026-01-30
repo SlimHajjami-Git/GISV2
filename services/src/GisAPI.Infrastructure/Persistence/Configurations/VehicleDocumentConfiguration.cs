@@ -24,3 +24,5 @@ public class VehicleDocumentConfiguration : IEntityTypeConfiguration<VehicleDocu
             .HasForeignKey(e => e.VehicleId);
     }
 }
+
+

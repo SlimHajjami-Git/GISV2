@@ -126,3 +126,6 @@ public class StatisticalAnalysisDto
     public List<int> HighFuelOutliers { get; set; } = new();
     public List<int> HighCostOutliers { get; set; } = new();
 }
+
+
+

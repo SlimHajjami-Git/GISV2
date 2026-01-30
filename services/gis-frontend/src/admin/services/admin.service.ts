@@ -236,6 +236,34 @@ export interface SubscriptionType {
   sortOrder: number;
   isActive: boolean;
   permissions?: Record<string, any>;
+  // Module permissions
+  moduleDashboard?: boolean;
+  moduleMonitoring?: boolean;
+  moduleVehicles?: boolean;
+  moduleEmployees?: boolean;
+  moduleGeofences?: boolean;
+  moduleMaintenance?: boolean;
+  moduleCosts?: boolean;
+  moduleReports?: boolean;
+  moduleSettings?: boolean;
+  moduleUsers?: boolean;
+  moduleSuppliers?: boolean;
+  moduleDocuments?: boolean;
+  moduleAccidents?: boolean;
+  moduleFleetManagement?: boolean;
+  // Report permissions
+  reportTrips?: boolean;
+  reportFuel?: boolean;
+  reportSpeed?: boolean;
+  reportStops?: boolean;
+  reportMileage?: boolean;
+  reportCosts?: boolean;
+  reportMaintenance?: boolean;
+  reportDaily?: boolean;
+  reportMonthly?: boolean;
+  reportMileagePeriod?: boolean;
+  reportSpeedInfraction?: boolean;
+  reportDrivingBehavior?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -288,8 +316,11 @@ export class AdminService {
   }
 
   logout(): void {
+    // Clear all auth-related storage
     localStorage.removeItem('admin_user');
     localStorage.removeItem('admin_token');
+    localStorage.removeItem('auth_user');
+    localStorage.removeItem('auth_token');
     this.adminUserSubject.next(null);
   }
 

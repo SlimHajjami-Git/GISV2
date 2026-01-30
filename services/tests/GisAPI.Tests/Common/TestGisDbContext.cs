@@ -52,18 +52,30 @@ public class TestGisDbContext : DbContext, IGisDbContext
     public DbSet<MaintenanceTemplate> MaintenanceTemplates => Set<MaintenanceTemplate>();
     public DbSet<VehicleMaintenanceSchedule> VehicleMaintenanceSchedules => Set<VehicleMaintenanceSchedule>();
     public DbSet<MaintenanceLog> MaintenanceLogs => Set<MaintenanceLog>();
+    
+    // Fleet Management
+    public DbSet<Department> Departments => Set<Department>();
+    public DbSet<FuelType> FuelTypes => Set<FuelType>();
+    public DbSet<FuelPricing> FuelPricings => Set<FuelPricing>();
+    public DbSet<SpeedLimitAlert> SpeedLimitAlerts => Set<SpeedLimitAlert>();
+    
+    // Brands & Models
+    public DbSet<Brand> Brands => Set<Brand>();
+    public DbSet<VehicleModel> VehicleModels => Set<VehicleModel>();
+    public DbSet<PartCategory> PartCategories => Set<PartCategory>();
+    public DbSet<VehiclePart> VehicleParts => Set<VehiclePart>();
+    public DbSet<PartPricing> PartPricings => Set<PartPricing>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
         // Minimal configuration for testing - ignore complex types
-        modelBuilder.Entity<User>().Ignore(u => u.Roles).Ignore(u => u.Permissions);
+        modelBuilder.Entity<User>().Ignore(u => u.FullName).Ignore(u => u.IsCompanyAdmin);
         modelBuilder.Entity<Geofence>().Ignore(g => g.Coordinates);
         modelBuilder.Entity<Societe>().Ignore(c => c.Settings);
         
         // Configure owned types as ignored for InMemory
-        modelBuilder.Entity<User>().Ignore(u => u.Settings);
         modelBuilder.Entity<MaintenanceRecord>().Ignore(m => m.Parts);
         modelBuilder.Entity<GpsDevice>().Ignore(d => d.Positions).Ignore(d => d.Alerts);
         modelBuilder.Entity<Geofence>().Ignore(g => g.Events);
@@ -104,3 +116,5 @@ public class TestGisDbContext : DbContext, IGisDbContext
         return await base.SaveChangesAsync(ct);
     }
 }
+
+

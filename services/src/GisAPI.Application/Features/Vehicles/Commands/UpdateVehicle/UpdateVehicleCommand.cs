@@ -16,3 +16,6 @@ public record UpdateVehicleCommand(
     int? AssignedDriverId,
     int? AssignedSupervisorId
 ) : ICommand;
+
+
+

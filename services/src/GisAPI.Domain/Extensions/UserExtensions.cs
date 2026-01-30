@@ -5,38 +5,39 @@ namespace GisAPI.Domain.Extensions;
 public static class UserExtensions
 {
     /// <summary>
-    /// Checks if user is a system-level administrator (system_admin or platform_admin)
-    /// </summary>
-    public static bool IsSystemAdmin(this User? user)
-    {
-        if (user == null) return false;
-        return user.UserType == "system_admin" || user.UserType == "platform_admin";
-    }
-
-    /// <summary>
-    /// Checks if user has any admin privileges (system admin or company admin)
+    /// Checks if user has company admin privileges via their role
     /// </summary>
     public static bool IsAnyAdmin(this User? user)
     {
         if (user == null) return false;
-        return user.IsSystemAdmin() || user.IsCompanyAdmin;
+        return user.Role?.IsCompanyAdmin ?? false;
     }
 
     /// <summary>
-    /// Checks if user has a specific role in their Roles array
+    /// Checks if user has a specific role name
     /// </summary>
-    public static bool HasRole(this User? user, string role)
+    public static bool HasRole(this User? user, string roleName)
     {
-        if (user == null || user.Roles == null) return false;
-        return user.Roles.Contains(role);
+        if (user == null || user.Role == null) return false;
+        return user.Role.Name.Equals(roleName, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
-    /// Checks if user has a specific permission in their Permissions array
+    /// Checks if user has a specific permission via their role's permissions
     /// </summary>
     public static bool HasPermission(this User? user, string permission)
     {
-        if (user == null || user.Permissions == null) return false;
-        return user.Permissions.Contains(permission) || user.Permissions.Contains("all");
+        if (user == null || user.Role?.Permissions == null) return false;
+        
+        // Check in modules permissions
+        if (user.Role.Permissions.TryGetValue("modules", out var modules) && modules is Dictionary<string, object> moduleDict)
+        {
+            if (moduleDict.TryGetValue(permission, out var value) && value is bool boolValue)
+                return boolValue;
+        }
+        
+        return false;
     }
 }
+
+

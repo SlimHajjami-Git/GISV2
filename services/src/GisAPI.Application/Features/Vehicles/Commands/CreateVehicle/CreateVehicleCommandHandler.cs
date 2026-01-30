@@ -75,3 +75,6 @@ public class CreateVehicleCommandHandler : IRequestHandler<CreateVehicleCommand,
         return vehicle.Id;
     }
 }
+
+
+

@@ -89,3 +89,5 @@ public class PoiVisitConfiguration : IEntityTypeConfiguration<PoiVisit>
             .HasForeignKey(e => e.VehicleId);
     }
 }
+
+

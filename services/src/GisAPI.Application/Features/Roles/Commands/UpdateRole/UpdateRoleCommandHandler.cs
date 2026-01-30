@@ -33,8 +33,11 @@ public class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand, RoleD
             .FirstOrDefaultAsync(r => r.Id == request.Id && r.SocieteId == companyId, ct)
             ?? throw new NotFoundException("Role", request.Id);
 
-        if (role.IsSystem)
-            throw new DomainException("Impossible de modifier un rôle système");
+        // Cannot change IsCompanyAdmin if this is the only company_admin role
+        if (request.IsCompanyAdmin.HasValue && !request.IsCompanyAdmin.Value && role.IsCompanyAdmin)
+        {
+            throw new DomainException("Impossible de retirer le statut administrateur du seul rôle admin de la société");
+        }
 
         // Check name uniqueness if changed
         if (request.Name != null && request.Name != role.Name)
@@ -68,8 +71,6 @@ public class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand, RoleD
         }
 
         if (request.Description != null) role.Description = request.Description;
-        if (request.RoleType != null) role.RoleType = request.RoleType;
-        if (request.IsDefault.HasValue) role.IsDefault = request.IsDefault.Value;
 
         role.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(ct);
@@ -78,14 +79,16 @@ public class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand, RoleD
             role.Id,
             role.Name,
             role.Description,
-            role.RoleType,
-            role.Permissions,
             role.SocieteId,
-            role.IsSystem,
-            role.IsDefault,
+            role.IsCompanyAdmin,
+            role.IsSystemRole,
+            role.Permissions,
             role.Users.Count,
             role.CreatedAt,
             role.UpdatedAt
         );
     }
 }
+
+
+

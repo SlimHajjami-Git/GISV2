@@ -7,3 +7,5 @@ public enum DeviceStatus
     Maintenance,
     Unassigned
 }
+
+

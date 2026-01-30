@@ -9,3 +9,6 @@ public record ApproveAccidentClaimCommand(int Id, decimal ApprovedAmount) : ICom
 public record RejectAccidentClaimCommand(int Id, string? Reason) : ICommand<bool>;
 
 public record CloseAccidentClaimCommand(int Id) : ICommand<bool>;
+
+
+

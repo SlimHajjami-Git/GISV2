@@ -9,3 +9,6 @@ public record GetGaragesQuery(
     int Page = 1,
     int PageSize = 50
 ) : IQuery<PaginatedList<SupplierDto>>;
+
+
+

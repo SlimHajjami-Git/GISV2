@@ -37,3 +37,5 @@ public class DailyStatistics : TenantEntity
     public int GeofenceEventsCount { get; set; }
     public int? DriverScore { get; set; }
 }
+
+

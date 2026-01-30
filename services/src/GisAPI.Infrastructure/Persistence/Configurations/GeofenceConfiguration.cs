@@ -122,3 +122,5 @@ public class GeofenceGroupConfiguration : IEntityTypeConfiguration<GeofenceGroup
             .HasForeignKey(e => e.CompanyId);
     }
 }
+
+

@@ -27,9 +27,12 @@ internal static class AdminVehicleMappings
             GpsModel = vehicle.GpsDevice?.Model,
             GpsFirmwareVersion = vehicle.GpsDevice?.FirmwareVersion,
             AssignedDriverId = vehicle.AssignedDriverId,
-            AssignedDriverName = vehicle.AssignedDriver?.Name,
+            AssignedDriverName = vehicle.AssignedDriver?.FullName,
             CreatedAt = vehicle.CreatedAt,
             UpdatedAt = vehicle.UpdatedAt
         };
     }
 }
+
+
+

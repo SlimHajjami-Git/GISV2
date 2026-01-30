@@ -71,3 +71,6 @@ public class GetGaragesQueryHandler : IRequestHandler<GetGaragesQuery, Paginated
         return new PaginatedList<SupplierDto>(items, totalCount, request.Page, request.PageSize);
     }
 }
+
+
+

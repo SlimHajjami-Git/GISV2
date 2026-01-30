@@ -66,9 +66,12 @@ public class GetAdminVehiclesQueryHandler : IRequestHandler<GetAdminVehiclesQuer
             GpsModel = v.GpsDevice?.Model,
             GpsFirmwareVersion = v.GpsDevice?.FirmwareVersion,
             AssignedDriverId = v.AssignedDriverId,
-            AssignedDriverName = v.AssignedDriver?.Name,
+            AssignedDriverName = v.AssignedDriver?.FullName,
             CreatedAt = v.CreatedAt,
             UpdatedAt = v.UpdatedAt
         }).ToList();
     }
 }
+
+
+

@@ -81,3 +81,5 @@ public class PartTransaction : TenantEntity
     public int? CreatedByUserId { get; set; }
     public User? CreatedByUser { get; set; }
 }
+
+

@@ -15,10 +15,8 @@ public class RoleTests
         role.Id.Should().Be(0);
         role.Name.Should().BeEmpty();
         role.Description.Should().BeNull();
-        role.RoleType.Should().Be("employee");
-        role.SocieteId.Should().BeNull();
-        role.IsSystem.Should().BeFalse();
-        role.IsDefault.Should().BeFalse();
+        role.SocieteId.Should().Be(0);
+        role.IsCompanyAdmin.Should().BeFalse();
         role.Users.Should().NotBeNull().And.BeEmpty();
     }
 
@@ -31,20 +29,16 @@ public class RoleTests
             Id = 1,
             Name = "Admin",
             Description = "Administrator role with full access",
-            RoleType = "company_admin",
             SocieteId = 1,
-            IsSystem = true,
-            IsDefault = false
+            IsCompanyAdmin = true
         };
 
         // Assert
         role.Id.Should().Be(1);
         role.Name.Should().Be("Admin");
         role.Description.Should().Be("Administrator role with full access");
-        role.RoleType.Should().Be("company_admin");
         role.SocieteId.Should().Be(1);
-        role.IsSystem.Should().BeTrue();
-        role.IsDefault.Should().BeFalse();
+        role.IsCompanyAdmin.Should().BeTrue();
     }
 
     [Fact]
@@ -54,6 +48,7 @@ public class RoleTests
         var role = new Role
         {
             Name = "Manager",
+            SocieteId = 1,
             Permissions = new Dictionary<string, object>
             {
                 { "dashboard", true },
@@ -70,50 +65,50 @@ public class RoleTests
     }
 
     [Theory]
-    [InlineData("system_admin")]
-    [InlineData("company_admin")]
-    [InlineData("employee")]
-    [InlineData("custom")]
-    public void Role_ShouldAcceptValidRoleTypes(string roleType)
+    [InlineData("Admin")]
+    [InlineData("Manager")]
+    [InlineData("Driver")]
+    [InlineData("Custom Role")]
+    public void Role_ShouldAcceptValidNames(string roleName)
     {
         // Arrange & Act
-        var role = new Role { RoleType = roleType };
+        var role = new Role { Name = roleName, SocieteId = 1 };
 
         // Assert
-        role.RoleType.Should().Be(roleType);
+        role.Name.Should().Be(roleName);
     }
 
     [Fact]
-    public void Role_SystemRole_ShouldNotHaveSocieteId()
+    public void Role_CompanyAdmin_ShouldHaveIsCompanyAdminTrue()
     {
         // Arrange
-        var systemRole = new Role
+        var adminRole = new Role
         {
-            Name = "Super Admin",
-            RoleType = "system_admin",
-            IsSystem = true,
-            SocieteId = null
+            Name = "Company Admin",
+            SocieteId = 1,
+            IsCompanyAdmin = true
         };
 
         // Assert
-        systemRole.IsSystem.Should().BeTrue();
-        systemRole.SocieteId.Should().BeNull();
+        adminRole.IsCompanyAdmin.Should().BeTrue();
+        adminRole.SocieteId.Should().Be(1);
     }
 
     [Fact]
-    public void Role_CompanyRole_ShouldHaveSocieteId()
+    public void Role_Employee_ShouldHaveIsCompanyAdminFalse()
     {
         // Arrange
-        var companyRole = new Role
+        var employeeRole = new Role
         {
             Name = "Fleet Manager",
-            RoleType = "employee",
-            IsSystem = false,
-            SocieteId = 1
+            SocieteId = 1,
+            IsCompanyAdmin = false
         };
 
         // Assert
-        companyRole.IsSystem.Should().BeFalse();
-        companyRole.SocieteId.Should().Be(1);
+        employeeRole.IsCompanyAdmin.Should().BeFalse();
+        employeeRole.SocieteId.Should().Be(1);
     }
 }
+
+

@@ -68,3 +68,6 @@ public class GetSocieteByIdQueryHandler : IRequestHandler<GetSocieteByIdQuery, S
         );
     }
 }
+
+
+

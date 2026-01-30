@@ -29,3 +29,5 @@ public class CurrentTenantService : ICurrentTenantService
     public bool HasPermission(string permission) =>
         _permissions.Contains(permission);
 }
+
+

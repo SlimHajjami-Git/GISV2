@@ -246,6 +246,14 @@ import { GPSAlert } from '../../models/types';
                   </svg>
                   <span>Paramètres</span>
                 </a>
+                <a *ngIf="hasModule('fleet_management')" class="dropdown-item" (click)="onFleetManagementClick()">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                    <path d="M2 17l10 5 10-5"/>
+                    <path d="M2 12l10 5 10-5"/>
+                  </svg>
+                  <span>Gestion Flotte</span>
+                </a>
                 <a class="dropdown-item" (click)="onHelpClick()">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="10"/>
@@ -831,12 +839,21 @@ export class AppLayoutComponent implements OnInit {
   showNotifications = false;
   showUserMenu = false;
   unreadCount = 0;
+  isCompanyAdmin = false;
+  isPlatformAdmin = false;
+  modulePermissions: Record<string, boolean> = {};
 
   constructor(
     private router: Router,
     private apiService: ApiService,
     private themeService: ThemeService
-  ) {}
+  ) {
+    // Load user permissions
+    const user = this.apiService.getCurrentUserSync();
+    this.isCompanyAdmin = user?.isCompanyAdmin === true;
+    this.isPlatformAdmin = user?.userType === 'platform_admin';
+    this.modulePermissions = user?.modulePermissions || {};
+  }
 
   get isDarkMode(): boolean {
     return this.themeService.isDarkMode;
@@ -871,6 +888,15 @@ export class AppLayoutComponent implements OnInit {
     this.router.navigate([path]);
   }
 
+  hasModule(moduleName: string): boolean {
+    // Platform admins have access to everything
+    if (this.isPlatformAdmin) return true;
+    // Company admins have access to all modules in their subscription
+    if (this.isCompanyAdmin) return this.modulePermissions[moduleName] === true;
+    // Regular users check role + subscription intersection
+    return this.modulePermissions[moduleName] === true;
+  }
+
   toggleUserMenu(event: Event) {
     event.stopPropagation();
     this.showUserMenu = !this.showUserMenu;
@@ -887,6 +913,11 @@ export class AppLayoutComponent implements OnInit {
   onSettingsClick() {
     this.showUserMenu = false;
     this.router.navigate(['/settings']);
+  }
+
+  onFleetManagementClick() {
+    this.showUserMenu = false;
+    this.router.navigate(['/fleet-management']);
   }
 
   onUsersClick() {

@@ -85,10 +85,8 @@ public class CreateSocieteCommandHandler : IRequestHandler<CreateSocieteCommand,
         {
             Name = "Administrateur",
             Description = "Accès complet selon l'abonnement",
-            RoleType = "company_admin",
             SocieteId = societe.Id,
-            IsSystem = false,
-            IsDefault = false,
+            IsCompanyAdmin = true,
             Permissions = adminPermissions
         };
 
@@ -96,10 +94,8 @@ public class CreateSocieteCommandHandler : IRequestHandler<CreateSocieteCommand,
         {
             Name = "Utilisateur",
             Description = "Accès standard (lecture seule)",
-            RoleType = "employee",
             SocieteId = societe.Id,
-            IsSystem = false,
-            IsDefault = true,
+            IsCompanyAdmin = false,
             Permissions = userPermissions
         };
 
@@ -107,20 +103,22 @@ public class CreateSocieteCommandHandler : IRequestHandler<CreateSocieteCommand,
         _context.Roles.Add(userRole);
         await _context.SaveChangesAsync(ct);
 
+        // Split admin name into first/last
+        var nameParts = request.AdminName.Split(' ', 2);
+        var firstName = nameParts[0];
+        var lastName = nameParts.Length > 1 ? nameParts[1] : request.Name;
+
         // Create admin user
         var adminUser = new User
         {
-            Name = request.AdminName,
+            FirstName = firstName,
+            LastName = lastName,
             Email = request.AdminEmail,
             PasswordHash = _passwordHasher.HashPassword(request.AdminPassword),
             Phone = request.Phone,
             CompanyId = societe.Id,
             RoleId = adminRole.Id,
-            IsCompanyAdmin = true,
-            UserType = "admin",
-            Status = "active",
-            Roles = new[] { "admin" },
-            Permissions = new[] { "all" }
+            Status = "active"
         };
 
         _context.Users.Add(adminUser);
@@ -168,3 +166,6 @@ public class CreateSocieteCommandHandler : IRequestHandler<CreateSocieteCommand,
         );
     }
 }
+
+
+

@@ -64,3 +64,5 @@ public class CurrentTenantServiceTests
         service.UserPermissions.Should().BeEquivalentTo(new[] { "reports" });
     }
 }
+
+

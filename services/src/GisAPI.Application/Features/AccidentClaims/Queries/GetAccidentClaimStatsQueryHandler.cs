@@ -30,3 +30,6 @@ public class GetAccidentClaimStatsQueryHandler : IRequestHandler<GetAccidentClai
         );
     }
 }
+
+
+

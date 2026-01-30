@@ -58,9 +58,9 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
                 v.HasGps,
                 v.Mileage,
                 v.AssignedDriverId,
-                v.AssignedDriver != null ? v.AssignedDriver.Name : null,
+                v.AssignedDriver != null ? v.AssignedDriver.FullName : null,
                 v.AssignedSupervisorId,
-                v.AssignedSupervisor != null ? v.AssignedSupervisor.Name : null,
+                v.AssignedSupervisor != null ? v.AssignedSupervisor.FullName : null,
                 v.GpsDevice != null ? new GpsDeviceDto(
                     v.GpsDevice.Id,
                     v.GpsDevice.DeviceUid,
@@ -78,3 +78,6 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
         return await projectedQuery.ToPaginatedListAsync(request.Page, request.PageSize, ct);
     }
 }
+
+
+

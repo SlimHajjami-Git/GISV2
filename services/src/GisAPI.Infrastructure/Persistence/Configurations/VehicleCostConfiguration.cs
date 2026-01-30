@@ -35,3 +35,5 @@ public class VehicleCostConfiguration : IEntityTypeConfiguration<VehicleCost>
             .HasForeignKey(e => e.VehicleId);
     }
 }
+
+

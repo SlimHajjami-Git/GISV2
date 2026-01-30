@@ -4,22 +4,21 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, SubscriptionType } from '../services/admin.service';
-import { SubscriptionFeaturesEditorComponent, SubscriptionFeatures } from '../components/subscription-features-editor.component';
 
 @Component({
   selector: 'admin-subscriptions',
   standalone: true,
-  imports: [CommonModule, FormsModule, AdminLayoutComponent, SubscriptionFeaturesEditorComponent],
+  imports: [CommonModule, FormsModule, AdminLayoutComponent],
   template: `
     <admin-layout pageTitle="Gestion des Abonnements">
-      <div class="subscriptions-page">
+      <div class="subscriptions-container">
         <!-- Header -->
         <div class="page-header">
           <div class="header-left">
             <h2>Types d'Abonnements</h2>
-            <p class="subtitle">Gérez les formules d'abonnement et leurs tarifs</p>
+            <span class="count">{{ subscriptionTypes.length }} type(s)</span>
           </div>
-          <button class="btn-primary" (click)="openAddModal()">
+          <button class="btn-primary" (click)="openCreateModal()">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
@@ -27,134 +26,47 @@ import { SubscriptionFeaturesEditorComponent, SubscriptionFeatures } from '../co
           </button>
         </div>
 
-        <!-- Filters -->
-        <div class="filters-bar">
-          <div class="search-box">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input type="text" placeholder="Rechercher..." [(ngModel)]="searchQuery" (input)="filterTypes()" />
-          </div>
-          <select [(ngModel)]="companyTypeFilter" (change)="filterTypes()">
-            <option value="all">Tous les types</option>
-            <option value="transport">Transport</option>
-            <option value="location">Location</option>
-            <option value="autre">Autre</option>
-          </select>
-          <select [(ngModel)]="statusFilter" (change)="filterTypes()">
-            <option value="all">Tous les statuts</option>
-            <option value="active">Actif</option>
-            <option value="inactive">Inactif</option>
-          </select>
-        </div>
-
         <!-- Subscription Types Grid -->
         <div class="types-grid">
-          <div class="type-card" *ngFor="let type of filteredTypes" [class.inactive]="!type.isActive">
-            <div class="card-header">
+          <div *ngFor="let type of subscriptionTypes" class="type-card" [class.inactive]="!type.isActive">
+            <div class="type-header">
+              <div class="type-icon" [class.premium]="type.advancedReports">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+                </svg>
+              </div>
               <div class="type-info">
                 <h3>{{ type.name }}</h3>
-                              </div>
+                <span class="type-price">{{ type.yearlyPrice | number:'1.0-0' }} DT/an</span>
+              </div>
               <div class="type-badges">
-                <span class="badge" [class]="'badge-' + type.targetCompanyType">
-                  {{ getCompanyTypeLabel(type.targetCompanyType) }}
-                </span>
-                <span class="badge" [class.badge-active]="type.isActive" [class.badge-inactive]="!type.isActive">
-                  {{ type.isActive ? 'Actif' : 'Inactif' }}
-                </span>
+                <span *ngIf="!type.isActive" class="badge inactive">Inactif</span>
+                <span *ngIf="type.gpsTracking" class="badge gps">GPS</span>
               </div>
             </div>
-
-            <p class="type-description" *ngIf="type.description">{{ type.description }}</p>
-
-            <div class="pricing-section">
-              <h4>Tarification</h4>
-              <div class="price-single">
-                <span class="price-value-large">{{ type.yearlyPrice | number:'1.2-2' }} DT</span>
-                <span class="price-period">/an</span>
+            
+            <p class="type-description">{{ type.description || 'Aucune description' }}</p>
+            
+            <div class="type-stats">
+              <div class="stat">
+                <span class="stat-value">{{ type.maxVehicles }}</span>
+                <span class="stat-label">Véhicules</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value">{{ type.maxUsers }}</span>
+                <span class="stat-label">Utilisateurs</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value">{{ getModulesCount(type) }}</span>
+                <span class="stat-label">Modules</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value">{{ getReportsCount(type) }}</span>
+                <span class="stat-label">Rapports</span>
               </div>
             </div>
-
-            <div class="limits-section">
-              <h4>Limites</h4>
-              <div class="limits-grid">
-                <div class="limit-item">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5a2 2 0 0 1-2 2h-5"/>
-                    <circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
-                  </svg>
-                  <span>{{ type.maxVehicles }} véhicules</span>
-                </div>
-                <div class="limit-item">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-                  </svg>
-                  <span>{{ type.maxUsers }} utilisateurs</span>
-                </div>
-                <div class="limit-item">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 0 0-8 8c0 5.33 8 12 8 12s8-6.67 8-12a8 8 0 0 0-8-8z"/>
-                  </svg>
-                  <span>{{ type.maxGpsDevices }} GPS</span>
-                </div>
-                <div class="limit-item">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
-                  </svg>
-                  <span>{{ type.maxGeofences }} zones</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="features-section">
-              <h4>Fonctionnalités</h4>
-              <div class="features-grid">
-                <span class="feature-tag" [class.enabled]="type.gpsTracking">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline *ngIf="type.gpsTracking" points="20 6 9 17 4 12"/>
-                    <line *ngIf="!type.gpsTracking" x1="18" y1="6" x2="6" y2="18"/>
-                  </svg>
-                  Suivi GPS
-                </span>
-                <span class="feature-tag" [class.enabled]="type.gpsInstallation">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline *ngIf="type.gpsInstallation" points="20 6 9 17 4 12"/>
-                    <line *ngIf="!type.gpsInstallation" x1="18" y1="6" x2="6" y2="18"/>
-                  </svg>
-                  Installation GPS
-                </span>
-                <span class="feature-tag" [class.enabled]="type.apiAccess">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline *ngIf="type.apiAccess" points="20 6 9 17 4 12"/>
-                    <line *ngIf="!type.apiAccess" x1="18" y1="6" x2="6" y2="18"/>
-                  </svg>
-                  Accès API
-                </span>
-                <span class="feature-tag" [class.enabled]="type.advancedReports">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline *ngIf="type.advancedReports" points="20 6 9 17 4 12"/>
-                    <line *ngIf="!type.advancedReports" x1="18" y1="6" x2="6" y2="18"/>
-                  </svg>
-                  Rapports avancés
-                </span>
-                <span class="feature-tag" [class.enabled]="type.fuelAnalysis">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline *ngIf="type.fuelAnalysis" points="20 6 9 17 4 12"/>
-                    <line *ngIf="!type.fuelAnalysis" x1="18" y1="6" x2="6" y2="18"/>
-                  </svg>
-                  Analyse carburant
-                </span>
-                <span class="feature-tag" [class.enabled]="type.drivingBehavior">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline *ngIf="type.drivingBehavior" points="20 6 9 17 4 12"/>
-                    <line *ngIf="!type.drivingBehavior" x1="18" y1="6" x2="6" y2="18"/>
-                  </svg>
-                  Comportement conduite
-                </span>
-              </div>
-            </div>
-
-            <div class="card-actions">
+            
+            <div class="type-actions">
               <button class="btn-icon" (click)="editType(type)" title="Modifier">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -163,79 +75,80 @@ import { SubscriptionFeaturesEditorComponent, SubscriptionFeatures } from '../co
               </button>
               <button class="btn-icon" [class.active]="type.isActive" (click)="toggleStatus(type)" [title]="type.isActive ? 'Désactiver' : 'Activer'">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path *ngIf="type.isActive" d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
-                  <line *ngIf="type.isActive" x1="12" y1="2" x2="12" y2="12"/>
-                  <path *ngIf="!type.isActive" d="M5 12.55a11 11 0 0 1 14.08 0"/>
-                  <circle *ngIf="!type.isActive" cx="12" cy="12" r="3"/>
+                  <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
                 </svg>
               </button>
-              <button class="btn-icon btn-danger" (click)="confirmDelete(type)" title="Supprimer">
+              <button class="btn-icon danger" (click)="confirmDelete(type)" title="Supprimer">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  <polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                 </svg>
               </button>
             </div>
-          </div>
-
-          <div class="empty-state" *ngIf="filteredTypes.length === 0">
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-            </svg>
-            <h3>Aucun type d'abonnement</h3>
-            <p>Créez votre premier type d'abonnement pour commencer.</p>
-            <button class="btn-primary" (click)="openAddModal()">Créer un type</button>
           </div>
         </div>
-      </div>
 
-      <!-- Add/Edit Modal -->
-      <div class="popup-overlay" *ngIf="showAddModal || showEditModal" (click)="closeModals()">
-        <div class="popup-container subscription-popup" (click)="$event.stopPropagation()">
-          <div class="popup-header">
-            <div class="header-title">
-              <div class="header-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
-                </svg>
-              </div>
-              <h2>{{ showEditModal ? 'Modifier l\'abonnement' : 'Nouvel abonnement' }}</h2>
+        <!-- Create/Edit Modal -->
+        <div class="modal-overlay" *ngIf="showModal" (click)="closeModal()">
+          <div class="modal modal-large" (click)="$event.stopPropagation()">
+            <div class="modal-header">
+              <h3>{{ editingType ? 'Modifier l\\'abonnement' : 'Nouvel abonnement' }}</h3>
+              <button class="btn-close" (click)="closeModal()">×</button>
             </div>
-            <button class="close-btn" (click)="closeModals()" title="Fermer">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          </div>
-
-          <div class="popup-body">
-            <div class="form-tabs">
-              <button [class.active]="activeTab === 'general'" (click)="activeTab = 'general'">Général</button>
-              <button [class.active]="activeTab === 'pricing'" (click)="activeTab = 'pricing'">Tarification</button>
-              <button [class.active]="activeTab === 'limits'" (click)="activeTab = 'limits'">Limites</button>
-              <button [class.active]="activeTab === 'features'" (click)="activeTab = 'features'">Fonctionnalités</button>
-            </div>
-
-            <!-- General Tab -->
-            <div class="tab-content" *ngIf="activeTab === 'general'">
-              <div class="form-section">
-                <div class="section-title">
+            <div class="modal-body">
+              <!-- Tabs -->
+              <div class="form-tabs">
+                <button [class.active]="activeTab === 'general'" (click)="activeTab = 'general'">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                   </svg>
-                  <span>Informations générales</span>
+                  Général
+                </button>
+                <button [class.active]="activeTab === 'limits'" (click)="activeTab = 'limits'">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/>
+                  </svg>
+                  Limites
+                </button>
+                <button [class.active]="activeTab === 'modules'" (click)="activeTab = 'modules'">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+                  </svg>
+                  Modules
+                </button>
+                <button [class.active]="activeTab === 'reports'" (click)="activeTab = 'reports'">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/>
+                  </svg>
+                  Rapports
+                </button>
+                <button [class.active]="activeTab === 'features'" (click)="activeTab = 'features'">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                  </svg>
+                  Options
+                </button>
+              </div>
+
+              <!-- General Tab -->
+              <div class="tab-content" *ngIf="activeTab === 'general'">
+                <div class="form-group">
+                  <label>Nom de l'abonnement *</label>
+                  <input type="text" [(ngModel)]="formData.name" placeholder="Ex: Standard, Premium, Enterprise...">
                 </div>
-                <div class="form-grid">
-                  <div class="form-group full-width">
-                    <label>Nom <span class="required">*</span></label>
-                    <input type="text" [(ngModel)]="form.name" placeholder="Ex: Standard, Premium, Enterprise..." />
+                <div class="form-group">
+                  <label>Description</label>
+                  <textarea [(ngModel)]="formData.description" placeholder="Description du type d'abonnement..." rows="3"></textarea>
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Prix annuel (DT) *</label>
+                    <input type="number" [(ngModel)]="formData.yearlyPrice" min="0" step="0.01">
                   </div>
-                  <div class="form-group full-width">
-                    <label>Description</label>
-                    <textarea [(ngModel)]="form.description" rows="3" placeholder="Description du type d'abonnement..."></textarea>
-                  </div>
-                  <div class="form-group full-width">
+                  <div class="form-group">
                     <label>Type de société cible</label>
-                    <select [(ngModel)]="form.targetCompanyType">
+                    <select [(ngModel)]="formData.targetCompanyType">
                       <option value="all">Tous les types</option>
                       <option value="transport">Transport</option>
                       <option value="location">Location</option>
@@ -244,724 +157,331 @@ import { SubscriptionFeaturesEditorComponent, SubscriptionFeatures } from '../co
                   </div>
                 </div>
               </div>
-            </div>
 
-            <!-- Pricing Tab -->
-            <div class="tab-content" *ngIf="activeTab === 'pricing'">
-              <div class="form-section">
-                <div class="section-title">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-                  </svg>
-                  <span>Tarif Annuel</span>
-                </div>
-                <div class="form-grid">
-                  <div class="form-group">
-                    <label>Prix Annuel (DT) <span class="required">*</span></label>
-                    <input type="number" [(ngModel)]="form.yearlyPrice" min="0" step="0.01" />
-                  </div>
-                  <div class="form-group">
-                    <label>Durée (jours)</label>
-                    <input type="number" [(ngModel)]="form.yearlyDurationDays" min="1" />
-                    <small class="hint">Par défaut: 365 jours</small>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Limits Tab -->
-            <div class="tab-content" *ngIf="activeTab === 'limits'">
-              <div class="form-section">
-                <div class="section-title">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/>
-                  </svg>
-                  <span>Limites de ressources</span>
-                </div>
-                <div class="form-grid">
+              <!-- Limits Tab -->
+              <div class="tab-content" *ngIf="activeTab === 'limits'">
+                <div class="form-row">
                   <div class="form-group">
                     <label>Véhicules maximum</label>
-                    <input type="number" [(ngModel)]="form.maxVehicles" min="1" />
+                    <input type="number" [(ngModel)]="formData.maxVehicles" min="1">
                   </div>
                   <div class="form-group">
                     <label>Utilisateurs maximum</label>
-                    <input type="number" [(ngModel)]="form.maxUsers" min="1" />
+                    <input type="number" [(ngModel)]="formData.maxUsers" min="1">
                   </div>
+                </div>
+                <div class="form-row">
                   <div class="form-group">
                     <label>Appareils GPS maximum</label>
-                    <input type="number" [(ngModel)]="form.maxGpsDevices" min="0" />
+                    <input type="number" [(ngModel)]="formData.maxGpsDevices" min="0">
                   </div>
                   <div class="form-group">
                     <label>Géofences maximum</label>
-                    <input type="number" [(ngModel)]="form.maxGeofences" min="0" />
+                    <input type="number" [(ngModel)]="formData.maxGeofences" min="0">
                   </div>
-                  <div class="form-group full-width">
-                    <label>Rétention historique (jours)</label>
-                    <input type="number" [(ngModel)]="form.historyRetentionDays" min="1" />
-                    <small class="hint">Durée de conservation des données de position GPS</small>
-                  </div>
+                </div>
+                <div class="form-group">
+                  <label>Rétention historique (jours)</label>
+                  <input type="number" [(ngModel)]="formData.historyRetentionDays" min="1">
+                  <small>Durée de conservation des données GPS</small>
+                </div>
+              </div>
+
+              <!-- Modules Tab -->
+              <div class="tab-content" *ngIf="activeTab === 'modules'">
+                <div class="permissions-header">
+                  <h4>Modules disponibles</h4>
+                  <button class="btn-select-all" (click)="toggleAllModules()">
+                    {{ areAllModulesSelected() ? 'Tout désélectionner' : 'Tout sélectionner' }}
+                  </button>
+                </div>
+                <div class="permissions-grid">
+                  <label *ngFor="let module of availableModules" class="permission-item" [class.enabled]="formData.modules[module.key]">
+                    <input type="checkbox" [(ngModel)]="formData.modules[module.key]">
+                    <div class="perm-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+                      </svg>
+                    </div>
+                    <span>{{ module.label }}</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Reports Tab -->
+              <div class="tab-content" *ngIf="activeTab === 'reports'">
+                <div class="permissions-header">
+                  <h4>Rapports disponibles</h4>
+                  <button class="btn-select-all" (click)="toggleAllReports()">
+                    {{ areAllReportsSelected() ? 'Tout désélectionner' : 'Tout sélectionner' }}
+                  </button>
+                </div>
+                <div class="permissions-grid">
+                  <label *ngFor="let report of availableReports" class="permission-item" [class.enabled]="formData.reports[report.key]">
+                    <input type="checkbox" [(ngModel)]="formData.reports[report.key]">
+                    <div class="perm-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                      </svg>
+                    </div>
+                    <span>{{ report.label }}</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Features Tab -->
+              <div class="tab-content" *ngIf="activeTab === 'features'">
+                <div class="permissions-header">
+                  <h4>Options avancées</h4>
+                </div>
+                <div class="permissions-grid">
+                  <label *ngFor="let feature of availableFeatures" class="permission-item" [class.enabled]="formData.features[feature.key]">
+                    <input type="checkbox" [(ngModel)]="formData.features[feature.key]">
+                    <div class="perm-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                      </svg>
+                    </div>
+                    <span>{{ feature.label }}</span>
+                  </label>
                 </div>
               </div>
             </div>
-
-            <!-- Features Tab -->
-            <div class="tab-content features-tab" *ngIf="activeTab === 'features'">
-              <div class="form-section">
-                <subscription-features-editor
-                  [initialFeatures]="getFormFeatures()"
-                  (featuresChange)="onFeaturesChange($event)">
-                </subscription-features-editor>
-              </div>
+            <div class="modal-footer">
+              <button class="btn-secondary" (click)="closeModal()">Annuler</button>
+              <button class="btn-primary" (click)="saveType()" [disabled]="!formData.name || !formData.yearlyPrice">
+                {{ editingType ? 'Enregistrer' : 'Créer' }}
+              </button>
             </div>
           </div>
-
-          <div class="popup-footer">
-            <button class="btn-secondary" (click)="closeModals()">Annuler</button>
-            <button class="btn-primary" (click)="saveType()" [disabled]="!form.name || !form.yearlyPrice">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-              </svg>
-              {{ showEditModal ? 'Mettre à jour' : 'Créer' }}
-            </button>
-          </div>
         </div>
-      </div>
 
-      <!-- Delete Confirmation Modal -->
-      <div class="modal-overlay" *ngIf="showDeleteModal" (click)="closeDeleteModal()">
-        <div class="modal modal-small" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>Confirmer la suppression</h3>
-            <button class="btn-close" (click)="closeDeleteModal()">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          </div>
-          <div class="modal-body">
-            <p>Êtes-vous sûr de vouloir supprimer le type d'abonnement <strong>{{ typeToDelete?.name }}</strong> ?</p>
-            <p class="warning">Cette action est irréversible.</p>
-          </div>
-          <div class="modal-footer">
-            <button class="btn-secondary" (click)="closeDeleteModal()">Annuler</button>
-            <button class="btn-danger" (click)="deleteType()">Supprimer</button>
+        <!-- Delete Confirmation -->
+        <div class="modal-overlay" *ngIf="showDeleteConfirm" (click)="showDeleteConfirm = false">
+          <div class="modal modal-sm" (click)="$event.stopPropagation()">
+            <div class="modal-header">
+              <h3>Confirmer la suppression</h3>
+            </div>
+            <div class="modal-body">
+              <p>Êtes-vous sûr de vouloir supprimer l'abonnement <strong>{{ typeToDelete?.name }}</strong> ?</p>
+              <p class="warning">Cette action est irréversible.</p>
+            </div>
+            <div class="modal-footer">
+              <button class="btn-secondary" (click)="showDeleteConfirm = false">Annuler</button>
+              <button class="btn-danger" (click)="deleteType()">Supprimer</button>
+            </div>
           </div>
         </div>
       </div>
     </admin-layout>
   `,
   styles: [`
-    .subscriptions-page { padding: 0; }
-
+    .subscriptions-container {
+      padding: 24px;
+    }
     .page-header {
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
+      align-items: center;
       margin-bottom: 24px;
     }
-
-    .header-left h2 { margin: 0 0 4px 0; font-size: 24px; color: #1f2937; }
-    .subtitle { margin: 0; color: #64748b; font-size: 14px; }
-
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header-left h2 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+    }
+    .count {
+      background: #e2e8f0;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 14px;
+      color: #64748b;
+    }
     .btn-primary {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 10px 20px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
-      color: #fff;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
       border: none;
+      padding: 10px 20px;
       border-radius: 8px;
-      font-weight: 500;
       cursor: pointer;
+      font-weight: 500;
       transition: all 0.2s;
     }
-    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0, 212, 170, 0.3); }
-    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-    .filters-bar {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 24px;
-      flex-wrap: wrap;
-    }
-
-    .search-box {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      padding: 8px 14px;
-      flex: 1;
-      min-width: 200px;
-    }
-    .search-box svg { color: #64748b; }
-    .search-box input { flex: 1; border: none; background: transparent; font-size: 14px; outline: none; }
-
-    .filters-bar select {
-      padding: 10px 14px;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      background: #fff;
-      font-size: 14px;
-      color: #1f2937;
-      cursor: pointer;
-    }
-
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); }
+    .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; transform: none; }
+    
     .types-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
       gap: 20px;
     }
-
     .type-card {
-      background: #fff;
+      background: white;
       border-radius: 12px;
-      border: 1px solid #e2e8f0;
       padding: 20px;
-      transition: all 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      transition: transform 0.2s, box-shadow 0.2s;
     }
-    .type-card:hover { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); }
-    .type-card.inactive { opacity: 0.7; background: #f8fafc; }
-
-    .card-header {
+    .type-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .type-card.inactive {
+      opacity: 0.6;
+      background: #f8fafc;
+    }
+    .type-header {
       display: flex;
-      justify-content: space-between;
       align-items: flex-start;
+      gap: 12px;
       margin-bottom: 12px;
     }
-
-    .type-info h3 { margin: 0 0 4px 0; font-size: 18px; color: #1f2937; }
-    .type-code { font-size: 12px; color: #64748b; font-family: monospace; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; }
-
-    .type-badges { display: flex; gap: 6px; flex-wrap: wrap; }
-    .badge {
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-size: 11px;
-      font-weight: 500;
-      text-transform: uppercase;
-    }
-    .badge-transport { background: #dbeafe; color: #1d4ed8; }
-    .badge-location { background: #fef3c7; color: #b45309; }
-    .badge-autre { background: #e0e7ff; color: #4338ca; }
-    .badge-all { background: #f1f5f9; color: #64748b; }
-    .badge-active { background: #dcfce7; color: #16a34a; }
-    .badge-inactive { background: #fee2e2; color: #dc2626; }
-
-    .type-description { color: #64748b; font-size: 13px; margin: 0 0 16px 0; line-height: 1.5; }
-
-    .pricing-section, .limits-section, .features-section {
-      margin-bottom: 16px;
-      padding-top: 16px;
-      border-top: 1px solid #f1f5f9;
-    }
-
-    .pricing-section h4, .limits-section h4, .features-section h4 {
-      margin: 0 0 12px 0;
-      font-size: 13px;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .price-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-    }
-
-    .price-item {
-      text-align: center;
-      padding: 10px;
-      background: #f8fafc;
-      border-radius: 8px;
-    }
-    .price-label { display: block; font-size: 11px; color: #64748b; margin-bottom: 4px; }
-    .price-value { display: block; font-size: 14px; font-weight: 600; color: #1f2937; }
-
-    .price-single {
-      display: flex;
-      align-items: baseline;
-      justify-content: center;
-      gap: 4px;
-      padding: 16px;
-      background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-      border-radius: 8px;
-    }
-    .price-value-large { font-size: 28px; font-weight: 700; color: #16a34a; }
-    .price-period { font-size: 14px; color: #64748b; }
-
-    .limits-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
-    }
-
-    .limit-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13px;
-      color: #475569;
-    }
-    .limit-item svg { color: #00d4aa; }
-
-    .features-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-    }
-
-    .feature-tag {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-size: 11px;
-      background: #fee2e2;
-      color: #dc2626;
-    }
-    .feature-tag.enabled { background: #dcfce7; color: #16a34a; }
-
-    .card-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      margin-top: 16px;
-      padding-top: 16px;
-      border-top: 1px solid #f1f5f9;
-    }
-
-    .btn-icon {
-      width: 32px;
-      height: 32px;
-      border: 1px solid #e2e8f0;
-      background: #fff;
-      border-radius: 6px;
-      color: #64748b;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-    }
-    .btn-icon:hover { border-color: #00d4aa; color: #00d4aa; }
-    .btn-icon.active { color: #16a34a; border-color: #16a34a; }
-    .btn-icon.btn-danger:hover { border-color: #dc2626; color: #dc2626; }
-
-    .empty-state {
-      grid-column: 1 / -1;
-      text-align: center;
-      padding: 60px 20px;
-      background: #fff;
+    .type-icon {
+      width: 48px;
+      height: 48px;
       border-radius: 12px;
-      border: 1px dashed #e2e8f0;
-    }
-    .empty-state svg { color: #cbd5e1; margin-bottom: 16px; }
-    .empty-state h3 { margin: 0 0 8px 0; color: #64748b; }
-    .empty-state p { margin: 0 0 20px 0; color: #94a3b8; }
-
-    /* Enhanced Popup Styles */
-    .popup-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(15, 23, 42, 0.6);
-      backdrop-filter: blur(4px);
+      background: #eff6ff;
+      color: #3b82f6;
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
-      padding: 20px;
-      animation: fadeIn 0.2s ease-out;
     }
-
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-
-    .popup-container {
-      background: #ffffff;
-      border-radius: 12px;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-      max-width: 700px;
-      width: 100%;
-      max-height: 85vh;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-
-    .subscription-popup {
-      max-width: 700px;
-    }
-
-    @keyframes slideUp {
-      from { transform: translateY(30px) scale(0.97); opacity: 0; }
-      to { transform: translateY(0) scale(1); opacity: 1; }
-    }
-
-    .popup-header {
-      padding: 16px 24px;
-      border-bottom: 1px solid #e2e8f0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
-
-    .header-title {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .header-icon {
-      width: 36px;
-      height: 36px;
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-    }
-
-    .popup-header h2 {
-      margin: 0;
+    .type-icon.premium { background: #fef3c7; color: #f59e0b; }
+    .type-info { flex: 1; }
+    .type-info h3 {
+      margin: 0 0 4px 0;
       font-size: 16px;
       font-weight: 600;
-      color: white;
     }
-
-    .popup-header .close-btn {
-      background: rgba(255, 255, 255, 0.15);
-      border: none;
-      color: white;
-      width: 32px;
-      height: 32px;
+    .type-price {
+      font-size: 14px;
+      color: #16a34a;
+      font-weight: 600;
+    }
+    .type-badges {
+      display: flex;
+      gap: 6px;
+    }
+    .badge {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .badge.inactive { background: #fee2e2; color: #dc2626; }
+    .badge.gps { background: #dcfce7; color: #16a34a; }
+    
+    .type-description {
+      font-size: 14px;
+      color: #64748b;
+      margin: 0 0 16px 0;
+      line-height: 1.5;
+    }
+    .type-stats {
+      display: flex;
+      gap: 16px;
+      padding: 12px 0;
+      border-top: 1px solid #e2e8f0;
+      margin-bottom: 12px;
+    }
+    .stat {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 18px;
+      font-weight: 600;
+      color: #1e293b;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    .type-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .btn-icon {
+      width: 36px;
+      height: 36px;
       border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      background: white;
+      color: #64748b;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       transition: all 0.2s;
     }
-
-    .popup-header .close-btn:hover {
-      background: rgba(255, 255, 255, 0.25);
-    }
-
-    .popup-body {
-      padding: 0;
-      overflow-y: auto;
-      flex: 1;
-      background: #f8fafc;
-    }
-
-    .form-section {
-      padding: 20px 24px;
-      background: white;
-      border-bottom: 1px solid #e2e8f0;
-    }
-
-    .form-section:last-child {
-      border-bottom: none;
-    }
-
-    .section-title {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 16px;
-      font-size: 13px;
-      font-weight: 600;
-      color: #475569;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
-
-    .section-title svg {
-      color: #6366f1;
-    }
-
-    .form-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 16px;
-    }
-
-    .form-grid .form-group {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin-bottom: 0;
-    }
-
-    .form-grid .form-group.full-width {
-      grid-column: 1 / -1;
-    }
-
-    .form-grid .form-group label {
-      font-size: 12px;
-      font-weight: 500;
-      color: #475569;
-      margin-bottom: 0;
-    }
-
-    .form-grid .form-group input,
-    .form-grid .form-group select,
-    .form-grid .form-group textarea {
-      padding: 10px 14px;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      color: #1e293b;
-      font-size: 13px;
-      transition: all 0.2s;
-    }
-
-    .form-grid .form-group input:focus,
-    .form-grid .form-group select:focus,
-    .form-grid .form-group textarea:focus {
-      outline: none;
-      border-color: #6366f1;
-      background: white;
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-    }
-
-    .required { color: #ef4444; }
-    .hint { font-size: 11px; color: #94a3b8; margin-top: 4px; }
-
-    .popup-footer {
-      padding: 16px 24px;
-      border-top: 1px solid #e2e8f0;
-      display: flex;
-      gap: 12px;
-      justify-content: flex-end;
-      background: white;
-    }
-
-    .popup-footer .btn-secondary,
-    .btn-secondary {
-      padding: 10px 20px;
-      background: white;
-      color: #64748b;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      font-weight: 500;
-      font-size: 13px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .popup-footer .btn-secondary:hover,
-    .btn-secondary:hover {
-      background: #f8fafc;
-      border-color: #cbd5e1;
-    }
-
-    .popup-footer .btn-primary {
-      padding: 10px 20px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-weight: 500;
-      font-size: 13px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      transition: all 0.2s;
-      box-shadow: 0 2px 4px rgba(102, 126, 234, 0.25);
-    }
-
-    .popup-footer .btn-primary:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.35);
-    }
-
-    .popup-footer .btn-primary:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-      transform: none;
-    }
-
-    .form-tabs {
-      display: flex;
-      gap: 8px;
-      padding: 16px 24px;
-      background: white;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .form-tabs button {
-      padding: 8px 16px;
-      border: none;
-      background: #f1f5f9;
-      color: #64748b;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      border-radius: 6px;
-      transition: all 0.2s;
-    }
-    .form-tabs button:hover { background: #e2e8f0; }
-    .form-tabs button.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
-
-    .tab-content { padding: 0; }
-
-    .features-tab {
-      padding: 0 !important;
-    }
-
-    .features-tab subscription-features-editor {
-      display: block;
-    }
-
-    .features-tab .form-section {
-      padding: 0;
-    }
-
-    /* Legacy Modal Styles for Delete Confirmation */
+    .btn-icon:hover { background: #f1f5f9; color: #3b82f6; }
+    .btn-icon.active { color: #16a34a; border-color: #16a34a; }
+    .btn-icon.danger:hover { background: #fef2f2; color: #ef4444; }
+    
+    /* Modal */
     .modal-overlay {
       position: fixed;
       top: 0;
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(15, 23, 42, 0.6);
-      backdrop-filter: blur(4px);
+      background: rgba(0,0,0,0.5);
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 1000;
-      padding: 20px;
-      animation: fadeIn 0.2s ease-out;
     }
-
     .modal {
-      background: #fff;
-      border-radius: 12px;
+      background: white;
+      border-radius: 16px;
       width: 100%;
-      max-width: 700px;
+      max-width: 560px;
       max-height: 90vh;
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .modal.modal-small { max-width: 450px; }
-
+    .modal.modal-sm { max-width: 400px; }
+    .modal.modal-large { max-width: 700px; }
     .modal-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       padding: 20px 24px;
       border-bottom: 1px solid #e2e8f0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
     }
-    .modal-header h3 { margin: 0; font-size: 18px; color: #1f2937; }
-
+    .modal-header h3 { margin: 0; font-size: 18px; }
     .btn-close {
       width: 32px;
       height: 32px;
+      border-radius: 8px;
       border: none;
-      background: #f1f5f9;
-      border-radius: 8px;
-      color: #64748b;
+      background: rgba(255,255,255,0.2);
+      color: white;
+      font-size: 20px;
       cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
     }
-    .btn-close:hover { background: #e2e8f0; color: #1f2937; }
-
+    .btn-close:hover { background: rgba(255,255,255,0.3); }
     .modal-body {
-      flex: 1;
+      padding: 0;
       overflow-y: auto;
-      padding: 24px;
+      flex: 1;
     }
-
-    .form-group {
-      margin-bottom: 16px;
-    }
-    .form-group label {
-      display: block;
-      margin-bottom: 6px;
-      font-size: 13px;
-      font-weight: 500;
-      color: #374151;
-    }
-    .form-group input, .form-group select, .form-group textarea {
-      width: 100%;
-      padding: 10px 12px;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      font-size: 14px;
-      transition: border-color 0.2s;
-    }
-    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
-      outline: none;
-      border-color: #00d4aa;
-    }
-    .form-group input:disabled { background: #f8fafc; color: #94a3b8; }
-    .form-group small { display: block; margin-top: 4px; font-size: 11px; color: #94a3b8; }
-
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-
-    .price-preview {
-      margin-top: 24px;
-      padding: 16px;
-      background: #f8fafc;
-      border-radius: 8px;
-    }
-    .price-preview h4 { margin: 0 0 12px 0; font-size: 13px; color: #64748b; }
-
-    .preview-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-
-    .preview-item {
-      text-align: center;
-      padding: 12px;
-      background: #fff;
-      border-radius: 8px;
-      border: 1px solid #e2e8f0;
-    }
-    .preview-item .cycle { display: block; font-size: 11px; color: #64748b; margin-bottom: 4px; }
-    .preview-item .price { display: block; font-size: 16px; font-weight: 600; color: #1f2937; }
-    .preview-item .savings { display: block; font-size: 11px; color: #16a34a; margin-top: 4px; }
-
-    .features-form {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    }
-
-    .toggle-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 12px;
-      background: #f8fafc;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .toggle-item:hover { background: #f1f5f9; }
-    .toggle-item input[type="checkbox"] {
-      width: 18px;
-      height: 18px;
-      accent-color: #00d4aa;
-    }
-    .toggle-label { font-size: 13px; color: #1f2937; }
-
     .modal-footer {
       display: flex;
       justify-content: flex-end;
@@ -970,56 +490,238 @@ import { SubscriptionFeaturesEditorComponent, SubscriptionFeatures } from '../co
       border-top: 1px solid #e2e8f0;
     }
 
-    .btn-secondary {
-      padding: 10px 20px;
-      border: 1px solid #e2e8f0;
-      background: #fff;
+    /* Tabs */
+    .form-tabs {
+      display: flex;
+      gap: 4px;
+      padding: 16px 24px;
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+      overflow-x: auto;
+    }
+    .form-tabs button {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border: none;
+      background: transparent;
       color: #64748b;
-      border-radius: 8px;
+      font-size: 13px;
       font-weight: 500;
+      cursor: pointer;
+      border-radius: 6px;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .form-tabs button:hover { background: #e2e8f0; }
+    .form-tabs button.active { 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+      color: white; 
+    }
+
+    .tab-content {
+      padding: 24px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: #374151;
+    }
+    .form-group input[type="text"],
+    .form-group input[type="number"],
+    .form-group textarea,
+    .form-group select {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+    .form-group input:focus,
+    .form-group textarea:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    .form-group textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+    .form-group small {
+      display: block;
+      margin-top: 4px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    /* Permissions Section */
+    .permissions-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .permissions-header h4 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #374151;
+    }
+    .btn-select-all {
+      padding: 6px 12px;
+      border: 1px solid #d1d5db;
+      background: white;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #64748b;
       cursor: pointer;
       transition: all 0.2s;
     }
-    .btn-secondary:hover { border-color: #cbd5e1; color: #1f2937; }
-
+    .btn-select-all:hover {
+      background: #f1f5f9;
+      border-color: #667eea;
+      color: #667eea;
+    }
+    .permissions-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .permission-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      transition: all 0.2s;
+    }
+    .permission-item:hover { background: #f1f5f9; border-color: #cbd5e1; }
+    .permission-item.enabled { 
+      background: #f0fdf4; 
+      border-color: #86efac;
+    }
+    .permission-item input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: #16a34a;
+    }
+    .perm-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: #e2e8f0;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .permission-item.enabled .perm-icon {
+      background: #dcfce7;
+      color: #16a34a;
+    }
+    
+    .btn-secondary {
+      padding: 10px 20px;
+      border: 1px solid #d1d5db;
+      background: white;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .btn-secondary:hover { background: #f9fafb; }
     .btn-danger {
       padding: 10px 20px;
-      background: #dc2626;
-      color: #fff;
+      background: #ef4444;
+      color: white;
       border: none;
       border-radius: 8px;
-      font-weight: 500;
       cursor: pointer;
+      font-weight: 500;
     }
-    .btn-danger:hover { background: #b91c1c; }
-
-    .warning { color: #dc2626; font-size: 13px; margin-top: 12px; }
+    .btn-danger:hover { background: #dc2626; }
+    .warning {
+      color: #f59e0b;
+      font-size: 14px;
+    }
 
     @media (max-width: 768px) {
       .types-grid { grid-template-columns: 1fr; }
       .form-row { grid-template-columns: 1fr; }
-      .preview-grid { grid-template-columns: 1fr; }
-      .features-form { grid-template-columns: 1fr; }
+      .permissions-grid { grid-template-columns: 1fr; }
+      .form-tabs { flex-wrap: wrap; }
     }
   `]
 })
 export class AdminSubscriptionsComponent implements OnInit {
   subscriptionTypes: SubscriptionType[] = [];
-  filteredTypes: SubscriptionType[] = [];
-
-  searchQuery = '';
-  companyTypeFilter = 'all';
-  statusFilter = 'all';
-
-  showAddModal = false;
-  showEditModal = false;
-  showDeleteModal = false;
-  selectedType: SubscriptionType | null = null;
+  showModal = false;
+  showDeleteConfirm = false;
+  editingType: SubscriptionType | null = null;
   typeToDelete: SubscriptionType | null = null;
+  activeTab: 'general' | 'limits' | 'modules' | 'reports' | 'features' = 'general';
+  
+  formData = this.getEmptyForm();
 
-  activeTab: 'general' | 'pricing' | 'limits' | 'features' = 'general';
+  availableModules = [
+    { key: 'dashboard', label: 'Tableau de bord' },
+    { key: 'monitoring', label: 'Monitoring GPS' },
+    { key: 'vehicles', label: 'Véhicules' },
+    { key: 'employees', label: 'Employés' },
+    { key: 'geofences', label: 'Géofences' },
+    { key: 'maintenance', label: 'Maintenance' },
+    { key: 'costs', label: 'Coûts' },
+    { key: 'reports', label: 'Rapports' },
+    { key: 'settings', label: 'Paramètres' },
+    { key: 'users', label: 'Utilisateurs' },
+    { key: 'suppliers', label: 'Fournisseurs' },
+    { key: 'documents', label: 'Documents' },
+    { key: 'accidents', label: 'Sinistres' },
+    { key: 'fleet_management', label: 'Gestion Flotte' }
+  ];
 
-  form = this.getEmptyForm();
+  availableReports = [
+    { key: 'trips', label: 'Rapport de trajets' },
+    { key: 'fuel', label: 'Rapport carburant' },
+    { key: 'speed', label: 'Rapport vitesse' },
+    { key: 'stops', label: 'Rapport arrêts' },
+    { key: 'mileage', label: 'Rapport kilométrique' },
+    { key: 'costs', label: 'Rapport coûts' },
+    { key: 'maintenance', label: 'Rapport maintenance' },
+    { key: 'daily', label: 'Rapport journalier' },
+    { key: 'monthly', label: 'Rapport mensuel' },
+    { key: 'mileage_period', label: 'Kilométrage par période' },
+    { key: 'speed_infraction', label: 'Infractions vitesse' },
+    { key: 'driving_behavior', label: 'Comportement conduite' }
+  ];
+
+  availableFeatures = [
+    { key: 'gpsTracking', label: 'Suivi GPS temps réel' },
+    { key: 'gpsInstallation', label: 'Installation GPS incluse' },
+    { key: 'apiAccess', label: 'Accès API' },
+    { key: 'advancedReports', label: 'Rapports avancés' },
+    { key: 'realTimeAlerts', label: 'Alertes temps réel' },
+    { key: 'historyPlayback', label: 'Lecture historique' },
+    { key: 'fuelAnalysis', label: 'Analyse carburant' },
+    { key: 'drivingBehavior', label: 'Comportement conduite' }
+  ];
 
   constructor(
     private router: Router,
@@ -1038,50 +740,114 @@ export class AdminSubscriptionsComponent implements OnInit {
     this.adminService.getSubscriptionTypes().subscribe({
       next: (types) => {
         this.subscriptionTypes = types;
-        this.filterTypes();
       },
       error: (err) => console.error('Error loading subscription types:', err)
     });
   }
 
-  filterTypes() {
-    this.filteredTypes = this.subscriptionTypes.filter(type => {
-      const matchesSearch = !this.searchQuery ||
-        type.name.toLowerCase().includes(this.searchQuery.toLowerCase());
-      const matchesCompanyType = this.companyTypeFilter === 'all' || 
-        type.targetCompanyType === 'all' || 
-        type.targetCompanyType === this.companyTypeFilter;
-      const matchesStatus = this.statusFilter === 'all' ||
-        (this.statusFilter === 'active' && type.isActive) ||
-        (this.statusFilter === 'inactive' && !type.isActive);
-      return matchesSearch && matchesCompanyType && matchesStatus;
-    });
+  getModulesCount(type: SubscriptionType): number {
+    let count = 0;
+    if (type.moduleDashboard) count++;
+    if (type.moduleMonitoring) count++;
+    if (type.moduleVehicles) count++;
+    if (type.moduleEmployees) count++;
+    if (type.moduleGeofences) count++;
+    if (type.moduleMaintenance) count++;
+    if (type.moduleCosts) count++;
+    if (type.moduleReports) count++;
+    if (type.moduleSettings) count++;
+    if (type.moduleUsers) count++;
+    if (type.moduleSuppliers) count++;
+    if (type.moduleDocuments) count++;
+    if (type.moduleAccidents) count++;
+    if (type.moduleFleetManagement) count++;
+    return count;
   }
 
-  getCompanyTypeLabel(type: string): string {
-    const labels: Record<string, string> = {
-      'transport': 'Transport',
-      'location': 'Location',
-      'autre': 'Autre',
-      'all': 'Tous'
-    };
-    return labels[type] || type;
+  getReportsCount(type: SubscriptionType): number {
+    let count = 0;
+    if (type.reportTrips) count++;
+    if (type.reportFuel) count++;
+    if (type.reportSpeed) count++;
+    if (type.reportStops) count++;
+    if (type.reportMileage) count++;
+    if (type.reportCosts) count++;
+    if (type.reportMaintenance) count++;
+    if (type.reportDaily) count++;
+    if (type.reportMonthly) count++;
+    if (type.reportMileagePeriod) count++;
+    if (type.reportSpeedInfraction) count++;
+    if (type.reportDrivingBehavior) count++;
+    return count;
   }
 
-  openAddModal() {
-    this.form = this.getEmptyForm();
+  openCreateModal() {
+    this.editingType = null;
+    this.formData = this.getEmptyForm();
     this.activeTab = 'general';
-    this.showAddModal = true;
+    this.showModal = true;
   }
 
   editType(type: SubscriptionType) {
-    this.selectedType = type;
-    this.form = { 
-      ...type,
-      description: type.description || ''
+    this.editingType = type;
+    this.formData = {
+      name: type.name,
+      description: type.description || '',
+      targetCompanyType: type.targetCompanyType,
+      yearlyPrice: type.yearlyPrice,
+      maxVehicles: type.maxVehicles,
+      maxUsers: type.maxUsers,
+      maxGpsDevices: type.maxGpsDevices,
+      maxGeofences: type.maxGeofences,
+      historyRetentionDays: type.historyRetentionDays || 30,
+      modules: {
+        dashboard: type.moduleDashboard || false,
+        monitoring: type.moduleMonitoring || false,
+        vehicles: type.moduleVehicles || false,
+        employees: type.moduleEmployees || false,
+        geofences: type.moduleGeofences || false,
+        maintenance: type.moduleMaintenance || false,
+        costs: type.moduleCosts || false,
+        reports: type.moduleReports || false,
+        settings: type.moduleSettings || false,
+        users: type.moduleUsers || false,
+        suppliers: type.moduleSuppliers || false,
+        documents: type.moduleDocuments || false,
+        accidents: type.moduleAccidents || false,
+        fleet_management: type.moduleFleetManagement || false
+      },
+      reports: {
+        trips: type.reportTrips || false,
+        fuel: type.reportFuel || false,
+        speed: type.reportSpeed || false,
+        stops: type.reportStops || false,
+        mileage: type.reportMileage || false,
+        costs: type.reportCosts || false,
+        maintenance: type.reportMaintenance || false,
+        daily: type.reportDaily || false,
+        monthly: type.reportMonthly || false,
+        mileage_period: type.reportMileagePeriod || false,
+        speed_infraction: type.reportSpeedInfraction || false,
+        driving_behavior: type.reportDrivingBehavior || false
+      },
+      features: {
+        gpsTracking: type.gpsTracking || false,
+        gpsInstallation: type.gpsInstallation || false,
+        apiAccess: type.apiAccess || false,
+        advancedReports: type.advancedReports || false,
+        realTimeAlerts: type.realTimeAlerts || false,
+        historyPlayback: type.historyPlayback || false,
+        fuelAnalysis: type.fuelAnalysis || false,
+        drivingBehavior: type.drivingBehavior || false
+      }
     };
     this.activeTab = 'general';
-    this.showEditModal = true;
+    this.showModal = true;
+  }
+
+  closeModal() {
+    this.showModal = false;
+    this.editingType = null;
   }
 
   toggleStatus(type: SubscriptionType) {
@@ -1089,61 +855,88 @@ export class AdminSubscriptionsComponent implements OnInit {
       next: () => {
         type.isActive = !type.isActive;
       },
-      error: (err) => {
-        console.error('Error toggling status:', err);
-        alert('Erreur lors de la mise à jour du statut');
-      }
+      error: (err) => console.error('Error toggling status:', err)
     });
   }
 
-  confirmDelete(type: SubscriptionType) {
-    this.typeToDelete = type;
-    this.showDeleteModal = true;
+  toggleAllModules() {
+    const allSelected = this.areAllModulesSelected();
+    this.availableModules.forEach(m => {
+      this.formData.modules[m.key] = !allSelected;
+    });
   }
 
-  deleteType() {
-    if (this.typeToDelete) {
-      this.adminService.deleteSubscriptionType(this.typeToDelete.id).subscribe({
-        next: () => {
-          this.loadData();
-          this.closeDeleteModal();
-        },
-        error: (err) => {
-          console.error('Error deleting type:', err);
-          alert(err.error?.message || 'Erreur lors de la suppression');
-        }
-      });
-    }
+  toggleAllReports() {
+    const allSelected = this.areAllReportsSelected();
+    this.availableReports.forEach(r => {
+      this.formData.reports[r.key] = !allSelected;
+    });
+  }
+
+  areAllModulesSelected(): boolean {
+    return this.availableModules.every(m => this.formData.modules[m.key]);
+  }
+
+  areAllReportsSelected(): boolean {
+    return this.availableReports.every(r => this.formData.reports[r.key]);
   }
 
   saveType() {
     const data: any = {
-      name: this.form.name,
-      code: this.form.name.toLowerCase().replace(/\s+/g, '-'),
-      description: this.form.description || undefined,
-      targetCompanyType: this.form.targetCompanyType,
-      yearlyPrice: this.form.yearlyPrice,
-      yearlyDurationDays: this.form.yearlyDurationDays,
-      maxVehicles: this.form.maxVehicles,
-      maxUsers: this.form.maxUsers,
-      maxGpsDevices: this.form.maxGpsDevices,
-      maxGeofences: this.form.maxGeofences,
-      gpsTracking: this.form.gpsTracking,
-      gpsInstallation: this.form.gpsInstallation,
-      apiAccess: this.form.apiAccess,
-      advancedReports: this.form.advancedReports,
-      realTimeAlerts: this.form.realTimeAlerts,
-      historyPlayback: this.form.historyPlayback,
-      fuelAnalysis: this.form.fuelAnalysis,
-      drivingBehavior: this.form.drivingBehavior,
-      historyRetentionDays: this.form.historyRetentionDays
+      name: this.formData.name,
+      code: this.formData.name.toLowerCase().replace(/\s+/g, '-'),
+      description: this.formData.description || undefined,
+      targetCompanyType: this.formData.targetCompanyType,
+      yearlyPrice: this.formData.yearlyPrice,
+      maxVehicles: this.formData.maxVehicles,
+      maxUsers: this.formData.maxUsers,
+      maxGpsDevices: this.formData.maxGpsDevices,
+      maxGeofences: this.formData.maxGeofences,
+      historyRetentionDays: this.formData.historyRetentionDays,
+      // Features
+      gpsTracking: this.formData.features['gpsTracking'],
+      gpsInstallation: this.formData.features['gpsInstallation'],
+      apiAccess: this.formData.features['apiAccess'],
+      advancedReports: this.formData.features['advancedReports'],
+      realTimeAlerts: this.formData.features['realTimeAlerts'],
+      historyPlayback: this.formData.features['historyPlayback'],
+      fuelAnalysis: this.formData.features['fuelAnalysis'],
+      drivingBehavior: this.formData.features['drivingBehavior'],
+      // Modules
+      moduleDashboard: this.formData.modules['dashboard'],
+      moduleMonitoring: this.formData.modules['monitoring'],
+      moduleVehicles: this.formData.modules['vehicles'],
+      moduleEmployees: this.formData.modules['employees'],
+      moduleGeofences: this.formData.modules['geofences'],
+      moduleMaintenance: this.formData.modules['maintenance'],
+      moduleCosts: this.formData.modules['costs'],
+      moduleReports: this.formData.modules['reports'],
+      moduleSettings: this.formData.modules['settings'],
+      moduleUsers: this.formData.modules['users'],
+      moduleSuppliers: this.formData.modules['suppliers'],
+      moduleDocuments: this.formData.modules['documents'],
+      moduleAccidents: this.formData.modules['accidents'],
+      moduleFleetManagement: this.formData.modules['fleet_management'],
+      // Reports
+      reportTrips: this.formData.reports['trips'],
+      reportFuel: this.formData.reports['fuel'],
+      reportSpeed: this.formData.reports['speed'],
+      reportStops: this.formData.reports['stops'],
+      reportMileage: this.formData.reports['mileage'],
+      reportCosts: this.formData.reports['costs'],
+      reportMaintenance: this.formData.reports['maintenance'],
+      reportDaily: this.formData.reports['daily'],
+      reportMonthly: this.formData.reports['monthly'],
+      reportMileagePeriod: this.formData.reports['mileage_period'],
+      reportSpeedInfraction: this.formData.reports['speed_infraction'],
+      reportDrivingBehavior: this.formData.reports['driving_behavior']
     };
 
-    if (this.showEditModal && this.selectedType) {
-      this.adminService.updateSubscriptionType(this.selectedType.id, data).subscribe({
+    if (this.editingType) {
+      this.adminService.updateSubscriptionType(this.editingType.id, data).subscribe({
         next: () => {
           this.loadData();
-          this.closeModals();
+          this.closeModal();
         },
         error: (err) => {
           console.error('Error updating type:', err);
@@ -1154,7 +947,7 @@ export class AdminSubscriptionsComponent implements OnInit {
       this.adminService.createSubscriptionType(data).subscribe({
         next: () => {
           this.loadData();
-          this.closeModals();
+          this.closeModal();
         },
         error: (err) => {
           console.error('Error creating type:', err);
@@ -1164,66 +957,75 @@ export class AdminSubscriptionsComponent implements OnInit {
     }
   }
 
-  closeModals() {
-    this.showAddModal = false;
-    this.showEditModal = false;
-    this.selectedType = null;
-    this.form = this.getEmptyForm();
+  confirmDelete(type: SubscriptionType) {
+    this.typeToDelete = type;
+    this.showDeleteConfirm = true;
   }
 
-  closeDeleteModal() {
-    this.showDeleteModal = false;
-    this.typeToDelete = null;
-  }
-
-  getFormFeatures(): SubscriptionFeatures {
-    return {
-      gpsTracking: this.form.gpsTracking,
-      gpsInstallation: this.form.gpsInstallation,
-      realTimeAlerts: this.form.realTimeAlerts,
-      historyPlayback: this.form.historyPlayback,
-      advancedReports: this.form.advancedReports,
-      fuelAnalysis: this.form.fuelAnalysis,
-      drivingBehavior: this.form.drivingBehavior,
-      apiAccess: this.form.apiAccess
-    };
-  }
-
-  onFeaturesChange(features: SubscriptionFeatures) {
-    this.form.gpsTracking = features.gpsTracking;
-    this.form.gpsInstallation = features.gpsInstallation;
-    this.form.realTimeAlerts = features.realTimeAlerts;
-    this.form.historyPlayback = features.historyPlayback;
-    this.form.advancedReports = features.advancedReports;
-    this.form.fuelAnalysis = features.fuelAnalysis;
-    this.form.drivingBehavior = features.drivingBehavior;
-    this.form.apiAccess = features.apiAccess;
+  deleteType() {
+    if (!this.typeToDelete) return;
+    
+    this.adminService.deleteSubscriptionType(this.typeToDelete.id).subscribe({
+      next: () => {
+        this.loadData();
+        this.showDeleteConfirm = false;
+        this.typeToDelete = null;
+      },
+      error: (err) => console.error('Error deleting type:', err)
+    });
   }
 
   private getEmptyForm() {
     return {
-      id: 0,
       name: '',
       description: '',
       targetCompanyType: 'all',
       yearlyPrice: 0,
-      yearlyDurationDays: 365,
       maxVehicles: 10,
       maxUsers: 5,
       maxGpsDevices: 10,
       maxGeofences: 20,
-      gpsTracking: true,
-      gpsInstallation: false,
-      apiAccess: false,
-      advancedReports: false,
-      realTimeAlerts: true,
-      historyPlayback: true,
-      fuelAnalysis: false,
-      drivingBehavior: false,
       historyRetentionDays: 30,
-      isActive: true,
-      createdAt: new Date(),
-      updatedAt: new Date()
+      modules: {
+        dashboard: true,
+        monitoring: false,
+        vehicles: true,
+        employees: true,
+        geofences: false,
+        maintenance: true,
+        costs: true,
+        reports: true,
+        settings: true,
+        users: true,
+        suppliers: true,
+        documents: true,
+        accidents: true,
+        fleet_management: false
+      } as Record<string, boolean>,
+      reports: {
+        trips: true,
+        fuel: false,
+        speed: true,
+        stops: true,
+        mileage: true,
+        costs: true,
+        maintenance: true,
+        daily: true,
+        monthly: false,
+        mileage_period: false,
+        speed_infraction: true,
+        driving_behavior: false
+      } as Record<string, boolean>,
+      features: {
+        gpsTracking: true,
+        gpsInstallation: false,
+        apiAccess: false,
+        advancedReports: false,
+        realTimeAlerts: true,
+        historyPlayback: true,
+        fuelAnalysis: false,
+        drivingBehavior: false
+      } as Record<string, boolean>
     };
   }
 }

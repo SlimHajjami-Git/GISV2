@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -111,3 +111,5 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
         }
     }
 }
+
+

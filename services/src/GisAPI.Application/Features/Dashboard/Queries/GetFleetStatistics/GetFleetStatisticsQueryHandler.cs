@@ -101,7 +101,7 @@ public class GetFleetStatisticsQueryHandler : IRequestHandler<GetFleetStatistics
                 VehicleName = vehicle.Name,
                 Plate = vehicle.Plate,
                 VehicleType = vehicle.Type,
-                DriverName = vehicle.AssignedDriver?.Name,
+                DriverName = vehicle.AssignedDriver?.FullName,
                 
                 TotalDistanceKm = Math.Round(totalDistance, 2),
                 AvgDailyDistanceKm = Math.Round(avgDailyDistance, 2),
@@ -277,3 +277,6 @@ public class GetFleetStatisticsQueryHandler : IRequestHandler<GetFleetStatistics
         return Math.Sqrt(sumOfSquares / (values.Count - 1));
     }
 }
+
+
+

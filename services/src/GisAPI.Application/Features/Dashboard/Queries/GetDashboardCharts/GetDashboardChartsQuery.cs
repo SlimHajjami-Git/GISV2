@@ -113,3 +113,6 @@ public class AreaChartSeriesDto
     public List<double> Values { get; set; } = new();
     public int? VehicleId { get; set; }
 }
+
+
+

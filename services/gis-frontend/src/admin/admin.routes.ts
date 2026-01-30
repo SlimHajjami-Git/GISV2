@@ -12,6 +12,8 @@ import { AdminSettingsComponent } from './pages/admin-settings.component';
 import { AdminSubscriptionsComponent } from './pages/admin-subscriptions.component';
 import { AdminRolesComponent } from './pages/admin-roles.component';
 import { AdminCompanyDetailsComponent } from './pages/admin-company-details.component';
+import { AdminBrandsComponent } from './pages/admin-brands.component';
+import { AdminPartsComponent } from './pages/admin-parts.component';
 
 export const adminRoutes: Routes = [
   { path: '', redirectTo: 'login', pathMatch: 'full' },
@@ -23,6 +25,8 @@ export const adminRoutes: Routes = [
   { path: 'roles', component: AdminRolesComponent },
   { path: 'users', component: AdminUsersComponent },
   { path: 'vehicles', component: AdminVehiclesComponent },
+  { path: 'brands', component: AdminBrandsComponent },
+  { path: 'parts', component: AdminPartsComponent },
   { path: 'health', component: AdminHealthComponent },
   { path: 'features', component: AdminFeatureControlComponent },
   { path: 'estimates', component: AdminEstimatesComponent },

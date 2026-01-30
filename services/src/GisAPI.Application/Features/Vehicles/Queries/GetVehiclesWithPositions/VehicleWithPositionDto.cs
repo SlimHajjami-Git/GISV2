@@ -1,4 +1,4 @@
-ï»¿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -44,12 +44,14 @@ public record VehicleStatsDto(
     double CurrentSpeed,           // Vitesse actuelle (km/h)
     double MaxSpeed,               // Plus grosse vitesse atteinte (km/h)
     int? FuelLevel,                // Niveau de carburant (%)
-    short? Temperature,            // TempÃ©rature moteur (Â°C)
+    short? Temperature,            // Température moteur (°C)
     int? BatteryLevel,             // Niveau batterie (%)
     bool IsMoving,                 // En circulation
-    bool IsStopped,                // En arrÃªt
+    bool IsStopped,                // En arrêt
     TimeSpan MovingTime,           // Temps en circulation
-    TimeSpan StoppedTime,          // Temps en arrÃªt
-    DateTime? LastStopTime,        // Dernier arrÃªt
+    TimeSpan StoppedTime,          // Temps en arrêt
+    DateTime? LastStopTime,        // Dernier arrêt
     DateTime? LastMoveTime         // Dernier mouvement
 );
+
+

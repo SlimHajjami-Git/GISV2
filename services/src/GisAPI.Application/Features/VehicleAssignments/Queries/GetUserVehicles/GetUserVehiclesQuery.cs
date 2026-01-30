@@ -15,3 +15,6 @@ public record UserVehicleDto(
     bool HasGps,
     DateTime AssignedAt
 );
+
+
+

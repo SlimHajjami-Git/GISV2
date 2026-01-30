@@ -88,3 +88,6 @@ public class CreateAccidentClaimCommandHandler : IRequestHandler<CreateAccidentC
         return claim.Id;
     }
 }
+
+
+

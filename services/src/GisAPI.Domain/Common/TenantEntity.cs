@@ -7,3 +7,5 @@ public abstract class TenantEntity : AuditableEntity, ITenantEntity
 {
     public int CompanyId { get; set; }
 }
+
+

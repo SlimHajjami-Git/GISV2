@@ -348,3 +348,6 @@ public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardCharts
         };
     }
 }
+
+
+

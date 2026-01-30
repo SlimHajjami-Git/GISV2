@@ -39,3 +39,5 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
         }
     }
 }
+
+

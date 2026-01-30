@@ -152,8 +152,11 @@ export class AuthService {
   }
 
   logout() {
+    // Clear all auth-related storage
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_user');
     this.currentUser$.next(null);
   }
 

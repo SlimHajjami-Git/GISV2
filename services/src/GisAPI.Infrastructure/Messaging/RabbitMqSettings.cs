@@ -20,3 +20,5 @@ public class RabbitMqSettings
     public string AlertsQueue { get; set; } = "gis.alerts.notifications";
     public string EventsQueue { get; set; } = "gis.events.all";
 }
+
+

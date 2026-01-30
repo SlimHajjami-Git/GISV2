@@ -144,3 +144,6 @@ public class VehicleAlertDto
     public double Longitude { get; set; }
     public DateTime Timestamp { get; set; }
 }
+
+
+

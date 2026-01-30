@@ -55,3 +55,5 @@ public class VehicleConfiguration : IEntityTypeConfiguration<Vehicle>
             .OnDelete(DeleteBehavior.SetNull);
     }
 }
+
+

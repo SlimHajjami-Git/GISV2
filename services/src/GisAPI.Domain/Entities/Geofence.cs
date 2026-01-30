@@ -73,3 +73,5 @@ public class GeofenceGroup : TenantEntity
     public Societe? Societe { get; set; }
     public ICollection<Geofence> Geofences { get; set; } = new List<Geofence>();
 }
+
+

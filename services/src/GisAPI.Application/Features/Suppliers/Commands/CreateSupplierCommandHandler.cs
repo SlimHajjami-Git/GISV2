@@ -61,3 +61,6 @@ public class CreateSupplierCommandHandler : IRequestHandler<CreateSupplierComman
         return supplier.Id;
     }
 }
+
+
+

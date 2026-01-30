@@ -160,3 +160,6 @@ public class GeofenceGroup
 
     public ICollection<Geofence> Geofences { get; set; } = new List<Geofence>();
 }
+
+
+

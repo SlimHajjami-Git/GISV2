@@ -41,8 +41,8 @@ public class RequirePermissionAttribute : Attribute, IAsyncAuthorizationFilter
             return;
         }
 
-        // System admin has all permissions (supports both legacy and new naming)
-        if (user.UserType == "system_admin" || user.UserType == "platform_admin")
+        // System admin has all permissions - absolute power
+        if (user.IsSystemAdmin)
             return;
 
         // Check role-based access
@@ -50,7 +50,7 @@ public class RequirePermissionAttribute : Attribute, IAsyncAuthorizationFilter
         {
             var hasRole = _allowedRoles.Any(r => 
                 user.Roles?.Contains(r) == true || 
-                user.Role?.RoleType == r ||
+                user.Role?.Name == r ||
                 (r == "company_admin" && user.IsCompanyAdmin));
 
             if (!hasRole)

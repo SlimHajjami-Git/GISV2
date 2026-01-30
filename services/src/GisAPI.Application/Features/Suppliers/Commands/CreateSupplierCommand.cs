@@ -21,3 +21,6 @@ public record CreateSupplierCommand(
     bool IsActive,
     List<string>? Services
 ) : ICommand<int>;
+
+
+

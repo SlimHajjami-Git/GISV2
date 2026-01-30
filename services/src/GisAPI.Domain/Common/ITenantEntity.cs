@@ -7,3 +7,5 @@ public interface ITenantEntity
 {
     int CompanyId { get; set; }
 }
+
+

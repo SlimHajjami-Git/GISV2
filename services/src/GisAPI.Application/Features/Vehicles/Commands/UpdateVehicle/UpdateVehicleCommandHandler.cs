@@ -43,3 +43,6 @@ public class UpdateVehicleCommandHandler : IRequestHandler<UpdateVehicleCommand>
         await _context.SaveChangesAsync(ct);
     }
 }
+
+
+

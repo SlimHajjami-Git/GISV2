@@ -37,3 +37,6 @@ public class UnassignVehicleCommandHandler : IRequestHandler<UnassignVehicleComm
         await _context.SaveChangesAsync(ct);
     }
 }
+
+
+

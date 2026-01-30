@@ -96,3 +96,6 @@ public class DeleteMaintenanceTemplateCommandHandler : IRequestHandler<DeleteMai
         return true;
     }
 }
+
+
+

@@ -37,3 +37,5 @@ public class DriverScore : TenantEntity
     public decimal DistanceKm { get; set; }
     public int DrivingTimeMinutes { get; set; }
 }
+
+

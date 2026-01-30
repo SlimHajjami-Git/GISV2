@@ -12,7 +12,7 @@ namespace GisAPI.Controllers;
 
 [ApiController]
 [Route("api/admin")]
-[Authorize(Roles = "super_admin,platform_admin")]
+[Authorize]  // System admin check is done via PermissionMiddleware
 public class AdminController : ControllerBase
 {
     private readonly GisDbContext _context;
@@ -249,16 +249,16 @@ public class AdminController : ControllerBase
 
         // Project directly to DTO to avoid JSONB deserialization issues
         var roles = await _context.Roles
-            .Where(r => r.SocieteId == id || r.IsSystem)
+            .Where(r => r.SocieteId == id)
             .Select(r => new AdminRoleDto
             {
                 Id = r.Id,
                 Name = r.Name,
                 Description = r.Description,
-                RoleType = r.RoleType,
+                RoleType = r.Name, // Use Name as RoleType for compatibility
                 Permissions = null, // Skip permissions to avoid JSONB issues
-                IsSystem = r.IsSystem,
-                IsDefault = r.IsDefault,
+                IsSystem = false,
+                IsDefault = false,
                 UserCount = _context.Users.Count(u => u.RoleId == r.Id),
                 CreatedAt = r.CreatedAt,
                 UpdatedAt = r.UpdatedAt

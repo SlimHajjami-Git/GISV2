@@ -71,3 +71,6 @@ public record AccidentClaimStatsDto(
     decimal TotalEstimatedDamage,
     decimal TotalApprovedAmount
 );
+
+
+

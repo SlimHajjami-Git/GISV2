@@ -73,3 +73,6 @@ public class GetSocietesQueryHandler : IRequestHandler<GetSocietesQuery, Societe
         return new SocietesListResponse(items, totalCount, request.Page, request.PageSize);
     }
 }
+
+
+

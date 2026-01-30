@@ -72,3 +72,5 @@ public record MaintenanceCompletedEvent(
     string MaintenanceType,
     decimal TotalCost
 ) : DomainEvent;
+
+

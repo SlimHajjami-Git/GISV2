@@ -127,3 +127,6 @@ public class DisplaySettings
     public int RefreshInterval { get; set; } = 30;
     public bool Animations { get; set; } = true;
 }
+
+
+

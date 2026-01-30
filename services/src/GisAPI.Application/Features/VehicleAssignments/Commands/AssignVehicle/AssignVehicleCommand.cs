@@ -17,3 +17,6 @@ public record VehicleAssignmentDto(
     DateTime AssignedAt,
     bool IsActive
 );
+
+
+

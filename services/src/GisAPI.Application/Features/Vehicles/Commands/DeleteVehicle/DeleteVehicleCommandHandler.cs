@@ -31,3 +31,6 @@ public class DeleteVehicleCommandHandler : IRequestHandler<DeleteVehicleCommand>
         await _context.SaveChangesAsync(ct);
     }
 }
+
+
+

@@ -22,6 +22,7 @@ import { SuppliersComponent } from './components/suppliers.component';
 import { DocumentsComponent } from './components/documents.component';
 import { AccidentClaimsComponent } from './components/accident-claims.component';
 import { MaintenanceTemplatesComponent } from './components/maintenance-templates.component';
+import { FleetManagementComponent } from './components/fleet-management.component';
 import { adminRoutes } from './admin/admin.routes';
 
 export const routes: Routes = [
@@ -54,6 +55,8 @@ export const routes: Routes = [
   { path: 'sinistres', component: AccidentClaimsComponent },
   { path: 'entretiens-maitres', component: MaintenanceTemplatesComponent },
   { path: 'maintenance-templates', component: MaintenanceTemplatesComponent },
+  { path: 'fleet-management', component: FleetManagementComponent },
+  { path: 'gestion-flotte', component: FleetManagementComponent },
   { path: 'admin', children: adminRoutes },
   { path: '**', redirectTo: '' },
 ];

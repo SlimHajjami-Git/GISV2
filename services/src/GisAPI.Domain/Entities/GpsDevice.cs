@@ -87,3 +87,5 @@ public class GpsAlert : Entity
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
+
+

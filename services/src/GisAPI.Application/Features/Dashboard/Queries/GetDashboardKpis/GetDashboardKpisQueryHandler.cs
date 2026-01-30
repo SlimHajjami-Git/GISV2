@@ -174,3 +174,6 @@ public class GetDashboardKpisQueryHandler : IRequestHandler<GetDashboardKpisQuer
         };
     }
 }
+
+
+

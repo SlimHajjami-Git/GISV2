@@ -1,23 +1,21 @@
 namespace GisAPI.DTOs;
 
 public record CreateUserRequest(
-    string Name,
+    string FirstName,
+    string LastName,
     string Email,
     string? Phone,
     string Password,
-    string[] Roles,
-    string[] Permissions,
-    int[] AssignedVehicleIds
+    int RoleId
 );
 
 public record UpdateUserRequest(
-    string Name,
+    string FirstName,
+    string LastName,
     string Email,
     string? Phone,
-    string[] Roles,
-    string[] Permissions,
-    int[] AssignedVehicleIds,
-    string Status
+    int? RoleId,
+    string? Status
 );
 
 public record UserListDto(
@@ -25,9 +23,9 @@ public record UserListDto(
     string Name,
     string Email,
     string? Phone,
-    string[] Roles,
-    string[] Permissions,
-    int[] AssignedVehicleIds,
+    int RoleId,
+    string? RoleName,
+    bool IsCompanyAdmin,
     string Status,
     DateTime CreatedAt,
     DateTime? LastLoginAt

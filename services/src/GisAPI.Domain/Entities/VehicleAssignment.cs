@@ -17,3 +17,5 @@ public class VehicleAssignment : Entity
     public string? AssignedBy { get; set; }
     public string? Notes { get; set; }
 }
+
+

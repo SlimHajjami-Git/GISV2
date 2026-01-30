@@ -41,3 +41,6 @@ public record VehicleStopDto(
     string? GeofenceName,
     string? Notes
 );
+
+
+

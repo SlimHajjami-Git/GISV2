@@ -20,3 +20,5 @@ public class AuditLog : Entity
     public string? Description { get; set; }
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 }
+
+

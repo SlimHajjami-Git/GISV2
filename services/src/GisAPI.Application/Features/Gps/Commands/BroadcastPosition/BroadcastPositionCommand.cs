@@ -23,3 +23,6 @@ public record BroadcastPositionResult(
     int? VehicleId,
     string? SkipReason
 );
+
+
+

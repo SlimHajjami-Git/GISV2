@@ -32,6 +32,22 @@ public interface IGisDbContext
     DbSet<MaintenanceTemplate> MaintenanceTemplates { get; }
     DbSet<VehicleMaintenanceSchedule> VehicleMaintenanceSchedules { get; }
     DbSet<MaintenanceLog> MaintenanceLogs { get; }
+    
+    // Fleet Management
+    DbSet<Department> Departments { get; }
+    DbSet<FuelType> FuelTypes { get; }
+    DbSet<FuelPricing> FuelPricings { get; }
+    DbSet<SpeedLimitAlert> SpeedLimitAlerts { get; }
+    
+    // Brands & Models
+    DbSet<Brand> Brands { get; }
+    DbSet<VehicleModel> VehicleModels { get; }
+    DbSet<PartCategory> PartCategories { get; }
+    DbSet<VehiclePart> VehicleParts { get; }
+    DbSet<PartPricing> PartPricings { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
+
+
+

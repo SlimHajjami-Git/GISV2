@@ -1,8 +1,23 @@
-import { Component, EventEmitter, Input, Output, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, EventEmitter, Input, Output, OnInit, OnChanges, SimpleChanges, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { HttpClient } from '@angular/common/http';
 import { Vehicle } from '../../models/types';
 import { ApiService } from '../../services/api.service';
+import { trigger, transition, style, animate } from '@angular/animations';
+
+interface Brand {
+  id: number;
+  name: string;
+  logoUrl?: string;
+  modelCount: number;
+}
+
+interface VehicleModel {
+  id: number;
+  name: string;
+  vehicleType?: string;
+}
 
 export interface CompanyOption {
   id: number;
@@ -13,12 +28,33 @@ export interface CompanyOption {
   selector: 'app-vehicle-popup',
   standalone: true,
   imports: [CommonModule, FormsModule],
+  animations: [
+    trigger('fadeIn', [
+      transition(':enter', [
+        style({ opacity: 0 }),
+        animate('200ms ease-out', style({ opacity: 1 }))
+      ])
+    ]),
+    trigger('slideIn', [
+      transition(':enter', [
+        style({ transform: 'translateX(100%)' }),
+        animate('300ms ease-out', style({ transform: 'translateX(0)' }))
+      ])
+    ])
+  ],
   template: `
-    <div class="popup-overlay" *ngIf="isOpen" (click)="onOverlayClick($event)">
-      <div class="popup-container" (click)="$event.stopPropagation()">
-        <div class="popup-header">
-          <h2>{{ vehicle?.id ? 'Modifier le véhicule' : 'Nouveau véhicule' }}</h2>
-          <button class="close-btn" (click)="close()">
+    <div class="panel-overlay" *ngIf="isOpen" @fadeIn (click)="onOverlayClick($event)">
+      <div class="slide-panel" @slideIn (click)="$event.stopPropagation()">
+        <!-- Panel Header -->
+        <div class="panel-header">
+          <div class="panel-header-content">
+            <div class="panel-icon">🚗</div>
+            <div class="panel-header-info">
+              <h2>{{ vehicle?.id ? 'Modifier le véhicule' : 'Nouveau véhicule' }}</h2>
+              <p>{{ vehicle?.id ? formData.name : 'Remplissez les informations' }}</p>
+            </div>
+          </div>
+          <button class="btn-close-panel" (click)="close()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
@@ -26,157 +62,110 @@ export interface CompanyOption {
           </button>
         </div>
 
-        <form class="popup-body" (ngSubmit)="onSubmit()">
-          <!-- Company Selection (Admin only) -->
-          <div class="form-group full-width company-select" *ngIf="companies && companies.length > 0">
-            <label for="companyId">Société *</label>
-            <select
-              id="companyId"
-              name="companyId"
-              [(ngModel)]="formData.companyId"
-              required
-              class="company-dropdown"
-            >
-              <option [value]="null" disabled>-- Sélectionner une société --</option>
-              <option *ngFor="let company of companies" [value]="company.id">
-                {{ company.name }}
-              </option>
-            </select>
-          </div>
-
-          <div class="form-grid">
-            <div class="form-group">
-              <label for="name">Nom du véhicule *</label>
-              <input
-                type="text"
-                id="name"
-                name="name"
-                [(ngModel)]="formData.name"
-                required
-                placeholder="Ex: Camion principal"
-              />
+        <!-- Panel Body -->
+        <div class="panel-body">
+          <form (ngSubmit)="onSubmit()">
+            <!-- Company Selection (Admin only) -->
+            <div class="form-section" *ngIf="companies && companies.length > 0">
+              <h3 class="section-title">🏢 Société</h3>
+              <div class="form-group">
+                <label for="companyId">Société *</label>
+                <select id="companyId" name="companyId" [(ngModel)]="formData.companyId" required>
+                  <option [value]="null" disabled>-- Sélectionner une société --</option>
+                  <option *ngFor="let company of companies" [value]="company.id">{{ company.name }}</option>
+                </select>
+              </div>
             </div>
 
-            <div class="form-group">
-              <label for="plate">Plaque d'immatriculation *</label>
-              <input
-                type="text"
-                id="plate"
-                name="plate"
-                [(ngModel)]="formData.plate"
-                required
-                placeholder="Ex: ABC-1234"
-              />
+            <!-- Vehicle Info Section -->
+            <div class="form-section">
+              <h3 class="section-title">📋 Informations véhicule</h3>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="name">Nom du véhicule *</label>
+                  <input type="text" id="name" name="name" [(ngModel)]="formData.name" required placeholder="Ex: Camion principal" />
+                </div>
+                <div class="form-group">
+                  <label for="plate">Plaque *</label>
+                  <input type="text" id="plate" name="plate" [(ngModel)]="formData.plate" required placeholder="Ex: ABC-1234" />
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="brandId">Marque *</label>
+                  <select id="brandId" name="brandId" [(ngModel)]="formData.brandId" (ngModelChange)="onBrandChange($event)" required>
+                    <option [value]="null">-- Sélectionner --</option>
+                    <option *ngFor="let brand of brands" [value]="brand.id">{{ brand.name }}</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="modelId">Modèle *</label>
+                  <select id="modelId" name="modelId" [(ngModel)]="formData.modelId" (ngModelChange)="onModelChange($event)" required [disabled]="!formData.brandId || loadingModels">
+                    <option [value]="null">{{ loadingModels ? 'Chargement...' : '-- Sélectionner --' }}</option>
+                    <option *ngFor="let model of models" [value]="model.id">{{ model.name }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="year">Année *</label>
+                  <input type="number" id="year" name="year" [(ngModel)]="formData.year" required min="1900" max="2100" placeholder="Ex: 2023" />
+                </div>
+                <div class="form-group">
+                  <label for="type">Type *</label>
+                  <select id="type" name="type" [(ngModel)]="formData.type" required>
+                    <option value="">Sélectionner</option>
+                    <option value="camion">Camion</option>
+                    <option value="citadine">Citadine</option>
+                    <option value="suv">SUV</option>
+                    <option value="utilitaire">Utilitaire</option>
+                    <option value="other">Autre</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="status">Statut *</label>
+                  <select id="status" name="status" [(ngModel)]="formData.status" required>
+                    <option value="">Sélectionner</option>
+                    <option value="available">Disponible</option>
+                    <option value="in_use">En service</option>
+                    <option value="maintenance">En maintenance</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="mileage">Kilométrage *</label>
+                  <input type="number" id="mileage" name="mileage" [(ngModel)]="formData.mileage" required min="0" placeholder="Ex: 50000" />
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="color">Couleur</label>
+                  <input type="text" id="color" name="color" [(ngModel)]="formData.color" placeholder="Ex: Blanc" />
+                </div>
+                <div class="form-group">
+                  <label for="fuelType">Type de carburant *</label>
+                  <select id="fuelType" name="fuelType" [(ngModel)]="formData.fuelType" required>
+                    <option value="">Sélectionner</option>
+                    <option *ngFor="let ft of fuelTypes" [value]="ft.code">{{ ft.name }}</option>
+                  </select>
+                </div>
+              </div>
             </div>
 
-            <div class="form-group">
-              <label for="brand">Marque *</label>
-              <input
-                type="text"
-                id="brand"
-                name="brand"
-                [(ngModel)]="formData.brand"
-                required
-                placeholder="Ex: Toyota"
-              />
-            </div>
-
-            <div class="form-group">
-              <label for="model">Modèle *</label>
-              <input
-                type="text"
-                id="model"
-                name="model"
-                [(ngModel)]="formData.model"
-                required
-                placeholder="Ex: Corolla"
-              />
-            </div>
-
-            <div class="form-group">
-              <label for="year">Année *</label>
-              <input
-                type="number"
-                id="year"
-                name="year"
-                [(ngModel)]="formData.year"
-                required
-                min="1900"
-                max="2100"
-                placeholder="Ex: 2023"
-              />
-            </div>
-
-            <div class="form-group">
-              <label for="type">Type *</label>
-              <select id="type" name="type" [(ngModel)]="formData.type" required>
-                <option value="">Sélectionner un type</option>
-                <option value="camion">Camion</option>
-                <option value="citadine">Citadine</option>
-                <option value="suv">SUV</option>
-                <option value="utilitaire">Utilitaire</option>
-                <option value="other">Autre</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label for="status">Statut *</label>
-              <select id="status" name="status" [(ngModel)]="formData.status" required>
-                <option value="">Sélectionner un statut</option>
-                <option value="available">Disponible</option>
-                <option value="in_use">En service</option>
-                <option value="maintenance">En maintenance</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label for="mileage">Kilométrage *</label>
-              <input
-                type="number"
-                id="mileage"
-                name="mileage"
-                [(ngModel)]="formData.mileage"
-                required
-                min="0"
-                placeholder="Ex: 50000"
-              />
-            </div>
-
-            <div class="form-group">
-              <label for="color">Couleur</label>
-              <input
-                type="text"
-                id="color"
-                name="color"
-                [(ngModel)]="formData.color"
-                placeholder="Ex: Blanc"
-              />
-            </div>
-
-            <div class="form-group">
-              <label for="fuelType">Type de carburant</label>
-              <select id="fuelType" name="fuelType" [(ngModel)]="formData.fuelType">
-                <option value="">Sélectionner</option>
-                <option value="essence">Essence</option>
-                <option value="diesel">Diesel</option>
-                <option value="electrique">Électrique</option>
-                <option value="hybride">Hybride</option>
-                <option value="gpl">GPL</option>
-              </select>
-            </div>
-
-            <div class="form-group full-width">
-              <label class="checkbox-label">
-                <input
-                  type="checkbox"
-                  name="hasGPS"
-                  [(ngModel)]="formData.hasGPS"
-                  (change)="onHasGpsChange()"
-                />
-                <span>Ce véhicule dispose d'un GPS</span>
-              </label>
-            </div>
-          </div>
+            <!-- GPS Section -->
+            <div class="form-section">
+              <h3 class="section-title">📍 GPS</h3>
+              <div class="form-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" name="hasGPS" [(ngModel)]="formData.hasGPS" (change)="onHasGpsChange()" />
+                  <span>Ce véhicule dispose d'un GPS</span>
+                </label>
+              </div>
 
           <!-- GPS Device Section -->
           <div class="gps-section" *ngIf="formData.hasGPS">
@@ -316,111 +305,122 @@ export interface CompanyOption {
             </div>
           </div>
 
-          <div class="popup-footer">
-            <button type="button" class="btn-secondary" (click)="close()">
-              Annuler
-            </button>
-            <button type="submit" class="btn-primary">
-              {{ vehicle?.id ? 'Mettre à jour' : 'Ajouter' }}
-            </button>
-          </div>
-        </form>
+            </div>
+          </form>
+        </div>
+
+        <!-- Panel Footer -->
+        <div class="panel-footer">
+          <button type="button" class="btn-secondary" (click)="close()">Annuler</button>
+          <button type="button" class="btn-primary" (click)="onSubmit()">
+            {{ vehicle?.id ? 'Mettre à jour' : 'Ajouter' }}
+          </button>
+        </div>
       </div>
     </div>
   `,
   styles: [`
-    .popup-overlay {
+    .panel-overlay {
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      inset: 0;
       background: rgba(0, 0, 0, 0.5);
-      display: flex;
-      align-items: center;
-      justify-content: center;
       z-index: 1000;
-      padding: 20px;
-      animation: fadeIn 0.2s ease-out;
+      display: flex;
+      justify-content: flex-end;
     }
 
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-      }
-      to {
-        opacity: 1;
-      }
-    }
-
-    .popup-container {
-      background: white;
-      border-radius: 6px;
-      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
-      max-width: 700px;
-      width: 100%;
-      max-height: 90vh;
-      overflow: hidden;
+    .slide-panel {
+      width: 520px;
+      max-width: 100%;
+      height: 100%;
+      background: #fff;
       display: flex;
       flex-direction: column;
-      animation: slideUp 0.3s ease-out;
+      box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
     }
 
-    @keyframes slideUp {
-      from {
-        transform: translateY(20px);
-        opacity: 0;
-      }
-      to {
-        transform: translateY(0);
-        opacity: 1;
-      }
-    }
-
-    .popup-header {
-      padding: 14px 20px;
-      border-bottom: 1px solid #e2e8f0;
+    .panel-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: #f8fafc;
+      padding: 20px 24px;
+      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
+      color: #fff;
     }
 
-    .popup-header h2 {
+    .panel-header-content {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .panel-icon {
+      font-size: 32px;
+    }
+
+    .panel-header-info h2 {
       margin: 0;
-      font-size: 14px;
+      font-size: 18px;
       font-weight: 600;
-      color: #1e293b;
     }
 
-    .close-btn {
-      background: none;
+    .panel-header-info p {
+      margin: 4px 0 0;
+      font-size: 13px;
+      opacity: 0.9;
+    }
+
+    .btn-close-panel {
+      width: 36px;
+      height: 36px;
       border: none;
-      color: #94a3b8;
+      background: rgba(255,255,255,0.2);
+      border-radius: 8px;
+      color: #fff;
       cursor: pointer;
-      padding: 6px;
-      border-radius: 3px;
-      transition: all 0.15s;
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: all 0.2s;
     }
 
-    .close-btn:hover {
-      background: #f1f5f9;
-      color: #1e293b;
+    .btn-close-panel:hover {
+      background: rgba(255,255,255,0.3);
     }
 
-    .popup-body {
-      padding: 20px;
-      overflow-y: auto;
+    .panel-body {
       flex: 1;
+      overflow-y: auto;
+      padding: 24px;
     }
 
-    .form-grid {
+    .form-section {
+      margin-bottom: 24px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .form-section:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+    }
+
+    .section-title {
+      margin: 0 0 16px 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #00a388;
+    }
+
+    .form-row {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: 1fr 1fr;
       gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .form-row:last-child {
+      margin-bottom: 0;
     }
 
     .form-group {
@@ -578,55 +578,58 @@ export interface CompanyOption {
       background: #f8fafc;
     }
 
+    .panel-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      padding: 16px 24px;
+      border-top: 1px solid #e2e8f0;
+      background: #f8fafc;
+    }
+
     .btn-primary {
-      padding: 8px 16px;
-      background: #3b82f6;
+      padding: 10px 20px;
+      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
       color: white;
       border: none;
-      border-radius: 3px;
-      font-family: var(--font-family);
-      font-weight: 500;
-      font-size: 12px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 14px;
       cursor: pointer;
-      transition: all 0.15s;
+      transition: all 0.2s;
     }
 
     .btn-primary:hover {
-      background: #2563eb;
+      box-shadow: 0 4px 16px rgba(0, 212, 170, 0.3);
     }
 
     .btn-secondary {
-      padding: 8px 16px;
-      background: white;
-      color: #64748b;
+      padding: 10px 20px;
+      background: #f1f5f9;
+      color: #1f2937;
       border: 1px solid #e2e8f0;
-      border-radius: 3px;
-      font-family: var(--font-family);
+      border-radius: 10px;
       font-weight: 500;
-      font-size: 12px;
+      font-size: 14px;
       cursor: pointer;
-      transition: all 0.15s;
+      transition: all 0.2s;
     }
 
     .btn-secondary:hover {
-      background: #f8fafc;
-      color: #1e293b;
+      background: #e2e8f0;
     }
 
     @media (max-width: 640px) {
-      .form-grid {
+      .form-row {
         grid-template-columns: 1fr;
       }
 
-      .popup-container {
-        max-height: 100vh;
-        border-radius: 0;
+      .slide-panel {
+        width: 100%;
       }
 
-      .popup-header,
-      .popup-body,
-      .popup-footer {
-        padding: 20px;
+      .panel-body {
+        padding: 16px;
       }
     }
   `]
@@ -641,18 +644,31 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
 
   availableGpsDevices: any[] = [];
   gpsMode: 'existing' | 'new' = 'existing';
+  
+  brands: Brand[] = [];
+  models: VehicleModel[] = [];
+  fuelTypes = [
+    { code: 'diesel', name: 'Diesel' },
+    { code: 'essence', name: 'Essence' },
+    { code: 'gpl', name: 'GPL' },
+    { code: 'electrique', name: 'Électrique' },
+    { code: 'hybride', name: 'Hybride' }
+  ];
+  loadingModels = false;
 
   formData: any = {
     name: '',
     plate: '',
     brand: '',
     model: '',
+    brandId: null,
+    modelId: null,
     year: new Date().getFullYear(),
     type: 'citadine',
     status: 'available',
     mileage: 0,
     color: '',
-    fuelType: '',
+    fuelType: 'diesel',
     companyId: null,
     hasGPS: false,
     gpsDeviceId: undefined,
@@ -666,9 +682,10 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     gpsFuelSensorMode: 'raw_255'
   };
 
-  constructor(private apiService: ApiService) {}
+  constructor(private apiService: ApiService, private http: HttpClient, private cdr: ChangeDetectorRef) {}
 
   ngOnInit() {
+    this.loadBrands();
     this.loadAvailableDevices();
     if (this.vehicle) {
       this.formData = { ...this.vehicle };
@@ -683,14 +700,69 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
 
   ngOnChanges(changes: SimpleChanges) {
     if (changes['isOpen'] && changes['isOpen'].currentValue) {
-      console.log('Popup opened - companies received:', this.companies);
-      console.log('Default company ID:', this.defaultCompanyId);
+      this.loadBrands();
       this.loadAvailableDevices();
       if (this.vehicle) {
         this.formData = { ...this.vehicle };
         this.gpsMode = this.vehicle.gpsDeviceId ? 'existing' : 'new';
+        if (this.formData.brandId) {
+          this.loadModels(this.formData.brandId);
+        }
       } else {
         this.resetForm();
+      }
+    }
+  }
+
+  loadBrands() {
+    this.http.get<Brand[]>('/api/brands').subscribe({
+      next: (brands) => {
+        this.brands = brands;
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.brands = [];
+      }
+    });
+  }
+
+  loadModels(brandId: number) {
+    this.loadingModels = true;
+    this.http.get<VehicleModel[]>(`/api/brands/${brandId}/models`).subscribe({
+      next: (models) => {
+        this.models = models;
+        this.loadingModels = false;
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.models = [];
+        this.loadingModels = false;
+      }
+    });
+  }
+
+  onBrandChange(brandId: number) {
+    this.formData.modelId = null;
+    this.formData.model = '';
+    this.models = [];
+    
+    if (brandId) {
+      const selectedBrand = this.brands.find(b => b.id === Number(brandId));
+      if (selectedBrand) {
+        this.formData.brand = selectedBrand.name;
+      }
+      this.loadModels(brandId);
+    }
+  }
+
+  onModelChange(modelId: number) {
+    if (modelId) {
+      const selectedModel = this.models.find(m => m.id === Number(modelId));
+      if (selectedModel) {
+        this.formData.model = selectedModel.name;
+        if (selectedModel.vehicleType) {
+          this.formData.type = selectedModel.vehicleType;
+        }
       }
     }
   }
@@ -781,12 +853,14 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       plate: '',
       brand: '',
       model: '',
+      brandId: null,
+      modelId: null,
       year: new Date().getFullYear(),
       type: 'citadine',
       status: 'available',
       mileage: 0,
       color: '',
-      fuelType: '',
+      fuelType: 'diesel',
       companyId: this.defaultCompanyId,
       hasGPS: false,
       gpsDeviceId: undefined,

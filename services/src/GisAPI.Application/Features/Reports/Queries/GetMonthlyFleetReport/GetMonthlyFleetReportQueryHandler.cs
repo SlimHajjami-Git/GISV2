@@ -323,7 +323,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
             performance.DriverMetrics.Add(new DriverMetricsDto
             {
                 DriverId = driver.Id,
-                DriverName = driver.Name,
+                DriverName = driver.FullName,
                 TotalDistanceKm = Math.Round(distance, 2),
                 TotalTrips = CountTrips(driverPositions),
                 AvgSpeedKph = Math.Round(avgSpeed, 1),
@@ -863,3 +863,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         _ => "À améliorer"
     };
 }
+
+
+
+

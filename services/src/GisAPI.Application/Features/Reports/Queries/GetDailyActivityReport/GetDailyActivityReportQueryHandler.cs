@@ -41,7 +41,7 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
                 VehicleId = request.VehicleId,
                 VehicleName = vehicle.Name,
                 Plate = vehicle.Plate,
-                DriverName = vehicle.AssignedDriver?.Name,
+                DriverName = vehicle.AssignedDriver?.FullName,
                 ReportDate = request.Date,
                 HasActivity = false
             };
@@ -66,7 +66,7 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
                 VehicleId = request.VehicleId,
                 VehicleName = vehicle.Name,
                 Plate = vehicle.Plate,
-                DriverName = vehicle.AssignedDriver?.Name,
+                DriverName = vehicle.AssignedDriver?.FullName,
                 ReportDate = request.Date,
                 HasActivity = false
             };
@@ -91,7 +91,7 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
             VehicleId = vehicle.Id,
             VehicleName = vehicle.Name,
             Plate = vehicle.Plate,
-            DriverName = vehicle.AssignedDriver?.Name,
+            DriverName = vehicle.AssignedDriver?.FullName,
             ReportDate = reportDate,
             HasActivity = true
         };
@@ -352,3 +352,7 @@ public class GetDailyActivityReportsQueryHandler : IRequestHandler<GetDailyActiv
         return reports;
     }
 }
+
+
+
+

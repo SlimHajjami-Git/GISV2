@@ -53,3 +53,5 @@ public class Reservation : TenantEntity
     public string? RejectionReason { get; set; }
     public string? Notes { get; set; }
 }
+
+

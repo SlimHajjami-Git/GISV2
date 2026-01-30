@@ -32,3 +32,6 @@ public class DeleteSocieteCommandHandler : IRequestHandler<DeleteSocieteCommand>
         await _context.SaveChangesAsync(ct);
     }
 }
+
+
+

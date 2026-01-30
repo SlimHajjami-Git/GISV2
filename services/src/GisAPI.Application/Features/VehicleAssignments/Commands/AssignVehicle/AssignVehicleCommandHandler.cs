@@ -58,9 +58,13 @@ public class AssignVehicleCommandHandler : IRequestHandler<AssignVehicleCommand,
             vehicle.Id,
             vehicle.Name,
             user.Id,
-            user.Name,
+            user.FullName,
             assignment.AssignedAt,
             assignment.IsActive
         );
     }
 }
+
+
+
+

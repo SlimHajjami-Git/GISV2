@@ -5,21 +5,22 @@ namespace GisAPI.Application.Features.Roles.Commands.CreateRole;
 public record CreateRoleCommand(
     string Name,
     string? Description,
-    string RoleType,
-    Dictionary<string, object>? Permissions,
-    bool IsDefault = false
+    bool IsCompanyAdmin,
+    Dictionary<string, object>? Permissions
 ) : ICommand<RoleDto>;
 
 public record RoleDto(
     int Id,
     string Name,
     string? Description,
-    string RoleType,
-    Dictionary<string, object>? Permissions,
     int? SocieteId,
-    bool IsSystem,
-    bool IsDefault,
+    bool IsCompanyAdmin,
+    bool IsSystemRole,
+    Dictionary<string, object>? Permissions,
     int UsersCount,
     DateTime CreatedAt,
     DateTime UpdatedAt
 );
+
+
+

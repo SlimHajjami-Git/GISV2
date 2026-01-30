@@ -37,3 +37,6 @@ public class GetSupplierStatsQueryHandler : IRequestHandler<GetSupplierStatsQuer
         );
     }
 }
+
+
+

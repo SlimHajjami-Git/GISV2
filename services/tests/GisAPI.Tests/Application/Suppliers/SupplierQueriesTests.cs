@@ -140,3 +140,5 @@ public class SupplierQueriesTests
         result.Items.Should().AllSatisfy(s => s.Type.Should().Be("garage"));
     }
 }
+
+

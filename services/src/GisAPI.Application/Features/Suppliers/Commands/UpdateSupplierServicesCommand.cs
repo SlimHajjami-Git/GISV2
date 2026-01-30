@@ -6,3 +6,6 @@ public record UpdateSupplierServicesCommand(
     int SupplierId,
     List<string> Services
 ) : ICommand<bool>;
+
+
+

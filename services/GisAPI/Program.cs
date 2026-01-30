@@ -113,6 +113,9 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Permission middleware - checks system admin access for /api/admin routes
+app.UsePermissionMiddleware();
+
 // Multi-tenant middleware - sets tenant context from JWT claims
 app.UseTenantMiddleware();
 
@@ -306,3 +309,6 @@ static async Task SeedTestVehicle(GisAPI.Infrastructure.Persistence.GisDbContext
         Console.WriteLine($"[Seed] Warning: Could not seed test vehicle: {ex.Message}");
     }
 }
+
+
+

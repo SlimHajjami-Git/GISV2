@@ -56,3 +56,5 @@ public class MaintenanceLog : Entity
     public string? Notes { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
+
+

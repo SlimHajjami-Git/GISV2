@@ -168,3 +168,5 @@ public class RabbitMqConsumerService : BackgroundService
         await base.StopAsync(cancellationToken);
     }
 }
+
+

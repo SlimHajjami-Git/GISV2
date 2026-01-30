@@ -65,3 +65,5 @@ public static class FuelEventTypes
     public const string SensorError = "sensor_error";  // Erreur capteur
     public const string LowFuel = "low_fuel";          // Niveau bas
 }
+
+

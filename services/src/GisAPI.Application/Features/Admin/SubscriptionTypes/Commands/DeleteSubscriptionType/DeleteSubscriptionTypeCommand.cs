@@ -40,3 +40,6 @@ public class DeleteSubscriptionTypeCommandHandler : IRequestHandler<DeleteSubscr
         return true;
     }
 }
+
+
+

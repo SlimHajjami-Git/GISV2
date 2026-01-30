@@ -238,3 +238,6 @@ public class TelemetryMessage
     [System.Text.Json.Serialization.JsonPropertyName("alert_type")]
     public string? AlertType { get; set; }
 }
+
+
+

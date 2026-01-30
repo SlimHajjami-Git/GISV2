@@ -491,3 +491,6 @@ public class ChartSeriesDto
     public List<double> Data { get; set; } = new();
     public string? Color { get; set; }
 }
+
+
+

@@ -23,3 +23,5 @@ public class DrivingEvent : TenantEntity
     public int? DurationSeconds { get; set; }
     public Dictionary<string, object>? Metadata { get; set; }
 }
+
+

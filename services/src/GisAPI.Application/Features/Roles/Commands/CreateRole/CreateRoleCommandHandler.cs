@@ -52,15 +52,22 @@ public class CreateRoleCommandHandler : IRequestHandler<CreateRoleCommand, RoleD
             }
         }
 
+        // Check if trying to create another company_admin role
+        if (request.IsCompanyAdmin)
+        {
+            var existingAdmin = await _context.Roles
+                .AnyAsync(r => r.SocieteId == companyId && r.IsCompanyAdmin, ct);
+            if (existingAdmin)
+                throw new DomainException("Un rôle administrateur existe déjà pour cette société");
+        }
+
         var role = new Role
         {
             Name = request.Name,
             Description = request.Description,
-            RoleType = request.RoleType,
+            IsCompanyAdmin = request.IsCompanyAdmin,
             Permissions = request.Permissions,
             SocieteId = companyId,
-            IsSystem = false,
-            IsDefault = request.IsDefault,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -72,14 +79,16 @@ public class CreateRoleCommandHandler : IRequestHandler<CreateRoleCommand, RoleD
             role.Id,
             role.Name,
             role.Description,
-            role.RoleType,
-            role.Permissions,
             role.SocieteId,
-            role.IsSystem,
-            role.IsDefault,
+            role.IsCompanyAdmin,
+            role.IsSystemRole,
+            role.Permissions,
             0,
             role.CreatedAt,
             role.UpdatedAt
         );
     }
 }
+
+
+

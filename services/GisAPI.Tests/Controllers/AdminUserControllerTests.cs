@@ -245,7 +245,7 @@ public class AdminUserControllerTests
 
     [Theory]
     [InlineData("john@test.com")]
-    [InlineData("user.name@company.org")]
+    [InlineData("user.FullName@company.org")]
     [InlineData("admin@subdomain.example.co.uk")]
     public void CreateAdminUserRequest_Email_AcceptsValidFormats(string email)
     {
@@ -408,3 +408,5 @@ public class AdminUserControllerTests
         Assert.Null(request.CIN);
     }
 }
+
+

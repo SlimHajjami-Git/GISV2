@@ -55,3 +55,5 @@ public class VehicleStopConfiguration : IEntityTypeConfiguration<VehicleStop>
             .HasForeignKey(e => e.GeofenceId);
     }
 }
+
+

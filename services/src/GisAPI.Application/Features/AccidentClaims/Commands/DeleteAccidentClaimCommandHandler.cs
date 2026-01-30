@@ -34,3 +34,6 @@ public class DeleteAccidentClaimCommandHandler : IRequestHandler<DeleteAccidentC
         return true;
     }
 }
+
+
+

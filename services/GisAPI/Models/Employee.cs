@@ -67,3 +67,6 @@ public class Employee
     public ICollection<DriverScore> DriverScores { get; set; } = new List<DriverScore>();
     public ICollection<Trip> Trips { get; set; } = new List<Trip>();
 }
+
+
+

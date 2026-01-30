@@ -32,3 +32,6 @@ public class DeleteSupplierCommandHandler : IRequestHandler<DeleteSupplierComman
         return true;
     }
 }
+
+
+

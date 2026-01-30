@@ -91,7 +91,7 @@ public class GetVehicleStopsQueryHandler : IRequestHandler<GetVehicleStopsQuery,
                 s.Vehicle != null ? s.Vehicle.Name : null,
                 s.Vehicle != null ? s.Vehicle.Plate : null,
                 s.DriverId,
-                s.Driver != null ? s.Driver.Name : null,
+                s.Driver != null ? s.Driver.FullName : null,
                 s.StartTime,
                 s.EndTime,
                 s.DurationSeconds,
@@ -221,3 +221,6 @@ public class GetVehicleStopsQueryHandler : IRequestHandler<GetVehicleStopsQuery,
     
     private static double ToRad(double deg) => deg * Math.PI / 180;
 }
+
+
+

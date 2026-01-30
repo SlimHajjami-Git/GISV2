@@ -14,7 +14,7 @@ namespace GisAPI.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/admin/subscription-types")]
-[Authorize(Roles = "admin,super_admin")]
+[Authorize]  // System admin check is done via PermissionMiddleware
 public class SubscriptionTypesController : ControllerBase
 {
     private readonly IMediator _mediator;

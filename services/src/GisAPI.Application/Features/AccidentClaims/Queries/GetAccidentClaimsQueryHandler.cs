@@ -61,7 +61,7 @@ public class GetAccidentClaimsQueryHandler : IRequestHandler<GetAccidentClaimsQu
             c.Vehicle?.Name ?? "",
             c.Vehicle?.Plate,
             c.DriverId,
-            c.Driver?.Name,
+            c.Driver?.FullName,
             c.AccidentDate,
             c.AccidentTime.ToString(@"hh\:mm"),
             c.Location,
@@ -89,3 +89,6 @@ public class GetAccidentClaimsQueryHandler : IRequestHandler<GetAccidentClaimsQu
         return new PaginatedList<AccidentClaimDto>(items, totalCount, request.Page, request.PageSize);
     }
 }
+
+
+

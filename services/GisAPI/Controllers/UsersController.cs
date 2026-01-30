@@ -29,16 +29,17 @@ public class UsersController : ControllerBase
         var companyId = GetCompanyId();
 
         var users = await _context.Users
+            .Include(u => u.Role)
             .Where(u => u.CompanyId == companyId)
-            .OrderBy(u => u.Name)
+            .OrderBy(u => u.LastName).ThenBy(u => u.FirstName)
             .Select(u => new UserListDto(
                 u.Id,
-                u.Name,
+                u.FullName,
                 u.Email,
                 u.Phone,
-                u.Roles,
-                u.Permissions,
-                u.AssignedVehicleIds,
+                u.RoleId,
+                u.Role != null ? u.Role.Name : null,
+                u.Role != null && u.Role.IsCompanyAdmin,
                 u.Status,
                 u.CreatedAt,
                 u.LastLoginAt
@@ -54,15 +55,16 @@ public class UsersController : ControllerBase
         var companyId = GetCompanyId();
 
         var user = await _context.Users
+            .Include(u => u.Role)
             .Where(u => u.Id == id && u.CompanyId == companyId)
             .Select(u => new UserListDto(
                 u.Id,
-                u.Name,
+                u.FullName,
                 u.Email,
                 u.Phone,
-                u.Roles,
-                u.Permissions,
-                u.AssignedVehicleIds,
+                u.RoleId,
+                u.Role != null ? u.Role.Name : null,
+                u.Role != null && u.Role.IsCompanyAdmin,
                 u.Status,
                 u.CreatedAt,
                 u.LastLoginAt
@@ -85,15 +87,19 @@ public class UsersController : ControllerBase
             return BadRequest(new { message = "Cet email est déjà utilisé" });
         }
 
+        // Validate role exists and belongs to company
+        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Id == request.RoleId && r.SocieteId == companyId);
+        if (role == null)
+            return BadRequest(new { message = "Rôle invalide" });
+
         var user = new User
         {
-            Name = request.Name,
+            FirstName = request.FirstName,
+            LastName = request.LastName,
             Email = request.Email,
             Phone = request.Phone,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-            Roles = request.Roles,
-            Permissions = request.Permissions,
-            AssignedVehicleIds = request.AssignedVehicleIds,
+            RoleId = request.RoleId,
             CompanyId = companyId,
             Status = "active"
         };
@@ -103,12 +109,12 @@ public class UsersController : ControllerBase
 
         return CreatedAtAction(nameof(GetUser), new { id = user.Id }, new UserListDto(
             user.Id,
-            user.Name,
+            user.FullName,
             user.Email,
             user.Phone,
-            user.Roles,
-            user.Permissions,
-            user.AssignedVehicleIds,
+            user.RoleId,
+            role.Name,
+            role.IsCompanyAdmin,
             user.Status,
             user.CreatedAt,
             user.LastLoginAt
@@ -126,13 +132,21 @@ public class UsersController : ControllerBase
         if (user == null)
             return NotFound();
 
-        user.Name = request.Name;
+        // Validate role if provided
+        if (request.RoleId.HasValue)
+        {
+            var role = await _context.Roles.FirstOrDefaultAsync(r => r.Id == request.RoleId.Value && r.SocieteId == companyId);
+            if (role == null)
+                return BadRequest(new { message = "Rôle invalide" });
+            user.RoleId = request.RoleId.Value;
+        }
+
+        user.FirstName = request.FirstName;
+        user.LastName = request.LastName;
         user.Email = request.Email;
         user.Phone = request.Phone;
-        user.Roles = request.Roles;
-        user.Permissions = request.Permissions;
-        user.AssignedVehicleIds = request.AssignedVehicleIds;
-        user.Status = request.Status;
+        if (!string.IsNullOrEmpty(request.Status))
+            user.Status = request.Status;
         user.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
@@ -169,15 +183,16 @@ public class UsersController : ControllerBase
         var userId = GetUserId();
 
         var user = await _context.Users
+            .Include(u => u.Role)
             .Where(u => u.Id == userId)
             .Select(u => new UserListDto(
                 u.Id,
-                u.Name,
+                u.FullName,
                 u.Email,
                 u.Phone,
-                u.Roles,
-                u.Permissions,
-                u.AssignedVehicleIds,
+                u.RoleId,
+                u.Role != null ? u.Role.Name : null,
+                u.Role != null && u.Role.IsCompanyAdmin,
                 u.Status,
                 u.CreatedAt,
                 u.LastLoginAt

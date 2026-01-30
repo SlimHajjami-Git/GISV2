@@ -40,7 +40,7 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
                 VehicleId = request.VehicleId,
                 VehicleName = vehicle.Name,
                 Plate = vehicle.Plate,
-                DriverName = vehicle.AssignedDriver?.Name,
+                DriverName = vehicle.AssignedDriver?.FullName,
                 VehicleType = vehicle.Type,
                 StartDate = request.StartDate,
                 EndDate = request.EndDate,
@@ -67,7 +67,7 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
                 VehicleId = request.VehicleId,
                 VehicleName = vehicle.Name,
                 Plate = vehicle.Plate,
-                DriverName = vehicle.AssignedDriver?.Name,
+                DriverName = vehicle.AssignedDriver?.FullName,
                 VehicleType = vehicle.Type,
                 StartDate = request.StartDate,
                 EndDate = request.EndDate,
@@ -103,7 +103,7 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
             VehicleId = vehicle.Id,
             VehicleName = vehicle.Name,
             Plate = vehicle.Plate,
-            DriverName = vehicle.AssignedDriver?.Name,
+            DriverName = vehicle.AssignedDriver?.FullName,
             VehicleType = vehicle.Type,
             StartDate = startDate,
             EndDate = endDate,
@@ -370,3 +370,7 @@ public class GetMileageReportsQueryHandler : IRequestHandler<GetMileageReportsQu
         return reports;
     }
 }
+
+
+
+

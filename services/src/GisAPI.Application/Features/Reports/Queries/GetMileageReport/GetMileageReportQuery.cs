@@ -107,3 +107,6 @@ public class MileageSummaryDto
     public int TotalDays { get; set; }
     public double ActivityPercentage { get; set; }
 }
+
+
+

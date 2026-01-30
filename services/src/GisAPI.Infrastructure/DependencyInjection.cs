@@ -32,7 +32,7 @@ public static class DependencyInjection
                 dataSource,
                 npgsqlOptions =>
                 {
-                    npgsqlOptions.MigrationsAssembly(typeof(GisDbContext).Assembly.FullName);
+                    npgsqlOptions.MigrationsAssembly(typeof(GisDbContext).Assembly.GetName().Name);
                     npgsqlOptions.EnableRetryOnFailure(3);
                 });
             
@@ -70,3 +70,5 @@ public static class DependencyInjection
         return services;
     }
 }
+
+

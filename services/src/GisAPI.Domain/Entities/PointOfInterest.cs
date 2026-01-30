@@ -74,3 +74,5 @@ public class PoiVisit : Entity
     public bool IsNotified { get; set; }
     public int CompanyId { get; set; }
 }
+
+

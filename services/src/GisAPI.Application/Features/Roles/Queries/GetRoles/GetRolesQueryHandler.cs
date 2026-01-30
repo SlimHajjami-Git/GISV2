@@ -21,25 +21,18 @@ public class GetRolesQueryHandler : IRequestHandler<GetRolesQuery, List<RoleDto>
     {
         var companyId = _tenantService.CompanyId;
 
-        var query = _context.Roles.AsQueryable();
-
-        if (request.IncludeSystemRoles)
-            query = query.Where(r => r.SocieteId == companyId || r.IsSystem);
-        else
-            query = query.Where(r => r.SocieteId == companyId);
-
-        var roles = await query
-            .OrderBy(r => r.IsSystem)
+        var roles = await _context.Roles
+            .Where(r => r.SocieteId == companyId)
+            .OrderByDescending(r => r.IsCompanyAdmin)
             .ThenBy(r => r.Name)
             .Select(r => new RoleDto(
                 r.Id,
                 r.Name,
                 r.Description,
-                r.RoleType,
-                r.Permissions,
                 r.SocieteId,
-                r.IsSystem,
-                r.IsDefault,
+                r.IsCompanyAdmin,
+                r.IsSystemRole,
+                r.Permissions,
                 r.Users.Count,
                 r.CreatedAt,
                 r.UpdatedAt
@@ -49,3 +42,6 @@ public class GetRolesQueryHandler : IRequestHandler<GetRolesQuery, List<RoleDto>
         return roles;
     }
 }
+
+
+

@@ -117,3 +117,6 @@ public class CreateSubscriptionTypeCommandHandler : IRequestHandler<CreateSubscr
         };
     }
 }
+
+
+

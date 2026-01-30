@@ -39,3 +39,5 @@ public class ReportSchedule : TenantEntity
     public DateTime? LastRunAt { get; set; }
     public DateTime? NextRunAt { get; set; }
 }
+
+

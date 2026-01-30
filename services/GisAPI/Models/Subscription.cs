@@ -88,3 +88,6 @@ public static class SubscriptionStatus
     public const string Suspended = "suspended";
     public const string Trial = "trial";
 }
+
+
+

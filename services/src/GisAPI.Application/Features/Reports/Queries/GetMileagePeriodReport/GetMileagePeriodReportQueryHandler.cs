@@ -42,7 +42,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
                 VehicleId = request.VehicleId,
                 VehicleName = vehicle.Name,
                 Plate = vehicle.Plate,
-                DriverName = vehicle.AssignedDriver?.Name,
+                DriverName = vehicle.AssignedDriver?.FullName,
                 VehicleType = vehicle.Type,
                 StartDate = request.StartDate,
                 EndDate = request.EndDate,
@@ -73,7 +73,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
                 VehicleId = request.VehicleId,
                 VehicleName = vehicle.Name,
                 Plate = vehicle.Plate,
-                DriverName = vehicle.AssignedDriver?.Name,
+                DriverName = vehicle.AssignedDriver?.FullName,
                 VehicleType = vehicle.Type,
                 StartDate = request.StartDate,
                 EndDate = request.EndDate,
@@ -331,7 +331,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
             VehicleId = vehicle.Id,
             VehicleName = vehicle.Name,
             Plate = vehicle.Plate,
-            DriverName = vehicle.AssignedDriver?.Name,
+            DriverName = vehicle.AssignedDriver?.FullName,
             VehicleType = vehicle.Type,
             StartDate = request.StartDate,
             EndDate = request.EndDate,
@@ -430,3 +430,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
         return $"{minutes}m";
     }
 }
+
+
+
+

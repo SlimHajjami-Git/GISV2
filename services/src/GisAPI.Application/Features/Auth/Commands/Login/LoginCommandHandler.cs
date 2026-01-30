@@ -25,6 +25,7 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
     {
         var user = await _context.Users
             .Include(u => u.Societe)
+            .Include(u => u.Role)
             .FirstOrDefaultAsync(u => u.Email.ToLower() == request.Email.ToLower(), ct);
 
         if (user == null)
@@ -44,14 +45,21 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
             refreshToken,
             new UserDto(
                 user.Id,
-                user.Name,
+                user.FirstName,
+                user.LastName,
                 user.Email,
                 user.Phone,
-                user.Roles,
-                user.Permissions,
+                user.PermitNumber,
+                user.RoleId,
+                user.Role?.Name ?? "",
+                user.Role?.IsCompanyAdmin ?? false,
                 user.CompanyId,
-                user.Societe?.Name ?? ""
+                user.Societe?.Name ?? "",
+                user.Role?.Permissions
             )
         );
     }
 }
+
+
+

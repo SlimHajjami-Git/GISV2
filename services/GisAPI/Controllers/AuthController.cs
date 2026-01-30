@@ -28,6 +28,7 @@ public class AuthController : ControllerBase
     {
         var user = await _context.Users
             .Include(u => u.Societe)
+            .Include(u => u.Role)
             .FirstOrDefaultAsync(u => u.Email == request.Email);
 
         if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
@@ -99,6 +100,24 @@ public class AuthController : ControllerBase
         _context.Societes.Add(company);
         await _context.SaveChangesAsync();
 
+        // Create admin role for the company
+        var adminRole = new Role
+        {
+            Name = "Administrateur",
+            Description = "Administrateur avec tous les accès",
+            SocieteId = company.Id,
+            IsCompanyAdmin = true,
+            Permissions = new Dictionary<string, object>
+            {
+                { "dashboard", true }, { "monitoring", true }, { "vehicles", true },
+                { "drivers", true }, { "geofences", true }, { "reports", true },
+                { "maintenance", true }, { "costs", true }, { "gps_devices", true },
+                { "users", true }, { "settings", true }
+            }
+        };
+        _context.Roles.Add(adminRole);
+        await _context.SaveChangesAsync();
+
         // Create admin user
         var user = new User
         {
@@ -106,8 +125,7 @@ public class AuthController : ControllerBase
             Email = request.Email,
             Phone = request.Phone,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-            Roles = new[] { "admin" },
-            Permissions = new[] { "dashboard", "monitoring", "vehicles", "drivers", "geofences", "reports", "maintenance", "costs", "gps-devices", "users", "settings" },
+            RoleId = adminRole.Id,
             CompanyId = company.Id,
             Status = "active"
         };
@@ -148,29 +166,40 @@ public class AuthController : ControllerBase
             new("userType", user.UserType ?? "user")
         };
 
-        // Add roles from user.Roles array
-        foreach (var role in user.Roles)
+        // Add role name as claim
+        if (user.Role != null)
         {
-            claims.Add(new Claim(ClaimTypes.Role, role));
-        }
-
-        // Ensure system/platform admins have super_admin role claim for authorization
-        if ((user.UserType == "system_admin" || user.UserType == "platform_admin") 
-            && !user.Roles.Contains("super_admin"))
-        {
-            claims.Add(new Claim(ClaimTypes.Role, "super_admin"));
-        }
-
-        foreach (var permission in user.Permissions)
-        {
-            claims.Add(new Claim("permission", permission));
+            claims.Add(new Claim(ClaimTypes.Role, user.Role.Name));
+            
+            // System admin gets super_admin role for backward compatibility
+            if (user.Role.IsSystemRole)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, "super_admin"));
+                claims.Add(new Claim(ClaimTypes.Role, "system_admin"));
+            }
+            
+            // Company admin gets admin role
+            if (user.Role.IsCompanyAdmin)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, "admin"));
+                claims.Add(new Claim(ClaimTypes.Role, "company_admin"));
+            }
+            
+            // Add permissions from role
+            if (user.Role.Permissions != null)
+            {
+                foreach (var permission in user.Role.Permissions.Keys)
+                {
+                    claims.Add(new Claim("permission", permission));
+                }
+            }
         }
 
         var token = new JwtSecurityToken(
             issuer: _configuration["Jwt:Issuer"] ?? "GisAPI",
             audience: _configuration["Jwt:Audience"] ?? "GisAPI",
             claims: claims,
-            expires: DateTime.UtcNow.AddDays(7),
+            expires: DateTime.UtcNow.AddMinutes(30),
             signingCredentials: credentials
         );
 
@@ -201,8 +230,7 @@ public class AuthController : ControllerBase
                 // Update password for existing user
                 existingUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Calypso@2026+");
                 existingUser.Status = "active";
-                existingUser.Roles = new[] { "super_admin" };
-                existingUser.Permissions = new[] { "all" };
+                // Role is already assigned via role_id
                 await _context.SaveChangesAsync();
                 return Ok(new { message = "User admin@belive.ma updated", password = "Calypso@2026+" });
             }
@@ -250,6 +278,21 @@ public class AuthController : ControllerBase
                 await _context.SaveChangesAsync();
             }
 
+            // Get or create admin role for the company
+            var adminRole = await _context.Roles.FirstOrDefaultAsync(r => r.SocieteId == company.Id && r.IsCompanyAdmin);
+            if (adminRole == null)
+            {
+                adminRole = new Role
+                {
+                    Name = "Administrateur",
+                    SocieteId = company.Id,
+                    IsCompanyAdmin = true,
+                    Permissions = new Dictionary<string, object> { { "all", true } }
+                };
+                _context.Roles.Add(adminRole);
+                await _context.SaveChangesAsync();
+            }
+
             // Create admin user
             var adminUser = new User
             {
@@ -257,9 +300,7 @@ public class AuthController : ControllerBase
                 Email = "admin@belive.ma",
                 Phone = "+216 00 000 000",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword("Calypso@2026+"),
-                Roles = new[] { "super_admin" },
-                Permissions = new[] { "all" },
-                AssignedVehicleIds = Array.Empty<int>(),
+                RoleId = adminRole.Id,
                 Status = "active",
                 CompanyId = company.Id
             };

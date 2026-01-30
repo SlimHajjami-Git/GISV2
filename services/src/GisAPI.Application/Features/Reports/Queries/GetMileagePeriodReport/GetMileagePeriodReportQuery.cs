@@ -114,3 +114,6 @@ public class ChartDataPoint
     public double Value { get; set; }
     public string? Tooltip { get; set; }
 }
+
+
+

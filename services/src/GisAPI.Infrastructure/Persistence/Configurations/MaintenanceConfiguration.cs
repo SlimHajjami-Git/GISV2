@@ -61,3 +61,5 @@ public class MaintenancePartConfiguration : IEntityTypeConfiguration<Maintenance
             .HasForeignKey(e => e.MaintenanceRecordId);
     }
 }
+
+

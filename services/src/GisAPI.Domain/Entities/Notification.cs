@@ -22,3 +22,5 @@ public class Notification : TenantEntity
     public Dictionary<string, object>? Metadata { get; set; }
     public DateTime? ExpiresAt { get; set; }
 }
+
+

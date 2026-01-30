@@ -50,9 +50,8 @@ public class RolesController : ControllerBase
         var command = new CreateRoleCommand(
             request.Name,
             request.Description,
-            request.RoleType ?? "employee",
-            request.Permissions,
-            request.IsDefault
+            request.IsCompanyAdmin,
+            request.Permissions
         );
 
         var role = await _mediator.Send(command);
@@ -69,9 +68,8 @@ public class RolesController : ControllerBase
             id,
             request.Name,
             request.Description,
-            request.RoleType,
-            request.Permissions,
-            request.IsDefault
+            request.IsCompanyAdmin,
+            request.Permissions
         );
 
         var role = await _mediator.Send(command);
@@ -93,15 +91,13 @@ public class RolesController : ControllerBase
 public record CreateRoleRequest(
     string Name,
     string? Description,
-    string? RoleType,
-    Dictionary<string, object>? Permissions,
-    bool IsDefault = false
+    bool IsCompanyAdmin = false,
+    Dictionary<string, object>? Permissions = null
 );
 
 public record UpdateRoleRequest(
     string? Name,
     string? Description,
-    string? RoleType,
-    Dictionary<string, object>? Permissions,
-    bool? IsDefault
+    bool? IsCompanyAdmin,
+    Dictionary<string, object>? Permissions
 );

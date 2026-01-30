@@ -51,3 +51,5 @@ public class TripWaypoint : Entity
     public string? Address { get; set; }
     public string? EventType { get; set; }
 }
+
+

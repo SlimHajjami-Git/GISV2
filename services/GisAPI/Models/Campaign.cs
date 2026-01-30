@@ -101,3 +101,6 @@ public class CampaignAccessRights
     public int MaxGeofences { get; set; } = 20;
     public int HistoryRetentionDays { get; set; } = 30;
 }
+
+
+

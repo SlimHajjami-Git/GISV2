@@ -46,3 +46,5 @@ public class VehicleStop : LongIdTenantEntity
     // Metadata
     public string? Notes { get; set; }
 }
+
+

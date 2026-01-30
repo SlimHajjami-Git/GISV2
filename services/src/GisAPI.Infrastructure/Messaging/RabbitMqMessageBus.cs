@@ -141,3 +141,5 @@ public class RabbitMqMessageBus : IMessageBus, IAsyncDisposable
         _initLock.Dispose();
     }
 }
+
+

@@ -93,3 +93,6 @@ public class MaintenancePart
     [Column(TypeName = "decimal(10,2)")]
     public decimal TotalCost { get; set; }
 }
+
+
+

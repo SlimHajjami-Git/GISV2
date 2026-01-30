@@ -110,3 +110,6 @@ public class TripWaypoint
     [MaxLength(50)]
     public string? EventType { get; set; } // stop, speeding, harsh_braking, harsh_acceleration, geofence_entry, geofence_exit
 }
+
+
+

@@ -27,3 +27,6 @@ public class UserVehicle
     [ForeignKey("AssignedByUserId")]
     public User? AssignedByUser { get; set; }
 }
+
+
+

@@ -22,3 +22,6 @@ public record UpdateSupplierCommand(
     bool? IsActive,
     List<string>? Services
 ) : ICommand<bool>;
+
+
+

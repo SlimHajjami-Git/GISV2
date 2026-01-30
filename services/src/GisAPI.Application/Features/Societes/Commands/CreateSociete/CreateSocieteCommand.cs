@@ -18,3 +18,6 @@ public record CreateSocieteCommand(
     string AdminEmail,
     string AdminPassword
 ) : ICommand<SocieteDetailDto>;
+
+
+

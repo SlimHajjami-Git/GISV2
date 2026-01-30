@@ -13,68 +13,54 @@ public class UserTests
 
         // Assert
         user.Id.Should().Be(0);
-        user.Name.Should().BeEmpty();
+        user.FullName.Should().BeEmpty();
         user.Email.Should().BeEmpty();
         user.Status.Should().Be("active");
-        user.UserType.Should().Be("user");
-        user.IsCompanyAdmin.Should().BeFalse();
-        user.Roles.Should().BeEmpty();
-        user.Permissions.Should().BeEmpty();
-        user.AssignedVehicleIds.Should().BeEmpty();
     }
 
     [Fact]
     public void User_ShouldSetPropertiesCorrectly()
     {
         // Arrange
+        var role = new Role { Id = 1, Name = "Driver", SocieteId = 1 };
         var user = new User
         {
             Id = 1,
-            Name = "John Doe",
+            FirstName = "John",
+            LastName = "Doe",
             Email = "john@example.com",
             Phone = "+216 12 345 678",
             PasswordHash = "$2a$11$...",
             CompanyId = 1,
             Status = "active",
-            UserType = "employee",
-            IsCompanyAdmin = false,
-            Roles = new[] { "driver" },
-            Permissions = new[] { "dashboard", "monitoring" }
+            RoleId = 1,
+            Role = role
         };
 
         // Assert
         user.Id.Should().Be(1);
-        user.Name.Should().Be("John Doe");
+        user.FullName.Should().Be("John Doe");
         user.Email.Should().Be("john@example.com");
         user.Phone.Should().Be("+216 12 345 678");
         user.CompanyId.Should().Be(1);
         user.Status.Should().Be("active");
-        user.UserType.Should().Be("employee");
-        user.IsCompanyAdmin.Should().BeFalse();
-        user.Roles.Should().Contain("driver");
-        user.Permissions.Should().Contain("dashboard");
+        user.RoleId.Should().Be(1);
     }
 
     [Fact]
-    public void User_Employee_ShouldHaveEmployeeFields()
+    public void User_Employee_ShouldHaveRoleId()
     {
         // Arrange
         var employee = new User
         {
-            Name = "Driver One",
+            FirstName = "Driver",
+            LastName = "One",
             Email = "driver@company.com",
-            UserType = "employee",
-            HireDate = new DateTime(2024, 1, 15),
-            LicenseNumber = "DL123456",
-            LicenseExpiry = new DateTime(2028, 1, 15),
             RoleId = 3
         };
 
         // Assert
-        employee.UserType.Should().Be("employee");
-        employee.HireDate.Should().Be(new DateTime(2024, 1, 15));
-        employee.LicenseNumber.Should().Be("DL123456");
-        employee.LicenseExpiry.Should().Be(new DateTime(2028, 1, 15));
+        employee.FullName.Should().Be("Driver One");
         employee.RoleId.Should().Be(3);
     }
 
@@ -82,19 +68,19 @@ public class UserTests
     public void User_Admin_ShouldHaveAdminRole()
     {
         // Arrange
+        var adminRole = new Role { Id = 1, Name = "Admin", SocieteId = 1, IsCompanyAdmin = true };
         var admin = new User
         {
-            Name = "Admin User",
+            FirstName = "Admin",
+            LastName = "User",
             Email = "admin@company.com",
-            IsCompanyAdmin = true,
-            Roles = new[] { "admin" },
-            Permissions = new[] { "all" }
+            RoleId = 1,
+            Role = adminRole
         };
 
         // Assert
         admin.IsCompanyAdmin.Should().BeTrue();
-        admin.Roles.Should().Contain("admin");
-        admin.Permissions.Should().Contain("all");
+        admin.Role.Name.Should().Be("Admin");
     }
 
     [Fact]
@@ -105,8 +91,10 @@ public class UserTests
         var user = new User
         {
             Id = 1,
-            Name = "Test User",
+            FirstName = "Test",
+            LastName = "User",
             CompanyId = 1,
+            RoleId = 1,
             Societe = societe
         };
 
@@ -120,11 +108,12 @@ public class UserTests
     public void User_ShouldHaveRoleNavigation()
     {
         // Arrange
-        var role = new Role { Id = 1, Name = "Driver", RoleType = "employee" };
+        var role = new Role { Id = 1, Name = "Driver", SocieteId = 1 };
         var user = new User
         {
             Id = 1,
-            Name = "Test User",
+            FirstName = "Test",
+            LastName = "User",
             RoleId = 1,
             Role = role
         };
@@ -148,19 +137,6 @@ public class UserTests
         user.Status.Should().Be(status);
     }
 
-    [Theory]
-    [InlineData("user")]
-    [InlineData("employee")]
-    [InlineData("admin")]
-    public void User_ShouldAcceptValidUserTypes(string userType)
-    {
-        // Arrange & Act
-        var user = new User { UserType = userType };
-
-        // Assert
-        user.UserType.Should().Be(userType);
-    }
-
     [Fact]
     public void User_ShouldTrackLastLogin()
     {
@@ -168,11 +144,41 @@ public class UserTests
         var loginTime = DateTime.UtcNow;
         var user = new User
         {
-            Name = "Test User",
+            FirstName = "Test",
+            LastName = "User",
             LastLoginAt = loginTime
         };
 
         // Assert
         user.LastLoginAt.Should().Be(loginTime);
     }
+
+    [Fact]
+    public void User_FullName_ShouldCombineFirstAndLastName()
+    {
+        // Arrange
+        var user = new User
+        {
+            FirstName = "John",
+            LastName = "Smith"
+        };
+
+        // Assert
+        user.FullName.Should().Be("John Smith");
+    }
+
+    [Fact]
+    public void User_Name_ShouldSplitIntoFirstAndLastName()
+    {
+        // Arrange
+        var user = new User();
+        user.Name = "Jane Doe";
+
+        // Assert
+        user.FirstName.Should().Be("Jane");
+        user.LastName.Should().Be("Doe");
+        user.FullName.Should().Be("Jane Doe");
+    }
 }
+
+

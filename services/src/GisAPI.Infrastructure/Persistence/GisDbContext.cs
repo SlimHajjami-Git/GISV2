@@ -86,6 +86,19 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<VehicleMaintenanceSchedule> VehicleMaintenanceSchedules => Set<VehicleMaintenanceSchedule>();
     public DbSet<MaintenanceLog> MaintenanceLogs => Set<MaintenanceLog>();
 
+    // Fleet Management
+    public DbSet<Department> Departments => Set<Department>();
+    public DbSet<FuelType> FuelTypes => Set<FuelType>();
+    public DbSet<FuelPricing> FuelPricings => Set<FuelPricing>();
+    public DbSet<SpeedLimitAlert> SpeedLimitAlerts => Set<SpeedLimitAlert>();
+    
+    // Brands & Models
+    public DbSet<Brand> Brands => Set<Brand>();
+    public DbSet<VehicleModel> VehicleModels => Set<VehicleModel>();
+    public DbSet<PartCategory> PartCategories => Set<PartCategory>();
+    public DbSet<VehiclePart> VehicleParts => Set<VehiclePart>();
+    public DbSet<PartPricing> PartPricings => Set<PartPricing>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -124,7 +137,6 @@ public class GisDbContext : DbContext, IGisDbContext
         }
 
         // Configure composite keys
-        modelBuilder.Entity<UserVehicle>().HasKey(uv => new { uv.UserId, uv.VehicleId });
         modelBuilder.Entity<GeofenceVehicle>().HasKey(gv => new { gv.GeofenceId, gv.VehicleId });
 
         // Configure table names (snake_case)
@@ -195,18 +207,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<VehicleAssignment>().HasOne(a => a.Vehicle).WithMany().HasForeignKey(a => a.VehicleId);
         modelBuilder.Entity<VehicleAssignment>().HasOne(a => a.User).WithMany().HasForeignKey(a => a.UserId);
 
-        // Role configuration
-        modelBuilder.Entity<Role>().Property(r => r.Id).HasColumnName("id");
-        modelBuilder.Entity<Role>().Property(r => r.Name).HasColumnName("name");
-        modelBuilder.Entity<Role>().Property(r => r.Description).HasColumnName("description");
-        modelBuilder.Entity<Role>().Property(r => r.RoleType).HasColumnName("role_type");
-        modelBuilder.Entity<Role>().Property(r => r.SocieteId).HasColumnName("societe_id");
-        modelBuilder.Entity<Role>().Property(r => r.IsSystem).HasColumnName("is_system");
-        modelBuilder.Entity<Role>().Property(r => r.IsDefault).HasColumnName("is_default");
-        modelBuilder.Entity<Role>().Property(r => r.CreatedAt).HasColumnName("created_at");
-        modelBuilder.Entity<Role>().Property(r => r.UpdatedAt).HasColumnName("updated_at");
-        modelBuilder.Entity<Role>().Property(r => r.Permissions).HasColumnType("jsonb").HasColumnName("permissions");
-        modelBuilder.Entity<Role>().HasOne(r => r.Societe).WithMany(s => s.Roles).HasForeignKey(r => r.SocieteId);
+        // Role configuration is handled by RoleConfiguration.cs
 
         // Societe column mappings (match actual DB schema)
         modelBuilder.Entity<Societe>().Property(c => c.Id).HasColumnName("id");
@@ -234,15 +235,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<Societe>().Property(c => c.UpdatedAt).HasColumnName("updated_at");
         modelBuilder.Entity<Societe>().OwnsOne(c => c.Settings, b => b.ToJson("settings"));
 
-        // User column mappings for new fields
-        modelBuilder.Entity<User>().Property(u => u.UserType).HasColumnName("user_type");
-        modelBuilder.Entity<User>().Property(u => u.RoleId).HasColumnName("role_id");
-        modelBuilder.Entity<User>().Property(u => u.IsCompanyAdmin).HasColumnName("is_company_admin");
-        modelBuilder.Entity<User>().Property(u => u.HireDate).HasColumnName("hire_date");
-        modelBuilder.Entity<User>().Property(u => u.LicenseNumber).HasColumnName("license_number");
-        modelBuilder.Entity<User>().Property(u => u.LicenseExpiry).HasColumnName("license_expiry");
-        modelBuilder.Entity<User>().HasOne(u => u.Societe).WithMany(s => s.Users).HasForeignKey(u => u.CompanyId);
-        modelBuilder.Entity<User>().HasOne(u => u.Role).WithMany(r => r.Users).HasForeignKey(u => u.RoleId);
+        // User configuration is handled by UserConfiguration.cs
 
         // Configure unique indexes
         modelBuilder.Entity<DailyStatistics>()
@@ -390,3 +383,5 @@ public class GisDbContext : DbContext, IGisDbContext
         return await base.SaveChangesAsync(ct);
     }
 }
+
+

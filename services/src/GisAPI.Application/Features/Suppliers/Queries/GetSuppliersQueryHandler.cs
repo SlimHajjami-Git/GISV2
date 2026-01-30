@@ -79,3 +79,6 @@ public class GetSuppliersQueryHandler : IRequestHandler<GetSuppliersQuery, Pagin
         return new PaginatedList<SupplierDto>(items, totalCount, request.Page, request.PageSize);
     }
 }
+
+
+

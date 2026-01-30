@@ -12,44 +12,105 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
-        builder.Property(e => e.Name).HasColumnName("name").HasMaxLength(100).IsRequired();
-        builder.Property(e => e.Email).HasColumnName("email").HasMaxLength(150).IsRequired();
-        builder.Property(e => e.Phone).HasColumnName("phone").HasMaxLength(20);
-        builder.Property(e => e.PasswordHash).HasColumnName("password_hash").IsRequired();
-        builder.Property(e => e.Roles).HasColumnName("roles");
-        builder.Property(e => e.Permissions).HasColumnName("permissions");
-        builder.Property(e => e.AssignedVehicleIds).HasColumnName("assigned_vehicle_ids");
-        builder.Property(e => e.Status).HasColumnName("status").HasMaxLength(20);
-        builder.Property(e => e.CompanyId).HasColumnName("company_id");
-        builder.Property(e => e.CreatedAt).HasColumnName("created_at");
-        builder.Property(e => e.UpdatedAt).HasColumnName("updated_at");
-        builder.Property(e => e.LastLoginAt).HasColumnName("last_login_at");
-        builder.Property(e => e.UserSettingsId).HasColumnName("user_settings_id");
         
-        // Personal information
-        builder.Property(e => e.DateOfBirth).HasColumnName("date_of_birth");
-        builder.Property(e => e.CIN).HasColumnName("cin").HasMaxLength(50);
+        builder.Property(e => e.FirstName)
+            .HasColumnName("first_name")
+            .HasMaxLength(100)
+            .IsRequired();
         
-        // User type and role
-        builder.Property(e => e.UserType).HasColumnName("user_type").HasMaxLength(50);
-        builder.Property(e => e.RoleId).HasColumnName("role_id");
-        builder.Property(e => e.IsCompanyAdmin).HasColumnName("is_company_admin");
+        builder.Property(e => e.LastName)
+            .HasColumnName("last_name")
+            .HasMaxLength(100)
+            .IsRequired();
         
-        // Employee fields
-        builder.Property(e => e.HireDate).HasColumnName("hire_date");
-        builder.Property(e => e.LicenseNumber).HasColumnName("license_number").HasMaxLength(50);
-        builder.Property(e => e.LicenseExpiry).HasColumnName("license_expiry");
+        builder.Property(e => e.Email)
+            .HasColumnName("email")
+            .HasMaxLength(255)
+            .IsRequired();
+        
+        builder.Property(e => e.PasswordHash)
+            .HasColumnName("password_hash")
+            .HasMaxLength(255)
+            .IsRequired();
+        
+        builder.Property(e => e.Phone)
+            .HasColumnName("phone")
+            .HasMaxLength(20);
+        
+        builder.Property(e => e.PermitNumber)
+            .HasColumnName("permit_number")
+            .HasMaxLength(50);
+        
+        builder.Property(e => e.RoleId)
+            .HasColumnName("role_id")
+            .IsRequired();
+        
+        builder.Property(e => e.CompanyId)
+            .HasColumnName("company_id")
+            .IsRequired();
+        
+        builder.Property(e => e.Status)
+            .HasColumnName("status")
+            .HasMaxLength(20)
+            .HasDefaultValue("active");
+        
+        builder.Property(e => e.LastLoginAt)
+            .HasColumnName("last_login_at");
+        
+        builder.Property(e => e.CreatedAt)
+            .HasColumnName("created_at")
+            .HasDefaultValueSql("NOW()");
+        
+        builder.Property(e => e.UpdatedAt)
+            .HasColumnName("updated_at")
+            .HasDefaultValueSql("NOW()");
 
-        builder.HasIndex(e => e.Email).IsUnique();
-        builder.HasIndex(e => e.CompanyId);
+        // Ignore computed and legacy compatibility properties (not stored in DB)
+        builder.Ignore(e => e.FullName);
+        builder.Ignore(e => e.IsCompanyAdmin);
+        builder.Ignore(e => e.IsSystemAdmin);
+        builder.Ignore(e => e.IsAnyAdmin);
+        builder.Ignore(e => e.Name);
+        builder.Ignore(e => e.Roles);
+        builder.Ignore(e => e.Permissions);
+        builder.Ignore(e => e.AssignedVehicleIds);
+        builder.Ignore(e => e.UserType);
+        builder.Ignore(e => e.CIN);
+        builder.Ignore(e => e.DateOfBirth);
+        builder.Ignore("_rolesCache");
+        builder.Ignore("_permissionsCache");
+        builder.Ignore("_assignedVehicleIdsCache");
+        builder.Ignore("_userTypeCache");
 
+        // Indexes
+        builder.HasIndex(e => e.Email)
+            .IsUnique()
+            .HasDatabaseName("idx_users_email");
+        
+        builder.HasIndex(e => e.CompanyId)
+            .HasDatabaseName("idx_users_company_id");
+        
+        builder.HasIndex(e => e.RoleId)
+            .HasDatabaseName("idx_users_role_id");
+        
+        builder.HasIndex(e => e.Status)
+            .HasDatabaseName("idx_users_status");
+
+        // Relationships
         builder.HasOne(e => e.Societe)
             .WithMany(c => c.Users)
-            .HasForeignKey(e => e.CompanyId);
+            .HasForeignKey(e => e.CompanyId)
+            .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasOne(e => e.Settings)
-            .WithOne()
-            .HasForeignKey<User>(e => e.UserSettingsId);
+        builder.HasOne(e => e.Role)
+            .WithMany(r => r.Users)
+            .HasForeignKey(e => e.RoleId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasMany(e => e.UserVehicles)
+            .WithOne(uv => uv.User)
+            .HasForeignKey(uv => uv.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
 
@@ -75,3 +136,5 @@ public class UserSettingsConfiguration : IEntityTypeConfiguration<UserSettings>
         builder.OwnsOne(e => e.Display, d => d.ToJson("display"));
     }
 }
+
+

@@ -84,3 +84,5 @@ public class AuthorizationBehaviourTests
         public IReadOnlyCollection<string> RequiredPermissions { get; } = new[] { Permissions.Vehicles };
     }
 }
+
+

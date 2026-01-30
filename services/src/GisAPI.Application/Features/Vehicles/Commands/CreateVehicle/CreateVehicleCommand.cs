@@ -23,3 +23,6 @@ public record GpsDeviceInfo(
     string? Model,
     DateTime? InstallationDate
 );
+
+
+

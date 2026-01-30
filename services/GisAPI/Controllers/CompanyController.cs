@@ -8,7 +8,7 @@ namespace GisAPI.Controllers;
 
 [ApiController]
 [Route("api/companies")]
-[Authorize(Roles = "admin,super_admin")]
+[Authorize]
 public class CompanyController : ControllerBase
 {
     private readonly GisDbContext _context;

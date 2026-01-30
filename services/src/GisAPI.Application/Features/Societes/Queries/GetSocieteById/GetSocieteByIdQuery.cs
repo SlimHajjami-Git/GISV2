@@ -47,3 +47,6 @@ public record SocieteSettingsDto(
     string SpeedUnit,
     string VolumeUnit
 );
+
+
+

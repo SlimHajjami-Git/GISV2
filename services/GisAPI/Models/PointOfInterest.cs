@@ -159,3 +159,6 @@ public class PoiVisit
 
     public int CompanyId { get; set; }
 }
+
+
+

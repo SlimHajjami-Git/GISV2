@@ -24,3 +24,6 @@ public record UpdateSocieteCommand(
     int? SubscriptionTypeId,
     SocieteSettings? Settings
 ) : ICommand<SocieteDetailDto>;
+
+
+

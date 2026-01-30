@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using GisAPI.Domain.Entities;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -1078,3 +1078,5 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
         }
     }
 }
+
+

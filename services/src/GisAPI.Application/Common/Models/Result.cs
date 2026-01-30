@@ -27,3 +27,6 @@ public class Result<T> : Result
         Value = value;
     }
 }
+
+
+

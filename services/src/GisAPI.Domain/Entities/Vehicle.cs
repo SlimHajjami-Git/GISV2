@@ -24,6 +24,12 @@ public class Vehicle : TenantEntity
     
     public int? GpsDeviceId { get; set; }
     public GpsDevice? GpsDevice { get; set; }
+    
+    public int? DepartmentId { get; set; }
+    public Department? Department { get; set; }
+    
+    public int? SpeedLimit { get; set; } = 120;
+    public string? FuelType { get; set; } = "diesel";
 
     public Societe? Societe { get; set; }
     
@@ -52,3 +58,5 @@ public class VehicleDocument : Entity
     public string? FileUrl { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
+
+

@@ -68,7 +68,7 @@ public class GetFuelRecordsQueryHandler : IRequestHandler<GetFuelRecordsQuery, F
                 f.Vehicle != null ? f.Vehicle.Name : null,
                 f.Vehicle != null ? f.Vehicle.Plate : null,
                 f.DriverId,
-                f.Driver != null ? f.Driver.Name : null,
+                f.Driver != null ? f.Driver.FullName : null,
                 f.RecordedAt,
                 f.FuelPercent,
                 f.FuelLiters,
@@ -124,3 +124,6 @@ public class GetFuelRecordsQueryHandler : IRequestHandler<GetFuelRecordsQuery, F
         );
     }
 }
+
+
+

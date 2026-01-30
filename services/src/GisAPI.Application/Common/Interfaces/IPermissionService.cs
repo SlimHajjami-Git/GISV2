@@ -24,3 +24,6 @@ public interface IPermissionService
     /// </summary>
     List<string> GetExceedingPermissions(Dictionary<string, object>? rolePermissions, SubscriptionType subscriptionType);
 }
+
+
+

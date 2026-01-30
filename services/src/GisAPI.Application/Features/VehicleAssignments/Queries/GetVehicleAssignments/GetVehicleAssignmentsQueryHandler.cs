@@ -39,10 +39,14 @@ public class GetVehicleAssignmentsQueryHandler : IRequestHandler<GetVehicleAssig
                 a.VehicleId,
                 a.Vehicle!.Name,
                 a.UserId,
-                a.User!.Name,
+                a.User!.FullName,
                 a.AssignedAt,
                 a.IsActive
             ))
             .ToListAsync(ct);
     }
 }
+
+
+
+

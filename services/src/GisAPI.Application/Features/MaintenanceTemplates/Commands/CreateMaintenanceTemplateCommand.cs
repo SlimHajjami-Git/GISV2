@@ -26,3 +26,6 @@ public record UpdateMaintenanceTemplateCommand(
 ) : ICommand<bool>;
 
 public record DeleteMaintenanceTemplateCommand(int Id) : ICommand<bool>;
+
+
+

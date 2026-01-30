@@ -12,3 +12,5 @@ public interface ICurrentTenantService
     void SetTenant(int companyId, int userId, string email, string[] roles, string[] permissions);
     bool HasPermission(string permission);
 }
+
+

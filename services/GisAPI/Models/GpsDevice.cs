@@ -167,3 +167,6 @@ public class GpsAlert
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
+
+
+

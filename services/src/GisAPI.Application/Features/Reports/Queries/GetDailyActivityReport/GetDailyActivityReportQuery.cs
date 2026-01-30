@@ -84,3 +84,6 @@ public class DailySummaryDto
     public double AvgSpeedKph { get; set; }
     public int PositionCount { get; set; }
 }
+
+
+

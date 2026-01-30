@@ -40,3 +40,6 @@ public record SocieteDto(
     DateTime CreatedAt,
     DateTime UpdatedAt
 );
+
+
+

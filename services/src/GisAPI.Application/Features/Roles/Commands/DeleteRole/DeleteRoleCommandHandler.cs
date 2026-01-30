@@ -27,8 +27,8 @@ public class DeleteRoleCommandHandler : IRequestHandler<DeleteRoleCommand>
             .FirstOrDefaultAsync(r => r.Id == request.Id && r.SocieteId == companyId, ct)
             ?? throw new NotFoundException("Role", request.Id);
 
-        if (role.IsSystem)
-            throw new DomainException("Impossible de supprimer un rôle système");
+        if (role.IsCompanyAdmin)
+            throw new DomainException("Impossible de supprimer le rôle administrateur de la société");
 
         if (role.Users.Any())
             throw new DomainException($"Impossible de supprimer ce rôle car {role.Users.Count} utilisateur(s) y sont affectés");
@@ -37,3 +37,6 @@ public class DeleteRoleCommandHandler : IRequestHandler<DeleteRoleCommand>
         await _context.SaveChangesAsync(ct);
     }
 }
+
+
+
