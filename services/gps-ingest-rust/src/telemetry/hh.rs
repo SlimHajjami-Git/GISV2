@@ -146,41 +146,45 @@ fn decode_header(header: &str) -> Result<(FrameKind, FrameVersion)> {
 }
 
 fn parse_v1(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhFrame> {
-    // V1 Protocol - According to ACI spec (NO HEADING in V1!)
+    // V1 Protocol - SAME positions as V3 according to GISV1 implementation
+    // GISV1 parses ALL frames (V1, V2, V3) with the same positions!
+    // The only difference is V3 has optional FMS data at position 70+
+    // 
     // Position 4-9: Hour (6 chars)
     // Position 10-17: Latitude (8 chars)
     // Position 18-25: Longitude (8 chars)
     // Position 26-29: Speed (4 chars)
-    // Position 30-31: Power (2 chars) - NO HEADING!
-    // Position 32-33: Fuel (2 chars)
-    // Position 34-39: MEMS (6 chars)
-    // Position 40-41: Flags (2 chars)
-    // Position 42-45: Temp (4 chars)
-    // Position 46-53: Odometer (8 chars)
-    // Position 54-55: Send flag (2 chars)
-    // Position 56-63: Added info (8 chars)
-    // Position 64-67: Date (4 chars)
+    // Position 30-31: Heading / 8 (2 chars)
+    // Position 32-33: Power (2 chars)
+    // Position 34-35: Fuel (2 chars)
+    // Position 36-41: MEMS (6 chars)
+    // Position 42-43: Flags (2 chars)
+    // Position 44-47: Temp (4 chars)
+    // Position 48-55: Odometer (8 chars)
+    // Position 56-57: Send flag (2 chars)
+    // Position 58-65: Added info (8 chars)
+    // Position 66-69: Date (4 chars)
     
     let hour_raw = payload.get(4..10).context("V1: missing hour")?;
     let lat_raw = payload.get(10..18).context("V1: missing latitude")?;
     let lon_raw = payload.get(18..26).context("V1: missing longitude")?;
     let speed_raw = payload.get(26..30).context("V1: missing speed")?;
-    // V1 has NO heading - power is directly after speed
-    let power_raw = payload.get(30..32).context("V1: missing power")?;
-    let fuel_raw = payload.get(32..34).context("V1: missing fuel")?;
-    let mems_raw = payload.get(34..40).context("V1: missing mems")?;
-    let flags_raw = payload.get(40..42).context("V1: missing flags")?;
-    let temp_raw = payload.get(42..46).context("V1: missing temp")?;
-    let odo_raw = payload.get(46..54).context("V1: missing odometer")?;
-    let send_flag_raw = payload.get(54..56).context("V1: missing send_flag")?;
-    let added_info_raw = payload.get(56..64).context("V1: missing added_info")?;
-    let date_raw = payload.get(64..68).context("V1: missing date")?;
+    let heading_raw = payload.get(30..32).context("V1: missing heading")?;
+    let power_raw = payload.get(32..34).context("V1: missing power")?;
+    let fuel_raw = payload.get(34..36).context("V1: missing fuel")?;
+    let mems_raw = payload.get(36..42).context("V1: missing mems")?;
+    let flags_raw = payload.get(42..44).context("V1: missing flags")?;
+    let temp_raw = payload.get(44..48).context("V1: missing temp")?;
+    let odo_raw = payload.get(48..56).context("V1: missing odometer")?;
+    let send_flag_raw = payload.get(56..58).context("V1: missing send_flag")?;
+    let added_info_raw = payload.get(58..66).context("V1: missing added_info")?;
+    let date_raw = payload.get(66..70).context("V1: missing date")?;
 
     let (recorded_at, is_real_time) = decode_timestamp(hour_raw, date_raw)?;
     let latitude = decode_coordinate(lat_raw, flags_raw, 0x01, true)?;
     let longitude = decode_coordinate(lon_raw, flags_raw, 0x02, false)?;
     let speed_kph = parse_speed(speed_raw)?;
-    let heading_deg = 0.0; // V1 has no heading
+    let heading_deg = u8::from_str_radix(heading_raw, 16).unwrap_or(0) as f64 * 8.0;
     let (power_voltage, power_source_rescue) = decode_power(power_raw);
     let ignition_on = decode_bit(flags_raw, 0x04);
     let mems = decode_mems(mems_raw)?;
