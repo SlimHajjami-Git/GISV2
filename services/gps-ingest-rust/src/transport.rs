@@ -331,14 +331,17 @@ async fn process_single_frame(
                     // Only apply throttling when ignition is OFF and speed is low
                     if !frame.ignition_on && frame.speed_kph < STOPPED_SPEED_THRESHOLD_KPH {
                         if let Some(last_position) = database.get_last_position(device_id).await? {
-                            let seconds_since_last =
-                                (frame.recorded_at - last_position.recorded_at).num_seconds();
+                            // Use current time (not frame timestamp) to handle historical frames correctly
+                            // Historical frames have close timestamps but arrive much later
+                            let now = chrono::Utc::now().naive_utc();
+                            let seconds_since_last_stored =
+                                (now - last_position.recorded_at).num_seconds();
                             
-                            // Skip if less than 30 minutes have passed since last stored position
-                            if seconds_since_last.abs() < STOPPED_MIN_INTERVAL_SECS {
+                            // Skip if less than 30 minutes have passed since last stored position (real time)
+                            if seconds_since_last_stored.abs() < STOPPED_MIN_INTERVAL_SECS {
                                 info!(
                                     device_id,
-                                    seconds_since_last,
+                                    seconds_since_last = seconds_since_last_stored,
                                     speed_kph = frame.speed_kph,
                                     min_interval_secs = STOPPED_MIN_INTERVAL_SECS,
                                     "Frame skipped: ignition-off throttling (30 min interval not reached)"
