@@ -3,8 +3,6 @@
 -- Description: Add is_system_role column and create System Admin role
 -- SAFE: Uses IF NOT EXISTS to avoid breaking existing data
 
-BEGIN;
-
 -- 1. Add is_system_role column if not exists
 DO $$ 
 BEGIN
@@ -17,16 +15,21 @@ BEGIN
     END IF;
 END $$;
 
--- 2. Create System Admin role if not exists
-INSERT INTO roles (name, description, is_system_role, is_company_admin, permissions, created_at, updated_at)
-SELECT 'System Admin', 'Administrateur système avec pouvoir absolu', TRUE, FALSE, 
-       '{"*": true}'::jsonb, NOW(), NOW()
-WHERE NOT EXISTS (SELECT 1 FROM roles WHERE name = 'System Admin' OR is_system_role = TRUE);
+-- 2. Create System Admin role if not exists (use only columns that exist)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM roles WHERE name = 'System Admin') THEN
+        INSERT INTO roles (name, description, is_system_role, permissions, created_at, updated_at)
+        VALUES ('System Admin', 'Administrateur système avec pouvoir absolu', TRUE, 
+                '{"*": true}'::jsonb, NOW(), NOW());
+        RAISE NOTICE 'Created System Admin role';
+    ELSE
+        UPDATE roles SET is_system_role = TRUE WHERE name = 'System Admin';
+        RAISE NOTICE 'Updated existing System Admin role';
+    END IF;
+END $$;
 
--- 3. Update existing System Admin role to ensure is_system_role = true
-UPDATE roles SET is_system_role = TRUE WHERE name = 'System Admin';
-
--- 4. Assign System Admin role to admin@belive.tn if exists
+-- 3. Assign System Admin role to admin@belive.tn if exists
 DO $$
 DECLARE
     v_role_id INT;
@@ -45,12 +48,10 @@ END $$;
 
 -- Verify
 SELECT 'Roles with is_system_role:' as info;
-SELECT id, name, is_system_role, is_company_admin FROM roles WHERE is_system_role = TRUE;
+SELECT id, name, is_system_role FROM roles WHERE is_system_role = TRUE;
 
 SELECT 'Users with System Admin role:' as info;
 SELECT u.id, u.email, r.name as role_name, r.is_system_role 
 FROM users u 
 JOIN roles r ON u.role_id = r.id 
 WHERE r.is_system_role = TRUE;
-
-COMMIT;
