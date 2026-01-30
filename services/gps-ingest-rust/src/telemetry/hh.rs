@@ -146,31 +146,41 @@ fn decode_header(header: &str) -> Result<(FrameKind, FrameVersion)> {
 }
 
 fn parse_v1(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhFrame> {
-    // GISV1 behavior: No explicit length check - just try to parse
-    // If payload is too short, Substring throws exception which is caught in try-catch
-    // We replicate this by using .get() and returning error if field is missing
-    // This allows partial frames to fail gracefully like GISV1
+    // V1 Protocol - According to ACI spec (NO HEADING in V1!)
+    // Position 4-9: Hour (6 chars)
+    // Position 10-17: Latitude (8 chars)
+    // Position 18-25: Longitude (8 chars)
+    // Position 26-29: Speed (4 chars)
+    // Position 30-31: Power (2 chars) - NO HEADING!
+    // Position 32-33: Fuel (2 chars)
+    // Position 34-39: MEMS (6 chars)
+    // Position 40-41: Flags (2 chars)
+    // Position 42-45: Temp (4 chars)
+    // Position 46-53: Odometer (8 chars)
+    // Position 54-55: Send flag (2 chars)
+    // Position 56-63: Added info (8 chars)
+    // Position 64-67: Date (4 chars)
     
-    let hour_raw = payload.get(4..10).context("frame too short: missing hour field")?;
-    let lat_raw = payload.get(10..18).context("frame too short: missing latitude field")?;
-    let lon_raw = payload.get(18..26).context("frame too short: missing longitude field")?;
-    let speed_raw = payload.get(26..30).context("frame too short: missing speed field")?;
-    let heading_raw = payload.get(30..32).context("frame too short: missing heading field")?;
-    let power_raw = payload.get(32..34).context("frame too short: missing power field")?;
-    let fuel_raw = payload.get(34..36).context("frame too short: missing fuel field")?;
-    let mems_raw = payload.get(36..42).context("frame too short: missing mems field")?;
-    let flags_raw = payload.get(42..44).context("frame too short: missing flags field")?;
-    let temp_raw = payload.get(44..48).context("frame too short: missing temp field")?;
-    let odo_raw = payload.get(48..56).context("frame too short: missing odometer field")?;
-    let send_flag_raw = payload.get(56..58).context("frame too short: missing send_flag field")?;
-    let added_info_raw = payload.get(58..66).context("frame too short: missing added_info field")?;
-    let date_raw = payload.get(66..70).context("frame too short: missing date field")?;
+    let hour_raw = payload.get(4..10).context("V1: missing hour")?;
+    let lat_raw = payload.get(10..18).context("V1: missing latitude")?;
+    let lon_raw = payload.get(18..26).context("V1: missing longitude")?;
+    let speed_raw = payload.get(26..30).context("V1: missing speed")?;
+    // V1 has NO heading - power is directly after speed
+    let power_raw = payload.get(30..32).context("V1: missing power")?;
+    let fuel_raw = payload.get(32..34).context("V1: missing fuel")?;
+    let mems_raw = payload.get(34..40).context("V1: missing mems")?;
+    let flags_raw = payload.get(40..42).context("V1: missing flags")?;
+    let temp_raw = payload.get(42..46).context("V1: missing temp")?;
+    let odo_raw = payload.get(46..54).context("V1: missing odometer")?;
+    let send_flag_raw = payload.get(54..56).context("V1: missing send_flag")?;
+    let added_info_raw = payload.get(56..64).context("V1: missing added_info")?;
+    let date_raw = payload.get(64..68).context("V1: missing date")?;
 
     let (recorded_at, is_real_time) = decode_timestamp(hour_raw, date_raw)?;
     let latitude = decode_coordinate(lat_raw, flags_raw, 0x01, true)?;
     let longitude = decode_coordinate(lon_raw, flags_raw, 0x02, false)?;
     let speed_kph = parse_speed(speed_raw)?;
-    let heading_deg = parse_heading(heading_raw)?;
+    let heading_deg = 0.0; // V1 has no heading
     let (power_voltage, power_source_rescue) = decode_power(power_raw);
     let ignition_on = decode_bit(flags_raw, 0x04);
     let mems = decode_mems(mems_raw)?;
@@ -178,21 +188,6 @@ fn parse_v1(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhF
     let odometer_km = u32::from_str_radix(odo_raw, 16)?;
     let send_flag = u8::from_str_radix(send_flag_raw, 16)?;
     let added_info = u32::from_str_radix(added_info_raw, 16)?;
-
-    // Parse base fuel from position 34-35
-    let base_fuel = u8::from_str_radix(fuel_raw, 16)?;
-    
-    // GISV1 Logic: If base fuel is 0, try FMS fuel as fallback
-    // For V1/V2, FMS fuel is at position 54-55 (2 hex chars) if frame is long enough
-    let fuel_final = if base_fuel == 0 && payload.len() >= 56 {
-        // Try FMS fuel at position 54-55
-        payload.get(54..56)
-            .and_then(|s| u8::from_str_radix(s, 16).ok())
-            .filter(|&v| v > 0 && v <= 100)
-            .unwrap_or(base_fuel)
-    } else {
-        base_fuel
-    };
 
     Ok(HhFrame {
         kind,
@@ -204,7 +199,7 @@ fn parse_v1(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhF
         heading_deg,
         power_voltage,
         power_source_rescue,
-        fuel_raw: fuel_final,
+        fuel_raw: u8::from_str_radix(fuel_raw, 16)?,
         ignition_on,
         mems_x: mems.0,
         mems_y: mems.1,
@@ -226,21 +221,49 @@ fn parse_v1(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhF
 }
 
 fn parse_v3(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhFrame> {
-    // GISV1 behavior: No explicit length check - try to parse and fail gracefully
-    let hour_raw = payload.get(4..10).context("V3 frame too short: missing hour field")?;
-    let lat_raw = payload.get(10..18).context("V3 frame too short: missing latitude field")?;
-    let lon_raw = payload.get(18..26).context("V3 frame too short: missing longitude field")?;
-    let speed_raw = payload.get(26..30).context("V3 frame too short: missing speed field")?;
-    let heading_raw = payload.get(30..32).context("V3 frame too short: missing heading field")?;
-    let power_raw = payload.get(32..34).context("V3 frame too short: missing power field")?;
-    let fuel_raw = payload.get(34..36).context("V3 frame too short: missing fuel field")?;
-    let mems_raw = payload.get(36..42).context("V3 frame too short: missing mems field")?;
-    let flags_raw = payload.get(42..44).context("V3 frame too short: missing flags field")?;
-    let temp_raw = payload.get(44..48).context("V3 frame too short: missing temp field")?;
-    let odo_raw = payload.get(48..56).context("V3 frame too short: missing odometer field")?;
-    let send_flag_raw = payload.get(56..58).context("V3 frame too short: missing send_flag field")?;
-    let added_info_raw = payload.get(58..66).context("V3 frame too short: missing added_info field")?;
-    let date_raw = payload.get(66..70).context("V3 frame too short: missing date field")?;
+    // V3 Protocol - According to ACI spec (WITH HEADING and optional FMS DATA)
+    // Base frame (position 4-69):
+    // Position 4-9: Hour (6 chars)
+    // Position 10-17: Latitude (8 chars)
+    // Position 18-25: Longitude (8 chars)
+    // Position 26-29: Speed x10 in mph (4 chars)
+    // Position 30-31: Heading / 8 (2 chars)
+    // Position 32-33: Power (2 chars)
+    // Position 34-35: Fuel Analogic2 (2 chars)
+    // Position 36-41: MEMS (6 chars)
+    // Position 42-43: Flags (2 chars)
+    // Position 44-47: Temp (4 chars)
+    // Position 48-55: Odometer (8 chars)
+    // Position 56-57: Send flag (2 chars)
+    // Position 58-65: Added info (8 chars)
+    // Position 66-69: Date (4 chars)
+    //
+    // Optional FMS DATA (position 70-99):
+    // Position 70-71: FMS FUEL % (2 chars)
+    // Position 72-73: FMS TEMP +40 (2 chars)
+    // Position 74-81: FMS ODOMETER in KM (8 chars)
+    // Position 82-83: FMS SPEED (2 chars)
+    // Position 84-87: FMS RPM (4 chars)
+    // Position 88-91: FMS FUEL RATE (4 chars)
+    // Position 92-99: FMS TOTAL FUEL USED (8 chars)
+    //
+    // After FMS (or after date if no FMS):
+    // Signal quality, Satellites
+    
+    let hour_raw = payload.get(4..10).context("V3: missing hour")?;
+    let lat_raw = payload.get(10..18).context("V3: missing latitude")?;
+    let lon_raw = payload.get(18..26).context("V3: missing longitude")?;
+    let speed_raw = payload.get(26..30).context("V3: missing speed")?;
+    let heading_raw = payload.get(30..32).context("V3: missing heading")?;
+    let power_raw = payload.get(32..34).context("V3: missing power")?;
+    let fuel_raw = payload.get(34..36).context("V3: missing fuel")?;
+    let mems_raw = payload.get(36..42).context("V3: missing mems")?;
+    let flags_raw = payload.get(42..44).context("V3: missing flags")?;
+    let temp_raw = payload.get(44..48).context("V3: missing temp")?;
+    let odo_raw = payload.get(48..56).context("V3: missing odometer")?;
+    let send_flag_raw = payload.get(56..58).context("V3: missing send_flag")?;
+    let added_info_raw = payload.get(58..66).context("V3: missing added_info")?;
+    let date_raw = payload.get(66..70).context("V3: missing date")?;
 
     let (recorded_at, is_real_time) = decode_timestamp(hour_raw, date_raw)?;
     let latitude = decode_coordinate(lat_raw, flags_raw, 0x01, true)?;
@@ -251,88 +274,49 @@ fn parse_v3(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhF
     let ignition_on = decode_bit(flags_raw, 0x04);
     let mems = decode_mems(mems_raw)?;
     let temperature_raw = u16::from_str_radix(temp_raw, 16)?;
-    let base_odometer_km = u32::from_str_radix(odo_raw, 16)?;
+    let base_odometer = u32::from_str_radix(odo_raw, 16)?;
     let send_flag = u8::from_str_radix(send_flag_raw, 16)?;
     let added_info = u32::from_str_radix(added_info_raw, 16)?;
-
-    let signal_quality = payload.get(70..72).and_then(|s| u8::from_str_radix(s, 16).ok());
-    let satellites_in_view = payload.get(72..74).and_then(|s| u8::from_str_radix(s, 16).ok());
-    let remaining_payload = payload.get(74..).map(ToOwned::to_owned);
-
-    // ============================================================
-    // GISV1 Logic: FMS Odometer (AAP.cs lines 746-752)
-    // If FMS Odometer > 0, use it instead of base odometer
-    // FMS Odometer is at position 74-82 (8 hex chars = 4 bytes)
-    // ============================================================
-    let fms_odometer = payload.get(74..82)
-        .and_then(|s| u32::from_str_radix(s, 16).ok())
-        .filter(|&v| v > 0);
-    
-    let odometer_km = if let Some(fms_odo) = fms_odometer {
-        tracing::info!(
-            base_odo = base_odometer_km,
-            fms_odo = fms_odo,
-            "V3: Using FMS Odometer (same as GISV1)"
-        );
-        fms_odo
-    } else {
-        base_odometer_km
-    };
-
-    // Parse base fuel from position 34-35
     let base_fuel = u8::from_str_radix(fuel_raw, 16)?;
-    
-    // GISV1 Logic: If base fuel is 0, try multiple FMS positions as fallback
-    // V3 (NR08/NR09) can have fuel at positions: 54, 70, 82, 86, 90, 94 (2 hex chars each)
-    let fuel_final = if base_fuel == 0 {
-        let possible_positions: &[usize] = &[70, 94];
-        let mut found_fuel: Option<u8> = None;
-        let mut traces = Vec::new();
 
-        for &pos in possible_positions {
-            if payload.len() >= pos + 2 {
-                if let Some(raw) = payload.get(pos..pos+2) {
-                    if let Ok(val) = u8::from_str_radix(raw, 16) {
-                        if val > 0 && val <= 100 {
-                            traces.push((pos, val));
-                            found_fuel = Some(val);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        
-        // If still not found, try position 78-81 (4 bytes fuel level in 0.5L)
-        if found_fuel.is_none() && payload.len() >= 82 {
-            if let Some(raw) = payload.get(78..82) {
-                if let Ok(val) = u16::from_str_radix(raw, 16) {
-                    if val > 0 && val < 65535 {
-                        // Convert to percentage (assuming 80L tank max)
-                        let pct = std::cmp::min(100, ((val / 2) * 100 / 80) as u8);
-                        if pct > 0 {
-                            tracing::info!(
-                                fuel_level_raw = val,
-                                fuel_percent = pct,
-                                "V3: FMS Fuel Level at 78 converted"
-                            );
-                            found_fuel = Some(pct);
-                        }
-                    }
-                }
-            }
-        }
-        
-        if found_fuel.is_none() {
-            tracing::debug!(
-                payload_len = payload.len(),
-                "V3: No FMS fuel found at any position"
-            );
-        }
-        
-        found_fuel.unwrap_or(base_fuel)
+    // Check if FMS data is present (frame length >= 100 chars)
+    let has_fms_data = payload.len() >= 100;
+    
+    // Parse FMS data if present
+    let (fms_fuel, fms_odometer, fms_rpm) = if has_fms_data {
+        let fms_fuel = payload.get(70..72)
+            .and_then(|s| u8::from_str_radix(s, 16).ok())
+            .filter(|&v| v > 0 && v <= 100);
+        let fms_odo = payload.get(74..82)
+            .and_then(|s| u32::from_str_radix(s, 16).ok())
+            .filter(|&v| v > 0);
+        let fms_rpm = payload.get(84..88)
+            .and_then(|s| u16::from_str_radix(s, 16).ok())
+            .filter(|&v| v > 0);
+        (fms_fuel, fms_odo, fms_rpm)
     } else {
-        base_fuel
+        (None, None, None)
+    };
+    
+    // Use FMS values if base values are 0
+    let fuel_final = if base_fuel == 0 { fms_fuel.unwrap_or(0) } else { base_fuel };
+    let odometer_km = if base_odometer == 0 { fms_odometer.unwrap_or(0) } else { base_odometer };
+    
+    // Signal/Satellites position depends on FMS data presence
+    let (signal_quality, satellites_in_view, remaining_payload) = if has_fms_data {
+        // After FMS data (position 100+)
+        (
+            payload.get(100..102).and_then(|s| u8::from_str_radix(s, 16).ok()),
+            payload.get(102..104).and_then(|s| u8::from_str_radix(s, 16).ok()),
+            payload.get(104..).map(ToOwned::to_owned)
+        )
+    } else {
+        // No FMS - right after date (position 70+)
+        (
+            payload.get(70..72).and_then(|s| u8::from_str_radix(s, 16).ok()),
+            payload.get(72..74).and_then(|s| u8::from_str_radix(s, 16).ok()),
+            payload.get(74..).map(ToOwned::to_owned)
+        )
     };
 
     Ok(HhFrame {
@@ -356,7 +340,7 @@ fn parse_v3(payload: &str, kind: FrameKind, version: FrameVersion) -> Result<HhF
         added_info,
         signal_quality,
         satellites_in_view,
-        rpm: None,
+        rpm: fms_rpm,
         is_valid: decode_bit(flags_raw, 0x40),
         is_real_time,
         flags_raw: u8::from_str_radix(flags_raw, 16)?,

@@ -1067,8 +1067,8 @@ export class AdminVehiclesComponent implements OnInit {
       hasGps: formData.hasGPS || false,
       gpsDeviceId: formData.hasGPS ? formData.gpsDeviceId : undefined,
       gpsImei: formData.hasGPS ? formData.gpsImei || undefined : undefined,
-      gpsModel: formData.hasGPS ? formData.gpsBrand || undefined : undefined,
-      gpsFirmwareVersion: formData.hasGPS ? formData.gpsModel || undefined : undefined
+      gpsMat: formData.hasGPS ? formData.gpsMat || undefined : undefined,
+      gpsFuelSensorMode: formData.hasGPS ? formData.gpsFuelSensorMode || undefined : undefined
     };
 
     if (this.showEditModal && this.selectedVehicle) {
@@ -1114,8 +1114,7 @@ export class AdminVehiclesComponent implements OnInit {
       gpsDeviceId: this.vehicleForm.hasGps ? this.vehicleForm.gpsDeviceId : undefined,
       gpsImei: this.vehicleForm.hasGps ? this.vehicleForm.gpsImei || undefined : undefined,
       gpsMat: this.vehicleForm.hasGps ? this.vehicleForm.gpsMat || undefined : undefined,
-      gpsModel: this.vehicleForm.hasGps ? this.vehicleForm.gpsModel || undefined : undefined,
-      gpsFirmwareVersion: this.vehicleForm.hasGps ? this.vehicleForm.gpsFirmwareVersion || undefined : undefined
+      gpsFuelSensorMode: this.vehicleForm.hasGps ? (this.vehicleForm as any).gpsFuelSensorMode || undefined : undefined
     };
 
     if (this.showEditModal && this.selectedVehicle) {
