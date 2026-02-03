@@ -172,6 +172,54 @@ static async Task SeedBeliveCompany(GisAPI.Infrastructure.Persistence.GisDbConte
         if (existingCompany != null)
         {
             Console.WriteLine($"[Seed] Company 'Belive' already exists (Id: {existingCompany.Id})");
+            
+            // Check if admin user exists, create if not
+            var existingAdmin = await context.Users
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(u => u.Email == "admin@belive.tn");
+            
+            if (existingAdmin == null)
+            {
+                // Get or create admin role
+                var adminRole = await context.Roles
+                    .IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(r => r.SocieteId == existingCompany.Id && r.IsCompanyAdmin);
+                
+                if (adminRole == null)
+                {
+                    adminRole = new GisAPI.Domain.Entities.Role
+                    {
+                        Name = "Administrateur",
+                        Description = "Administrateur système",
+                        SocieteId = existingCompany.Id,
+                        IsCompanyAdmin = true,
+                        IsSystemRole = true
+                    };
+                    context.Roles.Add(adminRole);
+                    await context.SaveChangesAsync();
+                    Console.WriteLine($"[Seed] Created admin role (Id: {adminRole.Id})");
+                }
+                
+                var newAdminUser = new GisAPI.Domain.Entities.User
+                {
+                    FirstName = "Admin",
+                    LastName = "Belive",
+                    Email = "admin@belive.tn",
+                    Phone = "+216 00 000 000",
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@2026"),
+                    Status = "active",
+                    CompanyId = existingCompany.Id,
+                    RoleId = adminRole.Id
+                };
+                context.Users.Add(newAdminUser);
+                await context.SaveChangesAsync();
+                Console.WriteLine($"[Seed] Created admin user: {newAdminUser.Email} (Id: {newAdminUser.Id})");
+            }
+            else
+            {
+                Console.WriteLine($"[Seed] Admin user already exists (Id: {existingAdmin.Id})");
+            }
+            
             return;
         }
 
