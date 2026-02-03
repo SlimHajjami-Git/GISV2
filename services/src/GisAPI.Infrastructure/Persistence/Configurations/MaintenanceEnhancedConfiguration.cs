@@ -11,16 +11,16 @@ public class MaintenanceTemplateEnhancedConfiguration : IEntityTypeConfiguration
         builder.ToTable("maintenance_templates");
 
         builder.HasKey(e => e.Id);
-        builder.Property(e => e.Id).HasColumnName("Id");
-        builder.Property(e => e.CompanyId).HasColumnName("CompanyId");
-        builder.Property(e => e.Name).HasColumnName("Name").HasMaxLength(100).IsRequired();
-        builder.Property(e => e.Description).HasColumnName("Description").HasMaxLength(500);
-        builder.Property(e => e.Category).HasColumnName("Category").HasMaxLength(50).IsRequired();
-        builder.Property(e => e.Priority).HasColumnName("Priority").HasMaxLength(20).HasDefaultValue("medium");
-        builder.Property(e => e.IntervalKm).HasColumnName("IntervalKm");
-        builder.Property(e => e.IntervalMonths).HasColumnName("IntervalMonths");
-        builder.Property(e => e.EstimatedCost).HasColumnName("EstimatedCost").HasPrecision(10, 2);
-        builder.Property(e => e.IsActive).HasColumnName("IsActive").HasDefaultValue(true);
+        builder.Property(e => e.Id).HasColumnName("id");
+        builder.Property(e => e.CompanyId).HasColumnName("company_id");
+        builder.Property(e => e.Name).HasColumnName("name").HasMaxLength(100).IsRequired();
+        builder.Property(e => e.Description).HasColumnName("description").HasMaxLength(500);
+        builder.Property(e => e.Category).HasColumnName("category").HasMaxLength(50).IsRequired();
+        builder.Property(e => e.Priority).HasColumnName("priority").HasMaxLength(20).HasDefaultValue("medium");
+        builder.Property(e => e.IntervalKm).HasColumnName("interval_km");
+        builder.Property(e => e.IntervalMonths).HasColumnName("interval_months");
+        builder.Property(e => e.EstimatedCost).HasColumnName("estimated_cost").HasPrecision(10, 2);
+        builder.Property(e => e.IsActive).HasColumnName("is_active").HasDefaultValue(true);
         
         // New columns
         builder.Property(e => e.WarningKm).HasColumnName("warning_km").HasDefaultValue(1000);
@@ -32,8 +32,8 @@ public class MaintenanceTemplateEnhancedConfiguration : IEntityTypeConfiguration
         builder.Property(e => e.AppliesToVehicleTypes).HasColumnName("applies_to_vehicle_types").HasColumnType("text[]");
         builder.Property(e => e.Icon).HasColumnName("icon").HasMaxLength(50).HasDefaultValue("wrench");
 
-        builder.Property(e => e.CreatedAt).HasColumnName("CreatedAt").HasDefaultValueSql("NOW()");
-        builder.Property(e => e.UpdatedAt).HasColumnName("UpdatedAt").HasDefaultValueSql("NOW()");
+        builder.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
+        builder.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
 
         builder.HasMany(e => e.Schedules)
             .WithOne(s => s.Template)
@@ -56,14 +56,14 @@ public class VehicleMaintenanceScheduleEnhancedConfiguration : IEntityTypeConfig
         builder.ToTable("vehicle_maintenance_schedules");
 
         builder.HasKey(e => e.Id);
-        builder.Property(e => e.Id).HasColumnName("Id");
-        builder.Property(e => e.VehicleId).HasColumnName("VehicleId");
-        builder.Property(e => e.TemplateId).HasColumnName("TemplateId");
-        builder.Property(e => e.LastDoneDate).HasColumnName("LastDoneDate").HasColumnType("date");
-        builder.Property(e => e.LastDoneKm).HasColumnName("LastDoneKm");
-        builder.Property(e => e.NextDueDate).HasColumnName("NextDueDate").HasColumnType("date");
-        builder.Property(e => e.NextDueKm).HasColumnName("NextDueKm");
-        builder.Property(e => e.Status).HasColumnName("Status").HasMaxLength(20).HasDefaultValue("upcoming");
+        builder.Property(e => e.Id).HasColumnName("id");
+        builder.Property(e => e.VehicleId).HasColumnName("vehicle_id");
+        builder.Property(e => e.TemplateId).HasColumnName("template_id");
+        builder.Property(e => e.LastDoneDate).HasColumnName("last_done_date").HasColumnType("date");
+        builder.Property(e => e.LastDoneKm).HasColumnName("last_done_km");
+        builder.Property(e => e.NextDueDate).HasColumnName("next_due_date").HasColumnType("date");
+        builder.Property(e => e.NextDueKm).HasColumnName("next_due_km");
+        builder.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("upcoming");
         
         // New columns
         builder.Property(e => e.IsPaused).HasColumnName("is_paused").HasDefaultValue(false);
@@ -75,8 +75,8 @@ public class VehicleMaintenanceScheduleEnhancedConfiguration : IEntityTypeConfig
         builder.Property(e => e.NotificationCount).HasColumnName("notification_count").HasDefaultValue(0);
         builder.Property(e => e.Notes).HasColumnName("notes");
 
-        builder.Property(e => e.CreatedAt).HasColumnName("CreatedAt").HasDefaultValueSql("NOW()");
-        builder.Property(e => e.UpdatedAt).HasColumnName("UpdatedAt").HasDefaultValueSql("NOW()");
+        builder.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
+        builder.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
 
         builder.HasOne(e => e.Vehicle)
             .WithMany()
@@ -107,16 +107,16 @@ public class MaintenanceLogEnhancedConfiguration : IEntityTypeConfiguration<Main
         builder.ToTable("maintenance_logs");
 
         builder.HasKey(e => e.Id);
-        builder.Property(e => e.Id).HasColumnName("Id");
-        builder.Property(e => e.VehicleId).HasColumnName("VehicleId");
-        builder.Property(e => e.TemplateId).HasColumnName("TemplateId");
-        builder.Property(e => e.ScheduleId).HasColumnName("ScheduleId");
-        builder.Property(e => e.CostId).HasColumnName("CostId");
-        builder.Property(e => e.DoneDate).HasColumnName("DoneDate").HasColumnType("date");
-        builder.Property(e => e.DoneKm).HasColumnName("DoneKm");
-        builder.Property(e => e.ActualCost).HasColumnName("ActualCost").HasPrecision(10, 2);
-        builder.Property(e => e.SupplierId).HasColumnName("SupplierId");
-        builder.Property(e => e.Notes).HasColumnName("Notes");
+        builder.Property(e => e.Id).HasColumnName("id");
+        builder.Property(e => e.VehicleId).HasColumnName("vehicle_id");
+        builder.Property(e => e.TemplateId).HasColumnName("template_id");
+        builder.Property(e => e.ScheduleId).HasColumnName("schedule_id");
+        builder.Property(e => e.CostId).HasColumnName("cost_id");
+        builder.Property(e => e.DoneDate).HasColumnName("done_date").HasColumnType("date");
+        builder.Property(e => e.DoneKm).HasColumnName("done_km");
+        builder.Property(e => e.ActualCost).HasColumnName("actual_cost").HasPrecision(10, 2);
+        builder.Property(e => e.SupplierId).HasColumnName("supplier_id");
+        builder.Property(e => e.Notes).HasColumnName("notes");
         
         // New columns
         builder.Property(e => e.TechnicianName).HasColumnName("technician_name").HasMaxLength(100);
@@ -128,7 +128,7 @@ public class MaintenanceLogEnhancedConfiguration : IEntityTypeConfiguration<Main
         builder.Property(e => e.QualityRating).HasColumnName("quality_rating");
         builder.Property(e => e.Photos).HasColumnName("photos").HasColumnType("text[]");
 
-        builder.Property(e => e.CreatedAt).HasColumnName("CreatedAt").HasDefaultValueSql("NOW()");
+        builder.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
 
         builder.HasOne(e => e.Vehicle)
             .WithMany()
