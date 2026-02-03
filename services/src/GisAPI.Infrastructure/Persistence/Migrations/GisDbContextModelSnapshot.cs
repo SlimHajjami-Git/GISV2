@@ -24,183 +24,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.AccidentClaim", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("AccidentDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<TimeSpan>("AccidentTime")
-                        .HasColumnType("interval");
-
-                    b.Property<string>("AdditionalNotes")
-                        .HasColumnType("text");
-
-                    b.Property<decimal?>("ApprovedAmount")
-                        .HasColumnType("numeric");
-
-                    b.Property<string>("ClaimNumber")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("CompanyId")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int?>("CreatedByUserId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("DamagedZones")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int?>("DriverId")
-                        .HasColumnType("integer");
-
-                    b.Property<decimal>("EstimatedDamage")
-                        .HasColumnType("numeric");
-
-                    b.Property<double?>("Latitude")
-                        .HasColumnType("double precision");
-
-                    b.Property<string>("Location")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<double?>("Longitude")
-                        .HasColumnType("double precision");
-
-                    b.Property<int?>("MileageAtAccident")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("PoliceReportNumber")
-                        .HasColumnType("text");
-
-                    b.Property<string>("RoadConditions")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Severity")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<bool>("ThirdPartyInvolved")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("VehicleId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("WeatherConditions")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Witnesses")
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("DriverId");
-
-                    b.HasIndex("VehicleId");
-
-                    b.ToTable("AccidentClaims");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.AccidentClaimDocument", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("ClaimId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("DocumentType")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("FileName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int?>("FileSize")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("FileUrl")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("MimeType")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("UploadedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ClaimId");
-
-                    b.ToTable("AccidentClaimDocuments");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.AccidentClaimThirdParty", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("ClaimId")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("InsuranceCompany")
-                        .HasColumnType("text");
-
-                    b.Property<string>("InsuranceNumber")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Name")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Phone")
-                        .HasColumnType("text");
-
-                    b.Property<string>("VehicleModel")
-                        .HasColumnType("text");
-
-                    b.Property<string>("VehiclePlate")
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ClaimId");
-
-                    b.ToTable("AccidentClaimThirdParties");
-                });
-
             modelBuilder.Entity("GisAPI.Domain.Entities.AuditLog", b =>
                 {
                     b.Property<long>("Id")
@@ -238,9 +61,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Property<Dictionary<string, object>>("OldValues")
                         .HasColumnType("jsonb");
 
-                    b.Property<int?>("SocieteId")
-                        .HasColumnType("integer");
-
                     b.Property<DateTime>("Timestamp")
                         .HasColumnType("timestamp with time zone");
 
@@ -252,39 +72,95 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SocieteId");
+                    b.HasIndex("CompanyId");
 
                     b.HasIndex("UserId");
 
                     b.ToTable("audit_logs", (string)null);
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.Brand", b =>
+            modelBuilder.Entity("GisAPI.Domain.Entities.Company", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Address")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("address");
+
+                    b.Property<string>("City")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("city");
+
+                    b.Property<string>("Country")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("country");
+
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("IF")
+                        .HasColumnType("text");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
                     b.Property<string>("LogoUrl")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
+                        .HasColumnType("text");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("RC")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("SubscriptionExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("SubscriptionId")
+                        .HasColumnType("integer")
+                        .HasColumnName("subscription_id");
+
+                    b.Property<string>("TaxId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("type");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
 
                     b.HasKey("Id");
 
-                    b.ToTable("brands", (string)null);
+                    b.HasIndex("SubscriptionId");
+
+                    b.ToTable("companies", (string)null);
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Contract", b =>
@@ -492,42 +368,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.ToTable("daily_statistics", (string)null);
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.Department", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("CompanyId")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompanyId");
-
-                    b.ToTable("departments", (string)null);
-                });
-
             modelBuilder.Entity("GisAPI.Domain.Entities.DriverAssignment", b =>
                 {
                     b.Property<int>("Id")
@@ -728,7 +568,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.ToTable("driving_events", (string)null);
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.FuelEntry", b =>
+            modelBuilder.Entity("GisAPI.Domain.Entities.Employee", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -745,122 +585,56 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<int?>("DriverId")
-                        .HasColumnType("integer")
-                        .HasColumnName("driver_id");
+                    b.Property<string>("Email")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("email");
 
-                    b.Property<int>("FuelTypeId")
-                        .HasColumnType("integer")
-                        .HasColumnName("fuel_type_id");
-
-                    b.Property<DateTime>("InvoiceDate")
+                    b.Property<DateTime?>("HireDate")
                         .HasColumnType("timestamp with time zone")
-                        .HasColumnName("invoice_date");
+                        .HasColumnName("hire_date");
 
-                    b.Property<string>("InvoiceNumber")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("invoice_number");
+                    b.Property<DateTime?>("LicenseExpiry")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("license_expiry");
 
-                    b.Property<string>("Notes")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("notes");
-
-                    b.Property<long?>("OdometerKm")
-                        .HasColumnType("bigint")
-                        .HasColumnName("odometer_km");
-
-                    b.Property<decimal>("PricePerLiter")
-                        .HasPrecision(10, 3)
-                        .HasColumnType("numeric(10,3)")
-                        .HasColumnName("price_per_liter");
-
-                    b.Property<string>("StationName")
+                    b.Property<string>("LicenseNumber")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
-                        .HasColumnName("station_name");
+                        .HasColumnName("license_number");
 
-                    b.Property<decimal>("TotalAmount")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("numeric(12,2)")
-                        .HasColumnName("total_amount");
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("role");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
-                    b.Property<int?>("VehicleId")
-                        .HasColumnType("integer")
-                        .HasColumnName("vehicle_id");
-
-                    b.Property<string>("VehiclePlate")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("vehicle_plate");
-
-                    b.Property<decimal>("Volume")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)")
-                        .HasColumnName("volume");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DriverId");
-
-                    b.HasIndex("FuelTypeId");
-
-                    b.HasIndex("VehicleId");
-
-                    b.HasIndex("CompanyId", "InvoiceDate")
-                        .HasDatabaseName("ix_fuel_entries_company_date");
-
-                    b.HasIndex("CompanyId", "VehiclePlate")
-                        .HasDatabaseName("ix_fuel_entries_company_plate");
-
-                    b.ToTable("fuel_entries", (string)null);
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.FuelPricing", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("CompanyId")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("EffectiveFrom")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("EffectiveTo")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("FuelTypeId")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<decimal>("PricePerLiter")
-                        .HasColumnType("numeric");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.HasKey("Id");
 
                     b.HasIndex("CompanyId");
 
-                    b.HasIndex("FuelTypeId");
-
-                    b.ToTable("fuel_pricing", (string)null);
+                    b.ToTable("employees", (string)null);
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.FuelRecord", b =>
@@ -996,32 +770,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.ToTable("fuel_records", (string)null);
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.FuelType", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<bool>("IsSystem")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("fuel_types", (string)null);
-                });
-
             modelBuilder.Entity("GisAPI.Domain.Entities.Geofence", b =>
                 {
                     b.Property<int>("Id")
@@ -1030,18 +778,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.PrimitiveCollection<string[]>("ActiveDays")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("active_days");
-
-                    b.Property<TimeSpan?>("ActiveEndTime")
-                        .HasColumnType("interval")
-                        .HasColumnName("active_end_time");
-
-                    b.Property<TimeSpan?>("ActiveStartTime")
-                        .HasColumnType("interval")
-                        .HasColumnName("active_start_time");
 
                     b.Property<bool>("AlertOnEntry")
                         .HasColumnType("boolean")
@@ -1086,32 +822,15 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("description");
 
-                    b.Property<int?>("GroupId")
-                        .HasColumnType("integer")
-                        .HasColumnName("group_id");
-
-                    b.Property<string>("IconName")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("icon_name");
-
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
-
-                    b.Property<int?>("MaxStayDurationMinutes")
-                        .HasColumnType("integer")
-                        .HasColumnName("max_stay_duration_minutes");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("name");
-
-                    b.Property<int>("NotificationCooldownMinutes")
-                        .HasColumnType("integer")
-                        .HasColumnName("notification_cooldown_minutes");
 
                     b.Property<double?>("Radius")
                         .HasColumnType("double precision")
@@ -1131,8 +850,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CompanyId");
 
-                    b.HasIndex("GroupId");
-
                     b.ToTable("geofences", (string)null);
                 });
 
@@ -1145,26 +862,9 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("Address")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("address");
-
-                    b.Property<int?>("DeviceId")
-                        .HasColumnType("integer")
-                        .HasColumnName("device_id");
-
-                    b.Property<int?>("DurationInsideSeconds")
-                        .HasColumnType("integer")
-                        .HasColumnName("duration_inside_seconds");
-
                     b.Property<int>("GeofenceId")
                         .HasColumnType("integer")
                         .HasColumnName("geofence_id");
-
-                    b.Property<bool>("IsNotified")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_notified");
 
                     b.Property<double>("Latitude")
                         .HasColumnType("double precision")
@@ -1173,10 +873,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Property<double>("Longitude")
                         .HasColumnType("double precision")
                         .HasColumnName("longitude");
-
-                    b.Property<DateTime?>("NotifiedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("notified_at");
 
                     b.Property<double?>("Speed")
                         .HasColumnType("double precision")
@@ -1198,61 +894,11 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("GeofenceId", "Timestamp");
+                    b.HasIndex("GeofenceId");
 
-                    b.HasIndex("VehicleId", "Timestamp");
+                    b.HasIndex("VehicleId");
 
                     b.ToTable("geofence_events", (string)null);
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.GeofenceGroup", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Color")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("color");
-
-                    b.Property<int>("CompanyId")
-                        .HasColumnType("integer")
-                        .HasColumnName("company_id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("description");
-
-                    b.Property<string>("IconName")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("icon_name");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("name");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompanyId");
-
-                    b.ToTable("geofence_groups", (string)null);
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.GeofenceVehicle", b =>
@@ -1390,14 +1036,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("firmware_version");
 
-                    b.Property<string>("FuelSensorMode")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasDefaultValue("raw_255")
-                        .HasColumnName("fuel_sensor_mode");
-
                     b.Property<DateTime?>("InstallationDate")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("installation_date");
@@ -1412,9 +1050,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnName("last_communication");
 
                     b.Property<string>("Mat")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("mat");
+                        .HasColumnType("text");
 
                     b.Property<string>("Model")
                         .HasMaxLength(50)
@@ -1457,8 +1093,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.HasIndex("DeviceUid")
                         .IsUnique();
 
-                    b.HasIndex("Mat");
-
                     b.ToTable("gps_devices", (string)null);
                 });
 
@@ -1480,6 +1114,11 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnType("double precision")
                         .HasColumnName("altitude_m");
 
+                    b.Property<string>("BirdFlightReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("bird_flight_reason");
+
                     b.Property<double?>("CourseDeg")
                         .HasColumnType("double precision")
                         .HasColumnName("course_deg");
@@ -1491,11 +1130,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Property<int>("DeviceId")
                         .HasColumnType("integer")
                         .HasColumnName("device_id");
-
-                    b.Property<string>("EventKey")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
-                        .HasColumnName("event_key");
 
                     b.Property<decimal?>("FuelRateLPer100Km")
                         .HasPrecision(6, 2)
@@ -1509,6 +1143,16 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Property<bool?>("IgnitionOn")
                         .HasColumnType("boolean")
                         .HasColumnName("ignition_on");
+
+                    b.Property<double?>("ImplicitSpeedKph")
+                        .HasColumnType("double precision")
+                        .HasColumnName("implicit_speed_kph");
+
+                    b.Property<bool>("IsBirdFlight")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_bird_flight");
 
                     b.Property<bool>("IsRealTime")
                         .HasColumnType("boolean")
@@ -1582,10 +1226,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("DeviceId");
 
-                    b.HasIndex("EventKey")
-                        .IsUnique()
-                        .HasDatabaseName("ux_gps_positions_event_key");
-
                     b.HasIndex("RecordedAt")
                         .IsDescending()
                         .HasDatabaseName("ix_gps_positions_time");
@@ -1594,295 +1234,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_gps_positions_device_time");
 
                     b.ToTable("gps_positions", (string)null);
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.MaintenanceAlertSettings", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.PrimitiveCollection<string[]>("AdditionalEmails")
-                        .IsRequired()
-                        .HasColumnType("text[]")
-                        .HasColumnName("additional_emails");
-
-                    b.PrimitiveCollection<string[]>("AdditionalPhones")
-                        .IsRequired()
-                        .HasColumnType("text[]")
-                        .HasColumnName("additional_phones");
-
-                    b.Property<int>("CompanyId")
-                        .HasColumnType("integer")
-                        .HasColumnName("company_id");
-
-                    b.Property<bool>("EnableEmail")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("enable_email");
-
-                    b.Property<bool>("EnablePush")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("enable_push");
-
-                    b.Property<bool>("EnableSms")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false)
-                        .HasColumnName("enable_sms");
-
-                    b.Property<int>("MaxReminders")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(3)
-                        .HasColumnName("max_reminders");
-
-                    b.Property<bool>("NotifyDriver")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("notify_driver");
-
-                    b.Property<bool>("NotifyFleetManager")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("notify_fleet_manager");
-
-                    b.Property<bool>("NotifySupervisor")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("notify_supervisor");
-
-                    b.Property<TimeSpan?>("QuietHoursEnd")
-                        .HasColumnType("interval")
-                        .HasColumnName("quiet_hours_end");
-
-                    b.Property<TimeSpan?>("QuietHoursStart")
-                        .HasColumnType("interval")
-                        .HasColumnName("quiet_hours_start");
-
-                    b.Property<int>("ReminderFrequencyDays")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(7)
-                        .HasColumnName("reminder_frequency_days");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompanyId")
-                        .IsUnique()
-                        .HasDatabaseName("ix_maint_alert_settings_company");
-
-                    b.ToTable("maintenance_alert_settings", (string)null);
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.MaintenanceLog", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<decimal>("ActualCost")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)")
-                        .HasColumnName("actual_cost");
-
-                    b.Property<int?>("CostId")
-                        .HasColumnType("integer")
-                        .HasColumnName("cost_id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<DateTime>("DoneDate")
-                        .HasColumnType("date")
-                        .HasColumnName("done_date");
-
-                    b.Property<int>("DoneKm")
-                        .HasColumnType("integer")
-                        .HasColumnName("done_km");
-
-                    b.Property<decimal?>("LaborCost")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)")
-                        .HasColumnName("labor_cost");
-
-                    b.Property<decimal?>("LaborHours")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("numeric(5,2)")
-                        .HasColumnName("labor_hours");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("text")
-                        .HasColumnName("notes");
-
-                    b.Property<decimal?>("PartsCost")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)")
-                        .HasColumnName("parts_cost");
-
-                    b.Property<List<ReplacedPart>>("PartsReplaced")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("parts_replaced");
-
-                    b.PrimitiveCollection<string[]>("Photos")
-                        .HasColumnType("text[]")
-                        .HasColumnName("photos");
-
-                    b.Property<int?>("QualityRating")
-                        .HasColumnType("integer")
-                        .HasColumnName("quality_rating");
-
-                    b.Property<int?>("ScheduleId")
-                        .HasColumnType("integer")
-                        .HasColumnName("schedule_id");
-
-                    b.Property<int?>("SupplierId")
-                        .HasColumnType("integer")
-                        .HasColumnName("supplier_id");
-
-                    b.Property<string>("TechnicianName")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("technician_name");
-
-                    b.Property<int>("TemplateId")
-                        .HasColumnType("integer")
-                        .HasColumnName("template_id");
-
-                    b.Property<int>("VehicleId")
-                        .HasColumnType("integer")
-                        .HasColumnName("vehicle_id");
-
-                    b.Property<string>("WorkOrderNumber")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("work_order_number");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CostId");
-
-                    b.HasIndex("ScheduleId");
-
-                    b.HasIndex("SupplierId");
-
-                    b.HasIndex("TemplateId")
-                        .HasDatabaseName("IX_maintenance_logs_TemplateId");
-
-                    b.HasIndex("VehicleId")
-                        .HasDatabaseName("IX_maintenance_logs_VehicleId");
-
-                    b.ToTable("maintenance_logs", (string)null);
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.MaintenanceNotification", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTime?>("AcknowledgedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("acknowledged_at");
-
-                    b.Property<int?>("AcknowledgedBy")
-                        .HasColumnType("integer")
-                        .HasColumnName("acknowledged_by");
-
-                    b.Property<int>("CompanyId")
-                        .HasColumnType("integer")
-                        .HasColumnName("company_id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<int?>("CurrentKm")
-                        .HasColumnType("integer")
-                        .HasColumnName("current_km");
-
-                    b.Property<int?>("DaysRemaining")
-                        .HasColumnType("integer")
-                        .HasColumnName("days_remaining");
-
-                    b.Property<DateTime?>("DismissedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("dismissed_at");
-
-                    b.Property<int?>("KmRemaining")
-                        .HasColumnType("integer")
-                        .HasColumnName("km_remaining");
-
-                    b.Property<string>("NotificationType")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("notification_type");
-
-                    b.Property<int>("ScheduleId")
-                        .HasColumnType("integer")
-                        .HasColumnName("schedule_id");
-
-                    b.Property<DateTime?>("SentAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("sent_at");
-
-                    b.PrimitiveCollection<string[]>("SentChannels")
-                        .IsRequired()
-                        .HasColumnType("text[]")
-                        .HasColumnName("sent_channels");
-
-                    b.Property<int>("TemplateId")
-                        .HasColumnType("integer")
-                        .HasColumnName("template_id");
-
-                    b.Property<string>("TriggerReason")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("trigger_reason");
-
-                    b.Property<int>("VehicleId")
-                        .HasColumnType("integer")
-                        .HasColumnName("vehicle_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompanyId")
-                        .HasDatabaseName("idx_maint_notif_company");
-
-                    b.HasIndex("NotificationType")
-                        .HasDatabaseName("idx_maint_notif_type");
-
-                    b.HasIndex("TemplateId");
-
-                    b.HasIndex("VehicleId")
-                        .HasDatabaseName("idx_maint_notif_vehicle");
-
-                    b.HasIndex("ScheduleId", "NotificationType", "CreatedAt")
-                        .HasDatabaseName("ix_maint_notif_unique_daily");
-
-                    b.ToTable("maintenance_notifications", (string)null);
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.MaintenancePart", b =>
@@ -2033,201 +1384,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.ToTable("maintenance_records", (string)null);
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.MaintenanceTemplate", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.PrimitiveCollection<string[]>("AppliesToVehicleTypes")
-                        .IsRequired()
-                        .HasColumnType("text[]")
-                        .HasColumnName("applies_to_vehicle_types");
-
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("category");
-
-                    b.Property<int>("CompanyId")
-                        .HasColumnType("integer")
-                        .HasColumnName("company_id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<int>("CriticalDays")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("critical_days");
-
-                    b.Property<int>("CriticalKm")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("critical_km");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("description");
-
-                    b.Property<decimal?>("EstimatedCost")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)")
-                        .HasColumnName("estimated_cost");
-
-                    b.Property<int?>("EstimatedDurationMinutes")
-                        .HasColumnType("integer")
-                        .HasColumnName("estimated_duration_minutes");
-
-                    b.Property<string>("Icon")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasDefaultValue("wrench")
-                        .HasColumnName("icon");
-
-                    b.Property<string>("Instructions")
-                        .HasColumnType("text")
-                        .HasColumnName("instructions");
-
-                    b.Property<int?>("IntervalKm")
-                        .HasColumnType("integer")
-                        .HasColumnName("interval_km");
-
-                    b.Property<int?>("IntervalMonths")
-                        .HasColumnType("integer")
-                        .HasColumnName("interval_months");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("is_active");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("name");
-
-                    b.Property<string>("Priority")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasDefaultValue("medium")
-                        .HasColumnName("priority");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<int>("WarningDays")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(30)
-                        .HasColumnName("warning_days");
-
-                    b.Property<int>("WarningKm")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1000)
-                        .HasColumnName("warning_km");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompanyId")
-                        .HasDatabaseName("IX_maintenance_templates_CompanyId");
-
-                    b.ToTable("maintenance_templates", (string)null);
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.MaintenanceTemplatePart", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<decimal?>("EstimatedUnitCost")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)")
-                        .HasColumnName("estimated_unit_cost");
-
-                    b.Property<bool>("IsRequired")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("is_required");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("text")
-                        .HasColumnName("notes");
-
-                    b.Property<string>("PartName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("part_name");
-
-                    b.Property<string>("PartNumber")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("part_number");
-
-                    b.Property<int?>("PreferredSupplierId")
-                        .HasColumnType("integer")
-                        .HasColumnName("preferred_supplier_id");
-
-                    b.Property<int>("Quantity")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1)
-                        .HasColumnName("quantity");
-
-                    b.Property<int>("TemplateId")
-                        .HasColumnType("integer")
-                        .HasColumnName("template_id");
-
-                    b.Property<string>("Unit")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasDefaultValue("unit")
-                        .HasColumnName("unit");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PreferredSupplierId");
-
-                    b.HasIndex("TemplateId")
-                        .HasDatabaseName("idx_template_parts_template_id");
-
-                    b.ToTable("maintenance_template_parts", (string)null);
-                });
-
             modelBuilder.Entity("GisAPI.Domain.Entities.Notification", b =>
                 {
                     b.Property<long>("Id")
@@ -2302,7 +1458,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.ToTable("notifications", (string)null);
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.PartCategory", b =>
+            modelBuilder.Entity("GisAPI.Domain.Entities.PartInventory", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -2310,271 +1466,138 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Brand")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("integer");
+
+                    b.PrimitiveCollection<string[]>("CompatibleVehicles")
+                        .HasColumnType("text[]");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
+                        .HasColumnType("text");
 
-                    b.Property<string>("Icon")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
+                    b.Property<DateTime?>("ExpiryDate")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("part_categories", (string)null);
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.PartInventory", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Brand")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("brand");
-
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasDefaultValue("general")
-                        .HasColumnName("category");
-
-                    b.Property<int>("CompanyId")
-                        .HasColumnType("integer")
-                        .HasColumnName("company_id");
-
-                    b.PrimitiveCollection<string[]>("CompatibleVehicles")
-                        .HasColumnType("text[]")
-                        .HasColumnName("compatible_vehicles");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Description")
-                        .HasColumnType("text")
-                        .HasColumnName("description");
-
-                    b.Property<DateTime?>("ExpiryDate")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("expiry_date");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("is_active");
-
                     b.Property<DateTime?>("LastRestockDate")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_restock_date");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Location")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("location");
+                        .HasColumnType("text");
 
                     b.Property<int>("MinimumStock")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("minimum_stock");
+                        .HasColumnType("integer");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("name");
+                        .HasColumnType("text");
 
                     b.Property<string>("PartNumber")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("part_number");
+                        .HasColumnType("text");
 
                     b.Property<int>("QuantityInStock")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("quantity_in_stock");
+                        .HasColumnType("integer");
 
                     b.Property<int?>("ReorderQuantity")
-                        .HasColumnType("integer")
-                        .HasColumnName("reorder_quantity");
+                        .HasColumnType("integer");
 
                     b.Property<decimal?>("SellingPrice")
                         .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)")
-                        .HasColumnName("selling_price");
+                        .HasColumnType("numeric(10,2)");
 
                     b.Property<int?>("SupplierId")
-                        .HasColumnType("integer")
-                        .HasColumnName("supplier_id");
+                        .HasColumnType("integer");
 
                     b.Property<string>("Unit")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("unit");
+                        .HasColumnType("text");
 
                     b.Property<decimal>("UnitCost")
                         .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)")
-                        .HasColumnName("unit_cost");
+                        .HasColumnType("numeric(10,2)");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("CompanyId");
-
-                    b.HasIndex("PartNumber");
 
                     b.HasIndex("SupplierId");
 
                     b.ToTable("part_inventory", (string)null);
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.PartPricing", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("CompanyId")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<int>("PartId")
-                        .HasColumnType("integer");
-
-                    b.Property<decimal>("Price")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<string>("Supplier")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PartId");
-
-                    b.HasIndex("CompanyId", "PartId")
-                        .IsUnique();
-
-                    b.ToTable("part_pricing", (string)null);
-                });
-
             modelBuilder.Entity("GisAPI.Domain.Entities.PartTransaction", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
+                        .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<int>("CompanyId")
-                        .HasColumnType("integer")
-                        .HasColumnName("company_id");
+                        .HasColumnType("integer");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int?>("CreatedByUserId")
-                        .HasColumnType("integer")
-                        .HasColumnName("created_by_user_id");
+                        .HasColumnType("integer");
 
                     b.Property<int?>("MaintenanceRecordId")
-                        .HasColumnType("integer")
-                        .HasColumnName("maintenance_record_id");
+                        .HasColumnType("integer");
 
                     b.Property<string>("Notes")
-                        .HasColumnType("text")
-                        .HasColumnName("notes");
+                        .HasColumnType("text");
 
                     b.Property<int>("PartId")
-                        .HasColumnType("integer")
-                        .HasColumnName("part_id");
+                        .HasColumnType("integer");
 
                     b.Property<int>("Quantity")
-                        .HasColumnType("integer")
-                        .HasColumnName("quantity");
+                        .HasColumnType("integer");
 
                     b.Property<int>("QuantityAfter")
-                        .HasColumnType("integer")
-                        .HasColumnName("quantity_after");
+                        .HasColumnType("integer");
 
                     b.Property<int>("QuantityBefore")
-                        .HasColumnType("integer")
-                        .HasColumnName("quantity_before");
+                        .HasColumnType("integer");
 
                     b.Property<string>("ReferenceNumber")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("reference_number");
+                        .HasColumnType("text");
 
                     b.Property<int?>("SupplierId")
-                        .HasColumnType("integer")
-                        .HasColumnName("supplier_id");
+                        .HasColumnType("integer");
 
                     b.Property<decimal?>("TotalCost")
                         .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)")
-                        .HasColumnName("total_cost");
+                        .HasColumnType("numeric(10,2)");
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("type");
+                        .HasColumnType("text");
 
                     b.Property<decimal?>("UnitCost")
                         .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)")
-                        .HasColumnName("unit_cost");
+                        .HasColumnType("numeric(10,2)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int?>("VehicleId")
-                        .HasColumnType("integer")
-                        .HasColumnName("vehicle_id");
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("CompanyId");
 
                     b.HasIndex("CreatedByUserId");
 
@@ -2589,242 +1612,86 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.ToTable("part_transactions", (string)null);
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.PoiVisit", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("ArrivalAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("arrival_at");
-
-                    b.Property<double>("ArrivalLat")
-                        .HasColumnType("double precision")
-                        .HasColumnName("arrival_lat");
-
-                    b.Property<double>("ArrivalLng")
-                        .HasColumnType("double precision")
-                        .HasColumnName("arrival_lng");
-
-                    b.Property<int>("CompanyId")
-                        .HasColumnType("integer")
-                        .HasColumnName("company_id");
-
-                    b.Property<DateTime?>("DepartureAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("departure_at");
-
-                    b.Property<double?>("DepartureLat")
-                        .HasColumnType("double precision")
-                        .HasColumnName("departure_lat");
-
-                    b.Property<double?>("DepartureLng")
-                        .HasColumnType("double precision")
-                        .HasColumnName("departure_lng");
-
-                    b.Property<int?>("DeviceId")
-                        .HasColumnType("integer")
-                        .HasColumnName("device_id");
-
-                    b.Property<int?>("DurationMinutes")
-                        .HasColumnType("integer")
-                        .HasColumnName("duration_minutes");
-
-                    b.Property<bool>("IsNotified")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_notified");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("notes");
-
-                    b.Property<int>("PoiId")
-                        .HasColumnType("integer")
-                        .HasColumnName("poi_id");
-
-                    b.Property<int>("VehicleId")
-                        .HasColumnType("integer")
-                        .HasColumnName("vehicle_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompanyId");
-
-                    b.HasIndex("PoiId", "ArrivalAt");
-
-                    b.HasIndex("VehicleId", "ArrivalAt");
-
-                    b.ToTable("poi_visits", (string)null);
-                });
-
             modelBuilder.Entity("GisAPI.Domain.Entities.PointOfInterest", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
+                        .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Address")
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)")
-                        .HasColumnName("address");
-
-                    b.Property<bool>("AlertOnArrival")
-                        .HasColumnType("boolean")
-                        .HasColumnName("alert_on_arrival");
-
-                    b.Property<bool>("AlertOnDeparture")
-                        .HasColumnType("boolean")
-                        .HasColumnName("alert_on_departure");
+                        .HasColumnType("text");
 
                     b.Property<string>("Category")
                         .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("category");
+                        .HasColumnType("text");
 
                     b.Property<string>("City")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("city");
+                        .HasColumnType("text");
 
                     b.Property<string>("Color")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("color");
+                        .HasColumnType("text");
 
                     b.Property<int>("CompanyId")
-                        .HasColumnType("integer")
-                        .HasColumnName("company_id");
-
-                    b.Property<string>("ContactName")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("contact_name");
+                        .HasColumnType("integer");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("description");
+                        .HasColumnType("text");
 
                     b.Property<string>("Email")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("email");
-
-                    b.Property<int?>("ExpectedStayMinutes")
-                        .HasColumnType("integer")
-                        .HasColumnName("expected_stay_minutes");
-
-                    b.Property<string>("ExternalId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("external_id");
+                        .HasColumnType("text");
 
                     b.Property<string>("FuelBrand")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("fuel_brand");
+                        .HasColumnType("text");
 
                     b.Property<bool?>("HasDiesel")
-                        .HasColumnType("boolean")
-                        .HasColumnName("has_diesel");
+                        .HasColumnType("boolean");
 
                     b.Property<bool?>("HasElectricCharging")
-                        .HasColumnType("boolean")
-                        .HasColumnName("has_electric_charging");
+                        .HasColumnType("boolean");
 
                     b.Property<bool?>("HasGasoline")
-                        .HasColumnType("boolean")
-                        .HasColumnName("has_gasoline");
+                        .HasColumnType("boolean");
 
                     b.Property<OperatingHours>("Hours")
                         .HasColumnType("jsonb");
 
                     b.Property<string>("Icon")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("icon");
+                        .HasColumnType("text");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<DateTime?>("LastVisitAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_visit_at");
+                        .HasColumnType("boolean");
 
                     b.Property<double>("Latitude")
-                        .HasColumnType("double precision")
-                        .HasColumnName("latitude");
+                        .HasColumnType("double precision");
 
                     b.Property<double>("Longitude")
-                        .HasColumnType("double precision")
-                        .HasColumnName("longitude");
+                        .HasColumnType("double precision");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("name");
-
-                    b.Property<int>("NotificationCooldownMinutes")
-                        .HasColumnType("integer")
-                        .HasColumnName("notification_cooldown_minutes");
+                        .HasColumnType("text");
 
                     b.Property<string>("Phone")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("phone");
-
-                    b.Property<double>("Radius")
-                        .HasColumnType("double precision")
-                        .HasColumnName("radius");
-
-                    b.Property<int?>("SocieteId")
-                        .HasColumnType("integer");
+                        .HasColumnType("text");
 
                     b.Property<string>("SubCategory")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("sub_category");
-
-                    b.PrimitiveCollection<string[]>("Tags")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("tags");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<int>("VisitCount")
-                        .HasColumnType("integer")
-                        .HasColumnName("visit_count");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Website")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("website");
+                        .HasColumnType("text");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Category");
-
                     b.HasIndex("CompanyId");
-
-                    b.HasIndex("SocieteId");
 
                     b.ToTable("points_of_interest", (string)null);
                 });
@@ -2870,143 +1737,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("refresh_tokens", (string)null);
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.Repair", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<int?>("CreatedBy")
-                        .HasColumnType("integer")
-                        .HasColumnName("created_by");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("description");
-
-                    b.Property<string>("InvoiceNumber")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("invoice_number");
-
-                    b.Property<decimal>("LaborCost")
-                        .HasColumnType("decimal(10,2)")
-                        .HasColumnName("labor_cost");
-
-                    b.Property<int?>("MileageAtRepair")
-                        .HasColumnType("integer")
-                        .HasColumnName("mileage_at_repair");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("notes");
-
-                    b.Property<decimal>("PartsCost")
-                        .HasColumnType("decimal(10,2)")
-                        .HasColumnName("parts_cost");
-
-                    b.Property<string>("Reference")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("reference");
-
-                    b.Property<DateTime>("RepairDate")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("repair_date");
-
-                    b.Property<int>("SocieteId")
-                        .HasColumnType("integer")
-                        .HasColumnName("societe_id");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("status");
-
-                    b.Property<int?>("SupplierId")
-                        .HasColumnType("integer")
-                        .HasColumnName("supplier_id");
-
-                    b.Property<decimal>("TotalCost")
-                        .HasColumnType("decimal(10,2)")
-                        .HasColumnName("total_cost");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<int>("VehicleId")
-                        .HasColumnType("integer")
-                        .HasColumnName("vehicle_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SocieteId");
-
-                    b.HasIndex("VehicleId");
-
-                    b.ToTable("repairs");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.RepairPart", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("notes");
-
-                    b.Property<string>("PartName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("part_name");
-
-                    b.Property<string>("PartReference")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("part_reference");
-
-                    b.Property<int>("Quantity")
-                        .HasColumnType("integer")
-                        .HasColumnName("quantity");
-
-                    b.Property<int>("RepairId")
-                        .HasColumnType("integer")
-                        .HasColumnName("repair_id");
-
-                    b.Property<decimal>("Subtotal")
-                        .HasColumnType("decimal(10,2)")
-                        .HasColumnName("subtotal");
-
-                    b.Property<decimal>("UnitPrice")
-                        .HasColumnType("decimal(10,2)")
-                        .HasColumnName("unit_price");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RepairId");
-
-                    b.ToTable("repair_parts");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Report", b =>
@@ -3055,9 +1785,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int?>("SocieteId")
-                        .HasColumnType("integer");
-
                     b.Property<DateTime?>("StartDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -3077,9 +1804,9 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CreatedByUserId");
+                    b.HasIndex("CompanyId");
 
-                    b.HasIndex("SocieteId");
+                    b.HasIndex("CreatedByUserId");
 
                     b.ToTable("reports", (string)null);
                 });
@@ -3139,9 +1866,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int?>("SocieteId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("TimeOfDay")
                         .IsRequired()
                         .HasColumnType("text");
@@ -3154,9 +1878,9 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CreatedByUserId");
+                    b.HasIndex("CompanyId");
 
-                    b.HasIndex("SocieteId");
+                    b.HasIndex("CreatedByUserId");
 
                     b.ToTable("report_schedules", (string)null);
                 });
@@ -3240,7 +1964,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.ToTable("reservations", (string)null);
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.Role", b =>
+            modelBuilder.Entity("GisAPI.Domain.Entities.Subscription", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -3248,271 +1972,19 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("description");
-
-                    b.Property<bool>("IsCompanyAdmin")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false)
-                        .HasColumnName("is_company_admin");
-
-                    b.Property<bool>("IsSystemRole")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false)
-                        .HasColumnName("is_system_role");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("name");
-
-                    b.Property<Dictionary<string, object>>("Permissions")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("permissions");
-
-                    b.Property<int?>("SocieteId")
-                        .HasColumnType("integer")
-                        .HasColumnName("societe_id");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SocieteId")
-                        .HasDatabaseName("idx_roles_societe_id");
-
-                    b.ToTable("roles", (string)null);
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.Societe", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Address")
-                        .HasColumnType("text")
-                        .HasColumnName("address");
 
                     b.Property<string>("BillingCycle")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("billing_cycle");
-
-                    b.Property<string>("City")
-                        .HasColumnType("text")
-                        .HasColumnName("city");
-
-                    b.Property<string>("Country")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("country");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Description")
-                        .HasColumnType("text")
-                        .HasColumnName("description");
-
-                    b.Property<string>("Email")
-                        .HasColumnType("text")
-                        .HasColumnName("email");
-
-                    b.Property<string>("IF")
-                        .HasColumnType("text")
-                        .HasColumnName("if");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<DateTime?>("LastPaymentAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_payment_at");
-
-                    b.Property<string>("LogoUrl")
-                        .HasColumnType("text")
-                        .HasColumnName("logo_url");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("name");
-
-                    b.Property<decimal?>("NextPaymentAmount")
-                        .HasColumnType("numeric")
-                        .HasColumnName("next_payment_amount");
-
-                    b.Property<string>("Phone")
-                        .HasColumnType("text")
-                        .HasColumnName("phone");
-
-                    b.Property<string>("RC")
-                        .HasColumnType("text")
-                        .HasColumnName("rc");
-
-                    b.Property<DateTime?>("SubscriptionExpiresAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("subscription_expires_at");
-
-                    b.Property<DateTime>("SubscriptionStartedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("subscription_started_at");
-
-                    b.Property<string>("SubscriptionStatus")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("subscription_status");
-
-                    b.Property<int?>("SubscriptionTypeId")
-                        .HasColumnType("integer")
-                        .HasColumnName("subscription_type_id");
-
-                    b.Property<string>("TaxId")
-                        .HasColumnType("text")
-                        .HasColumnName("tax_id");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("type");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SubscriptionTypeId");
-
-                    b.ToTable("societes", (string)null);
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.SpeedLimitAlert", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime?>("AcknowledgedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int?>("AcknowledgedById")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("ActualSpeed")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Address")
                         .HasColumnType("text");
 
-                    b.Property<int>("CompanyId")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsAcknowledged")
-                        .HasColumnType("boolean");
-
-                    b.Property<double>("Latitude")
-                        .HasColumnType("double precision");
-
-                    b.Property<double>("Longitude")
-                        .HasColumnType("double precision");
-
-                    b.Property<DateTime>("RecordedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int?>("SocieteId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("SpeedLimit")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("VehicleId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AcknowledgedById");
-
-                    b.HasIndex("SocieteId");
-
-                    b.HasIndex("VehicleId");
-
-                    b.ToTable("speed_limit_alerts", (string)null);
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.SubscriptionType", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<Dictionary<string, object>>("AccessRights")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("access_rights");
-
-                    b.Property<bool>("AdvancedReports")
-                        .HasColumnType("boolean")
-                        .HasColumnName("advanced_reports");
-
-                    b.Property<bool>("ApiAccess")
-                        .HasColumnType("boolean")
-                        .HasColumnName("api_access");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("code");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("description");
-
-                    b.Property<bool>("DrivingBehavior")
-                        .HasColumnType("boolean")
-                        .HasColumnName("driving_behavior");
-
-                    b.Property<bool>("FuelAnalysis")
-                        .HasColumnType("boolean")
-                        .HasColumnName("fuel_analysis");
+                    b.PrimitiveCollection<string[]>("Features")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("features");
 
                     b.Property<bool>("GpsInstallation")
                         .HasColumnType("boolean")
@@ -3522,98 +1994,21 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("gps_tracking");
 
-                    b.Property<bool>("HistoryPlayback")
-                        .HasColumnType("boolean")
-                        .HasColumnName("history_playback");
-
-                    b.Property<int>("HistoryRetentionDays")
-                        .HasColumnType("integer")
-                        .HasColumnName("history_retention_days");
-
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
+                        .HasColumnType("boolean");
 
                     b.Property<int>("MaxGeofences")
-                        .HasColumnType("integer")
-                        .HasColumnName("max_geofences");
+                        .HasColumnType("integer");
 
                     b.Property<int>("MaxGpsDevices")
-                        .HasColumnType("integer")
-                        .HasColumnName("max_gps_devices");
+                        .HasColumnType("integer");
 
                     b.Property<int>("MaxUsers")
-                        .HasColumnType("integer")
-                        .HasColumnName("max_users");
+                        .HasColumnType("integer");
 
                     b.Property<int>("MaxVehicles")
                         .HasColumnType("integer")
                         .HasColumnName("max_vehicles");
-
-                    b.Property<bool>("ModuleAccidents")
-                        .HasColumnType("boolean")
-                        .HasColumnName("module_accidents");
-
-                    b.Property<bool>("ModuleCosts")
-                        .HasColumnType("boolean")
-                        .HasColumnName("module_costs");
-
-                    b.Property<bool>("ModuleDashboard")
-                        .HasColumnType("boolean")
-                        .HasColumnName("module_dashboard");
-
-                    b.Property<bool>("ModuleDocuments")
-                        .HasColumnType("boolean")
-                        .HasColumnName("module_documents");
-
-                    b.Property<bool>("ModuleEmployees")
-                        .HasColumnType("boolean")
-                        .HasColumnName("module_employees");
-
-                    b.Property<bool>("ModuleFleetManagement")
-                        .HasColumnType("boolean")
-                        .HasColumnName("module_fleet_management");
-
-                    b.Property<bool>("ModuleGeofences")
-                        .HasColumnType("boolean")
-                        .HasColumnName("module_geofences");
-
-                    b.Property<bool>("ModuleMaintenance")
-                        .HasColumnType("boolean")
-                        .HasColumnName("module_maintenance");
-
-                    b.Property<bool>("ModuleMonitoring")
-                        .HasColumnType("boolean")
-                        .HasColumnName("module_monitoring");
-
-                    b.Property<bool>("ModuleReports")
-                        .HasColumnType("boolean")
-                        .HasColumnName("module_reports");
-
-                    b.Property<bool>("ModuleSettings")
-                        .HasColumnType("boolean")
-                        .HasColumnName("module_settings");
-
-                    b.Property<bool>("ModuleSuppliers")
-                        .HasColumnType("boolean")
-                        .HasColumnName("module_suppliers");
-
-                    b.Property<bool>("ModuleUsers")
-                        .HasColumnType("boolean")
-                        .HasColumnName("module_users");
-
-                    b.Property<bool>("ModuleVehicles")
-                        .HasColumnType("boolean")
-                        .HasColumnName("module_vehicles");
-
-                    b.Property<int>("MonthlyDurationDays")
-                        .HasColumnType("integer")
-                        .HasColumnName("monthly_duration_days");
-
-                    b.Property<decimal>("MonthlyPrice")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)")
-                        .HasColumnName("monthly_price");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -3621,245 +2016,92 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("name");
 
-                    b.Property<int>("QuarterlyDurationDays")
-                        .HasColumnType("integer")
-                        .HasColumnName("quarterly_duration_days");
+                    b.Property<decimal>("Price")
+                        .HasColumnType("decimal(10,2)")
+                        .HasColumnName("price");
 
-                    b.Property<decimal>("QuarterlyPrice")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)")
-                        .HasColumnName("quarterly_price");
-
-                    b.Property<bool>("RealTimeAlerts")
-                        .HasColumnType("boolean")
-                        .HasColumnName("real_time_alerts");
-
-                    b.Property<bool>("ReportCosts")
-                        .HasColumnType("boolean")
-                        .HasColumnName("report_costs");
-
-                    b.Property<bool>("ReportDaily")
-                        .HasColumnType("boolean")
-                        .HasColumnName("report_daily");
-
-                    b.Property<bool>("ReportDrivingBehavior")
-                        .HasColumnType("boolean")
-                        .HasColumnName("report_driving_behavior");
-
-                    b.Property<bool>("ReportFuel")
-                        .HasColumnType("boolean")
-                        .HasColumnName("report_fuel");
-
-                    b.Property<bool>("ReportMaintenance")
-                        .HasColumnType("boolean")
-                        .HasColumnName("report_maintenance");
-
-                    b.Property<bool>("ReportMileage")
-                        .HasColumnType("boolean")
-                        .HasColumnName("report_mileage");
-
-                    b.Property<bool>("ReportMileagePeriod")
-                        .HasColumnType("boolean")
-                        .HasColumnName("report_mileage_period");
-
-                    b.Property<bool>("ReportMonthly")
-                        .HasColumnType("boolean")
-                        .HasColumnName("report_monthly");
-
-                    b.Property<bool>("ReportSpeed")
-                        .HasColumnType("boolean")
-                        .HasColumnName("report_speed");
-
-                    b.Property<bool>("ReportSpeedInfraction")
-                        .HasColumnType("boolean")
-                        .HasColumnName("report_speed_infraction");
-
-                    b.Property<bool>("ReportStops")
-                        .HasColumnType("boolean")
-                        .HasColumnName("report_stops");
-
-                    b.Property<bool>("ReportTrips")
-                        .HasColumnType("boolean")
-                        .HasColumnName("report_trips");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer")
-                        .HasColumnName("sort_order");
-
-                    b.Property<string>("TargetCompanyType")
+                    b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
-                        .HasColumnName("target_company_type");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<int>("YearlyDurationDays")
-                        .HasColumnType("integer")
-                        .HasColumnName("yearly_duration_days");
-
-                    b.Property<decimal>("YearlyPrice")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)")
-                        .HasColumnName("yearly_price");
+                        .HasColumnName("type");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Code")
-                        .IsUnique();
-
-                    b.ToTable("subscription_types", (string)null);
+                    b.ToTable("subscriptions", (string)null);
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Supplier", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("Id");
+                        .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Address")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("Address");
+                        .HasColumnType("text");
 
                     b.Property<string>("BankAccount")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("BankAccount");
+                        .HasColumnType("text");
 
                     b.Property<string>("City")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("City");
+                        .HasColumnType("text");
 
                     b.Property<int>("CompanyId")
-                        .HasColumnType("integer")
-                        .HasColumnName("CompanyId");
+                        .HasColumnType("integer");
 
                     b.Property<string>("ContactName")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("ContactName");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("CreatedAt");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<decimal?>("DiscountPercent")
                         .HasPrecision(5, 2)
-                        .HasColumnType("numeric(5,2)")
-                        .HasColumnName("DiscountPercent");
+                        .HasColumnType("numeric(5,2)");
 
                     b.Property<string>("Email")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("Email");
+                        .HasColumnType("text");
 
                     b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("IsActive");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("Name");
+                        .HasColumnType("text");
 
                     b.Property<string>("Notes")
-                        .HasColumnType("text")
-                        .HasColumnName("Notes");
+                        .HasColumnType("text");
 
                     b.Property<string>("PaymentTerms")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasDefaultValue("net30")
-                        .HasColumnName("PaymentTerms");
+                        .HasColumnType("text");
 
                     b.Property<string>("Phone")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("Phone");
+                        .HasColumnType("text");
 
-                    b.Property<decimal>("Rating")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(3, 1)
-                        .HasColumnType("numeric(3,1)")
-                        .HasDefaultValue(0m)
-                        .HasColumnName("Rating");
-
-                    b.Property<int?>("SocieteId")
+                    b.Property<int?>("Rating")
                         .HasColumnType("integer");
 
                     b.Property<string>("TaxId")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("TaxId");
+                        .HasColumnType("text");
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasDefaultValue("general")
-                        .HasColumnName("Type");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("UpdatedAt");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Website")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("Website");
+                        .HasColumnType("text");
 
                     b.HasKey("Id");
 
                     b.HasIndex("CompanyId");
 
-                    b.HasIndex("Name");
-
-                    b.HasIndex("SocieteId");
-
                     b.ToTable("suppliers", (string)null);
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.SupplierService", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("ServiceCode")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("service_code");
-
-                    b.Property<int>("SupplierId")
-                        .HasColumnType("integer")
-                        .HasColumnName("supplier_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SupplierId");
-
-                    b.ToTable("supplier_services", (string)null);
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Trip", b =>
@@ -4013,86 +2255,78 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.PrimitiveCollection<int[]>("AssignedVehicleIds")
+                        .IsRequired()
+                        .HasColumnType("integer[]")
+                        .HasColumnName("assigned_vehicle_ids");
+
                     b.Property<int>("CompanyId")
                         .HasColumnType("integer")
                         .HasColumnName("company_id");
 
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("NOW()");
+                        .HasColumnName("created_at");
 
                     b.Property<string>("Email")
                         .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
                         .HasColumnName("email");
-
-                    b.Property<string>("FirstName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("first_name");
 
                     b.Property<DateTime?>("LastLoginAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_login_at");
 
-                    b.Property<string>("LastName")
+                    b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
-                        .HasColumnName("last_name");
+                        .HasColumnName("name");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("text")
                         .HasColumnName("password_hash");
 
-                    b.Property<string>("PermitNumber")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("permit_number");
+                    b.PrimitiveCollection<string[]>("Permissions")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("permissions");
 
                     b.Property<string>("Phone")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("phone");
 
-                    b.Property<int>("RoleId")
-                        .HasColumnType("integer")
-                        .HasColumnName("role_id");
+                    b.PrimitiveCollection<string[]>("Roles")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("roles");
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
-                        .HasDefaultValue("active")
                         .HasColumnName("status");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at")
-                        .HasDefaultValueSql("NOW()");
+                        .HasColumnName("updated_at");
+
+                    b.Property<int?>("UserSettingsId")
+                        .HasColumnType("integer")
+                        .HasColumnName("user_settings_id");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CompanyId")
-                        .HasDatabaseName("idx_users_company_id");
+                    b.HasIndex("CompanyId");
 
                     b.HasIndex("Email")
-                        .IsUnique()
-                        .HasDatabaseName("idx_users_email");
+                        .IsUnique();
 
-                    b.HasIndex("RoleId")
-                        .HasDatabaseName("idx_users_role_id");
-
-                    b.HasIndex("Status")
-                        .HasDatabaseName("idx_users_status");
+                    b.HasIndex("UserSettingsId")
+                        .IsUnique();
 
                     b.ToTable("users", (string)null);
                 });
@@ -4165,44 +2399,27 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("GisAPI.Domain.Entities.UserVehicle", b =>
                 {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("AssignedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("assigned_at")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<int?>("AssignedById")
-                        .HasColumnType("integer")
-                        .HasColumnName("assigned_by");
-
                     b.Property<int>("UserId")
-                        .HasColumnType("integer")
-                        .HasColumnName("user_id");
+                        .HasColumnType("integer");
 
                     b.Property<int>("VehicleId")
-                        .HasColumnType("integer")
-                        .HasColumnName("vehicle_id");
+                        .HasColumnType("integer");
 
-                    b.HasKey("Id");
+                    b.Property<string>("AccessLevel")
+                        .IsRequired()
+                        .HasColumnType("text");
 
-                    b.HasIndex("AssignedById");
+                    b.Property<DateTime>("AssignedAt")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("idx_user_vehicles_user_id");
+                    b.Property<int?>("AssignedByUserId")
+                        .HasColumnType("integer");
 
-                    b.HasIndex("VehicleId")
-                        .HasDatabaseName("idx_user_vehicles_vehicle_id");
+                    b.HasKey("UserId", "VehicleId");
 
-                    b.HasIndex("UserId", "VehicleId")
-                        .IsUnique()
-                        .HasDatabaseName("uq_user_vehicle");
+                    b.HasIndex("AssignedByUserId");
+
+                    b.HasIndex("VehicleId");
 
                     b.ToTable("user_vehicles", (string)null);
                 });
@@ -4242,9 +2459,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<int?>("DepartmentId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("DriverName")
                         .HasColumnType("text")
                         .HasColumnName("driver_name");
@@ -4253,13 +2467,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("driver_phone");
 
-                    b.Property<int?>("FuelTankCapacity")
-                        .HasColumnType("integer")
-                        .HasColumnName("fuel_tank_capacity");
-
-                    b.Property<string>("FuelType")
-                        .HasColumnType("text");
-
                     b.Property<int?>("GpsDeviceId")
                         .HasColumnType("integer")
                         .HasColumnName("gps_device_id");
@@ -4267,9 +2474,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Property<bool>("HasGps")
                         .HasColumnType("boolean")
                         .HasColumnName("has_gps");
-
-                    b.Property<DateTime?>("InsuranceExpiry")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Mileage")
                         .HasColumnType("integer")
@@ -4291,30 +2495,15 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("plate_number");
 
-                    b.Property<DateTime?>("RegistrationExpiry")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<int?>("RentalMileage")
                         .HasColumnType("integer")
                         .HasColumnName("rental_mileage");
-
-                    b.Property<int?>("SpeedLimit")
-                        .HasColumnType("integer");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
-
-                    b.Property<DateTime?>("TaxExpiry")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("TechnicalInspectionExpiry")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("TransportPermitExpiry")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Type")
                         .IsRequired()
@@ -4338,8 +2527,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CompanyId");
 
-                    b.HasIndex("DepartmentId");
-
                     b.HasIndex("GpsDeviceId")
                         .IsUnique();
 
@@ -4347,50 +2534,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("idx_vehicles_plate_number");
 
                     b.ToTable("vehicles", (string)null);
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.VehicleAssignment", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("AssignedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("assigned_at");
-
-                    b.Property<string>("AssignedBy")
-                        .HasColumnType("text")
-                        .HasColumnName("assigned_by");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("UnassignedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("unassigned_at");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("integer")
-                        .HasColumnName("user_id");
-
-                    b.Property<int>("VehicleId")
-                        .HasColumnType("integer")
-                        .HasColumnName("vehicle_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("VehicleId");
-
-                    b.ToTable("vehicle_user_assignments", (string)null);
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.VehicleCost", b =>
@@ -4523,184 +2666,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.ToTable("vehicle_documents", (string)null);
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.VehicleMaintenanceSchedule", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<int?>("CustomIntervalKm")
-                        .HasColumnType("integer")
-                        .HasColumnName("custom_interval_km");
-
-                    b.Property<int?>("CustomIntervalMonths")
-                        .HasColumnType("integer")
-                        .HasColumnName("custom_interval_months");
-
-                    b.Property<bool>("IsPaused")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false)
-                        .HasColumnName("is_paused");
-
-                    b.Property<DateTime?>("LastDoneDate")
-                        .HasColumnType("date")
-                        .HasColumnName("last_done_date");
-
-                    b.Property<int?>("LastDoneKm")
-                        .HasColumnType("integer")
-                        .HasColumnName("last_done_km");
-
-                    b.Property<DateTime?>("LastNotificationAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_notification_at");
-
-                    b.Property<DateTime?>("NextDueDate")
-                        .HasColumnType("date")
-                        .HasColumnName("next_due_date");
-
-                    b.Property<int?>("NextDueKm")
-                        .HasColumnType("integer")
-                        .HasColumnName("next_due_km");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("text")
-                        .HasColumnName("notes");
-
-                    b.Property<int>("NotificationCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("notification_count");
-
-                    b.Property<DateTime?>("PausedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("paused_at");
-
-                    b.Property<string>("PausedReason")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("paused_reason");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasDefaultValue("upcoming")
-                        .HasColumnName("status");
-
-                    b.Property<int>("TemplateId")
-                        .HasColumnType("integer")
-                        .HasColumnName("template_id");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<int>("VehicleId")
-                        .HasColumnType("integer")
-                        .HasColumnName("vehicle_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Status")
-                        .HasDatabaseName("IX_vehicle_maintenance_schedules_Status");
-
-                    b.HasIndex("TemplateId")
-                        .HasDatabaseName("IX_vehicle_maintenance_schedules_TemplateId");
-
-                    b.HasIndex("VehicleId")
-                        .HasDatabaseName("IX_vehicle_maintenance_schedules_VehicleId");
-
-                    b.HasIndex("VehicleId", "TemplateId")
-                        .IsUnique()
-                        .HasDatabaseName("IX_vehicle_maintenance_schedules_VehicleId_TemplateId");
-
-                    b.ToTable("vehicle_maintenance_schedules", (string)null);
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.VehicleModel", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("BrandId")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("VehicleType")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BrandId");
-
-                    b.ToTable("vehicle_models", (string)null);
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.VehiclePart", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("CategoryId")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("PartNumber")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CategoryId");
-
-                    b.ToTable("vehicle_parts", (string)null);
-                });
-
             modelBuilder.Entity("GisAPI.Domain.Entities.VehicleStop", b =>
                 {
                     b.Property<long>("Id")
@@ -4818,64 +2783,75 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.ToTable("vehicle_stops", (string)null);
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.AccidentClaim", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.User", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId");
-
-                    b.HasOne("GisAPI.Domain.Entities.User", "Driver")
-                        .WithMany()
-                        .HasForeignKey("DriverId");
-
-                    b.HasOne("GisAPI.Domain.Entities.Vehicle", "Vehicle")
-                        .WithMany()
-                        .HasForeignKey("VehicleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("CreatedByUser");
-
-                    b.Navigation("Driver");
-
-                    b.Navigation("Vehicle");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.AccidentClaimDocument", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.AccidentClaim", "Claim")
-                        .WithMany("Documents")
-                        .HasForeignKey("ClaimId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Claim");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.AccidentClaimThirdParty", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.AccidentClaim", "Claim")
-                        .WithMany("ThirdParties")
-                        .HasForeignKey("ClaimId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Claim");
-                });
-
             modelBuilder.Entity("GisAPI.Domain.Entities.AuditLog", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.Societe", "Societe")
+                    b.HasOne("GisAPI.Domain.Entities.Company", "Company")
                         .WithMany()
-                        .HasForeignKey("SocieteId");
+                        .HasForeignKey("CompanyId");
 
                     b.HasOne("GisAPI.Domain.Entities.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId");
 
-                    b.Navigation("Societe");
+                    b.Navigation("Company");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("GisAPI.Domain.Entities.Company", b =>
+                {
+                    b.HasOne("GisAPI.Domain.Entities.Subscription", "Subscription")
+                        .WithMany("Companies")
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("GisAPI.Domain.Entities.CompanySettings", "Settings", b1 =>
+                        {
+                            b1.Property<int>("CompanyId")
+                                .HasColumnType("integer");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("DateFormat")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("DistanceUnit")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("Language")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("SpeedUnit")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("Timezone")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("VolumeUnit")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.HasKey("CompanyId");
+
+                            b1.ToTable("companies", (string)null);
+
+                            b1.ToJson("settings");
+
+                            b1.WithOwner()
+                                .HasForeignKey("CompanyId");
+                        });
+
+                    b.Navigation("Settings");
+
+                    b.Navigation("Subscription");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Contract", b =>
@@ -4900,24 +2876,13 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Navigation("Vehicle");
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.Department", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.Societe", "Societe")
-                        .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Societe");
-                });
-
             modelBuilder.Entity("GisAPI.Domain.Entities.DriverAssignment", b =>
                 {
                     b.HasOne("GisAPI.Domain.Entities.User", "AssignedByUser")
                         .WithMany()
                         .HasForeignKey("AssignedByUserId");
 
-                    b.HasOne("GisAPI.Domain.Entities.User", "Driver")
+                    b.HasOne("GisAPI.Domain.Entities.Employee", "Driver")
                         .WithMany()
                         .HasForeignKey("DriverId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -4938,7 +2903,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("GisAPI.Domain.Entities.DriverScore", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.User", "Driver")
+                    b.HasOne("GisAPI.Domain.Entities.Employee", "Driver")
                         .WithMany()
                         .HasForeignKey("DriverId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -4949,7 +2914,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("GisAPI.Domain.Entities.DrivingEvent", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.User", "Driver")
+                    b.HasOne("GisAPI.Domain.Entities.Employee", "Driver")
                         .WithMany()
                         .HasForeignKey("DriverId");
 
@@ -4970,48 +2935,15 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Navigation("Vehicle");
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.FuelEntry", b =>
+            modelBuilder.Entity("GisAPI.Domain.Entities.Employee", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.User", "Driver")
-                        .WithMany()
-                        .HasForeignKey("DriverId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("GisAPI.Domain.Entities.FuelType", "FuelType")
-                        .WithMany()
-                        .HasForeignKey("FuelTypeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("GisAPI.Domain.Entities.Vehicle", "Vehicle")
-                        .WithMany()
-                        .HasForeignKey("VehicleId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Driver");
-
-                    b.Navigation("FuelType");
-
-                    b.Navigation("Vehicle");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.FuelPricing", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.Societe", "Societe")
-                        .WithMany()
+                    b.HasOne("GisAPI.Domain.Entities.Company", "Company")
+                        .WithMany("Employees")
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("GisAPI.Domain.Entities.FuelType", "FuelType")
-                        .WithMany("Pricings")
-                        .HasForeignKey("FuelTypeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("FuelType");
-
-                    b.Navigation("Societe");
+                    b.Navigation("Company");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.FuelRecord", b =>
@@ -5020,7 +2952,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("DeviceId");
 
-                    b.HasOne("GisAPI.Domain.Entities.User", "Driver")
+                    b.HasOne("GisAPI.Domain.Entities.Employee", "Driver")
                         .WithMany()
                         .HasForeignKey("DriverId");
 
@@ -5039,20 +2971,13 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Geofence", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.Societe", "Societe")
+                    b.HasOne("GisAPI.Domain.Entities.Company", "Company")
                         .WithMany("Geofences")
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("GisAPI.Domain.Entities.GeofenceGroup", "Group")
-                        .WithMany("Geofences")
-                        .HasForeignKey("GroupId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Group");
-
-                    b.Navigation("Societe");
+                    b.Navigation("Company");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.GeofenceEvent", b =>
@@ -5072,17 +2997,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Navigation("Geofence");
 
                     b.Navigation("Vehicle");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.GeofenceGroup", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.Societe", "Societe")
-                        .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Societe");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.GeofenceVehicle", b =>
@@ -5127,13 +3041,13 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("GisAPI.Domain.Entities.GpsDevice", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.Societe", "Societe")
+                    b.HasOne("GisAPI.Domain.Entities.Company", "Company")
                         .WithMany("GpsDevices")
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Societe");
+                    b.Navigation("Company");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.GpsPosition", b =>
@@ -5145,73 +3059,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Device");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.MaintenanceLog", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.VehicleCost", "Cost")
-                        .WithMany()
-                        .HasForeignKey("CostId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("GisAPI.Domain.Entities.VehicleMaintenanceSchedule", "Schedule")
-                        .WithMany()
-                        .HasForeignKey("ScheduleId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("GisAPI.Domain.Entities.Supplier", "Supplier")
-                        .WithMany()
-                        .HasForeignKey("SupplierId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("GisAPI.Domain.Entities.MaintenanceTemplate", "Template")
-                        .WithMany()
-                        .HasForeignKey("TemplateId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("GisAPI.Domain.Entities.Vehicle", "Vehicle")
-                        .WithMany()
-                        .HasForeignKey("VehicleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Cost");
-
-                    b.Navigation("Schedule");
-
-                    b.Navigation("Supplier");
-
-                    b.Navigation("Template");
-
-                    b.Navigation("Vehicle");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.MaintenanceNotification", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.VehicleMaintenanceSchedule", "Schedule")
-                        .WithMany("Notifications")
-                        .HasForeignKey("ScheduleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("GisAPI.Domain.Entities.MaintenanceTemplate", "Template")
-                        .WithMany()
-                        .HasForeignKey("TemplateId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("GisAPI.Domain.Entities.Vehicle", "Vehicle")
-                        .WithMany()
-                        .HasForeignKey("VehicleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Schedule");
-
-                    b.Navigation("Template");
-
-                    b.Navigation("Vehicle");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.MaintenancePart", b =>
@@ -5227,31 +3074,21 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("GisAPI.Domain.Entities.MaintenanceRecord", b =>
                 {
+                    b.HasOne("GisAPI.Domain.Entities.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("GisAPI.Domain.Entities.Vehicle", "Vehicle")
                         .WithMany("MaintenanceRecords")
                         .HasForeignKey("VehicleId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("Company");
+
                     b.Navigation("Vehicle");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.MaintenanceTemplatePart", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.Supplier", "PreferredSupplier")
-                        .WithMany()
-                        .HasForeignKey("PreferredSupplierId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("GisAPI.Domain.Entities.MaintenanceTemplate", "Template")
-                        .WithMany("Parts")
-                        .HasForeignKey("TemplateId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("PreferredSupplier");
-
-                    b.Navigation("Template");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Notification", b =>
@@ -5269,42 +3106,20 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                 {
                     b.HasOne("GisAPI.Domain.Entities.Supplier", "Supplier")
                         .WithMany("Parts")
-                        .HasForeignKey("SupplierId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("SupplierId");
 
                     b.Navigation("Supplier");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.PartPricing", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.Societe", "Societe")
-                        .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("GisAPI.Domain.Entities.VehiclePart", "Part")
-                        .WithMany()
-                        .HasForeignKey("PartId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Part");
-
-                    b.Navigation("Societe");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.PartTransaction", b =>
                 {
                     b.HasOne("GisAPI.Domain.Entities.User", "CreatedByUser")
                         .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("CreatedByUserId");
 
                     b.HasOne("GisAPI.Domain.Entities.MaintenanceRecord", "MaintenanceRecord")
                         .WithMany()
-                        .HasForeignKey("MaintenanceRecordId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("MaintenanceRecordId");
 
                     b.HasOne("GisAPI.Domain.Entities.PartInventory", "Part")
                         .WithMany()
@@ -5314,13 +3129,11 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.HasOne("GisAPI.Domain.Entities.Supplier", "Supplier")
                         .WithMany()
-                        .HasForeignKey("SupplierId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("SupplierId");
 
                     b.HasOne("GisAPI.Domain.Entities.Vehicle", "Vehicle")
                         .WithMany()
-                        .HasForeignKey("VehicleId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("VehicleId");
 
                     b.Navigation("CreatedByUser");
 
@@ -5333,38 +3146,13 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Navigation("Vehicle");
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.PoiVisit", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.PointOfInterest", "Poi")
-                        .WithMany("Visits")
-                        .HasForeignKey("PoiId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("GisAPI.Domain.Entities.Vehicle", "Vehicle")
-                        .WithMany()
-                        .HasForeignKey("VehicleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Poi");
-
-                    b.Navigation("Vehicle");
-                });
-
             modelBuilder.Entity("GisAPI.Domain.Entities.PointOfInterest", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.Societe", "Societe")
-                        .WithMany()
+                    b.HasOne("GisAPI.Domain.Entities.Company", null)
+                        .WithMany("PointsOfInterest")
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.HasOne("GisAPI.Domain.Entities.Societe", null)
-                        .WithMany("PointsOfInterest")
-                        .HasForeignKey("SocieteId");
-
-                    b.Navigation("Societe");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.RefreshToken", b =>
@@ -5378,60 +3166,34 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.Repair", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.Societe", "Societe")
-                        .WithMany()
-                        .HasForeignKey("SocieteId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("GisAPI.Domain.Entities.Vehicle", "Vehicle")
-                        .WithMany()
-                        .HasForeignKey("VehicleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Societe");
-
-                    b.Navigation("Vehicle");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.RepairPart", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.Repair", "Repair")
-                        .WithMany("Parts")
-                        .HasForeignKey("RepairId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Repair");
-                });
-
             modelBuilder.Entity("GisAPI.Domain.Entities.Report", b =>
                 {
+                    b.HasOne("GisAPI.Domain.Entities.Company", null)
+                        .WithMany("Reports")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("GisAPI.Domain.Entities.User", "CreatedByUser")
                         .WithMany()
                         .HasForeignKey("CreatedByUserId");
-
-                    b.HasOne("GisAPI.Domain.Entities.Societe", null)
-                        .WithMany("Reports")
-                        .HasForeignKey("SocieteId");
 
                     b.Navigation("CreatedByUser");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.ReportSchedule", b =>
                 {
+                    b.HasOne("GisAPI.Domain.Entities.Company", null)
+                        .WithMany("ReportSchedules")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("GisAPI.Domain.Entities.User", "CreatedByUser")
                         .WithMany()
                         .HasForeignKey("CreatedByUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.HasOne("GisAPI.Domain.Entities.Societe", null)
-                        .WithMany("ReportSchedules")
-                        .HasForeignKey("SocieteId");
 
                     b.Navigation("CreatedByUser");
                 });
@@ -5442,7 +3204,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("ApprovedByUserId");
 
-                    b.HasOne("GisAPI.Domain.Entities.User", "AssignedDriver")
+                    b.HasOne("GisAPI.Domain.Entities.Employee", "AssignedDriver")
                         .WithMany()
                         .HasForeignKey("AssignedDriverId");
 
@@ -5465,114 +3227,18 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Navigation("Vehicle");
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.Role", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.Societe", "Societe")
-                        .WithMany("Roles")
-                        .HasForeignKey("SocieteId")
-                        .OnDelete(DeleteBehavior.Cascade);
-
-                    b.Navigation("Societe");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.Societe", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.SubscriptionType", "SubscriptionType")
-                        .WithMany("Societes")
-                        .HasForeignKey("SubscriptionTypeId");
-
-                    b.OwnsOne("GisAPI.Domain.Entities.SocieteSettings", "Settings", b1 =>
-                        {
-                            b1.Property<int>("SocieteId")
-                                .HasColumnType("integer");
-
-                            b1.Property<string>("Currency")
-                                .IsRequired()
-                                .HasColumnType("text");
-
-                            b1.Property<string>("DateFormat")
-                                .IsRequired()
-                                .HasColumnType("text");
-
-                            b1.Property<string>("DistanceUnit")
-                                .IsRequired()
-                                .HasColumnType("text");
-
-                            b1.Property<string>("Language")
-                                .IsRequired()
-                                .HasColumnType("text");
-
-                            b1.Property<string>("SpeedUnit")
-                                .IsRequired()
-                                .HasColumnType("text");
-
-                            b1.Property<string>("Timezone")
-                                .IsRequired()
-                                .HasColumnType("text");
-
-                            b1.Property<string>("VolumeUnit")
-                                .IsRequired()
-                                .HasColumnType("text");
-
-                            b1.HasKey("SocieteId");
-
-                            b1.ToTable("societes");
-
-                            b1.ToJson("settings");
-
-                            b1.WithOwner()
-                                .HasForeignKey("SocieteId");
-                        });
-
-                    b.Navigation("Settings");
-
-                    b.Navigation("SubscriptionType");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.SpeedLimitAlert", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.User", "AcknowledgedBy")
-                        .WithMany()
-                        .HasForeignKey("AcknowledgedById");
-
-                    b.HasOne("GisAPI.Domain.Entities.Societe", "Societe")
-                        .WithMany()
-                        .HasForeignKey("SocieteId");
-
-                    b.HasOne("GisAPI.Domain.Entities.Vehicle", "Vehicle")
-                        .WithMany()
-                        .HasForeignKey("VehicleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("AcknowledgedBy");
-
-                    b.Navigation("Societe");
-
-                    b.Navigation("Vehicle");
-                });
-
             modelBuilder.Entity("GisAPI.Domain.Entities.Supplier", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.Societe", null)
+                    b.HasOne("GisAPI.Domain.Entities.Company", null)
                         .WithMany("Suppliers")
-                        .HasForeignKey("SocieteId");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.SupplierService", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.Supplier", "Supplier")
-                        .WithMany("Services")
-                        .HasForeignKey("SupplierId")
+                        .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Supplier");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Trip", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.User", "Driver")
+                    b.HasOne("GisAPI.Domain.Entities.Employee", "Driver")
                         .WithMany()
                         .HasForeignKey("DriverId");
 
@@ -5600,21 +3266,19 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("GisAPI.Domain.Entities.User", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.Societe", "Societe")
+                    b.HasOne("GisAPI.Domain.Entities.Company", "Company")
                         .WithMany("Users")
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("GisAPI.Domain.Entities.Role", "Role")
-                        .WithMany("Users")
-                        .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                    b.HasOne("GisAPI.Domain.Entities.UserSettings", "Settings")
+                        .WithOne()
+                        .HasForeignKey("GisAPI.Domain.Entities.User", "UserSettingsId");
 
-                    b.Navigation("Role");
+                    b.Navigation("Company");
 
-                    b.Navigation("Societe");
+                    b.Navigation("Settings");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.UserSettings", b =>
@@ -5646,7 +3310,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                             b1.HasKey("UserSettingsId");
 
-                            b1.ToTable("user_settings");
+                            b1.ToTable("user_settings", (string)null);
 
                             b1.ToJson("display");
 
@@ -5693,7 +3357,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                             b1.HasKey("UserSettingsId");
 
-                            b1.ToTable("user_settings");
+                            b1.ToTable("user_settings", (string)null);
 
                             b1.ToJson("notifications");
 
@@ -5708,13 +3372,12 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("GisAPI.Domain.Entities.UserVehicle", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.User", "AssignedBy")
+                    b.HasOne("GisAPI.Domain.Entities.User", "AssignedByUser")
                         .WithMany()
-                        .HasForeignKey("AssignedById")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("AssignedByUserId");
 
                     b.HasOne("GisAPI.Domain.Entities.User", "User")
-                        .WithMany("UserVehicles")
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -5725,7 +3388,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("AssignedBy");
+                    b.Navigation("AssignedByUser");
 
                     b.Navigation("User");
 
@@ -5734,25 +3397,21 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Vehicle", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.User", "AssignedDriver")
-                        .WithMany()
+                    b.HasOne("GisAPI.Domain.Entities.Employee", "AssignedDriver")
+                        .WithMany("AssignedVehiclesAsDriver")
                         .HasForeignKey("AssignedDriverId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("GisAPI.Domain.Entities.User", "AssignedSupervisor")
-                        .WithMany()
+                    b.HasOne("GisAPI.Domain.Entities.Employee", "AssignedSupervisor")
+                        .WithMany("AssignedVehiclesAsSupervisor")
                         .HasForeignKey("AssignedSupervisorId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("GisAPI.Domain.Entities.Societe", "Societe")
+                    b.HasOne("GisAPI.Domain.Entities.Company", "Company")
                         .WithMany("Vehicles")
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.HasOne("GisAPI.Domain.Entities.Department", "Department")
-                        .WithMany("Vehicles")
-                        .HasForeignKey("DepartmentId");
 
                     b.HasOne("GisAPI.Domain.Entities.GpsDevice", "GpsDevice")
                         .WithOne("Vehicle")
@@ -5763,34 +3422,19 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.Navigation("AssignedSupervisor");
 
-                    b.Navigation("Department");
+                    b.Navigation("Company");
 
                     b.Navigation("GpsDevice");
-
-                    b.Navigation("Societe");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.VehicleAssignment", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("GisAPI.Domain.Entities.Vehicle", "Vehicle")
-                        .WithMany()
-                        .HasForeignKey("VehicleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-
-                    b.Navigation("Vehicle");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.VehicleCost", b =>
                 {
+                    b.HasOne("GisAPI.Domain.Entities.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("GisAPI.Domain.Entities.User", "CreatedByUser")
                         .WithMany()
                         .HasForeignKey("CreatedByUserId");
@@ -5800,6 +3444,8 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasForeignKey("VehicleId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Company");
 
                     b.Navigation("CreatedByUser");
 
@@ -5817,54 +3463,13 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Navigation("Vehicle");
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.VehicleMaintenanceSchedule", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.MaintenanceTemplate", "Template")
-                        .WithMany("Schedules")
-                        .HasForeignKey("TemplateId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("GisAPI.Domain.Entities.Vehicle", "Vehicle")
-                        .WithMany()
-                        .HasForeignKey("VehicleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Template");
-
-                    b.Navigation("Vehicle");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.VehicleModel", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.Brand", "Brand")
-                        .WithMany("Models")
-                        .HasForeignKey("BrandId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Brand");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.VehiclePart", b =>
-                {
-                    b.HasOne("GisAPI.Domain.Entities.PartCategory", "Category")
-                        .WithMany("Parts")
-                        .HasForeignKey("CategoryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Category");
-                });
-
             modelBuilder.Entity("GisAPI.Domain.Entities.VehicleStop", b =>
                 {
                     b.HasOne("GisAPI.Domain.Entities.GpsDevice", "Device")
                         .WithMany()
                         .HasForeignKey("DeviceId");
 
-                    b.HasOne("GisAPI.Domain.Entities.User", "Driver")
+                    b.HasOne("GisAPI.Domain.Entities.Employee", "Driver")
                         .WithMany()
                         .HasForeignKey("DriverId");
 
@@ -5887,26 +3492,32 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Navigation("Vehicle");
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.AccidentClaim", b =>
+            modelBuilder.Entity("GisAPI.Domain.Entities.Company", b =>
                 {
-                    b.Navigation("Documents");
+                    b.Navigation("Employees");
 
-                    b.Navigation("ThirdParties");
-                });
+                    b.Navigation("Geofences");
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.Brand", b =>
-                {
-                    b.Navigation("Models");
-                });
+                    b.Navigation("GpsDevices");
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.Department", b =>
-                {
+                    b.Navigation("PointsOfInterest");
+
+                    b.Navigation("ReportSchedules");
+
+                    b.Navigation("Reports");
+
+                    b.Navigation("Suppliers");
+
+                    b.Navigation("Users");
+
                     b.Navigation("Vehicles");
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.FuelType", b =>
+            modelBuilder.Entity("GisAPI.Domain.Entities.Employee", b =>
                 {
-                    b.Navigation("Pricings");
+                    b.Navigation("AssignedVehiclesAsDriver");
+
+                    b.Navigation("AssignedVehiclesAsSupervisor");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Geofence", b =>
@@ -5914,11 +3525,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Navigation("AssignedVehicles");
 
                     b.Navigation("Events");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.GeofenceGroup", b =>
-                {
-                    b.Navigation("Geofences");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.GpsDevice", b =>
@@ -5935,74 +3541,19 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Navigation("Parts");
                 });
 
-            modelBuilder.Entity("GisAPI.Domain.Entities.MaintenanceTemplate", b =>
+            modelBuilder.Entity("GisAPI.Domain.Entities.Subscription", b =>
                 {
-                    b.Navigation("Parts");
-
-                    b.Navigation("Schedules");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.PartCategory", b =>
-                {
-                    b.Navigation("Parts");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.PointOfInterest", b =>
-                {
-                    b.Navigation("Visits");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.Repair", b =>
-                {
-                    b.Navigation("Parts");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.Role", b =>
-                {
-                    b.Navigation("Users");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.Societe", b =>
-                {
-                    b.Navigation("Geofences");
-
-                    b.Navigation("GpsDevices");
-
-                    b.Navigation("PointsOfInterest");
-
-                    b.Navigation("ReportSchedules");
-
-                    b.Navigation("Reports");
-
-                    b.Navigation("Roles");
-
-                    b.Navigation("Suppliers");
-
-                    b.Navigation("Users");
-
-                    b.Navigation("Vehicles");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.SubscriptionType", b =>
-                {
-                    b.Navigation("Societes");
+                    b.Navigation("Companies");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Supplier", b =>
                 {
                     b.Navigation("Parts");
-
-                    b.Navigation("Services");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Trip", b =>
                 {
                     b.Navigation("Waypoints");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.User", b =>
-                {
-                    b.Navigation("UserVehicles");
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Vehicle", b =>
@@ -6012,11 +3563,6 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Navigation("Documents");
 
                     b.Navigation("MaintenanceRecords");
-                });
-
-            modelBuilder.Entity("GisAPI.Domain.Entities.VehicleMaintenanceSchedule", b =>
-                {
-                    b.Navigation("Notifications");
                 });
 #pragma warning restore 612, 618
         }
