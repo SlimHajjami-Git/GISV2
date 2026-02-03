@@ -155,3 +155,10 @@ C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\GisAPI.Infrastru
 C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\GisAPI.Shared.pdb
 C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\GisAPI.Domain.pdb
 C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\RabbitMQ.Client.dll
+C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\ClosedXML.dll
+C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\DocumentFormat.OpenXml.dll
+C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\ExcelNumberFormat.dll
+C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\Irony.dll
+C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\SixLabors.Fonts.dll
+C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\System.IO.Packaging.dll
+C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\XLParser.dll

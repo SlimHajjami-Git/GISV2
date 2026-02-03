@@ -5,6 +5,7 @@ using GisAPI.Domain.Entities;
 using GisAPI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -13,9 +14,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GisAPI.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(GisDbContext))]
-    partial class GisDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260203203522_SyncAllEntities")]
+    partial class SyncAllEntities
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
