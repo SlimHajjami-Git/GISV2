@@ -27,10 +27,16 @@ public class GetSpeedAlertsQueryHandler : IRequestHandler<GetSpeedAlertsQuery, S
             query = query.Where(a => a.VehicleId == request.VehicleId.Value);
 
         if (request.FromDate.HasValue)
-            query = query.Where(a => a.RecordedAt >= request.FromDate.Value);
+        {
+            var fromDateUtc = DateTime.SpecifyKind(request.FromDate.Value, DateTimeKind.Utc);
+            query = query.Where(a => a.RecordedAt >= fromDateUtc);
+        }
 
         if (request.ToDate.HasValue)
-            query = query.Where(a => a.RecordedAt <= request.ToDate.Value);
+        {
+            var toDateUtc = DateTime.SpecifyKind(request.ToDate.Value, DateTimeKind.Utc);
+            query = query.Where(a => a.RecordedAt <= toDateUtc);
+        }
 
         if (request.IsAcknowledged.HasValue)
             query = query.Where(a => a.IsAcknowledged == request.IsAcknowledged.Value);

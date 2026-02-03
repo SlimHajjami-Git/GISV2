@@ -33,12 +33,14 @@ public class GetFuelRecordsQueryHandler : IRequestHandler<GetFuelRecordsQuery, F
 
         if (request.StartDate.HasValue)
         {
-            query = query.Where(f => f.RecordedAt >= request.StartDate.Value);
+            var startDateUtc = DateTime.SpecifyKind(request.StartDate.Value, DateTimeKind.Utc);
+            query = query.Where(f => f.RecordedAt >= startDateUtc);
         }
 
         if (request.EndDate.HasValue)
         {
-            query = query.Where(f => f.RecordedAt <= request.EndDate.Value);
+            var endDateUtc = DateTime.SpecifyKind(request.EndDate.Value, DateTimeKind.Utc);
+            query = query.Where(f => f.RecordedAt <= endDateUtc);
         }
 
         if (!string.IsNullOrEmpty(request.EventType))

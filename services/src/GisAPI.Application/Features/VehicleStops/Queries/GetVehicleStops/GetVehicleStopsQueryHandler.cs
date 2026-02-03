@@ -70,12 +70,14 @@ public class GetVehicleStopsQueryHandler : IRequestHandler<GetVehicleStopsQuery,
 
         if (request.StartDate.HasValue)
         {
-            query = query.Where(s => s.StartTime >= request.StartDate.Value);
+            var startDateUtc = DateTime.SpecifyKind(request.StartDate.Value, DateTimeKind.Utc);
+            query = query.Where(s => s.StartTime >= startDateUtc);
         }
 
         if (request.EndDate.HasValue)
         {
-            query = query.Where(s => s.StartTime <= request.EndDate.Value);
+            var endDateUtc = DateTime.SpecifyKind(request.EndDate.Value, DateTimeKind.Utc);
+            query = query.Where(s => s.StartTime <= endDateUtc);
         }
 
         if (!string.IsNullOrEmpty(request.StopType))
@@ -131,12 +133,14 @@ public class GetVehicleStopsQueryHandler : IRequestHandler<GetVehicleStopsQuery,
             
         if (request.StartDate.HasValue)
         {
-            query = query.Where(p => p.RecordedAt >= request.StartDate.Value);
+            var startDateUtc = DateTime.SpecifyKind(request.StartDate.Value, DateTimeKind.Utc);
+            query = query.Where(p => p.RecordedAt >= startDateUtc);
         }
 
         if (request.EndDate.HasValue)
         {
-            query = query.Where(p => p.RecordedAt <= request.EndDate.Value);
+            var endDateUtc = DateTime.SpecifyKind(request.EndDate.Value, DateTimeKind.Utc);
+            query = query.Where(p => p.RecordedAt <= endDateUtc);
         }
         
         var positions = await query

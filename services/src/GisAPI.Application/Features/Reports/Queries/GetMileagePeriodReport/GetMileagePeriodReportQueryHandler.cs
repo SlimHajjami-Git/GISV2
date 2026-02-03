@@ -51,9 +51,9 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
             };
         }
 
-        // Adjust for timezone offset (Tunisia/Morocco = UTC+1) and ensure UTC Kind
-        var startDate = DateTime.SpecifyKind(request.StartDate.Date.AddHours(1), DateTimeKind.Utc);
-        var endDate = DateTime.SpecifyKind(request.EndDate.Date.AddDays(1).AddHours(1), DateTimeKind.Utc);
+        // Adjust for timezone offset (Tunisia = UTC+1) and ensure UTC Kind
+        var startDate = DateTime.SpecifyKind(request.StartDate.Date.AddHours(-1), DateTimeKind.Utc);
+        var endDate = DateTime.SpecifyKind(request.EndDate.Date.AddDays(1).AddHours(-1), DateTimeKind.Utc);
 
         // Extract device ID as non-nullable int for proper EF Core query translation
         int deviceId = vehicle.GpsDeviceId!.Value;

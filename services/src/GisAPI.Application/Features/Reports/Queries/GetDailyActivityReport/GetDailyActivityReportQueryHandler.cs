@@ -47,9 +47,9 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
             };
         }
 
-        // Get all positions for the day (adjust for timezone offset - Tunisia = UTC+1)
-        var dayStart = request.Date.Date.AddHours(1);
-        var dayEnd = request.Date.Date.AddDays(1).AddHours(1);
+        // Get all positions for the day (adjust for timezone offset - Tunisia = UTC+1) and ensure UTC kind
+        var dayStart = DateTime.SpecifyKind(request.Date.Date.AddHours(-1), DateTimeKind.Utc);
+        var dayEnd = DateTime.SpecifyKind(request.Date.Date.AddDays(1).AddHours(-1), DateTimeKind.Utc);
 
         var positions = await _context.GpsPositions
             .AsNoTracking()
