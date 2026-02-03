@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using GisAPI.Domain.Common;
 
 namespace GisAPI.Domain.Entities;
@@ -76,6 +77,7 @@ public class SubscriptionType : Entity
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation
+    [JsonIgnore]
     public ICollection<Societe> Societes { get; set; } = new List<Societe>();
 }
 
