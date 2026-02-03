@@ -39,7 +39,7 @@
       @for (employee of employees; track employee.id) {
         <div class="employee-card">
           <div class="employee-header">
-            <div class="employee-avatar">{{ employee.name.charAt(0) }}</div>
+            <div class="employee-avatar">{{ employee.name?.charAt(0) || 'E' }}</div>
             <div class="employee-status">
               <span class="status-badge" [class.active]="employee.status === 'active'" [class.inactive]="employee.status === 'inactive'">
                 {{ employee.status === 'active' ? 'Actif' : 'Inactif' }}

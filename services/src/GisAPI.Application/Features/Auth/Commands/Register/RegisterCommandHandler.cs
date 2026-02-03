@@ -97,6 +97,9 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResp
         var token = _jwtService.GenerateToken(user);
         var refreshToken = _jwtService.GenerateRefreshToken();
 
+        // Build subscription features for the new registration (no subscription type yet)
+        SubscriptionFeaturesDto? subscriptionFeatures = null;
+
         return new LoginResponse(
             token,
             refreshToken,
@@ -110,9 +113,11 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResp
                 user.RoleId,
                 adminRole.Name,
                 adminRole.IsCompanyAdmin,
+                adminRole.IsSystemAdmin,
                 user.CompanyId,
                 societe.Name,
-                adminRole.Permissions
+                adminRole.Permissions,
+                subscriptionFeatures
             )
         );
     }

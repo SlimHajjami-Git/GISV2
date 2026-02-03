@@ -42,6 +42,7 @@ export interface Vehicle {
   assignedSupervisorId?: string;
   documents?: VehicleDocument[];
   mileage: number;
+  fuelTankCapacity?: number;
   rentalMileage?: number;
   registration_number?: string;
   currentSpeed?: number;

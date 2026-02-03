@@ -344,19 +344,48 @@ public class AdminController : ControllerBase
         _context.Societes.Add(company);
         await _context.SaveChangesAsync();
 
-        // Create admin user if provided
+        // Create admin role and user if provided
         if (!string.IsNullOrEmpty(request.AdminEmail) && !string.IsNullOrEmpty(request.AdminPassword))
         {
+            // First create an admin role for this company
+            var adminRole = new Role
+            {
+                Name = "Administrateur",
+                Description = "Administrateur de la société",
+                SocieteId = company.Id,
+                IsCompanyAdmin = true,
+                IsSystemRole = false,
+                Permissions = new Dictionary<string, object>
+                {
+                    { "dashboard", true },
+                    { "monitoring", true },
+                    { "vehicles", true },
+                    { "employees", true },
+                    { "maintenance", true },
+                    { "costs", true },
+                    { "reports", true },
+                    { "geofences", true },
+                    { "settings", true },
+                    { "users", true },
+                    { "suppliers", true },
+                    { "documents", true },
+                    { "accidents", true },
+                    { "fleet_management", true }
+                }
+            };
+            _context.Roles.Add(adminRole);
+            await _context.SaveChangesAsync();
+
+            // Then create the admin user with this role
             var adminUser = new User
             {
-                Name = request.AdminName ?? request.Name + " Admin",
+                FirstName = request.AdminName?.Split(' ').FirstOrDefault() ?? "Admin",
+                LastName = request.AdminName?.Split(' ').Skip(1).FirstOrDefault() ?? company.Name,
                 Email = request.AdminEmail,
                 Phone = request.Phone,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.AdminPassword),
-                Roles = new[] { "admin" },
-                Permissions = new[] { "dashboard", "monitoring", "vehicles", "employees", "maintenance", "costs", "reports", "geofences", "notifications", "settings", "users" },
-                AssignedVehicleIds = Array.Empty<int>(),
                 CompanyId = company.Id,
+                RoleId = adminRole.Id,
                 Status = "active"
             };
             _context.Users.Add(adminUser);

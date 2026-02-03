@@ -356,7 +356,14 @@ interface VehicleTrip {
                 </div>
                 <div class="spec-item">
                   <span class="spec-label">Kilométrage</span>
-                  <span class="spec-value">{{ formatNumber(selectedDetailVehicle.mileage) }} km</span>
+                  <span class="spec-value">
+                    {{ formatNumber(selectedDetailVehicle.mileage) }} km
+                    <span class="mileage-source" *ngIf="selectedDetailVehicle.hasGPS" title="Données GPS disponibles">📡</span>
+                  </span>
+                </div>
+                <div class="spec-item">
+                  <span class="spec-label">Capacité réservoir</span>
+                  <span class="spec-value">{{ selectedDetailVehicle.fuelTankCapacity ? selectedDetailVehicle.fuelTankCapacity + ' L' : 'Non spécifié' }}</span>
                 </div>
                 <div class="spec-item">
                   <span class="spec-label">Chauffeur</span>
@@ -423,6 +430,15 @@ interface VehicleTrip {
                 </svg>
                 <span>{{ currentLocation }}</span>
               </div>
+              <button class="btn-sync-mileage" (click)="syncMileageFromGps()" [disabled]="syncingMileage">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                  <path d="M3 3v5h5"/>
+                  <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                  <path d="M16 21h5v-5"/>
+                </svg>
+                {{ syncingMileage ? 'Synchronisation...' : 'Sync kilométrage GPS' }}
+              </button>
             </div>
 
             <!-- Dépenses -->
@@ -1714,6 +1730,36 @@ interface VehicleTrip {
       padding: 40px !important;
     }
 
+    .mileage-source {
+      font-size: 12px;
+      margin-left: 4px;
+    }
+
+    .btn-sync-mileage {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 12px;
+    }
+
+    .btn-sync-mileage:hover:not(:disabled) {
+      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+    }
+
+    .btn-sync-mileage:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
     /* Responsive */
     @media (max-width: 1200px) {
       .detail-content {
@@ -1812,6 +1858,9 @@ export class VehiclesComponent implements OnInit {
   searchQuery = '';
   filterStatus = '';
   filterType = '';
+  
+  // Sync mileage
+  syncingMileage = false;
 
   constructor(
     private router: Router,
@@ -1860,6 +1909,7 @@ export class VehiclesComponent implements OnInit {
             status: v.status as 'available' | 'in_use' | 'maintenance',
             hasGPS: v.hasGps,
             mileage: v.mileage,
+            fuelTankCapacity: v.fuelTankCapacity,
             assignedDriverId: v.assignedDriverId?.toString(),
             assignedDriverName: v.assignedDriverName,
             fuelLevel: Math.floor(Math.random() * 60) + 40,
@@ -2058,6 +2108,32 @@ export class VehiclesComponent implements OnInit {
         }
       });
     }
+  }
+
+  syncMileageFromGps() {
+    if (!this.selectedDetailVehicle || this.syncingMileage) return;
+    
+    this.syncingMileage = true;
+    const vehicleId = parseInt(this.selectedDetailVehicle.id);
+    
+    this.apiService.syncVehicleMileage(vehicleId).subscribe({
+      next: (result: any) => {
+        this.syncingMileage = false;
+        if (result.updated && this.selectedDetailVehicle) {
+          this.selectedDetailVehicle.mileage = result.newMileage;
+          // Update in the lists too
+          const vehicleInList = this.allVehicles.find(v => v.id === this.selectedDetailVehicle!.id);
+          if (vehicleInList) {
+            vehicleInList.mileage = result.newMileage;
+          }
+          this.cdr.detectChanges();
+        }
+      },
+      error: (err) => {
+        this.syncingMileage = false;
+        console.error('Failed to sync mileage:', err);
+      }
+    });
   }
 
   generateMockExpenses(): VehicleExpense[] {

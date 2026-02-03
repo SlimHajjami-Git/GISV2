@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using GisAPI.Domain.Common;
 
 namespace GisAPI.Domain.Entities;
@@ -30,6 +31,8 @@ public class Vehicle : TenantEntity
     
     public int? SpeedLimit { get; set; } = 120;
     public string? FuelType { get; set; } = "diesel";
+    [Column("fuel_tank_capacity")]
+    public int? FuelTankCapacity { get; set; } // Capacité réservoir en litres
 
     public Societe? Societe { get; set; }
     

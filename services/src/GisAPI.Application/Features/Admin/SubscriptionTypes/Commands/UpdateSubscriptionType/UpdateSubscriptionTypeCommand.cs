@@ -30,7 +30,35 @@ public record UpdateSubscriptionTypeCommand(
     bool? DrivingBehavior,
     int? HistoryRetentionDays,
     int? SortOrder,
-    bool? IsActive
+    bool? IsActive,
+    // Module permissions
+    bool? ModuleDashboard,
+    bool? ModuleMonitoring,
+    bool? ModuleVehicles,
+    bool? ModuleEmployees,
+    bool? ModuleGeofences,
+    bool? ModuleMaintenance,
+    bool? ModuleCosts,
+    bool? ModuleReports,
+    bool? ModuleSettings,
+    bool? ModuleUsers,
+    bool? ModuleSuppliers,
+    bool? ModuleDocuments,
+    bool? ModuleAccidents,
+    bool? ModuleFleetManagement,
+    // Report permissions
+    bool? ReportTrips,
+    bool? ReportFuel,
+    bool? ReportSpeed,
+    bool? ReportStops,
+    bool? ReportMileage,
+    bool? ReportCosts,
+    bool? ReportMaintenance,
+    bool? ReportDaily,
+    bool? ReportMonthly,
+    bool? ReportMileagePeriod,
+    bool? ReportSpeedInfraction,
+    bool? ReportDrivingBehavior
 ) : IRequest<SubscriptionTypeDto>;
 
 public class UpdateSubscriptionTypeCommandHandler : IRequestHandler<UpdateSubscriptionTypeCommand, SubscriptionTypeDto>
@@ -81,6 +109,36 @@ public class UpdateSubscriptionTypeCommandHandler : IRequestHandler<UpdateSubscr
         if (request.HistoryRetentionDays.HasValue) subscriptionType.HistoryRetentionDays = request.HistoryRetentionDays.Value;
         if (request.SortOrder.HasValue) subscriptionType.SortOrder = request.SortOrder.Value;
         if (request.IsActive.HasValue) subscriptionType.IsActive = request.IsActive.Value;
+        
+        // Module permissions
+        if (request.ModuleDashboard.HasValue) subscriptionType.ModuleDashboard = request.ModuleDashboard.Value;
+        if (request.ModuleMonitoring.HasValue) subscriptionType.ModuleMonitoring = request.ModuleMonitoring.Value;
+        if (request.ModuleVehicles.HasValue) subscriptionType.ModuleVehicles = request.ModuleVehicles.Value;
+        if (request.ModuleEmployees.HasValue) subscriptionType.ModuleEmployees = request.ModuleEmployees.Value;
+        if (request.ModuleGeofences.HasValue) subscriptionType.ModuleGeofences = request.ModuleGeofences.Value;
+        if (request.ModuleMaintenance.HasValue) subscriptionType.ModuleMaintenance = request.ModuleMaintenance.Value;
+        if (request.ModuleCosts.HasValue) subscriptionType.ModuleCosts = request.ModuleCosts.Value;
+        if (request.ModuleReports.HasValue) subscriptionType.ModuleReports = request.ModuleReports.Value;
+        if (request.ModuleSettings.HasValue) subscriptionType.ModuleSettings = request.ModuleSettings.Value;
+        if (request.ModuleUsers.HasValue) subscriptionType.ModuleUsers = request.ModuleUsers.Value;
+        if (request.ModuleSuppliers.HasValue) subscriptionType.ModuleSuppliers = request.ModuleSuppliers.Value;
+        if (request.ModuleDocuments.HasValue) subscriptionType.ModuleDocuments = request.ModuleDocuments.Value;
+        if (request.ModuleAccidents.HasValue) subscriptionType.ModuleAccidents = request.ModuleAccidents.Value;
+        if (request.ModuleFleetManagement.HasValue) subscriptionType.ModuleFleetManagement = request.ModuleFleetManagement.Value;
+        
+        // Report permissions
+        if (request.ReportTrips.HasValue) subscriptionType.ReportTrips = request.ReportTrips.Value;
+        if (request.ReportFuel.HasValue) subscriptionType.ReportFuel = request.ReportFuel.Value;
+        if (request.ReportSpeed.HasValue) subscriptionType.ReportSpeed = request.ReportSpeed.Value;
+        if (request.ReportStops.HasValue) subscriptionType.ReportStops = request.ReportStops.Value;
+        if (request.ReportMileage.HasValue) subscriptionType.ReportMileage = request.ReportMileage.Value;
+        if (request.ReportCosts.HasValue) subscriptionType.ReportCosts = request.ReportCosts.Value;
+        if (request.ReportMaintenance.HasValue) subscriptionType.ReportMaintenance = request.ReportMaintenance.Value;
+        if (request.ReportDaily.HasValue) subscriptionType.ReportDaily = request.ReportDaily.Value;
+        if (request.ReportMonthly.HasValue) subscriptionType.ReportMonthly = request.ReportMonthly.Value;
+        if (request.ReportMileagePeriod.HasValue) subscriptionType.ReportMileagePeriod = request.ReportMileagePeriod.Value;
+        if (request.ReportSpeedInfraction.HasValue) subscriptionType.ReportSpeedInfraction = request.ReportSpeedInfraction.Value;
+        if (request.ReportDrivingBehavior.HasValue) subscriptionType.ReportDrivingBehavior = request.ReportDrivingBehavior.Value;
 
         subscriptionType.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(cancellationToken);
@@ -113,6 +171,34 @@ public class UpdateSubscriptionTypeCommandHandler : IRequestHandler<UpdateSubscr
             HistoryRetentionDays = subscriptionType.HistoryRetentionDays,
             SortOrder = subscriptionType.SortOrder,
             IsActive = subscriptionType.IsActive,
+            // Module permissions
+            ModuleDashboard = subscriptionType.ModuleDashboard,
+            ModuleMonitoring = subscriptionType.ModuleMonitoring,
+            ModuleVehicles = subscriptionType.ModuleVehicles,
+            ModuleEmployees = subscriptionType.ModuleEmployees,
+            ModuleGeofences = subscriptionType.ModuleGeofences,
+            ModuleMaintenance = subscriptionType.ModuleMaintenance,
+            ModuleCosts = subscriptionType.ModuleCosts,
+            ModuleReports = subscriptionType.ModuleReports,
+            ModuleSettings = subscriptionType.ModuleSettings,
+            ModuleUsers = subscriptionType.ModuleUsers,
+            ModuleSuppliers = subscriptionType.ModuleSuppliers,
+            ModuleDocuments = subscriptionType.ModuleDocuments,
+            ModuleAccidents = subscriptionType.ModuleAccidents,
+            ModuleFleetManagement = subscriptionType.ModuleFleetManagement,
+            // Report permissions
+            ReportTrips = subscriptionType.ReportTrips,
+            ReportFuel = subscriptionType.ReportFuel,
+            ReportSpeed = subscriptionType.ReportSpeed,
+            ReportStops = subscriptionType.ReportStops,
+            ReportMileage = subscriptionType.ReportMileage,
+            ReportCosts = subscriptionType.ReportCosts,
+            ReportMaintenance = subscriptionType.ReportMaintenance,
+            ReportDaily = subscriptionType.ReportDaily,
+            ReportMonthly = subscriptionType.ReportMonthly,
+            ReportMileagePeriod = subscriptionType.ReportMileagePeriod,
+            ReportSpeedInfraction = subscriptionType.ReportSpeedInfraction,
+            ReportDrivingBehavior = subscriptionType.ReportDrivingBehavior,
             CreatedAt = subscriptionType.CreatedAt,
             UpdatedAt = subscriptionType.UpdatedAt
         };

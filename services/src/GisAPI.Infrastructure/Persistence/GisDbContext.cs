@@ -85,11 +85,15 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<MaintenanceTemplate> MaintenanceTemplates => Set<MaintenanceTemplate>();
     public DbSet<VehicleMaintenanceSchedule> VehicleMaintenanceSchedules => Set<VehicleMaintenanceSchedule>();
     public DbSet<MaintenanceLog> MaintenanceLogs => Set<MaintenanceLog>();
+    public DbSet<MaintenanceTemplatePart> MaintenanceTemplateParts => Set<MaintenanceTemplatePart>();
+    public DbSet<MaintenanceNotification> MaintenanceNotifications => Set<MaintenanceNotification>();
+    public DbSet<MaintenanceAlertSettings> MaintenanceAlertSettings => Set<MaintenanceAlertSettings>();
 
     // Fleet Management
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<FuelType> FuelTypes => Set<FuelType>();
     public DbSet<FuelPricing> FuelPricings => Set<FuelPricing>();
+    public DbSet<FuelEntry> FuelEntries => Set<FuelEntry>();
     public DbSet<SpeedLimitAlert> SpeedLimitAlerts => Set<SpeedLimitAlert>();
     
     // Brands & Models
@@ -98,6 +102,10 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<PartCategory> PartCategories => Set<PartCategory>();
     public DbSet<VehiclePart> VehicleParts => Set<VehiclePart>();
     public DbSet<PartPricing> PartPricings => Set<PartPricing>();
+    
+    // Repairs
+    public DbSet<Repair> Repairs => Set<Repair>();
+    public DbSet<RepairPart> RepairParts => Set<RepairPart>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

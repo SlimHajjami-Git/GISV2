@@ -38,6 +38,11 @@ public class MaintenanceRecordConfiguration : IEntityTypeConfiguration<Maintenan
         builder.HasOne(e => e.Vehicle)
             .WithMany(v => v.MaintenanceRecords)
             .HasForeignKey(e => e.VehicleId);
+
+        // Ignore unmapped properties (not yet in database)
+        builder.Ignore(e => e.SupplierId);
+        builder.Ignore(e => e.Supplier);
+        builder.Ignore(e => e.Societe);
     }
 }
 

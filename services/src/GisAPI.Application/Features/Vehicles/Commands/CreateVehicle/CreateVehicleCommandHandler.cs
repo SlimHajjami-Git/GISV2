@@ -31,6 +31,7 @@ public class CreateVehicleCommandHandler : IRequestHandler<CreateVehicleCommand,
             Year = request.Year,
             Color = request.Color,
             Mileage = request.Mileage,
+            FuelTankCapacity = request.FuelTankCapacity,
             CompanyId = companyId,
             Status = "available"
         };

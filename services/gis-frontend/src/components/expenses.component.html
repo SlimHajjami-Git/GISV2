@@ -1,0 +1,346 @@
+<app-layout>
+  <div class="expenses-page">
+    <!-- Barre de filtres -->
+    <div class="filter-bar">
+      <div class="search-wrapper">
+        <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input type="text" class="search-input" placeholder="Rechercher..." [(ngModel)]="searchQuery" (input)="filterExpenses()">
+      </div>
+      <select class="filter-select" [(ngModel)]="filterVehicleId" (change)="filterExpenses()">
+        <option value="">Tous les véhicules</option>
+        @for (vehicle of vehicles; track vehicle.id) {
+          <option [value]="vehicle.id">{{ vehicle.plate }} - {{ vehicle.name }}</option>
+        }
+      </select>
+      <select class="filter-select" [(ngModel)]="filterCategory" (change)="filterExpenses()">
+        <option value="">Toutes catégories</option>
+        <option value="carburant">⛽ Carburant</option>
+        <option value="entretien">🔧 Entretien</option>
+        <option value="reparation">🛠️ Réparation</option>
+        <option value="assurance">🛡️ Assurance</option>
+        <option value="peage">🛣️ Péage</option>
+        <option value="stationnement">🅿️ Stationnement</option>
+        <option value="amende">⚠️ Amende</option>
+      </select>
+      <input type="month" class="filter-month" [(ngModel)]="filterMonth" (change)="filterExpenses()">
+      <button class="btn-add" (click)="openAddForm()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Nouvelle dépense
+      </button>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-bar">
+      <div class="stat-item">
+        <div class="stat-icon total"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+        <div class="stat-content"><span class="stat-value">{{ getTotalAmount() | number:'1.2-2' }} TND</span><span class="stat-label">Total</span></div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-icon count"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg></div>
+        <div class="stat-content"><span class="stat-value">{{ filteredExpenses.length }}</span><span class="stat-label">Entrées</span></div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-icon vehicles"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon></svg></div>
+        <div class="stat-content"><span class="stat-value">{{ getUniqueVehiclesCount() }}</span><span class="stat-label">Véhicules</span></div>
+      </div>
+    </div>
+  <!-- Slide-in Panel -->
+  <div class="slide-panel-overlay" *ngIf="showAddForm" (click)="closeAddForm()"></div>
+  <div class="slide-panel" [class.open]="showAddForm">
+    <div class="slide-panel-header">
+      <h2>Nouvelle dépense</h2>
+      <button class="btn-close" (click)="closeAddForm()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="slide-panel-body">
+          <!-- Véhicule + Catégorie -->
+          <div class="form-row-inline">
+            <div class="form-group">
+              <label>Véhicule *</label>
+              <select [(ngModel)]="formVehicleId">
+                <option value="">Sélectionner...</option>
+                @for (v of vehicles; track v.id) {
+                  <option [value]="v.id">{{ v.plate }} - {{ v.name }}</option>
+                }
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Catégorie *</label>
+              <select [(ngModel)]="selectedCategory" (change)="onCategoryChange()">
+                <option value="">Sélectionner...</option>
+                <option value="carburant">⛽ Carburant</option>
+                <option value="entretien">🔧 Entretien</option>
+                <option value="reparation">🛠️ Réparation</option>
+                <option value="assurance">🛡️ Assurance</option>
+                <option value="peage">🛣️ Péage</option>
+                <option value="stationnement">🅿️ Stationnement</option>
+                <option value="amende">⚠️ Amende</option>
+                <option value="autre">📦 Autre</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Date *</label>
+              <input type="date" [(ngModel)]="formDate">
+            </div>
+          </div>
+
+          <!-- CARBURANT -->
+          <div class="category-form" *ngIf="selectedCategory === 'carburant'">
+            <div class="form-section-title">⛽ Détails carburant</div>
+            <div class="form-row-inline">
+              <div class="form-group">
+                <label>Type *</label>
+                <select [(ngModel)]="formFuelTypeId" (change)="onFuelTypeChange()">
+                  @for (ft of fuelTypes; track ft.id) {
+                    <option [value]="ft.id">{{ ft.name }}</option>
+                  }
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Volume (L) *</label>
+                <input type="number" [(ngModel)]="formVolume" min="0" step="0.1">
+              </div>
+              <div class="form-group">
+                <label>Prix/L *</label>
+                <input type="number" [(ngModel)]="formPricePerLiter" min="0" step="0.001">
+              </div>
+            </div>
+            <div class="form-row-inline">
+              <div class="form-group">
+                <label>Station</label>
+                <input type="text" [(ngModel)]="formStation" placeholder="Nom de la station">
+              </div>
+              <div class="form-group">
+                <label>Kilométrage</label>
+                <input type="number" [(ngModel)]="formOdometerKm" placeholder="Optionnel">
+              </div>
+            </div>
+            <div class="form-total">Total: <strong>{{ calculateFuelTotal() | number:'1.2-2' }} TND</strong></div>
+          </div>
+
+          <!-- ENTRETIEN -->
+          <div class="category-form" *ngIf="selectedCategory === 'entretien'">
+            <div class="form-section-title">🔧 Détails entretien</div>
+            <div class="form-row">
+              <label>Modèle d'entretien</label>
+              <select [(ngModel)]="formTemplateId" *ngIf="!showCreateTemplate">
+                <option value="">Sélectionner un modèle...</option>
+                @for (t of maintenanceTemplates; track t.id) {
+                  <option [value]="t.id">{{ t.name }} ({{ t.category }})</option>
+                }
+              </select>
+              <button class="btn-link" (click)="showCreateTemplate = !showCreateTemplate">
+                {{ showCreateTemplate ? 'Choisir existant' : '+ Créer nouveau modèle' }}
+              </button>
+            </div>
+            <div class="new-template-form" *ngIf="showCreateTemplate">
+              <input type="text" [(ngModel)]="newTemplateName" placeholder="Nom du modèle (ex: Vidange + Filtre)">
+              <select [(ngModel)]="newTemplateCategory">
+                <option value="vidange">Vidange</option>
+                <option value="freins">Freins</option>
+                <option value="pneus">Pneus</option>
+                <option value="filtres">Filtres</option>
+                <option value="revision">Révision</option>
+                <option value="autre">Autre</option>
+              </select>
+            </div>
+            <div class="form-row-inline">
+              <div class="form-group">
+                <label>Main d'œuvre</label>
+                <input type="number" [(ngModel)]="formLaborCost" min="0" step="0.01">
+              </div>
+              <div class="form-group">
+                <label>Pièces</label>
+                <input type="number" [(ngModel)]="formPartsCost" min="0" step="0.01">
+              </div>
+              <div class="form-group">
+                <label>Kilométrage</label>
+                <input type="number" [(ngModel)]="formMileageAtService">
+              </div>
+            </div>
+            <div class="form-row">
+              <label>Fournisseur/Garage</label>
+              <select [(ngModel)]="formSupplierId">
+                <option value="">Aucun</option>
+                @for (s of suppliers; track s.id) {
+                  <option [value]="s.id">{{ s.name }}</option>
+                }
+              </select>
+            </div>
+            <div class="form-total">Total: <strong>{{ calculateMaintenanceTotal() | number:'1.2-2' }} TND</strong></div>
+          </div>
+
+          <!-- REPARATION -->
+          <div class="category-form" *ngIf="selectedCategory === 'reparation'">
+            <div class="form-section-title">🛠️ Détails réparation</div>
+            <div class="form-row">
+              <label>Description *</label>
+              <input type="text" [(ngModel)]="formDescription" placeholder="Ex: Remplacement radiateur">
+            </div>
+            <div class="form-row-inline">
+              <div class="form-group">
+                <label>Main d'œuvre</label>
+                <input type="number" [(ngModel)]="formLaborCost" min="0" step="0.01">
+              </div>
+              <div class="form-group">
+                <label>N° Facture</label>
+                <input type="text" [(ngModel)]="formRepairReference">
+              </div>
+              <div class="form-group">
+                <label>Fournisseur</label>
+                <select [(ngModel)]="formSupplierId">
+                  <option value="">Aucun</option>
+                  @for (s of suppliers; track s.id) {
+                    <option [value]="s.id">{{ s.name }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+            <div class="parts-section">
+              <div class="parts-header"><span>Pièces détachées</span><button class="btn-add-line" (click)="addRepairPart()">+ Ajouter</button></div>
+              @for (part of repairParts; track $index; let i = $index) {
+                <div class="part-line">
+                  <div class="part-name-wrapper">
+                    <input type="text" [(ngModel)]="part.partName" placeholder="Nom pièce" 
+                           (input)="onPartNameInput(i)" (blur)="hidePartSuggestions()" autocomplete="off">
+                    <div class="part-suggestions" *ngIf="activePartIndex === i && partSuggestions.length > 0">
+                      @for (suggestion of partSuggestions; track suggestion.id) {
+                        <div class="suggestion-item" (mousedown)="selectPartSuggestion(suggestion)">
+                          {{ suggestion.name }}
+                          <span class="suggestion-ref" *ngIf="suggestion.partNumber">{{ suggestion.partNumber }}</span>
+                        </div>
+                      }
+                    </div>
+                  </div>
+                  <input type="text" [(ngModel)]="part.partReference" placeholder="Réf" class="small">
+                  <input type="number" [(ngModel)]="part.quantity" min="1" class="tiny">
+                  <input type="number" [(ngModel)]="part.unitPrice" min="0" step="0.01" placeholder="Prix">
+                  <span class="part-subtotal">{{ part.quantity * part.unitPrice | number:'1.2-2' }}</span>
+                  <button class="btn-remove" (click)="removeRepairPart(i)" *ngIf="repairParts.length > 1">×</button>
+                </div>
+              }
+            </div>
+            <div class="form-total">Total: <strong>{{ calculateRepairTotal() | number:'1.2-2' }} TND</strong></div>
+          </div>
+
+          <!-- ASSURANCE -->
+          <div class="category-form" *ngIf="selectedCategory === 'assurance'">
+            <div class="form-section-title">🛡️ Paiement assurance</div>
+            <div class="form-row">
+              <label>Assureur *</label>
+              <select [(ngModel)]="formInsuranceProviderId">
+                <option value="">Sélectionner un assureur...</option>
+                @for (ins of insuranceProviders; track ins.id) {
+                  <option [value]="ins.id">{{ ins.name }}</option>
+                }
+              </select>
+              <button class="btn-link" (click)="showCreateInsurance = !showCreateInsurance">
+                {{ showCreateInsurance ? '✕ Annuler' : '+ Nouvel assureur' }}
+              </button>
+            </div>
+            <div class="new-template-form" *ngIf="showCreateInsurance">
+              <input type="text" [(ngModel)]="newInsuranceName" placeholder="Nom de l'assureur (ex: STAR, GAT...)">
+              <input type="text" [(ngModel)]="newInsurancePhone" placeholder="Téléphone">
+              <button class="btn-add-line" (click)="createInsuranceProvider()">Créer</button>
+            </div>
+            <div class="form-row">
+              <label>Contrat existant</label>
+              <select [(ngModel)]="formContractId">
+                <option value="">Nouveau paiement (sans contrat)</option>
+                @for (c of vehicleContracts; track c.id) {
+                  <option [value]="c.id">{{ c.contractNumber }} - {{ c.provider }} ({{ c.endDate | date:'dd/MM/yyyy' }})</option>
+                }
+              </select>
+            </div>
+            <div class="form-row-inline">
+              <div class="form-group flex-2">
+                <label>Description</label>
+                <input type="text" [(ngModel)]="formDescription" placeholder="Ex: Prime mensuelle, Franchise...">
+              </div>
+              <div class="form-group">
+                <label>Montant *</label>
+                <input type="number" [(ngModel)]="formAmount" min="0" step="0.01">
+              </div>
+            </div>
+          </div>
+
+          <!-- GENERIQUE (péage, stationnement, amende, autre) -->
+          <div class="category-form" *ngIf="selectedCategory && selectedCategory !== 'carburant' && selectedCategory !== 'entretien' && selectedCategory !== 'reparation' && selectedCategory !== 'assurance'">
+            <div class="form-section-title">{{ getCategoryIcon(selectedCategory) }} {{ getCategoryLabel(selectedCategory) }}</div>
+            <div class="form-row-inline">
+              <div class="form-group flex-2">
+                <label>Description</label>
+                <input type="text" [(ngModel)]="formDescription" placeholder="Description">
+              </div>
+              <div class="form-group">
+                <label>Montant *</label>
+                <input type="number" [(ngModel)]="formAmount" min="0" step="0.01">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row" *ngIf="selectedCategory === 'carburant' || selectedCategory === 'entretien'">
+            <label>Notes</label>
+            <textarea [(ngModel)]="formDescription" placeholder="Notes supplémentaires..."></textarea>
+          </div>
+    </div>
+    <div class="slide-panel-footer">
+      <button class="btn-cancel" (click)="closeAddForm()">Annuler</button>
+      <button class="btn-save" (click)="saveExpense()" [disabled]="!isFormValid()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+        </svg>
+        Enregistrer
+      </button>
+    </div>
+  </div>
+
+  <!-- Tableau -->
+  <div class="expenses-table-container">
+    <table class="expenses-table">
+      <thead>
+        <tr><th>Date</th><th>Véhicule</th><th>Catégorie</th><th>Description</th><th>Montant</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        @for (e of filteredExpenses; track e.id) {
+          <tr>
+            <td>{{ e.date | date:'dd/MM/yyyy' }}</td>
+            <td><span class="plate-badge">{{ e.vehiclePlate }}</span></td>
+            <td><span class="category-badge">{{ getCategoryIcon(e.category) }} {{ getCategoryLabel(e.category) }}</span></td>
+            <td class="label-cell">{{ e.label }}</td>
+            <td class="total-cell">{{ e.totalAmount | number:'1.2-2' }} TND</td>
+            <td class="actions-cell">
+              <button class="btn-action delete" (click)="confirmDeleteExpense(e)" title="Supprimer">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            </td>
+          </tr>
+        }
+        @if (filteredExpenses.length === 0) {
+          <tr><td colspan="6" class="empty-row"><span>Aucune dépense</span></td></tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Modal suppression -->
+  <div class="modal-overlay" *ngIf="showDeleteConfirm" (click)="cancelDelete()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <h3>Confirmer la suppression ?</h3>
+      <p>Cette action est irréversible.</p>
+      <div class="modal-actions">
+        <button class="btn-cancel" (click)="cancelDelete()">Annuler</button>
+        <button class="btn-delete" (click)="deleteExpense()">Supprimer</button>
+      </div>
+    </div>
+  </div>
+  </div>
+</app-layout>

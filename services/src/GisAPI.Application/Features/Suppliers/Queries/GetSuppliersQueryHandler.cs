@@ -17,7 +17,6 @@ public class GetSuppliersQueryHandler : IRequestHandler<GetSuppliersQuery, Pagin
     public async Task<PaginatedList<SupplierDto>> Handle(GetSuppliersQuery request, CancellationToken cancellationToken)
     {
         var query = _context.Suppliers
-            .Include(s => s.Services)
             .AsQueryable();
 
         // Apply filters
@@ -58,7 +57,7 @@ public class GetSuppliersQueryHandler : IRequestHandler<GetSuppliersQuery, Pagin
                 s.Type,
                 s.Address,
                 s.City,
-                s.PostalCode,
+                null,
                 s.ContactName,
                 s.Phone,
                 s.Email,
@@ -70,7 +69,7 @@ public class GetSuppliersQueryHandler : IRequestHandler<GetSuppliersQuery, Pagin
                 s.Rating,
                 s.Notes,
                 s.IsActive,
-                s.Services.Select(svc => svc.ServiceCode).ToList(),
+                new List<string>(),
                 s.CreatedAt,
                 s.UpdatedAt
             ))

@@ -33,6 +33,12 @@ public class VehicleCostConfiguration : IEntityTypeConfiguration<VehicleCost>
         builder.HasOne(e => e.Vehicle)
             .WithMany(v => v.Costs)
             .HasForeignKey(e => e.VehicleId);
+
+        // Ignore unmapped properties (not yet in database)
+        builder.Ignore(e => e.ExpiryDate);
+        builder.Ignore(e => e.DocumentNumber);
+        builder.Ignore(e => e.DocumentUrl);
+        builder.Ignore(e => e.Societe);
     }
 }
 

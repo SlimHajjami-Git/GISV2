@@ -1,0 +1,921 @@
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { AppLayoutComponent } from './shared/app-layout.component';
+import { ApiService } from '../services/api.service';
+import { trigger, transition, style, animate } from '@angular/animations';
+
+interface RepairPart {
+  id?: number;
+  partName: string;
+  partReference: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  notes: string;
+}
+
+interface Repair {
+  id?: number;
+  vehicleId: number;
+  vehicleName: string;
+  vehiclePlate: string;
+  supplierId?: number;
+  supplierName?: string;
+  reference: string;
+  description: string;
+  repairDate: string;
+  mileageAtRepair?: number;
+  laborCost: number;
+  partsCost: number;
+  totalCost: number;
+  status: string;
+  invoiceNumber: string;
+  notes: string;
+  parts: RepairPart[];
+}
+
+interface Vehicle {
+  id: number;
+  name: string;
+  plateNumber: string;
+  mileage: number;
+}
+
+@Component({
+  selector: 'app-repairs',
+  standalone: true,
+  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  animations: [
+    trigger('fadeIn', [
+      transition(':enter', [
+        style({ opacity: 0 }),
+        animate('200ms ease-out', style({ opacity: 1 }))
+      ])
+    ]),
+    trigger('slideIn', [
+      transition(':enter', [
+        style({ opacity: 0, transform: 'translateX(20px)' }),
+        animate('250ms ease-out', style({ opacity: 1, transform: 'translateX(0)' }))
+      ])
+    ])
+  ],
+  template: `
+    <app-layout>
+      <div class="repairs-page">
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+          <div class="search-wrapper">
+            <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            <input type="text" class="search-input" placeholder="Rechercher une reparation..." [(ngModel)]="searchQuery" (input)="filterRepairs()">
+          </div>
+          <select class="filter-select" [(ngModel)]="filterVehicle" (change)="filterRepairs()">
+            <option value="">Tous les vehicules</option>
+            <option *ngFor="let v of vehicles" [value]="v.id">{{ v.name }} - {{ v.plateNumber }}</option>
+          </select>
+          <select class="filter-select" [(ngModel)]="filterStatus" (change)="filterRepairs()">
+            <option value="">Tous les statuts</option>
+            <option value="pending">En attente</option>
+            <option value="in_progress">En cours</option>
+            <option value="completed">Termine</option>
+          </select>
+          <button class="btn-add" (click)="openAddRepair()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Nouvelle reparation
+          </button>
+        </div>
+
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+          <div class="stat-item">
+            <div class="stat-icon info">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+              </svg>
+            </div>
+            <div class="stat-content">
+              <span class="stat-value">{{ stats.totalRepairs }}</span>
+              <span class="stat-label">Total reparations</span>
+            </div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-icon warning">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </div>
+            <div class="stat-content">
+              <span class="stat-value">{{ stats.pendingRepairs }}</span>
+              <span class="stat-label">En attente</span>
+            </div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-icon active">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+              </svg>
+            </div>
+            <div class="stat-content">
+              <span class="stat-value">{{ stats.completedRepairs }}</span>
+              <span class="stat-label">Terminees</span>
+            </div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-icon cost">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+              </svg>
+            </div>
+            <div class="stat-content">
+              <span class="stat-value">{{ stats.totalCost | number:'1.0-0' }} DT</span>
+              <span class="stat-label">Cout total</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Repairs List -->
+        <div class="list-container">
+          <div class="repairs-list" @fadeIn>
+            <div class="repair-card" *ngFor="let repair of filteredRepairs" @slideIn>
+              <div class="card-top" [class]="repair.status">
+                <div class="card-top-left">
+                  <div class="repair-icon">🔧</div>
+                  <div class="card-top-info">
+                    <span class="repair-ref">{{ repair.reference }}</span>
+                    <span class="repair-date">{{ repair.repairDate | date:'dd/MM/yyyy' }}</span>
+                  </div>
+                </div>
+                <div class="card-top-right">
+                  <span class="status-badge" [class]="repair.status">{{ getStatusLabel(repair.status) }}</span>
+                </div>
+              </div>
+
+              <div class="card-content">
+                <div class="vehicle-info">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/>
+                    <path d="M5 17h-2v-6l2 -5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0h-6m-6 -6h15m-6 0v-5"/>
+                  </svg>
+                  <span class="vehicle-name">{{ repair.vehicleName }}</span>
+                  <span class="vehicle-plate">{{ repair.vehiclePlate }}</span>
+                </div>
+
+                <p class="repair-description" *ngIf="repair.description">{{ repair.description }}</p>
+
+                <div class="cost-breakdown">
+                  <div class="cost-item">
+                    <span class="cost-label">Pieces</span>
+                    <span class="cost-value">{{ repair.partsCost | number:'1.2-2' }} DT</span>
+                  </div>
+                  <div class="cost-item">
+                    <span class="cost-label">Main d'oeuvre</span>
+                    <span class="cost-value">{{ repair.laborCost | number:'1.2-2' }} DT</span>
+                  </div>
+                  <div class="cost-item total">
+                    <span class="cost-label">Total</span>
+                    <span class="cost-value">{{ repair.totalCost | number:'1.2-2' }} DT</span>
+                  </div>
+                </div>
+
+                <div class="parts-summary" *ngIf="repair.parts.length > 0">
+                  <span class="parts-count">{{ repair.parts.length }} piece(s)</span>
+                </div>
+              </div>
+
+              <div class="card-footer">
+                <button class="btn-action view" (click)="viewRepair(repair)" title="Details">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
+                <button class="btn-action edit" (click)="editRepair(repair)" title="Modifier">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+                <button class="btn-action delete" (click)="confirmDelete(repair)" title="Supprimer">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="empty-state" *ngIf="filteredRepairs.length === 0">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+              </svg>
+              <h3>Aucune reparation trouvee</h3>
+              <p>Modifiez vos filtres ou ajoutez une nouvelle reparation</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add/Edit Repair Panel -->
+      <div class="overlay" *ngIf="isPanelOpen" @fadeIn (click)="closePanel()">
+        <div class="panel" @slideIn (click)="$event.stopPropagation()">
+          <div class="panel-header">
+            <h2>{{ editingRepair ? 'Modifier la reparation' : 'Nouvelle reparation' }}</h2>
+            <button class="btn-close" (click)="closePanel()">×</button>
+          </div>
+
+          <div class="panel-body">
+            <!-- Vehicle Selection -->
+            <div class="form-section">
+              <h4>Vehicule</h4>
+              <div class="vehicle-select-wrapper">
+                <select class="form-control" [(ngModel)]="form.vehicleId" (change)="onVehicleChange()">
+                  <option value="">Selectionnez un vehicule</option>
+                  <option *ngFor="let v of vehicles" [value]="v.id">{{ v.name }} - {{ v.plateNumber }}</option>
+                </select>
+              </div>
+              <div class="vehicle-info-box" *ngIf="selectedVehicle">
+                <span class="info-label">Kilometrage actuel:</span>
+                <span class="info-value">{{ selectedVehicle.mileage | number }} km</span>
+              </div>
+            </div>
+
+            <!-- Repair Details -->
+            <div class="form-section">
+              <h4>Details de la reparation</h4>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Date *</label>
+                  <input type="date" class="form-control" [(ngModel)]="form.repairDate">
+                </div>
+                <div class="form-group">
+                  <label>Kilometrage</label>
+                  <input type="number" class="form-control" [(ngModel)]="form.mileageAtRepair" placeholder="km">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Description</label>
+                <textarea class="form-control" [(ngModel)]="form.description" rows="2" placeholder="Decrivez la reparation..."></textarea>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>N° Facture</label>
+                  <input type="text" class="form-control" [(ngModel)]="form.invoiceNumber" placeholder="FAC-XXXX">
+                </div>
+                <div class="form-group" *ngIf="editingRepair">
+                  <label>Statut</label>
+                  <select class="form-control" [(ngModel)]="form.status">
+                    <option value="pending">En attente</option>
+                    <option value="in_progress">En cours</option>
+                    <option value="completed">Termine</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Parts Section -->
+            <div class="form-section">
+              <div class="section-header">
+                <h4>Pieces detachees</h4>
+                <button class="btn-add-part" (click)="addPart()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                  Ajouter
+                </button>
+              </div>
+
+              <div class="parts-table" *ngIf="form.parts.length > 0">
+                <div class="parts-header">
+                  <span class="col-name">Designation</span>
+                  <span class="col-ref">Reference</span>
+                  <span class="col-qty">Qte</span>
+                  <span class="col-price">Prix unit.</span>
+                  <span class="col-subtotal">Sous-total</span>
+                  <span class="col-action"></span>
+                </div>
+                <div class="parts-row" *ngFor="let part of form.parts; let i = index">
+                  <input class="col-name" [(ngModel)]="part.partName" placeholder="Nom de la piece">
+                  <input class="col-ref" [(ngModel)]="part.partReference" placeholder="Ref">
+                  <input class="col-qty" type="number" [(ngModel)]="part.quantity" min="1" (change)="calculatePartSubtotal(part)">
+                  <input class="col-price" type="number" [(ngModel)]="part.unitPrice" min="0" step="0.01" (change)="calculatePartSubtotal(part)">
+                  <span class="col-subtotal">{{ part.subtotal | number:'1.2-2' }} DT</span>
+                  <button class="col-action btn-remove" (click)="removePart(i)">×</button>
+                </div>
+              </div>
+
+              <div class="empty-parts" *ngIf="form.parts.length === 0">
+                <p>Aucune piece ajoutee</p>
+              </div>
+            </div>
+
+            <!-- Labor Cost -->
+            <div class="form-section">
+              <h4>Main d'oeuvre</h4>
+              <div class="form-group">
+                <label>Cout main d'oeuvre (DT)</label>
+                <input type="number" class="form-control" [(ngModel)]="form.laborCost" min="0" step="0.01" placeholder="0.00">
+              </div>
+            </div>
+
+            <!-- Cost Summary -->
+            <div class="cost-summary">
+              <div class="summary-row">
+                <span>Total pieces</span>
+                <span>{{ getPartsCost() | number:'1.2-2' }} DT</span>
+              </div>
+              <div class="summary-row">
+                <span>Main d'oeuvre</span>
+                <span>{{ form.laborCost | number:'1.2-2' }} DT</span>
+              </div>
+              <div class="summary-row total">
+                <span>TOTAL</span>
+                <span>{{ getTotalCost() | number:'1.2-2' }} DT</span>
+              </div>
+            </div>
+
+            <!-- Notes -->
+            <div class="form-section">
+              <div class="form-group">
+                <label>Notes</label>
+                <textarea class="form-control" [(ngModel)]="form.notes" rows="2" placeholder="Notes supplementaires..."></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-footer">
+            <button class="btn-cancel" (click)="closePanel()">Annuler</button>
+            <button class="btn-save" (click)="saveRepair()" [disabled]="!isFormValid()">
+              {{ editingRepair ? 'Mettre a jour' : 'Enregistrer' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- View Details Panel -->
+      <div class="overlay" *ngIf="viewingRepair" @fadeIn (click)="closeView()">
+        <div class="panel" @slideIn (click)="$event.stopPropagation()">
+          <div class="panel-header view">
+            <h2>Details de la reparation</h2>
+            <button class="btn-close" (click)="closeView()">×</button>
+          </div>
+
+          <div class="panel-body">
+            <div class="detail-header">
+              <div class="detail-ref">{{ viewingRepair.reference }}</div>
+              <span class="status-badge large" [class]="viewingRepair.status">{{ getStatusLabel(viewingRepair.status) }}</span>
+            </div>
+
+            <div class="detail-section">
+              <h4>Vehicule</h4>
+              <div class="detail-row">
+                <span class="detail-label">Vehicule</span>
+                <span class="detail-value">{{ viewingRepair.vehicleName }} - {{ viewingRepair.vehiclePlate }}</span>
+              </div>
+              <div class="detail-row" *ngIf="viewingRepair.mileageAtRepair">
+                <span class="detail-label">Kilometrage</span>
+                <span class="detail-value">{{ viewingRepair.mileageAtRepair | number }} km</span>
+              </div>
+            </div>
+
+            <div class="detail-section">
+              <h4>Reparation</h4>
+              <div class="detail-row">
+                <span class="detail-label">Date</span>
+                <span class="detail-value">{{ viewingRepair.repairDate | date:'dd/MM/yyyy' }}</span>
+              </div>
+              <div class="detail-row" *ngIf="viewingRepair.description">
+                <span class="detail-label">Description</span>
+                <span class="detail-value">{{ viewingRepair.description }}</span>
+              </div>
+              <div class="detail-row" *ngIf="viewingRepair.invoiceNumber">
+                <span class="detail-label">N° Facture</span>
+                <span class="detail-value">{{ viewingRepair.invoiceNumber }}</span>
+              </div>
+            </div>
+
+            <div class="detail-section" *ngIf="viewingRepair.parts.length > 0">
+              <h4>Pieces ({{ viewingRepair.parts.length }})</h4>
+              <div class="detail-parts-table">
+                <div class="detail-parts-row header">
+                  <span>Designation</span>
+                  <span>Qte</span>
+                  <span>Prix unit.</span>
+                  <span>Sous-total</span>
+                </div>
+                <div class="detail-parts-row" *ngFor="let part of viewingRepair.parts">
+                  <span>{{ part.partName }}<small *ngIf="part.partReference"> ({{ part.partReference }})</small></span>
+                  <span>{{ part.quantity }}</span>
+                  <span>{{ part.unitPrice | number:'1.2-2' }} DT</span>
+                  <span>{{ part.subtotal | number:'1.2-2' }} DT</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="detail-costs">
+              <div class="detail-cost-row">
+                <span>Total pieces</span>
+                <span>{{ viewingRepair.partsCost | number:'1.2-2' }} DT</span>
+              </div>
+              <div class="detail-cost-row">
+                <span>Main d'oeuvre</span>
+                <span>{{ viewingRepair.laborCost | number:'1.2-2' }} DT</span>
+              </div>
+              <div class="detail-cost-row total">
+                <span>TOTAL</span>
+                <span>{{ viewingRepair.totalCost | number:'1.2-2' }} DT</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-footer">
+            <button class="btn-cancel" (click)="closeView()">Fermer</button>
+            <button class="btn-edit" (click)="editFromView()">Modifier</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Delete Confirmation Modal -->
+      <div class="modal-overlay" *ngIf="showDeleteConfirm" (click)="cancelDelete()">
+        <div class="modal-content" (click)="$event.stopPropagation()">
+          <div class="modal-header">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <h3>Confirmer la suppression</h3>
+          </div>
+          <p>Etes-vous sur de vouloir supprimer la reparation <strong>{{ repairToDelete?.reference }}</strong> ?</p>
+          <p class="warning-text">Cette action est irreversible.</p>
+          <div class="modal-actions">
+            <button class="btn-cancel" (click)="cancelDelete()">Annuler</button>
+            <button class="btn-delete" (click)="deleteRepair()">Supprimer</button>
+          </div>
+        </div>
+      </div>
+    </app-layout>
+  `,
+  styles: [`
+    .repairs-page { flex:1; background:#f1f5f9; display:flex; flex-direction:column; min-height:calc(100vh - 42px); }
+
+    .filter-bar { display:flex; align-items:center; gap:12px; padding:10px 14px; background:white; border-bottom:1px solid #e2e8f0; }
+    .search-wrapper { position:relative; flex:1; max-width:300px; }
+    .search-icon { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#94a3b8; }
+    .search-input { width:100%; padding:6px 10px 6px 32px; font-size:12px; border:1px solid #e2e8f0; border-radius:3px; }
+    .search-input:focus { outline:none; border-color:#3b82f6; }
+    .filter-select { padding:6px 10px; background:white; border:1px solid #e2e8f0; border-radius:3px; font-size:12px; cursor:pointer; }
+    .filter-select:focus { outline:none; border-color:#3b82f6; }
+    .btn-add { display:flex; align-items:center; gap:6px; padding:6px 12px; background:#3b82f6; color:white; border:none; border-radius:3px; font-size:12px; font-weight:500; cursor:pointer; margin-left:auto; }
+    .btn-add:hover { background:#2563eb; }
+
+    .stats-bar { display:flex; gap:16px; padding:12px 14px; background:white; border-bottom:1px solid #e2e8f0; }
+    .stat-item { display:flex; align-items:center; gap:10px; padding:8px 14px; background:#f8fafc; border-radius:6px; }
+    .stat-icon { width:32px; height:32px; border-radius:6px; display:flex; align-items:center; justify-content:center; }
+    .stat-icon.active { background:#dcfce7; color:#16a34a; }
+    .stat-icon.warning { background:#fef3c7; color:#d97706; }
+    .stat-icon.info { background:#dbeafe; color:#2563eb; }
+    .stat-icon.cost { background:#f3e8ff; color:#7c3aed; }
+    .stat-content { display:flex; flex-direction:column; }
+    .stat-value { font-size:16px; font-weight:600; color:#1e293b; }
+    .stat-label { font-size:11px; color:#64748b; }
+
+    .list-container { flex:1; padding:12px; overflow-y:auto; }
+    .repairs-list { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:16px; }
+
+    .repair-card { background:white; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.08); border:1px solid #e2e8f0; transition:all .2s; }
+    .repair-card:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,0.1); }
+
+    .card-top { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border-bottom:1px solid #e2e8f0; }
+    .card-top.completed { background:linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-left:3px solid #22c55e; }
+    .card-top.pending { background:linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border-left:3px solid #f59e0b; }
+    .card-top.in_progress { background:linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-left:3px solid #3b82f6; }
+    .card-top-left { display:flex; align-items:center; gap:10px; }
+    .repair-icon { font-size:24px; }
+    .card-top-info { display:flex; flex-direction:column; }
+    .repair-ref { font-size:12px; font-weight:600; color:#1e293b; }
+    .repair-date { font-size:11px; color:#64748b; }
+
+    .status-badge { padding:4px 8px; border-radius:4px; font-size:10px; font-weight:600; }
+    .status-badge.completed { background:#dcfce7; color:#16a34a; }
+    .status-badge.pending { background:#fef3c7; color:#d97706; }
+    .status-badge.in_progress { background:#dbeafe; color:#2563eb; }
+    .status-badge.large { font-size:12px; padding:6px 12px; }
+
+    .card-content { padding:14px; }
+    .vehicle-info { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+    .vehicle-name { font-size:13px; font-weight:500; color:#1e293b; }
+    .vehicle-plate { font-size:11px; font-family:monospace; background:#e2e8f0; padding:2px 6px; border-radius:4px; color:#64748b; }
+    .repair-description { font-size:12px; color:#64748b; margin:0 0 12px; line-height:1.4; }
+
+    .cost-breakdown { display:flex; flex-direction:column; gap:4px; padding:10px; background:#f8fafc; border-radius:6px; margin-bottom:10px; }
+    .cost-item { display:flex; justify-content:space-between; font-size:12px; }
+    .cost-label { color:#64748b; }
+    .cost-value { font-weight:500; color:#1e293b; }
+    .cost-item.total { padding-top:8px; border-top:1px solid #e2e8f0; margin-top:4px; }
+    .cost-item.total .cost-label { font-weight:600; color:#1e293b; }
+    .cost-item.total .cost-value { font-weight:700; color:#16a34a; font-size:14px; }
+
+    .parts-summary { font-size:11px; color:#64748b; }
+    .parts-count { background:#e2e8f0; padding:2px 6px; border-radius:4px; }
+
+    .card-footer { display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid #e2e8f0; background:#f8fafc; }
+    .btn-action { width:32px; height:32px; border:1px solid #e2e8f0; border-radius:6px; background:white; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .2s; }
+    .btn-action.view { color:#2563eb; }
+    .btn-action.view:hover { background:#dbeafe; border-color:#2563eb; }
+    .btn-action.edit { color:#f59e0b; }
+    .btn-action.edit:hover { background:#fef3c7; border-color:#f59e0b; }
+    .btn-action.delete { color:#dc2626; }
+    .btn-action.delete:hover { background:#fee2e2; border-color:#dc2626; }
+
+    .empty-state { grid-column:1/-1; text-align:center; padding:60px 20px; color:#64748b; }
+    .empty-state svg { margin-bottom:16px; opacity:.5; }
+    .empty-state h3 { margin:0 0 8px; color:#1e293b; }
+    .empty-state p { margin:0; font-size:13px; }
+
+    .overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); display:flex; justify-content:flex-end; z-index:1000; }
+    .panel { width:560px; max-width:100%; background:white; display:flex; flex-direction:column; box-shadow:-4px 0 20px rgba(0,0,0,0.15); }
+    .panel-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; background:#1e3a5f; color:white; }
+    .panel-header.view { background:#2563eb; }
+    .panel-header h2 { margin:0; font-size:16px; font-weight:600; }
+    .btn-close { width:32px; height:32px; border:none; background:rgba(255,255,255,0.1); color:white; border-radius:6px; font-size:20px; cursor:pointer; }
+    .btn-close:hover { background:rgba(255,255,255,0.2); }
+
+    .panel-body { flex:1; overflow-y:auto; padding:20px; }
+    .form-section { margin-bottom:20px; }
+    .form-section h4 { margin:0 0 12px; font-size:13px; font-weight:600; color:#1e293b; }
+    .section-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+    .section-header h4 { margin:0; }
+    .form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .form-group { margin-bottom:12px; }
+    .form-group label { display:block; font-size:11px; font-weight:500; color:#64748b; margin-bottom:4px; }
+    .form-control { width:100%; padding:8px 10px; border:1px solid #e2e8f0; border-radius:6px; font-size:13px; }
+    .form-control:focus { outline:none; border-color:#3b82f6; }
+
+    .vehicle-select-wrapper { margin-bottom:8px; }
+    .vehicle-info-box { display:flex; gap:8px; padding:8px 12px; background:#f8fafc; border-radius:6px; font-size:12px; }
+    .info-label { color:#64748b; }
+    .info-value { font-weight:600; color:#1e293b; }
+
+    .btn-add-part { display:flex; align-items:center; gap:4px; padding:6px 10px; background:#f0fdf4; color:#16a34a; border:1px solid #86efac; border-radius:4px; font-size:11px; cursor:pointer; }
+    .btn-add-part:hover { background:#dcfce7; }
+
+    .parts-table { border:1px solid #e2e8f0; border-radius:6px; overflow:hidden; }
+    .parts-header, .parts-row { display:grid; grid-template-columns:1fr 80px 50px 80px 90px 36px; gap:8px; padding:8px 10px; align-items:center; }
+    .parts-header { background:#f8fafc; font-size:10px; font-weight:600; color:#64748b; border-bottom:1px solid #e2e8f0; }
+    .parts-row { border-bottom:1px solid #f1f5f9; }
+    .parts-row:last-child { border-bottom:none; }
+    .parts-row input { padding:6px 8px; border:1px solid #e2e8f0; border-radius:4px; font-size:12px; }
+    .parts-row input:focus { outline:none; border-color:#3b82f6; }
+    .col-subtotal { font-size:12px; font-weight:500; color:#1e293b; text-align:right; }
+    .btn-remove { width:28px; height:28px; border:1px solid #fee2e2; background:white; color:#dc2626; border-radius:4px; cursor:pointer; font-size:16px; }
+    .btn-remove:hover { background:#fee2e2; }
+
+    .empty-parts { padding:20px; text-align:center; color:#94a3b8; font-size:12px; background:#f8fafc; border-radius:6px; }
+
+    .cost-summary { background:#1e3a5f; color:white; padding:16px; border-radius:8px; margin-bottom:16px; }
+    .summary-row { display:flex; justify-content:space-between; padding:6px 0; font-size:13px; }
+    .summary-row.total { border-top:1px solid rgba(255,255,255,0.2); margin-top:8px; padding-top:12px; font-size:16px; font-weight:700; }
+
+    .panel-footer { display:flex; justify-content:flex-end; gap:10px; padding:16px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; }
+    .btn-cancel { padding:8px 16px; background:white; border:1px solid #e2e8f0; border-radius:6px; font-size:13px; cursor:pointer; }
+    .btn-cancel:hover { background:#f1f5f9; }
+    .btn-save { padding:8px 20px; background:#3b82f6; color:white; border:none; border-radius:6px; font-size:13px; font-weight:500; cursor:pointer; }
+    .btn-save:hover { background:#2563eb; }
+    .btn-save:disabled { background:#94a3b8; cursor:not-allowed; }
+    .btn-edit { padding:8px 20px; background:#f59e0b; color:white; border:none; border-radius:6px; font-size:13px; font-weight:500; cursor:pointer; }
+    .btn-edit:hover { background:#d97706; }
+
+    .detail-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+    .detail-ref { font-size:20px; font-weight:700; color:#1e293b; }
+    .detail-section { margin-bottom:20px; }
+    .detail-section h4 { margin:0 0 12px; font-size:12px; font-weight:600; color:#64748b; text-transform:uppercase; }
+    .detail-row { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #f1f5f9; }
+    .detail-label { font-size:13px; color:#64748b; }
+    .detail-value { font-size:13px; font-weight:500; color:#1e293b; }
+
+    .detail-parts-table { border:1px solid #e2e8f0; border-radius:6px; overflow:hidden; }
+    .detail-parts-row { display:grid; grid-template-columns:1fr 50px 80px 90px; gap:8px; padding:10px 12px; font-size:12px; border-bottom:1px solid #f1f5f9; }
+    .detail-parts-row.header { background:#f8fafc; font-weight:600; color:#64748b; }
+    .detail-parts-row:last-child { border-bottom:none; }
+    .detail-parts-row small { color:#94a3b8; }
+
+    .detail-costs { background:#f8fafc; padding:16px; border-radius:8px; }
+    .detail-cost-row { display:flex; justify-content:space-between; padding:6px 0; font-size:13px; }
+    .detail-cost-row.total { border-top:1px solid #e2e8f0; margin-top:8px; padding-top:12px; font-size:16px; font-weight:700; color:#16a34a; }
+
+    .modal-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:1100; }
+    .modal-content { background:white; border-radius:12px; padding:24px; max-width:400px; width:90%; }
+    .modal-header { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+    .modal-header h3 { margin:0; font-size:16px; color:#1e293b; }
+    .modal-content p { margin:0 0 8px; font-size:13px; color:#64748b; }
+    .warning-text { color:#dc2626; font-size:12px; }
+    .modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+    .btn-delete { padding:8px 16px; background:#dc2626; color:white; border:none; border-radius:6px; font-size:13px; cursor:pointer; }
+    .btn-delete:hover { background:#b91c1c; }
+
+    @media (max-width:768px) {
+      .filter-bar { flex-wrap:wrap; }
+      .search-wrapper { max-width:100%; order:1; flex-basis:100%; }
+      .repairs-list { grid-template-columns:1fr; }
+      .panel { width:100%; }
+      .form-row { grid-template-columns:1fr; }
+      .parts-header, .parts-row { grid-template-columns:1fr 60px 40px 60px 70px 30px; font-size:10px; }
+    }
+  `]
+})
+export class RepairsComponent implements OnInit {
+  repairs: Repair[] = [];
+  filteredRepairs: Repair[] = [];
+  vehicles: Vehicle[] = [];
+  selectedVehicle: Vehicle | null = null;
+
+  searchQuery = '';
+  filterVehicle = '';
+  filterStatus = '';
+
+  stats = { totalRepairs: 0, pendingRepairs: 0, completedRepairs: 0, totalCost: 0 };
+
+  isPanelOpen = false;
+  editingRepair: Repair | null = null;
+  viewingRepair: Repair | null = null;
+
+  showDeleteConfirm = false;
+  repairToDelete: Repair | null = null;
+
+  form = this.getEmptyForm();
+
+  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef) {}
+
+  ngOnInit() {
+    this.loadVehicles();
+    this.loadRepairs();
+  }
+
+  getEmptyForm() {
+    return {
+      vehicleId: '',
+      repairDate: new Date().toISOString().split('T')[0],
+      mileageAtRepair: null as number | null,
+      description: '',
+      invoiceNumber: '',
+      status: 'completed',
+      laborCost: 0,
+      notes: '',
+      parts: [] as RepairPart[]
+    };
+  }
+
+  loadVehicles() {
+    this.apiService.getVehicles().subscribe({
+      next: (vehicles) => {
+        this.vehicles = vehicles.map(v => ({
+          id: v.id,
+          name: v.name,
+          plateNumber: v.plateNumber,
+          mileage: v.mileage || 0
+        }));
+      },
+      error: () => {
+        this.vehicles = [
+          { id: 1, name: 'Peugeot 208', plateNumber: '245 TUN 7890', mileage: 52000 },
+          { id: 2, name: 'Renault Clio', plateNumber: '189 TUN 4521', mileage: 78500 },
+          { id: 3, name: 'Citroen Berlingo', plateNumber: '312 TUN 1122', mileage: 125000 }
+        ];
+      }
+    });
+  }
+
+  loadRepairs() {
+    this.apiService.getRepairs({ pageSize: 100 }).subscribe({
+      next: (result) => {
+        this.repairs = result.items.map(r => ({
+          id: r.id,
+          vehicleId: r.vehicleId,
+          vehicleName: r.vehicleName || '',
+          vehiclePlate: r.vehiclePlate || '',
+          supplierId: r.supplierId,
+          supplierName: r.supplierName,
+          reference: r.reference || '',
+          description: r.description || '',
+          repairDate: r.repairDate,
+          mileageAtRepair: r.mileageAtRepair,
+          laborCost: r.laborCost,
+          partsCost: r.partsCost,
+          totalCost: r.totalCost,
+          status: r.status,
+          invoiceNumber: r.invoiceNumber || '',
+          notes: r.notes || '',
+          parts: (r.parts || []).map(p => ({
+            id: p.id,
+            partName: p.partName,
+            partReference: p.partReference || '',
+            quantity: p.quantity,
+            unitPrice: p.unitPrice,
+            subtotal: p.subtotal,
+            notes: p.notes || ''
+          }))
+        }));
+        this.filterRepairs();
+        this.calculateStats();
+        this.cdr.detectChanges();
+      },
+      error: (err) => { console.error('Error loading repairs:', err); this.cdr.detectChanges(); }
+    });
+  }
+
+  filterRepairs() {
+    let result = [...this.repairs];
+    if (this.searchQuery) {
+      const q = this.searchQuery.toLowerCase();
+      result = result.filter(r => 
+        r.reference.toLowerCase().includes(q) || 
+        r.vehicleName.toLowerCase().includes(q) ||
+        r.description.toLowerCase().includes(q)
+      );
+    }
+    if (this.filterVehicle) {
+      result = result.filter(r => r.vehicleId === +this.filterVehicle);
+    }
+    if (this.filterStatus) {
+      result = result.filter(r => r.status === this.filterStatus);
+    }
+    this.filteredRepairs = result;
+  }
+
+  calculateStats() {
+    this.stats = {
+      totalRepairs: this.repairs.length,
+      pendingRepairs: this.repairs.filter(r => r.status === 'pending' || r.status === 'in_progress').length,
+      completedRepairs: this.repairs.filter(r => r.status === 'completed').length,
+      totalCost: this.repairs.reduce((sum, r) => sum + r.totalCost, 0)
+    };
+  }
+
+  getStatusLabel(status: string): string {
+    const labels: Record<string, string> = {
+      pending: 'En attente',
+      in_progress: 'En cours',
+      completed: 'Termine'
+    };
+    return labels[status] || status;
+  }
+
+  onVehicleChange() {
+    this.selectedVehicle = this.vehicles.find(v => v.id === +this.form.vehicleId) || null;
+    if (this.selectedVehicle) {
+      this.form.mileageAtRepair = this.selectedVehicle.mileage;
+    }
+  }
+
+  openAddRepair() {
+    this.form = this.getEmptyForm();
+    this.editingRepair = null;
+    this.selectedVehicle = null;
+    this.isPanelOpen = true;
+  }
+
+  editRepair(repair: Repair) {
+    this.editingRepair = repair;
+    this.form = {
+      vehicleId: repair.vehicleId.toString(),
+      repairDate: repair.repairDate,
+      mileageAtRepair: repair.mileageAtRepair || null,
+      description: repair.description,
+      invoiceNumber: repair.invoiceNumber,
+      status: repair.status,
+      laborCost: repair.laborCost,
+      notes: repair.notes,
+      parts: repair.parts.map(p => ({ ...p }))
+    };
+    this.selectedVehicle = this.vehicles.find(v => v.id === repair.vehicleId) || null;
+    this.isPanelOpen = true;
+  }
+
+  viewRepair(repair: Repair) {
+    this.viewingRepair = repair;
+  }
+
+  closeView() {
+    this.viewingRepair = null;
+  }
+
+  editFromView() {
+    if (this.viewingRepair) {
+      this.editRepair(this.viewingRepair);
+      this.viewingRepair = null;
+    }
+  }
+
+  closePanel() {
+    this.isPanelOpen = false;
+    this.editingRepair = null;
+    this.form = this.getEmptyForm();
+  }
+
+  addPart() {
+    this.form.parts.push({
+      partName: '',
+      partReference: '',
+      quantity: 1,
+      unitPrice: 0,
+      subtotal: 0,
+      notes: ''
+    });
+  }
+
+  removePart(index: number) {
+    this.form.parts.splice(index, 1);
+  }
+
+  calculatePartSubtotal(part: RepairPart) {
+    part.subtotal = part.quantity * part.unitPrice;
+  }
+
+  getPartsCost(): number {
+    return this.form.parts.reduce((sum, p) => sum + (p.quantity * p.unitPrice), 0);
+  }
+
+  getTotalCost(): number {
+    return this.getPartsCost() + (this.form.laborCost || 0);
+  }
+
+  isFormValid(): boolean {
+    return !!this.form.vehicleId && !!this.form.repairDate;
+  }
+
+  saveRepair() {
+    if (!this.isFormValid()) return;
+
+    const parts = this.form.parts.map((p: RepairPart) => ({
+      partName: p.partName,
+      partReference: p.partReference,
+      quantity: p.quantity,
+      unitPrice: p.unitPrice,
+      notes: p.notes
+    }));
+
+    if (this.editingRepair) {
+      this.apiService.updateRepair(this.editingRepair.id!, {
+        vehicleId: +this.form.vehicleId,
+        description: this.form.description,
+        repairDate: this.form.repairDate,
+        mileageAtRepair: this.form.mileageAtRepair || undefined,
+        laborCost: this.form.laborCost,
+        status: this.form.status,
+        invoiceNumber: this.form.invoiceNumber,
+        notes: this.form.notes,
+        parts
+      }).subscribe({
+        next: () => {
+          this.loadRepairs();
+          this.closePanel();
+        },
+        error: (err) => console.error('Error updating repair:', err)
+      });
+    } else {
+      this.apiService.createRepair({
+        vehicleId: +this.form.vehicleId,
+        description: this.form.description,
+        repairDate: this.form.repairDate,
+        mileageAtRepair: this.form.mileageAtRepair || undefined,
+        laborCost: this.form.laborCost,
+        invoiceNumber: this.form.invoiceNumber,
+        notes: this.form.notes,
+        parts
+      }).subscribe({
+        next: () => {
+          this.loadRepairs();
+          this.closePanel();
+        },
+        error: (err) => console.error('Error creating repair:', err)
+      });
+    }
+  }
+
+  confirmDelete(repair: Repair) {
+    this.repairToDelete = repair;
+    this.showDeleteConfirm = true;
+  }
+
+  cancelDelete() {
+    this.repairToDelete = null;
+    this.showDeleteConfirm = false;
+  }
+
+  deleteRepair() {
+    if (this.repairToDelete && this.repairToDelete.id) {
+      this.apiService.deleteRepair(this.repairToDelete.id).subscribe({
+        next: () => {
+          this.loadRepairs();
+          this.cancelDelete();
+        },
+        error: (err) => {
+          console.error('Error deleting repair:', err);
+          this.cancelDelete();
+        }
+      });
+    } else {
+      this.cancelDelete();
+    }
+  }
+}

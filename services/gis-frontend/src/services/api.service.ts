@@ -221,6 +221,29 @@ export class ApiService {
     return this.currentUser$.value;
   }
 
+  // ==================== ROLES ====================
+
+  getRoles(includeSystem = true): Observable<any[]> {
+    const params = new HttpParams().set('includeSystem', includeSystem.toString());
+    return this.http.get<any[]>(`${this.API_URL}/roles`, { headers: this.getHeaders(), params });
+  }
+
+  getRole(id: number): Observable<any> {
+    return this.http.get<any>(`${this.API_URL}/roles/${id}`, { headers: this.getHeaders() });
+  }
+
+  createRole(role: { name: string; description?: string; isCompanyAdmin?: boolean; permissions?: Record<string, any> }): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/roles`, role, { headers: this.getHeaders() });
+  }
+
+  updateRole(id: number, role: { name?: string; description?: string; isCompanyAdmin?: boolean; permissions?: Record<string, any> }): Observable<any> {
+    return this.http.put<any>(`${this.API_URL}/roles/${id}`, role, { headers: this.getHeaders() });
+  }
+
+  deleteRole(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.API_URL}/roles/${id}`, { headers: this.getHeaders() });
+  }
+
   // ==================== USERS ====================
 
   getUsers(): Observable<any[]> {
@@ -286,6 +309,10 @@ export class ApiService {
       return of(void 0);
     }
     return this.http.delete<void>(`${this.API_URL}/vehicles/${id}`, { headers: this.getHeaders() });
+  }
+
+  syncVehicleMileage(vehicleId: number): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/vehicles/${vehicleId}/sync-mileage`, {}, { headers: this.getHeaders() });
   }
 
   getVehicleLocations(): Observable<any[]> {
@@ -525,6 +552,13 @@ export class ApiService {
       return of(this.mockDataService.addVehicleCost(cost));
     }
     return this.http.post<any>(`${this.API_URL}/costs`, cost, { headers: this.getHeaders() });
+  }
+
+  updateCost(id: number, cost: any): Observable<void> {
+    if (this.isMockUser()) {
+      return of(void 0);
+    }
+    return this.http.put<void>(`${this.API_URL}/costs/${id}`, cost, { headers: this.getHeaders() });
   }
 
   deleteCost(id: number): Observable<void> {
@@ -1108,6 +1142,18 @@ export class ApiService {
     return this.http.put<void>(`${this.API_URL}/suppliers/${id}/services`, { services }, { headers: this.getHeaders() });
   }
 
+  // ==================== CONTRACTS ====================
+
+  getContracts(options?: { vehicleId?: number; type?: string; status?: string; page?: number; pageSize?: number }): Observable<any> {
+    let params = new HttpParams();
+    if (options?.vehicleId) params = params.set('vehicleId', options.vehicleId.toString());
+    if (options?.type) params = params.set('type', options.type);
+    if (options?.status) params = params.set('status', options.status);
+    if (options?.page) params = params.set('page', options.page.toString());
+    if (options?.pageSize) params = params.set('pageSize', options.pageSize.toString());
+    return this.http.get<any>(`${this.API_URL}/contracts`, { headers: this.getHeaders(), params });
+  }
+
   // ==================== DOCUMENTS / EXPIRIES ====================
 
   getDocumentExpiries(options?: { documentType?: string; status?: string; vehicleId?: number; page?: number; pageSize?: number }): Observable<PaginatedResult<VehicleExpiryDto>> {
@@ -1257,6 +1303,151 @@ export class ApiService {
 
   markMaintenanceDone(request: MarkMaintenanceDoneRequest): Observable<{ logId: number; message: string }> {
     return this.http.post<{ logId: number; message: string }>(`${this.API_URL}/vehicle-maintenance/mark-done`, request, { headers: this.getHeaders() });
+  }
+
+  // ==================== REPAIRS ====================
+
+  getRepairs(options?: { vehicleId?: number; status?: string; fromDate?: string; toDate?: string; page?: number; pageSize?: number }): Observable<RepairsListResult> {
+    let params = new HttpParams();
+    if (options?.vehicleId) params = params.set('vehicleId', options.vehicleId.toString());
+    if (options?.status) params = params.set('status', options.status);
+    if (options?.fromDate) params = params.set('fromDate', options.fromDate);
+    if (options?.toDate) params = params.set('toDate', options.toDate);
+    if (options?.page) params = params.set('page', options.page.toString());
+    if (options?.pageSize) params = params.set('pageSize', options.pageSize.toString());
+    return this.http.get<RepairsListResult>(`${this.API_URL}/repairs`, { headers: this.getHeaders(), params });
+  }
+
+  getRepair(id: number): Observable<RepairDto> {
+    return this.http.get<RepairDto>(`${this.API_URL}/repairs/${id}`, { headers: this.getHeaders() });
+  }
+
+  getRepairStats(vehicleId?: number, fromDate?: string, toDate?: string): Observable<RepairStatsDto> {
+    let params = new HttpParams();
+    if (vehicleId) params = params.set('vehicleId', vehicleId.toString());
+    if (fromDate) params = params.set('fromDate', fromDate);
+    if (toDate) params = params.set('toDate', toDate);
+    return this.http.get<RepairStatsDto>(`${this.API_URL}/repairs/stats`, { headers: this.getHeaders(), params });
+  }
+
+  createRepair(repair: CreateRepairRequest): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.API_URL}/repairs`, repair, { headers: this.getHeaders() });
+  }
+
+  updateRepair(id: number, repair: UpdateRepairRequest): Observable<void> {
+    return this.http.put<void>(`${this.API_URL}/repairs/${id}`, repair, { headers: this.getHeaders() });
+  }
+
+  deleteRepair(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.API_URL}/repairs/${id}`, { headers: this.getHeaders() });
+  }
+
+  updateRepairStatus(id: number, status: string): Observable<void> {
+    return this.http.patch<void>(`${this.API_URL}/repairs/${id}/status`, { status }, { headers: this.getHeaders() });
+  }
+
+  // ==================== FUEL EXPENSES ====================
+
+  getFuelExpenseStatistics(startDate?: string, endDate?: string, vehicleId?: number, fuelType?: string): Observable<FleetFuelStatisticsDto> {
+    let params = new HttpParams();
+    if (startDate) params = params.set('startDate', startDate);
+    if (endDate) params = params.set('endDate', endDate);
+    if (vehicleId) params = params.set('vehicleId', vehicleId.toString());
+    if (fuelType) params = params.set('fuelType', fuelType);
+    return this.http.get<FleetFuelStatisticsDto>(`${this.API_URL}/fuelexpenses/statistics`, { headers: this.getHeaders(), params });
+  }
+
+  getVehicleFuelExpense(vehicleId: number, startDate?: string, endDate?: string): Observable<VehicleFuelExpenseDto> {
+    let params = new HttpParams();
+    if (startDate) params = params.set('startDate', startDate);
+    if (endDate) params = params.set('endDate', endDate);
+    return this.http.get<VehicleFuelExpenseDto>(`${this.API_URL}/fuelexpenses/vehicle/${vehicleId}`, { headers: this.getHeaders(), params });
+  }
+
+  getCurrentFuelPrices(): Observable<FuelPriceDto[]> {
+    return this.http.get<FuelPriceDto[]>(`${this.API_URL}/fuelexpenses/prices`, { headers: this.getHeaders() });
+  }
+
+  // ==================== FUEL PRICES MANAGEMENT ====================
+
+  getFuelPrices(options: { fuelTypeId?: number; isActive?: boolean; page?: number; pageSize?: number } = {}): Observable<PaginatedFuelPricesResult> {
+    let params = new HttpParams();
+    if (options.fuelTypeId) params = params.set('fuelTypeId', options.fuelTypeId.toString());
+    if (options.isActive !== undefined) params = params.set('isActive', options.isActive.toString());
+    if (options.page) params = params.set('page', options.page.toString());
+    if (options.pageSize) params = params.set('pageSize', options.pageSize.toString());
+    return this.http.get<PaginatedFuelPricesResult>(`${this.API_URL}/fuelprices`, { headers: this.getHeaders(), params });
+  }
+
+  getCurrentActiveFuelPrices(): Observable<FuelPriceFullDto[]> {
+    return this.http.get<FuelPriceFullDto[]>(`${this.API_URL}/fuelprices/current`, { headers: this.getHeaders() });
+  }
+
+  getFuelTypes(): Observable<FuelTypeDto[]> {
+    return this.http.get<FuelTypeDto[]>(`${this.API_URL}/fuelprices/types`, { headers: this.getHeaders() });
+  }
+
+  createFuelPrice(request: CreateFuelPriceRequest): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.API_URL}/fuelprices`, request, { headers: this.getHeaders() });
+  }
+
+  updateFuelPrice(id: number, request: UpdateFuelPriceRequest): Observable<void> {
+    return this.http.put<void>(`${this.API_URL}/fuelprices/${id}`, request, { headers: this.getHeaders() });
+  }
+
+  deleteFuelPrice(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.API_URL}/fuelprices/${id}`, { headers: this.getHeaders() });
+  }
+
+  importFuelPricesFromExcel(file: File): Observable<FuelPriceImportResult> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const token = localStorage.getItem('auth_token');
+    return this.http.post<FuelPriceImportResult>(`${this.API_URL}/fuelprices/import`, formData, { 
+      headers: new HttpHeaders({ 'Authorization': `Bearer ${token}` })
+    });
+  }
+
+  downloadFuelPriceTemplate(): Observable<Blob> {
+    return this.http.get(`${this.API_URL}/fuelprices/import/template`, { 
+      headers: this.getHeaders(), 
+      responseType: 'blob' 
+    });
+  }
+
+  // ==================== FUEL ENTRIES MANAGEMENT ====================
+
+  getFuelEntries(options: { fuelTypeId?: number; vehiclePlate?: string; startDate?: string; endDate?: string; page?: number; pageSize?: number } = {}): Observable<PaginatedFuelEntriesResult> {
+    let params = new HttpParams();
+    if (options.fuelTypeId) params = params.set('fuelTypeId', options.fuelTypeId.toString());
+    if (options.vehiclePlate) params = params.set('vehiclePlate', options.vehiclePlate);
+    if (options.startDate) params = params.set('startDate', options.startDate);
+    if (options.endDate) params = params.set('endDate', options.endDate);
+    if (options.page) params = params.set('page', options.page.toString());
+    if (options.pageSize) params = params.set('pageSize', options.pageSize.toString());
+    return this.http.get<PaginatedFuelEntriesResult>(`${this.API_URL}/fuelentries`, { headers: this.getHeaders(), params });
+  }
+
+  createFuelEntry(request: CreateFuelEntryRequest): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.API_URL}/fuelentries`, request, { headers: this.getHeaders() });
+  }
+
+  deleteFuelEntry(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.API_URL}/fuelentries/${id}`, { headers: this.getHeaders() });
+  }
+
+  // ==================== PARTS CATALOG ====================
+
+  getPartCategories(): Observable<PartCategoryDto[]> {
+    return this.http.get<PartCategoryDto[]>(`${this.API_URL}/parts/categories`, { headers: this.getHeaders() });
+  }
+
+  getAllParts(): Observable<VehiclePartDto[]> {
+    return this.http.get<VehiclePartDto[]>(`${this.API_URL}/parts/parts`, { headers: this.getHeaders() });
+  }
+
+  createPart(request: { categoryId: number; name: string; description?: string; partNumber?: string }): Observable<VehiclePartDto> {
+    return this.http.post<VehiclePartDto>(`${this.API_URL}/parts/parts`, request, { headers: this.getHeaders() });
   }
 }
 
@@ -2500,4 +2691,261 @@ export interface MarkMaintenanceDoneRequest {
   cost: number;
   supplierId?: number;
   notes?: string;
+}
+
+// ==================== REPAIRS ====================
+export interface RepairsListResult {
+  items: RepairDto[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface RepairDto {
+  id: number;
+  vehicleId: number;
+  vehicleName?: string;
+  vehiclePlate?: string;
+  supplierId?: number;
+  supplierName?: string;
+  reference?: string;
+  description?: string;
+  repairDate: string;
+  mileageAtRepair?: number;
+  laborCost: number;
+  partsCost: number;
+  totalCost: number;
+  status: string;
+  invoiceNumber?: string;
+  notes?: string;
+  parts: RepairPartDto[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RepairPartDto {
+  id?: number;
+  partName: string;
+  partReference?: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  notes?: string;
+}
+
+export interface RepairStatsDto {
+  totalRepairs: number;
+  pendingRepairs: number;
+  completedRepairs: number;
+  totalCost: number;
+  averageCost: number;
+  totalLaborCost: number;
+  totalPartsCost: number;
+}
+
+export interface CreateRepairRequest {
+  vehicleId: number;
+  supplierId?: number;
+  description?: string;
+  repairDate: string;
+  mileageAtRepair?: number;
+  laborCost: number;
+  invoiceNumber?: string;
+  notes?: string;
+  parts: CreateRepairPartRequest[];
+}
+
+export interface CreateRepairPartRequest {
+  partName: string;
+  partReference?: string;
+  quantity: number;
+  unitPrice: number;
+  notes?: string;
+}
+
+export interface UpdateRepairRequest {
+  vehicleId: number;
+  supplierId?: number;
+  description?: string;
+  repairDate: string;
+  mileageAtRepair?: number;
+  laborCost: number;
+  status: string;
+  invoiceNumber?: string;
+  notes?: string;
+  parts: CreateRepairPartRequest[];
+}
+
+// ==================== FUEL EXPENSES ====================
+export interface FleetFuelStatisticsDto {
+  totalFleetFuelCost: number;
+  totalFleetFuelConsumedLiters: number;
+  fleetAverageConsumptionPer100Km: number;
+  fleetStandardDeviation: number;
+  totalFleetDistanceKm: number;
+  vehicleCount: number;
+  fuelTypeDistribution: FuelTypeDistributionDto[];
+  monthlyTrends: MonthlyFuelTrendDto[];
+  vehicleExpenses: VehicleFuelExpenseDto[];
+}
+
+export interface VehicleFuelExpenseDto {
+  vehicleId: number;
+  vehicleName: string;
+  plate?: string;
+  fuelType?: string;
+  fuelTankCapacity?: number;
+  totalFuelConsumedLiters: number;
+  totalFuelCost: number;
+  averageConsumptionPer100Km: number;
+  deviationFromFleetAverage: number;
+  totalDistanceKm: number;
+  dailyConsumption: DailyFuelConsumptionDto[];
+}
+
+export interface DailyFuelConsumptionDto {
+  date: string;
+  fuelConsumedLiters: number;
+  fuelCost: number;
+  distanceKm: number;
+  consumptionPer100Km: number;
+}
+
+export interface FuelTypeDistributionDto {
+  fuelType: string;
+  vehicleCount: number;
+  totalFuelConsumed: number;
+  totalCost: number;
+  percentage: number;
+}
+
+export interface MonthlyFuelTrendDto {
+  year: number;
+  month: number;
+  monthName: string;
+  totalFuelConsumed: number;
+  totalCost: number;
+  averageConsumption: number;
+}
+
+export interface FuelPriceDto {
+  fuelTypeId: number;
+  fuelTypeCode: string;
+  fuelTypeName: string;
+  pricePerLiter: number;
+  effectiveFrom: string;
+}
+
+// ==================== FUEL PRICES MANAGEMENT INTERFACES ====================
+
+export interface FuelPriceFullDto {
+  id: number;
+  fuelTypeId: number;
+  fuelTypeCode: string;
+  fuelTypeName: string;
+  pricePerLiter: number;
+  effectiveFrom: string;
+  effectiveTo?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FuelTypeDto {
+  id: number;
+  code: string;
+  name: string;
+  isSystem: boolean;
+}
+
+export interface PaginatedFuelPricesResult {
+  items: FuelPriceFullDto[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface CreateFuelPriceRequest {
+  fuelTypeId: number;
+  pricePerLiter: number;
+  effectiveFrom: string;
+  effectiveTo?: string;
+}
+
+export interface UpdateFuelPriceRequest {
+  fuelTypeId: number;
+  pricePerLiter: number;
+  effectiveFrom: string;
+  effectiveTo?: string;
+  isActive: boolean;
+}
+
+export interface FuelPriceImportResult {
+  totalRows: number;
+  successfulImports: number;
+  failedImports: number;
+  errors: string[];
+}
+
+// ==================== FUEL ENTRIES INTERFACES ====================
+
+export interface FuelEntryDto {
+  id: number;
+  vehicleId?: number;
+  vehiclePlate: string;
+  fuelTypeId: number;
+  fuelTypeCode: string;
+  fuelTypeName: string;
+  volume: number;
+  pricePerLiter: number;
+  totalAmount: number;
+  invoiceDate: string;
+  stationName?: string;
+  invoiceNumber?: string;
+  notes?: string;
+  driverId?: number;
+  driverName?: string;
+  odometerKm?: number;
+  createdAt: string;
+}
+
+export interface CreateFuelEntryRequest {
+  vehiclePlate: string;
+  fuelTypeId: number;
+  volume: number;
+  pricePerLiter: number;
+  invoiceDate: string;
+  stationName?: string;
+  invoiceNumber?: string;
+  notes?: string;
+  driverId?: number;
+  odometerKm?: number;
+}
+
+export interface PaginatedFuelEntriesResult {
+  items: FuelEntryDto[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+// ==================== PARTS CATALOG INTERFACES ====================
+
+export interface PartCategoryDto {
+  id: number;
+  name: string;
+  description?: string;
+  icon?: string;
+  partsCount: number;
+}
+
+export interface VehiclePartDto {
+  id: number;
+  categoryId: number;
+  categoryName?: string;
+  name: string;
+  description?: string;
+  partNumber?: string;
 }

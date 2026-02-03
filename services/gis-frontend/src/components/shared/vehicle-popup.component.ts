@@ -155,6 +155,13 @@ export interface CompanyOption {
                   </select>
                 </div>
               </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="fuelTankCapacity">Capacité réservoir (L)</label>
+                  <input type="number" id="fuelTankCapacity" name="fuelTankCapacity" [(ngModel)]="formData.fuelTankCapacity" min="0" placeholder="Ex: 60" />
+                </div>
+              </div>
             </div>
 
             <!-- GPS Section -->
@@ -667,6 +674,7 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     type: 'citadine',
     status: 'available',
     mileage: 0,
+    fuelTankCapacity: null,
     color: '',
     fuelType: 'diesel',
     companyId: null,

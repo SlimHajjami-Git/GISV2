@@ -3,15 +3,53 @@
     <div class="reports-layout">
       <!-- SIDEBAR GAUCHE -->
       <aside class="reports-sidebar">
-        <!-- Template Selector -->
+        <!-- Template Selector with Icons -->
         <div class="sidebar-row">
-          <label class="field-label">Template</label>
-          <select class="field-select" [(ngModel)]="selectedTemplateId" (change)="onTemplateChange()">
-            <option value="">Sélectionner...</option>
-            @for (template of templates; track template.id) {
-              <option [value]="template.id">{{ template.name }}</option>
-            }
-          </select>
+          <label class="field-label">Type de rapport</label>
+          <div class="template-dropdown" [class.open]="showTemplateDropdown">
+            <button class="dropdown-trigger" (click)="toggleTemplateDropdown($event)">
+              <span class="selected-template" *ngIf="selectedTemplate">
+                <span class="template-icon">{{ selectedTemplate.icon }}</span>
+                <span class="template-name">{{ selectedTemplate.name }}</span>
+              </span>
+              <span class="placeholder" *ngIf="!selectedTemplate">Sélectionner un rapport...</span>
+              <svg class="dropdown-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            <div class="dropdown-menu" *ngIf="showTemplateDropdown">
+              <div class="dropdown-category">
+                <span class="category-title">📊 Analyse GPS</span>
+                <div class="dropdown-item" *ngFor="let t of getTemplatesByCategory('gps')" (click)="selectTemplateFromDropdown(t)">
+                  <span class="item-icon">{{ t.icon }}</span>
+                  <div class="item-content">
+                    <span class="item-name">{{ t.name }}</span>
+                    <span class="item-desc">{{ t.description }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="dropdown-category">
+                <span class="category-title">💰 Coûts & Dépenses</span>
+                <div class="dropdown-item" *ngFor="let t of getTemplatesByCategory('costs')" (click)="selectTemplateFromDropdown(t)">
+                  <span class="item-icon">{{ t.icon }}</span>
+                  <div class="item-content">
+                    <span class="item-name">{{ t.name }}</span>
+                    <span class="item-desc">{{ t.description }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="dropdown-category">
+                <span class="category-title">📈 Statistiques</span>
+                <div class="dropdown-item" *ngFor="let t of getTemplatesByCategory('stats')" (click)="selectTemplateFromDropdown(t)">
+                  <span class="item-icon">{{ t.icon }}</span>
+                  <div class="item-content">
+                    <span class="item-name">{{ t.name }}</span>
+                    <span class="item-desc">{{ t.description }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Vehicle Selector (hidden for monthly reports) -->
@@ -148,10 +186,11 @@
           </select>
         </div>
 
-        <!-- Speed Limit Input -->
+        <!-- Speed Limit Input (optional - uses vehicle limits from DB if empty) -->
         <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'speed-infraction'">
-          <label class="field-label">Limite de vitesse (km/h)</label>
-          <input type="number" class="field-input" [(ngModel)]="speedLimit" min="1" max="300" placeholder="90">
+          <label class="field-label">Limite personnalisée (km/h)</label>
+          <input type="number" class="field-input" [(ngModel)]="customSpeedLimit" min="1" max="300" placeholder="Limites véhicules (DB)">
+          <small class="field-hint">Laissez vide pour utiliser les limites configurées par véhicule</small>
         </div>
 
         <!-- Hourly: Single date picker -->
@@ -478,8 +517,15 @@
                   </button>
                 </div>
               </div>
-              <div class="chart-area">
-                <canvas #chartCanvas></canvas>
+              <div class="charts-container">
+                <div class="chart-area">
+                  <canvas #chartCanvas></canvas>
+                </div>
+                @if (secondaryChartData && secondaryChartData.length > 0) {
+                  <div class="chart-area secondary-chart">
+                    <canvas #secondaryChartCanvas></canvas>
+                  </div>
+                }
               </div>
             </div>
 
@@ -527,10 +573,12 @@
                         <th>Vitesse</th>
                         <th>Odomètre</th>
                       } @else if (selectedTemplate?.type === 'daily') {
+                        <th class="th-narrow">#</th>
                         <th>Horaire</th>
-                        <th>Type</th>
+                        <th>Événement</th>
                         <th>Durée</th>
-                        <th>Détails</th>
+                        <th>Distance</th>
+                        <th>Vitesse</th>
                         <th>Lieu</th>
                       } @else if (selectedTemplate?.type === 'mileage') {
                         <th>Date</th>
@@ -556,11 +604,28 @@
                           <th>Vitesse moy.</th>
                           <th>Vitesse max</th>
                         }
+                      } @else if (selectedTemplate?.type === 'trips') {
+                        @if (!selectedVehicleId) {
+                          <th>Véhicule</th>
+                        }
+                        <th class="th-narrow">Type</th>
+                        <th>Début</th>
+                        <th>Fin</th>
+                        <th>Durée</th>
+                        <th>Distance</th>
+                        <th>Vit. moy</th>
+                        <th>Vit. max</th>
+                        <th>Lieu</th>
                       } @else if (selectedTemplate?.type === 'stops') {
-                        <th>Date/Heure</th>
-                        <th>Période</th>
+                        @if (!selectedVehicleId) {
+                          <th>Véhicule</th>
+                        }
+                        <th class="th-narrow">Type</th>
+                        <th>Début</th>
+                        <th>Fin</th>
+                        <th>Durée</th>
                         <th>Adresse</th>
-                        <th>Type</th>
+                        <th>Zone</th>
                       } @else if (selectedTemplate?.type === 'speed-infraction') {
                         <th>Véhicule</th>
                         <th>Date/Heure</th>
@@ -595,11 +660,21 @@
                           <td>{{ row.speed }}</td>
                           <td>{{ row.odometer }}</td>
                         } @else if (selectedTemplate?.type === 'daily') {
+                          <td class="event-number-cell">{{ row.eventNumber }}</td>
                           <td class="time-cell">{{ row.time }}</td>
-                          <td class="type-cell">{{ row.type }}</td>
+                          <td class="type-badge-cell">
+                            <span class="badge" 
+                              [class.badge-start]="row.type === 'start'"
+                              [class.badge-trip]="row.type === 'drive'"
+                              [class.badge-stop]="row.type === 'stop'"
+                              [class.badge-end]="row.type === 'end' || row.type === 'position'">
+                              {{ row.typeIcon }} {{ row.typeLabel }}
+                            </span>
+                          </td>
                           <td class="duration-cell">{{ row.duration }}</td>
-                          <td class="details-cell">{{ row.details }}</td>
-                          <td class="location-cell">{{ row.location }}</td>
+                          <td class="distance-cell">{{ row.distance }}</td>
+                          <td class="speed-cell">{{ row.speed }}</td>
+                          <td class="location-cell">{{ row.address }}</td>
                         } @else if (selectedTemplate?.type === 'mileage') {
                           <td class="date-cell">{{ row.date }}</td>
                           <td class="distance-cell" [class.high-mileage]="row.distanceValue > 100">{{ row.distance }}</td>
@@ -624,11 +699,43 @@
                             <td class="speed-cell">{{ row.avgSpeed }}</td>
                             <td class="speed-cell">{{ row.maxSpeed }}</td>
                           }
+                        } @else if (selectedTemplate?.type === 'trips') {
+                          @if (!selectedVehicleId) {
+                            <td class="vehicle-cell">{{ row.vehicleName }}</td>
+                          }
+                          @if (row.isTrip) {
+                            <td class="type-badge-cell"><span class="badge badge-trip">🚗 T{{ row.tripNumber }}</span></td>
+                            <td class="time-cell">{{ row.startTime }}</td>
+                            <td class="time-cell">{{ row.endTime }}</td>
+                            <td class="duration-cell">{{ row.duration }}</td>
+                            <td class="distance-cell">{{ row.distance }}</td>
+                            <td class="speed-cell">{{ row.avgSpeed }}</td>
+                            <td class="speed-cell">{{ row.maxSpeed }}</td>
+                            <td class="location-cell">{{ row.startAddress }} → {{ row.endAddress }}</td>
+                          } @else {
+                            <td class="type-badge-cell"><span class="badge badge-stop">🅿️ Arrêt</span></td>
+                            <td class="time-cell">{{ row.startTime }}</td>
+                            <td class="time-cell">{{ row.endTime }}</td>
+                            <td class="duration-cell stop-duration">{{ row.duration }}</td>
+                            <td class="distance-cell">-</td>
+                            <td class="speed-cell">-</td>
+                            <td class="speed-cell">-</td>
+                            <td class="location-cell">{{ row.address }}</td>
+                          }
                         } @else if (selectedTemplate?.type === 'stops') {
+                          @if (!selectedVehicleId) {
+                            <td class="vehicle-cell">{{ row.vehicleName }}</td>
+                          }
+                          <td class="type-badge-cell">
+                            <span class="badge" [class.badge-stop]="row.typeCode === 'A'" [class.badge-idle]="row.typeCode === 'C'">
+                              {{ row.typeCode }} - {{ row.typeLabel }}
+                            </span>
+                          </td>
                           <td class="time-cell">{{ row.time }}</td>
-                          <td class="duration-cell">{{ row.duration }}</td>
+                          <td class="time-cell">{{ row.endTime }}</td>
+                          <td class="duration-cell" [class.long-stop]="row.isLongStop">{{ row.duration }}</td>
                           <td class="location-cell">{{ row.address }}</td>
-                          <td class="type-cell">{{ row.type }}</td>
+                          <td class="zone-cell">{{ row.geofenceName || '-' }}</td>
                         } @else if (selectedTemplate?.type === 'speed-infraction') {
                           <td class="vehicle-cell">{{ row.vehicle }}</td>
                           <td class="time-cell">{{ row.time }}</td>

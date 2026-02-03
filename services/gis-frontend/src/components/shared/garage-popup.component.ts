@@ -3,10 +3,11 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { trigger, transition, style, animate } from '@angular/animations';
 
-// Interface pour les garages
+// Interface pour les fournisseurs
 export interface Garage {
   id?: string;
   name: string;
+  type: string; // garage, insurance, vendor, parts, fuel, tires, service
   address: string;
   city: string;
   postalCode: string;
@@ -20,6 +21,17 @@ export interface Garage {
   createdAt?: Date;
   updatedAt?: Date;
 }
+
+export const SUPPLIER_TYPES = [
+  { value: 'garage', label: '🔧 Garage', icon: '🔧' },
+  { value: 'insurance', label: '🛡️ Assurance', icon: '🛡️' },
+  { value: 'vendor', label: '🏭 Vendeur', icon: '🏭' },
+  { value: 'parts', label: '⚙️ Pièces détachées', icon: '⚙️' },
+  { value: 'fuel', label: '⛽ Carburant', icon: '⛽' },
+  { value: 'tires', label: '🛞 Pneumatiques', icon: '🛞' },
+  { value: 'service', label: '🛠️ Service', icon: '🛠️' },
+  { value: 'general', label: '📦 Général', icon: '📦' }
+];
 
 @Component({
   selector: 'app-garage-popup',
@@ -37,11 +49,11 @@ export interface Garage {
     ]),
     trigger('slideIn', [
       transition(':enter', [
-        style({ opacity: 0, transform: 'translateX(20px)' }),
-        animate('250ms ease-out', style({ opacity: 1, transform: 'translateX(0)' }))
+        style({ opacity: 0, transform: 'translateX(100%)' }),
+        animate('300ms ease-out', style({ opacity: 1, transform: 'translateX(0)' }))
       ]),
       transition(':leave', [
-        animate('200ms ease-in', style({ opacity: 0, transform: 'translateX(20px)' }))
+        animate('250ms ease-in', style({ opacity: 0, transform: 'translateX(100%)' }))
       ])
     ])
   ],
@@ -50,7 +62,7 @@ export interface Garage {
       <div class="popup-container" @slideIn (click)="$event.stopPropagation()">
         <!-- Header -->
         <div class="popup-header">
-          <h2>{{ garage?.id ? 'Modifier le garage' : 'Nouveau garage' }}</h2>
+          <h2>{{ garage?.id ? 'Modifier le fournisseur' : 'Nouveau fournisseur' }}</h2>
           <button class="btn-close" (click)="close()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
@@ -72,15 +84,28 @@ export interface Garage {
               Informations générales
             </h3>
             
-            <div class="form-row">
-              <div class="form-group full">
-                <label for="name">Nom du garage *</label>
+            <div class="form-row two-cols">
+              <div class="form-group">
+                <label for="name">Nom *</label>
                 <input type="text" id="name" name="name" [(ngModel)]="formData.name" required
                        placeholder="Ex: Garage Central Tunis" class="form-control"
                        [class.invalid]="nameInput.invalid && nameInput.touched" #nameInput="ngModel">
                 <span class="error-message" *ngIf="nameInput.invalid && nameInput.touched">
                   Le nom est requis
                 </span>
+              </div>
+              <div class="form-group">
+                <label for="type">Type *</label>
+                <select id="type" name="type" [(ngModel)]="formData.type" class="form-control" required>
+                  <option value="garage">🔧 Garage</option>
+                  <option value="insurance">🛡️ Assurance</option>
+                  <option value="vendor">🏭 Vendeur</option>
+                  <option value="parts">⚙️ Pièces détachées</option>
+                  <option value="fuel">⛽ Carburant</option>
+                  <option value="tires">🛞 Pneumatiques</option>
+                  <option value="service">🛠️ Service</option>
+                  <option value="general">📦 Général</option>
+                </select>
               </div>
             </div>
 
@@ -146,25 +171,6 @@ export interface Garage {
                 <input type="text" id="contactName" name="contactName" [(ngModel)]="formData.contactName"
                        placeholder="Ex: Mohamed Ben Ali" class="form-control">
               </div>
-            </div>
-          </div>
-
-          <!-- Section Services -->
-          <div class="form-section">
-            <h3 class="section-title">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-              </svg>
-              Services proposés
-            </h3>
-
-            <div class="services-grid">
-              <label class="service-checkbox" *ngFor="let service of availableServices">
-                <input type="checkbox" [checked]="isServiceSelected(service.value)" 
-                       (change)="toggleService(service.value)">
-                <span class="checkbox-custom"></span>
-                <span class="service-label">{{ service.label }}</span>
-              </label>
             </div>
           </div>
 
@@ -612,6 +618,7 @@ export class GaragePopupComponent implements OnChanges {
   getEmptyGarage(): Garage {
     return {
       name: '',
+      type: 'garage',
       address: '',
       city: '',
       postalCode: '',

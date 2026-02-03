@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -657,7 +657,7 @@ export class DocumentsComponent implements OnInit {
   isRenewalPopupOpen = false;
   selectedDocument: VehicleDocument | null = null;
 
-  constructor(private apiService: ApiService) {}
+  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.loadDocuments();
@@ -691,8 +691,9 @@ export class DocumentsComponent implements OnInit {
         });
 
         this.filterDocuments();
+        this.cdr.detectChanges();
       },
-      error: (err) => console.error('Error loading vehicles:', err)
+      error: (err) => { console.error('Error loading vehicles:', err); this.cdr.detectChanges(); }
     });
   }
 

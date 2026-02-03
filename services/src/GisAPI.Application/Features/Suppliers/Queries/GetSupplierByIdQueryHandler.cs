@@ -16,7 +16,6 @@ public class GetSupplierByIdQueryHandler : IRequestHandler<GetSupplierByIdQuery,
     public async Task<SupplierDto?> Handle(GetSupplierByIdQuery request, CancellationToken cancellationToken)
     {
         var supplier = await _context.Suppliers
-            .Include(s => s.Services)
             .FirstOrDefaultAsync(s => s.Id == request.Id, cancellationToken);
 
         if (supplier == null)
@@ -28,7 +27,7 @@ public class GetSupplierByIdQueryHandler : IRequestHandler<GetSupplierByIdQuery,
             supplier.Type,
             supplier.Address,
             supplier.City,
-            supplier.PostalCode,
+            null,
             supplier.ContactName,
             supplier.Phone,
             supplier.Email,
@@ -40,7 +39,7 @@ public class GetSupplierByIdQueryHandler : IRequestHandler<GetSupplierByIdQuery,
             supplier.Rating,
             supplier.Notes,
             supplier.IsActive,
-            supplier.Services.Select(svc => svc.ServiceCode).ToList(),
+            new List<string>(),
             supplier.CreatedAt,
             supplier.UpdatedAt
         );

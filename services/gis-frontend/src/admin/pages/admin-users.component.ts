@@ -60,7 +60,7 @@ import { AdminService, SystemUser, Client } from '../services/admin.service';
                 <td>
                   <div class="user-cell">
                     <div class="user-avatar" [class.online]="user.isOnline">
-                      {{ user.name.charAt(0) }}
+                      {{ user.name?.charAt(0) || 'U' }}
                       <span class="online-indicator" *ngIf="user.isOnline"></span>
                     </div>
                     <div class="user-info">
@@ -138,7 +138,7 @@ import { AdminService, SystemUser, Client } from '../services/admin.service';
             <div class="popup-body" *ngIf="selectedUser">
               <div class="form-section">
                 <div class="user-header">
-                  <div class="user-avatar large">{{ selectedUser.name.charAt(0) }}</div>
+                  <div class="user-avatar large">{{ selectedUser.name?.charAt(0) || 'U' }}</div>
                   <div>
                     <h3>{{ selectedUser.name }}</h3>
                     <span class="user-company">{{ selectedUser.companyName }}</span>

@@ -66,7 +66,35 @@ public class SubscriptionTypesController : ControllerBase
                 request.FuelAnalysis,
                 request.DrivingBehavior,
                 request.HistoryRetentionDays,
-                request.SortOrder
+                request.SortOrder,
+                // Module permissions
+                request.ModuleDashboard,
+                request.ModuleMonitoring,
+                request.ModuleVehicles,
+                request.ModuleEmployees,
+                request.ModuleGeofences,
+                request.ModuleMaintenance,
+                request.ModuleCosts,
+                request.ModuleReports,
+                request.ModuleSettings,
+                request.ModuleUsers,
+                request.ModuleSuppliers,
+                request.ModuleDocuments,
+                request.ModuleAccidents,
+                request.ModuleFleetManagement,
+                // Report permissions
+                request.ReportTrips,
+                request.ReportFuel,
+                request.ReportSpeed,
+                request.ReportStops,
+                request.ReportMileage,
+                request.ReportCosts,
+                request.ReportMaintenance,
+                request.ReportDaily,
+                request.ReportMonthly,
+                request.ReportMileagePeriod,
+                request.ReportSpeedInfraction,
+                request.ReportDrivingBehavior
             );
 
             var result = await _mediator.Send(command);
@@ -111,7 +139,35 @@ public class SubscriptionTypesController : ControllerBase
                 request.DrivingBehavior,
                 request.HistoryRetentionDays,
                 request.SortOrder,
-                request.IsActive
+                request.IsActive,
+                // Module permissions
+                request.ModuleDashboard,
+                request.ModuleMonitoring,
+                request.ModuleVehicles,
+                request.ModuleEmployees,
+                request.ModuleGeofences,
+                request.ModuleMaintenance,
+                request.ModuleCosts,
+                request.ModuleReports,
+                request.ModuleSettings,
+                request.ModuleUsers,
+                request.ModuleSuppliers,
+                request.ModuleDocuments,
+                request.ModuleAccidents,
+                request.ModuleFleetManagement,
+                // Report permissions
+                request.ReportTrips,
+                request.ReportFuel,
+                request.ReportSpeed,
+                request.ReportStops,
+                request.ReportMileage,
+                request.ReportCosts,
+                request.ReportMaintenance,
+                request.ReportDaily,
+                request.ReportMonthly,
+                request.ReportMileagePeriod,
+                request.ReportSpeedInfraction,
+                request.ReportDrivingBehavior
             );
 
             var result = await _mediator.Send(command);
@@ -168,6 +224,34 @@ public class CreateSubscriptionTypeRequest
     public bool DrivingBehavior { get; set; }
     public int? HistoryRetentionDays { get; set; }
     public int? SortOrder { get; set; }
+    // Module permissions
+    public bool? ModuleDashboard { get; set; }
+    public bool? ModuleMonitoring { get; set; }
+    public bool? ModuleVehicles { get; set; }
+    public bool? ModuleEmployees { get; set; }
+    public bool? ModuleGeofences { get; set; }
+    public bool? ModuleMaintenance { get; set; }
+    public bool? ModuleCosts { get; set; }
+    public bool? ModuleReports { get; set; }
+    public bool? ModuleSettings { get; set; }
+    public bool? ModuleUsers { get; set; }
+    public bool? ModuleSuppliers { get; set; }
+    public bool? ModuleDocuments { get; set; }
+    public bool? ModuleAccidents { get; set; }
+    public bool? ModuleFleetManagement { get; set; }
+    // Report permissions
+    public bool? ReportTrips { get; set; }
+    public bool? ReportFuel { get; set; }
+    public bool? ReportSpeed { get; set; }
+    public bool? ReportStops { get; set; }
+    public bool? ReportMileage { get; set; }
+    public bool? ReportCosts { get; set; }
+    public bool? ReportMaintenance { get; set; }
+    public bool? ReportDaily { get; set; }
+    public bool? ReportMonthly { get; set; }
+    public bool? ReportMileagePeriod { get; set; }
+    public bool? ReportSpeedInfraction { get; set; }
+    public bool? ReportDrivingBehavior { get; set; }
 }
 
 public class UpdateSubscriptionTypeRequest
@@ -196,4 +280,32 @@ public class UpdateSubscriptionTypeRequest
     public int? HistoryRetentionDays { get; set; }
     public int? SortOrder { get; set; }
     public bool? IsActive { get; set; }
+    // Module permissions
+    public bool? ModuleDashboard { get; set; }
+    public bool? ModuleMonitoring { get; set; }
+    public bool? ModuleVehicles { get; set; }
+    public bool? ModuleEmployees { get; set; }
+    public bool? ModuleGeofences { get; set; }
+    public bool? ModuleMaintenance { get; set; }
+    public bool? ModuleCosts { get; set; }
+    public bool? ModuleReports { get; set; }
+    public bool? ModuleSettings { get; set; }
+    public bool? ModuleUsers { get; set; }
+    public bool? ModuleSuppliers { get; set; }
+    public bool? ModuleDocuments { get; set; }
+    public bool? ModuleAccidents { get; set; }
+    public bool? ModuleFleetManagement { get; set; }
+    // Report permissions
+    public bool? ReportTrips { get; set; }
+    public bool? ReportFuel { get; set; }
+    public bool? ReportSpeed { get; set; }
+    public bool? ReportStops { get; set; }
+    public bool? ReportMileage { get; set; }
+    public bool? ReportCosts { get; set; }
+    public bool? ReportMaintenance { get; set; }
+    public bool? ReportDaily { get; set; }
+    public bool? ReportMonthly { get; set; }
+    public bool? ReportMileagePeriod { get; set; }
+    public bool? ReportSpeedInfraction { get; set; }
+    public bool? ReportDrivingBehavior { get; set; }
 }

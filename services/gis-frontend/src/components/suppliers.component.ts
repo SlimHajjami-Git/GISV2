@@ -6,10 +6,11 @@ import { GaragePopupComponent } from './shared/garage-popup.component';
 import { ApiService } from '../services/api.service';
 import { trigger, transition, style, animate } from '@angular/animations';
 
-// Interface pour les garages/fournisseurs
+// Interface pour les fournisseurs
 export interface Garage {
   id?: string;
   name: string;
+  type: string;
   address: string;
   city: string;
   postalCode: string;
@@ -23,6 +24,17 @@ export interface Garage {
   createdAt?: Date;
   updatedAt?: Date;
 }
+
+export const SUPPLIER_TYPES: Record<string, { label: string; icon: string }> = {
+  'garage': { label: 'Garage', icon: '🔧' },
+  'insurance': { label: 'Assurance', icon: '🛡️' },
+  'vendor': { label: 'Vendeur', icon: '🏭' },
+  'parts': { label: 'Pièces', icon: '⚙️' },
+  'fuel': { label: 'Carburant', icon: '⛽' },
+  'tires': { label: 'Pneumatiques', icon: '🛞' },
+  'service': { label: 'Service', icon: '🛠️' },
+  'general': { label: 'Général', icon: '📦' }
+};
 
 @Component({
   selector: 'app-suppliers',
@@ -53,15 +65,15 @@ export interface Garage {
             </svg>
             <input type="text" class="search-input" placeholder="Rechercher un garage..." [(ngModel)]="searchQuery" (input)="filterGarages()">
           </div>
-          <select class="filter-select" [(ngModel)]="filterService" (change)="filterGarages()">
-            <option value="">Tous les services</option>
-            <option value="mecanique">Mécanique générale</option>
-            <option value="carrosserie">Carrosserie</option>
-            <option value="electricite">Électricité auto</option>
-            <option value="pneumatique">Pneumatiques</option>
-            <option value="vidange">Vidange & Entretien</option>
-            <option value="climatisation">Climatisation</option>
-            <option value="diagnostic">Diagnostic électronique</option>
+          <select class="filter-select" [(ngModel)]="filterType" (change)="filterGarages()">
+            <option value="">Tous les types</option>
+            <option value="garage">🔧 Garage</option>
+            <option value="insurance">🛡️ Assurance</option>
+            <option value="vendor">🏭 Vendeur</option>
+            <option value="parts">⚙️ Pièces</option>
+            <option value="fuel">⛽ Carburant</option>
+            <option value="tires">🛞 Pneumatiques</option>
+            <option value="service">🛠️ Service</option>
           </select>
           <select class="filter-select" [(ngModel)]="filterStatus" (change)="filterGarages()">
             <option value="">Tous les statuts</option>
@@ -73,7 +85,7 @@ export interface Garage {
               <line x1="12" y1="5" x2="12" y2="19"/>
               <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            Nouveau garage
+            Nouveau fournisseur
           </button>
         </div>
 
@@ -142,7 +154,7 @@ export interface Garage {
               <!-- Header de la carte -->
               <div class="card-top" [class.active]="garage.isActive" [class.inactive]="!garage.isActive">
                 <div class="card-top-left">
-                  <div class="garage-icon">🔧</div>
+                  <div class="garage-icon">{{ getTypeIcon(garage.type) }}</div>
                   <div class="card-top-info">
                     <span class="garage-city">{{ garage.city }}</span>
                     <span class="garage-rating">
@@ -761,6 +773,7 @@ export class SuppliersComponent implements OnInit {
   
   // Filtres
   searchQuery = '';
+  filterType = '';
   filterService = '';
   filterStatus = '';
   
@@ -772,6 +785,8 @@ export class SuppliersComponent implements OnInit {
   showDeleteConfirm = false;
   garageToDelete: Garage | null = null;
 
+  loading = false;
+
   constructor(private apiService: ApiService) {}
 
   ngOnInit(): void {
@@ -779,66 +794,34 @@ export class SuppliersComponent implements OnInit {
   }
 
   loadGarages(): void {
-    // Données de démonstration
-    this.allGarages = [
-      {
-        id: '1',
-        name: 'Garage Central Tunis',
-        address: '45 Avenue Habib Bourguiba',
-        city: 'Tunis',
-        postalCode: '1000',
-        phone: '+216 71 123 456',
-        email: 'contact@garagecentral.tn',
-        contactName: 'Mohamed Ben Ali',
-        services: ['mecanique', 'carrosserie', 'electricite', 'diagnostic'],
-        rating: 4.5,
-        isActive: true,
-        createdAt: new Date('2023-01-15')
+    this.loading = true;
+    this.apiService.getGarages({ pageSize: 100 }).subscribe({
+      next: (result) => {
+        this.allGarages = result.items.map(s => ({
+          id: s.id.toString(),
+          name: s.name,
+          type: s.type || 'garage',
+          address: s.address || '',
+          city: s.city || '',
+          postalCode: s.postalCode || '',
+          phone: s.phone || '',
+          email: s.email || '',
+          contactName: s.contactName || '',
+          services: s.services || [],
+          rating: s.rating || 0,
+          isActive: s.isActive,
+          notes: s.notes,
+          createdAt: s.createdAt ? new Date(s.createdAt) : undefined,
+          updatedAt: s.updatedAt ? new Date(s.updatedAt) : undefined
+        }));
+        this.filterGarages();
+        this.loading = false;
       },
-      {
-        id: '2',
-        name: 'Auto Service Sfax',
-        address: '120 Route de Gabes',
-        city: 'Sfax',
-        postalCode: '3000',
-        phone: '+216 74 456 789',
-        email: 'info@autoservicesfax.tn',
-        contactName: 'Ahmed Trabelsi',
-        services: ['mecanique', 'pneumatique', 'vidange'],
-        rating: 4.2,
-        isActive: true,
-        createdAt: new Date('2023-03-20')
-      },
-      {
-        id: '3',
-        name: 'Garage Express Sousse',
-        address: '78 Boulevard de la Corniche',
-        city: 'Sousse',
-        postalCode: '4000',
-        phone: '+216 73 789 012',
-        email: 'express@garagesousse.tn',
-        contactName: 'Karim Saidi',
-        services: ['vidange', 'climatisation', 'diagnostic'],
-        rating: 3.8,
-        isActive: false,
-        createdAt: new Date('2022-11-10')
-      },
-      {
-        id: '4',
-        name: 'Méca Pro Bizerte',
-        address: '25 Rue de la République',
-        city: 'Bizerte',
-        postalCode: '7000',
-        phone: '+216 72 345 678',
-        email: 'contact@mecapro.tn',
-        contactName: 'Sami Boussaidi',
-        services: ['mecanique', 'electricite', 'pneumatique', 'carrosserie', 'vidange'],
-        rating: 4.8,
-        isActive: true,
-        createdAt: new Date('2023-06-01')
+      error: (err) => {
+        console.error('Error loading garages:', err);
+        this.loading = false;
       }
-    ];
-    this.filterGarages();
+    });
   }
 
   filterGarages(): void {
@@ -848,14 +831,24 @@ export class SuppliersComponent implements OnInit {
         garage.city.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
         garage.address.toLowerCase().includes(this.searchQuery.toLowerCase());
       
+      const matchesType = !this.filterType || garage.type === this.filterType;
+      
       const matchesService = !this.filterService || garage.services.includes(this.filterService);
       
       const matchesStatus = !this.filterStatus || 
         (this.filterStatus === 'active' && garage.isActive) ||
         (this.filterStatus === 'inactive' && !garage.isActive);
       
-      return matchesSearch && matchesService && matchesStatus;
+      return matchesSearch && matchesType && matchesService && matchesStatus;
     });
+  }
+
+  getTypeIcon(type: string): string {
+    return SUPPLIER_TYPES[type]?.icon || '📦';
+  }
+
+  getTypeLabel(type: string): string {
+    return SUPPLIER_TYPES[type]?.label || type;
   }
 
   getActiveGarages(): Garage[] {
@@ -902,19 +895,50 @@ export class SuppliersComponent implements OnInit {
 
   saveGarage(garage: Garage): void {
     if (garage.id) {
-      // Mise à jour
-      const index = this.allGarages.findIndex(g => g.id === garage.id);
-      if (index !== -1) {
-        this.allGarages[index] = { ...garage, updatedAt: new Date() };
-      }
+      // Mise à jour via API
+      this.apiService.updateSupplier(parseInt(garage.id), {
+        name: garage.name,
+        type: 'garage',
+        address: garage.address,
+        city: garage.city,
+        postalCode: garage.postalCode,
+        contactName: garage.contactName,
+        phone: garage.phone,
+        email: garage.email,
+        notes: garage.notes,
+        isActive: garage.isActive,
+        rating: garage.rating,
+        services: garage.services
+      }).subscribe({
+        next: () => {
+          this.loadGarages();
+          this.closePopup();
+        },
+        error: (err) => console.error('Error updating garage:', err)
+      });
     } else {
-      // Création
-      garage.id = Date.now().toString();
-      garage.createdAt = new Date();
-      this.allGarages.push(garage);
+      // Création via API
+      this.apiService.createSupplier({
+        name: garage.name,
+        type: 'garage',
+        address: garage.address,
+        city: garage.city,
+        postalCode: garage.postalCode,
+        contactName: garage.contactName,
+        phone: garage.phone,
+        email: garage.email,
+        notes: garage.notes,
+        isActive: garage.isActive,
+        rating: garage.rating,
+        services: garage.services
+      }).subscribe({
+        next: () => {
+          this.loadGarages();
+          this.closePopup();
+        },
+        error: (err) => console.error('Error creating garage:', err)
+      });
     }
-    this.filterGarages();
-    this.closePopup();
   }
 
   confirmDelete(garage: Garage): void {
@@ -929,10 +953,19 @@ export class SuppliersComponent implements OnInit {
 
   deleteGarage(): void {
     if (this.garageToDelete) {
-      this.allGarages = this.allGarages.filter(g => g.id !== this.garageToDelete!.id);
-      this.filterGarages();
+      this.apiService.deleteSupplier(parseInt(this.garageToDelete.id!)).subscribe({
+        next: () => {
+          this.loadGarages();
+          this.cancelDelete();
+        },
+        error: (err) => {
+          console.error('Error deleting garage:', err);
+          this.cancelDelete();
+        }
+      });
+    } else {
+      this.cancelDelete();
     }
-    this.cancelDelete();
   }
 
   callGarage(garage: Garage): void {

@@ -38,7 +38,7 @@ import { AdminService, Client, SubscriptionType } from '../services/admin.servic
         <div class="clients-grid">
           <div class="client-card" *ngFor="let client of filteredClients" [class]="client.status">
             <div class="card-header">
-              <div class="client-avatar">{{ client.name.charAt(0) }}</div>
+              <div class="client-avatar">{{ client.name?.charAt(0) || 'C' }}</div>
               <div class="client-info">
                 <h3>{{ client.name }}</h3>
                 <span class="client-type">{{ client.type | titlecase }}</span>
@@ -167,7 +167,7 @@ import { AdminService, Client, SubscriptionType } from '../services/admin.servic
 
             <div class="popup-body view-mode" *ngIf="showViewModal && selectedClient">
               <div class="view-header">
-                <div class="client-avatar large">{{ selectedClient.name.charAt(0) }}</div>
+                <div class="client-avatar large">{{ selectedClient.name?.charAt(0) || 'C' }}</div>
                 <div>
                   <h3>{{ selectedClient.name }}</h3>
                   <span class="status-badge" [class]="selectedClient.status">{{ selectedClient.status | titlecase }}</span>

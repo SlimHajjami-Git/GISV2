@@ -169,6 +169,12 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
     private static string CalculateStatus(VehicleMaintenanceSchedule schedule, int currentMileage)
     {
         var today = DateTime.UtcNow.Date;
+        var template = schedule.Template;
+        
+        var warningKm = template?.WarningKm ?? 1000;
+        var warningDays = template?.WarningDays ?? 30;
+        var criticalKm = template?.CriticalKm ?? 0;
+        var criticalDays = template?.CriticalDays ?? 0;
 
         // Check overdue
         if (schedule.NextDueKm.HasValue && currentMileage > schedule.NextDueKm.Value)
@@ -176,10 +182,16 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
         if (schedule.NextDueDate.HasValue && today > schedule.NextDueDate.Value)
             return "overdue";
 
-        // Check due (< 1000 km or < 30 days)
-        if (schedule.NextDueKm.HasValue && schedule.NextDueKm.Value - currentMileage < 1000)
+        // Check critical
+        if (criticalKm > 0 && schedule.NextDueKm.HasValue && schedule.NextDueKm.Value - currentMileage <= criticalKm)
+            return "critical";
+        if (criticalDays > 0 && schedule.NextDueDate.HasValue && (schedule.NextDueDate.Value - today).TotalDays <= criticalDays)
+            return "critical";
+
+        // Check due (warning threshold)
+        if (schedule.NextDueKm.HasValue && schedule.NextDueKm.Value - currentMileage <= warningKm)
             return "due";
-        if (schedule.NextDueDate.HasValue && (schedule.NextDueDate.Value - today).TotalDays < 30)
+        if (schedule.NextDueDate.HasValue && (schedule.NextDueDate.Value - today).TotalDays <= warningDays)
             return "due";
 
         // Check upcoming (< 5000 km or < 90 days)
@@ -189,6 +201,170 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
             return "upcoming";
 
         return "ok";
+    }
+}
+
+public class PauseMaintenanceScheduleCommandHandler : IRequestHandler<PauseMaintenanceScheduleCommand, bool>
+{
+    private readonly IGisDbContext _context;
+
+    public PauseMaintenanceScheduleCommandHandler(IGisDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<bool> Handle(PauseMaintenanceScheduleCommand request, CancellationToken cancellationToken)
+    {
+        var schedule = await _context.VehicleMaintenanceSchedules
+            .FirstOrDefaultAsync(s => s.Id == request.ScheduleId, cancellationToken);
+
+        if (schedule == null) return false;
+
+        schedule.IsPaused = true;
+        schedule.PausedAt = DateTime.UtcNow;
+        schedule.PausedReason = request.Reason;
+        schedule.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+}
+
+public class ResumeMaintenanceScheduleCommandHandler : IRequestHandler<ResumeMaintenanceScheduleCommand, bool>
+{
+    private readonly IGisDbContext _context;
+
+    public ResumeMaintenanceScheduleCommandHandler(IGisDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<bool> Handle(ResumeMaintenanceScheduleCommand request, CancellationToken cancellationToken)
+    {
+        var schedule = await _context.VehicleMaintenanceSchedules
+            .FirstOrDefaultAsync(s => s.Id == request.ScheduleId, cancellationToken);
+
+        if (schedule == null) return false;
+
+        schedule.IsPaused = false;
+        schedule.PausedAt = null;
+        schedule.PausedReason = null;
+        schedule.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+}
+
+public class UpdateScheduleIntervalsCommandHandler : IRequestHandler<UpdateScheduleIntervalsCommand, bool>
+{
+    private readonly IGisDbContext _context;
+
+    public UpdateScheduleIntervalsCommandHandler(IGisDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<bool> Handle(UpdateScheduleIntervalsCommand request, CancellationToken cancellationToken)
+    {
+        var schedule = await _context.VehicleMaintenanceSchedules
+            .Include(s => s.Template)
+            .FirstOrDefaultAsync(s => s.Id == request.ScheduleId, cancellationToken);
+
+        if (schedule == null) return false;
+
+        schedule.CustomIntervalKm = request.CustomIntervalKm;
+        schedule.CustomIntervalMonths = request.CustomIntervalMonths;
+        schedule.Notes = request.Notes;
+        schedule.UpdatedAt = DateTime.UtcNow;
+
+        // Recalculate next due based on custom intervals
+        if (schedule.LastDoneDate.HasValue && schedule.LastDoneKm.HasValue)
+        {
+            var intervalKm = request.CustomIntervalKm ?? schedule.Template?.IntervalKm;
+            var intervalMonths = request.CustomIntervalMonths ?? schedule.Template?.IntervalMonths;
+
+            schedule.NextDueKm = intervalKm.HasValue ? schedule.LastDoneKm.Value + intervalKm.Value : null;
+            schedule.NextDueDate = intervalMonths.HasValue ? schedule.LastDoneDate.Value.AddMonths(intervalMonths.Value) : null;
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+}
+
+public class AddTemplatePartCommandHandler : IRequestHandler<AddTemplatePartCommand, int>
+{
+    private readonly IGisDbContext _context;
+
+    public AddTemplatePartCommandHandler(IGisDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<int> Handle(AddTemplatePartCommand request, CancellationToken cancellationToken)
+    {
+        var part = new MaintenanceTemplatePart
+        {
+            TemplateId = request.TemplateId,
+            PartName = request.PartName,
+            PartNumber = request.PartNumber,
+            Quantity = request.Quantity,
+            EstimatedUnitCost = request.EstimatedUnitCost,
+            IsRequired = request.IsRequired,
+            PreferredSupplierId = request.PreferredSupplierId
+        };
+
+        _context.MaintenanceTemplateParts.Add(part);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return part.Id;
+    }
+}
+
+public class RemoveTemplatePartCommandHandler : IRequestHandler<RemoveTemplatePartCommand, bool>
+{
+    private readonly IGisDbContext _context;
+
+    public RemoveTemplatePartCommandHandler(IGisDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<bool> Handle(RemoveTemplatePartCommand request, CancellationToken cancellationToken)
+    {
+        var part = await _context.MaintenanceTemplateParts
+            .FirstOrDefaultAsync(p => p.Id == request.PartId, cancellationToken);
+
+        if (part == null) return false;
+
+        _context.MaintenanceTemplateParts.Remove(part);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return true;
+    }
+}
+
+public class AcknowledgeMaintenanceNotificationCommandHandler : IRequestHandler<AcknowledgeMaintenanceNotificationCommand, bool>
+{
+    private readonly IGisDbContext _context;
+
+    public AcknowledgeMaintenanceNotificationCommandHandler(IGisDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<bool> Handle(AcknowledgeMaintenanceNotificationCommand request, CancellationToken cancellationToken)
+    {
+        var notification = await _context.MaintenanceNotifications
+            .FirstOrDefaultAsync(n => n.Id == request.NotificationId, cancellationToken);
+
+        if (notification == null) return false;
+
+        notification.AcknowledgedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
     }
 }
 

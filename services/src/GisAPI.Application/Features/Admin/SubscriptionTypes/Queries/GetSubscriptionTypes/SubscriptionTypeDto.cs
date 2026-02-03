@@ -28,6 +28,37 @@ public class SubscriptionTypeDto
     public int HistoryRetentionDays { get; set; }
     public int SortOrder { get; set; }
     public bool IsActive { get; set; }
+    
+    // Module permissions
+    public bool ModuleDashboard { get; set; }
+    public bool ModuleMonitoring { get; set; }
+    public bool ModuleVehicles { get; set; }
+    public bool ModuleEmployees { get; set; }
+    public bool ModuleGeofences { get; set; }
+    public bool ModuleMaintenance { get; set; }
+    public bool ModuleCosts { get; set; }
+    public bool ModuleReports { get; set; }
+    public bool ModuleSettings { get; set; }
+    public bool ModuleUsers { get; set; }
+    public bool ModuleSuppliers { get; set; }
+    public bool ModuleDocuments { get; set; }
+    public bool ModuleAccidents { get; set; }
+    public bool ModuleFleetManagement { get; set; }
+    
+    // Report permissions
+    public bool ReportTrips { get; set; }
+    public bool ReportFuel { get; set; }
+    public bool ReportSpeed { get; set; }
+    public bool ReportStops { get; set; }
+    public bool ReportMileage { get; set; }
+    public bool ReportCosts { get; set; }
+    public bool ReportMaintenance { get; set; }
+    public bool ReportDaily { get; set; }
+    public bool ReportMonthly { get; set; }
+    public bool ReportMileagePeriod { get; set; }
+    public bool ReportSpeedInfraction { get; set; }
+    public bool ReportDrivingBehavior { get; set; }
+    
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

@@ -185,6 +185,7 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
                 <div class="view-row"><span>Year:</span><span>{{ selectedVehicle.year || 'N/A' }}</span></div>
                 <div class="view-row"><span>Color:</span><span>{{ selectedVehicle.color || 'N/A' }}</span></div>
                 <div class="view-row"><span>Mileage:</span><span>{{ selectedVehicle.mileage | number }} km</span></div>
+                <div class="view-row"><span>Fuel Tank:</span><span>{{ selectedVehicle.fuelTankCapacity ? selectedVehicle.fuelTankCapacity + ' L' : 'N/A' }}</span></div>
               </div>
 
               <div class="view-section">
@@ -895,6 +896,7 @@ export class AdminVehiclesComponent implements OnInit {
       type: this.selectedVehicle.type,
       status: this.selectedVehicle.status,
       mileage: this.selectedVehicle.mileage,
+      fuelTankCapacity: this.selectedVehicle.fuelTankCapacity,
       color: this.selectedVehicle.color,
       fuelType: this.selectedVehicle.fuelType,
       companyId: this.selectedVehicle.companyId,

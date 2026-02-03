@@ -36,6 +36,7 @@ public class UpdateVehicleCommandHandler : IRequestHandler<UpdateVehicleCommand>
         vehicle.Color = request.Color;
         vehicle.Status = request.Status;
         vehicle.Mileage = request.Mileage;
+        vehicle.FuelTankCapacity = request.FuelTankCapacity;
         vehicle.AssignedDriverId = request.AssignedDriverId;
         vehicle.AssignedSupervisorId = request.AssignedSupervisorId;
         vehicle.UpdatedAt = DateTime.UtcNow;

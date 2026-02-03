@@ -17,7 +17,6 @@ public class UpdateSupplierCommandHandler : IRequestHandler<UpdateSupplierComman
     public async Task<bool> Handle(UpdateSupplierCommand request, CancellationToken cancellationToken)
     {
         var supplier = await _context.Suppliers
-            .Include(s => s.Services)
             .FirstOrDefaultAsync(s => s.Id == request.Id, cancellationToken);
 
         if (supplier == null)
@@ -42,25 +41,6 @@ public class UpdateSupplierCommandHandler : IRequestHandler<UpdateSupplierComman
         if (request.IsActive.HasValue) supplier.IsActive = request.IsActive.Value;
 
         supplier.UpdatedAt = DateTime.UtcNow;
-
-        // Update services if provided
-        if (request.Services != null)
-        {
-            var validServices = new[] { "mecanique", "carrosserie", "electricite", "pneumatique", "vidange", "climatisation", "diagnostic" };
-            
-            // Remove existing services
-            _context.SupplierServices.RemoveRange(supplier.Services);
-            
-            // Add new services
-            foreach (var serviceCode in request.Services.Where(s => validServices.Contains(s.ToLower())))
-            {
-                _context.SupplierServices.Add(new SupplierService
-                {
-                    SupplierId = supplier.Id,
-                    ServiceCode = serviceCode.ToLower()
-                });
-            }
-        }
 
         await _context.SaveChangesAsync(cancellationToken);
         return true;

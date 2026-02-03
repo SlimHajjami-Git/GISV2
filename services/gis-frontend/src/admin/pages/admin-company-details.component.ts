@@ -35,7 +35,7 @@ type CompanyRole = Role & { userCount?: number };
 
         <!-- Company Header Card -->
         <div class="company-header-card">
-          <div class="company-avatar">{{ company.name.charAt(0) }}</div>
+          <div class="company-avatar">{{ company.name?.charAt(0) || 'C' }}</div>
           <div class="company-info">
             <div class="company-title">
               <h1>{{ company.name }}</h1>
@@ -350,7 +350,7 @@ type CompanyRole = Role & { userCount?: number };
                 <tr *ngFor="let user of filteredUsers">
                   <td class="user-cell">
                     <div class="user-info">
-                      <div class="user-avatar">{{ user.name.charAt(0) }}</div>
+                      <div class="user-avatar">{{ user.name?.charAt(0) || 'U' }}</div>
                       <div class="user-details">
                         <span class="user-name">{{ user.name }}</span>
                         <span class="user-phone" *ngIf="user.phone">{{ user.phone }}</span>

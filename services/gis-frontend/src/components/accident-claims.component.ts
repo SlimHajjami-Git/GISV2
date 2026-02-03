@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { ApiService } from '../services/api.service';
 import { trigger, transition, style, animate } from '@angular/animations';
 
 interface AccidentClaim {
@@ -1552,9 +1553,12 @@ export class AccidentClaimsComponent implements OnInit {
 
   formData: any = this.getEmptyFormData();
 
+  loading = false;
+
   constructor(
     private router: Router,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private apiService: ApiService
   ) {}
 
   ngOnInit() {
@@ -1562,100 +1566,45 @@ export class AccidentClaimsComponent implements OnInit {
   }
 
   loadClaims() {
-    this.claims = [
-      {
-        id: '1',
-        claimNumber: 'SIN-2026-001',
-        vehicleId: 'v1',
-        vehicleName: 'Peugeot 208',
-        vehiclePlate: '245 TUN 7890',
-        driverName: 'Ahmed Ben Ali',
-        accidentDate: new Date('2026-01-20'),
-        accidentTime: '14:30',
-        location: 'Avenue Habib Bourguiba, Tunis',
-        weatherConditions: 'Ensoleillé',
-        description: 'Collision arrière à un feu rouge. Le véhicule devant a freiné brusquement.',
-        status: 'under_review',
-        severity: 'moderate',
-        estimatedDamage: 2500,
-        thirdPartyInvolved: true,
-        thirdPartyName: 'Kamel Bouazizi',
-        thirdPartyPhone: '+216 98 456 789',
-        thirdPartyVehicle: 'Toyota Yaris - 178 TUN 3344',
-        thirdPartyInsurance: 'STAR Assurances',
-        policeReportNumber: 'PV-2026-4521',
-        damagedZones: ['Avant', 'Pare-chocs'],
-        createdAt: new Date('2026-01-20T15:00:00'),
-        updatedAt: new Date('2026-01-21T10:00:00'),
-        photos: []
+    this.loading = true;
+    this.apiService.getAccidentClaims({ pageSize: 100 }).subscribe({
+      next: (result) => {
+        this.claims = result.items.map((c: any) => ({
+          id: c.id.toString(),
+          claimNumber: c.claimNumber || '',
+          vehicleId: c.vehicleId?.toString() || '',
+          vehicleName: c.vehicleName || '',
+          vehiclePlate: c.vehiclePlate || '',
+          driverName: c.driverName || '',
+          accidentDate: c.accidentDate ? new Date(c.accidentDate) : new Date(),
+          accidentTime: c.accidentTime || '',
+          location: c.location || '',
+          weatherConditions: c.weatherConditions,
+          roadConditions: c.roadConditions,
+          description: c.description || '',
+          status: (c.status as AccidentClaim['status']) || 'draft',
+          severity: (c.severity as AccidentClaim['severity']) || 'minor',
+          estimatedDamage: c.estimatedDamage || 0,
+          approvedAmount: c.approvedAmount,
+          thirdPartyInvolved: c.thirdPartyInvolved || false,
+          thirdPartyName: c.thirdPartyName,
+          thirdPartyPhone: c.thirdPartyPhone,
+          thirdPartyVehicle: c.thirdPartyVehicle,
+          thirdPartyInsurance: c.thirdPartyInsurance,
+          policeReportNumber: c.policeReportNumber,
+          damagedZones: c.damagedZones || [],
+          createdAt: c.createdAt ? new Date(c.createdAt) : new Date(),
+          updatedAt: c.updatedAt ? new Date(c.updatedAt) : new Date(),
+          photos: c.photos || []
+        }));
+        this.filterClaims();
+        this.loading = false;
       },
-      {
-        id: '2',
-        claimNumber: 'SIN-2026-002',
-        vehicleId: 'v2',
-        vehicleName: 'Renault Clio',
-        vehiclePlate: '189 TUN 4521',
-        driverName: 'Fatma Trabelsi',
-        accidentDate: new Date('2026-01-18'),
-        accidentTime: '09:15',
-        location: 'Route de Sousse, Km 45',
-        weatherConditions: 'Pluie',
-        roadConditions: 'Mouillée',
-        description: 'Sortie de route due à éclatement de pneu. Dommages importants sur le côté droit.',
-        status: 'approved',
-        severity: 'major',
-        estimatedDamage: 8500,
-        approvedAmount: 7800,
-        thirdPartyInvolved: false,
-        damagedZones: ['Côté droit', 'Roue avant', 'Aile'],
-        createdAt: new Date('2026-01-18T11:00:00'),
-        updatedAt: new Date('2026-01-22T14:00:00'),
-        photos: []
-      },
-      {
-        id: '3',
-        claimNumber: 'SIN-2026-003',
-        vehicleId: 'v3',
-        vehicleName: 'Citroën Berlingo',
-        vehiclePlate: '312 TUN 1122',
-        driverName: 'Mohamed Sassi',
-        accidentDate: new Date('2026-01-22'),
-        accidentTime: '16:45',
-        location: 'Parking Centre Commercial Carrefour, La Marsa',
-        description: 'Accrochage en manœuvre de stationnement. Rayures sur pare-chocs arrière.',
-        status: 'draft',
-        severity: 'minor',
-        estimatedDamage: 450,
-        thirdPartyInvolved: false,
-        damagedZones: ['Arrière'],
-        createdAt: new Date('2026-01-22T17:00:00'),
-        updatedAt: new Date('2026-01-22T17:00:00'),
-        photos: []
-      },
-      {
-        id: '4',
-        claimNumber: 'SIN-2026-004',
-        vehicleId: 'v4',
-        vehicleName: 'Volkswagen Caddy',
-        vehiclePlate: '456 TUN 7788',
-        driverName: 'Sami Gharbi',
-        accidentDate: new Date('2026-01-15'),
-        accidentTime: '11:20',
-        location: 'Autoroute A1, Sortie Hammamet',
-        description: 'Collision avec obstacle sur la voie. Dommages au train avant et airbags déclenchés.',
-        status: 'closed',
-        severity: 'total_loss',
-        estimatedDamage: 25000,
-        approvedAmount: 22000,
-        thirdPartyInvolved: false,
-        policeReportNumber: 'PV-2026-4489',
-        damagedZones: ['Avant', 'Moteur', 'Airbags', 'Châssis'],
-        createdAt: new Date('2026-01-15T12:00:00'),
-        updatedAt: new Date('2026-01-20T16:00:00'),
-        photos: []
+      error: (err) => {
+        console.error('Error loading claims:', err);
+        this.loading = false;
       }
-    ];
-    this.filterClaims();
+    });
   }
 
   filterClaims() {

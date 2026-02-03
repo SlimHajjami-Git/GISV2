@@ -28,7 +28,6 @@ public class GetVehicleDetailsQueryHandler : IRequestHandler<GetVehicleDetailsQu
             .Include(v => v.GpsDevice)
             .Include(v => v.Documents)
             .Include(v => v.MaintenanceRecords.OrderByDescending(m => m.Date).Take(10))
-                .ThenInclude(m => m.Supplier)
             .FirstOrDefaultAsync(ct);
 
         if (vehicle == null)
@@ -102,7 +101,7 @@ public class GetVehicleDetailsQueryHandler : IRequestHandler<GetVehicleDetailsQu
                 m.Date,
                 m.MileageAtService,
                 m.TotalCost,
-                m.Supplier?.Name,
+                m.ServiceProvider,
                 m.Status
             )).ToList(),
             

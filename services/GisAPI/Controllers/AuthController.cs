@@ -41,24 +41,75 @@ public class AuthController : ControllerBase
             return Unauthorized(new { message = "Compte désactivé" });
         }
 
+        // Load SubscriptionType if Societe has one
+        SubscriptionFeaturesDto? subscriptionFeatures = null;
+        if (user.Societe?.SubscriptionTypeId != null)
+        {
+            var subType = await _context.SubscriptionTypes
+                .FirstOrDefaultAsync(st => st.Id == user.Societe.SubscriptionTypeId);
+            
+            if (subType != null)
+            {
+                subscriptionFeatures = new SubscriptionFeaturesDto(
+                    GpsTracking: subType.GpsTracking,
+                    GpsInstallation: subType.GpsInstallation,
+                    ApiAccess: subType.ApiAccess,
+                    AdvancedReports: subType.AdvancedReports,
+                    RealTimeAlerts: subType.RealTimeAlerts,
+                    HistoryPlayback: subType.HistoryPlayback,
+                    FuelAnalysis: subType.FuelAnalysis,
+                    DrivingBehavior: subType.DrivingBehavior,
+                    ModuleDashboard: subType.ModuleDashboard,
+                    ModuleMonitoring: subType.ModuleMonitoring,
+                    ModuleVehicles: subType.ModuleVehicles,
+                    ModuleEmployees: subType.ModuleEmployees,
+                    ModuleGeofences: subType.ModuleGeofences,
+                    ModuleMaintenance: subType.ModuleMaintenance,
+                    ModuleCosts: subType.ModuleCosts,
+                    ModuleReports: subType.ModuleReports,
+                    ModuleSettings: subType.ModuleSettings,
+                    ModuleUsers: subType.ModuleUsers,
+                    ModuleSuppliers: subType.ModuleSuppliers,
+                    ModuleDocuments: subType.ModuleDocuments,
+                    ModuleAccidents: subType.ModuleAccidents,
+                    ModuleFleetManagement: subType.ModuleFleetManagement,
+                    MaxVehicles: subType.MaxVehicles,
+                    MaxUsers: subType.MaxUsers,
+                    MaxGpsDevices: subType.MaxGpsDevices,
+                    MaxGeofences: subType.MaxGeofences,
+                    HistoryRetentionDays: subType.HistoryRetentionDays
+                );
+            }
+        }
+
         user.LastLoginAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
         var token = GenerateJwtToken(user);
         var refreshToken = GenerateRefreshToken();
 
+        // Split name into first and last name
+        var nameParts = (user.Name ?? "").Split(' ', 2);
+        var firstName = nameParts.Length > 0 ? nameParts[0] : "";
+        var lastName = nameParts.Length > 1 ? nameParts[1] : "";
+
         return Ok(new AuthResponse(
             token,
             refreshToken,
             new UserDto(
                 user.Id,
-                user.Name,
+                firstName,
+                lastName,
                 user.Email,
                 user.Phone,
-                user.Roles,
-                user.Permissions,
+                user.RoleId,
+                user.Role?.Name ?? "",
+                user.Role?.IsCompanyAdmin ?? false,
+                user.Role?.IsSystemAdmin ?? false,
                 user.CompanyId,
-                user.Societe?.Name ?? ""
+                user.Societe?.Name ?? "",
+                user.Role?.Permissions,
+                subscriptionFeatures
             )
         ));
     }
@@ -135,18 +186,63 @@ public class AuthController : ControllerBase
         var token = GenerateJwtToken(user);
         var refreshToken = GenerateRefreshToken();
 
+        // Split name into first and last name
+        var nameParts = (user.Name ?? "").Split(' ', 2);
+        var firstName = nameParts.Length > 0 ? nameParts[0] : "";
+        var lastName = nameParts.Length > 1 ? nameParts[1] : "";
+
+        // Load subscription features for new user
+        SubscriptionFeaturesDto? subscriptionFeatures = null;
+        if (subscriptionType != null)
+        {
+            subscriptionFeatures = new SubscriptionFeaturesDto(
+                GpsTracking: subscriptionType.GpsTracking,
+                GpsInstallation: subscriptionType.GpsInstallation,
+                ApiAccess: subscriptionType.ApiAccess,
+                AdvancedReports: subscriptionType.AdvancedReports,
+                RealTimeAlerts: subscriptionType.RealTimeAlerts,
+                HistoryPlayback: subscriptionType.HistoryPlayback,
+                FuelAnalysis: subscriptionType.FuelAnalysis,
+                DrivingBehavior: subscriptionType.DrivingBehavior,
+                ModuleDashboard: subscriptionType.ModuleDashboard,
+                ModuleMonitoring: subscriptionType.ModuleMonitoring,
+                ModuleVehicles: subscriptionType.ModuleVehicles,
+                ModuleEmployees: subscriptionType.ModuleEmployees,
+                ModuleGeofences: subscriptionType.ModuleGeofences,
+                ModuleMaintenance: subscriptionType.ModuleMaintenance,
+                ModuleCosts: subscriptionType.ModuleCosts,
+                ModuleReports: subscriptionType.ModuleReports,
+                ModuleSettings: subscriptionType.ModuleSettings,
+                ModuleUsers: subscriptionType.ModuleUsers,
+                ModuleSuppliers: subscriptionType.ModuleSuppliers,
+                ModuleDocuments: subscriptionType.ModuleDocuments,
+                ModuleAccidents: subscriptionType.ModuleAccidents,
+                ModuleFleetManagement: subscriptionType.ModuleFleetManagement,
+                MaxVehicles: subscriptionType.MaxVehicles,
+                MaxUsers: subscriptionType.MaxUsers,
+                MaxGpsDevices: subscriptionType.MaxGpsDevices,
+                MaxGeofences: subscriptionType.MaxGeofences,
+                HistoryRetentionDays: subscriptionType.HistoryRetentionDays
+            );
+        }
+
         return Ok(new AuthResponse(
             token,
             refreshToken,
             new UserDto(
                 user.Id,
-                user.Name,
+                firstName,
+                lastName,
                 user.Email,
                 user.Phone,
-                user.Roles,
-                user.Permissions,
+                adminRole.Id,
+                adminRole.Name,
+                adminRole.IsCompanyAdmin,
+                adminRole.IsSystemRole,
                 user.CompanyId,
-                company.Name
+                company.Name,
+                adminRole.Permissions,
+                subscriptionFeatures
             )
         ));
     }

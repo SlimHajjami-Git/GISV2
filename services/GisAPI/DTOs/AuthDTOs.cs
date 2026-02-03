@@ -18,13 +18,51 @@ public record AuthResponse(
 
 public record UserDto(
     int Id,
-    string Name,
+    string FirstName,
+    string LastName,
     string Email,
     string? Phone,
-    string[] Roles,
-    string[] Permissions,
+    int RoleId,
+    string RoleName,
+    bool IsCompanyAdmin,
+    bool IsSystemAdmin,
     int CompanyId,
-    string CompanyName
+    string CompanyName,
+    Dictionary<string, object>? Permissions,
+    SubscriptionFeaturesDto? SubscriptionFeatures
+);
+
+public record SubscriptionFeaturesDto(
+    // Core features
+    bool GpsTracking,
+    bool GpsInstallation,
+    bool ApiAccess,
+    bool AdvancedReports,
+    bool RealTimeAlerts,
+    bool HistoryPlayback,
+    bool FuelAnalysis,
+    bool DrivingBehavior,
+    // Module access
+    bool ModuleDashboard,
+    bool ModuleMonitoring,
+    bool ModuleVehicles,
+    bool ModuleEmployees,
+    bool ModuleGeofences,
+    bool ModuleMaintenance,
+    bool ModuleCosts,
+    bool ModuleReports,
+    bool ModuleSettings,
+    bool ModuleUsers,
+    bool ModuleSuppliers,
+    bool ModuleDocuments,
+    bool ModuleAccidents,
+    bool ModuleFleetManagement,
+    // Limits
+    int MaxVehicles,
+    int MaxUsers,
+    int MaxGpsDevices,
+    int MaxGeofences,
+    int HistoryRetentionDays
 );
 
 public record ChangePasswordRequest(

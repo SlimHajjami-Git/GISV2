@@ -17,7 +17,6 @@ public class GetGaragesQueryHandler : IRequestHandler<GetGaragesQuery, Paginated
     public async Task<PaginatedList<SupplierDto>> Handle(GetGaragesQuery request, CancellationToken cancellationToken)
     {
         var query = _context.Suppliers
-            .Include(s => s.Services)
             .Where(s => s.Type == "garage")
             .AsQueryable();
 
@@ -50,7 +49,7 @@ public class GetGaragesQueryHandler : IRequestHandler<GetGaragesQuery, Paginated
                 s.Type,
                 s.Address,
                 s.City,
-                s.PostalCode,
+                null,
                 s.ContactName,
                 s.Phone,
                 s.Email,
@@ -62,7 +61,7 @@ public class GetGaragesQueryHandler : IRequestHandler<GetGaragesQuery, Paginated
                 s.Rating,
                 s.Notes,
                 s.IsActive,
-                s.Services.Select(svc => svc.ServiceCode).ToList(),
+                new List<string>(),
                 s.CreatedAt,
                 s.UpdatedAt
             ))

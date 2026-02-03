@@ -83,6 +83,7 @@ export interface AdminVehicle {
   status: 'available' | 'in_use' | 'maintenance';
   hasGps: boolean;
   mileage: number;
+  fuelTankCapacity?: number;
   fuelType?: string;
   companyId: number;
   companyName?: string;

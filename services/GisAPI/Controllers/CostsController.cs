@@ -23,7 +23,7 @@ public class CostsController : ControllerBase
     private int GetUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
 
     [HttpGet]
-    public async Task<ActionResult<List<VehicleCost>>> GetCosts(
+    public async Task<ActionResult> GetCosts(
         [FromQuery] int? vehicleId = null,
         [FromQuery] string? type = null,
         [FromQuery] DateTime? startDate = null,
@@ -43,13 +43,32 @@ public class CostsController : ControllerBase
             query = query.Where(c => c.Type == type);
 
         if (startDate.HasValue)
-            query = query.Where(c => c.Date >= startDate);
+        {
+            var startDateUtc = DateTime.SpecifyKind(startDate.Value, DateTimeKind.Utc);
+            query = query.Where(c => c.Date >= startDateUtc);
+        }
 
         if (endDate.HasValue)
-            query = query.Where(c => c.Date <= endDate);
+        {
+            var endDateUtc = DateTime.SpecifyKind(endDate.Value, DateTimeKind.Utc);
+            query = query.Where(c => c.Date <= endDateUtc);
+        }
 
         var costs = await query
             .OrderByDescending(c => c.Date)
+            .Select(c => new {
+                c.Id,
+                c.VehicleId,
+                VehicleName = c.Vehicle != null ? c.Vehicle.Name : null,
+                VehiclePlate = c.Vehicle != null ? c.Vehicle.Plate : null,
+                c.Type,
+                c.Description,
+                c.Amount,
+                c.Date,
+                c.Mileage,
+                c.ReceiptNumber,
+                c.CreatedAt
+            })
             .ToListAsync();
 
         return Ok(costs);
@@ -77,11 +96,15 @@ public class CostsController : ControllerBase
         [FromQuery] DateTime? endDate = null)
     {
         var companyId = GetCompanyId();
-        startDate ??= DateTime.UtcNow.AddMonths(-1);
-        endDate ??= DateTime.UtcNow;
+        var startDateUtc = startDate.HasValue 
+            ? DateTime.SpecifyKind(startDate.Value, DateTimeKind.Utc) 
+            : DateTime.UtcNow.AddMonths(-1);
+        var endDateUtc = endDate.HasValue 
+            ? DateTime.SpecifyKind(endDate.Value, DateTimeKind.Utc) 
+            : DateTime.UtcNow;
 
         var costs = await _context.VehicleCosts
-            .Where(c => c.CompanyId == companyId && c.Date >= startDate && c.Date <= endDate)
+            .Where(c => c.CompanyId == companyId && c.Date >= startDateUtc && c.Date <= endDateUtc)
             .GroupBy(c => c.Type)
             .Select(g => new
             {
@@ -92,7 +115,7 @@ public class CostsController : ControllerBase
             .ToListAsync();
 
         var totalFuel = await _context.VehicleCosts
-            .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= startDate && c.Date <= endDate)
+            .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= startDateUtc && c.Date <= endDateUtc)
             .SumAsync(c => c.Liters ?? 0);
 
         return Ok(new
@@ -100,7 +123,7 @@ public class CostsController : ControllerBase
             ByType = costs,
             TotalAmount = costs.Sum(c => c.Total),
             TotalFuelLiters = totalFuel,
-            Period = new { StartDate = startDate, EndDate = endDate }
+            Period = new { StartDate = startDateUtc, EndDate = endDateUtc }
         });
     }
 
@@ -113,6 +136,7 @@ public class CostsController : ControllerBase
         cost.CompanyId = companyId;
         cost.CreatedByUserId = userId;
         cost.CreatedAt = DateTime.UtcNow;
+        cost.UpdatedAt = DateTime.UtcNow;
 
         // Calculate total for fuel
         if (cost.Type == "fuel" && cost.Liters.HasValue && cost.PricePerLiter.HasValue)

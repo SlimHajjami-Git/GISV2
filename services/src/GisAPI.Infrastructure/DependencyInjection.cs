@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IJwtService, JwtService>();
         services.AddScoped<IPermissionService, PermissionService>();
+        services.AddScoped<IFuelCalculationService, FuelCalculationService>();
         services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
 
         // RabbitMQ Messaging

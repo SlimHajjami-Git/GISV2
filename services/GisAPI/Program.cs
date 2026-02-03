@@ -32,6 +32,9 @@ builder.Services.AddSingleton<GisAPI.Domain.Interfaces.IGeocodingService, GisAPI
 // Driving Behavior Detection Service
 builder.Services.AddScoped<GisAPI.Services.IDrivingBehaviorService, GisAPI.Services.DrivingBehaviorService>();
 
+// Maintenance Scheduler Service
+builder.Services.AddScoped<GisAPI.Application.Services.IMaintenanceSchedulerService, GisAPI.Application.Services.MaintenanceSchedulerService>();
+
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "DefaultSecretKeyForDevelopment123!";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -78,8 +81,13 @@ builder.Services.AddAuthorization(options =>
         policy.RequireClaim("permission", Permissions.Admin));
 });
 
-// Controllers
-builder.Services.AddControllers();
+// Controllers with camelCase JSON serialization
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.DictionaryKeyPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+    });
 
 // CORS - Allow all for debugging
 builder.Services.AddCors(options =>

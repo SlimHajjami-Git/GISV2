@@ -1,36 +1,32 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { MockDataService } from '../services/mock-data.service';
+import { ApiService } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
-import { Company, Vehicle } from '../models/types';
+import { ToastService } from '../services/toast.service';
 
-interface UserRole {
-  id: string;
+interface Role {
+  id: number;
   name: string;
-  label: string;
-  icon: string;
+  description?: string;
+  isSystem: boolean;
+  isCompanyAdmin: boolean;
+  permissions?: Record<string, any>;
+  usersCount?: number;
 }
 
-interface PagePermission {
-  id: string;
-  name: string;
-  label: string;
-  icon: string;
-}
-
-interface ManagedUser {
-  id: string;
+interface User {
+  id: number;
   name: string;
   email: string;
-  phone: string;
-  roles: string[];
-  permissions: string[];
-  assignedVehicles: string[];
-  status: 'active' | 'inactive';
-  createdAt: Date;
-  lastLogin?: Date;
+  phone?: string;
+  roleId: number;
+  roleName?: string;
+  isCompanyAdmin: boolean;
+  status: string;
+  createdAt: string;
+  lastLoginAt?: string;
 }
 
 @Component({
@@ -43,89 +39,98 @@ interface ManagedUser {
         <div class="page-header">
           <div class="header-left">
             <h1>Gestion des Utilisateurs</h1>
-            <p class="subtitle">Gérez les accès et permissions de votre équipe</p>
+            <p class="subtitle">Gérez les utilisateurs et les rôles de votre équipe</p>
           </div>
-          <button class="btn-primary" (click)="openUserModal()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
+          <div class="header-actions">
+            <button class="btn-secondary" (click)="openRoleModal()" *ngIf="activeTab === 'roles'">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Nouveau Rôle
+            </button>
+            <button class="btn-primary" (click)="openUserModal()" *ngIf="activeTab === 'users'">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Nouvel Utilisateur
+            </button>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+          <button class="tab" [class.active]="activeTab === 'users'" (click)="setActiveTab('users')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
             </svg>
-            Nouvel Utilisateur
+            Utilisateurs ({{ users.length }})
+          </button>
+          <button class="tab" [class.active]="activeTab === 'roles'" (click)="setActiveTab('roles')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+            </svg>
+            Rôles ({{ roles.length }})
           </button>
         </div>
 
         <!-- Stats Cards -->
-        <div class="stats-row">
+        <div class="stats-row" *ngIf="activeTab === 'users'">
           <div class="stat-card">
             <div class="stat-icon users">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                <circle cx="9" cy="7" r="4"/>
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
               </svg>
             </div>
             <div class="stat-info">
               <span class="stat-value">{{ users.length }}</span>
-              <span class="stat-label">Utilisateurs</span>
+              <span class="stat-label">Total</span>
             </div>
           </div>
           <div class="stat-card">
             <div class="stat-icon active">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                <polyline points="22 4 12 14.01 9 11.01"/>
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
               </svg>
             </div>
             <div class="stat-info">
-              <span class="stat-value">{{ getActiveUsers() }}</span>
+              <span class="stat-value">{{ getActiveUsersCount() }}</span>
               <span class="stat-label">Actifs</span>
-            </div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon drivers">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <circle cx="12" cy="10" r="3"/>
-                <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"/>
-              </svg>
-            </div>
-            <div class="stat-info">
-              <span class="stat-value">{{ getDriversCount() }}</span>
-              <span class="stat-label">Conducteurs</span>
             </div>
           </div>
           <div class="stat-card">
             <div class="stat-icon supervisors">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                <path d="M2 17l10 5 10-5"/>
-                <path d="M2 12l10 5 10-5"/>
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/>
               </svg>
             </div>
             <div class="stat-info">
-              <span class="stat-value">{{ getSupervisorsCount() }}</span>
-              <span class="stat-label">Superviseurs</span>
+              <span class="stat-value">{{ getAdminsCount() }}</span>
+              <span class="stat-label">Admins</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon drivers">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/>
+              </svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-value">{{ roles.length }}</span>
+              <span class="stat-label">Rôles</span>
             </div>
           </div>
         </div>
 
         <!-- Users Table -->
-        <div class="users-card">
+        <div class="users-card" *ngIf="activeTab === 'users'">
           <div class="card-header">
             <div class="search-box">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"/>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
-              <input type="text" [(ngModel)]="searchQuery" placeholder="Rechercher un utilisateur..." (input)="filterUsers()">
+              <input type="text" [(ngModel)]="searchQuery" placeholder="Rechercher..." (input)="filterUsers()">
             </div>
             <div class="filter-group">
-              <select [(ngModel)]="filterRole" (change)="filterUsers()">
-                <option value="">Tous les rôles</option>
-                <option value="driver">Conducteurs</option>
-                <option value="supervisor">Superviseurs</option>
-              </select>
               <select [(ngModel)]="filterStatus" (change)="filterUsers()">
                 <option value="">Tous les statuts</option>
                 <option value="active">Actifs</option>
@@ -139,9 +144,7 @@ interface ManagedUser {
               <thead>
                 <tr>
                   <th>Utilisateur</th>
-                  <th>Rôles</th>
-                  <th>Véhicules assignés</th>
-                  <th>Permissions</th>
+                  <th>Rôle</th>
                   <th>Statut</th>
                   <th>Actions</th>
                 </tr>
@@ -158,27 +161,9 @@ interface ManagedUser {
                     </div>
                   </td>
                   <td>
-                    <div class="roles-list">
-                      <span *ngFor="let role of user.roles" class="role-badge" [class]="role">
-                        {{ getRoleLabel(role) }}
-                      </span>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="vehicles-count">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="1" y="3" width="15" height="13" rx="2"/>
-                        <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
-                        <circle cx="5.5" cy="18.5" r="2.5"/>
-                        <circle cx="18.5" cy="18.5" r="2.5"/>
-                      </svg>
-                      <span>{{ user.assignedVehicles.length }} véhicule(s)</span>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="permissions-count">
-                      {{ user.permissions.length }}/{{ availablePermissions.length }} pages
-                    </div>
+                    <span class="role-badge" [class.admin]="user.isCompanyAdmin">
+                      {{ user.roleName || getRoleName(user.roleId) }}
+                    </span>
                   </td>
                   <td>
                     <span class="status-badge" [class]="user.status">
@@ -187,7 +172,7 @@ interface ManagedUser {
                   </td>
                   <td>
                     <div class="action-buttons">
-                      <button class="btn-icon" title="Modifier" (click)="editUser(user)">
+                      <button class="btn-icon" title="Modifier" (click)="openUserModal(user)">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -204,49 +189,108 @@ interface ManagedUser {
                 </tr>
               </tbody>
             </table>
-
-            <div class="empty-state" *ngIf="filteredUsers.length === 0">
+            <div class="empty-state" *ngIf="filteredUsers.length === 0 && !loading">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                <circle cx="9" cy="7" r="4"/>
-                <line x1="17" y1="11" x2="23" y2="11"/>
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
               </svg>
               <p>Aucun utilisateur trouvé</p>
             </div>
           </div>
         </div>
 
+        <!-- Roles Table -->
+        <div class="users-card" *ngIf="activeTab === 'roles'">
+          <div class="table-container">
+            <table class="users-table">
+              <thead>
+                <tr>
+                  <th>Nom du rôle</th>
+                  <th>Description</th>
+                  <th>Utilisateurs</th>
+                  <th>Type</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let role of roles">
+                  <td>
+                    <div class="role-info">
+                      <span class="role-name">{{ role.name }}</span>
+                    </div>
+                  </td>
+                  <td>{{ role.description || '-' }}</td>
+                  <td>{{ getUsersCountByRole(role.id) }}</td>
+                  <td>
+                    <span class="type-badge" [class.admin]="role.isCompanyAdmin" [class.system]="role.isSystem">
+                      {{ role.isSystem ? 'Système' : (role.isCompanyAdmin ? 'Admin' : 'Standard') }}
+                    </span>
+                  </td>
+                  <td>
+                    <div class="action-buttons">
+                      <button class="btn-icon" title="Modifier" (click)="openRoleModal(role)" [disabled]="role.isSystem">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                      </button>
+                      <button class="btn-icon danger" title="Supprimer" (click)="deleteRole(role)" [disabled]="role.isSystem">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <polyline points="3 6 5 6 21 6"/>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="empty-state" *ngIf="roles.length === 0 && !loading">
+              <p>Aucun rôle trouvé</p>
+            </div>
+          </div>
+        </div>
+
         <!-- User Modal -->
-        <div class="modal-overlay" *ngIf="showModal" (click)="closeModal()">
+        <div class="modal-overlay" *ngIf="showUserModal" (click)="closeUserModal()">
           <div class="modal-content" (click)="$event.stopPropagation()">
             <div class="modal-header">
               <h2>{{ editingUser ? 'Modifier' : 'Nouvel' }} Utilisateur</h2>
-              <button class="btn-close" (click)="closeModal()">
+              <button class="btn-close" (click)="closeUserModal()">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
               </button>
             </div>
-
             <div class="modal-body">
-              <!-- Basic Info -->
               <div class="form-section">
-                <h3>Informations de base</h3>
                 <div class="form-grid">
                   <div class="form-group">
-                    <label>Nom complet *</label>
-                    <input type="text" [(ngModel)]="userForm.name" placeholder="Nom et prénom">
+                    <label>Prénom *</label>
+                    <input type="text" [(ngModel)]="userForm.firstName" placeholder="Prénom">
                   </div>
                   <div class="form-group">
                     <label>Email *</label>
                     <input type="email" [(ngModel)]="userForm.email" placeholder="email@exemple.com">
                   </div>
                   <div class="form-group">
+                    <label>Nom *</label>
+                    <input type="text" [(ngModel)]="userForm.lastName" placeholder="Nom">
+                  </div>
+                  <div class="form-group">
                     <label>Téléphone</label>
                     <input type="tel" [(ngModel)]="userForm.phone" placeholder="+216 XX XXX XXX">
                   </div>
+                  <div class="form-group" *ngIf="!editingUser">
+                    <label>Mot de passe *</label>
+                    <input type="password" [(ngModel)]="userForm.password" placeholder="••••••••">
+                  </div>
                   <div class="form-group">
+                    <label>Rôle *</label>
+                    <select [(ngModel)]="userForm.roleId">
+                      <option *ngFor="let role of roles" [ngValue]="role.id">{{ role.name }}</option>
+                    </select>
+                  </div>
+                  <div class="form-group" *ngIf="editingUser">
                     <label>Statut</label>
                     <select [(ngModel)]="userForm.status">
                       <option value="active">Actif</option>
@@ -255,82 +299,117 @@ interface ManagedUser {
                   </div>
                 </div>
               </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn-secondary" (click)="closeUserModal()">Annuler</button>
+              <button class="btn-primary" (click)="saveUser()">
+                {{ editingUser ? 'Enregistrer' : 'Créer' }}
+              </button>
+            </div>
+          </div>
+        </div>
 
-              <!-- Roles -->
+        <!-- Role Modal -->
+        <div class="modal-overlay" *ngIf="showRoleModal" (click)="closeRoleModal()">
+          <div class="modal-content modal-lg" (click)="$event.stopPropagation()">
+            <div class="modal-header">
+              <h2>{{ editingRole ? 'Modifier' : 'Nouveau' }} Rôle</h2>
+              <button class="btn-close" (click)="closeRoleModal()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div class="modal-body">
               <div class="form-section">
-                <h3>Rôles</h3>
-                <p class="section-desc">Un utilisateur peut avoir plusieurs rôles</p>
-                <div class="roles-grid">
-                  <label *ngFor="let role of availableRoles" class="role-checkbox" [class.selected]="isRoleSelected(role.id)">
-                    <input type="checkbox" [checked]="isRoleSelected(role.id)" (change)="toggleRole(role.id)">
-                    <div class="role-content">
-                      <span class="role-icon" [innerHTML]="role.icon"></span>
-                      <div class="role-info">
-                        <span class="role-name">{{ role.label }}</span>
-                      </div>
-                    </div>
-                    <svg class="check-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
+                <h3>Informations générales</h3>
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label>Nom du rôle *</label>
+                    <input type="text" [(ngModel)]="roleForm.name" placeholder="Ex: Superviseur">
+                  </div>
+                  <div class="form-group">
+                    <label>Description</label>
+                    <input type="text" [(ngModel)]="roleForm.description" placeholder="Description du rôle">
+                  </div>
+                </div>
+                <div class="form-group checkbox-group">
+                  <label class="checkbox-label">
+                    <input type="checkbox" [(ngModel)]="roleForm.isCompanyAdmin">
+                    <span>Administrateur de la société</span>
                   </label>
+                  <p class="hint">Les administrateurs ont accès à toutes les fonctionnalités</p>
                 </div>
               </div>
 
-              <!-- Permissions -->
-              <div class="form-section">
-                <h3>Permissions d'accès aux pages</h3>
-                <p class="section-desc">Sélectionnez les pages accessibles par cet utilisateur</p>
-                <div class="permissions-grid">
-                  <label *ngFor="let perm of availablePermissions" class="permission-checkbox" [class.selected]="isPermissionSelected(perm.id)">
-                    <input type="checkbox" [checked]="isPermissionSelected(perm.id)" (change)="togglePermission(perm.id)">
-                    <span class="perm-icon" [innerHTML]="perm.icon"></span>
-                    <span class="perm-name">{{ perm.label }}</span>
-                    <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                  </label>
-                </div>
-                <div class="permission-actions">
-                  <button class="btn-link" (click)="selectAllPermissions()">Tout sélectionner</button>
-                  <button class="btn-link" (click)="deselectAllPermissions()">Tout désélectionner</button>
-                </div>
-              </div>
-
-              <!-- Vehicle Assignment -->
-              <div class="form-section">
-                <h3>Véhicules assignés</h3>
-                <p class="section-desc">Sélectionnez les véhicules que cet utilisateur peut gérer</p>
-                <div class="vehicles-grid">
-                  <label *ngFor="let vehicle of vehicles" class="vehicle-checkbox" [class.selected]="isVehicleSelected(vehicle.id)">
-                    <input type="checkbox" [checked]="isVehicleSelected(vehicle.id)" (change)="toggleVehicle(vehicle.id)">
-                    <div class="vehicle-info">
-                      <span class="vehicle-icon">🚗</span>
-                      <div class="vehicle-details">
-                        <span class="vehicle-name">{{ vehicle.name }}</span>
-                        <span class="vehicle-plate">{{ vehicle.plate }}</span>
-                      </div>
+              <!-- Permissions by category -->
+              <ng-container *ngIf="!roleForm.isCompanyAdmin">
+                <div class="form-section permission-category" *ngFor="let category of permissionCategories" [class.critical]="category.critical">
+                  <div class="category-header">
+                    <span class="category-icon">{{ category.icon }}</span>
+                    <div class="category-info">
+                      <h3>{{ category.name }}</h3>
+                      <p class="category-desc">{{ category.description }}</p>
                     </div>
-                    <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                  </label>
+                  </div>
+                  <div class="permissions-list">
+                    <label *ngFor="let perm of category.permissions" 
+                           class="permission-item" 
+                           [class.selected]="roleForm.modules[perm.key]"
+                           [class.critical-perm]="perm.desc.includes('CRITIQUE')">
+                      <input type="checkbox" [(ngModel)]="roleForm.modules[perm.key]" (change)="onModuleToggle(perm.key)">
+                      <div class="perm-content">
+                        <span class="perm-label">{{ perm.label }}</span>
+                        <span class="perm-desc">{{ perm.desc }}</span>
+                      </div>
+                      <svg class="check-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    </label>
+                  </div>
                 </div>
-                <div class="permission-actions" *ngIf="vehicles.length > 0">
-                  <button class="btn-link" (click)="selectAllVehicles()">Tous les véhicules</button>
-                  <button class="btn-link" (click)="deselectAllVehicles()">Aucun véhicule</button>
+
+                <!-- Reports permissions - Only show if moduleReports is enabled -->
+                <div class="form-section permission-category" [class.disabled]="!roleForm.modules['moduleReports']">
+                  <div class="category-header">
+                    <span class="category-icon">📈</span>
+                    <div class="category-info">
+                      <h3>Types de rapports</h3>
+                      <p class="category-desc" *ngIf="roleForm.modules['moduleReports']">Choisissez les rapports que ce rôle peut générer et consulter</p>
+                      <p class="category-desc warning" *ngIf="!roleForm.modules['moduleReports']">⚠️ Activez d'abord "Rapports" dans la catégorie "Rapports & Analyse" ci-dessus</p>
+                    </div>
+                  </div>
+                  <div class="permissions-list reports-list" *ngIf="roleForm.modules['moduleReports']">
+                    <label *ngFor="let rep of reportPermissions" 
+                           class="permission-item compact" 
+                           [class.selected]="roleForm.reports[rep.key]">
+                      <input type="checkbox" [(ngModel)]="roleForm.reports[rep.key]" (change)="onReportToggle(rep.key)">
+                      <div class="perm-content">
+                        <span class="perm-label">{{ rep.label }}</span>
+                        <span class="perm-desc">{{ rep.desc }}</span>
+                      </div>
+                      <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    </label>
+                  </div>
+                  <div class="disabled-overlay" *ngIf="!roleForm.modules['moduleReports']">
+                    <p>Les rapports individuels seront disponibles après activation du module Rapports</p>
+                  </div>
                 </div>
+              </ng-container>
+
+              <div class="admin-notice" *ngIf="roleForm.isCompanyAdmin">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <span>Les administrateurs ont automatiquement accès à tous les modules et rapports de l'abonnement.</span>
               </div>
             </div>
-
             <div class="modal-footer">
-              <button class="btn-secondary" (click)="closeModal()">Annuler</button>
-              <button class="btn-primary" (click)="saveUser()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                  <polyline points="17 21 17 13 7 13 7 21"/>
-                  <polyline points="7 3 7 8 15 8"/>
-                </svg>
-                {{ editingUser ? 'Enregistrer' : 'Créer' }}
+              <button class="btn-secondary" (click)="closeRoleModal()">Annuler</button>
+              <button class="btn-primary" (click)="saveRole()">
+                {{ editingRole ? 'Enregistrer' : 'Créer' }}
               </button>
             </div>
           </div>
@@ -381,6 +460,65 @@ interface ManagedUser {
 
     .btn-primary:hover {
       background: #4f46e5;
+    }
+
+    .btn-secondary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: white;
+      color: #374151;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .btn-secondary:hover {
+      background: #f9fafb;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      background: #f3f4f6;
+      padding: 4px;
+      border-radius: 10px;
+      width: fit-content;
+    }
+
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: transparent;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #6b7280;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab:hover {
+      color: #374151;
+    }
+
+    .tab.active {
+      background: white;
+      color: #1f2937;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
 
     /* Stats Row */
@@ -558,16 +696,37 @@ interface ManagedUser {
       border-radius: 20px;
       font-size: 11px;
       font-weight: 600;
+      background: #e0e7ff;
+      color: #3730a3;
     }
 
-    .role-badge.driver {
+    .role-badge.admin {
       background: #fef3c7;
       color: #92400e;
     }
 
-    .role-badge.supervisor {
+    .type-badge {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #f3f4f6;
+      color: #6b7280;
+    }
+
+    .type-badge.admin {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .type-badge.system {
       background: #dbeafe;
       color: #1e40af;
+    }
+
+    .role-info .role-name {
+      font-weight: 500;
+      color: #1f2937;
     }
 
     .vehicles-count {
@@ -662,6 +821,261 @@ interface ManagedUser {
       max-height: 90vh;
       display: flex;
       flex-direction: column;
+    }
+
+    .modal-content.modal-sm {
+      max-width: 450px;
+    }
+
+    .modal-content.modal-lg {
+      max-width: 800px;
+    }
+
+    .permissions-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .permission-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+
+    .permission-checkbox input {
+      display: none;
+    }
+
+    .permission-checkbox:hover {
+      border-color: #6366f1;
+    }
+
+    .permission-checkbox.selected {
+      border-color: #6366f1;
+      background: #eef2ff;
+    }
+
+    .permission-checkbox .perm-name {
+      font-size: 13px;
+      color: #374151;
+      flex: 1;
+    }
+
+    .permission-checkbox .check-icon {
+      display: none;
+      color: #6366f1;
+    }
+
+    .permission-checkbox.selected .check-icon {
+      display: block;
+    }
+
+    .admin-notice {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      background: #fef3c7;
+      border-radius: 8px;
+      color: #92400e;
+      font-size: 13px;
+      margin-top: 16px;
+    }
+
+    .admin-notice svg {
+      flex-shrink: 0;
+    }
+
+    /* Permission Categories */
+    .permission-category {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .permission-category.critical {
+      border-color: #fbbf24;
+      background: #fffbeb;
+    }
+
+    .category-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .category-icon {
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    .category-info h3 {
+      margin: 0 0 4px 0;
+      font-size: 15px;
+      font-weight: 600;
+      color: #1f2937;
+    }
+
+    .category-desc {
+      margin: 0;
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .permissions-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .permission-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .permission-item input {
+      display: none;
+    }
+
+    .permission-item:hover {
+      border-color: #6366f1;
+      background: #f9fafb;
+    }
+
+    .permission-item.selected {
+      border-color: #6366f1;
+      background: #eef2ff;
+    }
+
+    .permission-item.critical-perm {
+      border-color: #fbbf24;
+    }
+
+    .permission-item.critical-perm.selected {
+      background: #fef3c7;
+      border-color: #f59e0b;
+    }
+
+    .perm-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .perm-label {
+      font-size: 14px;
+      font-weight: 500;
+      color: #1f2937;
+    }
+
+    .perm-desc {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .permission-item .check-icon {
+      display: none;
+      color: #6366f1;
+      flex-shrink: 0;
+    }
+
+    .permission-item.selected .check-icon {
+      display: block;
+    }
+
+    .permission-item.compact {
+      padding: 10px 12px;
+    }
+
+    .reports-list {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .reports-list .perm-desc {
+      font-size: 11px;
+    }
+
+    .permission-category.disabled {
+      opacity: 0.6;
+      background: #f9fafb;
+    }
+
+    .category-desc.warning {
+      color: #d97706;
+      font-weight: 500;
+    }
+
+    .disabled-overlay {
+      padding: 20px;
+      text-align: center;
+      color: #6b7280;
+      font-size: 13px;
+      background: #f3f4f6;
+      border-radius: 8px;
+    }
+
+    .disabled-overlay p {
+      margin: 0;
+    }
+
+    @media (max-width: 768px) {
+      .reports-list {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .checkbox-group {
+      margin-top: 8px;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    .checkbox-label input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: #6b7280;
+      margin: 4px 0 0 28px;
+    }
+
+    .btn-icon:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .btn-icon:disabled:hover {
+      background: #f3f4f6;
+      color: #6b7280;
     }
 
     .modal-header {
@@ -1026,115 +1440,280 @@ interface ManagedUser {
   `]
 })
 export class UserManagementComponent implements OnInit {
-  company: Company | null = null;
-  vehicles: Vehicle[] = [];
-  users: ManagedUser[] = [];
-  filteredUsers: ManagedUser[] = [];
+  // Data
+  users: User[] = [];
+  filteredUsers: User[] = [];
+  roles: Role[] = [];
+  loading = false;
 
+  // Subscription permissions
+  subscriptionPermissions: any = null;
+  
+  // Available modules/reports from subscription
+  availableModules: { key: string; label: string; enabled: boolean }[] = [];
+  availableReports: { key: string; label: string; enabled: boolean }[] = [];
+
+  // Filters
   searchQuery = '';
-  filterRole = '';
+  filterRoleId: number | null = null;
   filterStatus = '';
 
-  showModal = false;
-  editingUser: ManagedUser | null = null;
+  // Active tab
+  activeTab: 'users' | 'roles' = 'users';
 
+  // User Modal
+  showUserModal = false;
+  editingUser: User | null = null;
   userForm = {
-    name: '',
+    firstName: '',
+    lastName: '',
     email: '',
     phone: '',
-    status: 'active' as 'active' | 'inactive',
-    roles: [] as string[],
-    permissions: [] as string[],
-    assignedVehicles: [] as string[]
+    password: '',
+    roleId: 0,
+    status: 'active'
   };
 
-  availableRoles: UserRole[] = [
-    { id: 'driver', name: 'driver', label: 'Conducteur', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"/></svg>' },
-    { id: 'supervisor', name: 'supervisor', label: 'Superviseur', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>' }
+  // Role Modal
+  showRoleModal = false;
+  editingRole: Role | null = null;
+  roleForm = {
+    name: '',
+    description: '',
+    isCompanyAdmin: false,
+    modules: {} as Record<string, boolean>,
+    reports: {} as Record<string, boolean>
+  };
+
+  // Permissions organized by category with descriptions
+  permissionCategories = [
+    {
+      name: 'Suivi GPS',
+      description: 'Accès aux fonctionnalités de localisation et tracking en temps réel',
+      icon: '📍',
+      permissions: [
+        { key: 'moduleDashboard', label: 'Tableau de bord', desc: 'Vue d\'ensemble avec statistiques et alertes' },
+        { key: 'moduleMonitoring', label: 'Monitoring GPS', desc: 'Suivi en temps réel des véhicules sur carte' },
+        { key: 'moduleGeofences', label: 'Zones géographiques', desc: 'Création et gestion des zones de contrôle' }
+      ]
+    },
+    {
+      name: 'Gestion du parc',
+      description: 'Administration des véhicules, employés et fournisseurs',
+      icon: '🚗',
+      permissions: [
+        { key: 'moduleVehicles', label: 'Véhicules', desc: 'Gestion du parc automobile (ajout, modification, suppression)' },
+        { key: 'moduleEmployees', label: 'Employés', desc: '⚠️ CRITIQUE - Gestion des chauffeurs et personnel' },
+        { key: 'moduleSuppliers', label: 'Fournisseurs/Garages', desc: 'Gestion des prestataires et garages partenaires' }
+      ]
+    },
+    {
+      name: 'Maintenance & Coûts',
+      description: 'Suivi des entretiens, réparations et dépenses',
+      icon: '🔧',
+      permissions: [
+        { key: 'moduleMaintenance', label: 'Maintenance', desc: 'Entretiens programmés et réparations' },
+        { key: 'moduleCosts', label: 'Dépenses & Carburant', desc: 'Suivi des coûts, pleins carburant, dépenses' }
+      ]
+    },
+    {
+      name: 'Documents & Sinistres',
+      description: 'Gestion documentaire et déclarations d\'accidents',
+      icon: '📄',
+      permissions: [
+        { key: 'moduleDocuments', label: 'Échéances', desc: 'Documents administratifs et leurs dates d\'expiration' },
+        { key: 'moduleAccidents', label: 'Sinistres', desc: 'Déclaration et suivi des accidents' }
+      ]
+    },
+    {
+      name: 'Rapports & Analyse',
+      description: 'Génération de rapports et analyse des données',
+      icon: '📊',
+      permissions: [
+        { key: 'moduleReports', label: 'Rapports', desc: 'Accès à tous les rapports d\'activité' }
+      ]
+    },
+    {
+      name: 'Administration',
+      description: '⚠️ Fonctions sensibles réservées aux responsables',
+      icon: '⚙️',
+      critical: true,
+      permissions: [
+        { key: 'moduleUsers', label: 'Gestion utilisateurs', desc: '⚠️ CRITIQUE - Créer/modifier/supprimer des utilisateurs et rôles' },
+        { key: 'moduleFleetManagement', label: 'Gestion de flotte', desc: '⚠️ CRITIQUE - Configuration avancée du parc' },
+        { key: 'moduleSettings', label: 'Paramètres', desc: 'Configuration générale de l\'application' }
+      ]
+    }
   ];
 
-  availablePermissions: PagePermission[] = [
-    { id: 'dashboard', name: 'dashboard', label: 'Tableau de bord', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' },
-    { id: 'monitoring', name: 'monitoring', label: 'Monitoring', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>' },
-    { id: 'vehicles', name: 'vehicles', label: 'Véhicules', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>' },
-    { id: 'drivers', name: 'drivers', label: 'Conducteurs', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>' },
-    { id: 'geofences', name: 'geofences', label: 'Geofencing', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/></svg>' },
-    { id: 'reports', name: 'reports', label: 'Rapports', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' },
-    { id: 'maintenance', name: 'maintenance', label: 'Maintenance', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>' },
-    { id: 'costs', name: 'costs', label: 'Coûts', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' },
-    { id: 'gps-devices', name: 'gps-devices', label: 'Appareils GPS', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>' }
+  // Report permissions with descriptions
+  reportPermissions = [
+    { key: 'reportTrips', label: 'Trajets', desc: 'Historique des trajets effectués' },
+    { key: 'reportFuel', label: 'Carburant', desc: 'Consommation et pleins de carburant' },
+    { key: 'reportSpeed', label: 'Vitesse', desc: 'Analyse des vitesses' },
+    { key: 'reportStops', label: 'Arrêts', desc: 'Durée et localisation des arrêts' },
+    { key: 'reportMileage', label: 'Kilométrage', desc: 'Distances parcourues' },
+    { key: 'reportCosts', label: 'Coûts', desc: 'Analyse des dépenses' },
+    { key: 'reportMaintenance', label: 'Maintenance', desc: 'Historique des entretiens' },
+    { key: 'reportDaily', label: 'Quotidien', desc: 'Rapport journalier d\'activité' },
+    { key: 'reportMonthly', label: 'Mensuel', desc: 'Synthèse mensuelle' },
+    { key: 'reportSpeedInfraction', label: 'Infractions vitesse', desc: 'Dépassements de vitesse' },
+    { key: 'reportDrivingBehavior', label: 'Comportement conduite', desc: 'Analyse du style de conduite' }
   ];
+
+  // Legacy labels for compatibility
+  moduleLabels: Record<string, string> = {};
+  reportLabels: Record<string, string> = {};
 
   constructor(
     private router: Router,
-    private dataService: MockDataService
+    private apiService: ApiService,
+    private toast: ToastService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit() {
-    if (!this.dataService.isAuthenticated()) {
+    if (!this.apiService.isAuthenticated()) {
       this.router.navigate(['/login']);
       return;
     }
-
-    this.company = this.dataService.getCurrentCompany();
-    if (this.company) {
-      this.vehicles = this.dataService.getVehiclesByCompany(this.company.id);
-    }
-
-    this.loadMockUsers();
-    this.filterUsers();
+    // Build legacy labels from categories
+    this.permissionCategories.forEach(cat => {
+      cat.permissions.forEach(p => {
+        this.moduleLabels[p.key] = p.label;
+      });
+    });
+    this.reportPermissions.forEach(r => {
+      this.reportLabels[r.key] = r.label;
+    });
+    this.loadData();
   }
 
-  loadMockUsers() {
-    this.users = [
-      {
-        id: '1',
-        name: 'Ahmed Ben Salem',
-        email: 'ahmed.benali@example.com',
-        phone: '+216 50 234 567',
-        roles: ['driver'],
-        permissions: ['dashboard', 'monitoring', 'vehicles'],
-        assignedVehicles: this.vehicles.slice(0, 2).map(v => v.id),
-        status: 'active',
-        createdAt: new Date('2024-01-15'),
-        lastLogin: new Date()
+  loadData() {
+    this.loading = true;
+    this.loadSubscriptionPermissions();
+    this.loadRoles();
+    this.loadUsers();
+  }
+
+  loadSubscriptionPermissions() {
+    this.apiService.getCurrentSubscription().subscribe({
+      next: (data) => {
+        console.log('Subscription data received:', data);
+        const sub = data.subscriptionType || data.SubscriptionType;
+        if (sub) {
+          this.subscriptionPermissions = sub;
+          this.buildAvailablePermissions(sub);
+        } else {
+          // If no subscription data, use all modules as available
+          this.buildDefaultPermissions();
+        }
       },
-      {
-        id: '2',
-        name: 'Karim Trabelsi',
-        email: 'karim.tazi@example.com',
-        phone: '+216 51 345 678',
-        roles: ['driver', 'supervisor'],
-        permissions: ['dashboard', 'monitoring', 'vehicles', 'drivers', 'geofences', 'reports'],
-        assignedVehicles: this.vehicles.map(v => v.id),
-        status: 'active',
-        createdAt: new Date('2024-02-20'),
-        lastLogin: new Date()
-      },
-      {
-        id: '3',
-        name: 'Youssef Mejri',
-        email: 'youssef.alami@example.com',
-        phone: '+216 52 456 789',
-        roles: ['supervisor'],
-        permissions: ['dashboard', 'monitoring', 'vehicles', 'drivers', 'geofences', 'reports', 'maintenance', 'costs'],
-        assignedVehicles: this.vehicles.map(v => v.id),
-        status: 'active',
-        createdAt: new Date('2024-03-10')
-      },
-      {
-        id: '4',
-        name: 'Omar Gharbi',
-        email: 'omar.fassi@example.com',
-        phone: '+216 53 567 890',
-        roles: ['driver'],
-        permissions: ['dashboard', 'monitoring'],
-        assignedVehicles: this.vehicles.slice(0, 1).map(v => v.id),
-        status: 'inactive',
-        createdAt: new Date('2024-04-05')
+      error: (err) => {
+        console.error('Error loading subscription:', err);
+        // Fallback to default permissions
+        this.buildDefaultPermissions();
       }
-    ];
+    });
   }
+
+  buildDefaultPermissions() {
+    // Use all modules as available by default
+    this.availableModules = Object.keys(this.moduleLabels).map(key => ({
+      key,
+      label: this.moduleLabels[key],
+      enabled: true
+    }));
+    this.availableReports = Object.keys(this.reportLabels).map(key => ({
+      key,
+      label: this.reportLabels[key],
+      enabled: true
+    }));
+    console.log('Using default permissions - modules:', this.availableModules.length);
+    this.cdr.detectChanges();
+  }
+
+  buildAvailablePermissions(sub: any) {
+    this.availableModules = [];
+    this.availableReports = [];
+
+    console.log('Building permissions from subscription:', sub);
+
+    // Helper to check both camelCase and PascalCase
+    const getValue = (obj: any, key: string): boolean => {
+      // Try camelCase first (moduleDashboard)
+      if (obj[key] === true) return true;
+      // Try PascalCase (ModuleDashboard)
+      const pascalKey = key.charAt(0).toUpperCase() + key.slice(1);
+      if (obj[pascalKey] === true) return true;
+      return false;
+    };
+
+    // Build modules list from subscription
+    Object.keys(this.moduleLabels).forEach(key => {
+      const enabled = getValue(sub, key);
+      if (enabled) {
+        this.availableModules.push({
+          key,
+          label: this.moduleLabels[key],
+          enabled
+        });
+      }
+    });
+
+    // Build reports list from subscription
+    Object.keys(this.reportLabels).forEach(key => {
+      const enabled = getValue(sub, key);
+      if (enabled) {
+        this.availableReports.push({
+          key,
+          label: this.reportLabels[key],
+          enabled
+        });
+      }
+    });
+
+    console.log('Available modules:', this.availableModules);
+    console.log('Available reports:', this.availableReports);
+    this.cdr.detectChanges();
+  }
+
+  loadRoles() {
+    this.apiService.getRoles(false).subscribe({
+      next: (roles) => {
+        this.roles = roles;
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Error loading roles:', err);
+        this.toast.error('Erreur', 'Erreur lors du chargement des rôles');
+      }
+    });
+  }
+
+  loadUsers() {
+    this.apiService.getUsers().subscribe({
+      next: (users) => {
+        this.users = users;
+        this.filterUsers();
+        this.loading = false;
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Error loading users:', err);
+        this.toast.error('Erreur', 'Erreur lors du chargement des utilisateurs');
+        this.loading = false;
+      }
+    });
+  }
+
+  // ============ TAB SWITCHING ============
+
+  setActiveTab(tab: 'users' | 'roles') {
+    this.activeTab = tab;
+  }
+
+  // ============ USER MANAGEMENT ============
 
   filterUsers() {
     this.filteredUsers = this.users.filter(user => {
@@ -1142,158 +1721,278 @@ export class UserManagementComponent implements OnInit {
         user.name.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
         user.email.toLowerCase().includes(this.searchQuery.toLowerCase());
 
-      const matchesRole = !this.filterRole || user.roles.includes(this.filterRole);
+      const matchesRole = !this.filterRoleId || user.roleId === this.filterRoleId;
       const matchesStatus = !this.filterStatus || user.status === this.filterStatus;
 
       return matchesSearch && matchesRole && matchesStatus;
     });
   }
 
-  getInitials(name: string): string {
-    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  openUserModal(user?: User) {
+    if (user) {
+      this.editingUser = user;
+      const nameParts = user.name.split(' ');
+      this.userForm = {
+        firstName: nameParts[0] || '',
+        lastName: nameParts.slice(1).join(' ') || '',
+        email: user.email,
+        phone: user.phone || '',
+        password: '',
+        roleId: user.roleId,
+        status: user.status
+      };
+    } else {
+      this.editingUser = null;
+      this.userForm = {
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        password: '',
+        roleId: this.roles.length > 0 ? this.roles[0].id : 0,
+        status: 'active'
+      };
+    }
+    this.showUserModal = true;
   }
 
-  getRoleLabel(roleId: string): string {
-    const role = this.availableRoles.find(r => r.id === roleId);
-    return role ? role.label : roleId;
-  }
-
-  getActiveUsers(): number {
-    return this.users.filter(u => u.status === 'active').length;
-  }
-
-  getDriversCount(): number {
-    return this.users.filter(u => u.roles.includes('driver')).length;
-  }
-
-  getSupervisorsCount(): number {
-    return this.users.filter(u => u.roles.includes('supervisor')).length;
-  }
-
-  openUserModal() {
+  closeUserModal() {
+    this.showUserModal = false;
     this.editingUser = null;
-    this.userForm = {
-      name: '',
-      email: '',
-      phone: '',
-      status: 'active',
-      roles: [],
-      permissions: ['dashboard', 'monitoring'],
-      assignedVehicles: []
-    };
-    this.showModal = true;
-  }
-
-  editUser(user: ManagedUser) {
-    this.editingUser = user;
-    this.userForm = {
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      status: user.status,
-      roles: [...user.roles],
-      permissions: [...user.permissions],
-      assignedVehicles: [...user.assignedVehicles]
-    };
-    this.showModal = true;
-  }
-
-  closeModal() {
-    this.showModal = false;
-    this.editingUser = null;
-  }
-
-  isRoleSelected(roleId: string): boolean {
-    return this.userForm.roles.includes(roleId);
-  }
-
-  toggleRole(roleId: string) {
-    const index = this.userForm.roles.indexOf(roleId);
-    if (index === -1) {
-      this.userForm.roles.push(roleId);
-    } else {
-      this.userForm.roles.splice(index, 1);
-    }
-  }
-
-  isPermissionSelected(permId: string): boolean {
-    return this.userForm.permissions.includes(permId);
-  }
-
-  togglePermission(permId: string) {
-    const index = this.userForm.permissions.indexOf(permId);
-    if (index === -1) {
-      this.userForm.permissions.push(permId);
-    } else {
-      this.userForm.permissions.splice(index, 1);
-    }
-  }
-
-  selectAllPermissions() {
-    this.userForm.permissions = this.availablePermissions.map(p => p.id);
-  }
-
-  deselectAllPermissions() {
-    this.userForm.permissions = [];
-  }
-
-  isVehicleSelected(vehicleId: string): boolean {
-    return this.userForm.assignedVehicles.includes(vehicleId);
-  }
-
-  toggleVehicle(vehicleId: string) {
-    const index = this.userForm.assignedVehicles.indexOf(vehicleId);
-    if (index === -1) {
-      this.userForm.assignedVehicles.push(vehicleId);
-    } else {
-      this.userForm.assignedVehicles.splice(index, 1);
-    }
-  }
-
-  selectAllVehicles() {
-    this.userForm.assignedVehicles = this.vehicles.map(v => v.id);
-  }
-
-  deselectAllVehicles() {
-    this.userForm.assignedVehicles = [];
   }
 
   saveUser() {
-    if (!this.userForm.name || !this.userForm.email) {
-      alert('Veuillez remplir le nom et l\'email');
+    if (!this.userForm.firstName || !this.userForm.email || !this.userForm.roleId) {
+      this.toast.error('Erreur', 'Veuillez remplir tous les champs requis');
       return;
     }
 
-    if (this.userForm.roles.length === 0) {
-      alert('Veuillez sélectionner au moins un rôle');
+    if (!this.editingUser && !this.userForm.password) {
+      this.toast.error('Erreur', 'Le mot de passe est requis pour un nouvel utilisateur');
       return;
     }
 
     if (this.editingUser) {
-      const index = this.users.findIndex(u => u.id === this.editingUser!.id);
-      if (index !== -1) {
-        this.users[index] = {
-          ...this.editingUser,
-          ...this.userForm
-        };
-      }
+      this.apiService.updateUser(this.editingUser.id, {
+        firstName: this.userForm.firstName,
+        lastName: this.userForm.lastName,
+        email: this.userForm.email,
+        phone: this.userForm.phone,
+        roleId: this.userForm.roleId,
+        status: this.userForm.status
+      }).subscribe({
+        next: () => {
+          this.toast.success('Succès', 'Utilisateur modifié avec succès');
+          this.loadUsers();
+          this.closeUserModal();
+        },
+        error: (err) => {
+          console.error('Error updating user:', err);
+          this.toast.error('Erreur', err.error?.message || 'Erreur lors de la modification');
+        }
+      });
     } else {
-      const newUser: ManagedUser = {
-        id: Date.now().toString(),
-        ...this.userForm,
-        createdAt: new Date()
-      };
-      this.users.push(newUser);
+      this.apiService.createUser({
+        firstName: this.userForm.firstName,
+        lastName: this.userForm.lastName,
+        email: this.userForm.email,
+        phone: this.userForm.phone,
+        password: this.userForm.password,
+        roleId: this.userForm.roleId
+      }).subscribe({
+        next: () => {
+          this.toast.success('Succès', 'Utilisateur créé avec succès');
+          this.loadUsers();
+          this.closeUserModal();
+        },
+        error: (err) => {
+          console.error('Error creating user:', err);
+          this.toast.error('Erreur', err.error?.message || 'Erreur lors de la création');
+        }
+      });
     }
-
-    this.filterUsers();
-    this.closeModal();
   }
 
-  deleteUser(user: ManagedUser) {
+  deleteUser(user: User) {
     if (confirm(`Êtes-vous sûr de vouloir supprimer ${user.name} ?`)) {
-      this.users = this.users.filter(u => u.id !== user.id);
-      this.filterUsers();
+      this.apiService.deleteUser(user.id).subscribe({
+        next: () => {
+          this.toast.success('Succès', 'Utilisateur supprimé');
+          this.loadUsers();
+        },
+        error: (err) => {
+          console.error('Error deleting user:', err);
+          this.toast.error('Erreur', err.error?.message || 'Erreur lors de la suppression');
+        }
+      });
     }
+  }
+
+  // ============ ROLE MANAGEMENT ============
+
+  openRoleModal(role?: Role) {
+    // Initialize modules from categories and reports
+    const modules: Record<string, boolean> = {};
+    const reports: Record<string, boolean> = {};
+    
+    // Initialize all modules from categories
+    this.permissionCategories.forEach(cat => {
+      cat.permissions.forEach(p => {
+        modules[p.key] = false;
+      });
+    });
+    // Initialize all reports
+    this.reportPermissions.forEach(r => {
+      reports[r.key] = false;
+    });
+
+    if (role) {
+      this.editingRole = role;
+      // Load existing permissions from role
+      if (role.permissions) {
+        Object.keys(role.permissions).forEach(key => {
+          if (key.startsWith('module') && modules.hasOwnProperty(key)) {
+            modules[key] = role.permissions![key] === true;
+          } else if (key.startsWith('report') && reports.hasOwnProperty(key)) {
+            reports[key] = role.permissions![key] === true;
+          }
+        });
+      }
+      this.roleForm = {
+        name: role.name,
+        description: role.description || '',
+        isCompanyAdmin: role.isCompanyAdmin,
+        modules,
+        reports
+      };
+    } else {
+      this.editingRole = null;
+      // Default for new role: enable basic permissions only
+      modules['moduleDashboard'] = true;
+      modules['moduleVehicles'] = true;
+      this.roleForm = {
+        name: '',
+        description: '',
+        isCompanyAdmin: false,
+        modules,
+        reports
+      };
+    }
+    this.showRoleModal = true;
+  }
+
+  closeRoleModal() {
+    this.showRoleModal = false;
+    this.editingRole = null;
+  }
+
+  onReportToggle(reportKey: string) {
+    // When a report is selected, automatically enable moduleReports
+    if (this.roleForm.reports[reportKey] && !this.roleForm.modules['moduleReports']) {
+      this.roleForm.modules['moduleReports'] = true;
+    }
+  }
+
+  onModuleToggle(moduleKey: string) {
+    // When moduleReports is disabled, clear all individual report permissions
+    if (moduleKey === 'moduleReports' && !this.roleForm.modules['moduleReports']) {
+      Object.keys(this.roleForm.reports).forEach(key => {
+        this.roleForm.reports[key] = false;
+      });
+    }
+  }
+
+  saveRole() {
+    if (!this.roleForm.name) {
+      this.toast.error('Erreur', 'Le nom du rôle est requis');
+      return;
+    }
+
+    // Build permissions object from modules and reports
+    const permissions: Record<string, any> = {};
+    Object.entries(this.roleForm.modules).forEach(([key, value]) => {
+      permissions[key] = value;
+    });
+    Object.entries(this.roleForm.reports).forEach(([key, value]) => {
+      permissions[key] = value;
+    });
+
+    if (this.editingRole) {
+      this.apiService.updateRole(this.editingRole.id, {
+        name: this.roleForm.name,
+        description: this.roleForm.description,
+        isCompanyAdmin: this.roleForm.isCompanyAdmin,
+        permissions
+      }).subscribe({
+        next: () => {
+          this.toast.success('Succès', 'Rôle modifié avec succès');
+          this.loadRoles();
+          this.closeRoleModal();
+        },
+        error: (err) => {
+          console.error('Error updating role:', err);
+          this.toast.error('Erreur', err.error?.message || 'Erreur lors de la modification');
+        }
+      });
+    } else {
+      this.apiService.createRole({
+        name: this.roleForm.name,
+        description: this.roleForm.description,
+        isCompanyAdmin: this.roleForm.isCompanyAdmin,
+        permissions
+      }).subscribe({
+        next: () => {
+          this.toast.success('Succès', 'Rôle créé avec succès');
+          this.loadRoles();
+          this.closeRoleModal();
+        },
+        error: (err) => {
+          console.error('Error creating role:', err);
+          this.toast.error('Erreur', err.error?.message || 'Erreur lors de la création');
+        }
+      });
+    }
+  }
+
+  deleteRole(role: Role) {
+    if (role.isSystem) {
+      this.toast.error('Erreur', 'Impossible de supprimer un rôle système');
+      return;
+    }
+    if (confirm(`Êtes-vous sûr de vouloir supprimer le rôle "${role.name}" ?`)) {
+      this.apiService.deleteRole(role.id).subscribe({
+        next: () => {
+          this.toast.success('Succès', 'Rôle supprimé');
+          this.loadRoles();
+        },
+        error: (err) => {
+          console.error('Error deleting role:', err);
+          this.toast.error('Erreur', err.error?.message || 'Erreur lors de la suppression');
+        }
+      });
+    }
+  }
+
+  // ============ HELPERS ============
+
+  getInitials(name: string): string {
+    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  }
+
+  getRoleName(roleId: number): string {
+    const role = this.roles.find(r => r.id === roleId);
+    return role ? role.name : 'N/A';
+  }
+
+  getActiveUsersCount(): number {
+    return this.users.filter(u => u.status === 'active').length;
+  }
+
+  getAdminsCount(): number {
+    return this.users.filter(u => u.isCompanyAdmin).length;
+  }
+
+  getUsersCountByRole(roleId: number): number {
+    return this.users.filter(u => u.roleId === roleId).length;
   }
 }

@@ -81,6 +81,7 @@ public class MaintenanceController : ControllerBase
         var companyId = GetCompanyId();
         record.CompanyId = companyId;
         record.CreatedAt = DateTime.UtcNow;
+        record.UpdatedAt = DateTime.UtcNow;
         record.TotalCost = record.LaborCost + record.PartsCost;
 
         _context.MaintenanceRecords.Add(record);

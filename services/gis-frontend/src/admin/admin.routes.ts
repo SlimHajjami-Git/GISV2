@@ -14,22 +14,26 @@ import { AdminRolesComponent } from './pages/admin-roles.component';
 import { AdminCompanyDetailsComponent } from './pages/admin-company-details.component';
 import { AdminBrandsComponent } from './pages/admin-brands.component';
 import { AdminPartsComponent } from './pages/admin-parts.component';
+import { AdminGuard } from './guards/admin.guard';
 
 export const adminRoutes: Routes = [
+  // Public admin routes
   { path: '', redirectTo: 'login', pathMatch: 'full' },
   { path: 'login', component: AdminLoginComponent },
-  { path: 'dashboard', component: AdminDashboardComponent },
-  { path: 'clients', component: AdminClientsComponent },
-  { path: 'clients/:id', component: AdminCompanyDetailsComponent },
-  { path: 'subscriptions', component: AdminSubscriptionsComponent },
-  { path: 'roles', component: AdminRolesComponent },
-  { path: 'users', component: AdminUsersComponent },
-  { path: 'vehicles', component: AdminVehiclesComponent },
-  { path: 'brands', component: AdminBrandsComponent },
-  { path: 'parts', component: AdminPartsComponent },
-  { path: 'health', component: AdminHealthComponent },
-  { path: 'features', component: AdminFeatureControlComponent },
-  { path: 'estimates', component: AdminEstimatesComponent },
-  { path: 'activity', component: AdminActivityComponent },
-  { path: 'settings', component: AdminSettingsComponent },
+  
+  // Protected admin routes (requires admin authentication)
+  { path: 'dashboard', component: AdminDashboardComponent, canActivate: [AdminGuard] },
+  { path: 'clients', component: AdminClientsComponent, canActivate: [AdminGuard] },
+  { path: 'clients/:id', component: AdminCompanyDetailsComponent, canActivate: [AdminGuard] },
+  { path: 'subscriptions', component: AdminSubscriptionsComponent, canActivate: [AdminGuard] },
+  { path: 'roles', component: AdminRolesComponent, canActivate: [AdminGuard] },
+  { path: 'users', component: AdminUsersComponent, canActivate: [AdminGuard] },
+  { path: 'vehicles', component: AdminVehiclesComponent, canActivate: [AdminGuard] },
+  { path: 'brands', component: AdminBrandsComponent, canActivate: [AdminGuard] },
+  { path: 'parts', component: AdminPartsComponent, canActivate: [AdminGuard] },
+  { path: 'health', component: AdminHealthComponent, canActivate: [AdminGuard] },
+  { path: 'features', component: AdminFeatureControlComponent, canActivate: [AdminGuard] },
+  { path: 'estimates', component: AdminEstimatesComponent, canActivate: [AdminGuard] },
+  { path: 'activity', component: AdminActivityComponent, canActivate: [AdminGuard] },
+  { path: 'settings', component: AdminSettingsComponent, canActivate: [AdminGuard] },
 ];

@@ -7,6 +7,7 @@ using GisAPI.Application.Features.Vehicles.Commands.CreateVehicle;
 using GisAPI.Application.Features.Vehicles.Commands.UpdateVehicle;
 using GisAPI.Application.Features.Vehicles.Commands.DeleteVehicle;
 using GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions;
+using GisAPI.Application.Features.Vehicles.Commands.SyncMileage;
 
 namespace GisAPI.Controllers;
 
@@ -72,6 +73,13 @@ public class VehiclesController : ControllerBase
     public async Task<ActionResult<List<VehicleWithPositionDto>>> GetVehiclesWithPositions()
     {
         var result = await _mediator.Send(new GetVehiclesWithPositionsQuery());
+        return Ok(result);
+    }
+
+    [HttpPost("{id}/sync-mileage")]
+    public async Task<ActionResult<SyncMileageResult>> SyncMileageFromGps(int id)
+    {
+        var result = await _mediator.Send(new SyncMileageCommand(id));
         return Ok(result);
     }
 }

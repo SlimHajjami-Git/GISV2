@@ -44,7 +44,7 @@ interface NavItem {
 
         <div class="sidebar-footer" *ngIf="!sidebarCollapsed">
           <div class="admin-info" *ngIf="adminUser">
-            <div class="admin-avatar">{{ adminUser.name.charAt(0) }}</div>
+            <div class="admin-avatar">{{ adminUser.name?.charAt(0) || 'A' }}</div>
             <div class="admin-details">
               <span class="admin-name">{{ adminUser.name }}</span>
               <span class="admin-role">{{ adminUser.role | titlecase }}</span>

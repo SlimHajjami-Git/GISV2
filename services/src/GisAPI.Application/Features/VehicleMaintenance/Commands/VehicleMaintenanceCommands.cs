@@ -16,8 +16,44 @@ public record MarkMaintenanceDoneCommand(
     int Mileage,
     decimal Cost,
     int? SupplierId,
-    string? Notes
+    string? Notes,
+    string? TechnicianName = null,
+    string? WorkOrderNumber = null,
+    decimal? LaborCost = null,
+    decimal? PartsCost = null,
+    List<ReplacedPartDto>? PartsReplaced = null,
+    int? QualityRating = null
 ) : ICommand<int>;
+
+public record PauseMaintenanceScheduleCommand(
+    int ScheduleId,
+    string? Reason
+) : ICommand<bool>;
+
+public record ResumeMaintenanceScheduleCommand(int ScheduleId) : ICommand<bool>;
+
+public record UpdateScheduleIntervalsCommand(
+    int ScheduleId,
+    int? CustomIntervalKm,
+    int? CustomIntervalMonths,
+    string? Notes
+) : ICommand<bool>;
+
+public record AddTemplatePartCommand(
+    int TemplateId,
+    string PartName,
+    string? PartNumber,
+    int Quantity,
+    decimal? EstimatedUnitCost,
+    bool IsRequired,
+    int? PreferredSupplierId
+) : ICommand<int>;
+
+public record RemoveTemplatePartCommand(int PartId) : ICommand<bool>;
+
+public record AcknowledgeMaintenanceNotificationCommand(int NotificationId) : ICommand<bool>;
+
+public record ReplacedPartDto(string Name, string? PartNumber, int Quantity, decimal UnitCost);
 
 
 

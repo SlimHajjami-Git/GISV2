@@ -18,25 +18,12 @@ public class UpdateSupplierServicesCommandHandler : IRequestHandler<UpdateSuppli
     public async Task<bool> Handle(UpdateSupplierServicesCommand request, CancellationToken cancellationToken)
     {
         var supplier = await _context.Suppliers
-            .Include(s => s.Services)
             .FirstOrDefaultAsync(s => s.Id == request.SupplierId, cancellationToken);
 
         if (supplier == null)
             return false;
 
-        // Remove all existing services
-        _context.SupplierServices.RemoveRange(supplier.Services);
-
-        // Add new valid services
-        foreach (var serviceCode in request.Services.Where(s => ValidServices.Contains(s.ToLower())).Distinct())
-        {
-            _context.SupplierServices.Add(new SupplierService
-            {
-                SupplierId = supplier.Id,
-                ServiceCode = serviceCode.ToLower()
-            });
-        }
-
+        // Services table doesn't exist yet - just update timestamp
         supplier.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(cancellationToken);
         

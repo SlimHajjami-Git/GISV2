@@ -30,6 +30,17 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
 
         if (user == null)
             throw new NotFoundException("User", request.Email);
+        
+        // Debug: Log user found
+        Console.WriteLine($"[Login] Found user: {user.Email}, CompanyId: {user.CompanyId}, SubscriptionTypeId: {user.Societe?.SubscriptionTypeId}");
+        
+        // Explicitly load SubscriptionType if Societe has one
+        if (user.Societe?.SubscriptionTypeId != null)
+        {
+            user.Societe.SubscriptionType = await _context.SubscriptionTypes
+                .FirstOrDefaultAsync(st => st.Id == user.Societe.SubscriptionTypeId, ct);
+            Console.WriteLine($"[Login] Loaded SubscriptionType: {user.Societe.SubscriptionType?.Name ?? "NULL"}");
+        }
 
         if (!_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
             throw new DomainException("Invalid credentials");
@@ -39,6 +50,47 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
 
         var token = _jwtService.GenerateToken(user);
         var refreshToken = _jwtService.GenerateRefreshToken();
+
+        // Build subscription features from company's subscription type
+        SubscriptionFeaturesDto? subscriptionFeatures = null;
+        var subType = user.Societe?.SubscriptionType;
+        
+        // Debug logging
+        Console.WriteLine($"[Login] User: {user.Email}, CompanyId: {user.CompanyId}");
+        Console.WriteLine($"[Login] Societe: {user.Societe?.Name ?? "NULL"}, SubscriptionTypeId: {user.Societe?.SubscriptionTypeId}");
+        Console.WriteLine($"[Login] SubscriptionType: {subType?.Name ?? "NULL"}, Id: {subType?.Id}");
+        if (subType != null)
+        {
+            subscriptionFeatures = new SubscriptionFeaturesDto(
+                GpsTracking: subType.GpsTracking,
+                GpsInstallation: subType.GpsInstallation,
+                ApiAccess: subType.ApiAccess,
+                AdvancedReports: subType.AdvancedReports,
+                RealTimeAlerts: subType.RealTimeAlerts,
+                HistoryPlayback: subType.HistoryPlayback,
+                FuelAnalysis: subType.FuelAnalysis,
+                DrivingBehavior: subType.DrivingBehavior,
+                ModuleDashboard: subType.ModuleDashboard,
+                ModuleMonitoring: subType.ModuleMonitoring,
+                ModuleVehicles: subType.ModuleVehicles,
+                ModuleEmployees: subType.ModuleEmployees,
+                ModuleGeofences: subType.ModuleGeofences,
+                ModuleMaintenance: subType.ModuleMaintenance,
+                ModuleCosts: subType.ModuleCosts,
+                ModuleReports: subType.ModuleReports,
+                ModuleSettings: subType.ModuleSettings,
+                ModuleUsers: subType.ModuleUsers,
+                ModuleSuppliers: subType.ModuleSuppliers,
+                ModuleDocuments: subType.ModuleDocuments,
+                ModuleAccidents: subType.ModuleAccidents,
+                ModuleFleetManagement: subType.ModuleFleetManagement,
+                MaxVehicles: subType.MaxVehicles,
+                MaxUsers: subType.MaxUsers,
+                MaxGpsDevices: subType.MaxGpsDevices,
+                MaxGeofences: subType.MaxGeofences,
+                HistoryRetentionDays: subType.HistoryRetentionDays
+            );
+        }
 
         return new LoginResponse(
             token,
@@ -53,9 +105,11 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
                 user.RoleId,
                 user.Role?.Name ?? "",
                 user.Role?.IsCompanyAdmin ?? false,
+                user.Role?.IsSystemAdmin ?? false,
                 user.CompanyId,
                 user.Societe?.Name ?? "",
-                user.Role?.Permissions
+                user.Role?.Permissions,
+                subscriptionFeatures
             )
         );
     }

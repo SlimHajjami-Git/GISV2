@@ -1,4 +1,4 @@
-import { Component, OnInit, ViewChild, ElementRef, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
+import { Component, OnInit, ViewChild, ElementRef, NgZone, ChangeDetectorRef, ApplicationRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -19,6 +19,7 @@ Chart.register(...registerables);
 })
 export class ReportsComponent implements OnInit {
   @ViewChild('chartCanvas') chartCanvas?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('secondaryChartCanvas') secondaryChartCanvas?: ElementRef<HTMLCanvasElement>;
   @ViewChild('kmBarChart') kmBarChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('fuelPieChart') fuelPieChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('maintenanceAreaChart') maintenanceAreaChartRef?: ElementRef<HTMLCanvasElement>;
@@ -37,91 +38,109 @@ export class ReportsComponent implements OnInit {
   ];
 
   templates = [
+    // GPS Analysis Reports
     {
       id: '1',
       name: 'Rapport de trajets',
       type: 'trips',
       icon: '🛣️',
-      description: 'Analyse détaillée des trajets effectués'
-    },
-    {
-      id: '2',
-      name: 'Rapport de carburant',
-      type: 'fuel',
-      icon: '⛽',
-      description: 'Consommation et remplissages'
-    },
-    {
-      id: '3',
-      name: 'Rapport de vitesse',
-      type: 'speed',
-      icon: '🏎️',
-      description: 'Analyse des vitesses et excès'
+      description: 'Analyse détaillée des trajets',
+      category: 'gps'
     },
     {
       id: '4',
       name: 'Rapport des arrêts',
       type: 'stops',
       icon: '🅿️',
-      description: 'Temps et lieux d\'arrêt'
+      description: 'Temps et lieux d\'arrêt',
+      category: 'gps'
     },
     {
       id: '5',
       name: 'Rapport kilométrique',
       type: 'mileage',
       icon: '📏',
-      description: 'Kilométrage détaillé avec analyses journalières, hebdomadaires et mensuelles'
+      description: 'Kilométrage journalier détaillé',
+      category: 'gps'
     },
     {
-      id: '6',
-      name: 'Rapport de coûts',
-      type: 'costs',
-      icon: '💰',
-      description: 'Analyse des dépenses véhicules'
-    },
-    {
-      id: '7',
-      name: 'Rapport de maintenance',
-      type: 'maintenance',
-      icon: '🔧',
-      description: 'Historique des maintenances'
+      id: '10',
+      name: 'Kilométrage par période',
+      type: 'mileage-period',
+      icon: '📈',
+      description: 'Analyse par heure/jour/mois',
+      category: 'gps'
     },
     {
       id: '8',
       name: 'Rapport journalier',
       type: 'daily',
-      icon: '📅',
-      description: 'Activité journalière détaillée (démarrages, arrêts, trajets)'
+      icon: '�',
+      description: 'Activité journalière complète',
+      category: 'gps'
     },
+    {
+      id: '3',
+      name: 'Rapport de vitesse',
+      type: 'speed',
+      icon: '🏎️',
+      description: 'Analyse des vitesses',
+      category: 'gps'
+    },
+    {
+      id: '11',
+      name: 'Infractions vitesse',
+      type: 'speed-infraction',
+      icon: '⚠️',
+      description: 'Dépassements de limite',
+      category: 'gps'
+    },
+    {
+      id: '12',
+      name: 'Comportement conduite',
+      type: 'driving-behavior',
+      icon: '�',
+      description: 'Freinages, accélérations brusques',
+      category: 'gps'
+    },
+    // Cost Reports
+    {
+      id: '2',
+      name: 'Consommation carburant',
+      type: 'fuel',
+      icon: '⛽',
+      description: 'Analyse de la consommation',
+      category: 'costs'
+    },
+    {
+      id: '6',
+      name: 'Coûts véhicules',
+      type: 'costs',
+      icon: '�',
+      description: 'Dépenses par véhicule',
+      category: 'costs'
+    },
+    {
+      id: '7',
+      name: 'Coûts maintenance',
+      type: 'maintenance',
+      icon: '🔧',
+      description: 'Historique des maintenances',
+      category: 'costs'
+    },
+    // Statistics Reports
     {
       id: '9',
       name: 'Rapport mensuel flotte',
       type: 'monthly',
-      icon: '📊',
-      description: 'Rapport complet avec KPIs, graphiques et analyses statistiques'
-    },
-    {
-      id: '10',
-      name: 'Kilométrage heure/jour/mois',
-      type: 'mileage-period',
-      icon: '📈',
-      description: 'Analyse du kilométrage par heure, jour ou mois avec graphiques'
-    },
-    {
-      id: '11',
-      name: 'Rapport infractions vitesse',
-      type: 'speed-infraction',
-      icon: '⚠️',
-      description: 'Véhicules dépassant la limite de vitesse configurée'
-    },
-    {
-      id: '12',
-      name: 'Rapport comportement conduite',
-      type: 'driving-behavior',
-      icon: '🚗',
-      description: 'Analyse des incidents de conduite: accélérations, freinages, virages brusques'
+      icon: '�',
+      description: 'KPIs et analyses complètes',
+      category: 'stats'
     }
   ];
+
+  // Dropdown state
+  showTemplateDropdown = false;
 
   vehicles: any[] = [];
   selectedTemplate: any = null;
@@ -239,6 +258,7 @@ export class ReportsComponent implements OnInit {
   pageSize = 50;
   
   chartData: any[] = [];
+  secondaryChartData: any[] = [];
   tableData: any[] = [];
   statisticsData: any = {};
   
@@ -271,6 +291,7 @@ export class ReportsComponent implements OnInit {
   ];
 
   private chart?: Chart;
+  private secondaryChart?: Chart;
 
   constructor(
     private router: Router,
@@ -391,6 +412,27 @@ export class ReportsComponent implements OnInit {
     this.selectedTemplate = this.templates.find(t => t.id === this.selectedTemplateId) || null;
   }
 
+  // Dropdown methods
+  toggleTemplateDropdown(event: Event) {
+    event.stopPropagation();
+    this.showTemplateDropdown = !this.showTemplateDropdown;
+  }
+
+  selectTemplateFromDropdown(template: any) {
+    this.selectedTemplate = template;
+    this.selectedTemplateId = template.id;
+    this.showTemplateDropdown = false;
+  }
+
+  getTemplatesByCategory(category: string): any[] {
+    return this.templates.filter(t => (t as any).category === category);
+  }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: Event) {
+    this.showTemplateDropdown = false;
+  }
+
   toggleSection(section: string) {
     this.expandedSections[section] = !this.expandedSections[section];
   }
@@ -455,8 +497,15 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
-    if (!this.selectedVehicleId && (this.selectedTemplate.type === 'fuel' || this.selectedTemplate.type === 'daily' || this.selectedTemplate.type === 'mileage' || this.selectedTemplate.type === 'mileage-period')) {
-      console.warn('No vehicle selected');
+    // Reports that require a single vehicle
+    const singleVehicleReports = ['fuel', 'daily', 'mileage', 'mileage-period'];
+    if (!this.selectedVehicleId && singleVehicleReports.includes(this.selectedTemplate.type)) {
+      console.warn('No vehicle selected for single-vehicle report');
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = { 'Erreur': 'Veuillez sélectionner un véhicule pour ce type de rapport' };
+      this.reportGenerated = true;
+      this.loading = false;
       return;
     }
 
@@ -554,7 +603,11 @@ export class ReportsComponent implements OnInit {
 
     // Handle stops report using VehicleStops API
     if (this.selectedTemplate.type === 'stops') {
-      this.executeStopsReport(vehicleId!, startDate, endDate);
+      if (vehicleId) {
+        this.executeStopsReport(vehicleId, startDate, endDate);
+      } else {
+        this.executeStopsReportAllVehicles(startDate, endDate);
+      }
       return;
     }
 
@@ -571,7 +624,295 @@ export class ReportsComponent implements OnInit {
     }
 
     // All other report types use vehicle history API
-    this.executeVehicleReport(vehicleId, startDate, endDate);
+    if (vehicleId) {
+      this.executeVehicleReport(vehicleId, startDate, endDate);
+    } else {
+      this.executeVehicleReportAllVehicles(startDate, endDate);
+    }
+  }
+
+  executeVehicleReportAllVehicles(startDate?: Date, endDate?: Date) {
+    console.log('executeVehicleReportAllVehicles called');
+    const allPositions: any[] = [];
+    let completedRequests = 0;
+    const totalVehicles = this.vehicles.length;
+
+    if (totalVehicles === 0) {
+      this.ngZone.run(() => {
+        this.tableData = [];
+        this.chartData = [];
+        this.statisticsData = { 'Information': 'Aucun véhicule disponible' };
+        this.reportGenerated = true;
+        this.loading = false;
+        this.cdr.detectChanges();
+      });
+      return;
+    }
+
+    this.vehicles.forEach(vehicle => {
+      this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 5000).subscribe({
+        next: (positions) => {
+          const positionsWithVehicle = positions.map(p => ({
+            ...p,
+            vehicleId: vehicle.id,
+            vehicleName: vehicle.name || vehicle.brand + ' ' + vehicle.model,
+            vehiclePlate: vehicle.plate
+          }));
+          allPositions.push(...positionsWithVehicle);
+          completedRequests++;
+
+          if (completedRequests === totalVehicles) {
+            this.ngZone.run(() => {
+              this.processVehicleDataAllVehicles(allPositions);
+              this.reportGenerated = true;
+              this.loading = false;
+              this.activeTab = 'table';
+              this.currentPage = 1;
+              this.cdr.detectChanges();
+              this.appRef.tick();
+              setTimeout(() => this.createChart(), 100);
+            });
+          }
+        },
+        error: () => {
+          completedRequests++;
+          if (completedRequests === totalVehicles) {
+            this.ngZone.run(() => {
+              this.processVehicleDataAllVehicles(allPositions);
+              this.reportGenerated = true;
+              this.loading = false;
+              this.activeTab = 'table';
+              this.currentPage = 1;
+              this.cdr.detectChanges();
+              this.appRef.tick();
+              setTimeout(() => this.createChart(), 100);
+            });
+          }
+        }
+      });
+    });
+  }
+
+  processVehicleDataAllVehicles(positions: any[]) {
+    if (!positions.length) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = { 'Information': 'Aucune donnée pour cette période' };
+      return;
+    }
+
+    // Sort by time
+    positions.sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
+
+    const type = this.selectedTemplate?.type || 'trips';
+
+    if (type === 'trips') {
+      this.processTripReportAllVehicles(positions);
+    } else if (type === 'speed') {
+      this.processSpeedReportAllVehicles(positions);
+    } else {
+      // Default: just show positions
+      this.tableData = positions.slice(0, 100).map(p => ({
+        vehicleName: p.vehicleName,
+        time: this.formatDateTime(p.recordedAt),
+        speed: `${(p.speedKph || 0).toFixed(0)} km/h`,
+        address: p.address || `${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)}`
+      }));
+      this.statisticsData = {
+        'Véhicules': new Set(positions.map(p => p.vehicleId)).size.toString(),
+        'Points GPS': positions.length.toString()
+      };
+    }
+  }
+
+  processTripReportAllVehicles(positions: any[]) {
+    // Group by vehicle
+    const byVehicle = new Map<number, any[]>();
+    positions.forEach(p => {
+      const list = byVehicle.get(p.vehicleId) || [];
+      list.push(p);
+      byVehicle.set(p.vehicleId, list);
+    });
+
+    const allTrips: any[] = [];
+    let tripNumber = 0;
+
+    byVehicle.forEach((vehiclePositions, vehicleId) => {
+      const vehicleName = vehiclePositions[0]?.vehicleName || 'Véhicule';
+      
+      // Detect trips for this vehicle - require actual movement
+      let currentTrip: any = null;
+      
+      vehiclePositions.forEach((pos, i) => {
+        const isIgnitionOn = pos.ignitionOn === true;
+        const isMoving = (pos.speedKph || 0) > 2; // Must be moving to count as trip
+        const isTripPosition = isIgnitionOn && isMoving;
+        
+        if (isTripPosition && !currentTrip) {
+          currentTrip = { start: pos, end: pos, positions: [pos], vehicleName, vehicleId, hasMovement: true };
+        } else if (isTripPosition && currentTrip) {
+          currentTrip.end = pos;
+          currentTrip.positions.push(pos);
+        } else if (!isTripPosition && currentTrip) {
+          // Only save if there was actual movement
+          if (currentTrip.hasMovement && currentTrip.positions.length > 1) {
+            tripNumber++;
+            currentTrip.tripNumber = tripNumber;
+            allTrips.push(currentTrip);
+          }
+          currentTrip = null;
+        }
+      });
+      
+      if (currentTrip && currentTrip.positions.length > 1 && currentTrip.hasMovement) {
+        tripNumber++;
+        currentTrip.tripNumber = tripNumber;
+        allTrips.push(currentTrip);
+      }
+    });
+
+    const formatDuration = (minutes: number): string => {
+      if (minutes >= 60) {
+        const h = Math.floor(minutes / 60);
+        const m = Math.round(minutes % 60);
+        return m > 0 ? `${h}h ${m}min` : `${h}h`;
+      }
+      return `${Math.round(minutes)}min`;
+    };
+
+    // Calculate distances and prepare table data
+    const tripResults = allTrips.map(trip => {
+      const startTime = new Date(trip.start.recordedAt);
+      const endTime = new Date(trip.end.recordedAt);
+      const durationMin = (endTime.getTime() - startTime.getTime()) / 60000;
+      
+      // Try odometer first for accurate distance
+      let distanceKm = 0;
+      if (trip.end.odometerKm && trip.start.odometerKm && trip.end.odometerKm > trip.start.odometerKm) {
+        distanceKm = trip.end.odometerKm - trip.start.odometerKm;
+      } else {
+        // Fallback to haversine calculation
+        for (let i = 1; i < trip.positions.length; i++) {
+          distanceKm += this.haversineDistance(
+            trip.positions[i-1].latitude, trip.positions[i-1].longitude,
+            trip.positions[i].latitude, trip.positions[i].longitude
+          );
+        }
+      }
+      
+      // If still 0, estimate from average speed
+      if (distanceKm < 0.1 && durationMin > 1) {
+        const speeds = trip.positions.map((p: any) => p.speedKph || 0).filter((s: number) => s > 0);
+        if (speeds.length > 0) {
+          const avgSpeedFromPositions = speeds.reduce((a: number, b: number) => a + b, 0) / speeds.length;
+          distanceKm = avgSpeedFromPositions * (durationMin / 60);
+        }
+      }
+      
+      const avgSpeed = durationMin > 0 && distanceKm > 0 ? distanceKm / (durationMin / 60) : 0;
+      const maxSpeed = Math.max(...trip.positions.map((p: any) => p.speedKph || 0));
+
+      return {
+        vehicleName: trip.vehicleName,
+        vehicleId: trip.vehicleId,
+        isTrip: true,
+        tripNumber: trip.tripNumber,
+        startTime: this.formatDateTime(trip.start.recordedAt),
+        endTime: this.formatDateTime(trip.end.recordedAt),
+        duration: formatDuration(durationMin),
+        durationMin,
+        distance: `${distanceKm.toFixed(1)} km`,
+        distanceKm,
+        avgSpeed: `${avgSpeed.toFixed(0)} km/h`,
+        maxSpeed: `${maxSpeed.toFixed(0)} km/h`,
+        startAddress: trip.start.address || `${trip.start.latitude.toFixed(4)}°`,
+        endAddress: trip.end.address || `${trip.end.latitude.toFixed(4)}°`
+      };
+    });
+
+    this.tableData = tripResults;
+    const totalDistance = tripResults.reduce((sum, t) => sum + t.distanceKm, 0);
+    const totalDurationMin = tripResults.reduce((sum, t) => sum + t.durationMin, 0);
+
+    // Chart 1: Distance by vehicle (bar chart)
+    const distanceByVehicle = new Map<string, number>();
+    tripResults.forEach(t => {
+      const current = distanceByVehicle.get(t.vehicleName) || 0;
+      distanceByVehicle.set(t.vehicleName, current + t.distanceKm);
+    });
+
+    this.chartData = Array.from(distanceByVehicle.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 15)
+      .map(([name, distance], i) => ({
+        label: name,
+        value: Math.round(distance * 10) / 10,
+        color: this.chartColors[i % this.chartColors.length]
+      }));
+
+    this.statisticsData = {
+      '🚗 Véhicules': byVehicle.size.toString(),
+      '🛣️ Nombre de trajets': allTrips.length.toString(),
+      '📏 Distance totale': `${totalDistance.toFixed(1)} km`,
+      '⏱️ Temps total': formatDuration(totalDurationMin),
+      '⌀ Distance/trajet': `${(totalDistance / allTrips.length || 0).toFixed(1)} km`
+    };
+
+    // Secondary chart: Duration distribution (pie chart)
+    const durationRanges = [
+      { label: '< 15 min', min: 0, max: 15, color: '#22C55E' },
+      { label: '15-30 min', min: 15, max: 30, color: '#84CC16' },
+      { label: '30-60 min', min: 30, max: 60, color: '#EAB308' },
+      { label: '1-2h', min: 60, max: 120, color: '#F97316' },
+      { label: '> 2h', min: 120, max: 9999, color: '#EF4444' }
+    ];
+
+    this.secondaryChartData = durationRanges.map(r => ({
+      label: r.label,
+      value: tripResults.filter(t => t.durationMin >= r.min && t.durationMin < r.max).length,
+      color: r.color
+    })).filter(d => d.value > 0);
+  }
+
+  processSpeedReportAllVehicles(positions: any[]) {
+    // Speed ranges
+    const ranges = [
+      { label: '0-30 km/h', min: 0, max: 30, color: '#22C55E' },
+      { label: '30-50 km/h', min: 30, max: 50, color: '#84CC16' },
+      { label: '50-70 km/h', min: 50, max: 70, color: '#EAB308' },
+      { label: '70-90 km/h', min: 70, max: 90, color: '#F97316' },
+      { label: '90-110 km/h', min: 90, max: 110, color: '#EF4444' },
+      { label: '>110 km/h', min: 110, max: 999, color: '#DC2626' }
+    ];
+
+    const rangeCounts = ranges.map(r => ({
+      ...r,
+      count: positions.filter(p => (p.speedKph || 0) >= r.min && (p.speedKph || 0) < r.max).length
+    }));
+
+    this.chartData = rangeCounts.map(r => ({
+      label: r.label,
+      value: r.count,
+      color: r.color,
+      percentage: ((r.count / positions.length) * 100).toFixed(1)
+    }));
+
+    // Sample for table
+    const sampled = positions.filter((_, i) => i % Math.max(1, Math.floor(positions.length / 50)) === 0).slice(0, 50);
+    this.tableData = sampled.map(p => ({
+      vehicleName: p.vehicleName,
+      time: this.formatDateTime(p.recordedAt),
+      speed: `${(p.speedKph || 0).toFixed(0)} km/h`,
+      address: p.address || `${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)}`
+    }));
+
+    const speeds = positions.map(p => p.speedKph || 0).filter(s => s > 0);
+    this.statisticsData = {
+      'Véhicules': new Set(positions.map(p => p.vehicleId)).size.toString(),
+      'Points analysés': positions.length.toString(),
+      'Vitesse moy': speeds.length ? `${(speeds.reduce((a, b) => a + b, 0) / speeds.length).toFixed(0)} km/h` : 'N/A',
+      'Vitesse max': speeds.length ? `${Math.max(...speeds).toFixed(0)} km/h` : 'N/A'
+    };
   }
 
   executeStopsReport(vehicleId: number, startDate?: Date, endDate?: Date) {
@@ -586,6 +927,7 @@ export class ReportsComponent implements OnInit {
           this.currentPage = 1;
           this.cdr.detectChanges();
           this.appRef.tick();
+          setTimeout(() => this.createChart(), 100);
         });
       },
       error: (err) => {
@@ -602,6 +944,148 @@ export class ReportsComponent implements OnInit {
       }
     });
   }
+
+  executeStopsReportAllVehicles(startDate?: Date, endDate?: Date) {
+    console.log('executeStopsReportAllVehicles called with:', { startDate, endDate });
+    const allStops: any[] = [];
+    let completedRequests = 0;
+    const totalVehicles = this.vehicles.length;
+
+    if (totalVehicles === 0) {
+      this.ngZone.run(() => {
+        this.tableData = [];
+        this.chartData = [];
+        this.statisticsData = { 'Information': 'Aucun véhicule disponible' };
+        this.reportGenerated = true;
+        this.loading = false;
+        this.cdr.detectChanges();
+      });
+      return;
+    }
+
+    this.vehicles.forEach(vehicle => {
+      this.apiService.getVehicleStops(vehicle.id, startDate, endDate).subscribe({
+        next: (result) => {
+          // Add vehicle info to each stop
+          const stopsWithVehicle = result.items.map(stop => ({
+            ...stop,
+            vehicleName: vehicle.name || vehicle.brand + ' ' + vehicle.model,
+            vehiclePlate: vehicle.plate
+          }));
+          allStops.push(...stopsWithVehicle);
+          completedRequests++;
+
+          if (completedRequests === totalVehicles) {
+            this.ngZone.run(() => {
+              this.processStopsFromApiAllVehicles(allStops);
+              this.reportGenerated = true;
+              this.loading = false;
+              this.activeTab = 'table';
+              this.currentPage = 1;
+              this.cdr.detectChanges();
+              this.appRef.tick();
+              setTimeout(() => this.createChart(), 100);
+            });
+          }
+        },
+        error: () => {
+          completedRequests++;
+          if (completedRequests === totalVehicles) {
+            this.ngZone.run(() => {
+              this.processStopsFromApiAllVehicles(allStops);
+              this.reportGenerated = true;
+              this.loading = false;
+              this.activeTab = 'table';
+              this.currentPage = 1;
+              this.cdr.detectChanges();
+              this.appRef.tick();
+              setTimeout(() => this.createChart(), 100);
+            });
+          }
+        }
+      });
+    });
+  }
+
+  processStopsFromApiAllVehicles(stops: any[]) {
+    if (!stops || stops.length === 0) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = { 'Information': 'Aucun arrêt trouvé pour cette période' };
+      return;
+    }
+
+    // Sort by start time
+    stops.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+    const formatDuration = (seconds: number): string => {
+      const minutes = seconds / 60;
+      if (minutes >= 60) {
+        const hours = Math.floor(minutes / 60);
+        const mins = Math.round(minutes % 60);
+        return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+      }
+      return `${Math.round(minutes)}min`;
+    };
+
+    this.tableData = stops.map((stop: any) => {
+      const stopTypeCode = stop.ignitionOff ? 'A' : 'C';
+      const stopTypeLabel = stop.ignitionOff ? '🅿️ Arrêt' : '🚦 Circulation';
+      const durationMinutes = stop.durationSeconds / 60;
+
+      return {
+        vehicleName: stop.vehicleName || stop.vehiclePlate,
+        time: this.formatDateTime(stop.startTime),
+        endTime: stop.endTime ? this.formatDateTime(stop.endTime) : '-',
+        duration: formatDuration(stop.durationSeconds),
+        durationSeconds: stop.durationSeconds,
+        address: stop.address || `${stop.latitude.toFixed(5)}, ${stop.longitude.toFixed(5)}`,
+        typeCode: stopTypeCode,
+        typeLabel: stopTypeLabel,
+        ignitionOff: stop.ignitionOff,
+        isLongStop: durationMinutes > 30,
+        geofenceName: stop.geofenceName
+      };
+    });
+
+    // Chart data - by type
+    const typeA = this.tableData.filter((s: any) => s.typeCode === 'A');
+    const typeC = this.tableData.filter((s: any) => s.typeCode === 'C');
+    const totalTypeASeconds = typeA.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
+    const totalTypeCSeconds = typeC.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
+
+    this.chartData = [
+      { label: '🅿️ Arrêts (A)', value: Math.round(totalTypeASeconds / 60), count: typeA.length, color: '#3B82F6' },
+      { label: '🚦 Circulation (C)', value: Math.round(totalTypeCSeconds / 60), count: typeC.length, color: '#F59E0B' }
+    ];
+
+    // Statistics
+    const totalDurationSeconds = stops.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
+    const vehiclesWithStops = new Set(stops.map((s: any) => s.vehicleId || s.vehicleName)).size;
+
+    this.statisticsData = {
+      'Véhicules': vehiclesWithStops.toString(),
+      'Total arrêts': stops.length.toString(),
+      '🅿️ Arrêts (A)': `${typeA.length} (${formatDuration(totalTypeASeconds)})`,
+      '🚦 Circulation (C)': `${typeC.length} (${formatDuration(totalTypeCSeconds)})`,
+      'Durée totale': formatDuration(totalDurationSeconds)
+    };
+
+    // Secondary chart: Stops by vehicle
+    const stopsByVehicle = new Map<string, number>();
+    this.tableData.forEach((s: any) => {
+      const current = stopsByVehicle.get(s.vehicleName) || 0;
+      stopsByVehicle.set(s.vehicleName, current + 1);
+    });
+
+    this.secondaryChartData = Array.from(stopsByVehicle.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, count]) => ({ label: name, value: count }));
+  }
+
+  // Custom speed limit (optional) - if empty, uses vehicle limits from DB
+  customSpeedLimit: number | null = null;
 
   executeSpeedInfractionReport() {
     // Calculate date range based on period type
@@ -638,9 +1122,12 @@ export class ReportsComponent implements OnInit {
         endDate = now;
     }
     
-    console.log('executeSpeedInfractionReport:', { startDate, endDate, speedLimit: this.speedLimit });
+    console.log('executeSpeedInfractionReport:', { 
+      startDate, endDate, 
+      customSpeedLimit: this.customSpeedLimit
+    });
     
-    // Fetch all vehicles' GPS positions and filter by speed
+    // Fetch all vehicles with their configured speed limits
     this.apiService.getVehicles().subscribe({
       next: (vehicles) => {
         const allInfractions: any[] = [];
@@ -660,10 +1147,15 @@ export class ReportsComponent implements OnInit {
         }
         
         vehicles.forEach(vehicle => {
+          // Use custom limit if set, otherwise use vehicle's configured limit from DB (default 120)
+          const vehicleSpeedLimit = this.customSpeedLimit 
+            ? this.customSpeedLimit 
+            : (vehicle.speedLimit || 120);
+          
           this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 10000).subscribe({
             next: (positions) => {
               const infractions = positions
-                .filter((p: any) => (p.speedKph || 0) > this.speedLimit)
+                .filter((p: any) => (p.speedKph || 0) > vehicleSpeedLimit)
                 .map((p: any) => ({
                   vehicleId: vehicle.id,
                   vehicleName: vehicle.name || vehicle.plate,
@@ -673,8 +1165,9 @@ export class ReportsComponent implements OnInit {
                   longitude: p.longitude,
                   address: p.address,
                   speed: p.speedKph || 0,
-                  limit: this.speedLimit,
-                  excess: (p.speedKph || 0) - this.speedLimit
+                  limit: vehicleSpeedLimit,
+                  configuredLimit: vehicle.speedLimit || 120,
+                  excess: (p.speedKph || 0) - vehicleSpeedLimit
                 }));
               allInfractions.push(...infractions);
               completedRequests++;
@@ -736,10 +1229,7 @@ export class ReportsComponent implements OnInit {
     // Process table data
     this.tableData = infractions.map(inf => ({
       vehicle: inf.vehicleName || inf.vehiclePlate,
-      time: new Date(inf.time).toLocaleString('fr-FR', {
-        day: '2-digit', month: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit'
-      }),
+      time: this.formatDateTime(inf.time),
       address: inf.address || `${inf.latitude.toFixed(5)}, ${inf.longitude.toFixed(5)}`,
       latitude: inf.latitude,
       longitude: inf.longitude,
@@ -1117,7 +1607,12 @@ export class ReportsComponent implements OnInit {
   }
 
   executeDailyReport(vehicleId: number, date?: Date) {
-    const reportDate = date || new Date();
+    // Default to J-1 (yesterday) if no date provided
+    const reportDate = date || (() => {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      return yesterday;
+    })();
     
     this.apiService.getDailyReport(vehicleId, reportDate).subscribe({
       next: (report) => {
@@ -1149,54 +1644,178 @@ export class ReportsComponent implements OnInit {
   }
 
   processDailyReport(report: DailyActivityReport) {
+    const reportDateFormatted = new Date(report.reportDate).toLocaleDateString('fr-FR', { 
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
+    });
+
     if (!report.hasActivity) {
       this.tableData = [];
       this.chartData = [];
       this.statisticsData = {
         'Véhicule': report.vehicleName,
-        'Date': new Date(report.reportDate).toLocaleDateString('fr-FR'),
+        'Date': reportDateFormatted,
         'Information': 'Aucune activité enregistrée pour cette journée'
       };
       return;
     }
 
-    // Convert activities to table data
-    this.tableData = report.activities.map((activity: ActivitySegment) => ({
-      time: `${this.formatTime(activity.startTime)}${activity.endTime ? ' → ' + this.formatTime(activity.endTime) : ''}`,
-      type: activity.type === 'drive' ? '🚗 Trajet' : '🅿️ Arrêt',
-      duration: activity.durationFormatted,
-      details: activity.type === 'drive' 
-        ? `${activity.distanceKm} km | ⌀ ${activity.avgSpeedKph} km/h | max ${activity.maxSpeedKph} km/h`
-        : `${activity.startLocation.address || 'Adresse inconnue'}`,
-      location: activity.type === 'drive'
-        ? `${activity.startLocation.address || '?'} → ${activity.endLocation?.address || '?'}`
-        : activity.startLocation.address || `${activity.startLocation.latitude.toFixed(4)}°, ${activity.startLocation.longitude.toFixed(4)}°`,
-      isDrive: activity.type === 'drive'
-    }));
+    // Build comprehensive daily timeline with all events
+    const events: any[] = [];
+    let eventNumber = 0;
 
-    // Chart data - show duration of each activity
-    this.chartData = report.activities.map((activity: ActivitySegment, index: number) => ({
-      label: `${activity.type === 'drive' ? 'Trajet' : 'Arrêt'} ${activity.sequenceNumber}`,
-      value: Math.round(activity.durationSeconds / 60) // duration in minutes
-    }));
+    // Add first start event
+    if (report.firstStart) {
+      eventNumber++;
+      events.push({
+        eventNumber,
+        time: this.formatDateTime(report.firstStart.timestamp),
+        type: 'start',
+        typeIcon: '🔑',
+        typeLabel: 'Démarrage',
+        description: 'Premier démarrage de la journée',
+        address: report.firstStart.address || `${report.firstStart.latitude.toFixed(4)}°, ${report.firstStart.longitude.toFixed(4)}°`,
+        latitude: report.firstStart.latitude,
+        longitude: report.firstStart.longitude,
+        duration: '-',
+        distance: '-',
+        speed: '-'
+      });
+    }
+
+    // Process all activities
+    report.activities.forEach((activity: ActivitySegment) => {
+      eventNumber++;
+      if (activity.type === 'drive') {
+        events.push({
+          eventNumber,
+          time: `${this.formatDateTime(activity.startTime)} → ${activity.endTime ? this.formatDateTime(activity.endTime) : '...'}`,
+          type: 'drive',
+          typeIcon: '🚗',
+          typeLabel: `Trajet ${activity.sequenceNumber}`,
+          description: `${activity.startLocation.address || '?'} → ${activity.endLocation?.address || '?'}`,
+          address: activity.endLocation?.address || activity.startLocation.address,
+          latitude: activity.endLocation?.latitude || activity.startLocation.latitude,
+          longitude: activity.endLocation?.longitude || activity.startLocation.longitude,
+          duration: activity.durationFormatted,
+          distance: `${activity.distanceKm?.toFixed(1) || 0} km`,
+          speed: `⌀ ${activity.avgSpeedKph || 0} | max ${activity.maxSpeedKph || 0} km/h`,
+          distanceKm: activity.distanceKm || 0,
+          durationSeconds: activity.durationSeconds
+        });
+      } else {
+        events.push({
+          eventNumber,
+          time: `${this.formatDateTime(activity.startTime)} → ${activity.endTime ? this.formatDateTime(activity.endTime) : '...'}`,
+          type: 'stop',
+          typeIcon: '🅿️',
+          typeLabel: `Arrêt ${activity.sequenceNumber}`,
+          description: activity.startLocation.address || 'Lieu inconnu',
+          address: activity.startLocation.address || `${activity.startLocation.latitude.toFixed(4)}°, ${activity.startLocation.longitude.toFixed(4)}°`,
+          latitude: activity.startLocation.latitude,
+          longitude: activity.startLocation.longitude,
+          duration: activity.durationFormatted,
+          distance: '-',
+          speed: '-',
+          durationSeconds: activity.durationSeconds
+        });
+      }
+    });
+
+    // Add last position event if different from last activity
+    if (report.lastPosition) {
+      eventNumber++;
+      events.push({
+        eventNumber,
+        time: this.formatDateTime(report.lastPosition.timestamp),
+        type: report.lastPosition.ignitionOn ? 'position' : 'end',
+        typeIcon: report.lastPosition.ignitionOn ? '📍' : '🔒',
+        typeLabel: report.lastPosition.ignitionOn ? 'Dernière position' : 'Fin de journée',
+        description: report.lastPosition.ignitionOn ? 'Véhicule en mouvement' : 'Moteur éteint',
+        address: report.lastPosition.address || `${report.lastPosition.latitude.toFixed(4)}°, ${report.lastPosition.longitude.toFixed(4)}°`,
+        latitude: report.lastPosition.latitude,
+        longitude: report.lastPosition.longitude,
+        duration: '-',
+        distance: '-',
+        speed: '-'
+      });
+    }
+
+    this.tableData = events;
+
+    // Enrich addresses
+    this.enrichDailyReportAddresses();
+
+    // Chart data - Timeline bar chart showing activity durations
+    const driveEvents = events.filter(e => e.type === 'drive');
+    const stopEvents = events.filter(e => e.type === 'stop');
+
+    this.chartData = [
+      ...driveEvents.map(e => ({
+        label: e.typeLabel,
+        value: Math.round((e.durationSeconds || 0) / 60),
+        type: 'drive',
+        color: '#3B82F6'
+      })),
+      ...stopEvents.map(e => ({
+        label: e.typeLabel,
+        value: Math.round((e.durationSeconds || 0) / 60),
+        type: 'stop',
+        color: '#8B5CF6'
+      }))
+    ];
 
     // Statistics
     this.statisticsData = {
-      'Véhicule': `${report.vehicleName}${report.plate ? ' (' + report.plate + ')' : ''}`,
-      'Date': new Date(report.reportDate).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
-      'Premier démarrage': report.firstStart ? this.formatTime(report.firstStart.timestamp) : 'N/A',
-      'Temps de conduite': report.summary.totalDrivingFormatted,
-      'Temps d\'arrêt': report.summary.totalStoppedFormatted,
-      'Distance totale': `${report.summary.totalDistanceKm} km`,
-      'Nombre de trajets': report.summary.driveCount.toString(),
-      'Nombre d\'arrêts': report.summary.stopCount.toString(),
-      'Vitesse max': `${report.summary.maxSpeedKph} km/h`,
-      'Vitesse moyenne': `${report.summary.avgSpeedKph} km/h`
+      '🚗 Véhicule': `${report.vehicleName}${report.plate ? ' (' + report.plate + ')' : ''}`,
+      '📅 Date': reportDateFormatted,
+      '🔑 Premier démarrage': report.firstStart ? this.formatDateTime(report.firstStart.timestamp) : 'N/A',
+      '🔒 Dernière position': report.lastPosition ? this.formatDateTime(report.lastPosition.timestamp) : 'N/A',
+      '⏱️ Temps conduite': report.summary.totalDrivingFormatted,
+      '⏸️ Temps arrêt': report.summary.totalStoppedFormatted,
+      '📏 Distance': `${report.summary.totalDistanceKm} km`,
+      '📊 Trajets/Arrêts': `${report.summary.driveCount} / ${report.summary.stopCount}`,
+      '🏎️ Vitesse max': `${report.summary.maxSpeedKph} km/h`,
+      '⌀ Vitesse moy': `${report.summary.avgSpeedKph} km/h`
     };
+  }
+
+  enrichDailyReportAddresses() {
+    this.tableData.forEach((row: any, index: number) => {
+      if (row.address?.includes('°') && row.latitude && row.longitude) {
+        this.geocodingService.reverseGeocode(row.latitude, row.longitude).subscribe({
+          next: (addr) => {
+            if (addr) {
+              this.ngZone.run(() => {
+                this.tableData[index] = { ...this.tableData[index], address: addr, description: addr };
+                this.cdr.detectChanges();
+              });
+            }
+          }
+        });
+      }
+    });
   }
 
   formatTime(dateStr: string): string {
     return new Date(dateStr).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  formatDateTime(dateStr: string): string {
+    const d = new Date(dateStr);
+    const day = d.getDate().toString().padStart(2, '0');
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const year = d.getFullYear().toString().slice(-2);
+    const hours = d.getHours().toString().padStart(2, '0');
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    return `${day}/${month}/${year} ${hours}:${minutes}`;
+  }
+
+  formatDate(dateStr: string): string {
+    const d = new Date(dateStr);
+    const day = d.getDate().toString().padStart(2, '0');
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const year = d.getFullYear().toString().slice(-2);
+    return `${day}/${month}/${year}`;
   }
 
   executeMileageReport(vehicleId: number, startDate?: Date, endDate?: Date) {
@@ -1245,8 +1864,12 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
-    // Convert daily breakdown to table data
-    this.tableData = report.dailyBreakdown.map((day: DailyMileage) => ({
+    // Convert daily breakdown to table data - FILTER OUT days with no trips
+    const daysWithActivity = report.dailyBreakdown.filter((day: DailyMileage) => 
+      day.tripCount > 0 || day.distanceKm > 0
+    );
+
+    this.tableData = daysWithActivity.map((day: DailyMileage) => ({
       date: new Date(day.date).toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' }),
       dayOfWeek: day.dayOfWeek,
       distance: `${day.distanceKm.toFixed(1)} km`,
@@ -2151,31 +2774,100 @@ export class ReportsComponent implements OnInit {
   processSpeedReport(positions: any[]) {
     const speedData = positions.filter((p: any) => p.speedKph > 0);
     
-    this.tableData = speedData.map((pos: any) => ({
-      time: new Date(pos.recordedAt).toLocaleString('fr-FR', {
-        day: '2-digit', month: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit'
-      }),
-      speed: `${(pos.speedKph || 0).toFixed(1)} km/h`,
-      location: `${pos.latitude.toFixed(5)}, ${pos.longitude.toFixed(5)}`,
-      isAnomaly: pos.speedKph > 90
+    if (speedData.length === 0) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = { 'Information': 'Aucune donnée de vitesse pour cette période' };
+      return;
+    }
+
+    // Group speed data into ranges for better visualization
+    const speedRanges = [
+      { min: 0, max: 30, label: '0-30 km/h', color: '#22C55E' },
+      { min: 30, max: 50, label: '30-50 km/h', color: '#84CC16' },
+      { min: 50, max: 70, label: '50-70 km/h', color: '#EAB308' },
+      { min: 70, max: 90, label: '70-90 km/h', color: '#F97316' },
+      { min: 90, max: 110, label: '90-110 km/h', color: '#EF4444' },
+      { min: 110, max: 999, label: '>110 km/h', color: '#DC2626' }
+    ];
+
+    // Count positions in each range
+    const rangeCounts = speedRanges.map(range => ({
+      ...range,
+      count: speedData.filter((p: any) => p.speedKph >= range.min && p.speedKph < range.max).length
     }));
 
-    this.chartData = speedData.map((pos: any) => ({
-      label: new Date(pos.recordedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-      value: pos.speedKph || 0
+    // Sample data for table (every Nth position to avoid huge tables)
+    const sampleRate = Math.max(1, Math.floor(speedData.length / 100));
+    const sampledData = speedData.filter((_: any, i: number) => i % sampleRate === 0);
+
+    this.tableData = sampledData.map((pos: any) => {
+      const speed = pos.speedKph || 0;
+      const range = speedRanges.find(r => speed >= r.min && speed < r.max) || speedRanges[speedRanges.length - 1];
+      return {
+        time: new Date(pos.recordedAt).toLocaleString('fr-FR', {
+          day: '2-digit', month: '2-digit', year: 'numeric',
+          hour: '2-digit', minute: '2-digit', second: '2-digit'
+        }),
+        speed: `${speed.toFixed(0)} km/h`,
+        speedValue: speed,
+        location: pos.address || `${pos.latitude.toFixed(5)}, ${pos.longitude.toFixed(5)}`,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        rangeLabel: range.label,
+        rangeColor: range.color,
+        isHighSpeed: speed > 90,
+        isVeryHighSpeed: speed > 110
+      };
+    });
+
+    // Enrich with addresses
+    this.enrichSpeedAddresses();
+
+    // Chart data - Speed distribution (pie/bar chart)
+    this.chartData = rangeCounts.filter(r => r.count > 0).map(range => ({
+      label: range.label,
+      value: range.count,
+      color: range.color,
+      percentage: ((range.count / speedData.length) * 100).toFixed(1)
     }));
 
+    // Calculate statistics
     const speeds = speedData.map((p: any) => p.speedKph || 0);
-    const avgSpeed = speeds.length > 0 ? speeds.reduce((a: number, b: number) => a + b, 0) / speeds.length : 0;
-    const violations = speeds.filter((s: number) => s > 90).length;
+    const avgSpeed = speeds.reduce((a: number, b: number) => a + b, 0) / speeds.length;
+    const maxSpeed = Math.max(...speeds);
+    const minSpeed = Math.min(...speeds);
+    const highSpeedCount = speeds.filter((s: number) => s > 90).length;
+    const veryHighSpeedCount = speeds.filter((s: number) => s > 110).length;
+
+    // Calculate time spent at different speeds (approximate)
+    const highSpeedPercentage = ((highSpeedCount / speeds.length) * 100).toFixed(1);
 
     this.statisticsData = {
-      'Total points': positions.length.toString(),
-      'Vitesse moyenne': `${avgSpeed.toFixed(1)} km/h`,
-      'Vitesse max': speeds.length > 0 ? `${Math.max(...speeds).toFixed(1)} km/h` : 'N/A',
-      'Excès (>90 km/h)': violations.toString()
+      'Points analysés': speedData.length.toString(),
+      'Vitesse moyenne': `${avgSpeed.toFixed(0)} km/h`,
+      'Vitesse max': `${maxSpeed.toFixed(0)} km/h`,
+      'Vitesse min': `${minSpeed.toFixed(0)} km/h`,
+      '⚠️ >90 km/h': `${highSpeedCount} (${highSpeedPercentage}%)`,
+      '🔴 >110 km/h': veryHighSpeedCount.toString()
     };
+  }
+
+  enrichSpeedAddresses() {
+    this.tableData.slice(0, 20).forEach((row: any, index: number) => {
+      if (row.location?.includes(',') && row.latitude && row.longitude) {
+        this.geocodingService.reverseGeocode(row.latitude, row.longitude).subscribe({
+          next: (address) => {
+            if (address) {
+              this.ngZone.run(() => {
+                this.tableData[index] = { ...this.tableData[index], location: address };
+                this.cdr.detectChanges();
+              });
+            }
+          }
+        });
+      }
+    });
   }
 
   processStopsReport(positions: any[]) {
@@ -2217,10 +2909,7 @@ export class ReportsComponent implements OnInit {
       }
       
       return {
-        time: new Date(stop.start.recordedAt).toLocaleString('fr-FR', {
-          day: '2-digit', month: '2-digit', year: 'numeric',
-          hour: '2-digit', minute: '2-digit'
-        }),
+        time: this.formatDateTime(stop.start.recordedAt),
         duration: formattedDuration,
         address: stop.start.address || 'Chargement...',
         latitude: stop.start.latitude,
@@ -2313,41 +3002,68 @@ export class ReportsComponent implements OnInit {
       return `${Math.round(minutes)}min`;
     };
 
-    // Process stops into table data
+    // Process stops into table data with type classification
+    // A = Arrêt (ignition_off = true) - Vehicle is parked
+    // C = Circulation (ignition_on = true, speed = 0) - Idling in traffic
     this.tableData = stops.map((stop: VehicleStopDto) => {
       const durationMinutes = stop.durationSeconds / 60;
+      // Determine stop type: A = Arrêt (ignition off), C = Circulation (idling)
+      const stopTypeCode = stop.ignitionOff ? 'A' : 'C';
+      const stopTypeLabel = stop.ignitionOff 
+        ? '🅿️ Arrêt' 
+        : '🚦 Circulation';
+      const stopTypeDescription = stop.ignitionOff
+        ? 'Moteur éteint'
+        : 'Moteur allumé, véhicule à l\'arrêt';
+
       return {
-        time: new Date(stop.startTime).toLocaleString('fr-FR', {
-          day: '2-digit', month: '2-digit', year: 'numeric',
-          hour: '2-digit', minute: '2-digit'
-        }),
+        time: this.formatDateTime(stop.startTime),
+        endTime: stop.endTime ? this.formatDateTime(stop.endTime) : '-',
         duration: formatDuration(stop.durationSeconds),
+        durationSeconds: stop.durationSeconds,
         address: stop.address || `${stop.latitude.toFixed(5)}, ${stop.longitude.toFixed(5)}`,
         latitude: stop.latitude,
         longitude: stop.longitude,
-        type: durationMinutes > 30 ? '🅿️ Arrêt prolongé' : '⏸️ Arrêt',
+        typeCode: stopTypeCode,
+        typeLabel: stopTypeLabel,
+        typeDescription: stopTypeDescription,
         ignitionOff: stop.ignitionOff,
-        stopType: stop.stopType
+        isLongStop: durationMinutes > 30,
+        geofenceName: stop.geofenceName,
+        fuelStart: stop.fuelLevelStart,
+        fuelEnd: stop.fuelLevelEnd,
+        fuelConsumed: stop.fuelConsumed
       };
     });
 
     // Fetch addresses for stops without one
     this.enrichStopsWithAddresses();
 
-    // Chart data - top 20 stops by duration
-    this.chartData = stops.slice(0, 20).map((stop: VehicleStopDto, i: number) => ({
-      label: `Arrêt ${i + 1}`,
-      value: Math.round(stop.durationSeconds / 60)
-    }));
+    // Chart data - Gantt-style timeline showing stops
+    // Group by type for pie chart
+    const typeA = this.tableData.filter((s: any) => s.typeCode === 'A');
+    const typeC = this.tableData.filter((s: any) => s.typeCode === 'C');
+    
+    const totalTypeASeconds = typeA.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
+    const totalTypeCSeconds = typeC.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
+
+    this.chartData = [
+      { label: '🅿️ Arrêts (A)', value: Math.round(totalTypeASeconds / 60), count: typeA.length, color: '#3B82F6' },
+      { label: '🚦 Circulation (C)', value: Math.round(totalTypeCSeconds / 60), count: typeC.length, color: '#F59E0B' }
+    ];
 
     // Statistics
     const totalDurationSeconds = stops.reduce((sum, s) => sum + s.durationSeconds, 0);
     const avgDurationSeconds = stops.length > 0 ? totalDurationSeconds / stops.length : 0;
+    const longStops = this.tableData.filter((s: any) => s.isLongStop).length;
 
     this.statisticsData = {
-      'Nombre d\'arrêts': stops.length.toString(),
+      'Total arrêts': stops.length.toString(),
+      '🅿️ Arrêts (A)': `${typeA.length} (${formatDuration(totalTypeASeconds)})`,
+      '🚦 Circulation (C)': `${typeC.length} (${formatDuration(totalTypeCSeconds)})`,
       'Durée totale': formatDuration(totalDurationSeconds),
-      'Durée moyenne': formatDuration(avgDurationSeconds)
+      'Durée moyenne': formatDuration(avgDurationSeconds),
+      'Arrêts prolongés (>30min)': longStops.toString()
     };
   }
 
@@ -2364,9 +3080,7 @@ export class ReportsComponent implements OnInit {
       
       if (i % 10 === 0) {
         segments.push({
-          time: new Date(curr.recordedAt).toLocaleString('fr-FR', {
-            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-          }),
+          time: this.formatDateTime(curr.recordedAt),
           distance: `${totalDistance.toFixed(2)} km`,
           speed: `${(curr.speedKph || 0).toFixed(1)} km/h`,
           location: `${curr.latitude.toFixed(5)}, ${curr.longitude.toFixed(5)}`,
@@ -2395,114 +3109,228 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
-    const gapMinutes = 10;
-    const trips: {
-      start: any;
-      end: any;
-      distanceCalculated: number;
-    }[] = [];
-
-    let currentTrip: {
-      start: any;
-      end: any;
-      distanceCalculated: number;
-    } | null = null;
-
-    const resetTrip = (pos: any) => ({
-      start: pos,
-      end: pos,
-      distanceCalculated: 0
-    });
+    // Detect trips based on ignition_on transitions
+    // Trip starts when ignition_on = true, ends when ignition_on = false
+    const segments: { type: 'trip' | 'stop'; start: any; end: any; positions: any[]; distanceKm: number }[] = [];
+    let currentSegment: { type: 'trip' | 'stop'; start: any; end: any; positions: any[]; distanceKm: number } | null = null;
 
     for (let i = 0; i < positions.length; i++) {
       const pos = positions[i];
-      if (!currentTrip) {
-        currentTrip = resetTrip(pos);
+      const isIgnitionOn = pos.ignitionOn === true;
+      const isMoving = (pos.speedKph || 0) > 2;
+      const isTripPosition = isIgnitionOn && isMoving; // Must be moving to count as trip
+
+      if (!currentSegment) {
+        currentSegment = {
+          type: isTripPosition ? 'trip' : 'stop',
+          start: pos,
+          end: pos,
+          positions: [pos],
+          distanceKm: 0
+        };
         continue;
       }
 
       const prev = positions[i - 1];
-      currentTrip.end = pos;
+      const wasMoving = (prev.speedKph || 0) > 2 && prev.ignitionOn === true;
 
+      // Calculate distance
       const dist = this.haversineDistance(prev.latitude, prev.longitude, pos.latitude, pos.longitude);
-      if (!Number.isNaN(dist)) {
-        currentTrip.distanceCalculated += dist;
+      if (!Number.isNaN(dist) && dist < 50) { // Filter unrealistic jumps
+        currentSegment.distanceKm += dist;
       }
 
-      const gap = (new Date(pos.recordedAt).getTime() - new Date(prev.recordedAt).getTime()) / 60000;
-      const ignitionDrop = prev.ignitionOn && pos.ignitionOn === false;
-      const extendedStop = (prev.speedKph || 0) < 2 && (pos.speedKph || 0) < 2 && gap >= 5;
-
-      if (gap >= gapMinutes || ignitionDrop || extendedStop) {
-        trips.push(currentTrip);
-        currentTrip = resetTrip(pos);
+      // Detect transition: stopped moving = end of trip
+      if (wasMoving && !isTripPosition) {
+        currentSegment.end = prev;
+        segments.push(currentSegment);
+        currentSegment = {
+          type: 'stop',
+          start: pos,
+          end: pos,
+          positions: [pos],
+          distanceKm: 0
+        };
+      }
+      // Detect transition: started moving = start of new trip
+      else if (!wasMoving && isTripPosition) {
+        currentSegment.end = prev;
+        segments.push(currentSegment);
+        currentSegment = {
+          type: 'trip',
+          start: pos,
+          end: pos,
+          positions: [pos],
+          distanceKm: 0
+        };
+      }
+      // Continue current segment
+      else {
+        currentSegment.end = pos;
+        currentSegment.positions.push(pos);
       }
     }
 
-    if (currentTrip) {
-      trips.push(currentTrip);
+    if (currentSegment) {
+      segments.push(currentSegment);
     }
 
-    const meaningfulTrips = trips.filter(trip => {
-      const durationMinutes = (new Date(trip.end.recordedAt).getTime() - new Date(trip.start.recordedAt).getTime()) / 60000;
-      return durationMinutes >= 2 || trip.distanceCalculated >= 0.2;
+    // Filter meaningful segments
+    const meaningfulSegments = segments.filter(seg => {
+      const durationMs = new Date(seg.end.recordedAt).getTime() - new Date(seg.start.recordedAt).getTime();
+      const durationMin = durationMs / 60000;
+      if (seg.type === 'trip') {
+        return durationMin >= 1 || seg.distanceKm >= 0.1;
+      }
+      return durationMin >= 1; // Show stops >= 1 min
     });
 
-    if (!meaningfulTrips.length) {
+    if (!meaningfulSegments.length) {
       this.tableData = [];
       this.chartData = [];
       this.statisticsData = { 'Information': 'Aucun trajet significatif détecté' };
       return;
     }
 
-    const summaries = meaningfulTrips.map((trip, index) => {
-      const startTime = new Date(trip.start.recordedAt);
-      const endTime = new Date(trip.end.recordedAt);
-      const durationMinutes = Math.max(1, (endTime.getTime() - startTime.getTime()) / 60000);
-
-      let distanceKm = trip.distanceCalculated;
-      if (trip.start.odometerKm && trip.end.odometerKm && trip.end.odometerKm >= trip.start.odometerKm) {
-        distanceKm = trip.end.odometerKm - trip.start.odometerKm;
+    // Format duration helper
+    const formatDuration = (minutes: number): string => {
+      if (minutes >= 60) {
+        const h = Math.floor(minutes / 60);
+        const m = Math.round(minutes % 60);
+        return m > 0 ? `${h}h ${m}min` : `${h}h`;
       }
+      return `${Math.round(minutes)}min`;
+    };
 
-      const avgSpeed = durationMinutes > 0 ? distanceKm / (durationMinutes / 60) : 0;
-      const startLocation = trip.start.address || `${trip.start.latitude.toFixed(4)}°, ${trip.start.longitude.toFixed(4)}°`;
-      const endLocation = trip.end.address || `${trip.end.latitude.toFixed(4)}°, ${trip.end.longitude.toFixed(4)}°`;
+    // Build table data with alternating trips and stops
+    let tripNumber = 0;
+    this.tableData = meaningfulSegments.map((seg, index) => {
+      const startTime = new Date(seg.start.recordedAt);
+      const endTime = new Date(seg.end.recordedAt);
+      const durationMin = (endTime.getTime() - startTime.getTime()) / 60000;
 
-      const kilometrageLabel = trip.end.odometerKm
-        ? `${Number(trip.end.odometerKm).toLocaleString('fr-FR')} km`
-        : `+${distanceKm.toFixed(2)} km`;
+      if (seg.type === 'trip') {
+        tripNumber++;
+        let distanceKm = seg.distanceKm;
+        
+        // Try odometer first
+        if (seg.start.odometerKm && seg.end.odometerKm && seg.end.odometerKm >= seg.start.odometerKm) {
+          distanceKm = seg.end.odometerKm - seg.start.odometerKm;
+        }
+        
+        // If still 0, estimate from average speed
+        if (distanceKm < 0.1 && durationMin > 1) {
+          const speeds = seg.positions.map((p: any) => p.speedKph || 0).filter((s: number) => s > 0);
+          if (speeds.length > 0) {
+            const avgSpeedFromPositions = speeds.reduce((a: number, b: number) => a + b, 0) / speeds.length;
+            distanceKm = avgSpeedFromPositions * (durationMin / 60);
+          }
+        }
+        
+        const avgSpeed = durationMin > 0 && distanceKm > 0 ? distanceKm / (durationMin / 60) : 0;
+        const maxSpeed = Math.max(...seg.positions.map(p => p.speedKph || 0));
 
-      return {
-        row: {
-          time: `${startTime.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} → ${endTime.toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
-          distance: `${distanceKm.toFixed(2)} km`,
-          trips: `${Math.round(durationMinutes)} min | ${avgSpeed.toFixed(1)} km/h`,
-          location: `${startLocation} → ${endLocation}`,
-          kilometrage: kilometrageLabel
-        },
-        distanceKm,
-        durationMinutes,
-        label: `Trajet ${index + 1}`
-      };
+        return {
+          isTrip: true,
+          tripNumber,
+          startTime: this.formatDateTime(seg.start.recordedAt),
+          endTime: this.formatDateTime(seg.end.recordedAt),
+          duration: formatDuration(durationMin),
+          durationMin,
+          distance: `${distanceKm.toFixed(1)} km`,
+          distanceKm,
+          avgSpeed: `${avgSpeed.toFixed(0)} km/h`,
+          maxSpeed: `${maxSpeed.toFixed(0)} km/h`,
+          startAddress: seg.start.address || `${seg.start.latitude.toFixed(4)}°, ${seg.start.longitude.toFixed(4)}°`,
+          endAddress: seg.end.address || `${seg.end.latitude.toFixed(4)}°, ${seg.end.longitude.toFixed(4)}°`,
+          startLat: seg.start.latitude,
+          startLng: seg.start.longitude,
+          endLat: seg.end.latitude,
+          endLng: seg.end.longitude
+        };
+      } else {
+        return {
+          isTrip: false,
+          isStop: true,
+          startTime: this.formatDateTime(seg.start.recordedAt),
+          endTime: this.formatDateTime(seg.end.recordedAt),
+          duration: formatDuration(durationMin),
+          durationMin,
+          address: seg.start.address || `${seg.start.latitude.toFixed(4)}°, ${seg.start.longitude.toFixed(4)}°`,
+          latitude: seg.start.latitude,
+          longitude: seg.start.longitude
+        };
+      }
     });
 
-    this.tableData = summaries.map(summary => summary.row);
-    this.chartData = summaries.map(summary => ({
-      label: summary.label,
-      value: summary.distanceKm
+    // Enrich addresses
+    this.enrichTripAddresses();
+
+    // Chart data - Timeline chart showing trips and stops
+    const trips = this.tableData.filter((d: any) => d.isTrip);
+    const stops = this.tableData.filter((d: any) => d.isStop);
+    
+    this.chartData = trips.map((t: any) => ({
+      label: `Trajet ${t.tripNumber}`,
+      value: t.distanceKm,
+      duration: t.durationMin
     }));
 
-    const totalDistance = summaries.reduce((sum, s) => sum + s.distanceKm, 0);
-    const totalDuration = summaries.reduce((sum, s) => sum + s.durationMinutes, 0);
-    const avgSpeed = totalDuration > 0 ? totalDistance / (totalDuration / 60) : 0;
+    // Statistics
+    const totalDistance = trips.reduce((sum: number, t: any) => sum + t.distanceKm, 0);
+    const totalDrivingMin = trips.reduce((sum: number, t: any) => sum + t.durationMin, 0);
+    const totalStopMin = stops.reduce((sum: number, s: any) => sum + s.durationMin, 0);
+    const avgSpeed = totalDrivingMin > 0 ? totalDistance / (totalDrivingMin / 60) : 0;
 
     this.statisticsData = {
-      'Nombre de trajets': summaries.length.toString(),
-      'Distance totale': `${totalDistance.toFixed(2)} km`,
-      'Durée totale': `${Math.round(totalDuration)} min`,
-      'Vitesse moyenne': `${avgSpeed.toFixed(1)} km/h`
+      'Nombre de trajets': trips.length.toString(),
+      'Distance totale': `${totalDistance.toFixed(1)} km`,
+      'Temps de conduite': formatDuration(totalDrivingMin),
+      'Temps d\'arrêt': formatDuration(totalStopMin),
+      'Vitesse moyenne': `${avgSpeed.toFixed(0)} km/h`
     };
+  }
+
+  enrichTripAddresses() {
+    this.tableData.forEach((row: any, index: number) => {
+      if (row.isTrip) {
+        if (row.startAddress?.includes('°')) {
+          this.geocodingService.reverseGeocode(row.startLat, row.startLng).subscribe({
+            next: (addr) => {
+              if (addr) {
+                this.ngZone.run(() => {
+                  this.tableData[index] = { ...this.tableData[index], startAddress: addr };
+                  this.cdr.detectChanges();
+                });
+              }
+            }
+          });
+        }
+        if (row.endAddress?.includes('°')) {
+          this.geocodingService.reverseGeocode(row.endLat, row.endLng).subscribe({
+            next: (addr) => {
+              if (addr) {
+                this.ngZone.run(() => {
+                  this.tableData[index] = { ...this.tableData[index], endAddress: addr };
+                  this.cdr.detectChanges();
+                });
+              }
+            }
+          });
+        }
+      } else if (row.isStop && row.address?.includes('°')) {
+        this.geocodingService.reverseGeocode(row.latitude, row.longitude).subscribe({
+          next: (addr) => {
+            if (addr) {
+              this.ngZone.run(() => {
+                this.tableData[index] = { ...this.tableData[index], address: addr };
+                this.cdr.detectChanges();
+              });
+            }
+          }
+        });
+      }
+    });
   }
 
   haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -2529,25 +3357,112 @@ export class ReportsComponent implements OnInit {
     const type = this.selectedTemplate?.type || 'fuel';
     let config: ChartConfiguration;
 
-    if (type === 'stops') {
+    if (type === 'trips') {
+      // Horizontal bar chart showing distance per trip
       config = {
         type: 'bar',
         data: {
           labels: this.chartData.map(d => d.label),
           datasets: [{
-            label: 'Durée (minutes)',
+            label: 'Distance (km)',
             data: this.chartData.map(d => d.value),
-            backgroundColor: [
-              'rgba(14, 165, 233, 0.8)',
-              'rgba(34, 197, 94, 0.8)',
-              'rgba(245, 158, 11, 0.8)',
-              'rgba(168, 85, 247, 0.8)',
-              'rgba(107, 114, 128, 0.8)'
-            ],
-            borderWidth: 0
+            backgroundColor: this.chartColors.map(c => c + 'CC'),
+            borderColor: this.chartColors,
+            borderWidth: 1,
+            borderRadius: 4
           }]
         },
-        options: this.getChartOptions()
+        options: {
+          ...this.getChartOptions(),
+          indexAxis: 'y' as const,
+          plugins: {
+            ...this.getChartOptions().plugins,
+            title: {
+              display: true,
+              text: 'Distance parcourue par trajet',
+              font: { size: 14 }
+            },
+            tooltip: {
+              callbacks: {
+                afterLabel: (context: any) => {
+                  const trip = this.chartData[context.dataIndex];
+                  return trip?.duration ? `Durée: ${Math.round(trip.duration)} min` : '';
+                }
+              }
+            }
+          }
+        }
+      };
+    } else if (type === 'stops') {
+      // Pie chart showing A (Arrêt) vs C (Circulation) distribution
+      config = {
+        type: 'doughnut',
+        data: {
+          labels: this.chartData.map(d => d.label),
+          datasets: [{
+            data: this.chartData.map(d => d.value),
+            backgroundColor: this.chartData.map(d => d.color || '#3B82F6'),
+            borderWidth: 2,
+            borderColor: '#fff'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom' as const,
+              labels: { font: { size: 12 } }
+            },
+            title: {
+              display: true,
+              text: 'Répartition des arrêts (minutes)',
+              font: { size: 14 }
+            },
+            tooltip: {
+              callbacks: {
+                label: (context: any) => {
+                  const item = this.chartData[context.dataIndex];
+                  return `${item.label}: ${item.value} min (${item.count} arrêts)`;
+                }
+              }
+            }
+          }
+        }
+      };
+    } else if (type === 'speed') {
+      // Distribution bar chart for speed ranges
+      config = {
+        type: 'bar',
+        data: {
+          labels: this.chartData.map(d => d.label),
+          datasets: [{
+            label: 'Nombre de points',
+            data: this.chartData.map(d => d.value),
+            backgroundColor: this.chartData.map(d => d.color || '#3B82F6'),
+            borderWidth: 0,
+            borderRadius: 4
+          }]
+        },
+        options: {
+          ...this.getChartOptions(),
+          plugins: {
+            ...this.getChartOptions().plugins,
+            title: {
+              display: true,
+              text: 'Distribution des vitesses',
+              font: { size: 14 }
+            },
+            tooltip: {
+              callbacks: {
+                afterLabel: (context: any) => {
+                  const item = this.chartData[context.dataIndex];
+                  return item?.percentage ? `${item.percentage}% du temps` : '';
+                }
+              }
+            }
+          }
+        }
       };
     } else if (type === 'distance') {
       config = {
@@ -2570,7 +3485,7 @@ export class ReportsComponent implements OnInit {
         data: {
           labels: this.chartData.map(d => d.label),
           datasets: [{
-            label: this.selectedTemplate.name,
+            label: this.selectedTemplate?.name || 'Valeur',
             data: this.chartData.map(d => d.value),
             borderColor: 'rgb(14, 165, 233)',
             backgroundColor: 'rgba(14, 165, 233, 0.1)',
@@ -2583,6 +3498,93 @@ export class ReportsComponent implements OnInit {
     }
 
     this.chart = new Chart(ctx, config);
+
+    // Create secondary chart if data exists
+    this.createSecondaryChart();
+  }
+
+  createSecondaryChart() {
+    if (!this.secondaryChartCanvas || !this.secondaryChartData?.length) return;
+
+    if (this.secondaryChart) {
+      this.secondaryChart.destroy();
+    }
+
+    const ctx = this.secondaryChartCanvas.nativeElement.getContext('2d');
+    if (!ctx) return;
+
+    const type = this.selectedTemplate?.type || 'fuel';
+
+    if (type === 'trips') {
+      // Duration distribution pie chart
+      this.secondaryChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: this.secondaryChartData.map(d => d.label),
+          datasets: [{
+            data: this.secondaryChartData.map(d => d.value),
+            backgroundColor: this.secondaryChartData.map(d => d.color),
+            borderWidth: 2,
+            borderColor: '#fff'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom' as const, labels: { font: { size: 10 } } },
+            title: { display: true, text: 'Durée des trajets', font: { size: 12 } }
+          }
+        }
+      });
+    } else if (type === 'stops') {
+      // Stops by vehicle pie chart
+      this.secondaryChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: this.secondaryChartData.map(d => d.label),
+          datasets: [{
+            label: 'Arrêts',
+            data: this.secondaryChartData.map(d => d.value),
+            backgroundColor: this.secondaryChartData.map((d, i) => this.chartColors[i % this.chartColors.length] + 'CC'),
+            borderRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: 'y' as const,
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: 'Arrêts par véhicule', font: { size: 12 } }
+          }
+        }
+      });
+    } else if (type === 'speed') {
+      // Speed over time line chart
+      this.secondaryChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: this.secondaryChartData.map(d => d.label),
+          datasets: [{
+            label: 'Vitesse (km/h)',
+            data: this.secondaryChartData.map(d => d.value),
+            borderColor: '#3B82F6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: 'Évolution de la vitesse', font: { size: 12 } }
+          }
+        }
+      });
+    }
   }
 
   getChartOptions() {

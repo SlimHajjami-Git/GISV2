@@ -95,7 +95,7 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
           <div class="client-features" *ngIf="selectedClient">
             <div class="client-header">
               <div class="client-info">
-                <div class="client-avatar">{{ selectedClient.name.charAt(0) }}</div>
+                <div class="client-avatar">{{ selectedClient.name?.charAt(0) || 'C' }}</div>
                 <div>
                   <h3>{{ selectedClient.name }}</h3>
                   <span class="client-plan">{{ selectedClient.subscriptionName || 'No subscription' }}</span>

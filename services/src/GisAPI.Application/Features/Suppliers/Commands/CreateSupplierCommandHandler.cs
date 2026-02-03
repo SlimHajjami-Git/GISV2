@@ -36,7 +36,9 @@ public class CreateSupplierCommandHandler : IRequestHandler<CreateSupplierComman
             Rating = request.Rating ?? 0,
             Notes = request.Notes,
             IsActive = request.IsActive,
-            CompanyId = _tenantService.CompanyId ?? throw new InvalidOperationException("Company ID not set")
+            CompanyId = _tenantService.CompanyId ?? throw new InvalidOperationException("Company ID not set"),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
         };
 
         _context.Suppliers.Add(supplier);
