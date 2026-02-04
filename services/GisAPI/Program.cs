@@ -264,21 +264,34 @@ static async Task SeedBeliveCompany(GisAPI.Infrastructure.Persistence.GisDbConte
         await context.SaveChangesAsync();
         Console.WriteLine($"[Seed] Created company: {company.Name} (Id: {company.Id})");
 
-        // Create admin user (password: Admin123!)
-        var adminUser = new GisAPI.Domain.Entities.User
+        // Create admin role first
+        var newAdminRole = new GisAPI.Domain.Entities.Role
         {
-            Name = "Admin Belive",
-            Email = "admin@belive.ma",
-            Phone = "+212 600 000000",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin123!"),
-            Roles = new[] { "admin" },
-            Permissions = new[] { "all" },
-            Status = "active",
-            CompanyId = company.Id
+            Name = "Administrateur",
+            Description = "Administrateur système avec tous les droits",
+            SocieteId = company.Id,
+            IsCompanyAdmin = true,
+            IsSystemRole = true
         };
-        context.Users.Add(adminUser);
+        context.Roles.Add(newAdminRole);
         await context.SaveChangesAsync();
-        Console.WriteLine($"[Seed] Created admin user: {adminUser.Email} (Id: {adminUser.Id})");
+        Console.WriteLine($"[Seed] Created admin role: {newAdminRole.Name} (Id: {newAdminRole.Id})");
+
+        // Create admin user (password: Admin@2026)
+        var newAdmin = new GisAPI.Domain.Entities.User
+        {
+            FirstName = "Admin",
+            LastName = "Belive",
+            Email = "admin@belive.tn",
+            Phone = "+216 00 000 000",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@2026"),
+            Status = "active",
+            CompanyId = company.Id,
+            RoleId = newAdminRole.Id
+        };
+        context.Users.Add(newAdmin);
+        await context.SaveChangesAsync();
+        Console.WriteLine($"[Seed] Created admin user: {newAdmin.Email} (Id: {newAdmin.Id})");
 
         Console.WriteLine("[Seed] ✅ Belive company seeded successfully!");
         
