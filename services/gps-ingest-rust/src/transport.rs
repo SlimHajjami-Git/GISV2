@@ -438,18 +438,20 @@ async fn process_single_frame(
                     }
                 }
                 
-                // --- From AAP.cs lines 840-844 ---
-                // Condition 1: SendFlag != 2 (skip heartbeat/duplicate frames)
-                if frame.send_flag == 2 {
-                    info!(
-                        imei = %resolved_uid,
-                        send_flag = frame.send_flag,
-                        "Frame SKIPPED: SendFlag == 2 (same as GISV1)"
-                    );
-                    return Ok(());
-                }
+                // SendFlag values (from ACI protocol documentation):
+                // 0: CMDUSER - Command from server
+                // 1: SENDP - Periodic transmission (timer)
+                // 2: GPSVAL - GPS fix obtained (valid signal)
+                // 3: CAPDEV - Cap deviation > 10° (vehicle turning)
+                // 4: IOCHANGE - I/O state change (ignition, doors, etc.)
+                // 5: OVERSPEED - Overspeed alert
+                // 6: JERCK - Accelerometer event (harsh braking, etc.)
+                // 7: IBUTTON - iButton key read (ID in added_info)
+                // 8-10: I1/I2/I3 Event - Digital input events
+                // 11: ALERT - Generic alert (SOS, panic, etc.)
+                // All send_flag values are now accepted (no filtering)
                 
-                // Condition 2: Date must be before tomorrow (not in future)
+                // Condition 1: Date must be before tomorrow (not in future)
                 let tomorrow = chrono::Utc::now().date_naive() + chrono::Duration::days(1);
                 let frame_date = frame.recorded_at.date();
                 if frame_date >= tomorrow {
