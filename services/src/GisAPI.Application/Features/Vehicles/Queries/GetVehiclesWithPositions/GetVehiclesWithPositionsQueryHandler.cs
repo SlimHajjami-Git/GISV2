@@ -13,6 +13,7 @@ namespace GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions;
 // Internal class for query projection
 internal class LatestPositionData
 {
+    public int DeviceId { get; set; }
     public long Id { get; set; }
     public double Latitude { get; set; }
     public double Longitude { get; set; }
@@ -53,36 +54,28 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             .Select(v => v.GpsDevice!.Id)
             .ToList();
 
-        // Get latest positions - query each device individually for reliable results
-        var latestPositions = new Dictionary<int, LatestPositionData>();
-        
-        foreach (var deviceId in deviceIds)
-        {
-            var position = await _context.GpsPositions
-                .AsNoTracking()
-                .Where(p => p.DeviceId == deviceId)
-                .OrderByDescending(p => p.RecordedAt)
-                .Select(p => new LatestPositionData
-                {
-                    Id = p.Id,
-                    Latitude = p.Latitude,
-                    Longitude = p.Longitude,
-                    SpeedKph = p.SpeedKph,
-                    CourseDeg = p.CourseDeg,
-                    IgnitionOn = p.IgnitionOn,
-                    RecordedAt = p.RecordedAt,
-                    FuelRaw = p.FuelRaw,
-                    TemperatureC = p.TemperatureC,
-                    Address = p.Address,
-                    OdometerKm = p.OdometerKm
-                })
-                .FirstOrDefaultAsync(ct);
-            
-            if (position != null)
+        // OPTIMIZED: Single query to get latest position per device (eliminates N+1 problem)
+        // Uses a subquery to find the max RecordedAt per device, then joins back
+        var latestPositions = await _context.GpsPositions
+            .AsNoTracking()
+            .Where(p => deviceIds.Contains(p.DeviceId))
+            .GroupBy(p => p.DeviceId)
+            .Select(g => new LatestPositionData
             {
-                latestPositions[deviceId] = position;
-            }
-        }
+                DeviceId = g.Key,
+                Id = g.OrderByDescending(p => p.RecordedAt).First().Id,
+                Latitude = g.OrderByDescending(p => p.RecordedAt).First().Latitude,
+                Longitude = g.OrderByDescending(p => p.RecordedAt).First().Longitude,
+                SpeedKph = g.OrderByDescending(p => p.RecordedAt).First().SpeedKph,
+                CourseDeg = g.OrderByDescending(p => p.RecordedAt).First().CourseDeg,
+                IgnitionOn = g.OrderByDescending(p => p.RecordedAt).First().IgnitionOn,
+                RecordedAt = g.OrderByDescending(p => p.RecordedAt).First().RecordedAt,
+                FuelRaw = g.OrderByDescending(p => p.RecordedAt).First().FuelRaw,
+                TemperatureC = g.OrderByDescending(p => p.RecordedAt).First().TemperatureC,
+                Address = g.OrderByDescending(p => p.RecordedAt).First().Address,
+                OdometerKm = g.OrderByDescending(p => p.RecordedAt).First().OdometerKm
+            })
+            .ToDictionaryAsync(p => p.DeviceId, ct);
 
         // Get today's stats for each device (last 24 hours)
         var since = DateTime.UtcNow.AddHours(-24);

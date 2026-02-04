@@ -71,6 +71,11 @@ impl RedisCache {
             conn.expire::<_, ()>(&company_key, POSITION_TTL_SECONDS as i64).await?;
         }
 
+        // Index device_uid by company for fast lookup (avoids KEYS pattern scan)
+        let devices_key = format!("company:{}:devices", company_id);
+        conn.sadd::<_, _, ()>(&devices_key, device_uid).await?;
+        conn.expire::<_, ()>(&devices_key, POSITION_TTL_SECONDS as i64).await?;
+
         // Publish update event for real-time subscribers
         let channel = format!("vehicle:updates:{}", company_id);
         conn.publish::<_, _, ()>(&channel, &position_json).await?;
@@ -92,33 +97,29 @@ impl RedisCache {
         Ok(result)
     }
 
+    /// OPTIMIZED: Uses company device index + MGET instead of KEYS pattern scan
+    /// Complexity: O(n) where n = devices in company, instead of O(N) where N = all keys in Redis
     pub async fn get_all_positions_for_company(&self, company_id: i32) -> Result<Vec<String>> {
         let mut conn = self.client.get_multiplexed_async_connection().await?;
         
-        // Get pattern matching keys for this company's vehicles
-        let pattern = "vehicle:position:*";
-        let keys: Vec<String> = redis::cmd("KEYS")
-            .arg(pattern)
-            .query_async(&mut conn)
-            .await?;
+        // Get device UIDs indexed by company (O(n) where n = company devices)
+        let devices_key = format!("company:{}:devices", company_id);
+        let device_uids: Vec<String> = conn.smembers(&devices_key).await?;
 
-        if keys.is_empty() {
+        if device_uids.is_empty() {
             return Ok(vec![]);
         }
 
-        // Get all positions and filter by company_id
-        let mut positions = Vec::new();
-        for key in keys {
-            if let Ok(Some(data)) = conn.get::<_, Option<String>>(&key).await {
-                // Parse and check company_id
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&data) {
-                    if parsed.get("company_id").and_then(|v| v.as_i64()) == Some(company_id as i64) {
-                        positions.push(data);
-                    }
-                }
-            }
-        }
+        // Build position keys and use MGET for batch retrieval (single round-trip)
+        let position_keys: Vec<String> = device_uids
+            .iter()
+            .map(|uid| format!("vehicle:position:{}", uid))
+            .collect();
 
-        Ok(positions)
+        // MGET retrieves all positions in a single Redis command
+        let positions: Vec<Option<String>> = conn.mget(&position_keys).await?;
+
+        // Filter out None values and return
+        Ok(positions.into_iter().flatten().collect())
     }
 }
