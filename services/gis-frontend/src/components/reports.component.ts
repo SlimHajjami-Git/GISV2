@@ -2,7 +2,7 @@ import { Component, OnInit, ViewChild, ElementRef, NgZone, ChangeDetectorRef, Ap
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto } from '../services/api.service';
+import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto } from '../services/api.service';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
@@ -126,6 +126,14 @@ export class ReportsComponent implements OnInit {
       type: 'maintenance',
       icon: '🔧',
       description: 'Historique des maintenances',
+      category: 'costs'
+    },
+    {
+      id: '13',
+      name: 'Estimation coûts carburant',
+      type: 'fuel-estimation',
+      icon: '💰',
+      description: 'Estimation basée sur GPS et prix',
       category: 'costs'
     },
     // Statistics Reports
@@ -271,6 +279,17 @@ export class ReportsComponent implements OnInit {
   // Monthly fleet report data
   monthlyReport: MonthlyFleetReport | null = null;
   monthlyActiveSection = 'summary';
+  
+  // Fuel estimation report data
+  fuelEstimationReport: FleetFuelStatisticsDto | null = null;
+  fuelEstimationActiveSection = 'summary';
+  fuelEstimationSections = [
+    { id: 'summary', label: 'Résumé', icon: '📊' },
+    { id: 'vehicles', label: 'Par Véhicule', icon: '🚗' },
+    { id: 'distribution', label: 'Distribution', icon: '⛽' },
+    { id: 'trends', label: 'Tendances', icon: '📈' }
+  ];
+  
   monthlySections = [
     { id: 'summary', label: 'Résumé', icon: '📊' },
     { id: 'fleet', label: 'Flotte', icon: '🚗' },
@@ -515,6 +534,7 @@ export class ReportsComponent implements OnInit {
     this.mileageReport = null;
     this.monthlyReport = null;
     this.mileagePeriodReport = null;
+    this.fuelEstimationReport = null;
 
     let startDate = this.fromDate ? new Date(this.fromDate) : undefined;
     let endDate = this.toDate ? new Date(this.toDate) : undefined;
@@ -620,6 +640,12 @@ export class ReportsComponent implements OnInit {
     // Handle driving behavior report
     if (this.selectedTemplate.type === 'driving-behavior') {
       this.executeDrivingBehaviorReport();
+      return;
+    }
+
+    // Handle fuel estimation report
+    if (this.selectedTemplate.type === 'fuel-estimation') {
+      this.executeFuelEstimationReport(vehicleId, startDate, endDate);
       return;
     }
 
@@ -875,10 +901,24 @@ export class ReportsComponent implements OnInit {
   }
 
   processSpeedReportAllVehicles(positions: any[]) {
-    // Speed ranges
+    // Filter only positions with speed > 50 km/h
+    const highSpeedPositions = positions.filter(p => (p.speedKph || 0) > 50);
+    
+    if (highSpeedPositions.length === 0) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = { 'Information': 'Aucune donnée de vitesse > 50 km/h pour cette période' };
+      return;
+    }
+
+    // Build vehicle speed limit map from this.vehicles
+    const vehicleLimitMap = new Map<number, number>();
+    this.vehicles.forEach(v => {
+      vehicleLimitMap.set(v.id, v.speedLimit || 120);
+    });
+
+    // Speed ranges (only > 50 km/h)
     const ranges = [
-      { label: '0-30 km/h', min: 0, max: 30, color: '#22C55E' },
-      { label: '30-50 km/h', min: 30, max: 50, color: '#84CC16' },
       { label: '50-70 km/h', min: 50, max: 70, color: '#EAB308' },
       { label: '70-90 km/h', min: 70, max: 90, color: '#F97316' },
       { label: '90-110 km/h', min: 90, max: 110, color: '#EF4444' },
@@ -887,31 +927,73 @@ export class ReportsComponent implements OnInit {
 
     const rangeCounts = ranges.map(r => ({
       ...r,
-      count: positions.filter(p => (p.speedKph || 0) >= r.min && (p.speedKph || 0) < r.max).length
+      count: highSpeedPositions.filter(p => (p.speedKph || 0) >= r.min && (p.speedKph || 0) < r.max).length
     }));
 
-    this.chartData = rangeCounts.map(r => ({
+    this.chartData = rangeCounts.filter(r => r.count > 0).map(r => ({
       label: r.label,
       value: r.count,
       color: r.color,
-      percentage: ((r.count / positions.length) * 100).toFixed(1)
+      percentage: ((r.count / highSpeedPositions.length) * 100).toFixed(1)
     }));
 
-    // Sample for table
-    const sampled = positions.filter((_, i) => i % Math.max(1, Math.floor(positions.length / 50)) === 0).slice(0, 50);
-    this.tableData = sampled.map(p => ({
-      vehicleName: p.vehicleName,
-      time: this.formatDateTime(p.recordedAt),
-      speed: `${(p.speedKph || 0).toFixed(0)} km/h`,
-      address: p.address || `${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)}`
-    }));
+    // Sort by speed descending to show highest first
+    const sorted = [...highSpeedPositions].sort((a, b) => (b.speedKph || 0) - (a.speedKph || 0));
+    
+    // Take top 100 highest speed records
+    const topRecords = sorted.slice(0, 100);
+    
+    this.tableData = topRecords.map(p => {
+      const speed = p.speedKph || 0;
+      const vehicleLimit = vehicleLimitMap.get(p.vehicleId) || 120;
+      const exceedsLimit = speed > vehicleLimit;
+      const excess = exceedsLimit ? speed - vehicleLimit : 0;
+      
+      return {
+        vehicleName: p.vehicleName,
+        time: this.formatDateTime(p.recordedAt),
+        speed: `${speed.toFixed(0)} km/h`,
+        speedValue: speed,
+        vehicleLimit: `${vehicleLimit} km/h`,
+        vehicleLimitValue: vehicleLimit,
+        excess: exceedsLimit ? `+${excess.toFixed(0)} km/h` : '-',
+        excessValue: excess,
+        exceedsLimit: exceedsLimit,
+        address: p.address || `${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)}`,
+        latitude: p.latitude,
+        longitude: p.longitude
+      };
+    });
 
-    const speeds = positions.map(p => p.speedKph || 0).filter(s => s > 0);
+    // Count infractions (exceeding vehicle limit)
+    const infractions = highSpeedPositions.filter(p => {
+      const vehicleLimit = vehicleLimitMap.get(p.vehicleId) || 120;
+      return (p.speedKph || 0) > vehicleLimit;
+    });
+
+    // Secondary chart: infractions by vehicle
+    const infractionsByVehicle: { [key: string]: number } = {};
+    infractions.forEach(p => {
+      const name = p.vehicleName || `Véhicule ${p.vehicleId}`;
+      infractionsByVehicle[name] = (infractionsByVehicle[name] || 0) + 1;
+    });
+    
+    this.secondaryChartData = Object.entries(infractionsByVehicle)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([label, value]) => ({ label, value, color: '#EF4444' }));
+
+    const speeds = highSpeedPositions.map(p => p.speedKph || 0);
+    const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+    const maxSpeed = Math.max(...speeds);
+
     this.statisticsData = {
-      'Véhicules': new Set(positions.map(p => p.vehicleId)).size.toString(),
-      'Points analysés': positions.length.toString(),
-      'Vitesse moy': speeds.length ? `${(speeds.reduce((a, b) => a + b, 0) / speeds.length).toFixed(0)} km/h` : 'N/A',
-      'Vitesse max': speeds.length ? `${Math.max(...speeds).toFixed(0)} km/h` : 'N/A'
+      'Points > 50 km/h': highSpeedPositions.length.toString(),
+      'Véhicules': new Set(highSpeedPositions.map(p => p.vehicleId)).size.toString(),
+      'Vitesse moy': `${avgSpeed.toFixed(0)} km/h`,
+      'Vitesse max': `${maxSpeed.toFixed(0)} km/h`,
+      '🔴 Dépassements limite': infractions.length.toString(),
+      'Véhicules en infraction': Object.keys(infractionsByVehicle).length.toString()
     };
   }
 
@@ -1255,6 +1337,16 @@ export class ReportsComponent implements OnInit {
       .slice(0, 10)
       .map(([label, value]) => ({ label, value }));
     
+    // Secondary chart data - severity distribution
+    const light = infractions.filter(i => i.excess <= 15).length;
+    const medium = infractions.filter(i => i.excess > 15 && i.excess <= 30).length;
+    const severe = infractions.filter(i => i.excess > 30).length;
+    this.secondaryChartData = [
+      { label: '🟢 Léger (≤15)', value: light, color: '#22C55E' },
+      { label: '🟡 Modéré (15-30)', value: medium, color: '#F59E0B' },
+      { label: '🔴 Grave (>30)', value: severe, color: '#EF4444' }
+    ].filter(d => d.value > 0);
+    
     // Statistics
     const maxSpeed = Math.max(...infractions.map(i => i.speed));
     const avgExcess = infractions.reduce((sum, i) => sum + i.excess, 0) / infractions.length;
@@ -1574,6 +1666,13 @@ export class ReportsComponent implements OnInit {
       medium: incidents.filter(i => i.severity === 'medium').length,
       low: incidents.filter(i => i.severity === 'low').length
     };
+    
+    // Secondary chart data - severity distribution
+    this.secondaryChartData = [
+      { label: '🟢 Léger', value: bySeverity.low, color: '#22C55E' },
+      { label: '🟡 Modéré', value: bySeverity.medium, color: '#F59E0B' },
+      { label: '🔴 Grave', value: bySeverity.high, color: '#EF4444' }
+    ].filter(d => d.value > 0);
     
     const byVehicle: { [key: string]: number } = {};
     incidents.forEach(inc => {
@@ -3358,128 +3457,280 @@ export class ReportsComponent implements OnInit {
     let config: ChartConfiguration;
 
     if (type === 'trips') {
-      // Horizontal bar chart showing distance per trip
+      // Combined bar + line chart: Distance bars + Average speed line
+      const distances = this.chartData.map(d => d.value);
+      const durations = this.chartData.map(d => d.duration || 0);
+      const avgSpeeds = this.chartData.map((d, i) => durations[i] > 0 ? parseFloat((distances[i] / (durations[i] / 60)).toFixed(1)) : 0);
+      
       config = {
         type: 'bar',
         data: {
           labels: this.chartData.map(d => d.label),
-          datasets: [{
-            label: 'Distance (km)',
-            data: this.chartData.map(d => d.value),
-            backgroundColor: this.chartColors.map(c => c + 'CC'),
-            borderColor: this.chartColors,
-            borderWidth: 1,
-            borderRadius: 4
-          }]
+          datasets: [
+            {
+              type: 'bar',
+              label: 'Distance (km)',
+              data: distances,
+              backgroundColor: this.chartColors.map(c => c + 'CC'),
+              borderColor: this.chartColors,
+              borderWidth: 1,
+              borderRadius: 6,
+              yAxisID: 'y'
+            },
+            {
+              type: 'line',
+              label: 'Vitesse moy. (km/h)',
+              data: avgSpeeds,
+              borderColor: '#F59E0B',
+              backgroundColor: 'rgba(245, 158, 11, 0.2)',
+              borderWidth: 3,
+              pointRadius: 5,
+              pointBackgroundColor: '#F59E0B',
+              tension: 0.3,
+              yAxisID: 'y1'
+            }
+          ]
         },
         options: {
-          ...this.getChartOptions(),
-          indexAxis: 'y' as const,
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
           plugins: {
-            ...this.getChartOptions().plugins,
-            title: {
-              display: true,
-              text: 'Distance parcourue par trajet',
-              font: { size: 14 }
-            },
+            legend: { position: 'top', labels: { usePointStyle: true, font: { size: 11 } } },
+            title: { display: true, text: '📊 Distance et Vitesse moyenne par trajet', font: { size: 14, weight: 'bold' } },
             tooltip: {
               callbacks: {
-                afterLabel: (context: any) => {
-                  const trip = this.chartData[context.dataIndex];
-                  return trip?.duration ? `Durée: ${Math.round(trip.duration)} min` : '';
+                afterBody: (context: any) => {
+                  const idx = context[0]?.dataIndex;
+                  if (idx !== undefined) {
+                    const dur = durations[idx];
+                    return dur ? `⏱️ Durée: ${Math.round(dur)} min` : '';
+                  }
+                  return '';
                 }
               }
             }
+          },
+          scales: {
+            y: { type: 'linear', position: 'left', title: { display: true, text: 'Distance (km)' }, beginAtZero: true },
+            y1: { type: 'linear', position: 'right', title: { display: true, text: 'Vitesse (km/h)' }, grid: { drawOnChartArea: false }, beginAtZero: true }
           }
         }
       };
     } else if (type === 'stops') {
-      // Pie chart showing A (Arrêt) vs C (Circulation) distribution
+      // Dual charts: Donut for type distribution + Horizontal bar for duration
+      const totalMinutes = this.chartData.reduce((sum, d) => sum + d.value, 0);
       config = {
         type: 'doughnut',
         data: {
           labels: this.chartData.map(d => d.label),
           datasets: [{
             data: this.chartData.map(d => d.value),
-            backgroundColor: this.chartData.map(d => d.color || '#3B82F6'),
-            borderWidth: 2,
-            borderColor: '#fff'
+            backgroundColor: ['#3B82F6', '#F59E0B', '#10B981', '#EF4444'],
+            borderWidth: 3,
+            borderColor: '#1e293b',
+            hoverOffset: 10
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: {
-              position: 'bottom' as const,
-              labels: { font: { size: 12 } }
-            },
-            title: {
-              display: true,
-              text: 'Répartition des arrêts (minutes)',
-              font: { size: 14 }
-            },
+            legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15, font: { size: 12 } } },
+            title: { display: true, text: '🅿️ Répartition du temps d\'arrêt', font: { size: 14, weight: 'bold' } },
             tooltip: {
               callbacks: {
                 label: (context: any) => {
                   const item = this.chartData[context.dataIndex];
-                  return `${item.label}: ${item.value} min (${item.count} arrêts)`;
+                  const pct = totalMinutes > 0 ? ((item.value / totalMinutes) * 100).toFixed(1) : 0;
+                  return [`${item.value} min (${pct}%)`, `${item.count || 0} arrêts`];
                 }
               }
             }
           }
         }
-      };
+      } as ChartConfiguration;
     } else if (type === 'speed') {
-      // Distribution bar chart for speed ranges
+      // Gradient bar chart with danger zones highlighted
+      const gradientColors = this.chartData.map(d => d.color || '#3B82F6');
       config = {
         type: 'bar',
         data: {
           labels: this.chartData.map(d => d.label),
           datasets: [{
-            label: 'Nombre de points',
+            label: 'Points GPS',
             data: this.chartData.map(d => d.value),
-            backgroundColor: this.chartData.map(d => d.color || '#3B82F6'),
-            borderWidth: 0,
-            borderRadius: 4
+            backgroundColor: gradientColors,
+            borderColor: gradientColors.map(c => c),
+            borderWidth: 2,
+            borderRadius: 8,
+            borderSkipped: false
           }]
         },
         options: {
-          ...this.getChartOptions(),
+          responsive: true,
+          maintainAspectRatio: false,
           plugins: {
-            ...this.getChartOptions().plugins,
-            title: {
-              display: true,
-              text: 'Distribution des vitesses',
-              font: { size: 14 }
-            },
+            legend: { display: false },
+            title: { display: true, text: '🏎️ Distribution des vitesses', font: { size: 14, weight: 'bold' } },
             tooltip: {
               callbacks: {
                 afterLabel: (context: any) => {
                   const item = this.chartData[context.dataIndex];
-                  return item?.percentage ? `${item.percentage}% du temps` : '';
+                  return item?.percentage ? `📊 ${item.percentage}% du temps` : '';
                 }
               }
             }
+          },
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: 'Nombre de points' }, grid: { color: 'rgba(255,255,255,0.1)' } },
+            x: { grid: { display: false } }
           }
         }
       };
-    } else if (type === 'distance') {
+    } else if (type === 'speed-infraction') {
+      // Radar + Bar combo for infractions
       config = {
         type: 'bar',
         data: {
           labels: this.chartData.map(d => d.label),
           datasets: [{
-            label: 'Distance (km)',
+            label: 'Infractions',
             data: this.chartData.map(d => d.value),
-            backgroundColor: 'rgba(14, 165, 233, 0.8)',
-            borderColor: 'rgb(14, 165, 233)',
-            borderWidth: 1
+            backgroundColor: this.chartData.map((_, i) => {
+              const colors = ['#EF4444', '#F97316', '#F59E0B', '#EAB308', '#84CC16', '#22C55E', '#14B8A6', '#06B6D4', '#3B82F6', '#8B5CF6'];
+              return colors[i % colors.length] + 'CC';
+            }),
+            borderColor: '#EF4444',
+            borderWidth: 2,
+            borderRadius: 8
           }]
         },
-        options: this.getChartOptions()
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: 'y',
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: '⚠️ Infractions de vitesse par véhicule', font: { size: 14, weight: 'bold' } }
+          },
+          scales: {
+            x: { beginAtZero: true, title: { display: true, text: 'Nombre d\'infractions' } },
+            y: { grid: { display: false } }
+          }
+        }
+      };
+    } else if (type === 'driving-behavior') {
+      // Polar area chart for incident types
+      config = {
+        type: 'polarArea',
+        data: {
+          labels: this.chartData.map(d => d.label),
+          datasets: [{
+            data: this.chartData.map(d => d.value),
+            backgroundColor: ['#EF4444CC', '#F97316CC', '#F59E0BCC', '#10B981CC', '#3B82F6CC', '#8B5CF6CC'],
+            borderWidth: 2,
+            borderColor: '#1e293b'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'right', labels: { usePointStyle: true, font: { size: 11 } } },
+            title: { display: true, text: '🚨 Types d\'incidents de conduite', font: { size: 14, weight: 'bold' } }
+          },
+          scales: {
+            r: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' } }
+          }
+        }
+      };
+    } else if (type === 'fuel') {
+      // Area chart with gradient for fuel level
+      config = {
+        type: 'line',
+        data: {
+          labels: this.chartData.map(d => d.label),
+          datasets: [{
+            label: 'Niveau carburant (%)',
+            data: this.chartData.map(d => d.value),
+            borderColor: '#10B981',
+            backgroundColor: (context: any) => {
+              const chart = context.chart;
+              const { ctx, chartArea } = chart;
+              if (!chartArea) return 'rgba(16, 185, 129, 0.3)';
+              const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+              gradient.addColorStop(0, 'rgba(239, 68, 68, 0.3)');
+              gradient.addColorStop(0.3, 'rgba(245, 158, 11, 0.3)');
+              gradient.addColorStop(0.7, 'rgba(16, 185, 129, 0.3)');
+              gradient.addColorStop(1, 'rgba(16, 185, 129, 0.5)');
+              return gradient;
+            },
+            borderWidth: 2,
+            tension: 0.4,
+            fill: true,
+            pointRadius: 0,
+            pointHoverRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: true, position: 'top' },
+            title: { display: true, text: '⛽ Évolution du niveau de carburant', font: { size: 14, weight: 'bold' } }
+          },
+          scales: {
+            y: { beginAtZero: true, max: 100, title: { display: true, text: 'Niveau (%)' }, grid: { color: 'rgba(255,255,255,0.1)' } },
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 12 } }
+          }
+        }
+      };
+    } else if (type === 'distance') {
+      // Cumulative area chart for distance
+      let cumulative = 0;
+      const cumulativeData = this.chartData.map(d => { cumulative += d.value; return cumulative; });
+      config = {
+        type: 'line',
+        data: {
+          labels: this.chartData.map(d => d.label),
+          datasets: [
+            {
+              type: 'bar',
+              label: 'Distance segment (km)',
+              data: this.chartData.map(d => d.value),
+              backgroundColor: 'rgba(59, 130, 246, 0.6)',
+              borderRadius: 4,
+              yAxisID: 'y'
+            },
+            {
+              type: 'line',
+              label: 'Distance cumulée (km)',
+              data: cumulativeData,
+              borderColor: '#10B981',
+              backgroundColor: 'rgba(16, 185, 129, 0.1)',
+              borderWidth: 3,
+              fill: true,
+              tension: 0.3,
+              yAxisID: 'y1'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            title: { display: true, text: '📏 Progression de la distance', font: { size: 14, weight: 'bold' } }
+          },
+          scales: {
+            y: { type: 'linear', position: 'left', title: { display: true, text: 'Distance (km)' } },
+            y1: { type: 'linear', position: 'right', title: { display: true, text: 'Cumulé (km)' }, grid: { drawOnChartArea: false } }
+          }
+        }
       };
     } else {
+      // Default enhanced line chart
       config = {
         type: 'line',
         data: {
@@ -3487,13 +3738,27 @@ export class ReportsComponent implements OnInit {
           datasets: [{
             label: this.selectedTemplate?.name || 'Valeur',
             data: this.chartData.map(d => d.value),
-            borderColor: 'rgb(14, 165, 233)',
-            backgroundColor: 'rgba(14, 165, 233, 0.1)',
+            borderColor: '#3B82F6',
+            backgroundColor: 'rgba(59, 130, 246, 0.15)',
             tension: 0.4,
-            fill: true
+            fill: true,
+            pointRadius: 3,
+            pointHoverRadius: 6,
+            borderWidth: 2
           }]
         },
-        options: this.getChartOptions()
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'top' },
+            title: { display: true, text: this.selectedTemplate?.name || 'Données', font: { size: 14, weight: 'bold' } }
+          },
+          scales: {
+            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' } },
+            x: { grid: { display: false } }
+          }
+        }
       };
     }
 
@@ -3504,7 +3769,7 @@ export class ReportsComponent implements OnInit {
   }
 
   createSecondaryChart() {
-    if (!this.secondaryChartCanvas || !this.secondaryChartData?.length) return;
+    if (!this.secondaryChartCanvas) return;
 
     if (this.secondaryChart) {
       this.secondaryChart.destroy();
@@ -3515,8 +3780,8 @@ export class ReportsComponent implements OnInit {
 
     const type = this.selectedTemplate?.type || 'fuel';
 
-    if (type === 'trips') {
-      // Duration distribution pie chart
+    if (type === 'trips' && this.secondaryChartData?.length) {
+      // Duration distribution pie chart with enhanced styling
       this.secondaryChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
@@ -3524,21 +3789,22 @@ export class ReportsComponent implements OnInit {
           datasets: [{
             data: this.secondaryChartData.map(d => d.value),
             backgroundColor: this.secondaryChartData.map(d => d.color),
-            borderWidth: 2,
-            borderColor: '#fff'
+            borderWidth: 3,
+            borderColor: '#1e293b',
+            hoverOffset: 8
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { position: 'bottom' as const, labels: { font: { size: 10 } } },
-            title: { display: true, text: 'Durée des trajets', font: { size: 12 } }
+            legend: { position: 'bottom' as const, labels: { usePointStyle: true, padding: 10, font: { size: 10 } } },
+            title: { display: true, text: '⏱️ Répartition par durée de trajet', font: { size: 12, weight: 'bold' } }
           }
         }
       });
-    } else if (type === 'stops') {
-      // Stops by vehicle pie chart
+    } else if (type === 'stops' && this.secondaryChartData?.length) {
+      // Stops by vehicle horizontal bar chart
       this.secondaryChart = new Chart(ctx, {
         type: 'bar',
         data: {
@@ -3547,7 +3813,9 @@ export class ReportsComponent implements OnInit {
             label: 'Arrêts',
             data: this.secondaryChartData.map(d => d.value),
             backgroundColor: this.secondaryChartData.map((d, i) => this.chartColors[i % this.chartColors.length] + 'CC'),
-            borderRadius: 4
+            borderColor: this.secondaryChartData.map((d, i) => this.chartColors[i % this.chartColors.length]),
+            borderWidth: 1,
+            borderRadius: 6
           }]
         },
         options: {
@@ -3556,12 +3824,15 @@ export class ReportsComponent implements OnInit {
           indexAxis: 'y' as const,
           plugins: {
             legend: { display: false },
-            title: { display: true, text: 'Arrêts par véhicule', font: { size: 12 } }
+            title: { display: true, text: '🚗 Arrêts par véhicule', font: { size: 12, weight: 'bold' } }
+          },
+          scales: {
+            x: { beginAtZero: true, title: { display: true, text: 'Nombre d\'arrêts' } }
           }
         }
       });
-    } else if (type === 'speed') {
-      // Speed over time line chart
+    } else if (type === 'speed' && this.secondaryChartData?.length) {
+      // Speed timeline with gradient zones
       this.secondaryChart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -3570,9 +3841,21 @@ export class ReportsComponent implements OnInit {
             label: 'Vitesse (km/h)',
             data: this.secondaryChartData.map(d => d.value),
             borderColor: '#3B82F6',
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            backgroundColor: (context: any) => {
+              const chart = context.chart;
+              const { ctx: chartCtx, chartArea } = chart;
+              if (!chartArea) return 'rgba(59, 130, 246, 0.15)';
+              const gradient = chartCtx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+              gradient.addColorStop(0, 'rgba(34, 197, 94, 0.2)');
+              gradient.addColorStop(0.5, 'rgba(245, 158, 11, 0.2)');
+              gradient.addColorStop(1, 'rgba(239, 68, 68, 0.3)');
+              return gradient;
+            },
             fill: true,
-            tension: 0.3
+            tension: 0.3,
+            pointRadius: 1,
+            pointHoverRadius: 4,
+            borderWidth: 2
           }]
         },
         options: {
@@ -3580,11 +3863,126 @@ export class ReportsComponent implements OnInit {
           maintainAspectRatio: false,
           plugins: {
             legend: { display: false },
-            title: { display: true, text: 'Évolution de la vitesse', font: { size: 12 } }
+            title: { display: true, text: '📈 Évolution de la vitesse dans le temps', font: { size: 12, weight: 'bold' } }
+          },
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: 'km/h' }, grid: { color: 'rgba(255,255,255,0.1)' } },
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } }
           }
         }
       });
+    } else if (type === 'speed-infraction') {
+      // Severity distribution for infractions
+      const severityData = this.getSeverityDistribution();
+      if (severityData.length > 0) {
+        this.secondaryChart = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: severityData.map(d => d.label),
+            datasets: [{
+              data: severityData.map(d => d.value),
+              backgroundColor: ['#22C55E', '#F59E0B', '#EF4444'],
+              borderWidth: 2,
+              borderColor: '#1e293b'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'bottom' as const, labels: { usePointStyle: true } },
+              title: { display: true, text: '🎯 Gravité des infractions', font: { size: 12, weight: 'bold' } }
+            }
+          }
+        });
+      }
+    } else if (type === 'driving-behavior') {
+      // Severity breakdown for driving behavior
+      const severityData = this.getBehaviorSeverityData();
+      if (severityData.length > 0) {
+        this.secondaryChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: ['Léger', 'Modéré', 'Grave'],
+            datasets: [{
+              label: 'Incidents',
+              data: severityData,
+              backgroundColor: ['#22C55E', '#F59E0B', '#EF4444'],
+              borderRadius: 6
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              title: { display: true, text: '📊 Répartition par sévérité', font: { size: 12, weight: 'bold' } }
+            },
+            scales: {
+              y: { beginAtZero: true }
+            }
+          }
+        });
+      }
+    } else if (type === 'fuel') {
+      // Fuel events distribution
+      const eventData = this.getFuelEventsData();
+      if (eventData.length > 0) {
+        this.secondaryChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: eventData.map(d => d.label),
+            datasets: [{
+              label: 'Événements',
+              data: eventData.map(d => d.value),
+              backgroundColor: eventData.map(d => d.color),
+              borderRadius: 6
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              title: { display: true, text: '📋 Types d\'événements carburant', font: { size: 12, weight: 'bold' } }
+            }
+          }
+        });
+      }
     }
+  }
+
+  // Helper methods for secondary charts
+  getSeverityDistribution(): { label: string; value: number }[] {
+    const light = this.tableData.filter((r: any) => r.excessValue && r.excessValue <= 15).length;
+    const medium = this.tableData.filter((r: any) => r.excessValue && r.excessValue > 15 && r.excessValue <= 30).length;
+    const severe = this.tableData.filter((r: any) => r.excessValue && r.excessValue > 30).length;
+    if (light + medium + severe === 0) return [];
+    return [
+      { label: '🟢 Léger (≤15 km/h)', value: light },
+      { label: '🟡 Modéré (15-30 km/h)', value: medium },
+      { label: '🔴 Grave (>30 km/h)', value: severe }
+    ];
+  }
+
+  getBehaviorSeverityData(): number[] {
+    const low = this.tableData.filter((r: any) => r.severity === 'low').length;
+    const medium = this.tableData.filter((r: any) => r.severity === 'medium').length;
+    const high = this.tableData.filter((r: any) => r.severity === 'high').length;
+    return [low, medium, high];
+  }
+
+  getFuelEventsData(): { label: string; value: number; color: string }[] {
+    const refills = this.tableData.filter((r: any) => r.eventType?.includes('Remplissage')).length;
+    const consumption = this.tableData.filter((r: any) => r.eventType?.includes('Consommation')).length;
+    const anomalies = this.tableData.filter((r: any) => r.isAnomaly).length;
+    const readings = this.tableData.length - refills - consumption - anomalies;
+    return [
+      { label: '⛽ Remplissages', value: refills, color: '#22C55E' },
+      { label: '📉 Consommation', value: consumption, color: '#3B82F6' },
+      { label: '⚠️ Anomalies', value: anomalies, color: '#EF4444' },
+      { label: '📊 Lectures', value: readings, color: '#94A3B8' }
+    ].filter(d => d.value > 0);
   }
 
   getChartOptions() {
@@ -3622,6 +4020,222 @@ export class ReportsComponent implements OnInit {
 
   exportReport(format: string) {
     alert(`Export ${format.toUpperCase()} - fonctionnalité à venir`);
+  }
+
+  // ==================== FUEL ESTIMATION REPORT ====================
+  
+  executeFuelEstimationReport(vehicleId?: number, startDate?: Date, endDate?: Date) {
+    this.loading = true;
+    this.fuelEstimationReport = null;
+    this.fuelEstimationActiveSection = 'summary';
+    
+    const startDateStr = startDate ? startDate.toISOString() : undefined;
+    const endDateStr = endDate ? endDate.toISOString() : undefined;
+    
+    this.apiService.getFuelExpenseStatistics(startDateStr, endDateStr, vehicleId).subscribe({
+      next: (report) => {
+        this.ngZone.run(() => {
+          this.fuelEstimationReport = report;
+          this.reportGenerated = true;
+          this.loading = false;
+          
+          // Prepare table data for vehicle expenses
+          this.tableData = report.vehicleExpenses.map(v => ({
+            vehicleId: v.vehicleId,
+            vehicleName: v.vehicleName,
+            plate: v.plate || '-',
+            fuelType: v.fuelType || '-',
+            totalDistance: v.totalDistanceKm,
+            totalFuel: v.totalFuelConsumedLiters,
+            totalCost: v.totalFuelCost,
+            avgConsumption: v.averageConsumptionPer100Km,
+            deviation: v.deviationFromFleetAverage
+          }));
+          
+          // Prepare statistics
+          this.statisticsData = {
+            'Véhicules analysés': report.vehicleCount.toString(),
+            'Distance totale': `${report.totalFleetDistanceKm.toLocaleString('fr-FR')} km`,
+            'Carburant consommé': `${report.totalFleetFuelConsumedLiters.toFixed(1)} L`,
+            'Coût total estimé': `${report.totalFleetFuelCost.toFixed(2)} TND`,
+            'Consommation moyenne': `${report.fleetAverageConsumptionPer100Km.toFixed(2)} L/100km`,
+            'Écart-type': `${report.fleetStandardDeviation.toFixed(2)} L/100km`
+          };
+          
+          // Chart data - fuel type distribution
+          this.chartData = report.fuelTypeDistribution.map(d => ({
+            label: d.fuelType,
+            value: d.totalCost,
+            percentage: d.percentage,
+            vehicleCount: d.vehicleCount
+          }));
+          
+          this.cdr.detectChanges();
+          this.appRef.tick();
+          
+          // Create distribution chart
+          setTimeout(() => this.createFuelEstimationChart(), 100);
+        });
+      },
+      error: (err) => {
+        console.error('Error loading fuel estimation report:', err);
+        this.ngZone.run(() => {
+          this.loading = false;
+          this.reportGenerated = true;
+          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport d\'estimation carburant' };
+          this.cdr.detectChanges();
+        });
+      }
+    });
+  }
+  
+  createFuelEstimationChart() {
+    if (!this.fuelEstimationReport) return;
+    
+    // Destroy existing chart if any
+    if (this.chart) {
+      this.chart.destroy();
+    }
+    
+    const canvas = this.chartCanvas?.nativeElement;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Create pie chart for fuel type distribution
+    if (this.fuelEstimationReport.fuelTypeDistribution.length > 0) {
+      this.chart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: this.fuelEstimationReport.fuelTypeDistribution.map(d => d.fuelType),
+          datasets: [{
+            data: this.fuelEstimationReport.fuelTypeDistribution.map(d => d.totalCost),
+            backgroundColor: this.chartColors.slice(0, this.fuelEstimationReport.fuelTypeDistribution.length),
+            borderWidth: 2,
+            borderColor: '#fff'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: { font: { size: 12 } }
+            },
+            title: {
+              display: true,
+              text: 'Répartition des coûts par type de carburant',
+              font: { size: 14, weight: 'bold' }
+            },
+            tooltip: {
+              callbacks: {
+                label: (context) => {
+                  const value = context.raw as number;
+                  const total = this.fuelEstimationReport!.totalFleetFuelCost;
+                  const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
+                  return `${context.label}: ${value.toFixed(2)} TND (${pct}%)`;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+  }
+  
+  createFuelTrendsChart() {
+    if (!this.fuelEstimationReport || !this.secondaryChartCanvas) return;
+    
+    // Destroy existing secondary chart
+    if (this.secondaryChart) {
+      this.secondaryChart.destroy();
+    }
+    
+    const canvas = this.secondaryChartCanvas.nativeElement;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const trends = this.fuelEstimationReport.monthlyTrends;
+    if (trends.length === 0) return;
+    
+    this.secondaryChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: trends.map(t => t.monthName),
+        datasets: [
+          {
+            label: 'Coût (TND)',
+            data: trends.map(t => t.totalCost),
+            backgroundColor: '#3B82F6',
+            borderRadius: 4,
+            yAxisID: 'y'
+          },
+          {
+            label: 'Consommation (L)',
+            data: trends.map(t => t.totalFuelConsumed),
+            backgroundColor: '#10B981',
+            borderRadius: 4,
+            yAxisID: 'y1'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top' },
+          title: {
+            display: true,
+            text: 'Tendances mensuelles',
+            font: { size: 14, weight: 'bold' }
+          }
+        },
+        scales: {
+          y: {
+            type: 'linear',
+            position: 'left',
+            title: { display: true, text: 'Coût (TND)' }
+          },
+          y1: {
+            type: 'linear',
+            position: 'right',
+            title: { display: true, text: 'Litres' },
+            grid: { drawOnChartArea: false }
+          }
+        }
+      }
+    });
+  }
+  
+  selectFuelEstimationSection(sectionId: string) {
+    this.fuelEstimationActiveSection = sectionId;
+    
+    // Recreate appropriate chart based on section
+    setTimeout(() => {
+      if (sectionId === 'distribution') {
+        this.createFuelEstimationChart();
+      } else if (sectionId === 'trends') {
+        this.createFuelTrendsChart();
+      }
+    }, 100);
+  }
+  
+  getEfficiencyClass(deviation: number): string {
+    if (deviation <= -10) return 'efficiency-excellent';
+    if (deviation <= -2) return 'efficiency-good';
+    if (deviation <= 2) return 'efficiency-average';
+    if (deviation <= 10) return 'efficiency-poor';
+    return 'efficiency-bad';
+  }
+  
+  getEfficiencyLabel(deviation: number): string {
+    if (deviation <= -10) return 'Excellent';
+    if (deviation <= -2) return 'Bon';
+    if (deviation <= 2) return 'Moyen';
+    if (deviation <= 10) return 'Médiocre';
+    return 'Mauvais';
   }
 
   getStatKeys(): string[] {

@@ -1188,6 +1188,26 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   font-weight: 700;
 }
 
+/* Speed report - exceeds vehicle limit (red) */
+.exceeds-limit {
+  color: #dc2626 !important;
+  font-weight: 600;
+}
+
+.data-table tbody tr:has(.exceeds-limit) {
+  background: #fef2f2;
+}
+
+.data-table tbody tr:has(.exceeds-limit):hover {
+  background: #fee2e2;
+}
+
+.excess-cell.exceeds-limit {
+  background: rgba(220, 38, 38, 0.15);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
 /* Trip row alternating style */
 .data-table tbody tr:has(.badge-stop) {
   background: #faf5ff;
@@ -1365,4 +1385,345 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* ===== FUEL ESTIMATION REPORT STYLES ===== */
+.fuel-estimation-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+.fuel-section-nav {
+  display: flex;
+  gap: 8px;
+  background: white;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.fuel-section-nav .section-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.fuel-section-nav .section-btn:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.fuel-section-nav .section-btn.active {
+  background: #3b82f6;
+  color: white;
+}
+
+.fuel-section-nav .section-icon {
+  font-size: 14px;
+}
+
+/* Fuel Summary Grid */
+.fuel-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.fuel-stat-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: white;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s;
+}
+
+.fuel-stat-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.fuel-stat-card.primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border: none;
+}
+
+.fuel-stat-card.primary .stat-value,
+.fuel-stat-card.primary .stat-label,
+.fuel-stat-card.primary .stat-icon {
+  color: white;
+}
+
+.fuel-stat-card .stat-icon {
+  font-size: 24px;
+}
+
+.fuel-stat-card .stat-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.fuel-stat-card .stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.fuel-stat-card .stat-label {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+/* Fuel Chart Container */
+.fuel-chart-container {
+  height: 300px;
+  padding: 16px;
+}
+
+.fuel-chart-container.large {
+  height: 400px;
+}
+
+/* Fuel Table */
+.fuel-table-wrapper {
+  overflow-x: auto;
+}
+
+.fuel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.fuel-table th,
+.fuel-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.fuel-table th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #475569;
+  position: sticky;
+  top: 0;
+}
+
+.fuel-table tr:hover {
+  background: #f8fafc;
+}
+
+.fuel-table .vehicle-name-cell {
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.fuel-table .plate-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #e0e7ff;
+  color: #3730a3;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.fuel-table .fuel-type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.fuel-table .number-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.fuel-table .cost-cell {
+  text-align: right;
+  font-weight: 600;
+  color: #16a34a;
+}
+
+.fuel-table .consumption-cell {
+  text-align: right;
+  color: #64748b;
+}
+
+/* Efficiency Badge */
+.efficiency-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.efficiency-badge small {
+  opacity: 0.8;
+  font-size: 10px;
+}
+
+.efficiency-excellent {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.efficiency-good {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.efficiency-average {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.efficiency-poor {
+  background: #fed7aa;
+  color: #c2410c;
+}
+
+.efficiency-bad {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* Distribution Grid */
+.fuel-distribution-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 1024px) {
+  .fuel-distribution-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.distribution-list {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.distribution-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dist-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dist-type {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 13px;
+}
+
+.dist-pct {
+  font-weight: 700;
+  color: #3b82f6;
+  font-size: 14px;
+}
+
+.dist-bar {
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.dist-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.dist-details {
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.dist-cost {
+  font-weight: 600;
+  color: #16a34a;
+}
+
+/* Trends Table */
+.trends-table-wrapper {
+  overflow-x: auto;
+}
+
+.trends-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.trends-table th,
+.trends-table td {
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.trends-table th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #475569;
+}
+
+.trends-table .number-cell {
+  text-align: right;
+}
+
+.trends-table .cost-cell {
+  text-align: right;
+  font-weight: 600;
+  color: #16a34a;
+}
+
+.trends-table .consumption-cell {
+  text-align: right;
+  color: #64748b;
+}
+
+.no-trends-message {
+  text-align: center;
+  padding: 32px;
+  color: #64748b;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
 }
