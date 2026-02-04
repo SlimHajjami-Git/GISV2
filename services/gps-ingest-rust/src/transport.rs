@@ -550,10 +550,36 @@ async fn process_single_frame(
                 // END GISV1 CONDITIONS
                 // ============================================================
 
-                // Ingest the frame into the database
-                database
-                    .ingest_hh_frame(&resolved_uid, protocol, &frame, &event_key)
-                    .await?;
+                // Get vehicle and company info first (needed for parallel operations)
+                let (vehicle_id, company_id) = if let Some(device_id) = device_id_opt {
+                    database.get_device_vehicle_info(device_id).await?
+                } else {
+                    (None, 1) // Default company_id
+                };
+
+                // PARALLEL EXECUTION: DB write + Redis cache + RabbitMQ publish
+                // These operations are independent and can run concurrently
+                let db_future = database.ingest_hh_frame(&resolved_uid, protocol, &frame, &event_key);
+                
+                let redis_future = async {
+                    if let Some(ref redis) = redis_cache {
+                        if let Err(err) = redis.cache_position(&resolved_uid, vehicle_id, company_id, &frame).await {
+                            warn!(?err, "Failed to cache position in Redis");
+                        }
+                    }
+                };
+
+                let rabbitmq_future = async {
+                    if let Some(ref pub_ref) = publisher {
+                        if let Err(err) = pub_ref.publish_hh_frame(&resolved_uid, protocol, &frame).await {
+                            warn!(?err, "Failed to publish telemetry event");
+                        }
+                    }
+                };
+
+                // Execute all three in parallel
+                let (db_result, _, _) = tokio::join!(db_future, redis_future, rabbitmq_future);
+                db_result?;
 
                 // Log successful ingestion with key frame info for debugging
                 info!(
@@ -565,21 +591,11 @@ async fn process_single_frame(
                     lon = frame.longitude,
                     ignition = frame.ignition_on,
                     is_valid = frame.is_valid,
-                    "Position ingested successfully"
+                    "Position ingested successfully (parallel)"
                 );
 
                 // Process services (stop detection, fuel tracking)
                 if let Some(device_id) = device_id_opt {
-                    // Get vehicle and company info
-                    let (vehicle_id, company_id) = database.get_device_vehicle_info(device_id).await?;
-
-                    // Cache position in Redis for real-time access
-                    if let Some(ref redis) = redis_cache {
-                        if let Err(err) = redis.cache_position(&resolved_uid, vehicle_id, company_id, &frame).await {
-                            warn!(?err, "Failed to cache position in Redis");
-                        }
-                    }
-
                     // Process stop detection
                     if let Some(completed_stop) = services.stop_detector.process_frame(device_id, &frame).await {
                         if let Err(err) = database.insert_vehicle_stop(&completed_stop, vehicle_id, company_id).await {
@@ -693,13 +709,6 @@ async fn process_single_frame(
                                 "Driving event recorded"
                             );
                         }
-                    }
-                }
-
-                // Publish to RabbitMQ for real-time updates
-                if let Some(publisher) = publisher {
-                    if let Err(err) = publisher.publish_hh_frame(&resolved_uid, protocol, &frame).await {
-                        warn!(?err, "Failed to publish telemetry event");
                     }
                 }
 

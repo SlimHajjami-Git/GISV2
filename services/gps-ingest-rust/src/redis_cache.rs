@@ -1,15 +1,17 @@
 use std::env;
 use anyhow::{Context, Result};
-use redis::{AsyncCommands, Client};
+use deadpool_redis::{Config, Pool, Runtime};
+use redis::AsyncCommands;
 use serde_json::json;
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::telemetry::model::HhFrame;
 
 const POSITION_TTL_SECONDS: u64 = 300; // 5 minutes TTL
+const POOL_SIZE: usize = 16; // Connection pool size
 
 pub struct RedisCache {
-    client: Client,
+    pool: Pool,
 }
 
 impl RedisCache {
@@ -19,18 +21,24 @@ impl RedisCache {
             _ => return Ok(None),
         };
 
-        let client = Client::open(redis_url.as_str())
-            .with_context(|| format!("Failed to create Redis client with URL: {}", redis_url))?;
+        // Create connection pool configuration
+        let cfg = Config::from_url(redis_url.clone());
+        let pool = cfg.builder()
+            .map_err(|e| anyhow::anyhow!("Failed to create pool builder: {}", e))?
+            .max_size(POOL_SIZE)
+            .runtime(Runtime::Tokio1)
+            .build()
+            .map_err(|e| anyhow::anyhow!("Failed to build pool: {}", e))?;
 
         // Test connection
-        let mut conn = client.get_multiplexed_async_connection().await
-            .with_context(|| "Failed to connect to Redis")?;
+        let mut conn = pool.get().await
+            .with_context(|| "Failed to get connection from pool")?;
         
         let _: String = redis::cmd("PING").query_async(&mut conn).await
             .with_context(|| "Redis PING failed")?;
 
-        info!("Connected to Redis at {}", redis_url);
-        Ok(Some(Self { client }))
+        info!("Connected to Redis at {} with pool size {}", redis_url, POOL_SIZE);
+        Ok(Some(Self { pool }))
     }
 
     pub async fn cache_position(
@@ -40,7 +48,8 @@ impl RedisCache {
         company_id: i32,
         frame: &HhFrame,
     ) -> Result<()> {
-        let mut conn = self.client.get_multiplexed_async_connection().await?;
+        let mut conn = self.pool.get().await
+            .with_context(|| "Failed to get Redis connection from pool")?;
 
         let position_data = json!({
             "device_uid": device_uid,
@@ -84,14 +93,16 @@ impl RedisCache {
     }
 
     pub async fn get_position(&self, device_uid: &str) -> Result<Option<String>> {
-        let mut conn = self.client.get_multiplexed_async_connection().await?;
+        let mut conn = self.pool.get().await
+            .with_context(|| "Failed to get Redis connection from pool")?;
         let key = format!("vehicle:position:{}", device_uid);
         let result: Option<String> = conn.get(&key).await?;
         Ok(result)
     }
 
     pub async fn get_company_vehicles(&self, company_id: i32) -> Result<Vec<i32>> {
-        let mut conn = self.client.get_multiplexed_async_connection().await?;
+        let mut conn = self.pool.get().await
+            .with_context(|| "Failed to get Redis connection from pool")?;
         let key = format!("company:{}:active_vehicles", company_id);
         let result: Vec<i32> = conn.smembers(&key).await?;
         Ok(result)
@@ -100,7 +111,8 @@ impl RedisCache {
     /// OPTIMIZED: Uses company device index + MGET instead of KEYS pattern scan
     /// Complexity: O(n) where n = devices in company, instead of O(N) where N = all keys in Redis
     pub async fn get_all_positions_for_company(&self, company_id: i32) -> Result<Vec<String>> {
-        let mut conn = self.client.get_multiplexed_async_connection().await?;
+        let mut conn = self.pool.get().await
+            .with_context(|| "Failed to get Redis connection from pool")?;
         
         // Get device UIDs indexed by company (O(n) where n = company devices)
         let devices_key = format!("company:{}:devices", company_id);

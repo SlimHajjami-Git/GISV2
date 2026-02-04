@@ -26,6 +26,9 @@ builder.Services.AddSingleton<IGpsHubService, GpsHubService>();
 // GPS Telemetry Consumer (RabbitMQ -> SignalR)
 builder.Services.AddHostedService<GisAPI.Services.GpsTelemetryConsumer>();
 
+// Redis PubSub Consumer (Redis -> SignalR) - LOWER LATENCY than RabbitMQ
+builder.Services.AddHostedService<GisAPI.Services.RedisPubSubConsumer>();
+
 // Geocoding Service with cache
 builder.Services.AddSingleton<GisAPI.Domain.Interfaces.IGeocodingService, GisAPI.Services.GeocodingService>();
 
