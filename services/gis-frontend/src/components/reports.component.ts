@@ -649,6 +649,18 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
+    // Handle costs report
+    if (this.selectedTemplate.type === 'costs') {
+      this.executeCostsReport(vehicleId, startDate, endDate);
+      return;
+    }
+
+    // Handle maintenance report
+    if (this.selectedTemplate.type === 'maintenance') {
+      this.executeMaintenanceReport(vehicleId, startDate, endDate);
+      return;
+    }
+
     // All other report types use vehicle history API
     if (vehicleId) {
       this.executeVehicleReport(vehicleId, startDate, endDate);
@@ -4282,4 +4294,265 @@ export class ReportsComponent implements OnInit {
   }
 
   Object = Object;
+
+  // ==================== COSTS REPORT ====================
+  
+  executeCostsReport(vehicleId?: number, startDate?: Date, endDate?: Date) {
+    this.loading = true;
+    
+    this.apiService.getCosts({ vehicleId, startDate, endDate }).subscribe({
+      next: (costs) => {
+        this.ngZone.run(() => {
+          this.processCostsReport(costs);
+          this.reportGenerated = true;
+          this.loading = false;
+          this.activeTab = 'table';
+          this.currentPage = 1;
+          this.cdr.detectChanges();
+          setTimeout(() => this.createChart(), 100);
+        });
+      },
+      error: (error) => {
+        console.error('Error loading costs:', error);
+        this.ngZone.run(() => {
+          this.tableData = [];
+          this.chartData = [];
+          this.statisticsData = { 'Erreur': 'Impossible de charger les coûts' };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+        });
+      }
+    });
+  }
+
+  processCostsReport(costs: any[]) {
+    if (!costs || costs.length === 0) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = { 'Information': 'Aucun coût enregistré pour cette période' };
+      return;
+    }
+
+    // Sort by date descending
+    costs.sort((a, b) => new Date(b.date || b.createdAt).getTime() - new Date(a.date || a.createdAt).getTime());
+
+    // Build vehicle name map
+    const vehicleMap = new Map<number, string>();
+    this.vehicles.forEach(v => vehicleMap.set(v.id, v.name || v.plateNumber || `Véhicule ${v.id}`));
+
+    // Process table data
+    this.tableData = costs.map(cost => {
+      const vehicleName = vehicleMap.get(cost.vehicleId) || `Véhicule ${cost.vehicleId}`;
+      return {
+        vehicleName: vehicleName,
+        vehicleId: cost.vehicleId,
+        date: this.formatDateTime(cost.date || cost.createdAt),
+        type: this.getCostTypeLabel(cost.type),
+        typeKey: cost.type,
+        description: cost.description || '-',
+        amount: cost.amount || 0,
+        amountFormatted: this.formatCurrency(cost.amount || 0)
+      };
+    });
+
+    // Chart data - group by type
+    const byType: { [key: string]: number } = {};
+    costs.forEach(cost => {
+      const typeLabel = this.getCostTypeLabel(cost.type);
+      byType[typeLabel] = (byType[typeLabel] || 0) + (cost.amount || 0);
+    });
+
+    this.chartData = Object.entries(byType)
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, value], index) => ({
+        label,
+        value,
+        color: this.chartColors[index % this.chartColors.length]
+      }));
+
+    // Secondary chart - by vehicle
+    const byVehicle: { [key: string]: number } = {};
+    costs.forEach(cost => {
+      const vehicleName = vehicleMap.get(cost.vehicleId) || `Véhicule ${cost.vehicleId}`;
+      byVehicle[vehicleName] = (byVehicle[vehicleName] || 0) + (cost.amount || 0);
+    });
+
+    this.secondaryChartData = Object.entries(byVehicle)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([label, value], index) => ({
+        label,
+        value,
+        color: this.chartColors[index % this.chartColors.length]
+      }));
+
+    // Statistics
+    const totalAmount = costs.reduce((sum, c) => sum + (c.amount || 0), 0);
+    const fuelCosts = costs.filter(c => c.type === 'fuel').reduce((sum, c) => sum + (c.amount || 0), 0);
+    const maintenanceCosts = costs.filter(c => c.type === 'maintenance').reduce((sum, c) => sum + (c.amount || 0), 0);
+    const otherCosts = totalAmount - fuelCosts - maintenanceCosts;
+
+    this.statisticsData = {
+      'Total coûts': this.formatCurrency(totalAmount),
+      'Nombre entrées': costs.length.toString(),
+      '⛽ Carburant': this.formatCurrency(fuelCosts),
+      '🔧 Maintenance': this.formatCurrency(maintenanceCosts),
+      '📦 Autres': this.formatCurrency(otherCosts),
+      'Véhicules': new Set(costs.map(c => c.vehicleId)).size.toString()
+    };
+  }
+
+  getCostTypeLabel(type: string): string {
+    const types: { [key: string]: string } = {
+      'fuel': '⛽ Carburant',
+      'maintenance': '🔧 Maintenance',
+      'insurance': '🛡️ Assurance',
+      'tax': '📋 Taxes',
+      'toll': '🛣️ Péages',
+      'parking': '🅿️ Parking',
+      'fine': '⚠️ Amendes',
+      'other': '📦 Autres'
+    };
+    return types[type] || type || '📦 Autres';
+  }
+
+  // ==================== MAINTENANCE REPORT ====================
+  
+  executeMaintenanceReport(vehicleId?: number, startDate?: Date, endDate?: Date) {
+    this.loading = true;
+    
+    this.apiService.getMaintenanceRecords(vehicleId).subscribe({
+      next: (records) => {
+        // Filter by date if provided
+        let filteredRecords = records;
+        if (startDate || endDate) {
+          filteredRecords = records.filter(r => {
+            const recordDate = new Date(r.date || r.scheduledDate || r.createdAt);
+            if (startDate && recordDate < startDate) return false;
+            if (endDate && recordDate > endDate) return false;
+            return true;
+          });
+        }
+        
+        this.ngZone.run(() => {
+          this.processMaintenanceReport(filteredRecords);
+          this.reportGenerated = true;
+          this.loading = false;
+          this.activeTab = 'table';
+          this.currentPage = 1;
+          this.cdr.detectChanges();
+          setTimeout(() => this.createChart(), 100);
+        });
+      },
+      error: (error) => {
+        console.error('Error loading maintenance records:', error);
+        this.ngZone.run(() => {
+          this.tableData = [];
+          this.chartData = [];
+          this.statisticsData = { 'Erreur': 'Impossible de charger les maintenances' };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+        });
+      }
+    });
+  }
+
+  processMaintenanceReport(records: any[]) {
+    if (!records || records.length === 0) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = { 'Information': 'Aucune maintenance enregistrée pour cette période' };
+      return;
+    }
+
+    // Sort by date descending
+    records.sort((a, b) => {
+      const dateA = new Date(a.date || a.scheduledDate || a.createdAt);
+      const dateB = new Date(b.date || b.scheduledDate || b.createdAt);
+      return dateB.getTime() - dateA.getTime();
+    });
+
+    // Build vehicle name map
+    const vehicleMap = new Map<number, string>();
+    this.vehicles.forEach(v => vehicleMap.set(v.id, v.name || v.plateNumber || `Véhicule ${v.id}`));
+
+    // Process table data
+    this.tableData = records.map(record => {
+      const vehicleName = vehicleMap.get(record.vehicleId) || `Véhicule ${record.vehicleId}`;
+      const date = record.date || record.scheduledDate || record.createdAt;
+      return {
+        vehicleName: vehicleName,
+        vehicleId: record.vehicleId,
+        date: this.formatDateTime(date),
+        type: record.type || record.maintenanceType || 'Général',
+        description: record.description || record.notes || '-',
+        status: this.getMaintenanceStatusLabel(record.status),
+        statusKey: record.status,
+        cost: record.cost || record.totalCost || 0,
+        costFormatted: this.formatCurrency(record.cost || record.totalCost || 0),
+        mileage: record.mileage ? `${record.mileage.toLocaleString('fr-FR')} km` : '-'
+      };
+    });
+
+    // Chart data - group by type
+    const byType: { [key: string]: number } = {};
+    records.forEach(record => {
+      const type = record.type || record.maintenanceType || 'Général';
+      byType[type] = (byType[type] || 0) + 1;
+    });
+
+    this.chartData = Object.entries(byType)
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, value], index) => ({
+        label,
+        value,
+        color: this.chartColors[index % this.chartColors.length]
+      }));
+
+    // Secondary chart - costs by vehicle
+    const costsByVehicle: { [key: string]: number } = {};
+    records.forEach(record => {
+      const vehicleName = vehicleMap.get(record.vehicleId) || `Véhicule ${record.vehicleId}`;
+      costsByVehicle[vehicleName] = (costsByVehicle[vehicleName] || 0) + (record.cost || record.totalCost || 0);
+    });
+
+    this.secondaryChartData = Object.entries(costsByVehicle)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([label, value], index) => ({
+        label,
+        value,
+        color: this.chartColors[index % this.chartColors.length]
+      }));
+
+    // Statistics
+    const totalCost = records.reduce((sum, r) => sum + (r.cost || r.totalCost || 0), 0);
+    const completedCount = records.filter(r => r.status === 'completed' || r.status === 'done').length;
+    const scheduledCount = records.filter(r => r.status === 'scheduled' || r.status === 'pending').length;
+    const overdueCount = records.filter(r => r.status === 'overdue').length;
+
+    this.statisticsData = {
+      'Total maintenances': records.length.toString(),
+      'Coût total': this.formatCurrency(totalCost),
+      '✅ Complétées': completedCount.toString(),
+      '📅 Planifiées': scheduledCount.toString(),
+      '⚠️ En retard': overdueCount.toString(),
+      'Véhicules': new Set(records.map(r => r.vehicleId)).size.toString()
+    };
+  }
+
+  getMaintenanceStatusLabel(status: string): string {
+    const statuses: { [key: string]: string } = {
+      'completed': '✅ Complétée',
+      'done': '✅ Complétée',
+      'scheduled': '📅 Planifiée',
+      'pending': '⏳ En attente',
+      'in_progress': '🔄 En cours',
+      'overdue': '⚠️ En retard',
+      'cancelled': '❌ Annulée'
+    };
+    return statuses[status] || status || '⏳ En attente';
+  }
 }

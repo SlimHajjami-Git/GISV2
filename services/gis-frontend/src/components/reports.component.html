@@ -837,6 +837,20 @@
                         <th>Adresse</th>
                         <th>Valeur</th>
                         <th>Sévérité</th>
+                      } @else if (selectedTemplate?.type === 'costs') {
+                        <th>Véhicule</th>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                        <th>Montant</th>
+                      } @else if (selectedTemplate?.type === 'maintenance') {
+                        <th>Véhicule</th>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                        <th>Statut</th>
+                        <th>Coût</th>
+                        <th>Kilométrage</th>
                       } @else {
                         <th>Date/Heure</th>
                         <th>Valeur</th>
@@ -958,6 +972,20 @@
                           <td class="severity-cell" [class.severity-low]="row.severity === 'low'" [class.severity-medium]="row.severity === 'medium'" [class.severity-high]="row.severity === 'high'">
                             {{ row.severityLabel }}
                           </td>
+                        } @else if (selectedTemplate?.type === 'costs') {
+                          <td class="vehicle-cell">{{ row.vehicleName }}</td>
+                          <td class="time-cell">{{ row.date }}</td>
+                          <td class="type-cell">{{ row.type }}</td>
+                          <td class="description-cell">{{ row.description }}</td>
+                          <td class="amount-cell">{{ row.amountFormatted }}</td>
+                        } @else if (selectedTemplate?.type === 'maintenance') {
+                          <td class="vehicle-cell">{{ row.vehicleName }}</td>
+                          <td class="time-cell">{{ row.date }}</td>
+                          <td class="type-cell">{{ row.type }}</td>
+                          <td class="description-cell">{{ row.description }}</td>
+                          <td class="status-cell">{{ row.status }}</td>
+                          <td class="amount-cell">{{ row.costFormatted }}</td>
+                          <td class="mileage-cell">{{ row.mileage }}</td>
                         } @else {
                           <td class="time-cell">{{ row.time || row.date }}</td>
                           <td class="value-cell">{{ row.level || row.speed || row.distance }}</td>
