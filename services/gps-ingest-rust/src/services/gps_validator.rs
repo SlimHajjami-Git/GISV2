@@ -248,12 +248,15 @@ mod tests {
 
     fn create_test_frame(lat: f64, lon: f64, speed: f64, time_str: &str) -> HhFrame {
         HhFrame {
+            kind: crate::telemetry::model::FrameKind::RealTimeAndHistory,
+            version: crate::telemetry::model::FrameVersion::V1,
             latitude: lat,
             longitude: lon,
             speed_kph: speed,
             heading_deg: 0.0,
             recorded_at: NaiveDateTime::parse_from_str(time_str, "%Y-%m-%d %H:%M:%S").unwrap(),
             is_valid: true,
+            is_real_time: true,
             ignition_on: true,
             power_voltage: 12,
             power_source_rescue: false,
@@ -265,8 +268,12 @@ mod tests {
             odometer_km: 0,
             rpm: None,
             send_flag: 0,
-            protocol_version: 1,
-            fuel_rate_l_per_100km: None,
+            added_info: 0,
+            signal_quality: None,
+            satellites_in_view: None,
+            flags_raw: 0,
+            raw_payload: String::new(),
+            remaining_payload: None,
             address: None,
         }
     }

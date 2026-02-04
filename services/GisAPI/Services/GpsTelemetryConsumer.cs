@@ -16,17 +16,20 @@ public class GpsTelemetryConsumer : BackgroundService
     private readonly ILogger<GpsTelemetryConsumer> _logger;
     private readonly IServiceProvider _serviceProvider;
     private readonly IConfiguration _configuration;
+    private readonly IRedisCacheService _redisCache;
     private IConnection? _connection;
     private IChannel? _channel;
 
     public GpsTelemetryConsumer(
         ILogger<GpsTelemetryConsumer> logger,
         IServiceProvider serviceProvider,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IRedisCacheService redisCache)
     {
         _logger = logger;
         _serviceProvider = serviceProvider;
         _configuration = configuration;
+        _redisCache = redisCache;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -38,7 +41,7 @@ public class GpsTelemetryConsumer : BackgroundService
             return;
         }
 
-        await Task.Delay(5000, stoppingToken); // Wait for RabbitMQ to be ready
+        await Task.Delay(1000, stoppingToken); // Brief wait for RabbitMQ startup (reduced from 5s)
 
         try
         {
@@ -158,6 +161,17 @@ public class GpsTelemetryConsumer : BackgroundService
                 return;
             }
 
+            // Calculate and log latency for real-time monitoring
+            var now = DateTime.UtcNow;
+            var totalLatencyMs = (now - telemetry.RecordedAt).TotalMilliseconds;
+            var pipelineLatencyMs = telemetry.IngestedAt.HasValue 
+                ? (now - telemetry.IngestedAt.Value).TotalMilliseconds 
+                : -1;
+            
+            _logger.LogInformation(
+                "📡 Telemetry received: Device={DeviceUid}, TotalLatency={TotalLatency:F0}ms, PipelineLatency={PipelineLatency:F0}ms",
+                telemetry.DeviceUid, totalLatencyMs, pipelineLatencyMs);
+
             _logger.LogDebug("Processing telemetry for device: {DeviceUid}", telemetry.DeviceUid);
 
             // Use MediatR to handle the broadcast with CQRS pattern
@@ -234,6 +248,9 @@ public class TelemetryMessage
     
     [System.Text.Json.Serialization.JsonPropertyName("recorded_at")]
     public DateTime RecordedAt { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("ingested_at")]
+    public DateTime? IngestedAt { get; set; }
     
     [System.Text.Json.Serialization.JsonPropertyName("alert_type")]
     public string? AlertType { get; set; }

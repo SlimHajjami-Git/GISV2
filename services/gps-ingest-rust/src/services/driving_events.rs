@@ -442,7 +442,7 @@ mod tests {
     use chrono::NaiveDateTime;
     use crate::telemetry::model::{FrameKind, FrameVersion};
 
-    fn make_frame(speed: f64, heading: f64, mems_x: i16, mems_y: i16, mems_z: i16, time_str: &str) -> HhFrame {
+    fn make_frame(speed: f64, heading: f64, mems_x: i8, mems_y: i8, mems_z: i8, time_str: &str) -> HhFrame {
         let recorded_at = NaiveDateTime::parse_from_str(time_str, "%Y-%m-%d %H:%M:%S").unwrap();
         HhFrame {
             kind: FrameKind::RealTime,

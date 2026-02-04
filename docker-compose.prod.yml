@@ -34,6 +34,17 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
   gis-api:
     build:
       context: ./services
@@ -49,6 +60,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:5000
@@ -63,6 +76,7 @@ services:
       RabbitMQ__Exchange: telemetry.raw
       RabbitMQ__Queue: gps.telemetry.dotnet
       RabbitMQ__RoutingKey: hh
+      Redis__ConnectionString: redis://redis:6379
     restart: unless-stopped
 
   gps-ingest:
@@ -79,6 +93,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-Calypso@2026+}@postgres:5432/gis_v2
       RABBITMQ_HOST: rabbitmq
@@ -87,6 +103,7 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-Calypso@2026+}
       RABBITMQ_EXCHANGE: telemetry.raw
       RABBITMQ_ROUTING_KEY: hh
+      REDIS_URL: redis://redis:6379
       API_PORT: 3000
       RUST_LOG: info
     ports:
@@ -127,4 +144,5 @@ services:
 volumes:
   postgres_data:
   rabbitmq_data:
+  redis_data:
   osrm_data:

@@ -2,6 +2,7 @@ mod config;
 mod db;
 mod ports;
 mod publisher;
+mod redis_cache;
 mod services;
 mod telemetry;
 mod transport;
@@ -158,6 +159,17 @@ async fn main() -> Result<()> {
                 }
             };
 
+            let redis_cache: Option<Arc<redis_cache::RedisCache>> = match redis_cache::RedisCache::from_env().await? {
+                Some(r) => {
+                    info!("Redis cache connected for real-time positions");
+                    Some(Arc::new(r))
+                }
+                None => {
+                    warn!("Redis cache disabled (REDIS_URL not set)");
+                    None
+                }
+            };
+
             info!("GPS Ingest service running in WRITE-ONLY mode (API served by .NET)");
 
             let app_config = config::load_config("config/listeners.yaml")?;
@@ -165,7 +177,7 @@ async fn main() -> Result<()> {
                 warn!("No listeners configured; service will idle");
             }
 
-            transport::run_listeners(&app_config, database, publisher).await?;
+            transport::run_listeners(&app_config, database, publisher, redis_cache).await?;
         }
     }
 
@@ -235,7 +247,8 @@ mod real_pipeline_tests {
 
         // Telemetry frame -> DB insert
         let frame = telemetry::hh::parse_frame(HH13_FRAME)?;
-        database.ingest_hh_frame(&imei, PROTOCOL, &frame).await?;
+        let event_key = format!("{}:{}:{}", imei, frame.recorded_at, frame.latitude);
+        database.ingest_hh_frame(&imei, PROTOCOL, &frame, &event_key).await?;
 
         // Publish + assert message arrives
         let publisher = publisher::TelemetryPublisher::from_env()

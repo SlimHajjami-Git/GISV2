@@ -29,6 +29,9 @@ builder.Services.AddHostedService<GisAPI.Services.GpsTelemetryConsumer>();
 // Geocoding Service with cache
 builder.Services.AddSingleton<GisAPI.Domain.Interfaces.IGeocodingService, GisAPI.Services.GeocodingService>();
 
+// Redis Cache Service for real-time positions
+builder.Services.AddSingleton<GisAPI.Services.IRedisCacheService, GisAPI.Services.RedisCacheService>();
+
 // Driving Behavior Detection Service
 builder.Services.AddScoped<GisAPI.Services.IDrivingBehaviorService, GisAPI.Services.DrivingBehaviorService>();
 

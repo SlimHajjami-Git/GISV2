@@ -5,6 +5,7 @@ using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Services;
 
 namespace GisAPI.Controllers;
 
@@ -21,15 +22,107 @@ public class GpsController : ControllerBase
     private readonly GisDbContext _context;
     private readonly IGeocodingService _geocodingService;
     private readonly IGpsHubService _gpsHubService;
+    private readonly IRedisCacheService _redisCache;
 
-    public GpsController(GisDbContext context, IGeocodingService geocodingService, IGpsHubService gpsHubService)
+    public GpsController(GisDbContext context, IGeocodingService geocodingService, IGpsHubService gpsHubService, IRedisCacheService redisCache)
     {
         _context = context;
         _geocodingService = geocodingService;
         _gpsHubService = gpsHubService;
+        _redisCache = redisCache;
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
+
+    // ==================== REAL-TIME POSITIONS (REDIS) ====================
+
+    /// <summary>
+    /// Get real-time positions from Redis cache (ultra-fast, ~10ms latency)
+    /// Falls back to database if Redis is unavailable
+    /// </summary>
+    [HttpGet("positions/realtime")]
+    public async Task<ActionResult<List<RealtimePositionDto>>> GetRealtimePositions()
+    {
+        var companyId = GetCompanyId();
+
+        // Try Redis first for real-time data
+        var redisPositions = await _redisCache.GetAllPositionsForCompanyAsync(companyId);
+        
+        if (redisPositions.Any())
+        {
+            // Get vehicle info from DB to enrich Redis data
+            var vehicleMap = await _context.Vehicles
+                .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue)
+                .Include(v => v.GpsDevice)
+                .ToDictionaryAsync(v => v.GpsDevice!.DeviceUid, v => v);
+
+            var result = redisPositions
+                .Where(p => vehicleMap.ContainsKey(p.DeviceUid))
+                .Select(p => {
+                    var vehicle = vehicleMap[p.DeviceUid];
+                    return new RealtimePositionDto
+                    {
+                        VehicleId = vehicle.Id,
+                        VehicleName = vehicle.Name,
+                        Plate = vehicle.Plate,
+                        DeviceUid = p.DeviceUid,
+                        Latitude = p.Latitude,
+                        Longitude = p.Longitude,
+                        SpeedKph = p.SpeedKph,
+                        HeadingDeg = p.HeadingDeg,
+                        IgnitionOn = p.IgnitionOn,
+                        IsValid = p.IsValid,
+                        RecordedAt = p.RecordedAt,
+                        CachedAt = p.CachedAt,
+                        Source = "redis"
+                    };
+                })
+                .ToList();
+
+            return Ok(result);
+        }
+
+        // Fallback to database
+        var dbPositions = await _context.Vehicles
+            .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue)
+            .Include(v => v.GpsDevice)
+            .Select(v => new RealtimePositionDto
+            {
+                VehicleId = v.Id,
+                VehicleName = v.Name,
+                Plate = v.Plate,
+                DeviceUid = v.GpsDevice != null ? v.GpsDevice.DeviceUid : "",
+                Latitude = _context.GpsPositions
+                    .Where(p => p.DeviceId == v.GpsDeviceId)
+                    .OrderByDescending(p => p.RecordedAt)
+                    .Select(p => p.Latitude)
+                    .FirstOrDefault(),
+                Longitude = _context.GpsPositions
+                    .Where(p => p.DeviceId == v.GpsDeviceId)
+                    .OrderByDescending(p => p.RecordedAt)
+                    .Select(p => p.Longitude)
+                    .FirstOrDefault(),
+                SpeedKph = _context.GpsPositions
+                    .Where(p => p.DeviceId == v.GpsDeviceId)
+                    .OrderByDescending(p => p.RecordedAt)
+                    .Select(p => p.SpeedKph ?? 0)
+                    .FirstOrDefault(),
+                IgnitionOn = _context.GpsPositions
+                    .Where(p => p.DeviceId == v.GpsDeviceId)
+                    .OrderByDescending(p => p.RecordedAt)
+                    .Select(p => p.IgnitionOn ?? false)
+                    .FirstOrDefault(),
+                RecordedAt = _context.GpsPositions
+                    .Where(p => p.DeviceId == v.GpsDeviceId)
+                    .OrderByDescending(p => p.RecordedAt)
+                    .Select(p => p.RecordedAt)
+                    .FirstOrDefault(),
+                Source = "database"
+            })
+            .ToListAsync();
+
+        return Ok(dbPositions);
+    }
 
     // ==================== LATEST POSITIONS ====================
 
@@ -527,6 +620,23 @@ public class GeocodeResultDto
     public double Longitude { get; set; }
     public string? Address { get; set; }
     public bool FromCache { get; set; }
+}
+
+public class RealtimePositionDto
+{
+    public int VehicleId { get; set; }
+    public string VehicleName { get; set; } = string.Empty;
+    public string? Plate { get; set; }
+    public string DeviceUid { get; set; } = string.Empty;
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+    public double SpeedKph { get; set; }
+    public double HeadingDeg { get; set; }
+    public bool IgnitionOn { get; set; }
+    public bool IsValid { get; set; }
+    public DateTime RecordedAt { get; set; }
+    public DateTime CachedAt { get; set; }
+    public string Source { get; set; } = "redis";
 }
 
 public class GpsDeviceDto

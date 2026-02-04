@@ -13,6 +13,7 @@ use tracing::{error, info, warn};
 use crate::{
     config::{AppConfig, ListenerConfig, TransportKind},
     ports::{TelemetryEventPublisher, TelemetryStore},
+    redis_cache::RedisCache,
     services::{
         driving_events::DrivingEventsDetector,
         fuel_tracker::FuelTracker,
@@ -44,6 +45,7 @@ pub async fn run_listeners(
     config: &AppConfig,
     database: Arc<dyn TelemetryStore>,
     publisher: Option<Arc<dyn TelemetryEventPublisher>>,
+    redis_cache: Option<Arc<RedisCache>>,
 ) -> Result<()> {
     if config.listeners.is_empty() {
         info!("No listeners configured; nothing to start");
@@ -85,8 +87,9 @@ pub async fn run_listeners(
                 let mapping: ConnectionMap = Arc::new(Mutex::new(HashMap::new()));
                 let publisher_clone = publisher.clone();
                 let services_clone = Arc::clone(&services);
+                let redis_clone = redis_cache.clone();
                 handles.push(tokio::spawn(async move {
-                    if let Err(err) = run_tcp_listener(cfg, db, mapping, publisher_clone, services_clone).await {
+                    if let Err(err) = run_tcp_listener(cfg, db, mapping, publisher_clone, services_clone, redis_clone).await {
                         error!(?err, "TCP listener terminated unexpectedly");
                     }
                 }));
@@ -114,6 +117,7 @@ async fn run_tcp_listener(
     connection_map: ConnectionMap,
     publisher: Option<Arc<dyn TelemetryEventPublisher>>,
     services: Arc<TelemetryServices>,
+    redis_cache: Option<Arc<RedisCache>>,
 ) -> Result<()> {
     let bind_addr = format!("0.0.0.0:{}", cfg.port);
     let listener = TcpListener::bind(&bind_addr).await?;
@@ -127,8 +131,9 @@ async fn run_tcp_listener(
         let map_clone = Arc::clone(&connection_map);
         let publisher_clone = publisher.clone();
         let services_clone = Arc::clone(&services);
+        let redis_clone = redis_cache.clone();
         tokio::spawn(async move {
-            if let Err(err) = handle_tcp_connection(stream, cfg_clone, db, map_clone, publisher_clone, services_clone).await {
+            if let Err(err) = handle_tcp_connection(stream, cfg_clone, db, map_clone, publisher_clone, services_clone, redis_clone).await {
                 error!(?err, "TCP connection handler exited with error");
             }
         });
@@ -143,6 +148,7 @@ async fn handle_tcp_connection(
     connection_map: ConnectionMap,
     publisher: Option<Arc<dyn TelemetryEventPublisher>>,
     services: Arc<TelemetryServices>,
+    redis_cache: Option<Arc<RedisCache>>,
 ) -> Result<()> {
     let mut buffer = vec![0u8; 4096];
     let peer = stream.peer_addr().ok().map(|addr| addr.to_string());
@@ -164,6 +170,7 @@ async fn handle_tcp_connection(
             Arc::clone(&connection_map),
             publisher.clone(),
             Arc::clone(&services),
+            redis_cache.clone(),
         )
         .await
         {
@@ -182,6 +189,7 @@ async fn route_payload(
     connection_map: ConnectionMap,
     publisher: Option<Arc<dyn TelemetryEventPublisher>>,
     services: Arc<TelemetryServices>,
+    redis_cache: Option<Arc<RedisCache>>,
 ) -> Result<()> {
     let ascii_payload = String::from_utf8(raw_payload.to_vec()).context("payload is not UTF-8")?;
     
@@ -241,6 +249,7 @@ async fn route_payload(
             Arc::clone(&connection_map),
             publisher.clone(),
             Arc::clone(&services),
+            redis_cache.clone(),
         )
         .await
         {
@@ -266,6 +275,7 @@ async fn process_single_frame(
     connection_map: ConnectionMap,
     publisher: Option<Arc<dyn TelemetryEventPublisher>>,
     services: Arc<TelemetryServices>,
+    redis_cache: Option<Arc<RedisCache>>,
 ) -> Result<()> {
     match protocol {
         "gps_type_1" => {
@@ -449,7 +459,16 @@ async fn process_single_frame(
                 // 7: IBUTTON - iButton key read (ID in added_info)
                 // 8-10: I1/I2/I3 Event - Digital input events
                 // 11: ALERT - Generic alert (SOS, panic, etc.)
-                // All send_flag values are now accepted (no filtering)
+                
+                // Condition 0: Reject send_flag == 2 (GPSVAL) - same as GISV1
+                if frame.send_flag == 2 {
+                    info!(
+                        imei = %resolved_uid,
+                        send_flag = frame.send_flag,
+                        "Frame SKIPPED: send_flag == 2 (GPSVAL) rejected (same as GISV1)"
+                    );
+                    return Ok(());
+                }
                 
                 // Condition 1: Date must be before tomorrow (not in future)
                 let tomorrow = chrono::Utc::now().date_naive() + chrono::Duration::days(1);
@@ -553,6 +572,13 @@ async fn process_single_frame(
                 if let Some(device_id) = device_id_opt {
                     // Get vehicle and company info
                     let (vehicle_id, company_id) = database.get_device_vehicle_info(device_id).await?;
+
+                    // Cache position in Redis for real-time access
+                    if let Some(ref redis) = redis_cache {
+                        if let Err(err) = redis.cache_position(&resolved_uid, vehicle_id, company_id, &frame).await {
+                            warn!(?err, "Failed to cache position in Redis");
+                        }
+                    }
 
                     // Process stop detection
                     if let Some(completed_stop) = services.stop_detector.process_frame(device_id, &frame).await {
@@ -827,6 +853,9 @@ mod tests {
             geocoding: GeocodingService::new(None),
             geofence_detector: GeofenceDetector::new(),
             gps_stabilizer: GpsStabilizer::new(),
+            gps_validator: GpsValidator::new(),
+            trip_detector: TripDetector::new(),
+            driving_events_detector: DrivingEventsDetector::new(),
         });
         let peer = "127.0.0.1:1234";
 
@@ -839,6 +868,7 @@ mod tests {
             Arc::clone(&connection_map),
             Some(Arc::clone(&publisher) as Arc<dyn TelemetryEventPublisher>),
             Arc::clone(&services),
+            None,
         )
         .await
         .expect("info frame should succeed");
@@ -860,6 +890,7 @@ mod tests {
             connection_map.clone(),
             Some(publisher.clone()),
             Arc::clone(&services),
+            None,
         )
         .await
         .expect("data frame should succeed");
@@ -881,6 +912,9 @@ mod tests {
             geocoding: GeocodingService::new(None),
             geofence_detector: GeofenceDetector::new(),
             gps_stabilizer: GpsStabilizer::new(),
+            gps_validator: GpsValidator::new(),
+            trip_detector: TripDetector::new(),
+            driving_events_detector: DrivingEventsDetector::new(),
         });
         let peer = "10.0.0.5:5555";
 
@@ -897,6 +931,7 @@ mod tests {
             Arc::clone(&connection_map),
             None,
             Arc::clone(&services),
+            None,
         )
         .await
         .expect("sample frame should ingest");

@@ -665,6 +665,7 @@ impl AapDecoder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{Datelike, Timelike};
 
     #[test]
     fn test_parse_v3_frame() {

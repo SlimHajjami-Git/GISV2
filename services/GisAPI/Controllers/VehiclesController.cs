@@ -8,6 +8,7 @@ using GisAPI.Application.Features.Vehicles.Commands.UpdateVehicle;
 using GisAPI.Application.Features.Vehicles.Commands.DeleteVehicle;
 using GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions;
 using GisAPI.Application.Features.Vehicles.Commands.SyncMileage;
+using GisAPI.Services;
 
 namespace GisAPI.Controllers;
 
@@ -17,10 +18,14 @@ namespace GisAPI.Controllers;
 public class VehiclesController : ControllerBase
 {
     private readonly IMediator _mediator;
+    private readonly IRedisCacheService _redisCache;
+    private readonly ILogger<VehiclesController> _logger;
 
-    public VehiclesController(IMediator mediator)
+    public VehiclesController(IMediator mediator, IRedisCacheService redisCache, ILogger<VehiclesController> logger)
     {
         _mediator = mediator;
+        _redisCache = redisCache;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -72,8 +77,70 @@ public class VehiclesController : ControllerBase
     [HttpGet("with-positions")]
     public async Task<ActionResult<List<VehicleWithPositionDto>>> GetVehiclesWithPositions()
     {
-        var result = await _mediator.Send(new GetVehiclesWithPositionsQuery());
-        return Ok(result);
+        // Get base vehicle data from DB (always needed for vehicle info)
+        var vehicles = await _mediator.Send(new GetVehiclesWithPositionsQuery());
+        
+        // Try to enhance positions from Redis cache (faster, more recent)
+        var companyIdClaim = User.FindFirst("company_id")?.Value;
+        if (int.TryParse(companyIdClaim, out var companyId))
+        {
+            var cachedPositions = await _redisCache.GetAllPositionsForCompanyAsync(companyId);
+            if (cachedPositions.Any())
+            {
+                _logger.LogDebug("Found {Count} cached positions in Redis for company {CompanyId}", 
+                    cachedPositions.Count, companyId);
+                
+                // Create lookup by device UID
+                var cacheByDevice = cachedPositions.ToDictionary(p => p.DeviceUid, p => p);
+                
+                // Update vehicles with cached positions (more recent data)
+                foreach (var vehicle in vehicles.Where(v => v.DeviceUid != null))
+                {
+                    if (cacheByDevice.TryGetValue(vehicle.DeviceUid!, out var cached))
+                    {
+                        // Only use cache if it's more recent than DB position
+                        if (vehicle.LastPosition == null || cached.CachedAt > vehicle.LastPosition.RecordedAt)
+                        {
+                            // Update with cached data using Application DTO
+                            var updatedPosition = new GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions.PositionDto(
+                                0, // ID not available from cache
+                                cached.Latitude,
+                                cached.Longitude,
+                                cached.IgnitionOn ? Math.Round(cached.SpeedKph) : 0,
+                                cached.HeadingDeg,
+                                cached.IgnitionOn,
+                                cached.RecordedAt,
+                                cached.FuelRaw,
+                                null, // Temperature not in cache
+                                null, // Battery not in cache
+                                null, // Address not in cache
+                                null  // Odometer not in cache
+                            );
+                            
+                            // Create updated vehicle with cached position
+                            var idx = vehicles.IndexOf(vehicle);
+                            if (vehicle.Stats != null)
+                            {
+                                vehicles[idx] = vehicle with { 
+                                    LastPosition = updatedPosition,
+                                    Stats = vehicle.Stats with {
+                                        CurrentSpeed = cached.IgnitionOn ? Math.Round(cached.SpeedKph) : 0,
+                                        IsMoving = cached.IgnitionOn && cached.SpeedKph > 5,
+                                        IsStopped = !cached.IgnitionOn || cached.SpeedKph <= 5
+                                    }
+                                };
+                            }
+                            else
+                            {
+                                vehicles[idx] = vehicle with { LastPosition = updatedPosition };
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        return Ok(vehicles);
     }
 
     [HttpPost("{id}/sync-mileage")]

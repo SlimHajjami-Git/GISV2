@@ -27,6 +27,7 @@ impl TelemetryEventPublisher for TelemetryPublisher {
             "device_uid": device_uid,
             "protocol": protocol,
             "recorded_at": frame.recorded_at.and_utc().to_rfc3339(),
+            "ingested_at": chrono::Utc::now().to_rfc3339(),
             "latitude": frame.latitude,
             "longitude": frame.longitude,
             "speed_kph": frame.speed_kph,

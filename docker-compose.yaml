@@ -36,6 +36,21 @@ services:
       - "5673:5672"
       - "15673:15672"
 
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+
   gps-ingest:
     build:
       context: ./services/gps-ingest-rust
@@ -52,6 +67,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/gis_v2
@@ -61,6 +78,7 @@ services:
       RABBITMQ_PASSWORD: guest
       RABBITMQ_EXCHANGE: telemetry.raw
       RABBITMQ_ROUTING_KEY: hh
+      REDIS_URL: redis://redis:6379
       API_PORT: 3000
       NOMINATIM_URL: http://nominatim:8080
     ports:
@@ -86,6 +104,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=gis_v2;Username=postgres;Password=postgres"
@@ -105,6 +125,7 @@ services:
       RabbitMQ__AlertsExchange: "gis.alerts"
       RabbitMQ__GpsPositionsQueue: "gis.gps.positions"
       RabbitMQ__AlertsQueue: "gis.alerts.notifications"
+      Redis__ConnectionString: "redis:6379"
     ports:
       - "5000:5000"
     restart: unless-stopped
@@ -180,3 +201,4 @@ services:
 volumes:
   pgdata:
   nominatim-data:
+  redis-data:
