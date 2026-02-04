@@ -840,9 +840,13 @@
                       } @else if (selectedTemplate?.type === 'costs') {
                         <th>Véhicule</th>
                         <th>Date</th>
-                        <th>Type</th>
+                        <th>Référence</th>
                         <th>Description</th>
-                        <th>Montant</th>
+                        <th>Fournisseur</th>
+                        <th>Main d'oeuvre</th>
+                        <th>Pièces</th>
+                        <th>Total</th>
+                        <th>Statut</th>
                       } @else if (selectedTemplate?.type === 'maintenance') {
                         <th>Véhicule</th>
                         <th>Date</th>
@@ -975,9 +979,13 @@
                         } @else if (selectedTemplate?.type === 'costs') {
                           <td class="vehicle-cell">{{ row.vehicleName }}</td>
                           <td class="time-cell">{{ row.date }}</td>
-                          <td class="type-cell">{{ row.type }}</td>
+                          <td class="reference-cell">{{ row.reference }}</td>
                           <td class="description-cell">{{ row.description }}</td>
-                          <td class="amount-cell">{{ row.amountFormatted }}</td>
+                          <td class="supplier-cell">{{ row.supplierName }}</td>
+                          <td class="amount-cell">{{ row.laborCostFormatted }}</td>
+                          <td class="amount-cell">{{ row.partsCostFormatted }}</td>
+                          <td class="amount-cell total-cost">{{ row.totalCostFormatted }}</td>
+                          <td class="status-cell">{{ row.status }}</td>
                         } @else if (selectedTemplate?.type === 'maintenance') {
                           <td class="vehicle-cell">{{ row.vehicleName }}</td>
                           <td class="time-cell">{{ row.date }}</td>

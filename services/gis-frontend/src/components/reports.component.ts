@@ -114,10 +114,10 @@ export class ReportsComponent implements OnInit {
     },
     {
       id: '6',
-      name: 'Coûts véhicules',
+      name: 'Réparations véhicules',
       type: 'costs',
-      icon: '�',
-      description: 'Dépenses par véhicule',
+      icon: '🔩',
+      description: 'Historique des réparations',
       category: 'costs'
     },
     {
@@ -4295,15 +4295,20 @@ export class ReportsComponent implements OnInit {
 
   Object = Object;
 
-  // ==================== COSTS REPORT ====================
+  // ==================== REPAIRS REPORT (Coûts véhicules) ====================
   
   executeCostsReport(vehicleId?: number, startDate?: Date, endDate?: Date) {
     this.loading = true;
     
-    this.apiService.getCosts({ vehicleId, startDate, endDate }).subscribe({
-      next: (costs) => {
+    const options: any = {};
+    if (vehicleId) options.vehicleId = vehicleId;
+    if (startDate) options.fromDate = startDate.toISOString().split('T')[0];
+    if (endDate) options.toDate = endDate.toISOString().split('T')[0];
+    
+    this.apiService.getRepairs(options).subscribe({
+      next: (result) => {
         this.ngZone.run(() => {
-          this.processCostsReport(costs);
+          this.processRepairsReport(result.items || []);
           this.reportGenerated = true;
           this.loading = false;
           this.activeTab = 'table';
@@ -4313,11 +4318,11 @@ export class ReportsComponent implements OnInit {
         });
       },
       error: (error) => {
-        console.error('Error loading costs:', error);
+        console.error('Error loading repairs:', error);
         this.ngZone.run(() => {
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger les coûts' };
+          this.statisticsData = { 'Erreur': 'Impossible de charger les réparations' };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -4326,44 +4331,52 @@ export class ReportsComponent implements OnInit {
     });
   }
 
-  processCostsReport(costs: any[]) {
-    if (!costs || costs.length === 0) {
+  processRepairsReport(repairs: any[]) {
+    if (!repairs || repairs.length === 0) {
       this.tableData = [];
       this.chartData = [];
-      this.statisticsData = { 'Information': 'Aucun coût enregistré pour cette période' };
+      this.statisticsData = { 'Information': 'Aucune réparation enregistrée pour cette période' };
       return;
     }
 
     // Sort by date descending
-    costs.sort((a, b) => new Date(b.date || b.createdAt).getTime() - new Date(a.date || a.createdAt).getTime());
+    repairs.sort((a, b) => new Date(b.repairDate).getTime() - new Date(a.repairDate).getTime());
 
     // Build vehicle name map
     const vehicleMap = new Map<number, string>();
     this.vehicles.forEach(v => vehicleMap.set(v.id, v.name || v.plateNumber || `Véhicule ${v.id}`));
 
     // Process table data
-    this.tableData = costs.map(cost => {
-      const vehicleName = vehicleMap.get(cost.vehicleId) || `Véhicule ${cost.vehicleId}`;
+    this.tableData = repairs.map(repair => {
+      const vehicleName = repair.vehicleName || vehicleMap.get(repair.vehicleId) || `Véhicule ${repair.vehicleId}`;
       return {
         vehicleName: vehicleName,
-        vehicleId: cost.vehicleId,
-        date: this.formatDateTime(cost.date || cost.createdAt),
-        type: this.getCostTypeLabel(cost.type),
-        typeKey: cost.type,
-        description: cost.description || '-',
-        amount: cost.amount || 0,
-        amountFormatted: this.formatCurrency(cost.amount || 0)
+        vehicleId: repair.vehicleId,
+        date: this.formatDateTime(repair.repairDate),
+        reference: repair.reference || '-',
+        description: repair.description || '-',
+        supplierName: repair.supplierName || '-',
+        laborCost: repair.laborCost || 0,
+        laborCostFormatted: this.formatCurrency(repair.laborCost || 0),
+        partsCost: repair.partsCost || 0,
+        partsCostFormatted: this.formatCurrency(repair.partsCost || 0),
+        totalCost: repair.totalCost || 0,
+        totalCostFormatted: this.formatCurrency(repair.totalCost || 0),
+        status: this.getRepairStatusLabel(repair.status),
+        statusKey: repair.status,
+        mileage: repair.mileageAtRepair ? `${repair.mileageAtRepair.toLocaleString('fr-FR')} km` : '-',
+        invoiceNumber: repair.invoiceNumber || '-'
       };
     });
 
-    // Chart data - group by type
-    const byType: { [key: string]: number } = {};
-    costs.forEach(cost => {
-      const typeLabel = this.getCostTypeLabel(cost.type);
-      byType[typeLabel] = (byType[typeLabel] || 0) + (cost.amount || 0);
+    // Chart data - group by status
+    const byStatus: { [key: string]: number } = {};
+    repairs.forEach(repair => {
+      const statusLabel = this.getRepairStatusLabel(repair.status);
+      byStatus[statusLabel] = (byStatus[statusLabel] || 0) + 1;
     });
 
-    this.chartData = Object.entries(byType)
+    this.chartData = Object.entries(byStatus)
       .sort((a, b) => b[1] - a[1])
       .map(([label, value], index) => ({
         label,
@@ -4371,14 +4384,14 @@ export class ReportsComponent implements OnInit {
         color: this.chartColors[index % this.chartColors.length]
       }));
 
-    // Secondary chart - by vehicle
-    const byVehicle: { [key: string]: number } = {};
-    costs.forEach(cost => {
-      const vehicleName = vehicleMap.get(cost.vehicleId) || `Véhicule ${cost.vehicleId}`;
-      byVehicle[vehicleName] = (byVehicle[vehicleName] || 0) + (cost.amount || 0);
+    // Secondary chart - costs by vehicle
+    const costsByVehicle: { [key: string]: number } = {};
+    repairs.forEach(repair => {
+      const vehicleName = repair.vehicleName || vehicleMap.get(repair.vehicleId) || `Véhicule ${repair.vehicleId}`;
+      costsByVehicle[vehicleName] = (costsByVehicle[vehicleName] || 0) + (repair.totalCost || 0);
     });
 
-    this.secondaryChartData = Object.entries(byVehicle)
+    this.secondaryChartData = Object.entries(costsByVehicle)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
       .map(([label, value], index) => ({
@@ -4388,33 +4401,32 @@ export class ReportsComponent implements OnInit {
       }));
 
     // Statistics
-    const totalAmount = costs.reduce((sum, c) => sum + (c.amount || 0), 0);
-    const fuelCosts = costs.filter(c => c.type === 'fuel').reduce((sum, c) => sum + (c.amount || 0), 0);
-    const maintenanceCosts = costs.filter(c => c.type === 'maintenance').reduce((sum, c) => sum + (c.amount || 0), 0);
-    const otherCosts = totalAmount - fuelCosts - maintenanceCosts;
+    const totalCost = repairs.reduce((sum, r) => sum + (r.totalCost || 0), 0);
+    const totalLaborCost = repairs.reduce((sum, r) => sum + (r.laborCost || 0), 0);
+    const totalPartsCost = repairs.reduce((sum, r) => sum + (r.partsCost || 0), 0);
+    const completedCount = repairs.filter(r => r.status === 'completed' || r.status === 'done').length;
+    const pendingCount = repairs.filter(r => r.status === 'pending' || r.status === 'in_progress').length;
 
     this.statisticsData = {
-      'Total coûts': this.formatCurrency(totalAmount),
-      'Nombre entrées': costs.length.toString(),
-      '⛽ Carburant': this.formatCurrency(fuelCosts),
-      '🔧 Maintenance': this.formatCurrency(maintenanceCosts),
-      '📦 Autres': this.formatCurrency(otherCosts),
-      'Véhicules': new Set(costs.map(c => c.vehicleId)).size.toString()
+      'Total réparations': repairs.length.toString(),
+      'Coût total': this.formatCurrency(totalCost),
+      '🔧 Main d\'oeuvre': this.formatCurrency(totalLaborCost),
+      '📦 Pièces': this.formatCurrency(totalPartsCost),
+      '✅ Complétées': completedCount.toString(),
+      '⏳ En cours': pendingCount.toString(),
+      'Véhicules': new Set(repairs.map(r => r.vehicleId)).size.toString()
     };
   }
 
-  getCostTypeLabel(type: string): string {
-    const types: { [key: string]: string } = {
-      'fuel': '⛽ Carburant',
-      'maintenance': '🔧 Maintenance',
-      'insurance': '🛡️ Assurance',
-      'tax': '📋 Taxes',
-      'toll': '🛣️ Péages',
-      'parking': '🅿️ Parking',
-      'fine': '⚠️ Amendes',
-      'other': '📦 Autres'
+  getRepairStatusLabel(status: string): string {
+    const statuses: { [key: string]: string } = {
+      'pending': '⏳ En attente',
+      'in_progress': '🔄 En cours',
+      'completed': '✅ Complétée',
+      'done': '✅ Complétée',
+      'cancelled': '❌ Annulée'
     };
-    return types[type] || type || '📦 Autres';
+    return statuses[status] || status || '⏳ En attente';
   }
 
   // ==================== MAINTENANCE REPORT ====================
