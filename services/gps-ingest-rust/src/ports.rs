@@ -26,6 +26,9 @@ pub trait TelemetryStore: Send + Sync {
     /// Get device mat (GPS identifier) from device_id
     async fn get_device_mat(&self, device_id: i32) -> anyhow::Result<Option<String>>;
 
+    /// Get device_uid (IMEI) from MAT prefix
+    async fn get_device_uid_by_mat(&self, mat: &str) -> anyhow::Result<Option<String>>;
+
     /// Insert a completed vehicle stop
     async fn insert_vehicle_stop(&self, stop: &CompletedStop, vehicle_id: Option<i32>, company_id: i32) -> anyhow::Result<i64>;
 

@@ -281,18 +281,56 @@ async fn process_single_frame(
                 }
                 info!(protocol, imei, "Registered device via info frame");
             } else {
-                let mut frame = telemetry::hh::parse_frame(frame_str)?;
+                // Try to extract MAT prefix from frame (format: "NR08G0664 AA23...")
+                let (mat_prefix, actual_frame) = extract_mat_prefix(frame_str);
+                
+                let mut frame = telemetry::hh::parse_frame(actual_frame)?;
+                
+                // Try to resolve device UID in order of priority:
+                // 1. From connection map (learned from AA01/HH01)
+                // 2. From MAT prefix (lookup in database)
                 let resolved_uid = if let Some(peer) = peer_addr {
                     let map = connection_map.lock().await;
-                    map.get(peer)
-                        .cloned()
-                        .unwrap_or_else(|| {
-                            warn!(%peer, "No learned IMEI for connection; using placeholder");
-                            "UNKNOWN_DEVICE".to_string()
-                        })
+                    if let Some(uid) = map.get(peer).cloned() {
+                        Some(uid)
+                    } else if let Some(mat) = &mat_prefix {
+                        // Try to find device by MAT in database
+                        drop(map); // Release lock before async call
+                        match database.get_device_uid_by_mat(mat).await {
+                            Ok(Some(uid)) => {
+                                info!(mat = %mat, imei = %uid, "Resolved device via MAT prefix");
+                                // Store in connection map for future frames
+                                let mut map = connection_map.lock().await;
+                                map.insert(peer.to_string(), uid.clone());
+                                Some(uid)
+                            }
+                            Ok(None) => {
+                                warn!(mat = %mat, "MAT prefix found but no device in database");
+                                None
+                            }
+                            Err(e) => {
+                                warn!(mat = %mat, error = %e, "Error looking up device by MAT");
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    }
                 } else {
-                    warn!("No device UID available; using placeholder");
-                    "UNKNOWN_DEVICE".to_string()
+                    None
+                };
+
+                // Skip frames without known IMEI
+                let resolved_uid = match resolved_uid {
+                    Some(uid) => uid,
+                    None => {
+                        if let Some(peer) = peer_addr {
+                            warn!(%peer, mat = ?mat_prefix, "Dropping frame - no IMEI learned and no valid MAT prefix");
+                        } else {
+                            warn!("Dropping frame - no device UID available");
+                        }
+                        return Ok(());
+                    }
                 };
 
                 let event_key = format!(
@@ -756,6 +794,20 @@ fn extract_frames_smart(payload: &str) -> Vec<String> {
     }
     
     frames
+}
+
+/// Extract MAT prefix from frame if present (format: "NR08G0664 AA23...")
+/// Returns (Some(mat), remaining_frame) if prefix found, (None, original_frame) otherwise
+fn extract_mat_prefix(frame: &str) -> (Option<String>, &str) {
+    // Look for space followed by AA or HH
+    if let Some(pos) = frame.find(" AA").or_else(|| frame.find(" HH")) {
+        let prefix = frame[..pos].trim();
+        // MAT should be alphanumeric, typically 9-10 chars like "NR08G0664"
+        if !prefix.is_empty() && prefix.len() <= 15 && prefix.chars().all(|c| c.is_alphanumeric()) {
+            return (Some(prefix.to_string()), &frame[pos + 1..]);
+        }
+    }
+    (None, frame)
 }
 
 /// Check if a frame has the expected minimum length based on its header
