@@ -767,7 +767,13 @@ fn extract_frames_smart(payload: &str) -> Vec<String> {
     let mut current_frame: Option<String> = None;
     
     for line in lines {
-        if line.starts_with("AA") || line.starts_with("HH") {
+        // Check if line is a valid frame start:
+        // - Starts with AA/HH (standard frame)
+        // - Contains " AA" or " HH" (frame with MAT prefix like "NR08G0658 AA00...")
+        let is_frame_start = line.starts_with("AA") || line.starts_with("HH") ||
+            line.contains(" AA") || line.contains(" HH");
+        
+        if is_frame_start {
             // Save previous frame if complete
             if let Some(frame) = current_frame.take() {
                 if is_frame_complete(&frame) {
@@ -812,30 +818,42 @@ fn extract_mat_prefix(frame: &str) -> (Option<String>, &str) {
 
 /// Check if a frame has the expected minimum length based on its header
 fn is_frame_complete(frame: &str) -> bool {
-    // HH01 info frames - variable length, must contain IMEI
-    if frame.starts_with("HH01") {
+    // Handle frames with MAT prefix (e.g., "NR08G0658 AA00...")
+    // Extract the actual frame part after MAT prefix
+    let actual_frame = if let Some(pos) = frame.find(" AA").or_else(|| frame.find(" HH")) {
+        &frame[pos + 1..]
+    } else {
+        frame
+    };
+    
+    // HH01/AA01 info frames - variable length, must contain IMEI
+    if actual_frame.starts_with("HH01") || actual_frame.starts_with("AA01") {
+        return frame.contains("IMEI:");
+    }
+    // AA00/HH00 connect frames - variable length, must contain IMEI
+    if actual_frame.starts_with("AA00") || actual_frame.starts_with("HH00") {
         return frame.contains("IMEI:");
     }
     // HH data frames (HH13, etc.) - minimum 74 chars
-    if frame.starts_with("HH") {
-        return frame.len() >= 74;
+    if actual_frame.starts_with("HH") {
+        return actual_frame.len() >= 74;
     }
     // AA system frames (AA02, AA03, AA06, AA07) - any length OK
-    if frame.starts_with("AA02") || frame.starts_with("AA03") || 
-       frame.starts_with("AA06") || frame.starts_with("AA07") {
+    if actual_frame.starts_with("AA02") || actual_frame.starts_with("AA03") || 
+       actual_frame.starts_with("AA06") || actual_frame.starts_with("AA07") {
         return true;
     }
     // AA23 history frames - minimum 74 chars
-    if frame.starts_with("AA23") {
-        return frame.len() >= 74;
+    if actual_frame.starts_with("AA23") {
+        return actual_frame.len() >= 74;
     }
     // AA33 realtime frames - minimum 78 chars (can be longer with FMS)
-    if frame.starts_with("AA33") {
-        return frame.len() >= 78;
+    if actual_frame.starts_with("AA33") {
+        return actual_frame.len() >= 78;
     }
     // Generic AA frames - minimum 74 chars
-    if frame.starts_with("AA") {
-        return frame.len() >= 70;
+    if actual_frame.starts_with("AA") {
+        return actual_frame.len() >= 70;
     }
     false
 }
