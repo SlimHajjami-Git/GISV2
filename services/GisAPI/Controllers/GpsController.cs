@@ -225,12 +225,18 @@ public class GpsController : ControllerBase
     /// <summary>
     /// Get position history for a vehicle (for playback/route display)
     /// </summary>
+    /// <param name="vehicleId">Vehicle ID</param>
+    /// <param name="from">Start date (default: 24h ago)</param>
+    /// <param name="to">End date (default: now)</param>
+    /// <param name="limit">Max positions to return (default: 10000)</param>
+    /// <param name="filterDrift">Filter GPS drift when vehicle is stationary (speed &lt; 3 km/h, distance &lt; 15m)</param>
     [HttpGet("vehicles/{vehicleId}/history")]
     public async Task<ActionResult<List<PositionDto>>> GetVehicleHistory(
         int vehicleId,
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
-        [FromQuery] int limit = 10000)
+        [FromQuery] int limit = 10000,
+        [FromQuery] bool filterDrift = true)
     {
         var companyId = GetCompanyId();
 
@@ -251,7 +257,7 @@ public class GpsController : ControllerBase
         var adjustedFrom = from.Value.AddHours(1);
         var adjustedTo = to.Value.AddHours(1);
 
-        var positions = await _context.GpsPositions
+        var rawPositions = await _context.GpsPositions
             .Where(p => p.DeviceId == vehicle.GpsDeviceId &&
                         p.RecordedAt >= adjustedFrom &&
                         p.RecordedAt <= adjustedTo)
@@ -275,7 +281,49 @@ public class GpsController : ControllerBase
             })
             .ToListAsync();
 
-        return Ok(positions);
+        if (!filterDrift || rawPositions.Count < 2)
+            return Ok(rawPositions);
+
+        // Filter GPS drift: remove consecutive points within 15m when speed < 3 km/h
+        var filtered = new List<PositionDto> { rawPositions[0] };
+        
+        for (int i = 1; i < rawPositions.Count; i++)
+        {
+            var prev = filtered[^1]; // Last kept position
+            var curr = rawPositions[i];
+            
+            var prevSpeed = prev.SpeedKph ?? 0;
+            var currSpeed = curr.SpeedKph ?? 0;
+            
+            // If both points are stationary (speed < 3), check distance
+            if (prevSpeed < 3 && currSpeed < 3)
+            {
+                var distance = CalculateDistance(prev.Latitude, prev.Longitude, curr.Latitude, curr.Longitude);
+                
+                // Skip if within 15m (GPS drift)
+                if (distance < 15)
+                    continue;
+            }
+            
+            filtered.Add(curr);
+        }
+
+        return Ok(filtered);
+    }
+    
+    /// <summary>
+    /// Calculate distance between two coordinates in meters (Haversine formula)
+    /// </summary>
+    private static double CalculateDistance(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double R = 6371000; // Earth radius in meters
+        var dLat = (lat2 - lat1) * Math.PI / 180;
+        var dLon = (lon2 - lon1) * Math.PI / 180;
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180) *
+                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+        return R * c;
     }
 
     /// <summary>

@@ -83,6 +83,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Ignition-off anchor position: when ignition is off, all positions use this anchor
   private ignitionOffAnchor: { latitude: number; longitude: number } | null = null;
   
+  // Stopped anchor position: when ignition is on but speed < 3 km/h, anchor to prevent GPS drift
+  private stoppedAnchor: { latitude: number; longitude: number } | null = null;
+  
   // OSRM matched route for the entire trace (batch matched)
   private matchedRouteCoords: L.LatLng[] = [];
   private matchedRouteIndex: number = 0;
@@ -1530,9 +1533,34 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       console.log('Ignition ON - releasing anchor');
       this.ignitionOffAnchor = null;
     } else {
-      // Ignition is ON - clear any existing anchor
+      // Ignition is ON - clear any existing ignition anchor
       if (this.ignitionOffAnchor) {
         this.ignitionOffAnchor = null;
+      }
+      
+      // ===== STOPPED VEHICLE HANDLING (ignition ON, speed < 3 km/h) =====
+      // Anchor position to prevent GPS drift when vehicle is stopped but engine running
+      const currentSpeed = fromPos.speedKph || fromPos.speed || 0;
+      
+      if (currentSpeed < 3) {
+        // Set anchor to first stopped position (if not already set)
+        if (!this.stoppedAnchor) {
+          this.stoppedAnchor = {
+            latitude: fromPos.latitude,
+            longitude: fromPos.longitude
+          };
+          console.log('Vehicle STOPPED (speed < 3) - anchoring position at:', this.stoppedAnchor);
+        }
+        
+        // Override current position with anchor to eliminate GPS drift
+        fromPos.latitude = this.stoppedAnchor.latitude;
+        fromPos.longitude = this.stoppedAnchor.longitude;
+      } else {
+        // Vehicle is moving (speed >= 3) - clear stopped anchor
+        if (this.stoppedAnchor) {
+          console.log('Vehicle MOVING (speed >= 3) - releasing stopped anchor');
+          this.stoppedAnchor = null;
+        }
       }
     }
     
@@ -1597,8 +1625,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   private async fetchOSRMRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
     try {
       const coordsStr = `${fromPos.longitude},${fromPos.latitude};${toPos.longitude},${toPos.latitude}`;
-      // Use OSRM Match API for 2 points - better than route for GPS traces
-      const url = `/api/osrm/match/v1/driving/${coordsStr}?overview=full&geometries=geojson&gaps=ignore`;
+      // Use OSRM Match API with radiuses=50m to snap off-road points back to roads
+      const url = `/api/osrm/match/v1/driving/${coordsStr}?overview=full&geometries=geojson&gaps=ignore&radiuses=50;50`;
       
       const response = await fetch(url);
       if (!response.ok) throw new Error(`OSRM error: ${response.status}`);
@@ -1898,9 +1926,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   private async drawRoutedSegment(fromPos: any, toPos: any, color: string) {
     if (!this.map) return;
     
-    // Use OSRM Match API for better GPS trace matching
+    // Use OSRM Match API with radiuses parameter to snap points to roads
+    // radiuses=50 means search within 50m of each GPS point for a road
     const coordsStr = `${fromPos.longitude},${fromPos.latitude};${toPos.longitude},${toPos.latitude}`;
-    const url = `/api/osrm/match/v1/driving/${coordsStr}?overview=full&geometries=geojson&gaps=ignore`;
+    const url = `/api/osrm/match/v1/driving/${coordsStr}?overview=full&geometries=geojson&gaps=ignore&radiuses=50;50`;
 
     try {
       const response = await fetch(url);
@@ -1927,8 +1956,18 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
         this.progressivePolylines.push(segment);
         
-        // Add a small point marker at the destination
-        const pointMarker = L.circleMarker([toPos.latitude, toPos.longitude], {
+        // Use OSRM tracepoints for snapped marker position (corrected to be on road)
+        // tracepoints[1] is the destination point snapped to road
+        let markerLat = toPos.latitude;
+        let markerLng = toPos.longitude;
+        
+        if (data.tracepoints?.[1]?.location) {
+          // OSRM returns [lon, lat] format
+          markerLng = data.tracepoints[1].location[0];
+          markerLat = data.tracepoints[1].location[1];
+        }
+        
+        const pointMarker = L.circleMarker([markerLat, markerLng], {
           radius: 4,
           fillColor: color,
           color: '#ffffff',
@@ -2013,6 +2052,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     
     // Reset anchors
     this.ignitionOffAnchor = null;
+    this.stoppedAnchor = null;
     this.matchedRouteCoords = [];
     this.matchedRouteIndex = 0;
     
@@ -2149,6 +2189,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     
     // Reset anchors
     this.ignitionOffAnchor = null;
+    this.stoppedAnchor = null;
     this.matchedRouteCoords = [];
     this.matchedRouteIndex = 0;
 
