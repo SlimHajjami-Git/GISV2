@@ -83,8 +83,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Ignition-off anchor position: when ignition is off, all positions use this anchor
   private ignitionOffAnchor: { latitude: number; longitude: number } | null = null;
   
-  // Stopped anchor position: when ignition is on but speed < 5, all positions use this anchor
-  private stoppedAnchor: { latitude: number; longitude: number } | null = null;
+  // OSRM matched route for the entire trace (batch matched)
+  private matchedRouteCoords: L.LatLng[] = [];
+  private matchedRouteIndex: number = 0;
   
   // Live marker visibility during playback
   hiddenLiveMarkers: Map<string, L.Marker> = new Map(); // Store ALL hidden live markers during playback
@@ -1535,52 +1536,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     }
     
-    // ===== STOPPED VEHICLE HANDLING (ignition ON, speed < 5) =====
-    // When ignition is on but speed < 5, ANCHOR to first stopped position
-    // All subsequent positions are overwritten with the anchor position until speed > 5
-    if (currentSpeed < 5 && ignitionOn) {
-      // Set anchor to first stopped position (if not already set)
-      if (!this.stoppedAnchor) {
-        this.stoppedAnchor = {
-          latitude: fromPos.latitude,
-          longitude: fromPos.longitude
-        };
-        console.log('Vehicle STOPPED (speed < 5) - anchoring position at:', this.stoppedAnchor);
-      }
-      
-      // Override current position with anchor
-      fromPos.latitude = this.stoppedAnchor.latitude;
-      fromPos.longitude = this.stoppedAnchor.longitude;
-      
-      // Update marker at anchor position
-      this.updatePlaybackMarker();
-      
-      // Check if next position has speed > 5
-      const nextSpeed = toPos.speedKph || toPos.speed || 0;
-      
-      if (nextSpeed <= 5) {
-        // Still stopped - continue looping at anchor position
-        this.ngZone.run(() => {
-          this.playbackIndex++;
-          this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
-          this.cdr.detectChanges();
-          // Fast forward through stationary period
-          setTimeout(() => this.animateToNextPoint(), 100 / this.playbackSpeed);
-        });
-        return;
-      }
-      
-      // Vehicle just started moving (speed > 5) - clear anchor and continue
-      console.log('Vehicle MOVING (speed > 5) - releasing anchor');
-      this.stoppedAnchor = null;
-    } else {
-      // Vehicle is moving (speed >= 5) - clear any existing anchor
-      if (this.stoppedAnchor) {
-        this.stoppedAnchor = null;
-      }
-    }
-    
-    // ===== NORMAL MOVING VEHICLE =====
+    // ===== NORMAL VEHICLE MOVEMENT =====
     // Fetch OSRM route for smooth road-following animation
     this.currentRouteCoords = await this.fetchOSRMRoute(fromPos, toPos);
     this.routeAnimationIndex = 0;
@@ -1606,37 +1562,56 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.animateFrame();
   }
 
-  // Fetch OSRM route between two GPS points
-  private async fetchOSRMRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
-    // Calculate distance between points
-    const distance = this.calculateDistance(
-      fromPos.latitude, fromPos.longitude,
-      toPos.latitude, toPos.longitude
-    );
-    
-    // Skip OSRM for very short distances (< 15m) - return single point
-    // This prevents erratic routing for stationary vehicles with GPS noise
-    if (distance < 15) {
-      return [L.latLng(toPos.latitude, toPos.longitude)];
+  // Fetch OSRM match for multiple GPS points (batch approach for better accuracy)
+  private async fetchOSRMMatch(positions: any[]): Promise<L.LatLng[]> {
+    if (positions.length < 2) {
+      return positions.map(p => L.latLng(p.latitude, p.longitude));
     }
     
     try {
+      // Build coordinates string for OSRM Match API
+      const coordsStr = positions.map(p => `${p.longitude},${p.latitude}`).join(';');
+      
+      // Use OSRM Match API - designed for GPS trace matching
+      const url = `/api/osrm/match/v1/driving/${coordsStr}?overview=full&geometries=geojson&gaps=ignore`;
+      
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`OSRM Match error: ${response.status}`);
+      
+      const data = await response.json();
+      
+      if (data.code === 'Ok' && data.matchings?.[0]?.geometry?.coordinates) {
+        return data.matchings[0].geometry.coordinates.map(
+          (c: number[]) => L.latLng(c[1], c[0])
+        );
+      }
+    } catch (error) {
+      console.warn('OSRM Match failed, using raw GPS points:', error);
+    }
+    
+    // Fallback to raw GPS points if OSRM fails
+    return positions.map(p => L.latLng(p.latitude, p.longitude));
+  }
+
+  // Fetch OSRM route between two GPS points (used during animation)
+  private async fetchOSRMRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
+    try {
       const coordsStr = `${fromPos.longitude},${fromPos.latitude};${toPos.longitude},${toPos.latitude}`;
-      // OSRM without bearings - let it find the best route
-      const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
+      // Use OSRM Match API for 2 points - better than route for GPS traces
+      const url = `/api/osrm/match/v1/driving/${coordsStr}?overview=full&geometries=geojson&gaps=ignore`;
       
       const response = await fetch(url);
       if (!response.ok) throw new Error(`OSRM error: ${response.status}`);
       
       const data = await response.json();
       
-      if (data.code === 'Ok' && data.routes?.[0]?.geometry?.coordinates) {
-        return data.routes[0].geometry.coordinates.map(
+      if (data.code === 'Ok' && data.matchings?.[0]?.geometry?.coordinates) {
+        return data.matchings[0].geometry.coordinates.map(
           (c: number[]) => L.latLng(c[1], c[0])
         );
       }
     } catch (error) {
-      console.warn('OSRM route fetch failed, using straight line:', error);
+      console.warn('OSRM match fetch failed, using straight line:', error);
     }
     
     // Fallback to straight line if OSRM fails
@@ -1919,49 +1894,26 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     ));
   }
 
-  // Draw a road-snapped segment between two consecutive points using OSRM
+  // Draw a road-snapped segment between two consecutive points using OSRM Match API
   private async drawRoutedSegment(fromPos: any, toPos: any, color: string) {
     if (!this.map) return;
     
-    // Calculate distance between points
-    const distance = this.calculateDistance(
-      fromPos.latitude, fromPos.longitude,
-      toPos.latitude, toPos.longitude
-    );
-    
-    // Skip OSRM for very short distances (< 15m) - just draw a point
-    // This prevents erratic routing for stationary vehicles with GPS noise
-    if (distance < 15) {
-      // Just add a point marker, no route line needed
-      const pointMarker = L.circleMarker([toPos.latitude, toPos.longitude], {
-        radius: 4,
-        fillColor: color,
-        color: '#ffffff',
-        weight: 2,
-        opacity: 1,
-        fillOpacity: 0.9
-      }).addTo(this.map);
-      this.pointMarkers.push(pointMarker);
-      return;
-    }
-    
-    // OSRM API expects lon,lat format
+    // Use OSRM Match API for better GPS trace matching
     const coordsStr = `${fromPos.longitude},${fromPos.latitude};${toPos.longitude},${toPos.latitude}`;
-    // OSRM without bearings - let it find the best route
-    const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
+    const url = `/api/osrm/match/v1/driving/${coordsStr}?overview=full&geometries=geojson&gaps=ignore`;
 
     try {
       const response = await fetch(url);
       
       if (!response.ok) {
-        throw new Error(`OSRM API error: ${response.status}`);
+        throw new Error(`OSRM Match API error: ${response.status}`);
       }
 
       const data = await response.json();
       
-      if (data.code === 'Ok' && data.routes && data.routes[0] && data.routes[0].geometry) {
+      if (data.code === 'Ok' && data.matchings?.[0]?.geometry?.coordinates) {
         // Convert GeoJSON coordinates to Leaflet LatLng array
-        const routeCoords: L.LatLngExpression[] = data.routes[0].geometry.coordinates.map(
+        const routeCoords: L.LatLngExpression[] = data.matchings[0].geometry.coordinates.map(
           (c: number[]) => [c[1], c[0]] as L.LatLngExpression
         );
 
@@ -1987,11 +1939,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         
         this.pointMarkers.push(pointMarker);
       } else {
-        throw new Error('Invalid OSRM response');
+        throw new Error('Invalid OSRM Match response');
       }
     } catch (error) {
       // Fallback to straight line if OSRM fails
-      console.warn('OSRM segment routing failed, using straight line:', error);
+      console.warn('OSRM Match segment failed, using straight line:', error);
       this.drawStraightSegment(fromPos, toPos, color);
     }
   }
@@ -2061,7 +2013,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     
     // Reset anchors
     this.ignitionOffAnchor = null;
-    this.stoppedAnchor = null;
+    this.matchedRouteCoords = [];
+    this.matchedRouteIndex = 0;
     
     // Clear all progressive polylines and point markers
     this.progressivePolylines.forEach(polyline => polyline.remove());
@@ -2196,7 +2149,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     
     // Reset anchors
     this.ignitionOffAnchor = null;
-    this.stoppedAnchor = null;
+    this.matchedRouteCoords = [];
+    this.matchedRouteIndex = 0;
 
     // Restore the live marker that was hidden during playback
     this.restoreLiveMarker();
