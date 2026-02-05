@@ -76,7 +76,10 @@ impl Database {
             }
         }
 
-        // Gap filling: Check for missing frames and interpolate if needed
+        // Gap filling: DISABLED - Store raw GPS positions only (like GISV1)
+        // The interpolated positions were causing less accurate playback compared to raw data
+        // To re-enable, uncomment the code below
+        /*
         if let Some(last_pos) = self.fetch_last_position(device_id).await? {
             let new_time = DateTime::<Utc>::from_naive_utc_and_offset(frame.recorded_at, Utc);
             let last_time = DateTime::<Utc>::from_naive_utc_and_offset(last_pos.recorded_at, Utc);
@@ -110,6 +113,7 @@ impl Database {
                 }
             }
         }
+        */
 
         let _position_id = self.insert_position(device_id, frame, event_key).await?;
 

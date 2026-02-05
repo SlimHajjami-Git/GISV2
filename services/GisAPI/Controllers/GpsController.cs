@@ -236,7 +236,7 @@ public class GpsController : ControllerBase
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
         [FromQuery] int limit = 10000,
-        [FromQuery] bool filterDrift = true)
+        [FromQuery] bool filterDrift = false)
     {
         var companyId = GetCompanyId();
 

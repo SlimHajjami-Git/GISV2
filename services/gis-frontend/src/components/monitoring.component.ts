@@ -857,7 +857,6 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         this.isPlaybackLoaded = true;
         this.playbackIndex = 0;
         this.playbackProgress = 0;
-        this.playbackLoading = false;
 
         // Switch to satellite map for better playback visualization (like Wialon)
         if (this.mapStyle !== 'satellite') {
@@ -868,7 +867,13 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         // Hide the live marker of the selected vehicle during playback
         this.hideLiveMarker(vehicleId.toString());
 
-        // Draw the complete route polyline
+        // OSRM Match DISABLED - Use raw GPS coordinates like GISV1 for accurate playback
+        // This preserves the exact GPS positions without road-snapping modifications
+        this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
+        this.matchedRouteIndex = 0;
+        this.playbackLoading = false;
+        
+        // Draw the complete route polyline (straight lines between GPS points)
         this.drawPlaybackRoute();
         
         // Position the playback marker at start
@@ -877,7 +882,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         // Force change detection to update UI with new point count
         this.cdr.detectChanges();
         
-        console.log(`Playback loaded for vehicle ${vehicleId}: ${this.playbackPositions.length} points`);
+        console.log(`Playback loaded for vehicle ${vehicleId}: ${this.playbackPositions.length} GPS points (raw coordinates, no OSRM)`);
       },
       error: (err) => {
         console.error('Error loading playback data:', err);
@@ -1591,58 +1596,81 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   // Fetch OSRM match for multiple GPS points (batch approach for better accuracy)
-  private async fetchOSRMMatch(positions: any[]): Promise<L.LatLng[]> {
+  // This matches the entire trace at once so OSRM understands the full trajectory
+  private async fetchOSRMMatchBatch(positions: any[]): Promise<L.LatLng[]> {
     if (positions.length < 2) {
       return positions.map(p => L.latLng(p.latitude, p.longitude));
     }
     
-    try {
-      // Build coordinates string for OSRM Match API
-      const coordsStr = positions.map(p => `${p.longitude},${p.latitude}`).join(';');
+    // OSRM has a limit on URL length, so batch in chunks of 100 points
+    const BATCH_SIZE = 100;
+    const allCoords: L.LatLng[] = [];
+    
+    for (let i = 0; i < positions.length; i += BATCH_SIZE - 1) {
+      // Overlap by 1 point to ensure continuity between batches
+      const batch = positions.slice(i, i + BATCH_SIZE);
+      if (batch.length < 2) break;
       
-      // Use OSRM Match API - designed for GPS trace matching
-      const url = `/api/osrm/match/v1/driving/${coordsStr}?overview=full&geometries=geojson&gaps=ignore`;
-      
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`OSRM Match error: ${response.status}`);
-      
-      const data = await response.json();
-      
-      if (data.code === 'Ok' && data.matchings?.[0]?.geometry?.coordinates) {
-        return data.matchings[0].geometry.coordinates.map(
-          (c: number[]) => L.latLng(c[1], c[0])
-        );
+      try {
+        const coordsStr = batch.map(p => `${p.longitude},${p.latitude}`).join(';');
+        const radiuses = batch.map(() => '50').join(';');
+        
+        const url = `/api/osrm/match/v1/driving/${coordsStr}?overview=full&geometries=geojson&gaps=ignore&radiuses=${radiuses}`;
+        
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`OSRM Match error: ${response.status}`);
+        
+        const data = await response.json();
+        
+        if (data.code === 'Ok' && data.matchings) {
+          // Combine all matchings (there may be multiple if there are gaps)
+          for (const matching of data.matchings) {
+            if (matching.geometry?.coordinates) {
+              const coords = matching.geometry.coordinates.map(
+                (c: number[]) => L.latLng(c[1], c[0])
+              );
+              // Skip first point if not first batch to avoid duplicates
+              const startIdx = (i > 0 && allCoords.length > 0) ? 1 : 0;
+              allCoords.push(...coords.slice(startIdx));
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(`OSRM Match batch failed at index ${i}, using raw points:`, error);
+        // Fallback: add raw GPS points for this batch
+        const rawCoords = batch.map(p => L.latLng(p.latitude, p.longitude));
+        const startIdx = (i > 0 && allCoords.length > 0) ? 1 : 0;
+        allCoords.push(...rawCoords.slice(startIdx));
       }
-    } catch (error) {
-      console.warn('OSRM Match failed, using raw GPS points:', error);
     }
     
-    // Fallback to raw GPS points if OSRM fails
-    return positions.map(p => L.latLng(p.latitude, p.longitude));
+    if (allCoords.length === 0) {
+      return positions.map(p => L.latLng(p.latitude, p.longitude));
+    }
+    
+    console.log(`OSRM Batch Match: ${positions.length} GPS points -> ${allCoords.length} matched coords`);
+    return allCoords;
   }
 
-  // Fetch OSRM route between two GPS points (used during animation)
+  // Fetch route between two GPS points for animation (uses pre-matched coords if available)
   private async fetchOSRMRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
-    try {
-      const coordsStr = `${fromPos.longitude},${fromPos.latitude};${toPos.longitude},${toPos.latitude}`;
-      // Use OSRM Match API with radiuses=50m to snap off-road points back to roads
-      const url = `/api/osrm/match/v1/driving/${coordsStr}?overview=full&geometries=geojson&gaps=ignore&radiuses=50;50`;
+    // Use pre-matched coordinates if available (from batch OSRM Match)
+    if (this.matchedRouteCoords.length > 0) {
+      const fromLatLng = L.latLng(fromPos.latitude, fromPos.longitude);
+      const toLatLng = L.latLng(toPos.latitude, toPos.longitude);
       
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`OSRM error: ${response.status}`);
+      const startIdx = this.findClosestMatchedIndex(fromLatLng, this.matchedRouteIndex);
+      let endIdx = this.findClosestMatchedIndex(toLatLng, startIdx);
       
-      const data = await response.json();
+      if (endIdx <= startIdx) endIdx = Math.min(startIdx + 1, this.matchedRouteCoords.length - 1);
       
-      if (data.code === 'Ok' && data.matchings?.[0]?.geometry?.coordinates) {
-        return data.matchings[0].geometry.coordinates.map(
-          (c: number[]) => L.latLng(c[1], c[0])
-        );
+      const segment = this.matchedRouteCoords.slice(startIdx, endIdx + 1);
+      if (segment.length >= 2) {
+        return segment;
       }
-    } catch (error) {
-      console.warn('OSRM match fetch failed, using straight line:', error);
     }
     
-    // Fallback to straight line if OSRM fails
+    // Fallback to straight line
     return [
       L.latLng(fromPos.latitude, fromPos.longitude),
       L.latLng(toPos.latitude, toPos.longitude)
@@ -1922,52 +1950,42 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     ));
   }
 
-  // Draw a road-snapped segment between two consecutive points using OSRM Match API
-  private async drawRoutedSegment(fromPos: any, toPos: any, color: string) {
+  // Draw a road-snapped segment using pre-matched coordinates (from batch OSRM Match)
+  // This uses the matchedRouteCoords that were computed when playback loaded
+  private drawRoutedSegment(fromPos: any, toPos: any, color: string) {
     if (!this.map) return;
     
-    // Use OSRM Match API with radiuses parameter to snap points to roads
-    // radiuses=50 means search within 50m of each GPS point for a road
-    const coordsStr = `${fromPos.longitude},${fromPos.latitude};${toPos.longitude},${toPos.latitude}`;
-    const url = `/api/osrm/match/v1/driving/${coordsStr}?overview=full&geometries=geojson&gaps=ignore&radiuses=50;50`;
-
-    try {
-      const response = await fetch(url);
+    // If we have pre-matched coordinates, use them for accurate road-snapped drawing
+    if (this.matchedRouteCoords.length > 0) {
+      // Find the closest point in matchedRouteCoords to our current GPS position
+      const fromLatLng = L.latLng(fromPos.latitude, fromPos.longitude);
+      const toLatLng = L.latLng(toPos.latitude, toPos.longitude);
       
-      if (!response.ok) {
-        throw new Error(`OSRM Match API error: ${response.status}`);
-      }
-
-      const data = await response.json();
+      // Find start and end indices in the matched route
+      let startIdx = this.findClosestMatchedIndex(fromLatLng, this.matchedRouteIndex);
+      let endIdx = this.findClosestMatchedIndex(toLatLng, startIdx);
       
-      if (data.code === 'Ok' && data.matchings?.[0]?.geometry?.coordinates) {
-        // Convert GeoJSON coordinates to Leaflet LatLng array
-        const routeCoords: L.LatLngExpression[] = data.matchings[0].geometry.coordinates.map(
-          (c: number[]) => [c[1], c[0]] as L.LatLngExpression
-        );
-
-        const segment = L.polyline(routeCoords, {
+      // Ensure we move forward in the matched route
+      if (endIdx <= startIdx) endIdx = Math.min(startIdx + 1, this.matchedRouteCoords.length - 1);
+      
+      // Extract segment from pre-matched coordinates
+      const segmentCoords = this.matchedRouteCoords.slice(startIdx, endIdx + 1);
+      
+      if (segmentCoords.length >= 2) {
+        const segment = L.polyline(segmentCoords, {
           color: color,
           weight: 5,
           opacity: 0.9,
           lineCap: 'round',
           lineJoin: 'round'
         }).addTo(this.map!);
-
+        
         this.progressivePolylines.push(segment);
+        this.matchedRouteIndex = endIdx; // Update index for next segment
         
-        // Use OSRM tracepoints for snapped marker position (corrected to be on road)
-        // tracepoints[1] is the destination point snapped to road
-        let markerLat = toPos.latitude;
-        let markerLng = toPos.longitude;
-        
-        if (data.tracepoints?.[1]?.location) {
-          // OSRM returns [lon, lat] format
-          markerLng = data.tracepoints[1].location[0];
-          markerLat = data.tracepoints[1].location[1];
-        }
-        
-        const pointMarker = L.circleMarker([markerLat, markerLng], {
+        // Add point marker at the end of segment (on the matched route)
+        const endPoint = segmentCoords[segmentCoords.length - 1];
+        const pointMarker = L.circleMarker(endPoint, {
           radius: 4,
           fillColor: color,
           color: '#ffffff',
@@ -1977,14 +1995,33 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         }).addTo(this.map!);
         
         this.pointMarkers.push(pointMarker);
-      } else {
-        throw new Error('Invalid OSRM Match response');
+        return;
       }
-    } catch (error) {
-      // Fallback to straight line if OSRM fails
-      console.warn('OSRM Match segment failed, using straight line:', error);
-      this.drawStraightSegment(fromPos, toPos, color);
     }
+    
+    // Fallback to straight line if no matched coordinates
+    this.drawStraightSegment(fromPos, toPos, color);
+  }
+  
+  // Find the closest point index in matchedRouteCoords starting from a given index
+  private findClosestMatchedIndex(targetLatLng: L.LatLng, startFrom: number): number {
+    let closestIdx = startFrom;
+    let closestDist = Infinity;
+    
+    // Search within a reasonable range (not the entire array for performance)
+    const searchEnd = Math.min(startFrom + 200, this.matchedRouteCoords.length);
+    
+    for (let i = startFrom; i < searchEnd; i++) {
+      const dist = targetLatLng.distanceTo(this.matchedRouteCoords[i]);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestIdx = i;
+      }
+      // Stop if we're getting further away (we passed the closest point)
+      if (dist > closestDist * 2 && closestDist < 100) break;
+    }
+    
+    return closestIdx;
   }
 
   // Get color based on vehicle status: green=moving, orange=stopped in traffic, red=parked

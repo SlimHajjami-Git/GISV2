@@ -286,9 +286,11 @@ async fn process_single_frame(
             }
 
             // Check for info/connect frames (AA00/AA01/HH00/HH01) or frames with prefix like "NR08G0663 AA00..."
+            // IMPORTANT: Don't use contains() as it may match position data that accidentally contains "AA00"
+            // Instead, check if frame starts with info header OR has MAT prefix followed by space and info header
             let is_info_frame = frame_str.starts_with("HH01") || frame_str.starts_with("AA01") ||
                 frame_str.starts_with("HH00") || frame_str.starts_with("AA00") ||
-                frame_str.contains("AA00") || frame_str.contains("HH00");
+                frame_str.contains(" AA00") || frame_str.contains(" HH00");
 
             if is_info_frame {
                 let info = telemetry::hh::parse_info_frame(frame_str)?;

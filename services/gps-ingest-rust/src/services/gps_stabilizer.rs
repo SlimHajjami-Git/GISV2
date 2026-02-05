@@ -70,8 +70,10 @@ impl GpsStabilizer {
         device_id: i32,
         frame: &HhFrame,
     ) -> StabilizedFrame {
-        let is_moving = frame.speed_kph > STOPPED_SPEED_THRESHOLD && frame.ignition_on;
-        let is_stopped = frame.speed_kph <= STOPPED_SPEED_THRESHOLD || !frame.ignition_on;
+        // Stabilize ONLY when ignition is OFF AND speed < 3 km/h (true stop)
+        // If ignition is ON, always use real coordinates even at low speed
+        let is_stopped = !frame.ignition_on && frame.speed_kph <= STOPPED_SPEED_THRESHOLD;
+        let is_moving = !is_stopped;
         let now = DateTime::<Utc>::from_naive_utc_and_offset(frame.recorded_at, Utc);
 
         let mut anchors = self.anchors.write().await;
