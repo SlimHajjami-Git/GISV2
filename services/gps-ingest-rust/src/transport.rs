@@ -193,6 +193,13 @@ async fn route_payload(
 ) -> Result<()> {
     let ascii_payload = String::from_utf8(raw_payload.to_vec()).context("payload is not UTF-8")?;
     
+    // Ignore keepalive payloads (just newlines/whitespace)
+    let trimmed = ascii_payload.trim();
+    if trimmed.is_empty() {
+        tracing::debug!("Ignoring keepalive payload");
+        return Ok(());
+    }
+    
     // Extract frames using smart parsing that handles binary data with embedded newlines
     let frames = extract_frames_smart(&ascii_payload);
 
