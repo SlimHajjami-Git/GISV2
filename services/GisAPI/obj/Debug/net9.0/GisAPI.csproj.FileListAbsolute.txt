@@ -162,3 +162,5 @@ C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\Irony.dll
 C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\SixLabors.Fonts.dll
 C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\System.IO.Packaging.dll
 C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\XLParser.dll
+C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\Pipelines.Sockets.Unofficial.dll
+C:\Users\Mega-PC\Desktop\GISV2\services\GisAPI\bin\Debug\net9.0\StackExchange.Redis.dll

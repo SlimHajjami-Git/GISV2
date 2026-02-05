@@ -129,8 +129,103 @@ export interface RenewalFormData {
             <div class="form-row">
               <div class="form-group full">
                 <label for="provider">Fournisseur / Compagnie</label>
-                <input type="text" id="provider" name="provider" [(ngModel)]="formData.provider"
-                       [placeholder]="getProviderPlaceholder()" class="form-control">
+                <select id="provider" name="provider" [(ngModel)]="formData.provider" class="form-control" *ngIf="!showNewSupplierForm">
+                  <option value="">-- Sélectionner un fournisseur --</option>
+                  <option *ngFor="let supplier of filteredSuppliers" [value]="supplier.name">
+                    {{ supplier.name }}{{ supplier.city ? ' - ' + supplier.city : '' }}
+                  </option>
+                </select>
+                <div class="supplier-hint" *ngIf="!showNewSupplierForm">
+                  <span class="hint-text" *ngIf="filteredSuppliers.length === 0">Aucun fournisseur trouvé.</span>
+                  <button type="button" class="create-link-btn" (click)="toggleNewSupplierForm()">+ Ajouter</button>
+                </div>
+                
+                <!-- Formulaire création fournisseur inline -->
+                <div class="inline-supplier-form" *ngIf="showNewSupplierForm">
+                  <!-- Section Informations générales -->
+                  <div class="inline-form-section">
+                    <h4 class="inline-section-title">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 21h18"/><path d="M5 21V7l8-4 8 4v14"/><path d="M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4"/>
+                      </svg>
+                      Informations générales
+                    </h4>
+                    
+                    <div class="inline-form-row two-cols">
+                      <div class="inline-form-group">
+                        <label>Nom *</label>
+                        <input type="text" [(ngModel)]="newSupplier.name" name="newSupplierName" 
+                               placeholder="Ex: Assurance XYZ" class="form-control">
+                      </div>
+                      <div class="inline-form-group">
+                        <label>Type</label>
+                        <select [(ngModel)]="newSupplier.type" name="newSupplierType" class="form-control" disabled>
+                          <option value="garage">🔧 Garage</option>
+                          <option value="insurance">🛡️ Assurance</option>
+                          <option value="vendor">🏭 Vendeur</option>
+                          <option value="parts">⚙️ Pièces détachées</option>
+                          <option value="fuel">⛽ Carburant</option>
+                          <option value="tires">🛞 Pneumatiques</option>
+                          <option value="service">🛠️ Service</option>
+                          <option value="general">📦 Général</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div class="inline-form-row">
+                      <div class="inline-form-group full">
+                        <label>Adresse</label>
+                        <input type="text" [(ngModel)]="newSupplier.address" name="newSupplierAddress" 
+                               placeholder="Ex: 45 Avenue Habib Bourguiba" class="form-control">
+                      </div>
+                    </div>
+
+                    <div class="inline-form-row two-cols">
+                      <div class="inline-form-group">
+                        <label>Ville</label>
+                        <input type="text" [(ngModel)]="newSupplier.city" name="newSupplierCity" 
+                               placeholder="Ex: Tunis" class="form-control">
+                      </div>
+                      <div class="inline-form-group">
+                        <label>Code postal</label>
+                        <input type="text" [(ngModel)]="newSupplier.postalCode" name="newSupplierPostalCode" 
+                               placeholder="Ex: 1000" class="form-control">
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Section Contact -->
+                  <div class="inline-form-section">
+                    <h4 class="inline-section-title">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72"/>
+                      </svg>
+                      Contact
+                    </h4>
+
+                    <div class="inline-form-row two-cols">
+                      <div class="inline-form-group">
+                        <label>Téléphone</label>
+                        <input type="tel" [(ngModel)]="newSupplier.phone" name="newSupplierPhone" 
+                               placeholder="+216 XX XXX XXX" class="form-control">
+                      </div>
+                      <div class="inline-form-group">
+                        <label>Email</label>
+                        <input type="email" [(ngModel)]="newSupplier.email" name="newSupplierEmail" 
+                               placeholder="contact@example.tn" class="form-control">
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Boutons -->
+                  <div class="inline-form-actions">
+                    <button type="button" class="btn-cancel-inline" (click)="toggleNewSupplierForm()">Annuler</button>
+                    <button type="button" class="btn-save-inline" (click)="createSupplier()" [disabled]="!newSupplier.name || creatingSupplier">
+                      <span class="spinner-small" *ngIf="creatingSupplier"></span>
+                      {{ creatingSupplier ? 'Création...' : 'Enregistrer' }}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -557,6 +652,173 @@ export interface RenewalFormData {
       to { transform: rotate(360deg); }
     }
 
+    /* ===== SUPPLIER HINT ===== */
+    .supplier-hint {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+      font-size: 11px;
+    }
+
+    .hint-text {
+      color: #94a3b8;
+    }
+
+    .create-link-btn {
+      background: none;
+      border: none;
+      color: #3b82f6;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 0;
+      transition: color 0.2s;
+    }
+
+    .create-link-btn:hover {
+      color: #2563eb;
+      text-decoration: underline;
+    }
+
+    /* ===== INLINE SUPPLIER FORM ===== */
+    .inline-supplier-form {
+      background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 16px;
+      margin-top: 12px;
+    }
+
+    .inline-form-section {
+      margin-bottom: 16px;
+    }
+
+    .inline-form-section:last-of-type {
+      margin-bottom: 12px;
+    }
+
+    .inline-section-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #1e293b;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .inline-section-title svg {
+      color: #3b82f6;
+    }
+
+    .inline-form-row {
+      margin-bottom: 10px;
+    }
+
+    .inline-form-row.two-cols {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .inline-form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .inline-form-group.full {
+      grid-column: span 2;
+    }
+
+    .inline-form-group label {
+      font-size: 11px;
+      font-weight: 500;
+      color: #64748b;
+    }
+
+    .inline-form-group .form-control {
+      padding: 8px 10px;
+      font-size: 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      background: white;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .inline-form-group .form-control:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+      outline: none;
+    }
+
+    .inline-form-group .form-control:disabled {
+      background: #f1f5f9;
+      color: #64748b;
+      cursor: not-allowed;
+    }
+
+    .inline-form-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding-top: 12px;
+      border-top: 1px solid #e2e8f0;
+    }
+
+    .btn-cancel-inline {
+      padding: 8px 16px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #64748b;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-cancel-inline:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+    }
+
+    .btn-save-inline {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      color: white;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-save-inline:hover:not(:disabled) {
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    }
+
+    .btn-save-inline:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .spinner-small {
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
     /* ===== RESPONSIVE ===== */
     @media (max-width: 540px) {
       .popup-container {
@@ -577,6 +839,23 @@ export class DocumentRenewalPopupComponent implements OnChanges {
 
   formData: RenewalFormData = this.getEmptyForm();
   saving = false;
+  
+  // Suppliers
+  allSuppliers: { id: number; name: string; type: string; city?: string }[] = [];
+  filteredSuppliers: { id: number; name: string; type: string; city?: string }[] = [];
+  
+  // New supplier form
+  showNewSupplierForm = false;
+  creatingSupplier = false;
+  newSupplier = {
+    name: '',
+    type: 'insurance',
+    address: '',
+    city: '',
+    postalCode: '',
+    phone: '',
+    email: ''
+  };
 
   constructor(private apiService: ApiService) {}
 
@@ -590,8 +869,124 @@ export class DocumentRenewalPopupComponent implements OnChanges {
         
         // Set default expiry to 1 year from now
         this.setExpiryFromNow(12);
+        
+        // Load suppliers filtered by document type
+        this.loadSuppliers();
       }
     }
+  }
+  
+  loadSuppliers(): void {
+    this.apiService.getSuppliers({ pageSize: 100, isActive: true }).subscribe({
+      next: (result) => {
+        this.allSuppliers = result.items.map(s => ({
+          id: s.id,
+          name: s.name,
+          type: s.type || 'general',
+          city: s.city
+        }));
+        this.filterSuppliersByDocumentType();
+      },
+      error: (err) => console.error('Error loading suppliers:', err)
+    });
+  }
+  
+  filterSuppliersByDocumentType(): void {
+    if (!this.document) {
+      this.filteredSuppliers = this.allSuppliers;
+      return;
+    }
+    
+    // Map document type to supplier type
+    const typeMapping: { [key: string]: string[] } = {
+      'insurance': ['insurance'],
+      'technical_inspection': ['service', 'garage'],
+      'tax': ['general', 'service'],
+      'registration': ['general', 'service'],
+      'transport_permit': ['general', 'service']
+    };
+    
+    const allowedTypes = typeMapping[this.document.type] || ['general'];
+    this.filteredSuppliers = this.allSuppliers.filter(s => allowedTypes.includes(s.type));
+  }
+  
+  toggleNewSupplierForm(): void {
+    this.showNewSupplierForm = !this.showNewSupplierForm;
+    if (this.showNewSupplierForm) {
+      // Reset form avec le type par défaut
+      this.newSupplier = {
+        name: '',
+        type: this.getSupplierTypeForDocument(),
+        address: '',
+        city: '',
+        postalCode: '',
+        phone: '',
+        email: ''
+      };
+    }
+  }
+  
+  createSupplier(): void {
+    if (!this.newSupplier.name) return;
+    
+    this.creatingSupplier = true;
+    const supplierData = {
+      name: this.newSupplier.name,
+      type: this.newSupplier.type,
+      address: this.newSupplier.address || undefined,
+      city: this.newSupplier.city || undefined,
+      postalCode: this.newSupplier.postalCode || undefined,
+      phone: this.newSupplier.phone || undefined,
+      email: this.newSupplier.email || undefined,
+      isActive: true
+    };
+    
+    this.apiService.createSupplier(supplierData).subscribe({
+      next: (supplierId) => {
+        // Ajouter à la liste et sélectionner
+        const createdSupplier = {
+          id: supplierId,
+          name: this.newSupplier.name,
+          type: this.newSupplier.type,
+          city: this.newSupplier.city
+        };
+        this.allSuppliers.push(createdSupplier);
+        this.filterSuppliersByDocumentType();
+        this.formData.provider = this.newSupplier.name;
+        
+        // Reset form
+        this.showNewSupplierForm = false;
+        this.creatingSupplier = false;
+      },
+      error: (err) => {
+        console.error('Error creating supplier:', err);
+        this.creatingSupplier = false;
+        alert('Erreur lors de la création du fournisseur');
+      }
+    });
+  }
+  
+  getSupplierTypeForDocument(): string {
+    if (!this.document) return 'general';
+    const mapping: { [key: string]: string } = {
+      'insurance': 'insurance',
+      'technical_inspection': 'service',
+      'tax': 'general',
+      'registration': 'general',
+      'transport_permit': 'general'
+    };
+    return mapping[this.document.type] || 'general';
+  }
+  
+  getSupplierTypeLabel(): string {
+    const type = this.getSupplierTypeForDocument();
+    const labels: { [key: string]: string } = {
+      'insurance': 'Assurance',
+      'service': 'Service',
+      'garage': 'Garage',
+      'general': 'Fournisseur'
+    };
+    return labels[type] || type;
   }
 
   getEmptyForm(): RenewalFormData {
@@ -716,38 +1111,33 @@ export class DocumentRenewalPopupComponent implements OnChanges {
 
     this.saving = true;
 
-    // Create cost entry
-    const costData = {
+    // Use renewDocument API which creates cost AND updates expiry date
+    const renewRequest = {
       vehicleId: this.document.vehicleId,
-      type: this.getCostType(this.document.type),
-      description: `Renouvellement ${this.getTypeLabel(this.document.type)}${this.formData.provider ? ' - ' + this.formData.provider : ''}`,
+      documentType: this.document.type,
       amount: this.formData.amount,
-      date: new Date(this.formData.date),
-      receiptNumber: this.formData.documentNumber,
-      notes: this.formData.notes
+      paymentDate: this.formData.date,
+      newExpiryDate: this.formData.newExpiryDate,
+      documentNumber: this.formData.documentNumber || undefined,
+      provider: this.formData.provider || undefined,
+      notes: this.formData.notes || undefined
     };
 
-    this.apiService.createCost(costData).subscribe({
+    this.apiService.renewDocument(this.document.vehicleId, renewRequest).subscribe({
       next: (result) => {
-        // TODO: Update vehicle expiry date via API
-        // For now, emit the renewal data
         this.saved.emit({
-          cost: result,
+          costId: result.costId,
           newExpiryDate: this.formData.newExpiryDate,
           documentNumber: this.formData.documentNumber,
-          documentType: this.document?.type
+          documentType: this.document?.type,
+          message: result.message
         });
         this.saving = false;
       },
       error: (err) => {
-        console.error('Error creating cost:', err);
+        console.error('Error renewing document:', err);
         this.saving = false;
-        // Still emit for demo purposes
-        this.saved.emit({
-          newExpiryDate: this.formData.newExpiryDate,
-          documentNumber: this.formData.documentNumber,
-          documentType: this.document?.type
-        });
+        alert('Erreur lors du renouvellement. Veuillez réessayer.');
       }
     });
   }

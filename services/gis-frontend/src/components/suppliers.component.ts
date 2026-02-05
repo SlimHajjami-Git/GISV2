@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -787,7 +787,7 @@ export class SuppliersComponent implements OnInit {
 
   loading = false;
 
-  constructor(private apiService: ApiService) {}
+  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.loadGarages();
@@ -795,7 +795,8 @@ export class SuppliersComponent implements OnInit {
 
   loadGarages(): void {
     this.loading = true;
-    this.apiService.getGarages({ pageSize: 100 }).subscribe({
+    // Use getSuppliers to get ALL suppliers (not just garages)
+    this.apiService.getSuppliers({ pageSize: 100 }).subscribe({
       next: (result) => {
         this.allGarages = result.items.map(s => ({
           id: s.id.toString(),
@@ -816,10 +817,12 @@ export class SuppliersComponent implements OnInit {
         }));
         this.filterGarages();
         this.loading = false;
+        this.cdr.detectChanges();
       },
       error: (err) => {
-        console.error('Error loading garages:', err);
+        console.error('Error loading suppliers:', err);
         this.loading = false;
+        this.cdr.detectChanges();
       }
     });
   }

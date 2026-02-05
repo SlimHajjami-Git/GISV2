@@ -33,6 +33,10 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
 
         var companyId = _tenantService.CompanyId ?? throw new InvalidOperationException("Company ID not set");
 
+        // Convert dates to UTC
+        var paymentDateUtc = DateTime.SpecifyKind(request.PaymentDate, DateTimeKind.Utc);
+        var expiryDateUtc = DateTime.SpecifyKind(request.NewExpiryDate, DateTimeKind.Utc);
+
         // Create VehicleCost record for the renewal
         var cost = new VehicleCost
         {
@@ -41,8 +45,8 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
             Description = $"Renouvellement {GetDocumentTypeLabel(request.DocumentType)}" + 
                          (string.IsNullOrEmpty(request.Provider) ? "" : $" - {request.Provider}"),
             Amount = request.Amount,
-            Date = request.PaymentDate,
-            ExpiryDate = request.NewExpiryDate,
+            Date = paymentDateUtc,
+            ExpiryDate = expiryDateUtc,
             DocumentNumber = request.DocumentNumber,
             DocumentUrl = request.DocumentUrl,
             CompanyId = companyId
@@ -54,19 +58,19 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
         switch (request.DocumentType)
         {
             case "insurance":
-                vehicle.InsuranceExpiry = request.NewExpiryDate;
+                vehicle.InsuranceExpiry = expiryDateUtc;
                 break;
             case "technical_inspection":
-                vehicle.TechnicalInspectionExpiry = request.NewExpiryDate;
+                vehicle.TechnicalInspectionExpiry = expiryDateUtc;
                 break;
             case "tax":
-                vehicle.TaxExpiry = request.NewExpiryDate;
+                vehicle.TaxExpiry = expiryDateUtc;
                 break;
             case "registration":
-                vehicle.RegistrationExpiry = request.NewExpiryDate;
+                vehicle.RegistrationExpiry = expiryDateUtc;
                 break;
             case "transport_permit":
-                vehicle.TransportPermitExpiry = request.NewExpiryDate;
+                vehicle.TransportPermitExpiry = expiryDateUtc;
                 break;
         }
 

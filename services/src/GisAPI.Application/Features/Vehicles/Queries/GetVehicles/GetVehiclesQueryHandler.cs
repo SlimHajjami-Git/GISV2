@@ -75,7 +75,13 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
                     v.GpsDevice.Model,
                     v.GpsDevice.FirmwareVersion
                 ) : null,
-                v.CreatedAt
+                v.CreatedAt,
+                // Document expiries
+                v.InsuranceExpiry,
+                v.TechnicalInspectionExpiry,
+                v.TaxExpiry,
+                v.RegistrationExpiry,
+                v.TransportPermitExpiry
             ));
 
         return await projectedQuery.ToPaginatedListAsync(request.Page, request.PageSize, ct);

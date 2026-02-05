@@ -96,7 +96,7 @@ export const SUPPLIER_TYPES = [
               </div>
               <div class="form-group">
                 <label for="type">Type *</label>
-                <select id="type" name="type" [(ngModel)]="formData.type" class="form-control" required>
+                <select id="type" name="type" [(ngModel)]="formData.type" class="form-control" required [disabled]="lockType">
                   <option value="garage">🔧 Garage</option>
                   <option value="insurance">🛡️ Assurance</option>
                   <option value="vendor">🏭 Vendeur</option>
@@ -592,6 +592,8 @@ export const SUPPLIER_TYPES = [
 export class GaragePopupComponent implements OnChanges {
   @Input() isOpen = false;
   @Input() garage: Garage | null = null;
+  @Input() defaultType: string | null = null;  // Type pré-sélectionné
+  @Input() lockType = false;  // Désactiver la modification du type
   @Output() closed = new EventEmitter<void>();
   @Output() saved = new EventEmitter<Garage>();
 
@@ -608,9 +610,13 @@ export class GaragePopupComponent implements OnChanges {
   ];
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['garage'] || changes['isOpen']) {
+    if (changes['garage'] || changes['isOpen'] || changes['defaultType']) {
       if (this.isOpen) {
         this.formData = this.garage ? { ...this.garage, services: [...this.garage.services] } : this.getEmptyGarage();
+        // Appliquer le type par défaut si spécifié
+        if (this.defaultType && !this.garage) {
+          this.formData.type = this.defaultType;
+        }
       }
     }
   }

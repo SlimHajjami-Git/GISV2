@@ -1129,11 +1129,50 @@ export class MaintenanceTemplatesComponent implements OnInit {
   closeForm() { this.isFormOpen = false; this.editing = null; }
   isFormValid() { return this.form.name && this.form.category && (this.form.intervalKm || this.form.intervalMonths); }
   saveTemplate() {
-    if (this.editing) { const i = this.templates.findIndex(t => t.id === this.editing!.id); if (i !== -1) this.templates[i] = { ...this.editing, ...this.form }; }
-    else { this.templates.unshift({ id:'t'+Date.now(), ...this.form }); }
-    this.filterTemplates(); this.closeForm();
+    if (!this.isFormValid()) return;
+    
+    const templateData = {
+      name: this.form.name,
+      description: this.form.description || '',
+      category: this.form.category,
+      priority: this.form.priority,
+      intervalKm: this.form.intervalKm || undefined,
+      intervalMonths: this.form.intervalMonths || undefined,
+      estimatedCost: this.form.estimatedCost || 0,
+      isActive: this.form.isActive
+    };
+
+    if (this.editing) {
+      // Mise à jour via API
+      this.apiService.updateMaintenanceTemplate(parseInt(this.editing.id), templateData).subscribe({
+        next: () => {
+          this.loadTemplates();
+          this.closeForm();
+        },
+        error: (err) => console.error('Error updating template:', err)
+      });
+    } else {
+      // Création via API
+      this.apiService.createMaintenanceTemplate(templateData).subscribe({
+        next: () => {
+          this.loadTemplates();
+          this.closeForm();
+        },
+        error: (err) => console.error('Error creating template:', err)
+      });
+    }
   }
-  deleteTemplate(t: MaintenanceTemplate) { if (confirm('Supprimer ce modèle?')) { this.templates = this.templates.filter(x => x.id !== t.id); this.filterTemplates(); this.closeDetail(); } }
+  deleteTemplate(t: MaintenanceTemplate) { 
+    if (confirm('Supprimer ce modèle?')) { 
+      this.apiService.deleteMaintenanceTemplate(parseInt(t.id)).subscribe({
+        next: () => {
+          this.loadTemplates();
+          this.closeDetail();
+        },
+        error: (err) => console.error('Error deleting template:', err)
+      });
+    } 
+  }
 
   openMarkDone(v: VehicleMaintenanceStatus, m: MaintenanceItem) { 
     const lastPrice = this.lastPaidPrices.get(m.templateId) || null;

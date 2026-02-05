@@ -30,7 +30,13 @@ public record VehicleDto(
     int? AssignedSupervisorId,
     string? AssignedSupervisorName,
     GpsDeviceDto? GpsDevice,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    // Document expiries
+    DateTime? InsuranceExpiry,
+    DateTime? TechnicalInspectionExpiry,
+    DateTime? TaxExpiry,
+    DateTime? RegistrationExpiry,
+    DateTime? TransportPermitExpiry
 );
 
 public record GpsDeviceDto(
