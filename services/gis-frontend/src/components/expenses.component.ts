@@ -275,7 +275,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       this.formFuelTypeId = this.fuelTypes[0].id.toString();
       this.updatePriceFromFuelType();
     }
-    if (this.selectedCategory === 'assurance' && this.formVehicleId) {
+    if (this.selectedCategory === 'insurance' && this.formVehicleId) {
       this.loadVehicleContracts();
     }
   }
@@ -532,12 +532,23 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   getAverageAmount(): number { const c = this.getUniqueVehiclesCount(); return c > 0 ? this.getTotalAmount() / c : 0; }
 
   getCategoryIcon(category: string): string {
-    const icons: Record<string, string> = { 'carburant': '', 'entretien': '', 'reparation': '', 'assurance': '', 'peage': '', 'stationnement': '', 'amende': '', 'autre': '' };
+    const icons: Record<string, string> = { 'carburant': '', 'entretien': '', 'reparation': '', 'insurance': '', 'assurance': '', 'peage': '', 'stationnement': '', 'amende': '', 'autre': '' };
     return icons[category] || '';
   }
 
   getCategoryLabel(category: string): string {
-    const labels: Record<string, string> = { 'carburant': 'Carburant', 'entretien': 'Entretien', 'reparation': 'Réparation', 'assurance': 'Assurance', 'peage': 'Péage', 'stationnement': 'Stationnement', 'amende': 'Amende', 'autre': 'Autre' };
+    const labels: Record<string, string> = { 
+      'carburant': 'Carburant', 'fuel': 'Carburant',
+      'entretien': 'Entretien', 'maintenance': 'Maintenance',
+      'reparation': 'Réparation', 
+      'insurance': 'Assurance', 'assurance': 'Assurance',
+      'tax': 'Vignette/Taxe',
+      'peage': 'Péage', 'toll': 'Péage',
+      'stationnement': 'Stationnement', 'parking': 'Parking',
+      'amende': 'Amende', 
+      'autre': 'Autre',
+      'technical_inspection': 'Visite technique'
+    };
     return labels[category] || category;
   }
 }

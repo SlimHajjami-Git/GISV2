@@ -19,7 +19,7 @@
         <option value="carburant">⛽ Carburant</option>
         <option value="entretien">🔧 Entretien</option>
         <option value="reparation">🛠️ Réparation</option>
-        <option value="assurance">🛡️ Assurance</option>
+        <option value="insurance">🛡️ Assurance</option>
         <option value="peage">🛣️ Péage</option>
         <option value="stationnement">🅿️ Stationnement</option>
         <option value="amende">⚠️ Amende</option>
@@ -78,7 +78,7 @@
                 <option value="carburant">⛽ Carburant</option>
                 <option value="entretien">🔧 Entretien</option>
                 <option value="reparation">🛠️ Réparation</option>
-                <option value="assurance">🛡️ Assurance</option>
+                <option value="insurance">🛡️ Assurance</option>
                 <option value="peage">🛣️ Péage</option>
                 <option value="stationnement">🅿️ Stationnement</option>
                 <option value="amende">⚠️ Amende</option>
@@ -231,7 +231,7 @@
           </div>
 
           <!-- ASSURANCE -->
-          <div class="category-form" *ngIf="selectedCategory === 'assurance'">
+          <div class="category-form" *ngIf="selectedCategory === 'insurance'">
             <div class="form-section-title">🛡️ Paiement assurance</div>
             <div class="form-row">
               <label>Assureur *</label>
@@ -272,7 +272,7 @@
           </div>
 
           <!-- GENERIQUE (péage, stationnement, amende, autre) -->
-          <div class="category-form" *ngIf="selectedCategory && selectedCategory !== 'carburant' && selectedCategory !== 'entretien' && selectedCategory !== 'reparation' && selectedCategory !== 'assurance'">
+          <div class="category-form" *ngIf="selectedCategory && selectedCategory !== 'carburant' && selectedCategory !== 'entretien' && selectedCategory !== 'reparation' && selectedCategory !== 'insurance'">
             <div class="form-section-title">{{ getCategoryIcon(selectedCategory) }} {{ getCategoryLabel(selectedCategory) }}</div>
             <div class="form-row-inline">
               <div class="form-group flex-2">
