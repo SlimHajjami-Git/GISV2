@@ -193,28 +193,8 @@ async fn route_payload(
 ) -> Result<()> {
     let ascii_payload = String::from_utf8(raw_payload.to_vec()).context("payload is not UTF-8")?;
     
-    // Split payload into individual frames (separated by newlines)
-    let all_lines: Vec<&str> = ascii_payload
-        .split(|c| c == '\r' || c == '\n')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty() && *s != "AAAA" && *s != "HHHH")
-        .collect();
-
-    // Log rejected frames for debugging
-    for line in &all_lines {
-        if !starts_with_valid_header(line) {
-            warn!(
-                rejected_frame = %line,
-                frame_len = line.len(),
-                "Frame rejected: does not start with valid HH/AA header"
-            );
-        }
-    }
-
-    let frames: Vec<&str> = all_lines
-        .into_iter()
-        .filter(|s| starts_with_valid_header(s))
-        .collect();
+    // Extract frames using smart parsing that handles binary data with embedded newlines
+    let frames = extract_frames_smart(&ascii_payload);
 
     if frames.is_empty() {
         return Err(anyhow!("no valid HH/AA frames found in payload"));
@@ -240,7 +220,7 @@ async fn route_payload(
         );
     }
 
-    for frame_str in frames {
+    for frame_str in &frames {
         if let Err(err) = process_single_frame(
             protocol,
             frame_str,
@@ -723,6 +703,89 @@ async fn process_single_frame(
     }
 
     Ok(())
+}
+
+/// Extract frames from payload, handling binary data that may contain embedded newlines (0x0A)
+/// 
+/// AA frames can have 0x0A in their binary hex data which gets interpreted as newline.
+/// This function reconstructs fragmented frames by:
+/// 1. Splitting by newlines
+/// 2. Merging lines that don't start with AA/HH with the previous AA/HH line
+/// 3. Validating frame lengths (AA23=74 chars, AA33=78+ chars)
+fn extract_frames_smart(payload: &str) -> Vec<String> {
+    // Remove AAAA/HHHH markers
+    let cleaned = payload
+        .replace("AAAA", "\n")
+        .replace("HHHH", "\n");
+    
+    // Split by newlines
+    let lines: Vec<&str> = cleaned
+        .split(|c| c == '\r' || c == '\n')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    
+    let mut frames: Vec<String> = Vec::new();
+    let mut current_frame: Option<String> = None;
+    
+    for line in lines {
+        if line.starts_with("AA") || line.starts_with("HH") {
+            // Save previous frame if complete
+            if let Some(frame) = current_frame.take() {
+                if is_frame_complete(&frame) {
+                    frames.push(frame);
+                } else {
+                    tracing::debug!(frame_len = frame.len(), frame_preview = %&frame[..frame.len().min(20)], "Discarding incomplete frame");
+                }
+            }
+            // Start new frame
+            current_frame = Some(line.to_string());
+        } else if let Some(ref mut frame) = current_frame {
+            // Append fragment to current frame (handles 0x0A in binary data)
+            frame.push_str(line);
+            tracing::debug!(appended = line, new_len = frame.len(), "Reconstructing fragmented frame");
+        }
+        // Ignore orphan lines that don't belong to any frame
+    }
+    
+    // Don't forget the last frame
+    if let Some(frame) = current_frame {
+        if is_frame_complete(&frame) {
+            frames.push(frame);
+        }
+    }
+    
+    frames
+}
+
+/// Check if a frame has the expected minimum length based on its header
+fn is_frame_complete(frame: &str) -> bool {
+    // HH01 info frames - variable length, must contain IMEI
+    if frame.starts_with("HH01") {
+        return frame.contains("IMEI:");
+    }
+    // HH data frames (HH13, etc.) - minimum 74 chars
+    if frame.starts_with("HH") {
+        return frame.len() >= 74;
+    }
+    // AA system frames (AA02, AA03, AA06, AA07) - any length OK
+    if frame.starts_with("AA02") || frame.starts_with("AA03") || 
+       frame.starts_with("AA06") || frame.starts_with("AA07") {
+        return true;
+    }
+    // AA23 history frames - minimum 74 chars
+    if frame.starts_with("AA23") {
+        return frame.len() >= 74;
+    }
+    // AA33 realtime frames - minimum 78 chars (can be longer with FMS)
+    if frame.starts_with("AA33") {
+        return frame.len() >= 78;
+    }
+    // Generic AA frames - minimum 74 chars
+    if frame.starts_with("AA") {
+        return frame.len() >= 70;
+    }
+    false
 }
 
 /// Check if payload starts with a valid protocol header (HH or AA) or contains one (for prefixed frames)
