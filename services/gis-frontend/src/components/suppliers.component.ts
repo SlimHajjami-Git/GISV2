@@ -798,23 +798,25 @@ export class SuppliersComponent implements OnInit {
     // Use getSuppliers to get ALL suppliers (not just garages)
     this.apiService.getSuppliers({ pageSize: 100 }).subscribe({
       next: (result) => {
-        this.allGarages = result.items.map(s => ({
-          id: s.id.toString(),
-          name: s.name,
-          type: s.type || 'garage',
-          address: s.address || '',
-          city: s.city || '',
-          postalCode: s.postalCode || '',
-          phone: s.phone || '',
-          email: s.email || '',
-          contactName: s.contactName || '',
-          services: s.services || [],
-          rating: s.rating || 0,
-          isActive: s.isActive,
-          notes: s.notes,
-          createdAt: s.createdAt ? new Date(s.createdAt) : undefined,
-          updatedAt: s.updatedAt ? new Date(s.updatedAt) : undefined
-        }));
+        this.allGarages = result.items
+          .filter(s => s && s.id !== undefined)
+          .map(s => ({
+            id: s.id?.toString() || '',
+            name: s.name || '',
+            type: s.type || 'garage',
+            address: s.address || '',
+            city: s.city || '',
+            postalCode: s.postalCode || '',
+            phone: s.phone || '',
+            email: s.email || '',
+            contactName: s.contactName || '',
+            services: s.services || [],
+            rating: s.rating || 0,
+            isActive: s.isActive ?? true,
+            notes: s.notes,
+            createdAt: s.createdAt ? new Date(s.createdAt) : undefined,
+            updatedAt: s.updatedAt ? new Date(s.updatedAt) : undefined
+          }));
         this.filterGarages();
         this.loading = false;
         this.cdr.detectChanges();
