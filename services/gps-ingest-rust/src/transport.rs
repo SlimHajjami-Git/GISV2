@@ -390,42 +390,8 @@ async fn process_single_frame(
                     // When ignition is ON or speed >= 20 km/h, all frames are stored (no throttling)
                 }
 
-                // GPS Stabilization: Prevent drift when vehicle is stopped
-                // This mimics GISV1 behavior where coordinates are kept stable at anchor position
-                if let Some(device_id) = device_id_opt {
-                    let stabilized = services.gps_stabilizer.stabilize(device_id, &frame).await;
-                    if stabilized.was_stabilized {
-                        info!(
-                            device_id,
-                            original_lat = frame.latitude,
-                            original_lon = frame.longitude,
-                            stabilized_lat = stabilized.latitude,
-                            stabilized_lon = stabilized.longitude,
-                            drift_m = ?stabilized.drift_distance_meters,
-                            "GPS drift filtered - using stable anchor position"
-                        );
-                        frame.latitude = stabilized.latitude;
-                        frame.longitude = stabilized.longitude;
-                    }
-                }
-
-                // GPS Validation: Check for aberrant points (jumps, speed incoherence)
-                if let Some(device_id) = device_id_opt {
-                    let validation = services.gps_validator.validate(device_id, &frame).await;
-                    if !validation.should_store() {
-                        if let crate::services::gps_validator::ValidationResult::Invalid { reason } = &validation {
-                            warn!(
-                                device_id,
-                                imei = %resolved_uid,
-                                lat = frame.latitude,
-                                lon = frame.longitude,
-                                reason = %reason,
-                                "Frame REJECTED by GPS validator"
-                            );
-                        }
-                        return Ok(());
-                    }
-                }
+                // NOTE: GPS Stabilization and GPS Validator removed to match GISV1 behavior
+                // GISV1 did not have these validations
 
                 // Geocode the position (async, non-blocking)
                 if frame.is_valid {
@@ -509,72 +475,10 @@ async fn process_single_frame(
                     return Ok(());
                 }
 
-                // --- From SaveDynData stored procedure ---
-                // Condition 3: Angle must be 0-360
-                if frame.heading_deg < 0.0 || frame.heading_deg > 360.0 {
-                    info!(
-                        imei = %resolved_uid,
-                        heading = frame.heading_deg,
-                        "Frame SKIPPED: Invalid angle (must be 0-360, same as GISV1 SaveDynData)"
-                    );
-                    return Ok(());
-                }
-
-                // Condition 4: Speed must be 0-300
-                if frame.speed_kph < 0.0 || frame.speed_kph > 300.0 {
-                    info!(
-                        imei = %resolved_uid,
-                        speed = frame.speed_kph,
-                        "Frame SKIPPED: Invalid speed (must be 0-300, same as GISV1 SaveDynData)"
-                    );
-                    return Ok(());
-                }
-
-                // Condition 5: Coordinates must not be too close to 0 (invalid GPS)
-                if frame.latitude.abs() < 0.05 && frame.longitude.abs() < 0.05 {
-                    info!(
-                        imei = %resolved_uid,
-                        lat = frame.latitude,
-                        lon = frame.longitude,
-                        "Frame SKIPPED: Coordinates near 0,0 (same as GISV1 SaveDynData)"
-                    );
-                    return Ok(());
-                }
-
-                // Condition 6: If GPS invalid, coords must not be near 0
-                if !frame.is_valid && frame.latitude.abs() < 0.3 && frame.longitude.abs() < 0.3 {
-                    info!(
-                        imei = %resolved_uid,
-                        lat = frame.latitude,
-                        lon = frame.longitude,
-                        is_valid = frame.is_valid,
-                        "Frame SKIPPED: Invalid GPS with coords near 0 (same as GISV1 SaveDynData)"
-                    );
-                    return Ok(());
-                }
-
-                // Condition 7: Longitude must be -180 to +180
-                if frame.longitude < -180.0 || frame.longitude > 180.0 {
-                    warn!(
-                        imei = %resolved_uid,
-                        lon = frame.longitude,
-                        "Frame SKIPPED: Longitude out of range (same as GISV1 SaveDynData)"
-                    );
-                    return Ok(());
-                }
-
-                // Condition 8: Latitude must be -90 to +90
-                if frame.latitude < -90.0 || frame.latitude > 90.0 {
-                    warn!(
-                        imei = %resolved_uid,
-                        lat = frame.latitude,
-                        "Frame SKIPPED: Latitude out of range (same as GISV1 SaveDynData)"
-                    );
-                    return Ok(());
-                }
-
                 // ============================================================
                 // END GISV1 CONDITIONS
+                // NOTE: SaveDynData validations (angle, speed, coords) were NOT in GISV1 AAP.cs
+                // They were only in the stored procedure - removed to match GISV1 behavior
                 // ============================================================
 
                 // Get vehicle and company info first (needed for parallel operations)
