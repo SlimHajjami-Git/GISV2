@@ -1527,10 +1527,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const ignitionOn = fromPos.ignitionOn !== false; // Default to true if undefined
     
     // ===== IGNITION-OFF HANDLING =====
-    // When ignition is off, ANCHOR to first ignition_off position
-    // All subsequent positions are overwritten with the anchor position
+    // When ignition is off, BATCH-SKIP all consecutive ignition-off positions at once
     if (!ignitionOn) {
-      // Set anchor to first ignition_off position (if not already set)
       if (!this.ignitionOffAnchor) {
         this.ignitionOffAnchor = {
           latitude: fromPos.latitude,
@@ -1539,43 +1537,43 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         console.log('Ignition OFF - anchoring position at:', this.ignitionOffAnchor);
       }
       
-      // Override current position with anchor
-      fromPos.latitude = this.ignitionOffAnchor.latitude;
-      fromPos.longitude = this.ignitionOffAnchor.longitude;
+      // Batch-skip: scan ahead to find first position with ignition ON
+      let skipTo = this.playbackIndex + 1;
+      while (skipTo < this.playbackPositions.length - 1) {
+        if (this.playbackPositions[skipTo].ignitionOn !== false) break;
+        skipTo++;
+      }
+      
+      const skipped = skipTo - this.playbackIndex;
+      console.log(`Ignition OFF batch-skip: ${skipped} positions`);
       
       // Update marker at anchor position
       this.updatePlaybackMarker();
       
-      // Check if next position has ignition on
-      const nextIgnitionOn = toPos.ignitionOn !== false;
-      
-      if (!nextIgnitionOn) {
-        // Still off - continue looping at anchor position
-        this.ngZone.run(() => {
-          this.playbackIndex++;
-          this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
-          this.cdr.detectChanges();
-          // Fast forward through stationary period
-          setTimeout(() => this.animateToNextPoint().catch(e => console.warn('Playback skip error:', e)), 100 / this.playbackSpeed);
-        });
-        return;
-      }
-      
-      // Ignition just turned on - clear anchor and continue
-      console.log('Ignition ON - releasing anchor');
-      this.ignitionOffAnchor = null;
+      this.ngZone.run(() => {
+        this.playbackIndex = skipTo;
+        this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+        this.cdr.detectChanges();
+        
+        // Check if we reached a position with ignition ON
+        if (skipTo < this.playbackPositions.length && this.playbackPositions[skipTo].ignitionOn !== false) {
+          console.log('Ignition ON - releasing anchor');
+          this.ignitionOffAnchor = null;
+        }
+        
+        setTimeout(() => this.animateToNextPoint().catch(e => console.warn('Playback skip error:', e)), 200 / this.playbackSpeed);
+      });
+      return;
     } else {
-      // Ignition is ON - clear any existing ignition anchor
       if (this.ignitionOffAnchor) {
         this.ignitionOffAnchor = null;
       }
       
       // ===== STOPPED VEHICLE HANDLING (ignition ON, speed < 3 km/h) =====
-      // Fast-forward through stopped periods (same as ignition-off)
+      // BATCH-SKIP all consecutive stopped positions at once
       const currentSpeed2 = fromPos.speedKph || fromPos.speed || 0;
       
       if (currentSpeed2 < 3) {
-        // Set anchor to first stopped position (if not already set)
         if (!this.stoppedAnchor) {
           this.stoppedAnchor = {
             latitude: fromPos.latitude,
@@ -1583,30 +1581,26 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           };
         }
         
-        // Override current position with anchor to eliminate GPS drift
-        fromPos.latitude = this.stoppedAnchor.latitude;
-        fromPos.longitude = this.stoppedAnchor.longitude;
+        // Batch-skip: scan ahead to find first position with speed >= 3
+        let skipTo = this.playbackIndex + 1;
+        while (skipTo < this.playbackPositions.length - 1) {
+          const s = this.playbackPositions[skipTo].speedKph || this.playbackPositions[skipTo].speed || 0;
+          if (s >= 3) break;
+          skipTo++;
+        }
         
         // Update marker at anchor position
         this.updatePlaybackMarker();
         
-        // Check if next position is also stopped
-        const nextSpeed = toPos.speedKph || toPos.speed || 0;
-        if (nextSpeed < 3) {
-          // Still stopped - fast forward
-          this.ngZone.run(() => {
-            this.playbackIndex++;
-            this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
-            this.cdr.detectChanges();
-            setTimeout(() => this.animateToNextPoint().catch(e => console.warn('Playback skip error:', e)), 50 / this.playbackSpeed);
-          });
-          return;
-        }
-        
-        // Next position is moving - clear anchor and animate normally
-        this.stoppedAnchor = null;
+        this.ngZone.run(() => {
+          this.playbackIndex = skipTo;
+          this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+          this.cdr.detectChanges();
+          this.stoppedAnchor = null;
+          setTimeout(() => this.animateToNextPoint().catch(e => console.warn('Playback skip error:', e)), 100 / this.playbackSpeed);
+        });
+        return;
       } else {
-        // Vehicle is moving (speed >= 3) - clear stopped anchor
         if (this.stoppedAnchor) {
           this.stoppedAnchor = null;
         }
@@ -1644,11 +1638,26 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     }
     
-    // If distance is essentially zero (same snapped point), skip animation entirely
+    // If distance is essentially zero (same snapped point), batch-skip all consecutive zero-distance segments
     if (totalDistance < 1) {
+      // Scan ahead: skip all consecutive segments that would also be zero-distance (same boundary)
+      let skipTo = this.playbackIndex + 1;
+      if (this.segmentBoundaries && this.segmentBoundaries.length > 0) {
+        const currentBoundary = this.segmentBoundaries[this.playbackIndex];
+        while (skipTo < this.playbackPositions.length - 1) {
+          const nextBoundary = this.segmentBoundaries[skipTo];
+          const nextBoundary2 = this.segmentBoundaries[skipTo + 1];
+          if (nextBoundary !== undefined && nextBoundary2 !== undefined && nextBoundary === nextBoundary2) {
+            skipTo++;
+          } else {
+            break;
+          }
+        }
+      }
+      
       this.ngZone.run(() => {
         const previousIndex = this.playbackIndex;
-        this.playbackIndex++;
+        this.playbackIndex = skipTo;
         this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
         this.drawProgressiveSegment(previousIndex, this.playbackIndex);
         this.updatePlaybackMarker();
