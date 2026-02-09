@@ -1955,6 +1955,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const fromPos = this.playbackPositions[fromIndex];
     const toPos = this.playbackPositions[toIndex];
     
+    // Skip drawing when vehicle is stationary (speed < 3 km/h or ignition off)
+    // This prevents "point clouds" from GPS drift when parked/stopped
+    const speed = toPos.speedKph || 0;
+    const ignitionOn = toPos.ignitionOn !== false;
+    if (speed < 3 || !ignitionOn) {
+      this.traceDrawnUpToIndex = toIndex;
+      return;
+    }
+    
     // Determine color based on vehicle status at the destination point
     const color = this.getStatusColor(toPos);
     
@@ -1984,18 +1993,6 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     ).addTo(this.map);
 
     this.progressivePolylines.push(segment);
-    
-    // Add a small point marker at the destination
-    const pointMarker = L.circleMarker([toPos.latitude, toPos.longitude], {
-      radius: 4,
-      fillColor: color,
-      color: '#ffffff',
-      weight: 2,
-      opacity: 1,
-      fillOpacity: 0.9
-    }).addTo(this.map);
-    
-    this.pointMarkers.push(pointMarker);
   }
 
   // Calculate bearing between two points in degrees (0-360)
