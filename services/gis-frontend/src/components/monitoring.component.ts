@@ -1152,13 +1152,30 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
 
+  // Get snapped road position for a given playback index (falls back to raw GPS)
+  private getSnappedLatLng(index: number): L.LatLngExpression {
+    const pos = this.playbackPositions[index];
+    if (!pos) return [0, 0];
+    if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0) {
+      const roadIdx = this.segmentBoundaries[index];
+      if (roadIdx !== undefined && roadIdx < this.matchedRouteCoords.length) {
+        const snapped = this.matchedRouteCoords[roadIdx];
+        if (snapped && !isNaN(snapped.lat) && !isNaN(snapped.lng)) {
+          return [snapped.lat, snapped.lng];
+        }
+      }
+    }
+    return [pos.latitude, pos.longitude];
+  }
+
   updatePlaybackMarker() {
     if (!this.map || this.playbackPositions.length === 0) return;
 
     const position = this.playbackPositions[this.playbackIndex];
     if (!position) return;
 
-    const latLng: L.LatLngExpression = [position.latitude, position.longitude];
+    // Snap marker to Valhalla road-matched coordinates when available
+    const latLng = this.getSnappedLatLng(this.playbackIndex);
     const statusColor = this.getStatusColor(position);
     const speed = position.speedKph || 0;
     const heading = position.courseDeg || 0;
@@ -1958,8 +1975,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       ],
       {
         color: color,
-        weight: 5,
+        weight: 4,
         opacity: 0.9,
+        dashArray: '10, 8',
         lineCap: 'round',
         lineJoin: 'round'
       }
@@ -2039,8 +2057,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         if (segmentCoords.length >= 2) {
           const segment = L.polyline(segmentCoords, {
             color: color,
-            weight: 5,
+            weight: 4,
             opacity: 0.9,
+            dashArray: '10, 8',
             lineCap: 'round',
             lineJoin: 'round'
           }).addTo(this.map!);
@@ -2154,10 +2173,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     
     this.updatePlaybackMarker();
 
-    // Center on start position - maintain current zoom level
+    // Center on start position (snapped) - maintain current zoom level
     if (this.map && this.playbackPositions.length > 0) {
-      const startPos = this.playbackPositions[0];
-      this.map.setView([startPos.latitude, startPos.longitude], this.playbackZoomLevel);
+      this.map.setView(this.getSnappedLatLng(0), this.playbackZoomLevel);
     }
     
     this.cdr.detectChanges();
@@ -2176,10 +2194,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.playbackProgress = 100;
     this.updatePlaybackMarker();
 
-    // Center on end position - maintain current zoom level
+    // Center on end position (snapped) - maintain current zoom level
     if (this.map && this.playbackPositions.length > 0) {
-      const endPos = this.playbackPositions[this.playbackPositions.length - 1];
-      this.map.setView([endPos.latitude, endPos.longitude], this.playbackZoomLevel);
+      this.map.setView(this.getSnappedLatLng(this.playbackPositions.length - 1), this.playbackZoomLevel);
     }
     
     this.cdr.detectChanges();
@@ -2200,10 +2217,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.playbackIndex = Math.floor((progress / 100) * (this.playbackPositions.length - 1));
     this.updatePlaybackMarker();
     
-    // Center map on current position
-    const pos = this.playbackPositions[this.playbackIndex];
-    if (this.map && pos) {
-      this.map.panTo([pos.latitude, pos.longitude]);
+    // Center map on current snapped position
+    if (this.map) {
+      this.map.panTo(this.getSnappedLatLng(this.playbackIndex));
     }
     
     this.cdr.detectChanges();
@@ -2217,9 +2233,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
       this.updatePlaybackMarker();
       
-      const pos = this.playbackPositions[this.playbackIndex];
-      if (this.map && pos) {
-        this.map.panTo([pos.latitude, pos.longitude]);
+      if (this.map) {
+        this.map.panTo(this.getSnappedLatLng(this.playbackIndex));
       }
       
       this.cdr.detectChanges();
@@ -2234,9 +2249,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
       this.updatePlaybackMarker();
       
-      const pos = this.playbackPositions[this.playbackIndex];
-      if (this.map && pos) {
-        this.map.panTo([pos.latitude, pos.longitude]);
+      if (this.map) {
+        this.map.panTo(this.getSnappedLatLng(this.playbackIndex));
       }
       
       this.cdr.detectChanges();
