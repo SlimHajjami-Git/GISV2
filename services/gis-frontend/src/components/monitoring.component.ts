@@ -1570,26 +1570,43 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
       
       // ===== STOPPED VEHICLE HANDLING (ignition ON, speed < 3 km/h) =====
-      // Anchor position to prevent GPS drift when vehicle is stopped but engine running
-      const currentSpeed = fromPos.speedKph || fromPos.speed || 0;
+      // Fast-forward through stopped periods (same as ignition-off)
+      const currentSpeed2 = fromPos.speedKph || fromPos.speed || 0;
       
-      if (currentSpeed < 3) {
+      if (currentSpeed2 < 3) {
         // Set anchor to first stopped position (if not already set)
         if (!this.stoppedAnchor) {
           this.stoppedAnchor = {
             latitude: fromPos.latitude,
             longitude: fromPos.longitude
           };
-          console.log('Vehicle STOPPED (speed < 3) - anchoring position at:', this.stoppedAnchor);
         }
         
         // Override current position with anchor to eliminate GPS drift
         fromPos.latitude = this.stoppedAnchor.latitude;
         fromPos.longitude = this.stoppedAnchor.longitude;
+        
+        // Update marker at anchor position
+        this.updatePlaybackMarker();
+        
+        // Check if next position is also stopped
+        const nextSpeed = toPos.speedKph || toPos.speed || 0;
+        if (nextSpeed < 3) {
+          // Still stopped - fast forward
+          this.ngZone.run(() => {
+            this.playbackIndex++;
+            this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+            this.cdr.detectChanges();
+            setTimeout(() => this.animateToNextPoint(), 50 / this.playbackSpeed);
+          });
+          return;
+        }
+        
+        // Next position is moving - clear anchor and animate normally
+        this.stoppedAnchor = null;
       } else {
         // Vehicle is moving (speed >= 3) - clear stopped anchor
         if (this.stoppedAnchor) {
-          console.log('Vehicle MOVING (speed >= 3) - releasing stopped anchor');
           this.stoppedAnchor = null;
         }
       }
@@ -1606,6 +1623,20 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       const prev = this.currentRouteCoords[i - 1];
       const curr = this.currentRouteCoords[i];
       totalDistance += this.calculateDistance(prev.lat, prev.lng, curr.lat, curr.lng);
+    }
+    
+    // If distance is essentially zero (same snapped point), skip animation entirely
+    if (totalDistance < 1) {
+      this.ngZone.run(() => {
+        const previousIndex = this.playbackIndex;
+        this.playbackIndex++;
+        this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+        this.drawProgressiveSegment(previousIndex, this.playbackIndex);
+        this.updatePlaybackMarker();
+        this.cdr.detectChanges();
+        setTimeout(() => this.animateToNextPoint(), 50 / this.playbackSpeed);
+      });
+      return;
     }
     
     // Adaptive duration based on route distance
