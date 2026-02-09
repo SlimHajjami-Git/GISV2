@@ -1624,6 +1624,7 @@ export class ReportsComponent implements OnInit {
           this.currentPage = 1;
           this.cdr.detectChanges();
           this.appRef.tick();
+          setTimeout(() => this.createChart(), 100);
         });
       },
       error: (err) => {
@@ -1956,6 +1957,7 @@ export class ReportsComponent implements OnInit {
             display: true,
             position: 'top'
           },
+          title: { display: true, text: '📏 Distance journalière', font: { size: 14, weight: 'bold' } },
           tooltip: {
             callbacks: {
               label: (context) => `${(context.parsed.y ?? 0).toFixed(1)} km`
@@ -1979,6 +1981,9 @@ export class ReportsComponent implements OnInit {
         }
       }
     });
+
+    // Create secondary cumulative chart
+    this.createSecondaryChart();
   }
 
   // ==================== MILEAGE PERIOD REPORT (Hour/Day/Month) ====================
@@ -4016,6 +4021,139 @@ export class ReportsComponent implements OnInit {
           }
         });
       }
+    } else if (type === 'costs' && this.secondaryChartData?.length) {
+      // Costs by vehicle horizontal bar chart
+      this.secondaryChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: this.secondaryChartData.map(d => d.label),
+          datasets: [{
+            label: 'Coût (TND)',
+            data: this.secondaryChartData.map(d => d.value),
+            backgroundColor: this.secondaryChartData.map((_, i) => this.chartColors[i % this.chartColors.length] + 'CC'),
+            borderColor: this.secondaryChartData.map((_, i) => this.chartColors[i % this.chartColors.length]),
+            borderWidth: 1,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: 'y' as const,
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: '💰 Coûts par véhicule', font: { size: 12, weight: 'bold' } }
+          },
+          scales: {
+            x: { beginAtZero: true, title: { display: true, text: 'Coût (TND)' } }
+          }
+        }
+      });
+    } else if (type === 'maintenance' && this.secondaryChartData?.length) {
+      // Maintenance costs by vehicle horizontal bar chart
+      this.secondaryChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: this.secondaryChartData.map(d => d.label),
+          datasets: [{
+            label: 'Coût (TND)',
+            data: this.secondaryChartData.map(d => d.value),
+            backgroundColor: this.secondaryChartData.map((_, i) => this.chartColors[i % this.chartColors.length] + 'CC'),
+            borderColor: this.secondaryChartData.map((_, i) => this.chartColors[i % this.chartColors.length]),
+            borderWidth: 1,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: 'y' as const,
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: '🔧 Coûts maintenance par véhicule', font: { size: 12, weight: 'bold' } }
+          },
+          scales: {
+            x: { beginAtZero: true, title: { display: true, text: 'Coût (TND)' } }
+          }
+        }
+      });
+    } else if (type === 'daily' && this.chartData?.length) {
+      // Daily report secondary: Pie chart for drive vs stop time ratio
+      const totalDrive = this.chartData.filter(d => d.type === 'drive').reduce((s, d) => s + d.value, 0);
+      const totalStop = this.chartData.filter(d => d.type === 'stop').reduce((s, d) => s + d.value, 0);
+      if (totalDrive + totalStop > 0) {
+        this.secondaryChart = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: ['🚗 Conduite', '🅿️ Arrêt'],
+            datasets: [{
+              data: [totalDrive, totalStop],
+              backgroundColor: ['#3B82F6CC', '#8B5CF6CC'],
+              borderWidth: 3,
+              borderColor: '#1e293b',
+              hoverOffset: 8
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'bottom' as const, labels: { usePointStyle: true, padding: 10, font: { size: 11 } } },
+              title: { display: true, text: '⏱️ Répartition conduite / arrêt', font: { size: 12, weight: 'bold' } },
+              tooltip: {
+                callbacks: {
+                  label: (context: any) => {
+                    const val = context.raw;
+                    const total = totalDrive + totalStop;
+                    const pct = total > 0 ? ((val / total) * 100).toFixed(1) : '0';
+                    const hours = Math.floor(val / 60);
+                    const mins = val % 60;
+                    return `${hours}h ${mins}m (${pct}%)`;
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+    } else if (type === 'mileage' && this.chartData?.length) {
+      // Mileage secondary: Cumulative distance line
+      let cumulative = 0;
+      const cumulativeData = this.chartData.map(d => { cumulative += d.value; return cumulative; });
+      this.secondaryChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: this.chartData.map(d => d.label),
+          datasets: [{
+            label: 'Distance cumulée (km)',
+            data: cumulativeData,
+            borderColor: '#10B981',
+            backgroundColor: 'rgba(16, 185, 129, 0.15)',
+            borderWidth: 3,
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3,
+            pointBackgroundColor: '#10B981'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: true, position: 'top' as const },
+            title: { display: true, text: '📈 Distance cumulée', font: { size: 12, weight: 'bold' } },
+            tooltip: {
+              callbacks: {
+                label: (context: any) => `${(context.parsed.y ?? 0).toFixed(1)} km`
+              }
+            }
+          },
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: 'km cumulés' } },
+            x: { grid: { display: false } }
+          }
+        }
+      });
     }
   }
 
