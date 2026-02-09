@@ -1897,7 +1897,7 @@ export class VehiclesComponent implements OnInit {
       next: (vehicles) => {
         this.ngZone.run(() => {
           this.allVehicles = vehicles.map(v => ({
-            id: v.id.toString(),
+            id: v.id?.toString() || '',
             companyId: v.companyId?.toString() || '',
             name: v.name,
             type: v.type,
