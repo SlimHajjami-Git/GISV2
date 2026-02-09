@@ -301,7 +301,7 @@ export class AdminService {
     return this.http.post<any>(`${this.apiUrl}/auth/login`, { email, password }).pipe(
       map(response => {
         const user: AdminUser = {
-          id: response.user.id.toString(),
+          id: response.user.id?.toString() || '',
           email: response.user.email,
           name: response.user.name,
           role: response.user.roles?.includes('admin') ? 'super_admin' : 'admin',

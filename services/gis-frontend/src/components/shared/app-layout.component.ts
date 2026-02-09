@@ -902,7 +902,7 @@ export class AppLayoutComponent implements OnInit {
     this.apiService.getAlerts(false, undefined, 20).subscribe({
       next: (alerts) => {
         this.notifications = alerts.map(a => ({
-          id: a.id.toString(),
+          id: a.id?.toString() || '',
           vehicleId: a.vehicleId?.toString() || '',
           type: a.type as 'speeding' | 'stopped' | 'geofence' | 'other',
           message: a.message,

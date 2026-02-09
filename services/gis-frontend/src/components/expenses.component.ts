@@ -303,7 +303,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     }).subscribe({
       next: (newProvider: any) => {
         this.insuranceProviders.push(newProvider);
-        this.formInsuranceProviderId = newProvider.id.toString();
+        this.formInsuranceProviderId = newProvider.id?.toString() || '';
         this.showCreateInsurance = false;
         this.newInsuranceName = '';
         this.newInsurancePhone = '';

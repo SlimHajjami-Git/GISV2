@@ -1570,7 +1570,7 @@ export class AccidentClaimsComponent implements OnInit {
     this.apiService.getAccidentClaims({ pageSize: 100 }).subscribe({
       next: (result) => {
         this.claims = result.items.map((c: any) => ({
-          id: c.id.toString(),
+          id: c.id?.toString() || '',
           claimNumber: c.claimNumber || '',
           vehicleId: c.vehicleId?.toString() || '',
           vehicleName: c.vehicleName || '',

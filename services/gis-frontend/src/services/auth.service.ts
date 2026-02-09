@@ -145,7 +145,7 @@ export class AuthService {
       }),
       map(response => {
         const user: AuthUser = {
-          id: response.user.id.toString(),
+          id: response.user.id?.toString() || '',
           name: `${response.user.firstName} ${response.user.lastName}`.trim(),
           email: response.user.email,
           phone: response.user.phone,
@@ -198,7 +198,7 @@ export class AuthService {
       }),
       map(response => {
         const user: AuthUser = {
-          id: response.user.id.toString(),
+          id: response.user.id?.toString() || '',
           name: `${response.user.firstName} ${response.user.lastName}`.trim(),
           email: response.user.email,
           phone: response.user.phone,

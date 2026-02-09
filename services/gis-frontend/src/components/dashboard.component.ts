@@ -1032,7 +1032,7 @@ export class DashboardComponent implements OnInit {
       next: (vehicles) => {
         this.ngZone.run(() => {
           this.vehicles = vehicles.map(v => ({
-            id: v.id.toString(),
+            id: v.id?.toString() || '',
             companyId: v.companyId?.toString() || '',
             name: v.name,
             type: v.type,
@@ -1059,9 +1059,9 @@ export class DashboardComponent implements OnInit {
       next: (records) => {
         this.ngZone.run(() => {
           this.maintenanceRecords = records.map(m => ({
-            id: m.id.toString(),
-            vehicleId: m.vehicleId.toString(),
-            companyId: m.companyId.toString(),
+            id: m.id?.toString() || '',
+            vehicleId: m.vehicleId?.toString() || '',
+            companyId: m.companyId?.toString() || '',
             type: m.type,
             description: m.description,
             mileageAtService: m.mileageAtService,
@@ -1100,9 +1100,9 @@ export class DashboardComponent implements OnInit {
       next: (costs) => {
         this.ngZone.run(() => {
           this.vehicleCosts = costs.map(c => ({
-            id: c.id.toString(),
-            vehicleId: c.vehicleId.toString(),
-            companyId: c.companyId.toString(),
+            id: c.id?.toString() || '',
+            vehicleId: c.vehicleId?.toString() || '',
+            companyId: c.companyId?.toString() || '',
             type: c.type as 'fuel' | 'maintenance' | 'insurance' | 'tax' | 'toll' | 'parking' | 'fine' | 'other',
             description: c.description,
             amount: c.amount,

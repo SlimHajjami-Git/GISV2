@@ -1036,7 +1036,7 @@ export class MaintenanceTemplatesComponent implements OnInit {
     this.apiService.getMaintenanceTemplates({ pageSize: 100 }).subscribe({
       next: (result) => {
         this.templates = result.items.map(t => ({
-          id: t.id.toString(),
+          id: t.id?.toString() || '',
           name: t.name,
           description: t.description || '',
           intervalKm: t.intervalKm ?? null,
