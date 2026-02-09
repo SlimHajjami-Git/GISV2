@@ -298,7 +298,7 @@
           </button>
         </div>
         @if (!selectedTemplateId) {
-          <div class="validation-hint">⚠️ Sélectionnez un template</div>
+          <div class="validation-hint">⚠️ Sélectionnez un type de rapport</div>
         } @else if (!selectedVehicleId && (selectedTemplate?.type === 'fuel' || selectedTemplate?.type === 'mileage-period')) {
           <div class="validation-hint">⚠️ Sélectionnez un véhicule</div>
         }
@@ -306,7 +306,7 @@
         <!-- Report Sections (Accordion) -->
         <div class="accordion-section">
           <div class="accordion-header" (click)="toggleSection('templates')">
-            <span>Report templates</span>
+            <span>Modèles de rapport</span>
             <svg [class.rotated]="expandedSections['templates']" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="6 9 12 15 18 9"/>
             </svg>
@@ -329,7 +329,7 @@
 
         <div class="accordion-section">
           <div class="accordion-header" [class.active]="reportGenerated" (click)="toggleSection('result')">
-            <span>Report result</span>
+            <span>Résultat du rapport</span>
             <svg [class.rotated]="expandedSections['result']" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="6 9 12 15 18 9"/>
             </svg>
@@ -438,7 +438,7 @@
             <!-- Data Table -->
             <ui-card title="Rapport mensuel flotte" [showHeader]="true" [noPadding]="true">
               <div card-actions>
-                <button class="export-btn-sm" (click)="exportReport('excel')">Export Excel</button>
+                <button class="export-btn-sm" (click)="exportReport('excel')">Exporter Excel</button>
               </div>
               <div class="monthly-table-wrapper">
                 <table class="data-table monthly-table">
@@ -553,7 +553,7 @@
             @if (fuelEstimationActiveSection === 'vehicles') {
               <ui-card title="🚗 Détail par véhicule" [showHeader]="true" [noPadding]="true">
                 <div card-actions>
-                  <button class="export-btn-sm" (click)="exportReport('excel')">Export Excel</button>
+                  <button class="export-btn-sm" (click)="exportReport('excel')">Exporter Excel</button>
                 </div>
                 <div class="fuel-table-wrapper">
                   <table class="data-table fuel-table">
@@ -703,7 +703,7 @@
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                       <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                     </svg>
-                    Export
+                    Exporter
                   </button>
                 </div>
               </div>
@@ -746,7 +746,7 @@
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                       <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                     </svg>
-                    Export
+                    Exporter
                   </button>
                 </div>
               </div>

@@ -175,17 +175,17 @@ export class ReportsComponent implements OnInit {
 
   // Period filters for standard reports (fuel, daily, mileage, etc.)
   standardPeriods = [
-    { value: 'today', label: 'Today' },
-    { value: 'week', label: 'Week' },
-    { value: 'month', label: 'Month' }
+    { value: 'today', label: 'Aujourd\'hui' },
+    { value: 'week', label: 'Semaine' },
+    { value: 'month', label: 'Mois' }
   ];
   selectedStandardPeriod = 'today';
   
   // Period filters for stops report
   stopsPeriods = [
-    { value: 'today', label: 'Today' },
-    { value: 'week', label: 'Week' },
-    { value: 'month', label: 'Month' },
+    { value: 'today', label: 'Aujourd\'hui' },
+    { value: 'week', label: 'Semaine' },
+    { value: 'month', label: 'Mois' },
     { value: 'custom', label: 'Personnalisé' }
   ];
   selectedStopsPeriod = 'today';
