@@ -1,6 +1,10 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using GisAPI.Application.Features.Gps.Commands.BroadcastPosition;
 using GisAPI.Domain.Events;
+using MediatR;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -13,15 +17,18 @@ public class RabbitMqConsumerService : BackgroundService
 {
     private readonly RabbitMqSettings _settings;
     private readonly ILogger<RabbitMqConsumerService> _logger;
+    private readonly IServiceScopeFactory _scopeFactory;
     private IConnection? _connection;
     private IChannel? _channel;
 
     public RabbitMqConsumerService(
         IOptions<RabbitMqSettings> settings,
-        ILogger<RabbitMqConsumerService> logger)
+        ILogger<RabbitMqConsumerService> logger,
+        IServiceScopeFactory scopeFactory)
     {
         _settings = settings.Value;
         _logger = logger;
+        _scopeFactory = scopeFactory;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -95,13 +102,17 @@ public class RabbitMqConsumerService : BackgroundService
                     
                     _logger.LogDebug("Received GPS message: {Message}", message);
                     
-                    // Process GPS position - could trigger geofence checks, alerts, etc.
-                    var position = JsonSerializer.Deserialize<GpsPositionReceivedEvent>(message, 
-                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    // Deserialize Rust GPS message (snake_case JSON)
+                    var options = new JsonSerializerOptions 
+                    { 
+                        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+                        PropertyNameCaseInsensitive = true 
+                    };
+                    var gpsMessage = JsonSerializer.Deserialize<RabbitMqGpsMessage>(message, options);
                     
-                    if (position != null)
+                    if (gpsMessage != null)
                     {
-                        await ProcessGpsPositionAsync(position, stoppingToken);
+                        await ProcessGpsMessageAsync(gpsMessage, stoppingToken);
                     }
 
                     await _channel.BasicAckAsync(ea.DeliveryTag, false, stoppingToken);
@@ -134,20 +145,36 @@ public class RabbitMqConsumerService : BackgroundService
         }
     }
 
-    private async Task ProcessGpsPositionAsync(GpsPositionReceivedEvent position, CancellationToken ct)
+    private async Task ProcessGpsMessageAsync(RabbitMqGpsMessage msg, CancellationToken ct)
     {
-        // This is where you would:
-        // 1. Check geofence boundaries
-        // 2. Check speed limits
-        // 3. Generate alerts if needed
-        // 4. Update vehicle last known position
-        // 5. Broadcast to SignalR for real-time updates
-        
-        _logger.LogInformation(
-            "Processing GPS position for device {DeviceUid}: ({Lat}, {Lng}) @ {Speed} km/h",
-            position.DeviceUid, position.Latitude, position.Longitude, position.Speed);
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
-        await Task.CompletedTask;
+            var command = new BroadcastPositionCommand(
+                DeviceUid: msg.DeviceUid,
+                Latitude: msg.Latitude,
+                Longitude: msg.Longitude,
+                SpeedKph: msg.SpeedKph,
+                CourseDeg: msg.HeadingDeg,
+                IgnitionOn: msg.IgnitionOn,
+                RecordedAt: msg.RecordedAt
+            );
+
+            var result = await mediator.Send(command, ct);
+
+            if (result.Broadcasted)
+            {
+                _logger.LogDebug(
+                    "📡 Broadcasted position for device {DeviceUid} → Vehicle {VehicleId}",
+                    msg.DeviceUid, result.VehicleId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error broadcasting position for device {DeviceUid}", msg.DeviceUid);
+        }
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
@@ -169,4 +196,21 @@ public class RabbitMqConsumerService : BackgroundService
     }
 }
 
-
+/// <summary>
+/// DTO matching the Rust GPS ingest JSON format (snake_case)
+/// </summary>
+public class RabbitMqGpsMessage
+{
+    public string DeviceUid { get; set; } = string.Empty;
+    public string Protocol { get; set; } = string.Empty;
+    public DateTime RecordedAt { get; set; }
+    public DateTime IngestedAt { get; set; }
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+    public double SpeedKph { get; set; }
+    public double HeadingDeg { get; set; }
+    public bool IgnitionOn { get; set; }
+    public int FuelRaw { get; set; }
+    public double PowerVoltage { get; set; }
+    public string? RawPayload { get; set; }
+}
