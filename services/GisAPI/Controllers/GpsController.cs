@@ -252,15 +252,13 @@ public class GpsController : ControllerBase
         from ??= DateTime.UtcNow.AddHours(-24);
         to ??= DateTime.UtcNow;
 
-        // GPS devices send local time (Tunisia = UTC+1) but store it as UTC
-        // Adjust query range by +1 hour to compensate for this timezone offset
-        var adjustedFrom = from.Value.AddHours(1);
-        var adjustedTo = to.Value.AddHours(1);
+        // Timestamps in DB are already in local time (gps-ingest adds +1h offset)
+        // No additional adjustment needed - query directly with user's date range
 
         var rawPositions = await _context.GpsPositions
             .Where(p => p.DeviceId == vehicle.GpsDeviceId &&
-                        p.RecordedAt >= adjustedFrom &&
-                        p.RecordedAt <= adjustedTo)
+                        p.RecordedAt >= from.Value &&
+                        p.RecordedAt <= to.Value)
             .OrderBy(p => p.RecordedAt)
             .Take(limit)
             .Select(p => new PositionDto
@@ -347,15 +345,13 @@ public class GpsController : ControllerBase
         from ??= DateTime.UtcNow.AddHours(-24);
         to ??= DateTime.UtcNow;
 
-        // GPS devices send local time (Tunisia = UTC+1) but store it as UTC
-        // Adjust query range by +1 hour to compensate for this timezone offset
-        var adjustedFrom = from.Value.AddHours(1);
-        var adjustedTo = to.Value.AddHours(1);
+        // Timestamps in DB are already in local time (gps-ingest adds +1h offset)
+        // No additional adjustment needed - query directly with user's date range
 
         var positions = await _context.GpsPositions
             .Where(p => p.DeviceId == device.Id &&
-                        p.RecordedAt >= adjustedFrom &&
-                        p.RecordedAt <= adjustedTo)
+                        p.RecordedAt >= from.Value &&
+                        p.RecordedAt <= to.Value)
             .OrderBy(p => p.RecordedAt)
             .Take(limit)
             .Select(p => new PositionDto
