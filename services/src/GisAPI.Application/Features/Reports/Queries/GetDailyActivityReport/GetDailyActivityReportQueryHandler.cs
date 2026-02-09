@@ -47,9 +47,9 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
             };
         }
 
-        // Get all positions for the day (adjust for timezone offset - Tunisia = UTC+1) and ensure UTC kind
-        var dayStart = DateTime.SpecifyKind(request.Date.Date.AddHours(-1), DateTimeKind.Utc);
-        var dayEnd = DateTime.SpecifyKind(request.Date.Date.AddDays(1).AddHours(-1), DateTimeKind.Utc);
+        // DB stores local time directly (no timezone offset)
+        var dayStart = DateTime.SpecifyKind(request.Date.Date, DateTimeKind.Utc);
+        var dayEnd = DateTime.SpecifyKind(request.Date.Date.AddDays(1), DateTimeKind.Utc);
 
         var positions = await _context.GpsPositions
             .AsNoTracking()
@@ -105,7 +105,7 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
 
             report.FirstStart = new DailyStartEventDto
             {
-                Timestamp = firstIgnitionOn.RecordedAt.AddHours(-1),
+                Timestamp = firstIgnitionOn.RecordedAt,
                 Latitude = firstIgnitionOn.Latitude,
                 Longitude = firstIgnitionOn.Longitude,
                 Address = address ?? firstIgnitionOn.Address
@@ -116,7 +116,7 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
         var lastPos = positions.Last();
         report.LastPosition = new DailyEndEventDto
         {
-            Timestamp = lastPos.RecordedAt.AddHours(-1),
+            Timestamp = lastPos.RecordedAt,
             Latitude = lastPos.Latitude,
             Longitude = lastPos.Longitude,
             Address = lastPos.Address,
@@ -172,8 +172,8 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
                     {
                         Type = "drive",
                         SequenceNumber = sequenceNumber,
-                        StartTime = driveStart.RecordedAt.AddHours(-1),
-                        EndTime = driveEnd.RecordedAt.AddHours(-1),
+                        StartTime = driveStart.RecordedAt,
+                        EndTime = driveEnd.RecordedAt,
                         DurationSeconds = driveDuration,
                         DurationFormatted = FormatDuration(driveDuration),
                         StartLocation = new LocationDto
@@ -230,8 +230,8 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
                     {
                         Type = "stop",
                         SequenceNumber = sequenceNumber,
-                        StartTime = stopStart.RecordedAt.AddHours(-1),
-                        EndTime = stopEnd.RecordedAt.AddHours(-1),
+                        StartTime = stopStart.RecordedAt,
+                        EndTime = stopEnd.RecordedAt,
                         DurationSeconds = stopDuration,
                         DurationFormatted = FormatDuration(stopDuration),
                         StartLocation = new LocationDto
@@ -245,11 +245,58 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
             }
         }
 
-        report.Activities = activities;
+        // === MERGE PHASE ===
+        // Merge drive-shortStop-drive into one continuous drive (handles traffic lights < 3 min)
+        // Merge consecutive stops into one
+        const int MIN_STOP_BREAK_SECONDS = 180; // 3 minutes
+        var merged = new List<ActivitySegmentDto>();
 
-        // Calculate summary
-        var drives = activities.Where(a => a.Type == "drive").ToList();
-        var stops = activities.Where(a => a.Type == "stop").ToList();
+        for (int m = 0; m < activities.Count; m++)
+        {
+            var seg = activities[m];
+
+            // Short stop between two drives → absorb into previous drive
+            if (seg.Type == "stop" && merged.Count > 0 && m + 1 < activities.Count)
+            {
+                var prevSeg = merged[^1];
+                var nextSeg = activities[m + 1];
+                if (prevSeg.Type == "drive" && nextSeg.Type == "drive" && seg.DurationSeconds < MIN_STOP_BREAK_SECONDS)
+                {
+                    prevSeg.EndTime = nextSeg.EndTime;
+                    prevSeg.EndLocation = nextSeg.EndLocation;
+                    prevSeg.DurationSeconds += seg.DurationSeconds + nextSeg.DurationSeconds;
+                    prevSeg.DurationFormatted = FormatDuration(prevSeg.DurationSeconds);
+                    prevSeg.DistanceKm = (prevSeg.DistanceKm ?? 0) + (nextSeg.DistanceKm ?? 0);
+                    prevSeg.MaxSpeedKph = Math.Max(prevSeg.MaxSpeedKph ?? 0, nextSeg.MaxSpeedKph ?? 0);
+                    if (prevSeg.AvgSpeedKph.HasValue && nextSeg.AvgSpeedKph.HasValue)
+                        prevSeg.AvgSpeedKph = Math.Round((prevSeg.AvgSpeedKph.Value + nextSeg.AvgSpeedKph.Value) / 2, 1);
+                    m++; // Skip next drive (already merged)
+                    continue;
+                }
+            }
+
+            // Merge consecutive stops
+            if (seg.Type == "stop" && merged.Count > 0 && merged[^1].Type == "stop")
+            {
+                var prevStop = merged[^1];
+                prevStop.EndTime = seg.EndTime;
+                prevStop.DurationSeconds += seg.DurationSeconds;
+                prevStop.DurationFormatted = FormatDuration(prevStop.DurationSeconds);
+                continue;
+            }
+
+            merged.Add(seg);
+        }
+
+        // Re-number sequences
+        for (int m = 0; m < merged.Count; m++)
+            merged[m].SequenceNumber = m + 1;
+
+        report.Activities = merged;
+
+        // Calculate summary from merged activities
+        var drives = merged.Where(a => a.Type == "drive").ToList();
+        var stops = merged.Where(a => a.Type == "stop").ToList();
 
         var totalDrivingSeconds = drives.Sum(d => d.DurationSeconds);
         var totalStoppedSeconds = stops.Sum(s => s.DurationSeconds);

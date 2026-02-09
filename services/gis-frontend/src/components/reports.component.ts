@@ -3005,7 +3005,28 @@ export class ReportsComponent implements OnInit {
       stops.push(currentStop);
     }
 
-    this.tableData = stops.slice(0, 50).map((stop: any) => {
+    // Merge consecutive stops that are close in time (< 3 min gap)
+    const mergedStops: any[] = [];
+    for (const stop of stops) {
+      if (mergedStops.length > 0) {
+        const prev = mergedStops[mergedStops.length - 1];
+        const gapMs = new Date(stop.start.recordedAt).getTime() - new Date(prev.end.recordedAt).getTime();
+        if (gapMs < 3 * 60 * 1000) { // < 3 min gap → merge
+          prev.end = stop.end;
+          prev.positions = [...prev.positions, ...stop.positions];
+          continue;
+        }
+      }
+      mergedStops.push(stop);
+    }
+
+    // Filter stops < 2 min (GPS noise)
+    const filteredStops = mergedStops.filter((stop: any) => {
+      const durationMs = new Date(stop.end.recordedAt).getTime() - new Date(stop.start.recordedAt).getTime();
+      return durationMs >= 2 * 60 * 1000;
+    });
+
+    this.tableData = filteredStops.slice(0, 50).map((stop: any) => {
       const durationMs = new Date(stop.end.recordedAt).getTime() - new Date(stop.start.recordedAt).getTime();
       const durationMinutes = durationMs / 60000;
       
@@ -3032,12 +3053,12 @@ export class ReportsComponent implements OnInit {
     // Fetch addresses asynchronously for stops without address
     this.enrichStopsWithAddresses();
 
-    this.chartData = stops.slice(0, 20).map((stop: any, i: number) => ({
+    this.chartData = filteredStops.slice(0, 20).map((stop: any, i: number) => ({
       label: `Arrêt ${i + 1}`,
       value: Math.round((new Date(stop.end.recordedAt).getTime() - new Date(stop.start.recordedAt).getTime()) / 60000)
     }));
 
-    const totalDuration = stops.reduce((sum: number, s: any) => 
+    const totalDuration = filteredStops.reduce((sum: number, s: any) => 
       sum + (new Date(s.end.recordedAt).getTime() - new Date(s.start.recordedAt).getTime()), 0) / 60000;
 
     // Format total duration
@@ -3052,8 +3073,8 @@ export class ReportsComponent implements OnInit {
 
     // Format average duration
     let avgFormatted = 'N/A';
-    if (stops.length > 0) {
-      const avgMinutes = totalDuration / stops.length;
+    if (filteredStops.length > 0) {
+      const avgMinutes = totalDuration / filteredStops.length;
       if (avgMinutes >= 60) {
         const hours = Math.floor(avgMinutes / 60);
         const mins = Math.round(avgMinutes % 60);
@@ -3064,7 +3085,7 @@ export class ReportsComponent implements OnInit {
     }
 
     this.statisticsData = {
-      'Nombre d\'arrêts': stops.length.toString(),
+      'Nombre d\'arrêts': filteredStops.length.toString(),
       'Durée totale': totalFormatted,
       'Durée moyenne': avgFormatted
     };
