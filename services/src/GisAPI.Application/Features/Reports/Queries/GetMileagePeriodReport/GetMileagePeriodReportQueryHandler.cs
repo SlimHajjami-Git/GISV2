@@ -51,9 +51,9 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
             };
         }
 
-        // Adjust for timezone offset (Tunisia = UTC+1) and ensure UTC Kind
-        var startDate = DateTime.SpecifyKind(request.StartDate.Date.AddHours(-1), DateTimeKind.Utc);
-        var endDate = DateTime.SpecifyKind(request.EndDate.Date.AddDays(1).AddHours(-1), DateTimeKind.Utc);
+        // DB stores local time directly (no timezone offset)
+        var startDate = DateTime.SpecifyKind(request.StartDate.Date, DateTimeKind.Utc);
+        var endDate = DateTime.SpecifyKind(request.EndDate.Date.AddDays(1), DateTimeKind.Utc);
 
         // Extract device ID as non-nullable int for proper EF Core query translation
         int deviceId = vehicle.GpsDeviceId!.Value;
@@ -97,7 +97,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
 
         // Group by hour of day
         var hourlyGroups = positions
-            .GroupBy(p => p.RecordedAt.AddHours(-1).Hour)
+            .GroupBy(p => p.RecordedAt.Hour)
             .OrderBy(g => g.Key)
             .ToList();
 
@@ -112,7 +112,9 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
                 var distance = CalculateTotalDistance(hourPositions);
                 var tripCount = CountTrips(hourPositions);
                 var drivingMinutes = CalculateDrivingMinutes(hourPositions);
-                var speeds = hourPositions.Where(p => p.SpeedKph > 0).Select(p => p.SpeedKph ?? 0).ToList();
+                var maxSpeed = hourPositions.Where(p => p.SpeedKph > 0).Select(p => p.SpeedKph ?? 0).ToList();
+                // Avg speed = distance / driving time (not average of GPS readings)
+                var avgSpeedKph = drivingMinutes > 0 ? distance / (drivingMinutes / 60.0) : 0;
 
                 hourlyBreakdown.Add(new HourlyMileageDto
                 {
@@ -121,8 +123,8 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
                     DistanceKm = Math.Round(distance, 2),
                     TripCount = tripCount,
                     DrivingMinutes = drivingMinutes,
-                    MaxSpeedKph = speeds.Any() ? Math.Round(speeds.Max(), 1) : 0,
-                    AvgSpeedKph = speeds.Any() ? Math.Round(speeds.Average(), 1) : 0
+                    MaxSpeedKph = maxSpeed.Any() ? Math.Round(maxSpeed.Max(), 1) : 0,
+                    AvgSpeedKph = Math.Round(avgSpeedKph, 1)
                 });
             }
             else
@@ -168,7 +170,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
 
         // Group by date
         var dailyGroups = positions
-            .GroupBy(p => p.RecordedAt.AddHours(-1).Date)
+            .GroupBy(p => p.RecordedAt.Date)
             .OrderBy(g => g.Key)
             .ToList();
 
@@ -185,7 +187,9 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
                 var distance = CalculateTotalDistance(dayPositions);
                 var tripCount = CountTrips(dayPositions);
                 var drivingMinutes = CalculateDrivingMinutes(dayPositions);
-                var speeds = dayPositions.Where(p => p.SpeedKph > 0).Select(p => p.SpeedKph ?? 0).ToList();
+                var maxSpeed = dayPositions.Where(p => p.SpeedKph > 0).Select(p => p.SpeedKph ?? 0).ToList();
+                // Avg speed = distance / driving time (not average of GPS readings)
+                var avgSpeedKph = drivingMinutes > 0 ? distance / (drivingMinutes / 60.0) : 0;
 
                 dailyBreakdown.Add(new DailyMileagePeriodDto
                 {
@@ -195,8 +199,8 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
                     DistanceKm = Math.Round(distance, 2),
                     TripCount = tripCount,
                     DrivingMinutes = drivingMinutes,
-                    MaxSpeedKph = speeds.Any() ? Math.Round(speeds.Max(), 1) : 0,
-                    AvgSpeedKph = speeds.Any() ? Math.Round(speeds.Average(), 1) : 0
+                    MaxSpeedKph = maxSpeed.Any() ? Math.Round(maxSpeed.Max(), 1) : 0,
+                    AvgSpeedKph = Math.Round(avgSpeedKph, 1)
                 });
             }
             else
@@ -244,7 +248,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
 
         // Group by month
         var monthlyGroups = positions
-            .GroupBy(p => new { p.RecordedAt.AddHours(-1).Year, p.RecordedAt.AddHours(-1).Month })
+            .GroupBy(p => new { p.RecordedAt.Year, p.RecordedAt.Month })
             .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
             .ToList();
 
@@ -268,7 +272,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
                 
                 // Count days with activity
                 var daysWithActivity = monthPositions
-                    .GroupBy(p => p.RecordedAt.AddHours(-1).Date)
+                    .GroupBy(p => p.RecordedAt.Date)
                     .Count(g => CalculateTotalDistance(g.ToList()) > 0);
 
                 monthlyBreakdown.Add(new MonthlyMileagePeriodDto
@@ -366,7 +370,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
 
         foreach (var pos in positions)
         {
-            var isMoving = (pos.SpeedKph ?? 0) > 3.0 || (pos.IgnitionOn ?? false);
+            var isMoving = (pos.SpeedKph ?? 0) > 3.0;
             
             if (isMoving && !wasMoving)
             {
