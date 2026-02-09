@@ -37,6 +37,8 @@ pub struct HhFrame {
     pub signal_quality: Option<u8>,
     pub satellites_in_view: Option<u8>,
     pub rpm: Option<u16>,
+    pub fuel_rate_l_per_100km: Option<f64>,
+    pub fms_temperature_c: Option<i16>,
     pub is_valid: bool,
     pub is_real_time: bool,
     pub flags_raw: u8,

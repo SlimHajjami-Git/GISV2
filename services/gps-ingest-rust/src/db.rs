@@ -746,8 +746,12 @@ impl Database {
             crate::telemetry::model::FrameVersion::Unknown(v) => v as i16,
         };
 
-        // Temperature: raw value needs conversion (value - 40 for Celsius)
-        let temperature_c: Option<i16> = if frame.temperature_raw > 0 {
+        // Temperature: FMS temperature takes priority over base temp (same as GISV1 lines 740-744)
+        let temperature_c: Option<i16> = if let Some(fms_temp) = frame.fms_temperature_c {
+            // FMS temperature from CAN bus - more reliable
+            if fms_temp != 0 { Some(fms_temp) } else { None }
+        } else if frame.temperature_raw > 0 {
+            // Base frame temperature: raw - 40 = Celsius
             Some((frame.temperature_raw as i16).saturating_sub(40))
         } else {
             None
@@ -788,10 +792,11 @@ impl Database {
                 rpm,
                 send_flag,
                 protocol_version,
-                address
+                address,
+                fuel_rate_l_per_100km
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(),
-                $16, $17, $18, $19, $20, $21, $22, $23, $24
+                $16, $17, $18, $19, $20, $21, $22, $23, $24, $25
             )
             ON CONFLICT (event_key) DO NOTHING
             RETURNING id
@@ -822,6 +827,7 @@ impl Database {
         .bind(frame.send_flag as i16)
         .bind(protocol_version)
         .bind(&frame.address) // Geocoded address
+        .bind(frame.fuel_rate_l_per_100km) // FMS Fuel Rate in L/100km
         .fetch_optional(&self.pool)
         .await?;
 

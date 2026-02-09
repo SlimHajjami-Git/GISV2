@@ -208,25 +208,47 @@ fn parse_unified(payload: &str, kind: FrameKind) -> Result<HhFrame> {
     let has_fms_data = payload.len() >= 100;
     
     // Parse FMS data if present
-    let (fms_fuel, fms_odometer, fms_rpm) = if has_fms_data {
+    let (fms_fuel, fms_odometer, fms_rpm, fms_fuel_rate, fms_temp_c) = if has_fms_data {
         let fms_fuel = payload.get(70..72)
             .and_then(|s| u8::from_str_radix(s, 16).ok())
             .filter(|&v| v > 0 && v <= 100);
+        // FMS Temperature (position 72-73): raw - 40 = Celsius (same as GISV1 ParseFMSDataV3)
+        let fms_temp_c: Option<i16> = payload.get(72..74)
+            .and_then(|s| u8::from_str_radix(s, 16).ok())
+            .filter(|&v| v > 0)
+            .map(|v| (v as i16) - 40);
         let fms_odo = payload.get(74..82)
             .and_then(|s| u32::from_str_radix(s, 16).ok())
             .filter(|&v| v > 0);
         let fms_rpm = payload.get(84..88)
             .and_then(|s| u16::from_str_radix(s, 16).ok())
             .filter(|&v| v > 0);
-        (fms_fuel, fms_odo, fms_rpm)
+        // FMS Fuel Rate (position 88-91): raw / 512 = km/L, then L/100km = 100 / (raw/512)
+        // Same as GISV1 ParseFMSDataV3 lines 264-282
+        let fms_fuel_rate: Option<f64> = payload.get(88..92)
+            .and_then(|s| u16::from_str_radix(s, 16).ok())
+            .filter(|&v| v > 0)
+            .and_then(|v| {
+                let km_per_liter = v as f64 / 512.0;
+                if km_per_liter > 0.0 {
+                    Some(100.0 / km_per_liter) // L/100km
+                } else {
+                    None
+                }
+            });
+        (fms_fuel, fms_odo, fms_rpm, fms_fuel_rate, fms_temp_c)
     } else {
-        (None, None, None)
+        (None, None, None, None, None)
     };
     
     // FMS values from CAN bus are more reliable - prioritize them when available
     // Base fuel is often a raw/percentage value, FMS fuel is actual liters from vehicle
     let fuel_final = fms_fuel.unwrap_or(base_fuel);
     let odometer_km = fms_odometer.unwrap_or(base_odometer);
+    
+    // GISV1 line 832: GPSData.speed = (Ignition == true ? KilometersPerHour : 0)
+    // When ignition is OFF, force speed to 0
+    let speed_kph = if !ignition_on { 0.0 } else { speed_kph };
     
     // Signal/Satellites position depends on FMS data presence
     let (signal_quality, satellites_in_view, remaining_payload) = if has_fms_data {
@@ -274,6 +296,8 @@ fn parse_unified(payload: &str, kind: FrameKind) -> Result<HhFrame> {
         signal_quality,
         satellites_in_view,
         rpm: fms_rpm,
+        fuel_rate_l_per_100km: fms_fuel_rate,
+        fms_temperature_c: fms_temp_c,
         is_valid: decode_bit(flags_raw, 0x40),
         is_real_time,
         flags_raw: u8::from_str_radix(flags_raw, 16)?,
