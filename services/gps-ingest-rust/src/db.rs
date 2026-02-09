@@ -115,7 +115,17 @@ impl Database {
         }
         */
 
-        let _position_id = self.insert_position(device_id, frame, event_key).await?;
+        let position_id = self.insert_position(device_id, frame, event_key).await?;
+        
+        if position_id == 0 {
+            tracing::warn!(
+                device_uid,
+                event_key,
+                speed_kph = frame.speed_kph,
+                ignition = frame.ignition_on,
+                "Position rejected by DB (duplicate event_key)"
+            );
+        }
 
         // Insert alert if send_flag indicates an event
         if frame.send_flag != 0 {

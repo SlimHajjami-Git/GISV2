@@ -354,11 +354,13 @@ async fn process_single_frame(
                 };
 
                 let event_key = format!(
-                    "{}:{}:{:.6}:{:.6}",
+                    "{}:{}:{:.6}:{:.6}:{:.1}:{}",
                     resolved_uid,
                     frame.recorded_at,
                     frame.latitude,
-                    frame.longitude
+                    frame.longitude,
+                    frame.speed_kph,
+                    frame.send_flag
                 );
 
                 // Get device_id for services processing
