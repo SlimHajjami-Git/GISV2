@@ -171,59 +171,68 @@ public class RoutingController : ControllerBase
             return BadRequest(new { error = "At least 2 points are required" });
         }
 
-        // Strategy: try trace_route first (best for close GPS points 1-3min intervals)
-        // If it fails (points too far apart), fallback to /route (works for any distance)
-        List<double[]>? roadPath = null;
+        // Calculate route SEGMENT BY SEGMENT (A->B, B->C, C->D...)
+        // This ensures the vehicle reaches each GPS point exactly
+        var roadPath = new List<double[]>();
+        var segmentBoundaries = new List<int> { 0 }; // Index in roadPath where each GPS point starts
         bool valhallaSuccess = false;
         string method = "none";
+        int segmentsRouted = 0;
 
-        var valhallaPoints = request.Points.Select(p => new ValhallaPoint
+        for (int i = 0; i < request.Points.Count - 1; i++)
         {
-            Lat = p.Lat,
-            Lon = p.Lon,
-            Timestamp = p.Timestamp.HasValue 
-                ? DateTimeOffset.FromUnixTimeMilliseconds(p.Timestamp.Value) 
-                : null
-        }).ToList();
+            var from = request.Points[i];
+            var to = request.Points[i + 1];
 
-        // Step 1: Try trace_route (map matching - best accuracy for GPS traces)
-        try
-        {
-            var traceResult = await _valhallaService.SnapToRoadAsync(valhallaPoints);
-            if (traceResult?.DecodedPolyline != null && traceResult.DecodedPolyline.Count > 0)
-            {
-                roadPath = traceResult.DecodedPolyline;
-                valhallaSuccess = true;
-                method = "trace_route";
-                _logger.LogInformation("Valhalla trace_route success: {GpsCount} GPS -> {RoadCount} road points", 
-                    request.Points.Count, roadPath.Count);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Valhalla trace_route failed, trying /route fallback");
-        }
+            List<double[]>? segmentPath = null;
 
-        // Step 2: Fallback to /route (turn-by-turn routing between waypoints)
-        if (!valhallaSuccess)
-        {
+            // Try Valhalla /route for this segment
             try
             {
-                var routeResult = await _valhallaService.GetRouteFromWaypointsAsync(valhallaPoints);
-                if (routeResult?.DecodedPolyline != null && routeResult.DecodedPolyline.Count > 0)
+                var segmentResult = await _valhallaService.GetRouteFromWaypointsAsync(new List<ValhallaPoint>
                 {
-                    roadPath = routeResult.DecodedPolyline;
-                    valhallaSuccess = true;
-                    method = "route";
-                    _logger.LogInformation("Valhalla /route fallback success: {GpsCount} GPS -> {RoadCount} road points", 
-                        request.Points.Count, roadPath.Count);
+                    new() { Lat = from.Lat, Lon = from.Lon },
+                    new() { Lat = to.Lat, Lon = to.Lon }
+                });
+
+                if (segmentResult?.DecodedPolyline != null && segmentResult.DecodedPolyline.Count >= 2)
+                {
+                    segmentPath = segmentResult.DecodedPolyline;
+                    segmentsRouted++;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Valhalla /route also failed, using raw GPS points");
+                _logger.LogWarning(ex, "Valhalla /route failed for segment {Index}", i);
             }
+
+            // Add segment points (or straight line fallback)
+            if (segmentPath != null && segmentPath.Count >= 2)
+            {
+                // Skip first point of subsequent segments to avoid duplicates
+                var pointsToAdd = roadPath.Count > 0 ? segmentPath.Skip(1) : segmentPath;
+                roadPath.AddRange(pointsToAdd);
+            }
+            else
+            {
+                // Fallback: straight line between the two GPS points
+                if (roadPath.Count == 0)
+                    roadPath.Add(new[] { from.Lat, from.Lon });
+                roadPath.Add(new[] { to.Lat, to.Lon });
+            }
+
+            // Record where this GPS segment ends in the roadPath
+            segmentBoundaries.Add(roadPath.Count - 1);
         }
+
+        if (segmentsRouted > 0)
+        {
+            valhallaSuccess = true;
+            method = $"route_segments({segmentsRouted}/{request.Points.Count - 1})";
+        }
+
+        _logger.LogInformation("Route processing: {GpsCount} GPS -> {Segments} segments routed -> {RoadCount} road points",
+            request.Points.Count, segmentsRouted, roadPath.Count);
 
         // Convert road path to response
         var roadPathDto = roadPath?.Select(p => new RoadPointDto { Lat = p[0], Lon = p[1] }).ToList();
@@ -245,10 +254,11 @@ public class RoutingController : ControllerBase
         {
             Points = resultPoints,
             RoadPath = roadPathDto,
+            SegmentBoundaries = segmentBoundaries,
             OriginalCount = request.Points.Count,
             InterpolatedCount = request.Points.Count,
             FinalCount = resultPoints.Count,
-            RoadPathCount = roadPath?.Count ?? 0,
+            RoadPathCount = roadPath.Count,
             RoadSnappingApplied = valhallaSuccess,
             Method = method
         });
@@ -302,6 +312,7 @@ public class ProcessedRouteResponse
 {
     public List<ProcessedPointDto> Points { get; set; } = new();
     public List<RoadPointDto>? RoadPath { get; set; } // Full road path for vehicle animation
+    public List<int> SegmentBoundaries { get; set; } = new(); // roadPath indices where each GPS point maps to
     public int OriginalCount { get; set; }
     public int InterpolatedCount { get; set; }
     public int FinalCount { get; set; }

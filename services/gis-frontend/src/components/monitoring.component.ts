@@ -89,6 +89,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Valhalla matched route for the entire trace (batch matched)
   private matchedRouteCoords: L.LatLng[] = [];
   private matchedRouteIndex: number = 0;
+  private segmentBoundaries: number[] = []; // roadPath indices where each GPS point maps to
   
   // Live marker visibility during playback
   hiddenLiveMarkers: Map<string, L.Marker> = new Map(); // Store ALL hidden live markers during playback
@@ -1702,21 +1703,20 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
       const data = await response.json();
 
-      if (data.points && data.points.length > 0) {
-        // If we have a road path from Valhalla, use it for smooth road-following animation
-        // Otherwise fall back to the processed points
-        if (data.roadPath && data.roadPath.length > 0) {
-          // Use the full road path from Valhalla polyline for vehicle animation
-          this.matchedRouteCoords = data.roadPath.map((p: any) => L.latLng(p.lat, p.lon));
-          console.log(`Route processed: ${data.originalCount} GPS -> ${data.roadPathCount} road path points (following actual roads)`);
-        } else {
-          // Fallback to snapped/interpolated points
-          this.matchedRouteCoords = data.points.map((p: any) => L.latLng(p.lat, p.lon));
-          console.log(`Route processed: ${data.originalCount} GPS -> ${data.finalCount} processed points (no road path available)`);
-        }
+      if (data.roadPath && data.roadPath.length > 0) {
+        // Use the full road path from Valhalla for vehicle animation
+        this.matchedRouteCoords = data.roadPath.map((p: any) => L.latLng(p.lat, p.lon));
+        this.segmentBoundaries = data.segmentBoundaries || [];
         this.matchedRouteIndex = 0;
         
-        console.log(`Road snapping: ${data.roadSnappingApplied}, method: ${data.method}`);
+        console.log(`Route processed: ${data.originalCount} GPS -> ${data.roadPathCount} road path points, method: ${data.method}`);
+        console.log(`Segment boundaries: [${this.segmentBoundaries.join(', ')}]`);
+      } else if (data.points && data.points.length > 0) {
+        // Fallback to GPS points
+        this.matchedRouteCoords = data.points.map((p: any) => L.latLng(p.lat, p.lon));
+        this.segmentBoundaries = [];
+        this.matchedRouteIndex = 0;
+        console.log(`Route processed: ${data.originalCount} GPS -> ${data.finalCount} points (no road path)`);
       } else {
         throw new Error('No points returned from processing');
       }
@@ -1730,27 +1730,19 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Fetch route between two GPS points for animation (uses pre-matched coords if available)
   private async fetchValhallaRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
-    // Use pre-matched road path coordinates if available
-    if (this.matchedRouteCoords.length > 0) {
-      // Calculate how many road points to use for this GPS segment
-      // Based on the current playback index, we divide the road path proportionally
-      const totalGpsPoints = this.playbackPositions.length;
-      const currentGpsIndex = this.playbackIndex;
+    if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0) {
+      const gpsIndex = this.playbackIndex;
       
-      // Calculate proportional indices in the road path
-      const roadPathLength = this.matchedRouteCoords.length;
-      const startRatio = currentGpsIndex / Math.max(1, totalGpsPoints - 1);
-      const endRatio = (currentGpsIndex + 1) / Math.max(1, totalGpsPoints - 1);
-      
-      const startIdx = Math.floor(startRatio * (roadPathLength - 1));
-      const endIdx = Math.min(Math.ceil(endRatio * (roadPathLength - 1)), roadPathLength - 1);
-      
-      // Get the segment of the road path for this GPS point transition
-      const segment = this.matchedRouteCoords.slice(startIdx, endIdx + 1);
-      
-      if (segment.length >= 2) {
-        console.log(`Road segment: GPS ${currentGpsIndex} -> road points ${startIdx}-${endIdx} (${segment.length} points)`);
-        return segment;
+      // Use segmentBoundaries to get exact road path indices for this GPS segment
+      if (gpsIndex < this.segmentBoundaries.length - 1) {
+        const startIdx = this.segmentBoundaries[gpsIndex];
+        const endIdx = this.segmentBoundaries[gpsIndex + 1];
+        
+        const segment = this.matchedRouteCoords.slice(startIdx, endIdx + 1);
+        
+        if (segment.length >= 2) {
+          return segment;
+        }
       }
     }
     
@@ -2030,36 +2022,32 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     ));
   }
 
-  // Draw a road-snapped segment using proportional distribution of road path points
+  // Draw a road-snapped segment using segmentBoundaries for exact GPS-to-road mapping
   private drawRoutedSegment(fromPos: any, toPos: any, color: string) {
     if (!this.map) return;
     
-    if (this.matchedRouteCoords.length > 0) {
-      // Use same proportional logic as fetchValhallaRoute
-      const totalGpsPoints = this.playbackPositions.length;
+    if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0) {
       const fromIndex = this.playbackPositions.indexOf(fromPos);
-      const currentGpsIndex = fromIndex >= 0 ? fromIndex : this.playbackIndex - 1;
+      const gpsIndex = fromIndex >= 0 ? fromIndex : this.playbackIndex - 1;
       
-      const roadPathLength = this.matchedRouteCoords.length;
-      const startRatio = currentGpsIndex / Math.max(1, totalGpsPoints - 1);
-      const endRatio = (currentGpsIndex + 1) / Math.max(1, totalGpsPoints - 1);
-      
-      const startIdx = Math.floor(startRatio * (roadPathLength - 1));
-      const endIdx = Math.min(Math.ceil(endRatio * (roadPathLength - 1)), roadPathLength - 1);
-      
-      const segmentCoords = this.matchedRouteCoords.slice(startIdx, endIdx + 1);
-      
-      if (segmentCoords.length >= 2) {
-        const segment = L.polyline(segmentCoords, {
-          color: color,
-          weight: 5,
-          opacity: 0.9,
-          lineCap: 'round',
-          lineJoin: 'round'
-        }).addTo(this.map!);
+      if (gpsIndex >= 0 && gpsIndex < this.segmentBoundaries.length - 1) {
+        const startIdx = this.segmentBoundaries[gpsIndex];
+        const endIdx = this.segmentBoundaries[gpsIndex + 1];
         
-        this.progressivePolylines.push(segment);
-        return;
+        const segmentCoords = this.matchedRouteCoords.slice(startIdx, endIdx + 1);
+        
+        if (segmentCoords.length >= 2) {
+          const segment = L.polyline(segmentCoords, {
+            color: color,
+            weight: 5,
+            opacity: 0.9,
+            lineCap: 'round',
+            lineJoin: 'round'
+          }).addTo(this.map!);
+          
+          this.progressivePolylines.push(segment);
+          return;
+        }
       }
     }
     
