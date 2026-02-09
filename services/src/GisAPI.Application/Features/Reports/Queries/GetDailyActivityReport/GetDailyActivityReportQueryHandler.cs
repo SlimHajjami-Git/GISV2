@@ -123,32 +123,54 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
             IgnitionOn = lastPos.IgnitionOn ?? false
         };
 
+        // Skip all positions before first ignition ON (no activity before engine starts)
+        var firstIgnitionIdx = positions.FindIndex(p => p.IgnitionOn == true);
+        if (firstIgnitionIdx < 0)
+        {
+            // No ignition at all - return empty report
+            report.HasActivity = false;
+            return report;
+        }
+        // Start processing from first ignition ON
+        var activePositions = positions.Skip(firstIgnitionIdx).ToList();
+
         // Process activity segments
         int sequenceNumber = 0;
         int i = 0;
 
-        while (i < positions.Count)
+        while (i < activePositions.Count)
         {
-            var currentPos = positions[i];
-            var isMoving = (currentPos.SpeedKph ?? 0) > stopSpeedThresholdKph;
+            var currentPos = activePositions[i];
+            var currentSpeed = currentPos.SpeedKph ?? 0;
             var ignitionOn = currentPos.IgnitionOn ?? false;
+            // Only consider actually moving (speed > threshold) as driving
+            var isMoving = currentSpeed > stopSpeedThresholdKph;
 
-            if (isMoving || ignitionOn)
+            if (isMoving)
             {
-                // Start of a drive segment
+                // Start of a drive segment - require actual movement
                 var driveStart = currentPos;
                 var drivePositions = new List<GpsPosition> { currentPos };
                 i++;
 
-                while (i < positions.Count)
+                // Continue drive while speed > threshold OR brief pause (ignition on, speed > 0)
+                int consecutiveSlowPoints = 0;
+                while (i < activePositions.Count)
                 {
-                    var nextPos = positions[i];
+                    var nextPos = activePositions[i];
                     var nextSpeed = nextPos.SpeedKph ?? 0;
                     var nextIgnition = nextPos.IgnitionOn ?? false;
 
-                    if (nextSpeed > stopSpeedThresholdKph ||
-                        (nextIgnition && nextSpeed > 0))
+                    if (nextSpeed > stopSpeedThresholdKph)
                     {
+                        consecutiveSlowPoints = 0;
+                        drivePositions.Add(nextPos);
+                        i++;
+                    }
+                    else if (nextIgnition && nextSpeed > 0 && consecutiveSlowPoints < 3)
+                    {
+                        // Brief slow-down (traffic), allow up to 3 consecutive slow points
+                        consecutiveSlowPoints++;
                         drivePositions.Add(nextPos);
                         i++;
                     }
@@ -160,7 +182,6 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
 
                 if (drivePositions.Count > 1)
                 {
-                    sequenceNumber++;
                     var driveEnd = drivePositions.Last();
                     var driveDuration = (int)(driveEnd.RecordedAt - driveStart.RecordedAt).TotalSeconds;
                     var speedPositions = drivePositions.Where(p => p.SpeedKph > 0).ToList();
@@ -168,42 +189,47 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
                     var maxSpeed = drivePositions.Max(p => p.SpeedKph ?? 0);
                     var distance = CalculateDistance(drivePositions);
 
-                    activities.Add(new ActivitySegmentDto
+                    // Only add drive if it has meaningful distance (> 0.1 km) or duration (> 60s)
+                    if (distance >= 0.1 || driveDuration >= 60)
                     {
-                        Type = "drive",
-                        SequenceNumber = sequenceNumber,
-                        StartTime = driveStart.RecordedAt,
-                        EndTime = driveEnd.RecordedAt,
-                        DurationSeconds = driveDuration,
-                        DurationFormatted = FormatDuration(driveDuration),
-                        StartLocation = new LocationDto
+                        sequenceNumber++;
+                        activities.Add(new ActivitySegmentDto
                         {
-                            Latitude = driveStart.Latitude,
-                            Longitude = driveStart.Longitude,
-                            Address = driveStart.Address
-                        },
-                        EndLocation = new LocationDto
-                        {
-                            Latitude = driveEnd.Latitude,
-                            Longitude = driveEnd.Longitude,
-                            Address = driveEnd.Address
-                        },
-                        DistanceKm = Math.Round(distance, 2),
-                        AvgSpeedKph = Math.Round(avgSpeed, 1),
-                        MaxSpeedKph = Math.Round(maxSpeed, 1)
-                    });
+                            Type = "drive",
+                            SequenceNumber = sequenceNumber,
+                            StartTime = driveStart.RecordedAt,
+                            EndTime = driveEnd.RecordedAt,
+                            DurationSeconds = driveDuration,
+                            DurationFormatted = FormatDuration(driveDuration),
+                            StartLocation = new LocationDto
+                            {
+                                Latitude = driveStart.Latitude,
+                                Longitude = driveStart.Longitude,
+                                Address = driveStart.Address
+                            },
+                            EndLocation = new LocationDto
+                            {
+                                Latitude = driveEnd.Latitude,
+                                Longitude = driveEnd.Longitude,
+                                Address = driveEnd.Address
+                            },
+                            DistanceKm = Math.Round(distance, 2),
+                            AvgSpeedKph = Math.Round(avgSpeed, 1),
+                            MaxSpeedKph = Math.Round(maxSpeed, 1)
+                        });
+                    }
                 }
             }
             else
             {
-                // Start of a stop segment
+                // Start of a stop segment (speed <= threshold)
                 var stopStart = currentPos;
                 var stopPositions = new List<GpsPosition> { currentPos };
                 i++;
 
-                while (i < positions.Count)
+                while (i < activePositions.Count)
                 {
-                    var nextPos = positions[i];
+                    var nextPos = activePositions[i];
                     var nextSpeed = nextPos.SpeedKph ?? 0;
 
                     if (nextSpeed <= stopSpeedThresholdKph)
