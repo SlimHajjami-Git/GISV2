@@ -290,13 +290,13 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
                 {
                     var prev = merged[^1];
                     // Gap between end of previous drive and start of this drive
-                    var gapSeconds = (int)(seg.StartTime - prev.EndTime).TotalSeconds;
+                    var gapSeconds = (seg.StartTime.HasValue && prev.EndTime.HasValue) ? (int)(seg.StartTime.Value - prev.EndTime.Value).TotalSeconds : 0;
                     if (gapSeconds < MIN_REAL_STOP_SECONDS)
                     {
                         // Same trip: merge into previous drive
                         prev.EndTime = seg.EndTime;
                         prev.EndLocation = seg.EndLocation;
-                        prev.DurationSeconds = (int)(prev.EndTime - prev.StartTime).TotalSeconds;
+                        prev.DurationSeconds = (prev.EndTime.HasValue && prev.StartTime.HasValue) ? (int)(prev.EndTime.Value - prev.StartTime.Value).TotalSeconds : prev.DurationSeconds + seg.DurationSeconds;
                         prev.DurationFormatted = FormatDuration(prev.DurationSeconds);
                         prev.DistanceKm = (prev.DistanceKm ?? 0) + (seg.DistanceKm ?? 0);
                         prev.MaxSpeedKph = Math.Max(prev.MaxSpeedKph ?? 0, seg.MaxSpeedKph ?? 0);
@@ -330,7 +330,7 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
                 {
                     var prevStop = merged[^1];
                     prevStop.EndTime = seg.EndTime;
-                    prevStop.DurationSeconds = (int)(prevStop.EndTime - prevStop.StartTime).TotalSeconds;
+                    prevStop.DurationSeconds = (prevStop.EndTime.HasValue && prevStop.StartTime.HasValue) ? (int)(prevStop.EndTime.Value - prevStop.StartTime.Value).TotalSeconds : prevStop.DurationSeconds + seg.DurationSeconds;
                     prevStop.DurationFormatted = FormatDuration(prevStop.DurationSeconds);
                     continue;
                 }
@@ -354,14 +354,14 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
                 if (cleaned.Count > 0 && cleaned[^1].Type == "stop")
                 {
                     cleaned[^1].EndTime = seg.EndTime;
-                    cleaned[^1].DurationSeconds = (int)(cleaned[^1].EndTime - cleaned[^1].StartTime).TotalSeconds;
+                    cleaned[^1].DurationSeconds = (cleaned[^1].EndTime.HasValue && cleaned[^1].StartTime.HasValue) ? (int)(cleaned[^1].EndTime.Value - cleaned[^1].StartTime.Value).TotalSeconds : cleaned[^1].DurationSeconds + seg.DurationSeconds;
                     cleaned[^1].DurationFormatted = FormatDuration(cleaned[^1].DurationSeconds);
                     continue;
                 }
                 if (m + 1 < merged.Count && merged[m + 1].Type == "stop")
                 {
                     merged[m + 1].StartTime = seg.StartTime;
-                    merged[m + 1].DurationSeconds = (int)(merged[m + 1].EndTime - merged[m + 1].StartTime).TotalSeconds;
+                    merged[m + 1].DurationSeconds = (merged[m + 1].EndTime.HasValue && merged[m + 1].StartTime.HasValue) ? (int)(merged[m + 1].EndTime.Value - merged[m + 1].StartTime.Value).TotalSeconds : merged[m + 1].DurationSeconds + seg.DurationSeconds;
                     merged[m + 1].DurationFormatted = FormatDuration(merged[m + 1].DurationSeconds);
                     continue;
                 }
