@@ -1504,7 +1504,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     // Start smooth animation to next point
-    this.animateToNextPoint();
+    this.animateToNextPoint().catch(e => console.warn('Playback start error:', e));
   }
 
   // Smooth animation using requestAnimationFrame
@@ -1520,6 +1520,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
+    try {
     const fromPos = this.playbackPositions[this.playbackIndex];
     const toPos = this.playbackPositions[this.playbackIndex + 1];
     const currentSpeed = fromPos.speedKph || fromPos.speed || 0;
@@ -1555,7 +1556,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
           this.cdr.detectChanges();
           // Fast forward through stationary period
-          setTimeout(() => this.animateToNextPoint(), 100 / this.playbackSpeed);
+          setTimeout(() => this.animateToNextPoint().catch(e => console.warn('Playback skip error:', e)), 100 / this.playbackSpeed);
         });
         return;
       }
@@ -1597,7 +1598,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
             this.playbackIndex++;
             this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
             this.cdr.detectChanges();
-            setTimeout(() => this.animateToNextPoint(), 50 / this.playbackSpeed);
+            setTimeout(() => this.animateToNextPoint().catch(e => console.warn('Playback skip error:', e)), 50 / this.playbackSpeed);
           });
           return;
         }
@@ -1614,15 +1615,33 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     
     // ===== NORMAL VEHICLE MOVEMENT =====
     // Fetch Valhalla route for smooth road-following animation
-    this.currentRouteCoords = await this.fetchValhallaRoute(fromPos, toPos);
+    try {
+      this.currentRouteCoords = await this.fetchValhallaRoute(fromPos, toPos);
+    } catch (routeErr) {
+      console.warn('fetchValhallaRoute failed, using raw GPS fallback:', routeErr);
+      this.currentRouteCoords = [
+        L.latLng(fromPos.latitude, fromPos.longitude),
+        L.latLng(toPos.latitude, toPos.longitude)
+      ];
+    }
     this.routeAnimationIndex = 0;
+    
+    // Safety: ensure we have valid route coords
+    if (!this.currentRouteCoords || this.currentRouteCoords.length < 2) {
+      this.currentRouteCoords = [
+        L.latLng(fromPos.latitude, fromPos.longitude),
+        L.latLng(toPos.latitude, toPos.longitude)
+      ];
+    }
     
     // Calculate total route distance for animation duration
     let totalDistance = 0;
     for (let i = 1; i < this.currentRouteCoords.length; i++) {
       const prev = this.currentRouteCoords[i - 1];
       const curr = this.currentRouteCoords[i];
-      totalDistance += this.calculateDistance(prev.lat, prev.lng, curr.lat, curr.lng);
+      if (prev && curr && !isNaN(prev.lat) && !isNaN(curr.lat)) {
+        totalDistance += this.calculateDistance(prev.lat, prev.lng, curr.lat, curr.lng);
+      }
     }
     
     // If distance is essentially zero (same snapped point), skip animation entirely
@@ -1634,7 +1653,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         this.drawProgressiveSegment(previousIndex, this.playbackIndex);
         this.updatePlaybackMarker();
         this.cdr.detectChanges();
-        setTimeout(() => this.animateToNextPoint(), 50 / this.playbackSpeed);
+        setTimeout(() => this.animateToNextPoint().catch(e => console.warn('Playback skip error:', e)), 50 / this.playbackSpeed);
       });
       return;
     }
@@ -1650,6 +1669,20 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
     // Start the animation loop
     this.animateFrame();
+    
+    } catch (err) {
+      // CRITICAL: Never let the animation chain break — advance to next point on any error
+      console.error('animateToNextPoint error at index', this.playbackIndex, ':', err);
+      this.ngZone.run(() => {
+        const previousIndex = this.playbackIndex;
+        this.playbackIndex++;
+        this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+        try { this.drawProgressiveSegment(previousIndex, this.playbackIndex); } catch(_) {}
+        try { this.updatePlaybackMarker(); } catch(_) {}
+        this.cdr.detectChanges();
+        setTimeout(() => this.animateToNextPoint().catch(e => console.warn('Playback recovery error:', e)), 50 / this.playbackSpeed);
+      });
+    }
   }
 
   // Fetch Valhalla match for multiple GPS points (batch approach for better accuracy)
@@ -1820,8 +1853,20 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Animation frame loop for smooth interpolation along Valhalla route
   private animateFrame() {
-    if (!this.isPlaying || this.currentRouteCoords.length === 0) {
+    if (!this.isPlaying) {
       this.isAnimatingSegment = false;
+      return;
+    }
+    
+    // If route coords are empty, skip to next point instead of stopping
+    if (!this.currentRouteCoords || this.currentRouteCoords.length === 0) {
+      this.isAnimatingSegment = false;
+      this.ngZone.run(() => {
+        this.playbackIndex++;
+        this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+        this.cdr.detectChanges();
+        this.animateToNextPoint().catch(e => console.warn('Playback empty route skip:', e));
+      });
       return;
     }
 
@@ -1886,7 +1931,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         
         // Continue to next segment
         this.isAnimatingSegment = false;
-        this.animateToNextPoint();
+        this.animateToNextPoint().catch(e => console.warn('Playback next segment error:', e));
       });
     }
   }
