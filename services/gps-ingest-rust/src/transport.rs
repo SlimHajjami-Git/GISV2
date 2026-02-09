@@ -383,14 +383,13 @@ async fn process_single_frame(
                     // Only apply throttling when ignition is OFF and speed is low
                     if !frame.ignition_on && frame.speed_kph < STOPPED_SPEED_THRESHOLD_KPH {
                         if let Some(last_position) = database.get_last_position(device_id).await? {
-                            // Use current time (not frame timestamp) to handle historical frames correctly
-                            // Historical frames have close timestamps but arrive much later
-                            let now = chrono::Utc::now().naive_utc();
+                            // Compare GPS frame timestamps (both are in GPS local time, timezone-consistent)
+                            // Using Utc::now() caused false rejections due to GPS time being UTC+1 stored as UTC
                             let seconds_since_last_stored =
-                                (now - last_position.recorded_at).num_seconds();
+                                (frame.recorded_at - last_position.recorded_at).num_seconds();
                             
-                            // Skip if less than 30 minutes have passed since last stored position (real time)
-                            if seconds_since_last_stored.abs() < STOPPED_MIN_INTERVAL_SECS {
+                            // Skip if less than 15 minutes of GPS time since last stored position
+                            if seconds_since_last_stored >= 0 && seconds_since_last_stored < STOPPED_MIN_INTERVAL_SECS {
                                 info!(
                                     device_id,
                                     seconds_since_last = seconds_since_last_stored,
