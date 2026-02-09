@@ -1736,18 +1736,26 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Fetch route between two GPS points for animation (uses pre-matched coords if available)
   private async fetchValhallaRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
-    // Use pre-matched coordinates if available (from batch Valhalla Match)
-    if (this.matchedRouteCoords.length > 0) {
-      const fromLatLng = L.latLng(fromPos.latitude, fromPos.longitude);
-      const toLatLng = L.latLng(toPos.latitude, toPos.longitude);
+    // Use pre-matched road path coordinates if available
+    if (this.matchedRouteCoords.length > 0 && this.useRoadSnapping) {
+      // Calculate how many road points to use for this GPS segment
+      // Based on the current playback index, we divide the road path proportionally
+      const totalGpsPoints = this.playbackPositions.length;
+      const currentGpsIndex = this.playbackIndex;
       
-      const startIdx = this.findClosestMatchedIndex(fromLatLng, this.matchedRouteIndex);
-      let endIdx = this.findClosestMatchedIndex(toLatLng, startIdx);
+      // Calculate proportional indices in the road path
+      const roadPathLength = this.matchedRouteCoords.length;
+      const startRatio = currentGpsIndex / Math.max(1, totalGpsPoints - 1);
+      const endRatio = (currentGpsIndex + 1) / Math.max(1, totalGpsPoints - 1);
       
-      if (endIdx <= startIdx) endIdx = Math.min(startIdx + 1, this.matchedRouteCoords.length - 1);
+      const startIdx = Math.floor(startRatio * (roadPathLength - 1));
+      const endIdx = Math.min(Math.ceil(endRatio * (roadPathLength - 1)), roadPathLength - 1);
       
+      // Get the segment of the road path for this GPS point transition
       const segment = this.matchedRouteCoords.slice(startIdx, endIdx + 1);
+      
       if (segment.length >= 2) {
+        console.log(`Road segment: GPS ${currentGpsIndex} -> road points ${startIdx}-${endIdx} (${segment.length} points)`);
         return segment;
       }
     }
