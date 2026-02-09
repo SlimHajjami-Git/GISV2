@@ -1716,7 +1716,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         }
         this.matchedRouteIndex = 0;
         
-        console.log(`Road snapping applied: ${data.roadSnappingApplied}`);
+        console.log(`Road snapping: ${data.roadSnappingApplied}, method: ${data.method}`);
       } else {
         throw new Error('No points returned from processing');
       }
