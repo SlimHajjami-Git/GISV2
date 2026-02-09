@@ -68,7 +68,9 @@ public class ValhallaService : IValhallaService
                     Lat = p.Lat,
                     Lon = p.Lon,
                     Time = p.Timestamp?.ToUnixTimeSeconds(),
-                    Radius = 50.0
+                    Radius = 50.0,
+                    Heading = p.Heading,
+                    HeadingTolerance = p.Heading.HasValue ? 45.0 : null
                 }).ToList(),
                 Costing = "auto",
                 ShapeMatch = "map_snap",
@@ -388,6 +390,7 @@ public class ValhallaPoint
     public double Lat { get; set; }
     public double Lon { get; set; }
     public DateTimeOffset? Timestamp { get; set; }
+    public double? Heading { get; set; }
 }
 
 public class ValhallaShapePoint
@@ -403,6 +406,12 @@ public class ValhallaShapePoint
     
     [JsonPropertyName("radius")]
     public double? Radius { get; set; }
+    
+    [JsonPropertyName("heading")]
+    public double? Heading { get; set; }
+    
+    [JsonPropertyName("heading_tolerance")]
+    public double? HeadingTolerance { get; set; }
 }
 
 public class ValhallaTraceRequest
