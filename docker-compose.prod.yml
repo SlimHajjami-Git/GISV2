@@ -75,6 +75,7 @@ services:
       RabbitMQ__Queue: gps.telemetry.dotnet
       RabbitMQ__RoutingKey: hh
       Redis__ConnectionString: redis://redis:6379
+      Valhalla__Url: http://valhalla:8002
     restart: unless-stopped
 
   gps-ingest:
@@ -130,17 +131,39 @@ services:
       - "80:80"
     restart: unless-stopped
 
-  osrm:
-    image: osrm/osrm-backend:latest
+  # Valhalla routing service for road snapping (replaces OSRM - better map-matching)
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    container_name: gisv2-valhalla
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8002/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 30
+      start_period: 300s
+    environment:
+      - tile_urls=https://download.geofabrik.de/africa/tunisia-latest.osm.pbf
+      - serve_tiles=True
+      - build_tar=False
+      - use_tiles_ignore_pbf=False
+      - force_rebuild=False
+      - server_threads=2
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
     volumes:
-      - /opt/osrm-data:/data
+      - valhalla_data:/custom_files
     ports:
-      - "5001:5000"
-    command: osrm-routed --algorithm mld /data/tunisia-latest.osrm
+      - "8002:8002"
+    deploy:
+      resources:
+        limits:
+          memory: 2G
     restart: unless-stopped
 
 volumes:
   postgres_data:
   rabbitmq_data:
   redis_data:
-  osrm_data:
+  valhalla_data:

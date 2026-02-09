@@ -167,14 +167,19 @@ services:
       - build_tar=False
       - use_tiles_ignore_pbf=False
       - force_rebuild=False
+      - server_threads=2
     ulimits:
       nofile:
-        soft: 65536
-        hard: 65536
+        soft: 262144
+        hard: 262144
     volumes:
       - valhalla-data:/custom_files
     ports:
       - "8002:8002"
+    deploy:
+      resources:
+        limits:
+          memory: 2G
     restart: unless-stopped
 
   # Nominatim reverse geocoding service (coordinates -> addresses)
