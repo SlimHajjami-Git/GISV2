@@ -58,7 +58,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   playbackLoading = false;
   playbackVehicleId: number | null = null; // Track which vehicle's playback is loaded
   routingControl: any = null;
-  useRoadSnapping = true; // OSRM road snapping enabled by default
+  useRoadSnapping = true; // Valhalla road snapping enabled by default (replaces OSRM)
   private playbackZoomLevel: number = 15; // Store zoom level during playback
   pointMarkers: L.CircleMarker[] = []; // Markers for each GPS point
   filteredBirdFlights = 0; // Count of filtered bird flight positions
@@ -72,8 +72,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   private isAnimatingSegment: boolean = false;
   smoothFollowCamera: boolean = true; // Enable smooth camera following
   
-  // OSRM route animation
-  private currentRouteCoords: L.LatLng[] = []; // Coordinates of current OSRM route segment
+  // Valhalla route animation
+  private currentRouteCoords: L.LatLng[] = []; // Coordinates of current Valhalla route segment
   private routeAnimationIndex: number = 0; // Current position in route animation
   
   // Progressive trace drawing
@@ -86,7 +86,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Stopped anchor position: when ignition is on but speed < 3 km/h, anchor to prevent GPS drift
   private stoppedAnchor: { latitude: number; longitude: number } | null = null;
   
-  // OSRM matched route for the entire trace (batch matched)
+  // Valhalla matched route for the entire trace (batch matched)
   private matchedRouteCoords: L.LatLng[] = [];
   private matchedRouteIndex: number = 0;
   
@@ -867,22 +867,29 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         // Hide the live marker of the selected vehicle during playback
         this.hideLiveMarker(vehicleId.toString());
 
-        // OSRM Match DISABLED - Use raw GPS coordinates like GISV1 for accurate playback
-        // This preserves the exact GPS positions without road-snapping modifications
-        this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
-        this.matchedRouteIndex = 0;
-        this.playbackLoading = false;
-        
-        // Draw the complete route polyline (straight lines between GPS points)
-        this.drawPlaybackRoute();
-        
-        // Position the playback marker at start
-        this.updatePlaybackMarker();
-        
-        // Force change detection to update UI with new point count
-        this.cdr.detectChanges();
-        
-        console.log(`Playback loaded for vehicle ${vehicleId}: ${this.playbackPositions.length} GPS points (raw coordinates, no OSRM)`);
+        // Process route with smart interpolation (based on speed/time) + optional road snapping
+        this.processPlaybackRoute().then(() => {
+          this.playbackLoading = false;
+          
+          // Draw the complete route polyline
+          this.drawPlaybackRoute();
+          
+          // Position the playback marker at start
+          this.updatePlaybackMarker();
+          
+          // Force change detection to update UI with new point count
+          this.cdr.detectChanges();
+          
+          console.log(`Playback loaded for vehicle ${vehicleId}: ${this.playbackPositions.length} GPS points -> ${this.matchedRouteCoords.length} processed points`);
+        }).catch((err: Error) => {
+          console.warn('Route processing failed, using raw coordinates:', err);
+          this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
+          this.matchedRouteIndex = 0;
+          this.playbackLoading = false;
+          this.drawPlaybackRoute();
+          this.updatePlaybackMarker();
+          this.cdr.detectChanges();
+        });
       },
       error: (err) => {
         console.error('Error loading playback data:', err);
@@ -1069,7 +1076,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   async drawRoutedPath(coords: L.LatLng[]) {
     if (!this.map || coords.length < 2) return;
 
-    // Filter out points that are too close together (< 15m) to avoid erratic OSRM routing
+    // Filter out points that are too close together (< 15m) to avoid erratic routing
     // This is especially important for stationary vehicles with GPS jitter
     const filteredCoords: L.LatLng[] = [coords[0]];
     for (let i = 1; i < coords.length; i++) {
@@ -1089,7 +1096,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     }
 
-    console.log(`Filtered ${coords.length} points to ${filteredCoords.length} for OSRM routing`);
+    console.log(`Filtered ${coords.length} points to ${filteredCoords.length} for Valhalla routing`);
 
     // If too few points after filtering, just draw straight line
     if (filteredCoords.length < 2) {
@@ -1097,26 +1104,33 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    // Use local OSRM server (self-hosted) for road snapping
-    // Format: lon,lat;lon,lat;...
-    const coordsStr = filteredCoords.map(c => `${c.lng},${c.lat}`).join(';');
-    
-    // OSRM without bearings - let it find the best route
-    const url = `/api/osrm/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
+    // Use Valhalla for road snapping (better map-matching than OSRM)
+    const points = filteredCoords.map(c => ({
+      lat: c.lat,
+      lon: c.lng,
+      timestamp: null
+    }));
 
     try {
-      const response = await fetch(url);
+      const response = await fetch('/api/routing/snap', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ points })
+      });
       
       if (!response.ok) {
-        throw new Error(`OSRM API error: ${response.status}`);
+        throw new Error(`Valhalla API error: ${response.status}`);
       }
 
       const data = await response.json();
       
-      if (data.code === 'Ok' && data.routes && data.routes[0] && data.routes[0].geometry) {
-        // Convert GeoJSON coordinates to Leaflet LatLng
-        const routeCoords: L.LatLng[] = data.routes[0].geometry.coordinates.map(
-          (c: number[]) => L.latLng(c[1], c[0])
+      if (data.points && data.points.length > 0) {
+        // Use snapped coordinates from Valhalla
+        const routeCoords: L.LatLng[] = data.points.map(
+          (p: any) => L.latLng(p.snappedLat, p.snappedLon)
         );
 
         this.playbackPolyline = L.polyline(routeCoords, {
@@ -1126,9 +1140,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         }).addTo(this.map!);
 
         this.map!.fitBounds(this.playbackPolyline.getBounds().pad(0.1));
-        console.log('OSRM road-snapped route drawn successfully with', routeCoords.length, 'points');
+        console.log('Valhalla road-snapped route drawn successfully with', routeCoords.length, 'points');
       } else {
-        throw new Error('Invalid OSRM response: ' + (data.code || 'unknown'));
+        throw new Error('Invalid Valhalla response: no points returned');
       }
     } catch (error) {
       console.warn('Road snapping failed, falling back to straight lines:', error);
@@ -1570,8 +1584,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     
     // ===== NORMAL VEHICLE MOVEMENT =====
-    // Fetch OSRM route for smooth road-following animation
-    this.currentRouteCoords = await this.fetchOSRMRoute(fromPos, toPos);
+    // Fetch Valhalla route for smooth road-following animation
+    this.currentRouteCoords = await this.fetchValhallaRoute(fromPos, toPos);
     this.routeAnimationIndex = 0;
     
     // Calculate total route distance for animation duration
@@ -1595,15 +1609,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.animateFrame();
   }
 
-  // Fetch OSRM match for multiple GPS points (batch approach for better accuracy)
-  // This matches the entire trace at once so OSRM understands the full trajectory
-  private async fetchOSRMMatchBatch(positions: any[]): Promise<L.LatLng[]> {
+  // Fetch Valhalla match for multiple GPS points (batch approach for better accuracy)
+  // This matches the entire trace at once so Valhalla understands the full trajectory
+  private async fetchValhallaMatchBatch(positions: any[]): Promise<L.LatLng[]> {
     if (positions.length < 2) {
       return positions.map(p => L.latLng(p.latitude, p.longitude));
     }
     
-    // OSRM has a limit on URL length, so batch in chunks of 100 points
-    const BATCH_SIZE = 100;
+    // Valhalla can handle larger batches than OSRM, use 500 points per batch
+    const BATCH_SIZE = 500;
     const allCoords: L.LatLng[] = [];
     
     for (let i = 0; i < positions.length; i += BATCH_SIZE - 1) {
@@ -1612,31 +1626,35 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       if (batch.length < 2) break;
       
       try {
-        const coordsStr = batch.map(p => `${p.longitude},${p.latitude}`).join(';');
-        const radiuses = batch.map(() => '50').join(';');
+        const points = batch.map(p => ({
+          lat: p.latitude,
+          lon: p.longitude,
+          timestamp: p.recordedAt ? new Date(p.recordedAt).getTime() : null
+        }));
         
-        const url = `/api/osrm/match/v1/driving/${coordsStr}?overview=full&geometries=geojson&gaps=ignore&radiuses=${radiuses}`;
+        const response = await fetch('/api/routing/snap', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({ points })
+        });
         
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`OSRM Match error: ${response.status}`);
+        if (!response.ok) throw new Error(`Valhalla Match error: ${response.status}`);
         
         const data = await response.json();
         
-        if (data.code === 'Ok' && data.matchings) {
-          // Combine all matchings (there may be multiple if there are gaps)
-          for (const matching of data.matchings) {
-            if (matching.geometry?.coordinates) {
-              const coords = matching.geometry.coordinates.map(
-                (c: number[]) => L.latLng(c[1], c[0])
-              );
-              // Skip first point if not first batch to avoid duplicates
-              const startIdx = (i > 0 && allCoords.length > 0) ? 1 : 0;
-              allCoords.push(...coords.slice(startIdx));
-            }
-          }
+        if (data.points && data.points.length > 0) {
+          const coords = data.points.map(
+            (p: any) => L.latLng(p.snappedLat, p.snappedLon)
+          );
+          // Skip first point if not first batch to avoid duplicates
+          const startIdx = (i > 0 && allCoords.length > 0) ? 1 : 0;
+          allCoords.push(...coords.slice(startIdx));
         }
       } catch (error) {
-        console.warn(`OSRM Match batch failed at index ${i}, using raw points:`, error);
+        console.warn(`Valhalla Match batch failed at index ${i}, using raw points:`, error);
         // Fallback: add raw GPS points for this batch
         const rawCoords = batch.map(p => L.latLng(p.latitude, p.longitude));
         const startIdx = (i > 0 && allCoords.length > 0) ? 1 : 0;
@@ -1648,13 +1666,68 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       return positions.map(p => L.latLng(p.latitude, p.longitude));
     }
     
-    console.log(`OSRM Batch Match: ${positions.length} GPS points -> ${allCoords.length} matched coords`);
+    console.log(`Valhalla Batch Match: ${positions.length} GPS points -> ${allCoords.length} matched coords`);
     return allCoords;
   }
 
+  // Process playback route with smart interpolation (speed/time-based) + optional road snapping
+  private async processPlaybackRoute(): Promise<void> {
+    if (this.playbackPositions.length < 2) {
+      this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
+      this.matchedRouteIndex = 0;
+      return;
+    }
+
+    // Prepare points for the API with speed and timestamp data
+    const points = this.playbackPositions.map(p => ({
+      lat: p.latitude,
+      lon: p.longitude,
+      timestamp: p.recordedAt ? new Date(p.recordedAt).getTime() : null,
+      speed: p.speedKph || 0,
+      heading: p.courseDeg || null,
+      ignitionOn: p.ignitionOn
+    }));
+
+    try {
+      // Call the smart processing endpoint (interpolation + optional road snapping)
+      const response = await fetch('/api/routing/process', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ 
+          points,
+          enableRoadSnapping: this.useRoadSnapping 
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.points && data.points.length > 0) {
+        // Use processed coordinates (interpolated + optionally road-snapped)
+        this.matchedRouteCoords = data.points.map((p: any) => L.latLng(p.lat, p.lon));
+        this.matchedRouteIndex = 0;
+        
+        console.log(`Route processed: ${data.originalCount} GPS -> ${data.interpolatedCount} interpolated -> ${data.finalCount} final points (road snapping: ${data.roadSnappingApplied})`);
+      } else {
+        throw new Error('No points returned from processing');
+      }
+    } catch (error) {
+      console.warn('Smart route processing failed, using raw coordinates:', error);
+      // Fallback to raw GPS coordinates
+      this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
+      this.matchedRouteIndex = 0;
+    }
+  }
+
   // Fetch route between two GPS points for animation (uses pre-matched coords if available)
-  private async fetchOSRMRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
-    // Use pre-matched coordinates if available (from batch OSRM Match)
+  private async fetchValhallaRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
+    // Use pre-matched coordinates if available (from batch Valhalla Match)
     if (this.matchedRouteCoords.length > 0) {
       const fromLatLng = L.latLng(fromPos.latitude, fromPos.longitude);
       const toLatLng = L.latLng(toPos.latitude, toPos.longitude);
@@ -1677,7 +1750,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     ];
   }
 
-  // Animation frame loop for smooth interpolation along OSRM route
+  // Animation frame loop for smooth interpolation along Valhalla route
   private animateFrame() {
     if (!this.isPlaying || this.currentRouteCoords.length === 0) {
       this.isAnimatingSegment = false;
@@ -1750,7 +1823,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  // Get interpolated position along the OSRM route
+  // Get interpolated position along the Valhalla route
   private getPositionAlongRoute(progress: number): { lat: number; lng: number; heading: number } | null {
     // Validate route coords exist
     if (!this.currentRouteCoords || this.currentRouteCoords.length === 0) {
@@ -1865,7 +1938,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // Determine color based on vehicle status at the destination point
     const color = this.getStatusColor(toPos);
     
-    // Use OSRM for road snapping if enabled, otherwise draw straight line
+    // Use Valhalla for road snapping if enabled, otherwise draw straight line
     if (this.useRoadSnapping) {
       this.drawRoutedSegment(fromPos, toPos, color);
     } else {
@@ -1950,7 +2023,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     ));
   }
 
-  // Draw a road-snapped segment using pre-matched coordinates (from batch OSRM Match)
+  // Draw a road-snapped segment using pre-matched coordinates (from batch Valhalla Match)
   // This uses the matchedRouteCoords that were computed when playback loaded
   private drawRoutedSegment(fromPos: any, toPos: any, color: string) {
     if (!this.map) return;

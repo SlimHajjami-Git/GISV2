@@ -81,6 +81,7 @@ services:
       REDIS_URL: redis://redis:6379
       API_PORT: 3000
       NOMINATIM_URL: http://nominatim:8080
+      VALHALLA_URL: http://valhalla:8002
     ports:
       - "3000:3000"      # REST API
       - "6100:6100"      # GPS TCP listener
@@ -126,6 +127,7 @@ services:
       RabbitMQ__GpsPositionsQueue: "gis.gps.positions"
       RabbitMQ__AlertsQueue: "gis.alerts.notifications"
       Redis__ConnectionString: "redis:6379"
+      Valhalla__Url: "http://valhalla:8002"
     ports:
       - "5000:5000"
     restart: unless-stopped
@@ -149,20 +151,30 @@ services:
       - "4200:80"
     restart: unless-stopped
 
-  # OSRM routing service for road snapping
-  osrm:
-    image: osrm/osrm-backend:latest
+  # Valhalla routing service for road snapping (replaces OSRM - better map-matching)
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    container_name: gisv2-valhalla
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5000/nearest/v1/driving/10.1815,36.8065 || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8002/status || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 10
-      start_period: 60s
-    ports:
-      - "5001:5000"
+      retries: 30
+      start_period: 300s
+    environment:
+      - tile_urls=https://download.geofabrik.de/africa/tunisia-latest.osm.pbf
+      - serve_tiles=True
+      - build_tar=False
+      - use_tiles_ignore_pbf=False
+      - force_rebuild=False
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     volumes:
-      - ./osrm-data:/data:ro
-    command: osrm-routed --algorithm mld /data/tunisia-latest.osrm
+      - valhalla-data:/custom_files
+    ports:
+      - "8002:8002"
     restart: unless-stopped
 
   # Nominatim reverse geocoding service (coordinates -> addresses)
@@ -191,3 +203,4 @@ volumes:
   pgdata:
   nominatim-data:
   redis-data:
+  valhalla-data:

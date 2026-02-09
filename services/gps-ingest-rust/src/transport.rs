@@ -390,8 +390,23 @@ async fn process_single_frame(
                     // When ignition is ON or speed >= 20 km/h, all frames are stored (no throttling)
                 }
 
-                // NOTE: GPS Stabilization and GPS Validator removed to match GISV1 behavior
-                // GISV1 did not have these validations
+                // GPS Validation: Check for aberrant points (jumps, speed incoherence)
+                if let Some(device_id) = device_id_opt {
+                    let validation = services.gps_validator.validate(device_id, &frame).await;
+                    if !validation.should_store() {
+                        if let crate::services::gps_validator::ValidationResult::Invalid { reason } = &validation {
+                            warn!(
+                                device_id,
+                                imei = %resolved_uid,
+                                lat = frame.latitude,
+                                lon = frame.longitude,
+                                reason = %reason,
+                                "Frame REJECTED by GPS validator"
+                            );
+                        }
+                        return Ok(());
+                    }
+                }
 
                 // Geocode the position (async, non-blocking)
                 if frame.is_valid {
@@ -476,10 +491,39 @@ async fn process_single_frame(
                 }
 
                 // ============================================================
-                // END GISV1 CONDITIONS
-                // NOTE: SaveDynData validations (angle, speed, coords) were NOT in GISV1 AAP.cs
-                // They were only in the stored procedure - removed to match GISV1 behavior
+                // ADDITIONAL VALIDATIONS
                 // ============================================================
+
+                // Coordinates must not be too close to 0 (invalid GPS / null island)
+                if frame.latitude.abs() < 0.05 && frame.longitude.abs() < 0.05 {
+                    info!(
+                        imei = %resolved_uid,
+                        lat = frame.latitude,
+                        lon = frame.longitude,
+                        "Frame SKIPPED: Coordinates near 0,0 (null island)"
+                    );
+                    return Ok(());
+                }
+
+                // Longitude must be -180 to +180
+                if frame.longitude < -180.0 || frame.longitude > 180.0 {
+                    warn!(
+                        imei = %resolved_uid,
+                        lon = frame.longitude,
+                        "Frame SKIPPED: Longitude out of range"
+                    );
+                    return Ok(());
+                }
+
+                // Latitude must be -90 to +90
+                if frame.latitude < -90.0 || frame.latitude > 90.0 {
+                    warn!(
+                        imei = %resolved_uid,
+                        lat = frame.latitude,
+                        "Frame SKIPPED: Latitude out of range"
+                    );
+                    return Ok(());
+                }
 
                 // Get vehicle and company info first (needed for parallel operations)
                 let (vehicle_id, company_id) = if let Some(device_id) = device_id_opt {

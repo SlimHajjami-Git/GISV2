@@ -41,6 +41,12 @@ builder.Services.AddScoped<GisAPI.Services.IDrivingBehaviorService, GisAPI.Servi
 // Maintenance Scheduler Service
 builder.Services.AddScoped<GisAPI.Application.Services.IMaintenanceSchedulerService, GisAPI.Application.Services.MaintenanceSchedulerService>();
 
+// Valhalla Road Snapping Service (replaces OSRM - better map-matching for GPS)
+builder.Services.AddSingleton<GisAPI.Services.IValhallaService, GisAPI.Services.ValhallaService>();
+
+// GPS Interpolation Service (smart interpolation based on speed and time)
+builder.Services.AddSingleton<GisAPI.Services.IGpsInterpolationService, GisAPI.Services.GpsInterpolationService>();
+
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "DefaultSecretKeyForDevelopment123!";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
