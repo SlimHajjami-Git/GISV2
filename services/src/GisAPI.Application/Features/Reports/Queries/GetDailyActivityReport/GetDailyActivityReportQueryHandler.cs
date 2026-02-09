@@ -273,69 +273,95 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
         }
 
         // === MERGE PHASE ===
-        // 1) Merge drive-shortStop-drive into one continuous drive (handles traffic lights < 5 min)
-        // 2) Merge consecutive stops into one
-        // 3) Absorb micro-drives (< 0.5 km) adjacent to stops
-        const int MIN_STOP_BREAK_SECONDS = 300; // 5 minutes
+        // Merge all segments into logical trips and stops
+        // A "trip" = continuous movement from departure to arrival (parking ≥ 5 min)
+        // Short gaps between drives (traffic lights, slow traffic) are part of the same trip
+        const int MIN_REAL_STOP_SECONDS = 300; // 5 minutes = real parking stop
         var merged = new List<ActivitySegmentDto>();
 
         for (int m = 0; m < activities.Count; m++)
         {
             var seg = activities[m];
 
-            // Short stop between two drives → absorb into previous drive
-            if (seg.Type == "stop" && merged.Count > 0 && m + 1 < activities.Count)
+            if (seg.Type == "drive")
             {
-                var prevSeg = merged[^1];
-                var nextSeg = activities[m + 1];
-                if (prevSeg.Type == "drive" && nextSeg.Type == "drive" && seg.DurationSeconds < MIN_STOP_BREAK_SECONDS)
+                // Merge consecutive drives into one (no stop between them = same trip)
+                if (merged.Count > 0 && merged[^1].Type == "drive")
                 {
-                    prevSeg.EndTime = nextSeg.EndTime;
-                    prevSeg.EndLocation = nextSeg.EndLocation;
-                    prevSeg.DurationSeconds += seg.DurationSeconds + nextSeg.DurationSeconds;
-                    prevSeg.DurationFormatted = FormatDuration(prevSeg.DurationSeconds);
-                    prevSeg.DistanceKm = (prevSeg.DistanceKm ?? 0) + (nextSeg.DistanceKm ?? 0);
-                    prevSeg.MaxSpeedKph = Math.Max(prevSeg.MaxSpeedKph ?? 0, nextSeg.MaxSpeedKph ?? 0);
-                    if (prevSeg.AvgSpeedKph.HasValue && nextSeg.AvgSpeedKph.HasValue)
-                        prevSeg.AvgSpeedKph = Math.Round((prevSeg.AvgSpeedKph.Value + nextSeg.AvgSpeedKph.Value) / 2, 1);
-                    m++; // Skip next drive (already merged)
+                    var prev = merged[^1];
+                    // Gap between end of previous drive and start of this drive
+                    var gapSeconds = (int)(seg.StartTime - prev.EndTime).TotalSeconds;
+                    if (gapSeconds < MIN_REAL_STOP_SECONDS)
+                    {
+                        // Same trip: merge into previous drive
+                        prev.EndTime = seg.EndTime;
+                        prev.EndLocation = seg.EndLocation;
+                        prev.DurationSeconds = (int)(prev.EndTime - prev.StartTime).TotalSeconds;
+                        prev.DurationFormatted = FormatDuration(prev.DurationSeconds);
+                        prev.DistanceKm = (prev.DistanceKm ?? 0) + (seg.DistanceKm ?? 0);
+                        prev.MaxSpeedKph = Math.Max(prev.MaxSpeedKph ?? 0, seg.MaxSpeedKph ?? 0);
+                        // Weighted average speed by distance
+                        var prevDist = prev.DistanceKm ?? 0;
+                        var segDist = seg.DistanceKm ?? 0;
+                        var totalDist = prevDist + segDist;
+                        if (totalDist > 0 && prev.AvgSpeedKph.HasValue && seg.AvgSpeedKph.HasValue)
+                            prev.AvgSpeedKph = Math.Round(totalDist / (prev.DurationSeconds / 3600.0), 1);
+                        continue;
+                    }
+                }
+                merged.Add(seg);
+            }
+            else if (seg.Type == "stop")
+            {
+                // Short stop between two drives → absorb into previous drive (traffic light)
+                if (seg.DurationSeconds < MIN_REAL_STOP_SECONDS && merged.Count > 0 && m + 1 < activities.Count)
+                {
+                    var prevSeg = merged[^1];
+                    var nextSeg = activities[m + 1];
+                    if (prevSeg.Type == "drive" && nextSeg.Type == "drive")
+                    {
+                        // Don't add the short stop, the next drive will merge with prev
+                        continue;
+                    }
+                }
+
+                // Merge consecutive stops
+                if (merged.Count > 0 && merged[^1].Type == "stop")
+                {
+                    var prevStop = merged[^1];
+                    prevStop.EndTime = seg.EndTime;
+                    prevStop.DurationSeconds = (int)(prevStop.EndTime - prevStop.StartTime).TotalSeconds;
+                    prevStop.DurationFormatted = FormatDuration(prevStop.DurationSeconds);
                     continue;
                 }
-            }
 
-            // Merge consecutive stops
-            if (seg.Type == "stop" && merged.Count > 0 && merged[^1].Type == "stop")
+                merged.Add(seg);
+            }
+            else
             {
-                var prevStop = merged[^1];
-                prevStop.EndTime = seg.EndTime;
-                prevStop.DurationSeconds += seg.DurationSeconds;
-                prevStop.DurationFormatted = FormatDuration(prevStop.DurationSeconds);
-                continue;
+                merged.Add(seg);
             }
-
-            merged.Add(seg);
         }
 
         // === POST-MERGE CLEANUP ===
-        // Absorb micro-drives (< 0.5 km) into adjacent stops
+        // Remove micro-drives (< 0.3 km) that survived merge — absorb into adjacent stops
         var cleaned = new List<ActivitySegmentDto>();
         for (int m = 0; m < merged.Count; m++)
         {
             var seg = merged[m];
-            if (seg.Type == "drive" && (seg.DistanceKm ?? 0) < 0.5)
+            if (seg.Type == "drive" && (seg.DistanceKm ?? 0) < 0.3)
             {
-                // Absorb into previous stop or next stop
                 if (cleaned.Count > 0 && cleaned[^1].Type == "stop")
                 {
                     cleaned[^1].EndTime = seg.EndTime;
-                    cleaned[^1].DurationSeconds += seg.DurationSeconds;
+                    cleaned[^1].DurationSeconds = (int)(cleaned[^1].EndTime - cleaned[^1].StartTime).TotalSeconds;
                     cleaned[^1].DurationFormatted = FormatDuration(cleaned[^1].DurationSeconds);
                     continue;
                 }
                 if (m + 1 < merged.Count && merged[m + 1].Type == "stop")
                 {
                     merged[m + 1].StartTime = seg.StartTime;
-                    merged[m + 1].DurationSeconds += seg.DurationSeconds;
+                    merged[m + 1].DurationSeconds = (int)(merged[m + 1].EndTime - merged[m + 1].StartTime).TotalSeconds;
                     merged[m + 1].DurationFormatted = FormatDuration(merged[m + 1].DurationSeconds);
                     continue;
                 }
