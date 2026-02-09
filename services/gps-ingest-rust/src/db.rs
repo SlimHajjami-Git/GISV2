@@ -239,6 +239,36 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
+        // Auto-link device to vehicle: match gps_devices.mat with vehicles.plate_number
+        // Only link if vehicle doesn't already have a device assigned
+        if let Some(ref mat_value) = mat {
+            let linked = sqlx::query(
+                r#"
+                UPDATE vehicles
+                SET gps_device_id = d.id, updated_at = NOW()
+                FROM gps_devices d
+                WHERE d.device_uid = $1
+                  AND vehicles.plate_number = $2
+                  AND vehicles.gps_device_id IS NULL
+                RETURNING vehicles.id
+                "#,
+            )
+            .bind(&imei)
+            .bind(mat_value)
+            .fetch_optional(&self.pool)
+            .await?;
+
+            if let Some(row) = linked {
+                let vehicle_id: i32 = row.get("id");
+                tracing::info!(
+                    imei = %imei,
+                    mat = %mat_value,
+                    vehicle_id = vehicle_id,
+                    "Auto-linked GPS device to vehicle via MAT/plate_number match"
+                );
+            }
+        }
+
         Ok(imei)
     }
 
