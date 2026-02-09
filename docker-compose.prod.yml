@@ -74,7 +74,7 @@ services:
       RabbitMQ__Exchange: telemetry.raw
       RabbitMQ__Queue: gps.telemetry.dotnet
       RabbitMQ__RoutingKey: hh
-      Redis__ConnectionString: redis://redis:6379
+      Redis__ConnectionString: redis:6379,abortConnect=false
       Valhalla__Url: http://valhalla:8002
     restart: unless-stopped
 
