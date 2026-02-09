@@ -429,12 +429,24 @@ export class ReportsComponent implements OnInit {
   }
 
   selectTemplate(template: any) {
+    this.destroyAllCharts();
     this.selectedTemplate = template;
     this.selectedTemplateId = template.id;
+    this.reportGenerated = false;
+    this.tableData = [];
+    this.chartData = [];
+    this.secondaryChartData = [];
+    this.statisticsData = {};
   }
 
   onTemplateChange() {
+    this.destroyAllCharts();
     this.selectedTemplate = this.templates.find(t => t.id === this.selectedTemplateId) || null;
+    this.reportGenerated = false;
+    this.tableData = [];
+    this.chartData = [];
+    this.secondaryChartData = [];
+    this.statisticsData = {};
   }
 
   // Dropdown methods
@@ -444,9 +456,15 @@ export class ReportsComponent implements OnInit {
   }
 
   selectTemplateFromDropdown(template: any) {
+    this.destroyAllCharts();
     this.selectedTemplate = template;
     this.selectedTemplateId = template.id;
     this.showTemplateDropdown = false;
+    this.reportGenerated = false;
+    this.tableData = [];
+    this.chartData = [];
+    this.secondaryChartData = [];
+    this.statisticsData = {};
   }
 
   getTemplatesByCategory(category: string): any[] {
@@ -470,6 +488,7 @@ export class ReportsComponent implements OnInit {
   }
 
   clearFilters() {
+    this.destroyAllCharts();
     this.selectedTemplateId = '';
     this.selectedTemplate = null;
     this.selectedVehicleId = '';
@@ -479,6 +498,19 @@ export class ReportsComponent implements OnInit {
     this.customEndDate = '';
     this.dailyReportDate = '';
     this.reportGenerated = false;
+    this.tableData = [];
+    this.chartData = [];
+    this.secondaryChartData = [];
+    this.statisticsData = {};
+  }
+
+  destroyAllCharts() {
+    if (this.chart) { this.chart.destroy(); this.chart = undefined; }
+    if (this.secondaryChart) { this.secondaryChart.destroy(); this.secondaryChart = undefined; }
+    if (this.mileagePeriodChart) { this.mileagePeriodChart.destroy(); this.mileagePeriodChart = undefined; }
+    if (this.kmBarChart) { this.kmBarChart.destroy(); this.kmBarChart = undefined; }
+    if (this.fuelPieChart) { this.fuelPieChart.destroy(); this.fuelPieChart = undefined; }
+    if (this.maintenanceAreaChart) { this.maintenanceAreaChart.destroy(); this.maintenanceAreaChart = undefined; }
   }
 
   // Pagination getters
