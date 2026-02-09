@@ -587,21 +587,21 @@ impl TelemetryStore for Database {
         let row = sqlx::query(
             r#"
             INSERT INTO driving_events (
-                vehicle_id,
-                type,
-                severity,
-                g_force,
-                speed_kph,
-                latitude,
-                longitude,
-                timestamp,
-                company_id,
-                created_at,
-                updated_at
+                "VehicleId",
+                "Type",
+                "Severity",
+                "GForce",
+                "SpeedKph",
+                "Latitude",
+                "Longitude",
+                "Timestamp",
+                "CompanyId",
+                "CreatedAt",
+                "UpdatedAt"
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()
             )
-            RETURNING id
+            RETURNING "Id" as id
             "#,
         )
         .bind(event.vehicle_id)
@@ -623,32 +623,32 @@ impl TelemetryStore for Database {
         let row = sqlx::query(
             r#"
             INSERT INTO trips (
-                vehicle_id,
-                driver_id,
-                start_time,
-                end_time,
-                start_latitude,
-                start_longitude,
-                end_latitude,
-                end_longitude,
-                distance_km,
-                duration_minutes,
-                average_speed_kph,
-                max_speed_kph,
-                fuel_consumed_liters,
-                start_odometer_km,
-                end_odometer_km,
-                harsh_braking_count,
-                harsh_acceleration_count,
-                overspeeding_count,
-                status,
-                company_id,
-                created_at,
-                updated_at
+                "VehicleId",
+                "DriverId",
+                "StartTime",
+                "EndTime",
+                "StartLatitude",
+                "StartLongitude",
+                "EndLatitude",
+                "EndLongitude",
+                "DistanceKm",
+                "DurationMinutes",
+                "AverageSpeedKph",
+                "MaxSpeedKph",
+                "FuelConsumedLiters",
+                "StartMileage",
+                "EndMileage",
+                "HarshBrakingCount",
+                "HarshAccelerationCount",
+                "OverspeedingCount",
+                "Status",
+                "CompanyId",
+                "CreatedAt",
+                "UpdatedAt"
             ) VALUES (
                 $1, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW()
             )
-            RETURNING id
+            RETURNING "Id" as id
             "#,
         )
         .bind(trip.vehicle_id.unwrap_or(0))
