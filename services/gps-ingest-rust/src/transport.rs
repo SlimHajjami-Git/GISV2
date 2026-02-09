@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use anyhow::{anyhow, Context, Result};
 use chrono::Duration;
 use tokio::{
-    io::AsyncReadExt,
+    io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     signal,
     sync::Mutex,
@@ -161,6 +161,19 @@ async fn handle_tcp_connection(
         let payload = &buffer[..read];
         let hex_dump = hex::encode(payload);
         info!(protocol = %cfg.protocol, port = cfg.port, size = read, payload = %hex_dump, "Received raw payload");
+
+        // ACK mechanism for AAP/ACI protocol (same as GISV1)
+        // When tracker sends "AAAA", respond with "AA06" to keep short interval (1 min)
+        // Without ACK, tracker falls back to degraded mode (3 min interval)
+        if let Ok(ascii) = std::str::from_utf8(payload) {
+            if ascii.contains("AAAA") {
+                if let Err(e) = stream.write_all(b"AA06").await {
+                    warn!(?e, "Failed to send AA06 ACK to tracker");
+                } else {
+                    info!(peer = peer.as_deref().unwrap_or("unknown"), "Sent AA06 ACK to tracker (keepalive)");
+                }
+            }
+        }
 
         if let Err(err) = route_payload(
             &cfg.protocol,
