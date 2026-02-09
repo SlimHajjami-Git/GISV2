@@ -2030,25 +2030,23 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     ));
   }
 
-  // Draw a road-snapped segment using pre-matched coordinates (from batch Valhalla Match)
-  // This uses the matchedRouteCoords that were computed when playback loaded
+  // Draw a road-snapped segment using proportional distribution of road path points
   private drawRoutedSegment(fromPos: any, toPos: any, color: string) {
     if (!this.map) return;
     
-    // If we have pre-matched coordinates, use them for accurate road-snapped drawing
     if (this.matchedRouteCoords.length > 0) {
-      // Find the closest point in matchedRouteCoords to our current GPS position
-      const fromLatLng = L.latLng(fromPos.latitude, fromPos.longitude);
-      const toLatLng = L.latLng(toPos.latitude, toPos.longitude);
+      // Use same proportional logic as fetchValhallaRoute
+      const totalGpsPoints = this.playbackPositions.length;
+      const fromIndex = this.playbackPositions.indexOf(fromPos);
+      const currentGpsIndex = fromIndex >= 0 ? fromIndex : this.playbackIndex - 1;
       
-      // Find start and end indices in the matched route
-      let startIdx = this.findClosestMatchedIndex(fromLatLng, this.matchedRouteIndex);
-      let endIdx = this.findClosestMatchedIndex(toLatLng, startIdx);
+      const roadPathLength = this.matchedRouteCoords.length;
+      const startRatio = currentGpsIndex / Math.max(1, totalGpsPoints - 1);
+      const endRatio = (currentGpsIndex + 1) / Math.max(1, totalGpsPoints - 1);
       
-      // Ensure we move forward in the matched route
-      if (endIdx <= startIdx) endIdx = Math.min(startIdx + 1, this.matchedRouteCoords.length - 1);
+      const startIdx = Math.floor(startRatio * (roadPathLength - 1));
+      const endIdx = Math.min(Math.ceil(endRatio * (roadPathLength - 1)), roadPathLength - 1);
       
-      // Extract segment from pre-matched coordinates
       const segmentCoords = this.matchedRouteCoords.slice(startIdx, endIdx + 1);
       
       if (segmentCoords.length >= 2) {
@@ -2061,20 +2059,6 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         }).addTo(this.map!);
         
         this.progressivePolylines.push(segment);
-        this.matchedRouteIndex = endIdx; // Update index for next segment
-        
-        // Add point marker at the end of segment (on the matched route)
-        const endPoint = segmentCoords[segmentCoords.length - 1];
-        const pointMarker = L.circleMarker(endPoint, {
-          radius: 4,
-          fillColor: color,
-          color: '#ffffff',
-          weight: 2,
-          opacity: 1,
-          fillOpacity: 0.9
-        }).addTo(this.map!);
-        
-        this.pointMarkers.push(pointMarker);
         return;
       }
     }

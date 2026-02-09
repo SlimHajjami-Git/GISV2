@@ -171,96 +171,63 @@ public class RoutingController : ControllerBase
             return BadRequest(new { error = "At least 2 points are required" });
         }
 
-        // Step 1: Smart interpolation based on speed and time
-        var trackPoints = request.Points.Select(p => new GpsTrackPoint
-        {
-            Latitude = p.Lat,
-            Longitude = p.Lon,
-            Timestamp = p.Timestamp.HasValue 
-                ? DateTimeOffset.FromUnixTimeMilliseconds(p.Timestamp.Value).UtcDateTime 
-                : DateTime.UtcNow,
-            Speed = p.Speed ?? 0,
-            Heading = p.Heading,
-            IgnitionOn = p.IgnitionOn
-        }).ToList();
-
-        var interpolated = _interpolationService.SmartInterpolate(trackPoints);
-
-        // Step 2: Try Valhalla road snapping if enabled
-        List<SnappedPoint>? snappedPoints = null;
-        List<double[]>? roadPath = null; // The actual road path from Valhalla polyline
+        // Send RAW GPS points directly to Valhalla - NO interpolation
+        // Valhalla's trace_route does map-matching and calculates the real road path
+        List<double[]>? roadPath = null;
         bool valhallaSuccess = false;
 
-        if (request.EnableRoadSnapping)
+        try
         {
-            try
+            var valhallaPoints = request.Points.Select(p => new ValhallaPoint
             {
-                var valhallaPoints = interpolated.Select(p => new ValhallaPoint
-                {
-                    Lat = p.Latitude,
-                    Lon = p.Longitude,
-                    Timestamp = new DateTimeOffset(p.Timestamp)
-                }).ToList();
-
-                var valhallaResult = await _valhallaService.SnapToRoadAsync(valhallaPoints);
-                
-                if (valhallaResult != null && valhallaResult.Points.Count > 0)
-                {
-                    snappedPoints = valhallaResult.Points;
-                    valhallaSuccess = true;
-                    
-                    // Get the decoded polyline (actual road path with all road points)
-                    if (valhallaResult.DecodedPolyline != null && valhallaResult.DecodedPolyline.Count > 0)
-                    {
-                        roadPath = valhallaResult.DecodedPolyline;
-                        _logger.LogInformation("Valhalla road path: {Count} road points from polyline", roadPath.Count);
-                    }
-                    
-                    _logger.LogInformation("Valhalla road snapping successful: {Count} snapped points", snappedPoints.Count);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Valhalla road snapping failed, using interpolated points");
-            }
-        }
-
-        // Build response - use snapped points for GPS markers
-        var resultPoints = valhallaSuccess && snappedPoints != null
-            ? snappedPoints.Select((p, i) => new ProcessedPointDto
-            {
-                Lat = p.SnappedLat,
-                Lon = p.SnappedLon,
-                OriginalLat = p.OriginalLat,
-                OriginalLon = p.OriginalLon,
-                Timestamp = interpolated[Math.Min(i, interpolated.Count - 1)].Timestamp,
-                Speed = interpolated[Math.Min(i, interpolated.Count - 1)].Speed,
-                Heading = interpolated[Math.Min(i, interpolated.Count - 1)].Heading,
-                IsSnapped = p.IsMatched,
-                DistanceFromRoad = p.DistanceFromRoad
-            }).ToList()
-            : interpolated.Select(p => new ProcessedPointDto
-            {
-                Lat = p.Latitude,
-                Lon = p.Longitude,
-                OriginalLat = p.Latitude,
-                OriginalLon = p.Longitude,
-                Timestamp = p.Timestamp,
-                Speed = p.Speed,
-                Heading = p.Heading,
-                IsSnapped = false,
-                DistanceFromRoad = 0
+                Lat = p.Lat,
+                Lon = p.Lon,
+                Timestamp = p.Timestamp.HasValue 
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(p.Timestamp.Value) 
+                    : null
             }).ToList();
 
-        // Convert road path to DTO format
+            var valhallaResult = await _valhallaService.SnapToRoadAsync(valhallaPoints);
+            
+            if (valhallaResult != null)
+            {
+                // Use the decoded polyline - this IS the actual road path
+                if (valhallaResult.DecodedPolyline != null && valhallaResult.DecodedPolyline.Count > 0)
+                {
+                    roadPath = valhallaResult.DecodedPolyline;
+                    valhallaSuccess = true;
+                    _logger.LogInformation("Valhalla road path: {GpsCount} GPS points -> {RoadCount} road path points", 
+                        request.Points.Count, roadPath.Count);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Valhalla road snapping failed, using raw GPS points");
+        }
+
+        // Convert road path to response
         var roadPathDto = roadPath?.Select(p => new RoadPointDto { Lat = p[0], Lon = p[1] }).ToList();
+
+        // Original GPS points as fallback
+        var resultPoints = request.Points.Select(p => new ProcessedPointDto
+        {
+            Lat = p.Lat,
+            Lon = p.Lon,
+            OriginalLat = p.Lat,
+            OriginalLon = p.Lon,
+            Speed = p.Speed ?? 0,
+            Heading = p.Heading ?? 0,
+            IsSnapped = false,
+            DistanceFromRoad = 0
+        }).ToList();
 
         return Ok(new ProcessedRouteResponse
         {
             Points = resultPoints,
-            RoadPath = roadPathDto, // Full road path for vehicle animation
+            RoadPath = roadPathDto,
             OriginalCount = request.Points.Count,
-            InterpolatedCount = interpolated.Count,
+            InterpolatedCount = request.Points.Count,
             FinalCount = resultPoints.Count,
             RoadPathCount = roadPath?.Count ?? 0,
             RoadSnappingApplied = valhallaSuccess
