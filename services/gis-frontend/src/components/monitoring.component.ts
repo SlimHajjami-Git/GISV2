@@ -1150,12 +1150,6 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  toggleRoadSnapping() {
-    this.useRoadSnapping = !this.useRoadSnapping;
-    if (this.isPlaybackLoaded) {
-      this.drawPlaybackRoute();
-    }
-  }
 
   updatePlaybackMarker() {
     if (!this.map || this.playbackPositions.length === 0) return;
@@ -1698,7 +1692,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         },
         body: JSON.stringify({ 
           points,
-          enableRoadSnapping: this.useRoadSnapping 
+          enableRoadSnapping: true 
         })
       });
 
@@ -1737,7 +1731,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Fetch route between two GPS points for animation (uses pre-matched coords if available)
   private async fetchValhallaRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
     // Use pre-matched road path coordinates if available
-    if (this.matchedRouteCoords.length > 0 && this.useRoadSnapping) {
+    if (this.matchedRouteCoords.length > 0) {
       // Calculate how many road points to use for this GPS segment
       // Based on the current playback index, we divide the road path proportionally
       const totalGpsPoints = this.playbackPositions.length;
@@ -1955,12 +1949,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // Determine color based on vehicle status at the destination point
     const color = this.getStatusColor(toPos);
     
-    // Use Valhalla for road snapping if enabled, otherwise draw straight line
-    if (this.useRoadSnapping) {
-      this.drawRoutedSegment(fromPos, toPos, color);
-    } else {
-      this.drawStraightSegment(fromPos, toPos, color);
-    }
+    // Always use road snapping for accurate route display
+    this.drawRoutedSegment(fromPos, toPos, color);
     
     this.traceDrawnUpToIndex = toIndex;
   }
