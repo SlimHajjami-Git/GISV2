@@ -114,177 +114,41 @@
           </div>
         </div>
 
-        <!-- Period Buttons for Standard Reports (not monthly, mileage-period, stops, speed-infraction, or driving-behavior) -->
-        <div class="period-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'mileage-period' && selectedTemplate?.type !== 'stops' && selectedTemplate?.type !== 'speed-infraction' && selectedTemplate?.type !== 'driving-behavior'">
+        <!-- ===== DAILY REPORT: Single date picker ===== -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'daily'">
+          <label class="field-label">Date du rapport</label>
+          <input type="date" class="field-input" [(ngModel)]="dailyReportDate">
+        </div>
+
+        <!-- ===== GPS REPORTS: Standard period buttons ===== -->
+        <!-- trips, stops, speed, speed-infraction, driving-behavior, fuel, fuel-estimation, mileage -->
+        <div class="period-row" *ngIf="selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance'">
           <button *ngFor="let p of standardPeriods" 
             [class.active]="selectedStandardPeriod === p.value"
             (click)="selectStandardPeriod(p.value)">{{ p.label }}</button>
         </div>
 
-        <!-- Period Buttons for Stops Report -->
-        <div class="period-row" *ngIf="selectedTemplate?.type === 'stops'">
-          <button *ngFor="let p of stopsPeriods" 
-            [class.active]="selectedStopsPeriod === p.value"
-            (click)="selectStopsPeriod(p.value)">{{ p.label }}</button>
+        <!-- ===== COSTS / MAINTENANCE: Longer period buttons ===== -->
+        <div class="period-row" *ngIf="selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance'">
+          <button *ngFor="let p of costPeriods" 
+            [class.active]="selectedCostPeriod === p.value"
+            (click)="selectCostPeriod(p.value)">{{ p.label }}</button>
         </div>
 
-        <!-- Period Buttons for Driving Behavior Report (same as stops) -->
-        <div class="period-row" *ngIf="selectedTemplate?.type === 'driving-behavior'">
-          <button *ngFor="let p of stopsPeriods" 
-            [class.active]="selectedDrivingBehaviorPeriod === p.value"
-            (click)="selectDrivingBehaviorPeriod(p.value)">{{ p.label }}</button>
-        </div>
-
-        <!-- Custom Period Type Selector for Stops Report -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'stops' && selectedStopsPeriod === 'custom'">
-          <label class="field-label">Type de période</label>
-          <select class="field-select" [(ngModel)]="stopsCustomPeriodType">
-            <option value="hour">Par heure</option>
-            <option value="day">Par jour</option>
-            <option value="month">Par mois</option>
-          </select>
-        </div>
-
-        <!-- Custom Period Date Inputs for Stops Report -->
-        <!-- Hourly: Single date picker -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'stops' && selectedStopsPeriod === 'custom' && stopsCustomPeriodType === 'hour'">
-          <label class="field-label">Date</label>
-          <input type="date" class="field-input" [(ngModel)]="stopsCustomDate">
-        </div>
-
-        <!-- Daily: Date range picker -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'stops' && selectedStopsPeriod === 'custom' && stopsCustomPeriodType === 'day'">
+        <!-- ===== CUSTOM DATE RANGE (when Personnalisé selected) ===== -->
+        <div class="sidebar-row" *ngIf="(selectedStandardPeriod === 'custom' && selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance') || (selectedCostPeriod === 'custom' && (selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance'))">
           <label class="field-label">Date début</label>
-          <input type="date" class="field-input" [(ngModel)]="stopsCustomStartDate">
+          <input type="date" class="field-input" [(ngModel)]="customStartDate">
         </div>
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'stops' && selectedStopsPeriod === 'custom' && stopsCustomPeriodType === 'day'">
+        <div class="sidebar-row" *ngIf="(selectedStandardPeriod === 'custom' && selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance') || (selectedCostPeriod === 'custom' && (selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance'))">
           <label class="field-label">Date fin</label>
-          <input type="date" class="field-input" [(ngModel)]="stopsCustomEndDate">
+          <input type="date" class="field-input" [(ngModel)]="customEndDate">
         </div>
 
-        <!-- Monthly: Month/Year selector -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'stops' && selectedStopsPeriod === 'custom' && stopsCustomPeriodType === 'month'">
-          <label class="field-label">Mois</label>
-          <div class="monthly-period-row">
-            <select class="field-select" [(ngModel)]="stopsCustomMonth">
-              <option *ngFor="let m of monthlyMonths" [value]="m.value">{{ m.label }}</option>
-            </select>
-            <select class="field-select" [(ngModel)]="stopsCustomYear">
-              <option *ngFor="let y of availableYears" [value]="y">{{ y }}</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Speed Infraction Report Filters -->
-        <!-- Period Type Selector -->
+        <!-- ===== SPEED LIMIT INPUT (for speed & speed-infraction) ===== -->
         <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'speed-infraction'">
-          <label class="field-label">Type de période</label>
-          <select class="field-select" [(ngModel)]="speedInfractionPeriodType">
-            <option value="hour">Par heure (journée)</option>
-            <option value="day">Par jour (plage)</option>
-            <option value="month">Par mois</option>
-          </select>
-        </div>
-
-        <!-- Speed Limit Input (optional - uses vehicle limits from DB if empty) -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'speed-infraction'">
-          <label class="field-label">Limite personnalisée (km/h)</label>
-          <input type="number" class="field-input" [(ngModel)]="customSpeedLimit" min="1" max="300" placeholder="Limites véhicules (DB)">
-          <small class="field-hint">Laissez vide pour utiliser les limites configurées par véhicule</small>
-        </div>
-
-        <!-- Hourly: Single date picker -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'speed-infraction' && speedInfractionPeriodType === 'hour'">
-          <label class="field-label">Date</label>
-          <input type="date" class="field-input" [(ngModel)]="speedInfractionDate">
-        </div>
-
-        <!-- Daily: Date range picker -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'speed-infraction' && speedInfractionPeriodType === 'day'">
-          <label class="field-label">Date début</label>
-          <input type="date" class="field-input" [(ngModel)]="speedInfractionStartDate">
-        </div>
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'speed-infraction' && speedInfractionPeriodType === 'day'">
-          <label class="field-label">Date fin</label>
-          <input type="date" class="field-input" [(ngModel)]="speedInfractionEndDate">
-        </div>
-
-        <!-- Monthly: Month/Year selector -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'speed-infraction' && speedInfractionPeriodType === 'month'">
-          <label class="field-label">Mois</label>
-          <div class="monthly-period-row">
-            <select class="field-select" [(ngModel)]="speedInfractionMonth">
-              <option *ngFor="let m of monthlyMonths" [value]="m.value">{{ m.label }}</option>
-            </select>
-            <select class="field-select" [(ngModel)]="speedInfractionYear">
-              <option *ngFor="let y of availableYears" [value]="y">{{ y }}</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Driving Behavior Report Custom Period Filters (like stops report) -->
-        <!-- Custom Period Type Selector -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'driving-behavior' && selectedDrivingBehaviorPeriod === 'custom'">
-          <label class="field-label">Type de période</label>
-          <select class="field-select" [(ngModel)]="drivingBehaviorPeriodType">
-            <option value="hour">Par heure</option>
-            <option value="day">Par jour</option>
-            <option value="month">Par mois</option>
-          </select>
-        </div>
-
-        <!-- Hourly: Single date picker -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'driving-behavior' && selectedDrivingBehaviorPeriod === 'custom' && drivingBehaviorPeriodType === 'hour'">
-          <label class="field-label">Date</label>
-          <input type="date" class="field-input" [(ngModel)]="drivingBehaviorDate">
-        </div>
-
-        <!-- Daily: Date range picker -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'driving-behavior' && selectedDrivingBehaviorPeriod === 'custom' && drivingBehaviorPeriodType === 'day'">
-          <label class="field-label">Date début</label>
-          <input type="date" class="field-input" [(ngModel)]="drivingBehaviorStartDate">
-        </div>
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'driving-behavior' && selectedDrivingBehaviorPeriod === 'custom' && drivingBehaviorPeriodType === 'day'">
-          <label class="field-label">Date fin</label>
-          <input type="date" class="field-input" [(ngModel)]="drivingBehaviorEndDate">
-        </div>
-
-        <!-- Monthly: Month/Year selector -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'driving-behavior' && selectedDrivingBehaviorPeriod === 'custom' && drivingBehaviorPeriodType === 'month'">
-          <label class="field-label">Mois</label>
-          <div class="monthly-period-row">
-            <select class="field-select" [(ngModel)]="drivingBehaviorMonth">
-              <option *ngFor="let m of monthlyMonths" [value]="m.value">{{ m.label }}</option>
-            </select>
-            <select class="field-select" [(ngModel)]="drivingBehaviorYear">
-              <option *ngFor="let y of availableYears" [value]="y">{{ y }}</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Interval (hidden for monthly, mileage-period, stops, speed-infraction, and driving-behavior) -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'mileage-period' && selectedTemplate?.type !== 'stops' && selectedTemplate?.type !== 'speed-infraction' && selectedTemplate?.type !== 'driving-behavior'">
-          <label class="field-label">Intervalle</label>
-          <div class="interval-row">
-            <select class="field-select small" [(ngModel)]="intervalType">
-              <option value="previous">Précédent</option>
-              <option value="current">Actuel</option>
-            </select>
-            <input type="number" class="field-input small" [(ngModel)]="intervalValue" min="1" max="12">
-            <select class="field-select small" [(ngModel)]="intervalUnit">
-              <option value="days">jours</option>
-              <option value="weeks">semaines</option>
-              <option value="months">mois</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Including current (hidden for monthly, mileage-period, stops, speed-infraction, and driving-behavior) -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'mileage-period' && selectedTemplate?.type !== 'stops' && selectedTemplate?.type !== 'speed-infraction' && selectedTemplate?.type !== 'driving-behavior'">
-          <label class="checkbox-row">
-            <input type="checkbox" [(ngModel)]="includeCurrent">
-            <span>Inclure période en cours</span>
-          </label>
+          <label class="field-label">Limite de vitesse (km/h)</label>
+          <input type="number" class="field-input" [(ngModel)]="speedLimit" min="1" max="300" placeholder="90">
         </div>
 
         <!-- Action Buttons -->

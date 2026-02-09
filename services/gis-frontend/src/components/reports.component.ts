@@ -173,48 +173,33 @@ export class ReportsComponent implements OnInit {
   mileagePeriodYear = new Date().getFullYear();    // For monthly report
   availableYears: number[] = [];
 
-  // Period filters for standard reports (fuel, daily, mileage, etc.)
+  // Period filters for standard reports
   standardPeriods = [
-    { value: 'today', label: 'Aujourd\'hui' },
-    { value: 'week', label: 'Semaine' },
-    { value: 'month', label: 'Mois' }
-  ];
-  selectedStandardPeriod = 'today';
-  
-  // Period filters for stops report
-  stopsPeriods = [
     { value: 'today', label: 'Aujourd\'hui' },
     { value: 'week', label: 'Semaine' },
     { value: 'month', label: 'Mois' },
     { value: 'custom', label: 'Personnalisé' }
   ];
-  selectedStopsPeriod = 'today';
+  selectedStandardPeriod = 'today';
   
-  // Custom period for stops report
-  stopsCustomPeriodType: 'hour' | 'day' | 'month' = 'day';
-  stopsCustomDate = '';           // For hourly
-  stopsCustomStartDate = '';      // For daily range start
-  stopsCustomEndDate = '';        // For daily range end
-  stopsCustomMonth = new Date().getMonth() + 1;
-  stopsCustomYear = new Date().getFullYear();
+  // Custom date range (when Personnalisé is selected)
+  customStartDate = '';
+  customEndDate = '';
   
-  // Speed Infraction Report options
-  speedInfractionPeriodType: 'hour' | 'day' | 'month' = 'day';
-  speedInfractionDate = '';           // For hourly (single date)
-  speedInfractionStartDate = '';      // For daily range start
-  speedInfractionEndDate = '';        // For daily range end
-  speedInfractionMonth = new Date().getMonth() + 1;
-  speedInfractionYear = new Date().getFullYear();
-  speedLimit = 90;                    // Default speed limit in km/h
+  // Single date for daily report
+  dailyReportDate = '';
   
-  // Driving Behavior Report options
-  selectedDrivingBehaviorPeriod = 'today';
-  drivingBehaviorPeriodType: 'hour' | 'day' | 'month' = 'day';
-  drivingBehaviorDate = '';
-  drivingBehaviorStartDate = '';
-  drivingBehaviorEndDate = '';
-  drivingBehaviorMonth = new Date().getMonth() + 1;
-  drivingBehaviorYear = new Date().getFullYear();
+  // Periods for costs/maintenance (longer ranges)
+  costPeriods = [
+    { value: 'month', label: 'Ce mois' },
+    { value: 'quarter', label: 'Trimestre' },
+    { value: 'year', label: 'Année' },
+    { value: 'custom', label: 'Personnalisé' }
+  ];
+  selectedCostPeriod = 'month';
+  
+  // Speed limit for speed-infraction report
+  speedLimit = 90;
   
   // Incident type filters (checkboxes)
   drivingBehaviorFilters: { [key: string]: boolean } = {
@@ -234,12 +219,6 @@ export class ReportsComponent implements OnInit {
     { key: 'highRpm', label: 'RPM > 3500', color: '#9B59B6', icon: '⚙️' }
   ];
   
-  // Interval for standard reports
-  intervalType = 'previous';
-  intervalValue = 1;
-  intervalUnit = 'months';
-  includeCurrent = false;
-
   fromDate = '';
   toDate = '';
 
@@ -364,12 +343,11 @@ export class ReportsComponent implements OnInit {
     this.mileagePeriodMonth = today.getMonth() + 1;
     this.mileagePeriodYear = today.getFullYear();
     
-    // Initialize stops custom dates (same logic)
-    this.stopsCustomDate = yesterday.toISOString().split('T')[0];
-    this.stopsCustomStartDate = weekAgo.toISOString().split('T')[0];
-    this.stopsCustomEndDate = today.toISOString().split('T')[0];
-    this.stopsCustomMonth = today.getMonth() + 1;
-    this.stopsCustomYear = today.getFullYear();
+    
+    // Initialize custom date range + daily report date
+    this.customStartDate = weekAgo.toISOString().split('T')[0];
+    this.customEndDate = today.toISOString().split('T')[0];
+    this.dailyReportDate = yesterday.toISOString().split('T')[0];
   }
 
   loadData() {
@@ -405,18 +383,46 @@ export class ReportsComponent implements OnInit {
         this.fromDate = this.toDateTime(monthAgo);
         this.toDate = this.toDateTime(now);
         break;
+      case 'custom':
+        // Dates are set via customStartDate / customEndDate inputs
+        if (this.customStartDate && this.customEndDate) {
+          this.fromDate = new Date(this.customStartDate).toISOString().slice(0, 16);
+          this.toDate = new Date(this.customEndDate + 'T23:59:59').toISOString().slice(0, 16);
+        }
+        break;
     }
   }
 
-  selectStopsPeriod(period: string) {
-    this.selectedStopsPeriod = period;
-    // For stops report, dates are calculated in executeReport based on the period
+  selectCostPeriod(period: string) {
+    this.selectedCostPeriod = period;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    switch (period) {
+      case 'month':
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        this.fromDate = this.toDateTime(monthStart);
+        this.toDate = this.toDateTime(now);
+        break;
+      case 'quarter':
+        const qStart = new Date(today.getFullYear(), Math.floor(today.getMonth() / 3) * 3, 1);
+        this.fromDate = this.toDateTime(qStart);
+        this.toDate = this.toDateTime(now);
+        break;
+      case 'year':
+        const yearStart = new Date(today.getFullYear(), 0, 1);
+        this.fromDate = this.toDateTime(yearStart);
+        this.toDate = this.toDateTime(now);
+        break;
+      case 'custom':
+        if (this.customStartDate && this.customEndDate) {
+          this.fromDate = new Date(this.customStartDate).toISOString().slice(0, 16);
+          this.toDate = new Date(this.customEndDate + 'T23:59:59').toISOString().slice(0, 16);
+        }
+        break;
+    }
   }
 
-  selectDrivingBehaviorPeriod(period: string) {
-    this.selectedDrivingBehaviorPeriod = period;
-    // For driving behavior report, dates are calculated in executeReport based on the period
-  }
 
   toDateTime(date: Date): string {
     return date.toISOString().slice(0, 16);
@@ -468,10 +474,10 @@ export class ReportsComponent implements OnInit {
     this.selectedTemplate = null;
     this.selectedVehicleId = '';
     this.selectedStandardPeriod = 'today';
-    this.selectedStopsPeriod = 'today';
-    this.intervalValue = 1;
-    this.intervalUnit = 'months';
-    this.includeCurrent = false;
+    this.selectedCostPeriod = 'month';
+    this.customStartDate = '';
+    this.customEndDate = '';
+    this.dailyReportDate = '';
     this.reportGenerated = false;
   }
 
@@ -540,66 +546,23 @@ export class ReportsComponent implements OnInit {
     let endDate = this.toDate ? new Date(this.toDate) : undefined;
     const vehicleId = this.selectedVehicleId ? parseInt(this.selectedVehicleId) : undefined;
 
-    // Handle stops report with its own period logic
-    if (this.selectedTemplate.type === 'stops') {
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      
-      switch (this.selectedStopsPeriod) {
-        case 'today':
-          startDate = today;
-          endDate = now;
-          break;
-        case 'week':
-          const weekAgo = new Date(today);
-          weekAgo.setDate(today.getDate() - 7);
-          startDate = weekAgo;
-          endDate = now;
-          break;
-        case 'month':
-          const monthAgo = new Date(today);
-          monthAgo.setMonth(today.getMonth() - 1);
-          startDate = monthAgo;
-          endDate = now;
-          break;
-        case 'custom':
-          console.log('Custom period for stops:', {
-            periodType: this.stopsCustomPeriodType,
-            customDate: this.stopsCustomDate,
-            customStartDate: this.stopsCustomStartDate,
-            customEndDate: this.stopsCustomEndDate,
-            customMonth: this.stopsCustomMonth,
-            customYear: this.stopsCustomYear
-          });
-          
-          switch (this.stopsCustomPeriodType) {
-            case 'hour':
-              if (this.stopsCustomDate) {
-                const hourDate = new Date(this.stopsCustomDate + 'T00:00:00');
-                startDate = new Date(hourDate.getFullYear(), hourDate.getMonth(), hourDate.getDate(), 0, 0, 0);
-                endDate = new Date(hourDate.getFullYear(), hourDate.getMonth(), hourDate.getDate(), 23, 59, 59);
-              }
-              break;
-            case 'day':
-              if (this.stopsCustomStartDate && this.stopsCustomEndDate) {
-                startDate = new Date(this.stopsCustomStartDate + 'T00:00:00');
-                endDate = new Date(this.stopsCustomEndDate + 'T23:59:59');
-              }
-              break;
-            case 'month':
-              startDate = new Date(this.stopsCustomYear, this.stopsCustomMonth - 1, 1);
-              endDate = new Date(this.stopsCustomYear, this.stopsCustomMonth, 0, 23, 59, 59);
-              break;
-          }
-          break;
-      }
-      
-      console.log('Final dates for stops:', { startDate, endDate });
+    // For custom date range, recompute dates from inputs
+    if (this.selectedStandardPeriod === 'custom' && this.customStartDate && this.customEndDate) {
+      startDate = new Date(this.customStartDate + 'T00:00:00');
+      endDate = new Date(this.customEndDate + 'T23:59:59');
     }
 
-    // Handle daily report separately
+    // For cost/maintenance reports, compute dates from cost period
+    if (this.selectedTemplate.type === 'costs' || this.selectedTemplate.type === 'maintenance') {
+      this.selectCostPeriod(this.selectedCostPeriod);
+      startDate = this.fromDate ? new Date(this.fromDate) : undefined;
+      endDate = this.toDate ? new Date(this.toDate) : undefined;
+    }
+
+    // Handle daily report: use single date picker
     if (this.selectedTemplate.type === 'daily') {
-      this.executeDailyReport(vehicleId!, startDate);
+      const reportDate = this.dailyReportDate ? new Date(this.dailyReportDate) : undefined;
+      this.executeDailyReport(vehicleId!, reportDate);
       return;
     }
 
@@ -633,13 +596,13 @@ export class ReportsComponent implements OnInit {
 
     // Handle speed infraction report
     if (this.selectedTemplate.type === 'speed-infraction') {
-      this.executeSpeedInfractionReport();
+      this.executeSpeedInfractionReport(startDate, endDate);
       return;
     }
 
     // Handle driving behavior report
     if (this.selectedTemplate.type === 'driving-behavior') {
-      this.executeDrivingBehaviorReport();
+      this.executeDrivingBehaviorReport(startDate, endDate);
       return;
     }
 
@@ -1178,48 +1141,10 @@ export class ReportsComponent implements OnInit {
       .map(([name, count]) => ({ label: name, value: count }));
   }
 
-  // Custom speed limit (optional) - if empty, uses vehicle limits from DB
-  customSpeedLimit: number | null = null;
-
-  executeSpeedInfractionReport() {
-    // Calculate date range based on period type
-    let startDate: Date;
-    let endDate: Date;
+  executeSpeedInfractionReport(start?: Date, end?: Date) {
     const now = new Date();
-    
-    switch (this.speedInfractionPeriodType) {
-      case 'hour':
-        if (this.speedInfractionDate) {
-          const date = new Date(this.speedInfractionDate + 'T00:00:00');
-          startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0);
-          endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59);
-        } else {
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-          endDate = now;
-        }
-        break;
-      case 'day':
-        if (this.speedInfractionStartDate && this.speedInfractionEndDate) {
-          startDate = new Date(this.speedInfractionStartDate + 'T00:00:00');
-          endDate = new Date(this.speedInfractionEndDate + 'T23:59:59');
-        } else {
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7, 0, 0, 0);
-          endDate = now;
-        }
-        break;
-      case 'month':
-        startDate = new Date(this.speedInfractionYear, this.speedInfractionMonth - 1, 1);
-        endDate = new Date(this.speedInfractionYear, this.speedInfractionMonth, 0, 23, 59, 59);
-        break;
-      default:
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-        endDate = now;
-    }
-    
-    console.log('executeSpeedInfractionReport:', { 
-      startDate, endDate, 
-      customSpeedLimit: this.customSpeedLimit
-    });
+    const startDate = start || new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const endDate = end || now;
     
     // Fetch all vehicles with their configured speed limits
     this.apiService.getVehicles().subscribe({
@@ -1242,8 +1167,8 @@ export class ReportsComponent implements OnInit {
         
         vehicles.forEach(vehicle => {
           // Use custom limit if set, otherwise use vehicle's configured limit from DB (default 120)
-          const vehicleSpeedLimit = this.customSpeedLimit 
-            ? this.customSpeedLimit 
+          const vehicleSpeedLimit = this.speedLimit 
+            ? this.speedLimit 
             : (vehicle.speedLimit || 120);
           
           this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 10000).subscribe({
@@ -1390,66 +1315,10 @@ export class ReportsComponent implements OnInit {
     });
   }
 
-  executeDrivingBehaviorReport() {
-    // Calculate date range based on selected period (like stops report)
-    let startDate: Date;
-    let endDate: Date;
+  executeDrivingBehaviorReport(start?: Date, end?: Date) {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    switch (this.selectedDrivingBehaviorPeriod) {
-      case 'today':
-        startDate = today;
-        endDate = now;
-        break;
-      case 'week':
-        const weekAgo = new Date(today);
-        weekAgo.setDate(today.getDate() - 7);
-        startDate = weekAgo;
-        endDate = now;
-        break;
-      case 'month':
-        const monthAgo = new Date(today);
-        monthAgo.setMonth(today.getMonth() - 1);
-        startDate = monthAgo;
-        endDate = now;
-        break;
-      case 'custom':
-        switch (this.drivingBehaviorPeriodType) {
-          case 'hour':
-            if (this.drivingBehaviorDate) {
-              const date = new Date(this.drivingBehaviorDate + 'T00:00:00');
-              startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0);
-              endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59);
-            } else {
-              startDate = today;
-              endDate = now;
-            }
-            break;
-          case 'day':
-            if (this.drivingBehaviorStartDate && this.drivingBehaviorEndDate) {
-              startDate = new Date(this.drivingBehaviorStartDate + 'T00:00:00');
-              endDate = new Date(this.drivingBehaviorEndDate + 'T23:59:59');
-            } else {
-              startDate = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-              endDate = now;
-            }
-            break;
-          case 'month':
-            startDate = new Date(this.drivingBehaviorYear, this.drivingBehaviorMonth - 1, 1);
-            endDate = new Date(this.drivingBehaviorYear, this.drivingBehaviorMonth, 0, 23, 59, 59);
-            break;
-          default:
-            startDate = today;
-            endDate = now;
-        }
-        break;
-      default:
-        startDate = today;
-        endDate = now;
-    }
-    
-    console.log('executeDrivingBehaviorReport:', { selectedPeriod: this.selectedDrivingBehaviorPeriod, startDate, endDate, filters: this.drivingBehaviorFilters });
+    const startDate = start || new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const endDate = end || now;
     
     // Fetch all vehicles' GPS positions and detect driving incidents
     this.apiService.getVehicles().subscribe({
@@ -3759,6 +3628,94 @@ export class ReportsComponent implements OnInit {
           }
         }
       };
+    } else if (type === 'daily') {
+      // Horizontal bar chart: drive vs stop durations
+      const driveData = this.chartData.filter(d => d.type === 'drive');
+      const stopData = this.chartData.filter(d => d.type === 'stop');
+      const allLabels = this.chartData.map((d, i) => `#${i + 1}`);
+      config = {
+        type: 'bar',
+        data: {
+          labels: allLabels,
+          datasets: [
+            {
+              label: '🚗 Conduite (min)',
+              data: this.chartData.map(d => d.type === 'drive' ? d.value : 0),
+              backgroundColor: '#3B82F6CC',
+              borderColor: '#3B82F6',
+              borderWidth: 1,
+              borderRadius: 4
+            },
+            {
+              label: '🅿️ Arrêt (min)',
+              data: this.chartData.map(d => d.type === 'stop' ? d.value : 0),
+              backgroundColor: '#8B5CF6CC',
+              borderColor: '#8B5CF6',
+              borderWidth: 1,
+              borderRadius: 4
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: 'y',
+          plugins: {
+            legend: { position: 'top', labels: { usePointStyle: true, font: { size: 11 } } },
+            title: { display: true, text: '📅 Activité journalière (durée en minutes)', font: { size: 14, weight: 'bold' } }
+          },
+          scales: {
+            x: { stacked: false, beginAtZero: true, title: { display: true, text: 'Durée (min)' } },
+            y: { stacked: false, grid: { display: false } }
+          }
+        }
+      };
+    } else if (type === 'costs') {
+      // Doughnut for repairs by status
+      config = {
+        type: 'doughnut',
+        data: {
+          labels: this.chartData.map(d => d.label),
+          datasets: [{
+            data: this.chartData.map(d => d.value),
+            backgroundColor: this.chartData.map(d => d.color || '#3B82F6'),
+            borderWidth: 3,
+            borderColor: '#1e293b',
+            hoverOffset: 10
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15, font: { size: 12 } } },
+            title: { display: true, text: '🔩 Réparations par statut', font: { size: 14, weight: 'bold' } }
+          }
+        }
+      } as ChartConfiguration;
+    } else if (type === 'maintenance') {
+      // Doughnut for maintenance by type
+      config = {
+        type: 'doughnut',
+        data: {
+          labels: this.chartData.map(d => d.label),
+          datasets: [{
+            data: this.chartData.map(d => d.value),
+            backgroundColor: this.chartData.map(d => d.color || '#3B82F6'),
+            borderWidth: 3,
+            borderColor: '#1e293b',
+            hoverOffset: 10
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15, font: { size: 12 } } },
+            title: { display: true, text: '🔧 Maintenances par type', font: { size: 14, weight: 'bold' } }
+          }
+        }
+      } as ChartConfiguration;
     } else if (type === 'distance') {
       // Cumulative area chart for distance
       let cumulative = 0;
