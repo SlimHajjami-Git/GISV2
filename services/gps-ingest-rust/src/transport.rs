@@ -508,15 +508,34 @@ async fn process_single_frame(
                 // ADDITIONAL VALIDATIONS
                 // ============================================================
 
-                // Coordinates must not be too close to 0 (invalid GPS / null island)
+                // Coordinates near 0,0 = GPS has no fix (null island)
+                // Instead of rejecting, use last known valid position (same as GISV1)
                 if frame.latitude.abs() < 0.05 && frame.longitude.abs() < 0.05 {
-                    info!(
-                        imei = %resolved_uid,
-                        lat = frame.latitude,
-                        lon = frame.longitude,
-                        "Frame SKIPPED: Coordinates near 0,0 (null island)"
-                    );
-                    return Ok(());
+                    if let Some(device_id) = device_id_opt {
+                        if let Some(last_pos) = database.get_last_position(device_id).await? {
+                            frame.latitude = last_pos.latitude;
+                            frame.longitude = last_pos.longitude;
+                            frame.is_valid = false; // Mark as interpolated/no-fix
+                            info!(
+                                imei = %resolved_uid,
+                                lat = frame.latitude,
+                                lon = frame.longitude,
+                                "GPS no-fix: using last known position"
+                            );
+                        } else {
+                            info!(
+                                imei = %resolved_uid,
+                                "Frame SKIPPED: No GPS fix and no previous position known"
+                            );
+                            return Ok(());
+                        }
+                    } else {
+                        info!(
+                            imei = %resolved_uid,
+                            "Frame SKIPPED: No GPS fix and device not yet registered"
+                        );
+                        return Ok(());
+                    }
                 }
 
                 // Longitude must be -180 to +180

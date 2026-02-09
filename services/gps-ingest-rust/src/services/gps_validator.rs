@@ -127,12 +127,8 @@ impl GpsValidator {
             });
         }
 
-        // Check for null island (0,0 coordinates)
-        if frame.latitude.abs() < 0.01 && frame.longitude.abs() < 0.01 {
-            return Some(ValidationResult::Invalid {
-                reason: "Coordinates near null island (0,0)".to_string(),
-            });
-        }
+        // Note: null island (0,0) check is handled in transport.rs
+        // where we substitute last known position instead of rejecting
 
         None
     }
