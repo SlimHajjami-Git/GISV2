@@ -1763,11 +1763,28 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     }
     
-    // Fallback to straight line
-    return [
-      L.latLng(fromPos.latitude, fromPos.longitude),
-      L.latLng(toPos.latitude, toPos.longitude)
-    ];
+    // Fallback: use snapped coordinates if available, else raw GPS
+    const fromIdx = this.playbackPositions.indexOf(fromPos);
+    const toIdx = this.playbackPositions.indexOf(toPos);
+    const fromSnapped = this.getSnappedLatLngAsLatLng(fromIdx >= 0 ? fromIdx : this.playbackIndex);
+    const toSnapped = this.getSnappedLatLngAsLatLng(toIdx >= 0 ? toIdx : this.playbackIndex + 1);
+    return [fromSnapped, toSnapped];
+  }
+
+  // Helper: get snapped position as L.LatLng object
+  private getSnappedLatLngAsLatLng(index: number): L.LatLng {
+    const pos = this.playbackPositions[index];
+    if (!pos) return L.latLng(0, 0);
+    if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0) {
+      const roadIdx = this.segmentBoundaries[index];
+      if (roadIdx !== undefined && roadIdx < this.matchedRouteCoords.length) {
+        const snapped = this.matchedRouteCoords[roadIdx];
+        if (snapped && !isNaN(snapped.lat) && !isNaN(snapped.lng)) {
+          return snapped;
+        }
+      }
+    }
+    return L.latLng(pos.latitude, pos.longitude);
   }
 
   // Animation frame loop for smooth interpolation along Valhalla route
@@ -2067,8 +2084,21 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     }
     
-    // Fallback to straight line if no matched coordinates
-    this.drawStraightSegment(fromPos, toPos, color);
+    // Fallback: draw straight line using snapped coordinates (not raw GPS)
+    if (!this.map) return;
+    const fromIdx = this.playbackPositions.indexOf(fromPos);
+    const toIdx = this.playbackPositions.indexOf(toPos);
+    const fromSnapped = this.getSnappedLatLngAsLatLng(fromIdx >= 0 ? fromIdx : this.playbackIndex - 1);
+    const toSnapped = this.getSnappedLatLngAsLatLng(toIdx >= 0 ? toIdx : this.playbackIndex);
+    const segment = L.polyline([fromSnapped, toSnapped], {
+      color: color,
+      weight: 4,
+      opacity: 0.9,
+      dashArray: '10, 8',
+      lineCap: 'round',
+      lineJoin: 'round'
+    }).addTo(this.map!);
+    this.progressivePolylines.push(segment);
   }
   
   // Find the closest point index in matchedRouteCoords starting from a given index
