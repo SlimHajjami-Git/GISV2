@@ -3286,14 +3286,53 @@ export class ReportsComponent implements OnInit {
       segments.push(currentSegment);
     }
 
+    // === MERGE PHASE ===
+    // 1. Merge trip-shortStop-trip into one continuous trip
+    //    (handles traffic lights, brief pauses < 3 min)
+    // 2. Merge consecutive stops into one stop
+    const MIN_STOP_BREAK_MINUTES = 3; // Stop must be >= 3 min to split a trip
+    let merged: typeof segments = [];
+    
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      
+      // Check if this is a short stop between two trips → absorb into previous trip
+      if (seg.type === 'stop' && merged.length > 0 && i + 1 < segments.length) {
+        const prevSeg = merged[merged.length - 1];
+        const nextSeg = segments[i + 1];
+        const stopDurationMs = new Date(seg.end.recordedAt).getTime() - new Date(seg.start.recordedAt).getTime();
+        const stopDurationMin = stopDurationMs / 60000;
+        
+        if (prevSeg.type === 'trip' && nextSeg.type === 'trip' && stopDurationMin < MIN_STOP_BREAK_MINUTES) {
+          // Absorb stop + next trip into previous trip
+          prevSeg.end = nextSeg.end;
+          prevSeg.positions = [...prevSeg.positions, ...seg.positions, ...nextSeg.positions];
+          prevSeg.distanceKm += seg.distanceKm + nextSeg.distanceKm;
+          i++; // Skip next trip (already merged)
+          continue;
+        }
+      }
+      
+      // Merge consecutive stops
+      if (seg.type === 'stop' && merged.length > 0 && merged[merged.length - 1].type === 'stop') {
+        const prevStop = merged[merged.length - 1];
+        prevStop.end = seg.end;
+        prevStop.positions = [...prevStop.positions, ...seg.positions];
+        prevStop.distanceKm += seg.distanceKm;
+        continue;
+      }
+      
+      merged.push(seg);
+    }
+
     // Filter meaningful segments
-    const meaningfulSegments = segments.filter(seg => {
+    const meaningfulSegments = merged.filter(seg => {
       const durationMs = new Date(seg.end.recordedAt).getTime() - new Date(seg.start.recordedAt).getTime();
       const durationMin = durationMs / 60000;
       if (seg.type === 'trip') {
         return durationMin >= 1 || seg.distanceKm >= 0.1;
       }
-      return durationMin >= 1; // Show stops >= 1 min
+      return durationMin >= 2; // Show stops >= 2 min (filters GPS noise)
     });
 
     if (!meaningfulSegments.length) {
