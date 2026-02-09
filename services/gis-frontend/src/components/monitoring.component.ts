@@ -1116,7 +1116,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
         },
         body: JSON.stringify({ points })
       });
@@ -1636,7 +1636,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
           },
           body: JSON.stringify({ points })
         });
@@ -1694,7 +1694,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
         },
         body: JSON.stringify({ 
           points,
@@ -1709,11 +1709,20 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       const data = await response.json();
 
       if (data.points && data.points.length > 0) {
-        // Use processed coordinates (interpolated + optionally road-snapped)
-        this.matchedRouteCoords = data.points.map((p: any) => L.latLng(p.lat, p.lon));
+        // If we have a road path from Valhalla, use it for smooth road-following animation
+        // Otherwise fall back to the processed points
+        if (data.roadPath && data.roadPath.length > 0) {
+          // Use the full road path from Valhalla polyline for vehicle animation
+          this.matchedRouteCoords = data.roadPath.map((p: any) => L.latLng(p.lat, p.lon));
+          console.log(`Route processed: ${data.originalCount} GPS -> ${data.roadPathCount} road path points (following actual roads)`);
+        } else {
+          // Fallback to snapped/interpolated points
+          this.matchedRouteCoords = data.points.map((p: any) => L.latLng(p.lat, p.lon));
+          console.log(`Route processed: ${data.originalCount} GPS -> ${data.finalCount} processed points (no road path available)`);
+        }
         this.matchedRouteIndex = 0;
         
-        console.log(`Route processed: ${data.originalCount} GPS -> ${data.interpolatedCount} interpolated -> ${data.finalCount} final points (road snapping: ${data.roadSnappingApplied})`);
+        console.log(`Road snapping applied: ${data.roadSnappingApplied}`);
       } else {
         throw new Error('No points returned from processing');
       }

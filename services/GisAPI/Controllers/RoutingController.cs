@@ -188,6 +188,7 @@ public class RoutingController : ControllerBase
 
         // Step 2: Try Valhalla road snapping if enabled
         List<SnappedPoint>? snappedPoints = null;
+        List<double[]>? roadPath = null; // The actual road path from Valhalla polyline
         bool valhallaSuccess = false;
 
         if (request.EnableRoadSnapping)
@@ -207,7 +208,15 @@ public class RoutingController : ControllerBase
                 {
                     snappedPoints = valhallaResult.Points;
                     valhallaSuccess = true;
-                    _logger.LogInformation("Valhalla road snapping successful: {Count} points", snappedPoints.Count);
+                    
+                    // Get the decoded polyline (actual road path with all road points)
+                    if (valhallaResult.DecodedPolyline != null && valhallaResult.DecodedPolyline.Count > 0)
+                    {
+                        roadPath = valhallaResult.DecodedPolyline;
+                        _logger.LogInformation("Valhalla road path: {Count} road points from polyline", roadPath.Count);
+                    }
+                    
+                    _logger.LogInformation("Valhalla road snapping successful: {Count} snapped points", snappedPoints.Count);
                 }
             }
             catch (Exception ex)
@@ -216,7 +225,7 @@ public class RoutingController : ControllerBase
             }
         }
 
-        // Build response
+        // Build response - use snapped points for GPS markers
         var resultPoints = valhallaSuccess && snappedPoints != null
             ? snappedPoints.Select((p, i) => new ProcessedPointDto
             {
@@ -243,12 +252,17 @@ public class RoutingController : ControllerBase
                 DistanceFromRoad = 0
             }).ToList();
 
+        // Convert road path to DTO format
+        var roadPathDto = roadPath?.Select(p => new RoadPointDto { Lat = p[0], Lon = p[1] }).ToList();
+
         return Ok(new ProcessedRouteResponse
         {
             Points = resultPoints,
+            RoadPath = roadPathDto, // Full road path for vehicle animation
             OriginalCount = request.Points.Count,
             InterpolatedCount = interpolated.Count,
             FinalCount = resultPoints.Count,
+            RoadPathCount = roadPath?.Count ?? 0,
             RoadSnappingApplied = valhallaSuccess
         });
     }
@@ -300,10 +314,18 @@ public class ProcessRouteRequest
 public class ProcessedRouteResponse
 {
     public List<ProcessedPointDto> Points { get; set; } = new();
+    public List<RoadPointDto>? RoadPath { get; set; } // Full road path for vehicle animation
     public int OriginalCount { get; set; }
     public int InterpolatedCount { get; set; }
     public int FinalCount { get; set; }
+    public int RoadPathCount { get; set; }
     public bool RoadSnappingApplied { get; set; }
+}
+
+public class RoadPointDto
+{
+    public double Lat { get; set; }
+    public double Lon { get; set; }
 }
 
 public class ProcessedPointDto

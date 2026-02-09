@@ -158,19 +158,22 @@ public class ValhallaService : IValhallaService
                 }).ToList();
             }
 
+            var encodedPolyline = valhallaResponse.Trip?.Shape ?? valhallaResponse.Shape;
+            
             var result = new ValhallaRouteResult
             {
                 Points = snappedPoints,
                 TotalDistanceKm = valhallaResponse.Trip?.Summary?.Length ?? 0,
                 TotalTimeSeconds = valhallaResponse.Trip?.Summary?.Time ?? 0,
-                EncodedPolyline = valhallaResponse.Trip?.Shape ?? valhallaResponse.Shape
+                EncodedPolyline = encodedPolyline
             };
 
-            // Decode polyline if present and no matched points
-            if (!string.IsNullOrEmpty(result.EncodedPolyline) && snappedPoints.All(p => !p.IsMatched))
+            // ALWAYS decode polyline to get the full road path for animation
+            if (!string.IsNullOrEmpty(encodedPolyline))
             {
-                var decoded = DecodePolyline(result.EncodedPolyline);
+                var decoded = DecodePolyline(encodedPolyline);
                 result.DecodedPolyline = decoded;
+                _logger.LogInformation("Valhalla route decoded: {Count} road points from polyline", decoded.Count);
             }
 
             return result;
