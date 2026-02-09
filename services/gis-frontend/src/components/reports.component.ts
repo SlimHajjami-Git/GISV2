@@ -2752,18 +2752,29 @@ export class ReportsComponent implements OnInit {
   }
 
   processSpeedReport(positions: any[]) {
-    const speedData = positions.filter((p: any) => p.speedKph > 0);
+    // Get the selected vehicle info for name and speed limit
+    const selectedVehicle = this.vehicles.find(v => v.id === parseInt(this.selectedVehicleId));
+    const vehicleName = selectedVehicle 
+      ? (selectedVehicle.name || `${selectedVehicle.brand} ${selectedVehicle.model}`)
+      : 'Véhicule';
+    const vehicleLimit = selectedVehicle?.speedLimit || 120;
+
+    // Filter only meaningful speed data (> 5 km/h to exclude GPS noise)
+    const movingPositions = positions.filter((p: any) => (p.speedKph || 0) > 5);
     
-    if (speedData.length === 0) {
+    if (movingPositions.length === 0) {
       this.tableData = [];
       this.chartData = [];
       this.statisticsData = { 'Information': 'Aucune donnée de vitesse pour cette période' };
       return;
     }
 
-    // Group speed data into ranges for better visualization
+    // Find all positions exceeding the vehicle speed limit
+    const infractions = movingPositions.filter((p: any) => (p.speedKph || 0) > vehicleLimit);
+
+    // Speed ranges for chart (only moving positions)
     const speedRanges = [
-      { min: 0, max: 30, label: '0-30 km/h', color: '#22C55E' },
+      { min: 5, max: 30, label: '5-30 km/h', color: '#22C55E' },
       { min: 30, max: 50, label: '30-50 km/h', color: '#84CC16' },
       { min: 50, max: 70, label: '50-70 km/h', color: '#EAB308' },
       { min: 70, max: 90, label: '70-90 km/h', color: '#F97316' },
@@ -2771,65 +2782,73 @@ export class ReportsComponent implements OnInit {
       { min: 110, max: 999, label: '>110 km/h', color: '#DC2626' }
     ];
 
-    // Count positions in each range
     const rangeCounts = speedRanges.map(range => ({
       ...range,
-      count: speedData.filter((p: any) => p.speedKph >= range.min && p.speedKph < range.max).length
+      count: movingPositions.filter((p: any) => (p.speedKph || 0) >= range.min && (p.speedKph || 0) < range.max).length
     }));
 
-    // Sample data for table (every Nth position to avoid huge tables)
-    const sampleRate = Math.max(1, Math.floor(speedData.length / 100));
-    const sampledData = speedData.filter((_: any, i: number) => i % sampleRate === 0);
+    // Table: show highest speeds first (top 200)
+    const sorted = [...movingPositions].sort((a, b) => (b.speedKph || 0) - (a.speedKph || 0));
+    const topRecords = sorted.slice(0, 200);
 
-    this.tableData = sampledData.map((pos: any) => {
+    this.tableData = topRecords.map((pos: any) => {
       const speed = pos.speedKph || 0;
-      const range = speedRanges.find(r => speed >= r.min && speed < r.max) || speedRanges[speedRanges.length - 1];
+      const exceedsLimit = speed > vehicleLimit;
+      const excess = exceedsLimit ? speed - vehicleLimit : 0;
       return {
-        time: new Date(pos.recordedAt).toLocaleString('fr-FR', {
-          day: '2-digit', month: '2-digit', year: 'numeric',
-          hour: '2-digit', minute: '2-digit', second: '2-digit'
-        }),
+        vehicleName: vehicleName,
+        time: this.formatDateTime(pos.recordedAt),
         speed: `${speed.toFixed(0)} km/h`,
         speedValue: speed,
-        location: pos.address || `${pos.latitude.toFixed(5)}, ${pos.longitude.toFixed(5)}`,
+        vehicleLimit: `${vehicleLimit} km/h`,
+        vehicleLimitValue: vehicleLimit,
+        excess: exceedsLimit ? `+${excess.toFixed(0)} km/h` : '-',
+        excessValue: excess,
+        exceedsLimit: exceedsLimit,
+        address: pos.address || `${pos.latitude?.toFixed(5) || 0}, ${pos.longitude?.toFixed(5) || 0}`,
         latitude: pos.latitude,
-        longitude: pos.longitude,
-        rangeLabel: range.label,
-        rangeColor: range.color,
-        isHighSpeed: speed > 90,
-        isVeryHighSpeed: speed > 110
+        longitude: pos.longitude
       };
     });
 
     // Enrich with addresses
-    this.enrichSpeedAddresses();
+    this.tableData.forEach((row: any, index: number) => {
+      if (row.address?.includes(',') && row.latitude && row.longitude) {
+        this.geocodingService.reverseGeocode(row.latitude, row.longitude).subscribe({
+          next: (addr) => {
+            if (addr) {
+              this.ngZone.run(() => {
+                this.tableData[index] = { ...this.tableData[index], address: addr };
+                this.cdr.detectChanges();
+              });
+            }
+          }
+        });
+      }
+    });
 
-    // Chart data - Speed distribution (pie/bar chart)
+    // Chart data - Speed distribution
     this.chartData = rangeCounts.filter(r => r.count > 0).map(range => ({
       label: range.label,
       value: range.count,
       color: range.color,
-      percentage: ((range.count / speedData.length) * 100).toFixed(1)
+      percentage: ((range.count / movingPositions.length) * 100).toFixed(1)
     }));
 
-    // Calculate statistics
-    const speeds = speedData.map((p: any) => p.speedKph || 0);
+    // Statistics
+    const speeds = movingPositions.map((p: any) => p.speedKph || 0);
     const avgSpeed = speeds.reduce((a: number, b: number) => a + b, 0) / speeds.length;
     const maxSpeed = Math.max(...speeds);
-    const minSpeed = Math.min(...speeds);
     const highSpeedCount = speeds.filter((s: number) => s > 90).length;
-    const veryHighSpeedCount = speeds.filter((s: number) => s > 110).length;
-
-    // Calculate time spent at different speeds (approximate)
-    const highSpeedPercentage = ((highSpeedCount / speeds.length) * 100).toFixed(1);
+    const highSpeedPct = ((highSpeedCount / speeds.length) * 100).toFixed(1);
 
     this.statisticsData = {
-      'Points analysés': speedData.length.toString(),
+      '🚗 Véhicule': `${vehicleName} (limite: ${vehicleLimit} km/h)`,
+      'Points analysés': movingPositions.length.toString(),
       'Vitesse moyenne': `${avgSpeed.toFixed(0)} km/h`,
       'Vitesse max': `${maxSpeed.toFixed(0)} km/h`,
-      'Vitesse min': `${minSpeed.toFixed(0)} km/h`,
-      '⚠️ >90 km/h': `${highSpeedCount} (${highSpeedPercentage}%)`,
-      '🔴 >110 km/h': veryHighSpeedCount.toString()
+      '🔴 Dépassements limite': `${infractions.length} (${vehicleLimit} km/h)`,
+      '⚠️ >90 km/h': `${highSpeedCount} (${highSpeedPct}%)`
     };
   }
 
