@@ -344,194 +344,104 @@
             </ui-card>
           </div>
         } @else if (selectedTemplate?.type === 'fuel-estimation' && fuelEstimationReport) {
-          <!-- ========== FUEL ESTIMATION REPORT SECTION ========== -->
-          <div class="fuel-estimation-workspace">
-            <!-- Section Navigation -->
-            <div class="fuel-section-nav">
-              @for (section of fuelEstimationSections; track section.id) {
-                <button class="section-btn" 
-                  [class.active]="fuelEstimationActiveSection === section.id"
-                  (click)="selectFuelEstimationSection(section.id)">
-                  <span class="section-icon">{{ section.icon }}</span>
-                  {{ section.label }}
-                </button>
-              }
-            </div>
-
-            <!-- Summary Section -->
-            @if (fuelEstimationActiveSection === 'summary') {
-              <div class="fuel-summary-grid">
-                <div class="fuel-stat-card primary">
-                  <div class="stat-icon">💰</div>
-                  <div class="stat-content">
-                    <span class="stat-value">{{ fuelEstimationReport.totalFleetFuelCost | number:'1.2-2' }} TND</span>
-                    <span class="stat-label">Coût Total Estimé</span>
-                  </div>
+          <!-- ========== FUEL ESTIMATION REPORT ========== -->
+          <div class="workspace-content">
+            <!-- Statistics Summary Bar -->
+            <div class="chart-section" style="height: auto;">
+              <div class="section-toolbar">
+                <div class="toolbar-left">
+                  <span class="section-title">⛽ Estimation Carburant</span>
                 </div>
-                <div class="fuel-stat-card">
-                  <div class="stat-icon">⛽</div>
-                  <div class="stat-content">
-                    <span class="stat-value">{{ fuelEstimationReport.totalFleetFuelConsumedLiters | number:'1.1-1' }} L</span>
-                    <span class="stat-label">Carburant Consommé</span>
-                  </div>
-                </div>
-                <div class="fuel-stat-card">
-                  <div class="stat-icon">🛣️</div>
-                  <div class="stat-content">
-                    <span class="stat-value">{{ fuelEstimationReport.totalFleetDistanceKm | number:'1.0-0' }} km</span>
-                    <span class="stat-label">Distance Totale</span>
-                  </div>
-                </div>
-                <div class="fuel-stat-card">
-                  <div class="stat-icon">📊</div>
-                  <div class="stat-content">
-                    <span class="stat-value">{{ fuelEstimationReport.fleetAverageConsumptionPer100Km | number:'1.2-2' }} L/100km</span>
-                    <span class="stat-label">Consommation Moyenne</span>
-                  </div>
-                </div>
-                <div class="fuel-stat-card">
-                  <div class="stat-icon">🚗</div>
-                  <div class="stat-content">
-                    <span class="stat-value">{{ fuelEstimationReport.vehicleCount }}</span>
-                    <span class="stat-label">Véhicules Analysés</span>
-                  </div>
-                </div>
-                <div class="fuel-stat-card">
-                  <div class="stat-icon">📈</div>
-                  <div class="stat-content">
-                    <span class="stat-value">± {{ fuelEstimationReport.fleetStandardDeviation | number:'1.2-2' }}</span>
-                    <span class="stat-label">Écart-type L/100km</span>
-                  </div>
+                <div class="toolbar-right">
+                  <button class="export-btn-sm" (click)="exportReport('excel')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Exporter
+                  </button>
                 </div>
               </div>
-              
-              <!-- Quick Distribution Chart -->
-              <ui-card title="⛽ Répartition par type de carburant" [showHeader]="true">
-                <div class="fuel-chart-container">
+              <!-- KPI Cards -->
+              <div class="fuel-kpi-row">
+                <div class="fuel-kpi">
+                  <span class="fuel-kpi-value accent">{{ fuelEstimationReport.totalFleetFuelCost | number:'1.2-2' }} TND</span>
+                  <span class="fuel-kpi-label">Coût Total</span>
+                </div>
+                <div class="fuel-kpi">
+                  <span class="fuel-kpi-value">{{ fuelEstimationReport.totalFleetFuelConsumedLiters | number:'1.1-1' }} L</span>
+                  <span class="fuel-kpi-label">Consommation</span>
+                </div>
+                <div class="fuel-kpi">
+                  <span class="fuel-kpi-value">{{ fuelEstimationReport.totalFleetDistanceKm | number:'1.0-0' }} km</span>
+                  <span class="fuel-kpi-label">Distance</span>
+                </div>
+                <div class="fuel-kpi">
+                  <span class="fuel-kpi-value">{{ fuelEstimationReport.fleetAverageConsumptionPer100Km | number:'1.2-2' }} L/100km</span>
+                  <span class="fuel-kpi-label">Conso. Moy.</span>
+                </div>
+                <div class="fuel-kpi">
+                  <span class="fuel-kpi-value">{{ fuelEstimationReport.vehicleCount }}</span>
+                  <span class="fuel-kpi-label">Véhicules</span>
+                </div>
+              </div>
+              <!-- Chart -->
+              <div class="charts-container">
+                <div class="chart-area">
                   <canvas #chartCanvas></canvas>
                 </div>
-              </ui-card>
-            }
-
-            <!-- Vehicles Section -->
-            @if (fuelEstimationActiveSection === 'vehicles') {
-              <ui-card title="🚗 Détail par véhicule" [showHeader]="true" [noPadding]="true">
-                <div card-actions>
-                  <button class="export-btn-sm" (click)="exportReport('excel')">Exporter Excel</button>
-                </div>
-                <div class="fuel-table-wrapper">
-                  <table class="data-table fuel-table">
-                    <thead>
-                      <tr>
-                        <th>Véhicule</th>
-                        <th>Plaque</th>
-                        <th>Type Carburant</th>
-                        <th>Distance (km)</th>
-                        <th>Consommation (L)</th>
-                        <th>Coût Estimé (TND)</th>
-                        <th>L/100km</th>
-                        <th>Efficacité</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      @for (vehicle of fuelEstimationReport.vehicleExpenses; track vehicle.vehicleId) {
-                        <tr>
-                          <td class="vehicle-name-cell">{{ vehicle.vehicleName }}</td>
-                          <td class="plate-cell">
-                            <span class="plate-badge">{{ vehicle.plate || '-' }}</span>
-                          </td>
-                          <td>
-                            <span class="fuel-type-badge">{{ vehicle.fuelType || '-' }}</span>
-                          </td>
-                          <td class="number-cell">{{ vehicle.totalDistanceKm | number:'1.0-0' }}</td>
-                          <td class="number-cell">{{ vehicle.totalFuelConsumedLiters | number:'1.1-1' }}</td>
-                          <td class="cost-cell">{{ vehicle.totalFuelCost | number:'1.2-2' }}</td>
-                          <td class="consumption-cell">{{ vehicle.averageConsumptionPer100Km | number:'1.2-2' }}</td>
-                          <td>
-                            <span class="efficiency-badge" [ngClass]="getEfficiencyClass(vehicle.deviationFromFleetAverage)">
-                              {{ getEfficiencyLabel(vehicle.deviationFromFleetAverage) }}
-                              <small>({{ vehicle.deviationFromFleetAverage > 0 ? '+' : '' }}{{ vehicle.deviationFromFleetAverage | number:'1.1-1' }}%)</small>
-                            </span>
-                          </td>
-                        </tr>
-                      }
-                    </tbody>
-                  </table>
-                </div>
-              </ui-card>
-            }
-
-            <!-- Distribution Section -->
-            @if (fuelEstimationActiveSection === 'distribution') {
-              <div class="fuel-distribution-grid">
-                <ui-card title="📊 Distribution par type de carburant" [showHeader]="true">
-                  <div class="fuel-chart-container large">
-                    <canvas #chartCanvas></canvas>
-                  </div>
-                </ui-card>
-                
-                <ui-card title="📋 Détail par type" [showHeader]="true" [noPadding]="true">
-                  <div class="distribution-list">
-                    @for (dist of fuelEstimationReport.fuelTypeDistribution; track dist.fuelType) {
-                      <div class="distribution-item">
-                        <div class="dist-header">
-                          <span class="dist-type">⛽ {{ dist.fuelType }}</span>
-                          <span class="dist-pct">{{ dist.percentage | number:'1.1-1' }}%</span>
-                        </div>
-                        <div class="dist-bar">
-                          <div class="dist-fill" [style.width.%]="dist.percentage"></div>
-                        </div>
-                        <div class="dist-details">
-                          <span>{{ dist.vehicleCount }} véhicules</span>
-                          <span>{{ dist.totalFuelConsumed | number:'1.1-1' }} L</span>
-                          <span class="dist-cost">{{ dist.totalCost | number:'1.2-2' }} TND</span>
-                        </div>
-                      </div>
-                    }
-                  </div>
-                </ui-card>
               </div>
-            }
+            </div>
 
-            <!-- Trends Section -->
-            @if (fuelEstimationActiveSection === 'trends') {
-              <ui-card title="📈 Tendances Mensuelles" [showHeader]="true">
-                <div class="fuel-chart-container large">
-                  <canvas #secondaryChartCanvas></canvas>
-                </div>
-              </ui-card>
-              
-              @if (fuelEstimationReport.monthlyTrends.length > 0) {
-                <ui-card title="📋 Données mensuelles" [showHeader]="true" [noPadding]="true">
-                  <div class="trends-table-wrapper">
-                    <table class="data-table trends-table">
-                      <thead>
-                        <tr>
-                          <th>Mois</th>
-                          <th>Consommation (L)</th>
-                          <th>Coût (TND)</th>
-                          <th>Conso. Moy. L/100km</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        @for (trend of fuelEstimationReport.monthlyTrends; track trend.month) {
-                          <tr>
-                            <td>{{ trend.monthName }} {{ trend.year }}</td>
-                            <td class="number-cell">{{ trend.totalFuelConsumed | number:'1.1-1' }}</td>
-                            <td class="cost-cell">{{ trend.totalCost | number:'1.2-2' }}</td>
-                            <td class="consumption-cell">{{ trend.averageConsumption | number:'1.2-2' }}</td>
-                          </tr>
-                        }
-                      </tbody>
-                    </table>
+            <!-- Table Section -->
+            <div class="table-section">
+              <div class="section-toolbar">
+                <div class="toolbar-left">
+                  <div class="pagination">
+                    <span class="items-info">{{ fuelEstimationReport.vehicleExpenses?.length || 0 }} véhicules</span>
                   </div>
-                </ui-card>
-              } @else {
-                <div class="no-trends-message">
-                  <p>Pas de données de tendances mensuelles disponibles pour cette période.</p>
                 </div>
-              }
-            }
+                <div class="toolbar-center">
+                  <span class="section-title">Détail par véhicule</span>
+                </div>
+                <div class="toolbar-right"></div>
+              </div>
+              <div class="table-wrapper">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Véhicule</th>
+                      <th>Plaque</th>
+                      <th>Carburant</th>
+                      <th>Distance</th>
+                      <th>Conso. (L)</th>
+                      <th>Coût (TND)</th>
+                      <th>L/100km</th>
+                      <th>Efficacité</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (vehicle of fuelEstimationReport.vehicleExpenses; track vehicle.vehicleId) {
+                      <tr>
+                        <td class="vehicle-cell">{{ vehicle.vehicleName }}</td>
+                        <td class="plate-cell"><span class="badge badge-stop">{{ vehicle.plate || '-' }}</span></td>
+                        <td><span class="badge badge-trip">{{ vehicle.fuelType || '-' }}</span></td>
+                        <td class="distance-cell">{{ vehicle.totalDistanceKm | number:'1.0-0' }} km</td>
+                        <td class="value-cell">{{ vehicle.totalFuelConsumedLiters | number:'1.1-1' }}</td>
+                        <td class="cost-cell" style="font-weight:600; color:#16a34a;">{{ vehicle.totalFuelCost | number:'1.2-2' }}</td>
+                        <td class="speed-cell">{{ vehicle.averageConsumptionPer100Km | number:'1.2-2' }}</td>
+                        <td>
+                          <span class="badge" [class.badge-trip]="vehicle.deviationFromFleetAverage <= 0" [class.badge-stop]="vehicle.deviationFromFleetAverage > 0">
+                            {{ getEfficiencyLabel(vehicle.deviationFromFleetAverage) }}
+                            ({{ vehicle.deviationFromFleetAverage > 0 ? '+' : '' }}{{ vehicle.deviationFromFleetAverage | number:'1.1-1' }}%)
+                          </span>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         } @else {
           <!-- ========== OTHER REPORTS SECTION ========== -->

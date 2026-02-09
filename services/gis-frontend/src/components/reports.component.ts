@@ -891,20 +891,7 @@ export class ReportsComponent implements OnInit {
       '⌀ Distance/trajet': `${(totalDistance / allTrips.length || 0).toFixed(1)} km`
     };
 
-    // Secondary chart: Duration distribution (pie chart)
-    const durationRanges = [
-      { label: '< 15 min', min: 0, max: 15, color: '#22C55E' },
-      { label: '15-30 min', min: 15, max: 30, color: '#84CC16' },
-      { label: '30-60 min', min: 30, max: 60, color: '#EAB308' },
-      { label: '1-2h', min: 60, max: 120, color: '#F97316' },
-      { label: '> 2h', min: 120, max: 9999, color: '#EF4444' }
-    ];
-
-    this.secondaryChartData = durationRanges.map(r => ({
-      label: r.label,
-      value: tripResults.filter(t => t.durationMin >= r.min && t.durationMin < r.max).length,
-      color: r.color
-    })).filter(d => d.value > 0);
+    this.secondaryChartData = [];
   }
 
   processSpeedReportAllVehicles(positions: any[]) {

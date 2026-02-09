@@ -189,8 +189,9 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
                     var maxSpeed = drivePositions.Max(p => p.SpeedKph ?? 0);
                     var distance = CalculateDistance(drivePositions);
 
-                    // Only add drive if it has meaningful distance (> 0.1 km) or duration (> 60s)
-                    if (distance >= 0.1 || driveDuration >= 60)
+                    // Only add drive if it has meaningful distance AND speed
+                    // Filter out GPS drift: require distance >= 0.2 km AND avg speed >= 5 km/h
+                    if (distance >= 0.2 && avgSpeed >= 5)
                     {
                         sequenceNumber++;
                         activities.Add(new ActivitySegmentDto
@@ -272,9 +273,10 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
         }
 
         // === MERGE PHASE ===
-        // Merge drive-shortStop-drive into one continuous drive (handles traffic lights < 3 min)
-        // Merge consecutive stops into one
-        const int MIN_STOP_BREAK_SECONDS = 180; // 3 minutes
+        // 1) Merge drive-shortStop-drive into one continuous drive (handles traffic lights < 5 min)
+        // 2) Merge consecutive stops into one
+        // 3) Absorb micro-drives (< 0.5 km) adjacent to stops
+        const int MIN_STOP_BREAK_SECONDS = 300; // 5 minutes
         var merged = new List<ActivitySegmentDto>();
 
         for (int m = 0; m < activities.Count; m++)
@@ -313,6 +315,34 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
 
             merged.Add(seg);
         }
+
+        // === POST-MERGE CLEANUP ===
+        // Absorb micro-drives (< 0.5 km) into adjacent stops
+        var cleaned = new List<ActivitySegmentDto>();
+        for (int m = 0; m < merged.Count; m++)
+        {
+            var seg = merged[m];
+            if (seg.Type == "drive" && (seg.DistanceKm ?? 0) < 0.5)
+            {
+                // Absorb into previous stop or next stop
+                if (cleaned.Count > 0 && cleaned[^1].Type == "stop")
+                {
+                    cleaned[^1].EndTime = seg.EndTime;
+                    cleaned[^1].DurationSeconds += seg.DurationSeconds;
+                    cleaned[^1].DurationFormatted = FormatDuration(cleaned[^1].DurationSeconds);
+                    continue;
+                }
+                if (m + 1 < merged.Count && merged[m + 1].Type == "stop")
+                {
+                    merged[m + 1].StartTime = seg.StartTime;
+                    merged[m + 1].DurationSeconds += seg.DurationSeconds;
+                    merged[m + 1].DurationFormatted = FormatDuration(merged[m + 1].DurationSeconds);
+                    continue;
+                }
+            }
+            cleaned.Add(seg);
+        }
+        merged = cleaned;
 
         // Re-number sequences
         for (int m = 0; m < merged.Count; m++)
