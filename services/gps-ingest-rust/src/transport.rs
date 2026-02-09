@@ -435,7 +435,7 @@ async fn process_single_frame(
                 // If timestamp is before 2016-01-01, apply correction offset
                 const THRESHOLD_2016: i64 = 1451606400; // 2016-01-01 00:00:00 UTC
                 const TIME_OFFSET: i64 = 619315200;     // ~19.6 years correction
-                const LOCAL_TIME_OFFSET_MINUTES: i64 = 60; // GISV1 AddHours(1) => UTC+1 (Tunisia)
+                const LOCAL_TIME_OFFSET_MINUTES: i64 = 0; // GPS already sends local time, no offset needed
                 
                 let unix_time = frame.recorded_at.and_utc().timestamp();
                 if unix_time < THRESHOLD_2016 {
