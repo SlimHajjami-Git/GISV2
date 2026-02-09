@@ -171,8 +171,7 @@ public class RoutingController : ControllerBase
             return BadRequest(new { error = "At least 2 points are required" });
         }
 
-        // Send RAW GPS points directly to Valhalla - NO interpolation
-        // Valhalla's trace_route does map-matching and calculates the real road path
+        // Use Valhalla /route to calculate actual road path between GPS waypoints
         List<double[]>? roadPath = null;
         bool valhallaSuccess = false;
 
@@ -181,29 +180,22 @@ public class RoutingController : ControllerBase
             var valhallaPoints = request.Points.Select(p => new ValhallaPoint
             {
                 Lat = p.Lat,
-                Lon = p.Lon,
-                Timestamp = p.Timestamp.HasValue 
-                    ? DateTimeOffset.FromUnixTimeMilliseconds(p.Timestamp.Value) 
-                    : null
+                Lon = p.Lon
             }).ToList();
 
-            var valhallaResult = await _valhallaService.SnapToRoadAsync(valhallaPoints);
+            var valhallaResult = await _valhallaService.GetRouteFromWaypointsAsync(valhallaPoints);
             
-            if (valhallaResult != null)
+            if (valhallaResult?.DecodedPolyline != null && valhallaResult.DecodedPolyline.Count > 0)
             {
-                // Use the decoded polyline - this IS the actual road path
-                if (valhallaResult.DecodedPolyline != null && valhallaResult.DecodedPolyline.Count > 0)
-                {
-                    roadPath = valhallaResult.DecodedPolyline;
-                    valhallaSuccess = true;
-                    _logger.LogInformation("Valhalla road path: {GpsCount} GPS points -> {RoadCount} road path points", 
-                        request.Points.Count, roadPath.Count);
-                }
+                roadPath = valhallaResult.DecodedPolyline;
+                valhallaSuccess = true;
+                _logger.LogInformation("Valhalla route: {GpsCount} GPS -> {RoadCount} road points", 
+                    request.Points.Count, roadPath.Count);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Valhalla road snapping failed, using raw GPS points");
+            _logger.LogWarning(ex, "Valhalla routing failed, using raw GPS points");
         }
 
         // Convert road path to response

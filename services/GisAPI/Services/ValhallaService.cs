@@ -7,6 +7,7 @@ public interface IValhallaService
 {
     Task<ValhallaRouteResult?> SnapToRoadAsync(List<ValhallaPoint> points);
     Task<ValhallaRouteResult?> GetRouteAsync(double originLat, double originLon, double destLat, double destLon);
+    Task<ValhallaRouteResult?> GetRouteFromWaypointsAsync(List<ValhallaPoint> waypoints);
     Task<bool> IsAvailableAsync();
 }
 
@@ -158,8 +159,68 @@ public class ValhallaService : IValhallaService
                 }).ToList();
             }
 
-            var encodedPolyline = valhallaResponse.Trip?.Shape ?? valhallaResponse.Shape;
+            // Extract encoded polyline from Valhalla response
+            // Valhalla trace_route returns shape in: trip.legs[].shape (per leg) or trip.shape (overall)
+            string? encodedPolyline = null;
             
+            // Try trip.shape first (overall shape)
+            if (!string.IsNullOrEmpty(valhallaResponse.Trip?.Shape))
+            {
+                encodedPolyline = valhallaResponse.Trip.Shape;
+                _logger.LogInformation("Found shape in trip.shape");
+            }
+            // Try trip.legs[].shape (concatenate all legs)
+            else if (valhallaResponse.Trip?.Legs != null && valhallaResponse.Trip.Legs.Count > 0)
+            {
+                // Decode each leg's shape and combine
+                var allLegPoints = new List<double[]>();
+                foreach (var leg in valhallaResponse.Trip.Legs)
+                {
+                    if (!string.IsNullOrEmpty(leg.Shape))
+                    {
+                        var legPoints = DecodePolyline(leg.Shape);
+                        // Skip first point of subsequent legs to avoid duplicates
+                        if (allLegPoints.Count > 0 && legPoints.Count > 0)
+                            allLegPoints.AddRange(legPoints.Skip(1));
+                        else
+                            allLegPoints.AddRange(legPoints);
+                    }
+                }
+                
+                if (allLegPoints.Count > 0)
+                {
+                    _logger.LogInformation("Found shape in trip.legs: {LegCount} legs, {PointCount} total points", 
+                        valhallaResponse.Trip.Legs.Count, allLegPoints.Count);
+                    
+                    return new ValhallaRouteResult
+                    {
+                        Points = snappedPoints,
+                        TotalDistanceKm = valhallaResponse.Trip?.Summary?.Length ?? 0,
+                        TotalTimeSeconds = valhallaResponse.Trip?.Summary?.Time ?? 0,
+                        DecodedPolyline = allLegPoints
+                    };
+                }
+            }
+            // Try root shape
+            else if (!string.IsNullOrEmpty(valhallaResponse.Shape))
+            {
+                encodedPolyline = valhallaResponse.Shape;
+                _logger.LogInformation("Found shape in root.shape");
+            }
+            
+            if (string.IsNullOrEmpty(encodedPolyline))
+            {
+                _logger.LogWarning("No shape found in Valhalla response. Response keys: trip={HasTrip}, trip.shape={TripShape}, trip.legs={LegCount}, root.shape={RootShape}",
+                    valhallaResponse.Trip != null,
+                    valhallaResponse.Trip?.Shape != null,
+                    valhallaResponse.Trip?.Legs?.Count ?? 0,
+                    valhallaResponse.Shape != null);
+                    
+                // Log raw response for debugging (first 500 chars)
+                var rawPreview = responseJson.Length > 500 ? responseJson[..500] : responseJson;
+                _logger.LogWarning("Valhalla raw response preview: {Response}", rawPreview);
+            }
+
             var result = new ValhallaRouteResult
             {
                 Points = snappedPoints,
@@ -168,7 +229,7 @@ public class ValhallaService : IValhallaService
                 EncodedPolyline = encodedPolyline
             };
 
-            // ALWAYS decode polyline to get the full road path for animation
+            // Decode polyline to get the full road path for animation
             if (!string.IsNullOrEmpty(encodedPolyline))
             {
                 var decoded = DecodePolyline(encodedPolyline);
@@ -187,11 +248,96 @@ public class ValhallaService : IValhallaService
 
     public async Task<ValhallaRouteResult?> GetRouteAsync(double originLat, double originLon, double destLat, double destLon)
     {
-        return await SnapToRoadAsync(new List<ValhallaPoint>
+        return await GetRouteFromWaypointsAsync(new List<ValhallaPoint>
         {
             new() { Lat = originLat, Lon = originLon },
             new() { Lat = destLat, Lon = destLon }
         });
+    }
+
+    /// <summary>
+    /// Calculate actual road route between GPS waypoints using Valhalla /route endpoint.
+    /// Unlike trace_route (map matching), this works even when points are far apart.
+    /// </summary>
+    public async Task<ValhallaRouteResult?> GetRouteFromWaypointsAsync(List<ValhallaPoint> waypoints)
+    {
+        if (waypoints == null || waypoints.Count < 2) return null;
+
+        try
+        {
+            // Build Valhalla /route request with locations
+            var locations = waypoints.Select(p => new Dictionary<string, object>
+            {
+                { "lat", p.Lat },
+                { "lon", p.Lon },
+                { "type", "through" } // "through" = don't stop, just pass through
+            }).ToList();
+            
+            // First and last must be "break" type (start/end of route)
+            locations[0]["type"] = "break";
+            locations[^1]["type"] = "break";
+
+            var requestObj = new Dictionary<string, object>
+            {
+                { "locations", locations },
+                { "costing", "auto" },
+                { "directions_options", new Dictionary<string, object> { { "units", "kilometers" } } }
+            };
+
+            var json = JsonSerializer.Serialize(requestObj);
+            _logger.LogInformation("Valhalla /route request: {Count} waypoints", waypoints.Count);
+
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync($"{_baseUrl}/route", content);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                _logger.LogWarning("Valhalla /route error {Status}: {Error}", response.StatusCode, error);
+                return null;
+            }
+
+            var responseJson = await response.Content.ReadAsStringAsync();
+            var valhallaResponse = JsonSerializer.Deserialize<ValhallaTraceResponse>(responseJson, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+            });
+
+            if (valhallaResponse?.Trip == null) return null;
+
+            // Extract and decode shape from trip.legs[].shape
+            var allPoints = new List<double[]>();
+            if (valhallaResponse.Trip.Legs != null)
+            {
+                foreach (var leg in valhallaResponse.Trip.Legs)
+                {
+                    if (!string.IsNullOrEmpty(leg.Shape))
+                    {
+                        var legPoints = DecodePolyline(leg.Shape);
+                        if (allPoints.Count > 0 && legPoints.Count > 0)
+                            allPoints.AddRange(legPoints.Skip(1)); // Skip duplicate first point
+                        else
+                            allPoints.AddRange(legPoints);
+                    }
+                }
+            }
+
+            _logger.LogInformation("Valhalla /route success: {WaypointCount} waypoints -> {RoadPointCount} road points", 
+                waypoints.Count, allPoints.Count);
+
+            return new ValhallaRouteResult
+            {
+                Points = new List<SnappedPoint>(),
+                TotalDistanceKm = valhallaResponse.Trip.Summary?.Length ?? 0,
+                TotalTimeSeconds = valhallaResponse.Trip.Summary?.Time ?? 0,
+                DecodedPolyline = allPoints.Count > 0 ? allPoints : null
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling Valhalla /route");
+            return null;
+        }
     }
 
     public static List<double[]> DecodePolyline(string encoded)
