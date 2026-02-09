@@ -48,9 +48,9 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
             };
         }
 
-        // Adjust for timezone offset (Tunisia = UTC+1) and ensure UTC kind
-        var startDate = DateTime.SpecifyKind(request.StartDate.Date.AddHours(-1), DateTimeKind.Utc);
-        var endDate = DateTime.SpecifyKind(request.EndDate.Date.AddDays(1).AddHours(-1), DateTimeKind.Utc);
+        // DB stores local time directly (no timezone offset)
+        var startDate = DateTime.SpecifyKind(request.StartDate.Date, DateTimeKind.Utc);
+        var endDate = DateTime.SpecifyKind(request.EndDate.Date.AddDays(1), DateTimeKind.Utc);
 
         var positions = await _context.GpsPositions
             .AsNoTracking()
@@ -77,8 +77,8 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
 
         // Get previous period for comparison
         var periodDays = (request.EndDate - request.StartDate).Days + 1;
-        var previousStart = DateTime.SpecifyKind(request.StartDate.AddDays(-periodDays).AddHours(-1), DateTimeKind.Utc);
-        var previousEnd = DateTime.SpecifyKind(request.StartDate.AddHours(-1), DateTimeKind.Utc);
+        var previousStart = DateTime.SpecifyKind(request.StartDate.AddDays(-periodDays), DateTimeKind.Utc);
+        var previousEnd = DateTime.SpecifyKind(request.StartDate.Date, DateTimeKind.Utc);
 
         var previousPositions = await _context.GpsPositions
             .AsNoTracking()
@@ -126,7 +126,7 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
 
         // Group positions by day for daily breakdown
         var dailyGroups = positions
-            .GroupBy(p => p.RecordedAt.AddHours(-1).Date)
+            .GroupBy(p => p.RecordedAt.Date)
             .OrderBy(g => g.Key)
             .ToList();
 
