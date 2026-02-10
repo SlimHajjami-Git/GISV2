@@ -167,6 +167,7 @@ using (var scope = app.Services.CreateScope())
     }
     
     await SeedBeliveCompany(context);
+    await SeedFuelTypesAndPricing(context);
 }
 
 app.Run();
@@ -391,5 +392,135 @@ static async Task SeedTestVehicle(GisAPI.Infrastructure.Persistence.GisDbContext
     }
 }
 
+// Seed fuel types with correct codes matching frontend + default pricing per company
+static async Task SeedFuelTypesAndPricing(GisAPI.Infrastructure.Persistence.GisDbContext context)
+{
+    try
+    {
+        // Define canonical fuel types (code must match frontend vehicle-popup fuelTypes)
+        var canonicalFuelTypes = new[]
+        {
+            new { Code = "diesel", Name = "Diesel", DefaultPrice = 2.075m },
+            new { Code = "essence", Name = "Essence", DefaultPrice = 2.225m },
+            new { Code = "sans_plomb", Name = "Essence Sans Plomb", DefaultPrice = 2.185m },
+            new { Code = "gpl", Name = "GPL", DefaultPrice = 0.850m },
+            new { Code = "gnv", Name = "GNV", DefaultPrice = 0.650m },
+            new { Code = "electrique", Name = "Électrique", DefaultPrice = 0.0m },
+            new { Code = "hybride", Name = "Hybride", DefaultPrice = 2.075m },
+            new { Code = "hybride_rechargeable", Name = "Hybride Rechargeable", DefaultPrice = 2.075m }
+        };
 
+        // Legacy code mapping (old DB codes -> new frontend codes)
+        var legacyCodeMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "gasoline", "essence" },
+            { "unleaded", "sans_plomb" },
+            { "lpg", "gpl" },
+            { "cng", "gnv" },
+            { "electric", "electrique" },
+            { "hybrid", "hybride" },
+            { "plugin_hybrid", "hybride_rechargeable" }
+        };
 
+        var existingTypes = await context.FuelTypes.ToListAsync();
+
+        // Fix legacy codes on existing records
+        foreach (var existing in existingTypes)
+        {
+            if (legacyCodeMap.TryGetValue(existing.Code, out var newCode))
+            {
+                var canonical = canonicalFuelTypes.First(c => c.Code == newCode);
+                existing.Code = canonical.Code;
+                existing.Name = canonical.Name;
+                Console.WriteLine($"[Seed] Fixed fuel type code: '{existing.Code}' -> '{newCode}'");
+            }
+        }
+
+        // Add any missing fuel types
+        foreach (var ft in canonicalFuelTypes)
+        {
+            var exists = existingTypes.Any(e => 
+                string.Equals(e.Code, ft.Code, StringComparison.OrdinalIgnoreCase));
+            if (!exists)
+            {
+                context.FuelTypes.Add(new GisAPI.Domain.Entities.FuelType
+                {
+                    Code = ft.Code,
+                    Name = ft.Name,
+                    IsSystem = true
+                });
+                Console.WriteLine($"[Seed] Added fuel type: {ft.Code} ({ft.Name})");
+            }
+        }
+
+        await context.SaveChangesAsync();
+
+        // Reload fuel types to get IDs
+        var allFuelTypes = await context.FuelTypes.ToListAsync();
+
+        // Seed default pricing for every company that has no pricing yet
+        var companies = await context.Societes.IgnoreQueryFilters().ToListAsync();
+        foreach (var company in companies)
+        {
+            var existingPricing = await context.FuelPricings
+                .IgnoreQueryFilters()
+                .Where(fp => fp.CompanyId == company.Id)
+                .ToListAsync();
+
+            if (existingPricing.Any())
+            {
+                // Fix pricing that references old fuel type IDs (codes already fixed above)
+                Console.WriteLine($"[Seed] Company '{company.Name}' already has {existingPricing.Count} fuel price(s)");
+                
+                // Add missing fuel type pricing for this company
+                foreach (var ft in canonicalFuelTypes.Where(f => f.DefaultPrice > 0))
+                {
+                    var fuelType = allFuelTypes.FirstOrDefault(t => 
+                        string.Equals(t.Code, ft.Code, StringComparison.OrdinalIgnoreCase));
+                    if (fuelType == null) continue;
+
+                    var hasPricing = existingPricing.Any(p => p.FuelTypeId == fuelType.Id);
+                    if (!hasPricing)
+                    {
+                        context.FuelPricings.Add(new GisAPI.Domain.Entities.FuelPricing
+                        {
+                            FuelTypeId = fuelType.Id,
+                            CompanyId = company.Id,
+                            PricePerLiter = ft.DefaultPrice,
+                            EffectiveFrom = DateTime.UtcNow,
+                            IsActive = true
+                        });
+                        Console.WriteLine($"[Seed] Added default pricing for '{ft.Code}' ({ft.DefaultPrice} TND/L) to company '{company.Name}'");
+                    }
+                }
+            }
+            else
+            {
+                // No pricing at all — seed all defaults
+                foreach (var ft in canonicalFuelTypes.Where(f => f.DefaultPrice > 0))
+                {
+                    var fuelType = allFuelTypes.FirstOrDefault(t => 
+                        string.Equals(t.Code, ft.Code, StringComparison.OrdinalIgnoreCase));
+                    if (fuelType == null) continue;
+
+                    context.FuelPricings.Add(new GisAPI.Domain.Entities.FuelPricing
+                    {
+                        FuelTypeId = fuelType.Id,
+                        CompanyId = company.Id,
+                        PricePerLiter = ft.DefaultPrice,
+                        EffectiveFrom = DateTime.UtcNow,
+                        IsActive = true
+                    });
+                }
+                Console.WriteLine($"[Seed] Seeded all default fuel pricing for company '{company.Name}'");
+            }
+        }
+
+        await context.SaveChangesAsync();
+        Console.WriteLine("[Seed] ✅ Fuel types and pricing seeded successfully!");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Seed] Warning: Could not seed fuel types/pricing: {ex.Message}");
+    }
+}
