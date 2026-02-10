@@ -543,7 +543,7 @@ export class MaintenanceComponent implements OnInit {
         (r.serviceProvider || '').toLowerCase().includes(this.searchQuery.toLowerCase());
       const matchesStatus = !this.filterStatus || r.status === this.filterStatus;
       const matchesType = !this.filterType || r.type === this.filterType;
-      const matchesVehicle = !this.filterVehicle || r.vehicleId === this.filterVehicle;
+      const matchesVehicle = !this.filterVehicle || r.vehicleId?.toString() === this.filterVehicle;
       return matchesSearch && matchesStatus && matchesType && matchesVehicle;
     });
   }
@@ -586,9 +586,9 @@ export class MaintenanceComponent implements OnInit {
     return labels[status] || status;
   }
 
-  getVehicleName(vehicleId: string): string {
-    const vehicle = this.vehicles.find(v => v.id === vehicleId);
-    return vehicle ? vehicle.name : vehicleId;
+  getVehicleName(vehicleId: any): string {
+    const vehicle = this.vehicles.find(v => v.id?.toString() === vehicleId?.toString());
+    return vehicle ? vehicle.name : (vehicleId?.toString() || '-');
   }
 
   formatDate(date: Date): string {

@@ -464,7 +464,12 @@ export class MaintenancePopupComponent implements OnInit, OnChanges {
   onSubmit() {
     const result: Partial<MaintenanceRecord> = {
       ...this.formData,
-      date: new Date(this.formData.dateStr)
+      vehicleId: parseInt(this.formData.vehicleId, 10) || 0,
+      date: new Date(this.formData.dateStr),
+      mileageAtService: parseInt(this.formData.mileageAtService, 10) || 0,
+      laborCost: parseFloat(this.formData.laborCost) || 0,
+      partsCost: parseFloat(this.formData.partsCost) || 0,
+      totalCost: parseFloat(this.formData.totalCost) || 0
     };
     delete (result as any).dateStr;
     this.saved.emit(result);
