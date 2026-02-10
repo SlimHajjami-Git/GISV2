@@ -1179,13 +1179,19 @@ export class ReportsComponent implements OnInit {
     const now = new Date();
     const startDate = start || new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
     const endDate = end || now;
+    const selectedVehicleId = this.selectedVehicleId ? parseInt(this.selectedVehicleId) : null;
     
-    // Fetch all vehicles with their configured speed limits
+    // Fetch vehicles — filter by selected vehicle if one is chosen
     this.apiService.getVehicles().subscribe({
       next: (vehicles) => {
+        let targetVehicles = vehicles;
+        if (selectedVehicleId) {
+          targetVehicles = vehicles.filter(v => v.id === selectedVehicleId);
+        }
+
         const allInfractions: any[] = [];
         let completedRequests = 0;
-        const totalVehicles = vehicles.length;
+        const totalVehicles = targetVehicles.length;
         
         if (totalVehicles === 0) {
           this.ngZone.run(() => {
@@ -1199,7 +1205,7 @@ export class ReportsComponent implements OnInit {
           return;
         }
         
-        vehicles.forEach(vehicle => {
+        targetVehicles.forEach(vehicle => {
           // Use custom limit if set, otherwise use vehicle's configured limit from DB (default 120)
           const vehicleSpeedLimit = this.speedLimit 
             ? this.speedLimit 
@@ -1234,6 +1240,7 @@ export class ReportsComponent implements OnInit {
                   this.currentPage = 1;
                   this.cdr.detectChanges();
                   this.appRef.tick();
+                  setTimeout(() => this.createChart(), 100);
                 });
               }
             },
@@ -1248,6 +1255,7 @@ export class ReportsComponent implements OnInit {
                   this.currentPage = 1;
                   this.cdr.detectChanges();
                   this.appRef.tick();
+                  setTimeout(() => this.createChart(), 100);
                 });
               }
             }
@@ -1303,32 +1311,53 @@ export class ReportsComponent implements OnInit {
       byVehicle[name] = (byVehicle[name] || 0) + 1;
     });
     
-    this.chartData = Object.entries(byVehicle)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([label, value]) => ({ label, value }));
+    // If single vehicle selected, show infractions by hour instead
+    const vehicleCount = Object.keys(byVehicle).length;
+    if (vehicleCount <= 1) {
+      // Time distribution: infractions by hour of day
+      const byHour: { [key: number]: number } = {};
+      infractions.forEach(inf => {
+        const hour = new Date(inf.time).getHours();
+        byHour[hour] = (byHour[hour] || 0) + 1;
+      });
+      this.chartData = Array.from({ length: 24 }, (_, h) => ({
+        label: `${h.toString().padStart(2, '0')}h`,
+        value: byHour[h] || 0,
+        color: (byHour[h] || 0) > 3 ? '#EF4444' : (byHour[h] || 0) > 0 ? '#F59E0B' : '#334155'
+      }));
+    } else {
+      this.chartData = Object.entries(byVehicle)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([label, value]) => ({ label, value }));
+    }
     
     // Secondary chart data - severity distribution
     const light = infractions.filter(i => i.excess <= 15).length;
     const medium = infractions.filter(i => i.excess > 15 && i.excess <= 30).length;
     const severe = infractions.filter(i => i.excess > 30).length;
     this.secondaryChartData = [
-      { label: '🟢 Léger (≤15)', value: light, color: '#22C55E' },
-      { label: '🟡 Modéré (15-30)', value: medium, color: '#F59E0B' },
-      { label: '🔴 Grave (>30)', value: severe, color: '#EF4444' }
+      { label: '🟢 Léger (≤15 km/h)', value: light, color: '#22C55E' },
+      { label: '🟡 Modéré (15-30 km/h)', value: medium, color: '#F59E0B' },
+      { label: '🔴 Grave (>30 km/h)', value: severe, color: '#EF4444' }
     ].filter(d => d.value > 0);
     
     // Statistics
     const maxSpeed = Math.max(...infractions.map(i => i.speed));
     const avgExcess = infractions.reduce((sum, i) => sum + i.excess, 0) / infractions.length;
     const severeCount = infractions.filter(i => i.excess > 30).length;
+    const lightPct = ((light / infractions.length) * 100).toFixed(0);
+    const mediumPct = ((medium / infractions.length) * 100).toFixed(0);
+    const severePct = ((severeCount / infractions.length) * 100).toFixed(0);
     
     this.statisticsData = {
-      'Total infractions': infractions.length.toString(),
-      'Vitesse max': `${maxSpeed.toFixed(1)} km/h`,
-      'Excès moyen': `+${avgExcess.toFixed(1)} km/h`,
-      'Infractions graves (>30 km/h)': severeCount.toString(),
-      'Véhicules concernés': Object.keys(byVehicle).length.toString()
+      '⚠️ Total infractions': infractions.length.toString(),
+      '🏎️ Vitesse max': `${maxSpeed.toFixed(1)} km/h`,
+      '📊 Excès moyen': `+${avgExcess.toFixed(1)} km/h`,
+      '🟢 Léger (≤15)': `${light} (${lightPct}%)`,
+      '🟡 Modéré (15-30)': `${medium} (${mediumPct}%)`,
+      '🔴 Grave (>30)': `${severeCount} (${severePct}%)`,
+      '🚗 Véhicules concernés': vehicleCount.toString()
     };
   }
 
@@ -3728,37 +3757,74 @@ export class ReportsComponent implements OnInit {
         }
       };
     } else if (type === 'speed-infraction') {
-      // Radar + Bar combo for infractions
-      config = {
-        type: 'bar',
-        data: {
-          labels: this.chartData.map(d => d.label),
-          datasets: [{
-            label: 'Infractions',
-            data: this.chartData.map(d => d.value),
-            backgroundColor: this.chartData.map((_, i) => {
-              const colors = ['#EF4444', '#F97316', '#F59E0B', '#EAB308', '#84CC16', '#22C55E', '#14B8A6', '#06B6D4', '#3B82F6', '#8B5CF6'];
-              return colors[i % colors.length] + 'CC';
-            }),
-            borderColor: '#EF4444',
-            borderWidth: 2,
-            borderRadius: 8
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          indexAxis: 'y',
-          plugins: {
-            legend: { display: false },
-            title: { display: true, text: '⚠️ Infractions de vitesse par véhicule', font: { size: 14, weight: 'bold' } }
+      // Detect if single vehicle (hourly chart) or multi-vehicle (bar chart)
+      const hasHourlyData = this.chartData.length === 24 && this.chartData[0]?.label?.includes('h');
+      if (hasHourlyData) {
+        // Single vehicle: infractions by hour of day
+        config = {
+          type: 'bar',
+          data: {
+            labels: this.chartData.map(d => d.label),
+            datasets: [{
+              label: 'Infractions',
+              data: this.chartData.map(d => d.value),
+              backgroundColor: this.chartData.map(d => d.color || '#F59E0B'),
+              borderColor: this.chartData.map(d => d.value > 3 ? '#EF4444' : d.value > 0 ? '#F59E0B' : '#334155'),
+              borderWidth: 2,
+              borderRadius: 4
+            }]
           },
-          scales: {
-            x: { beginAtZero: true, title: { display: true, text: 'Nombre d\'infractions' } },
-            y: { grid: { display: false } }
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              title: { display: true, text: '⏰ Infractions par heure de la journée', font: { size: 14, weight: 'bold' } },
+              tooltip: {
+                callbacks: {
+                  label: (context: any) => `${context.raw} infraction${context.raw > 1 ? 's' : ''}`
+                }
+              }
+            },
+            scales: {
+              y: { beginAtZero: true, title: { display: true, text: 'Nombre d\'infractions' }, ticks: { stepSize: 1 } },
+              x: { grid: { display: false }, title: { display: true, text: 'Heure' } }
+            }
           }
-        }
-      };
+        };
+      } else {
+        // Multi-vehicle: infractions by vehicle (horizontal bar)
+        config = {
+          type: 'bar',
+          data: {
+            labels: this.chartData.map(d => d.label),
+            datasets: [{
+              label: 'Infractions',
+              data: this.chartData.map(d => d.value),
+              backgroundColor: this.chartData.map((_, i) => {
+                const colors = ['#EF4444', '#F97316', '#F59E0B', '#EAB308', '#84CC16', '#22C55E', '#14B8A6', '#06B6D4', '#3B82F6', '#8B5CF6'];
+                return colors[i % colors.length] + 'CC';
+              }),
+              borderColor: '#EF4444',
+              borderWidth: 2,
+              borderRadius: 8
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            plugins: {
+              legend: { display: false },
+              title: { display: true, text: '⚠️ Infractions de vitesse par véhicule', font: { size: 14, weight: 'bold' } }
+            },
+            scales: {
+              x: { beginAtZero: true, title: { display: true, text: 'Nombre d\'infractions' } },
+              y: { grid: { display: false } }
+            }
+          }
+        };
+      }
     } else if (type === 'driving-behavior') {
       // Polar area chart for incident types
       config = {
