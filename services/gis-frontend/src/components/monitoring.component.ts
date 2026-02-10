@@ -106,6 +106,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   signalRSubscription: Subscription | null = null;
   connectionStatus = 'Disconnected';
 
+  // Dedup: track last processed recordedAt per vehicle to skip duplicate SignalR messages
+  private lastProcessedPosition = new Map<string, string>();
+
   stats = {
     total: 0,
     online: 0,
@@ -183,6 +186,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   handlePositionUpdate(update: PositionUpdate) {
+    // Frontend dedup: skip if same vehicle+recordedAt already processed
+    // (Redis + RabbitMQ consumers both broadcast the same GPS frame)
+    const dedupKey = `${update.vehicleId}`;
+    const lastRecorded = this.lastProcessedPosition.get(dedupKey);
+    if (lastRecorded === update.recordedAt) {
+      return; // Exact duplicate, skip
+    }
+    this.lastProcessedPosition.set(dedupKey, update.recordedAt);
+
     this.ngZone.run(() => {
       // Find the vehicle and update its position
       const vehicleIndex = this.vehicles.findIndex(
