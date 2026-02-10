@@ -858,7 +858,7 @@ export class ReportsComponent implements OnInit {
         endTime: this.formatDateTime(trip.end.recordedAt),
         duration: formatDuration(durationMin),
         durationMin,
-        distance: `${Math.round(distanceKm)} km`,
+        distance: `${distanceKm.toFixed(1)} km`,
         distanceKm,
         avgSpeed: `${avgSpeed.toFixed(0)} km/h`,
         maxSpeed: `${maxSpeed.toFixed(0)} km/h`,
@@ -894,9 +894,9 @@ export class ReportsComponent implements OnInit {
     this.statisticsData = {
       '🚗 Véhicules': byVehicle.size.toString(),
       '🛣️ Nombre de trajets': allTrips.length.toString(),
-      '📏 Distance totale': `${Math.round(totalDistance)} km`,
+      '📏 Distance totale': `${totalDistance.toFixed(1)} km`,
       '⏱️ Temps total': formatDuration(totalDurationMin),
-      '⌀ Distance/trajet': `${Math.round(totalDistance / allTrips.length || 0)} km`
+      '⌀ Distance/trajet': `${(totalDistance / allTrips.length || 0).toFixed(1)} km`
     };
 
     this.secondaryChartData = [];
@@ -1725,7 +1725,7 @@ export class ReportsComponent implements OnInit {
           latitude: activity.endLocation?.latitude || activity.startLocation.latitude,
           longitude: activity.endLocation?.longitude || activity.startLocation.longitude,
           duration: activity.durationFormatted,
-          distance: `${Math.round(activity.distanceKm || 0)} km`,
+          distance: `${(activity.distanceKm || 0).toFixed(1)} km`,
           speed: `⌀ ${activity.avgSpeedKph || 0} | max ${activity.maxSpeedKph || 0} km/h`,
           distanceKm: activity.distanceKm || 0,
           durationSeconds: activity.durationSeconds
@@ -1900,12 +1900,12 @@ export class ReportsComponent implements OnInit {
     this.tableData = daysWithActivity.map((day: DailyMileage) => ({
       date: new Date(day.date).toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' }),
       dayOfWeek: day.dayOfWeek,
-      distance: `${Math.round(day.distanceKm)} km`,
+      distance: `${day.distanceKm.toFixed(1)} km`,
       distanceValue: day.distanceKm,
       tripCount: day.tripCount,
       drivingTime: this.formatMinutes(day.drivingMinutes),
-      avgSpeed: `${Math.round(day.avgSpeedKph)} km/h`,
-      maxSpeed: `${Math.round(day.maxSpeedKph)} km/h`,
+      avgSpeed: `${day.avgSpeedKph.toFixed(1)} km/h`,
+      maxSpeed: `${day.maxSpeedKph.toFixed(1)} km/h`,
       odometer: day.endOdometerKm ? `${day.endOdometerKm.toFixed(0)} km` : '-'
     }));
 
@@ -1919,15 +1919,15 @@ export class ReportsComponent implements OnInit {
     this.statisticsData = {
       'Véhicule': `${report.vehicleName}${report.plate ? ' (' + report.plate + ')' : ''}`,
       'Période': `${new Date(report.startDate).toLocaleDateString('fr-FR')} - ${new Date(report.endDate).toLocaleDateString('fr-FR')}`,
-      'Distance totale': `${Math.round(report.summary.totalDistanceKm)} km`,
-      'Moyenne journalière': `${Math.round(report.summary.averageDailyKm)} km`,
+      'Distance totale': `${report.summary.totalDistanceKm.toFixed(1)} km`,
+      'Moyenne journalière': `${report.summary.averageDailyKm.toFixed(1)} km`,
       'Max journalier': report.summary.maxDailyDate 
-        ? `${Math.round(report.summary.maxDailyKm)} km (${new Date(report.summary.maxDailyDate).toLocaleDateString('fr-FR')})`
-        : `${Math.round(report.summary.maxDailyKm)} km`,
+        ? `${report.summary.maxDailyKm.toFixed(1)} km (${new Date(report.summary.maxDailyDate).toLocaleDateString('fr-FR')})`
+        : `${report.summary.maxDailyKm.toFixed(1)} km`,
       'Nombre de trajets': report.summary.totalTripCount.toString(),
       'Temps de conduite': report.summary.totalDrivingFormatted,
-      'Vitesse max': `${Math.round(report.summary.maxSpeedKph)} km/h`,
-      'Vitesse moyenne': `${Math.round(report.summary.avgSpeedKph)} km/h`,
+      'Vitesse max': `${report.summary.maxSpeedKph.toFixed(1)} km/h`,
+      'Vitesse moyenne': `${report.summary.avgSpeedKph.toFixed(1)} km/h`,
       'Jours actifs': `${report.summary.daysWithActivity}/${report.summary.totalDays} (${report.summary.activityPercentage.toFixed(0)}%)`
     };
 
@@ -2164,12 +2164,12 @@ export class ReportsComponent implements OnInit {
 
     this.tableData = results.map(r => ({
       vehicle: `${r.vehicleName}${r.vehiclePlate ? ' (' + r.vehiclePlate + ')' : ''}`,
-      distance: `${Math.round(r.totalDistance)} km`,
+      distance: `${r.totalDistance.toFixed(1)} km`,
       distanceValue: r.totalDistance,
       tripCount: r.totalTrips,
       drivingTime: r.totalDrivingFormatted,
-      avgDistance: `${Math.round(r.avgDistance)} km`,
-      maxDistance: `${Math.round(r.maxDistance)} km`
+      avgDistance: `${r.avgDistance.toFixed(1)} km`,
+      maxDistance: `${r.maxDistance.toFixed(1)} km`
     }));
 
     this.chartData = results.map(r => ({
@@ -2184,9 +2184,9 @@ export class ReportsComponent implements OnInit {
       'Période': `${start.toLocaleDateString('fr-FR')} - ${end.toLocaleDateString('fr-FR')}`,
       'Type': this.getMileagePeriodTypeLabel(this.selectedMileagePeriodType),
       'Véhicules': results.length.toString(),
-      'Distance totale flotte': `${Math.round(totalDist)} km`,
+      'Distance totale flotte': `${totalDist.toFixed(1)} km`,
       'Nombre total de trajets': totalTrips.toString(),
-      'Moyenne par véhicule': results.length > 0 ? `${Math.round(totalDist / results.length)} km` : '0 km'
+      'Moyenne par véhicule': results.length > 0 ? `${(totalDist / results.length).toFixed(1)} km` : '0 km'
     };
   }
 
@@ -2217,12 +2217,12 @@ export class ReportsComponent implements OnInit {
         console.log('Processing hourly data:', report.hourlyBreakdown?.length, 'items');
         this.tableData = (report.hourlyBreakdown || []).map((h: HourlyMileagePeriod) => ({
           period: h.hourLabel,
-          distance: `${Math.round(h.distanceKm)} km`,
+          distance: `${h.distanceKm.toFixed(1)} km`,
           distanceValue: h.distanceKm,
           tripCount: h.tripCount,
           drivingTime: this.formatMinutes(h.drivingMinutes),
-          avgSpeed: `${Math.round(h.avgSpeedKph)} km/h`,
-          maxSpeed: `${Math.round(h.maxSpeedKph)} km/h`
+          avgSpeed: `${h.avgSpeedKph.toFixed(1)} km/h`,
+          maxSpeed: `${h.maxSpeedKph.toFixed(1)} km/h`
         }));
         break;
       case 'day':
@@ -2230,21 +2230,21 @@ export class ReportsComponent implements OnInit {
         this.tableData = (report.dailyBreakdown || []).reverse().map((d: DailyMileagePeriod) => ({
           period: d.dateLabel,
           dayOfWeek: d.dayOfWeek,
-          distance: `${Math.round(d.distanceKm)} km`,
+          distance: `${d.distanceKm.toFixed(1)} km`,
           distanceValue: d.distanceKm,
           tripCount: d.tripCount,
           drivingTime: this.formatMinutes(d.drivingMinutes),
-          avgSpeed: `${Math.round(d.avgSpeedKph)} km/h`,
-          maxSpeed: `${Math.round(d.maxSpeedKph)} km/h`
+          avgSpeed: `${d.avgSpeedKph.toFixed(1)} km/h`,
+          maxSpeed: `${d.maxSpeedKph.toFixed(1)} km/h`
         }));
         break;
       case 'month':
         console.log('Processing monthly data:', report.monthlyBreakdown?.length, 'items');
         this.tableData = (report.monthlyBreakdown || []).reverse().map((m: MonthlyMileagePeriod) => ({
           period: m.monthLabel,
-          distance: `${Math.round(m.distanceKm)} km`,
+          distance: `${m.distanceKm.toFixed(1)} km`,
           distanceValue: m.distanceKm,
-          avgDaily: `${Math.round(m.averageDailyKm)} km/jour`,
+          avgDaily: `${m.averageDailyKm.toFixed(1)} km/jour`,
           tripCount: m.tripCount,
           drivingTime: this.formatMinutes(m.drivingMinutes),
           activeDays: `${m.daysWithActivity}/${m.totalDays}`
@@ -2269,10 +2269,10 @@ export class ReportsComponent implements OnInit {
       'Véhicule': `${report.vehicleName}${report.plate ? ' (' + report.plate + ')' : ''}`,
       'Période': `${new Date(report.startDate).toLocaleDateString('fr-FR')} - ${new Date(report.endDate).toLocaleDateString('fr-FR')}`,
       'Type de rapport': this.getMileagePeriodTypeLabel(report.periodType),
-      'Distance totale': `${Math.round(report.totalDistanceKm)} km`,
-      'Moyenne': `${Math.round(report.averageDistanceKm)} km`,
-      'Maximum': `${Math.round(report.maxDistanceKm)} km`,
-      'Minimum': `${Math.round(report.minDistanceKm)} km`,
+      'Distance totale': `${report.totalDistanceKm.toFixed(1)} km`,
+      'Moyenne': `${report.averageDistanceKm.toFixed(1)} km`,
+      'Maximum': `${report.maxDistanceKm.toFixed(1)} km`,
+      'Minimum': `${report.minDistanceKm.toFixed(1)} km`,
       'Nombre de trajets': report.totalTripCount.toString(),
       'Temps de conduite': report.totalDrivingFormatted
     };
@@ -3476,7 +3476,7 @@ export class ReportsComponent implements OnInit {
           endTime: this.formatDateTime(seg.end.recordedAt),
           duration: formatDuration(durationMin),
           durationMin,
-          distance: `${Math.round(distanceKm)} km`,
+          distance: `${distanceKm.toFixed(1)} km`,
           distanceKm,
           avgSpeed: `${avgSpeed.toFixed(0)} km/h`,
           maxSpeed: `${maxSpeed.toFixed(0)} km/h`,
