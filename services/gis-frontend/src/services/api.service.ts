@@ -2800,6 +2800,7 @@ export interface VehicleFuelExpenseDto {
   averageConsumptionPer100Km: number;
   deviationFromFleetAverage: number;
   totalDistanceKm: number;
+  isEstimated: boolean;
   dailyConsumption: DailyFuelConsumptionDto[];
 }
 

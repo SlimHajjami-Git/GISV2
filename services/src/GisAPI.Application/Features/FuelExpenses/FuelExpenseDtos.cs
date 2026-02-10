@@ -14,6 +14,7 @@ public record VehicleFuelExpenseDto(
     decimal AverageConsumptionPer100Km,
     decimal DeviationFromFleetAverage,
     int TotalDistanceKm,
+    bool IsEstimated,
     List<DailyFuelConsumptionDto> DailyConsumption
 );
 
