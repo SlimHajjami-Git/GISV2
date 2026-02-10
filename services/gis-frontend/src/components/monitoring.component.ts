@@ -1794,13 +1794,23 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       const data = await response.json();
 
       if (data.roadPath && data.roadPath.length > 0) {
-        // Use the full road path from Valhalla for vehicle animation
-        this.matchedRouteCoords = data.roadPath.map((p: any) => L.latLng(p.lat, p.lon));
-        this.segmentBoundaries = data.segmentBoundaries || [];
-        this.matchedRouteIndex = 0;
-        
-        console.log(`Route processed: ${data.originalCount} GPS -> ${data.roadPathCount} road path points, method: ${data.method}`);
-        console.log(`Segment boundaries: [${this.segmentBoundaries.join(', ')}]`);
+        // Check if Valhalla returned a degraded result (very few road points vs GPS points)
+        // e.g. 164 GPS -> 2 road points means map matching essentially failed
+        const ratio = data.roadPath.length / this.playbackPositions.length;
+        if (ratio < 0.1 && data.roadPath.length < 10) {
+          console.warn(`Route degraded: ${data.originalCount} GPS -> only ${data.roadPathCount} road points (ratio ${ratio.toFixed(2)}), falling back to raw GPS`);
+          this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
+          this.segmentBoundaries = [];
+          this.matchedRouteIndex = 0;
+        } else {
+          // Use the full road path from Valhalla for vehicle animation
+          this.matchedRouteCoords = data.roadPath.map((p: any) => L.latLng(p.lat, p.lon));
+          this.segmentBoundaries = data.segmentBoundaries || [];
+          this.matchedRouteIndex = 0;
+          
+          console.log(`Route processed: ${data.originalCount} GPS -> ${data.roadPathCount} road path points, method: ${data.method}`);
+          console.log(`Segment boundaries: [${this.segmentBoundaries.join(', ')}]`);
+        }
       } else if (data.points && data.points.length > 0) {
         // Fallback to GPS points
         this.matchedRouteCoords = data.points.map((p: any) => L.latLng(p.lat, p.lon));
