@@ -385,10 +385,13 @@
                   <span class="fuel-kpi-label">Véhicules</span>
                 </div>
               </div>
-              <!-- Chart -->
+              <!-- Charts -->
               <div class="charts-container">
                 <div class="chart-area">
                   <canvas #chartCanvas></canvas>
+                </div>
+                <div class="chart-area secondary-chart">
+                  <canvas #secondaryChartCanvas></canvas>
                 </div>
               </div>
             </div>
@@ -413,6 +416,7 @@
                       <th>Véhicule</th>
                       <th>Plaque</th>
                       <th>Carburant</th>
+                      <th>Réservoir</th>
                       <th>Distance</th>
                       <th>Conso. (L)</th>
                       <th>Coût (TND)</th>
@@ -426,6 +430,7 @@
                         <td class="vehicle-cell">{{ vehicle.vehicleName }}</td>
                         <td class="plate-cell"><span class="badge badge-stop">{{ vehicle.plate || '-' }}</span></td>
                         <td><span class="badge badge-trip">{{ vehicle.fuelType || '-' }}</span></td>
+                        <td>{{ vehicle.fuelTankCapacity ? vehicle.fuelTankCapacity + ' L' : '-' }}</td>
                         <td class="distance-cell">{{ vehicle.totalDistanceKm | number:'1.0-0' }} km</td>
                         <td class="value-cell">{{ vehicle.totalFuelConsumedLiters | number:'1.1-1' }}</td>
                         <td class="cost-cell" style="font-weight:600; color:#16a34a;">{{ vehicle.totalFuelCost | number:'1.2-2' }}</td>

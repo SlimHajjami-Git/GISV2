@@ -168,6 +168,9 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<AuditLog>().ToTable("audit_logs");
         modelBuilder.Entity<VehicleStop>().ToTable("vehicle_stops");
         modelBuilder.Entity<FuelRecord>().ToTable("fuel_records");
+        modelBuilder.Entity<FuelType>().ToTable("fuel_types");
+        modelBuilder.Entity<FuelPricing>().ToTable("fuel_pricing");
+        modelBuilder.Entity<FuelEntry>().ToTable("fuel_entries");
         modelBuilder.Entity<VehicleAssignment>().ToTable("vehicle_user_assignments");
         modelBuilder.Entity<SubscriptionType>().ToTable("subscription_types");
         modelBuilder.Entity<Societe>().ToTable("societes");

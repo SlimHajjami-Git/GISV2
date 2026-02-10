@@ -4432,56 +4432,148 @@ export class ReportsComponent implements OnInit {
   createFuelEstimationChart() {
     if (!this.fuelEstimationReport) return;
     
-    // Destroy existing chart if any
-    if (this.chart) {
-      this.chart.destroy();
-    }
+    // Destroy existing charts
+    if (this.chart) { this.chart.destroy(); this.chart = undefined; }
+    if (this.secondaryChart) { this.secondaryChart.destroy(); this.secondaryChart = undefined; }
     
+    const expenses = this.fuelEstimationReport.vehicleExpenses || [];
+    if (expenses.length === 0) return;
+
+    // Sort by cost descending for better readability
+    const sorted = [...expenses].sort((a, b) => b.totalFuelCost - a.totalFuelCost);
+    const labels = sorted.map(v => v.vehicleName.length > 12 ? v.vehicleName.substring(0, 12) + '…' : v.vehicleName);
+
+    // ===== CHART 1: Per-vehicle Consumption (L) vs Cost (TND) with L/100km line =====
     const canvas = this.chartCanvas?.nativeElement;
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    // Create pie chart for fuel type distribution
-    if (this.fuelEstimationReport.fuelTypeDistribution.length > 0) {
-      this.chart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-          labels: this.fuelEstimationReport.fuelTypeDistribution.map(d => d.fuelType),
-          datasets: [{
-            data: this.fuelEstimationReport.fuelTypeDistribution.map(d => d.totalCost),
-            backgroundColor: this.chartColors.slice(0, this.fuelEstimationReport.fuelTypeDistribution.length),
-            borderWidth: 2,
-            borderColor: '#fff'
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              position: 'right',
-              labels: { font: { size: 12 } }
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        this.chart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [
+              {
+                label: 'Coût (TND)',
+                data: sorted.map(v => v.totalFuelCost),
+                backgroundColor: 'rgba(22, 163, 74, 0.75)',
+                borderColor: '#16a34a',
+                borderWidth: 1,
+                borderRadius: 4,
+                yAxisID: 'y',
+                order: 2
+              },
+              {
+                label: 'Consommation (L)',
+                data: sorted.map(v => v.totalFuelConsumedLiters),
+                backgroundColor: 'rgba(59, 130, 246, 0.75)',
+                borderColor: '#3B82F6',
+                borderWidth: 1,
+                borderRadius: 4,
+                yAxisID: 'y',
+                order: 3
+              },
+              {
+                label: 'L/100km',
+                data: sorted.map(v => v.averageConsumptionPer100Km),
+                type: 'line' as any,
+                borderColor: '#f59e0b',
+                backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                borderWidth: 2,
+                pointRadius: 4,
+                pointBackgroundColor: '#f59e0b',
+                fill: true,
+                tension: 0.3,
+                yAxisID: 'y1',
+                order: 1
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { position: 'top', labels: { usePointStyle: true, font: { size: 11 } } },
+              title: {
+                display: true,
+                text: 'Consommation & Coût par véhicule',
+                font: { size: 14, weight: 'bold' }
+              },
+              tooltip: {
+                callbacks: {
+                  afterBody: (items: any[]) => {
+                    const idx = items[0]?.dataIndex;
+                    if (idx !== undefined) {
+                      const v = sorted[idx];
+                      return `Distance: ${v.totalDistanceKm.toLocaleString('fr-FR')} km\nType: ${v.fuelType || '-'}`;
+                    }
+                    return '';
+                  }
+                }
+              }
             },
-            title: {
-              display: true,
-              text: 'Répartition des coûts par type de carburant',
-              font: { size: 14, weight: 'bold' }
-            },
-            tooltip: {
-              callbacks: {
-                label: (context) => {
-                  const value = context.raw as number;
-                  const total = this.fuelEstimationReport!.totalFleetFuelCost;
-                  const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
-                  return `${context.label}: ${value.toFixed(2)} TND (${pct}%)`;
+            scales: {
+              x: { ticks: { font: { size: 10 }, maxRotation: 45 } },
+              y: {
+                type: 'linear',
+                position: 'left',
+                title: { display: true, text: 'Litres / TND' },
+                beginAtZero: true
+              },
+              y1: {
+                type: 'linear',
+                position: 'right',
+                title: { display: true, text: 'L/100km' },
+                beginAtZero: true,
+                grid: { drawOnChartArea: false }
+              }
+            }
+          }
+        });
+      }
+    }
+
+    // ===== CHART 2: Fuel type cost distribution (doughnut) =====
+    const canvas2 = this.secondaryChartCanvas?.nativeElement;
+    if (canvas2 && this.fuelEstimationReport.fuelTypeDistribution.length > 0) {
+      const ctx2 = canvas2.getContext('2d');
+      if (ctx2) {
+        this.secondaryChart = new Chart(ctx2, {
+          type: 'doughnut',
+          data: {
+            labels: this.fuelEstimationReport.fuelTypeDistribution.map(d => `${d.fuelType} (${d.vehicleCount} véh.)`),
+            datasets: [{
+              data: this.fuelEstimationReport.fuelTypeDistribution.map(d => d.totalCost),
+              backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'],
+              borderWidth: 2,
+              borderColor: '#fff'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'right', labels: { font: { size: 11 } } },
+              title: {
+                display: true,
+                text: 'Répartition coûts par type de carburant',
+                font: { size: 14, weight: 'bold' }
+              },
+              tooltip: {
+                callbacks: {
+                  label: (context) => {
+                    const value = context.raw as number;
+                    const total = this.fuelEstimationReport!.totalFleetFuelCost;
+                    const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
+                    return `${context.label}: ${value.toFixed(2)} TND (${pct}%)`;
+                  }
                 }
               }
             }
           }
-        }
-      });
+        });
+      }
     }
   }
   
