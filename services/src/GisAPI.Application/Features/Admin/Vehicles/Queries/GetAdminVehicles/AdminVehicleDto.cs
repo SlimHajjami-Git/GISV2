@@ -16,6 +16,7 @@ public class AdminVehicleDto
     public bool HasGps { get; set; }
     public int Mileage { get; set; }
     public string? FuelType { get; set; }
+    public int? FuelTankCapacity { get; set; }
     public int CompanyId { get; set; }
     public string? CompanyName { get; set; }
     public int? GpsDeviceId { get; set; }
