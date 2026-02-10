@@ -130,16 +130,17 @@ public class FuelCalculationService : IFuelCalculationService
         decimal avgConsumption = 0;
         bool useEstimation = false;
 
-        if (hasFuelData && totalFuelConsumedLiters > 0)
+        if (hasFuelRecords)
         {
-            // Real data from fuel_records
-            avgConsumption = totalDistance > 0
+            // Fuel sensor data exists — trust it, even if consumption is 0
+            // (e.g. vehicle refueled and hasn't consumed much since)
+            avgConsumption = totalDistance > 0 && totalFuelConsumedLiters > 0
                 ? (totalFuelConsumedLiters / totalDistance) * 100
                 : 0;
         }
         else if (totalDistance > 0)
         {
-            // Fallback: estimate from distance
+            // No fuel records at all → estimate from distance and default rate
             useEstimation = true;
             avgConsumption = DefaultConsumptionRates.GetValueOrDefault(vehicleType, 8.0m);
             totalFuelConsumedLiters = (avgConsumption / 100m) * totalDistance;
