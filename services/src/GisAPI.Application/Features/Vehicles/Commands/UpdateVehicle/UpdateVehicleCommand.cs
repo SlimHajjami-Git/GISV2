@@ -13,6 +13,7 @@ public record UpdateVehicleCommand(
     string? Color,
     string Status,
     int Mileage,
+    string? FuelType,
     int? FuelTankCapacity,
     int? AssignedDriverId,
     int? AssignedSupervisorId

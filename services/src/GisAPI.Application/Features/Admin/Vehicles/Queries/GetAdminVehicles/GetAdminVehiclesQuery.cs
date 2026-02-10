@@ -59,6 +59,7 @@ public class GetAdminVehiclesQueryHandler : IRequestHandler<GetAdminVehiclesQuer
             HasGps = v.HasGps,
             Mileage = v.Mileage,
             FuelType = v.FuelType,
+            FuelTankCapacity = v.FuelTankCapacity,
             CompanyId = v.CompanyId,
             CompanyName = v.Societe?.Name,
             GpsDeviceId = v.GpsDeviceId,

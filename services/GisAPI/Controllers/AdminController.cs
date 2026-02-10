@@ -556,6 +556,7 @@ public class AdminController : ControllerBase
             HasGps = vehicle.HasGps,
             Mileage = vehicle.Mileage,
             FuelType = vehicle.FuelType,
+            FuelTankCapacity = vehicle.FuelTankCapacity,
             CompanyId = vehicle.CompanyId,
             CompanyName = vehicle.Societe?.Name,
             GpsDeviceId = vehicle.GpsDeviceId,
@@ -591,6 +592,8 @@ public class AdminController : ControllerBase
             Status = request.Status ?? "available",
             HasGps = request.HasGps,
             Mileage = request.Mileage ?? 0,
+            FuelType = request.FuelType ?? "diesel",
+            FuelTankCapacity = request.FuelTankCapacity,
             CompanyId = request.CompanyId
         };
 
@@ -646,6 +649,7 @@ public class AdminController : ControllerBase
             HasGps = vehicle.HasGps,
             Mileage = vehicle.Mileage,
             FuelType = vehicle.FuelType,
+            FuelTankCapacity = vehicle.FuelTankCapacity,
             CompanyId = vehicle.CompanyId,
             CompanyName = company.Name,
             GpsDeviceId = vehicle.GpsDeviceId,
@@ -682,6 +686,8 @@ public class AdminController : ControllerBase
         if (request.Status != null) vehicle.Status = request.Status;
         if (request.HasGps.HasValue) vehicle.HasGps = request.HasGps.Value;
         if (request.Mileage.HasValue) vehicle.Mileage = request.Mileage.Value;
+        if (request.FuelType != null) vehicle.FuelType = request.FuelType;
+        if (request.FuelTankCapacity.HasValue) vehicle.FuelTankCapacity = request.FuelTankCapacity.Value;
         if (request.CompanyId.HasValue) vehicle.CompanyId = request.CompanyId.Value;
 
         var targetCompanyId = request.CompanyId ?? vehicle.CompanyId;
@@ -763,6 +769,7 @@ public class AdminController : ControllerBase
             HasGps = vehicle.HasGps,
             Mileage = vehicle.Mileage,
             FuelType = vehicle.FuelType,
+            FuelTankCapacity = vehicle.FuelTankCapacity,
             CompanyId = vehicle.CompanyId,
             CompanyName = vehicle.Societe?.Name,
             GpsDeviceId = vehicle.GpsDeviceId,
@@ -824,6 +831,7 @@ public class AdminController : ControllerBase
             HasGps = v.HasGps,
             Mileage = v.Mileage,
             FuelType = v.FuelType,
+            FuelTankCapacity = v.FuelTankCapacity,
             CompanyId = v.CompanyId,
             CompanyName = v.Societe?.Name,
             GpsDeviceId = v.GpsDeviceId,
@@ -1375,6 +1383,7 @@ public class AdminVehicleDto
     public bool HasGps { get; set; }
     public int Mileage { get; set; }
     public string? FuelType { get; set; }
+    public int? FuelTankCapacity { get; set; }
     public int CompanyId { get; set; }
     public string? CompanyName { get; set; }
     public int? GpsDeviceId { get; set; }
@@ -1403,7 +1412,7 @@ public class CreateAdminVehicleRequest
     public bool HasGps { get; set; }
     public int? Mileage { get; set; }
     public string? FuelType { get; set; }
-    public int? TankCapacity { get; set; }
+    public int? FuelTankCapacity { get; set; }
     public string? VIN { get; set; }
     public int CompanyId { get; set; }
     public int? GpsDeviceId { get; set; }
@@ -1425,6 +1434,7 @@ public class UpdateAdminVehicleRequest
     public bool? HasGps { get; set; }
     public int? Mileage { get; set; }
     public string? FuelType { get; set; }
+    public int? FuelTankCapacity { get; set; }
     public int? CompanyId { get; set; }
     public int? GpsDeviceId { get; set; }
     public string? GpsImei { get; set; }

@@ -2336,11 +2336,17 @@ export class AdminCompanyDetailsComponent implements OnInit {
       model: formData.model || undefined,
       plate: formData.plate || undefined,
       year: formData.year || undefined,
+      color: formData.color || undefined,
       status: formData.status,
       mileage: formData.mileage || 0,
+      fuelType: formData.fuelType || undefined,
+      fuelTankCapacity: formData.fuelTankCapacity || undefined,
       companyId: this.companyId,
       hasGps: formData.hasGPS || false,
-      gpsDeviceId: formData.hasGPS ? formData.gpsDeviceId : undefined
+      gpsDeviceId: formData.hasGPS ? formData.gpsDeviceId : undefined,
+      gpsImei: formData.hasGPS ? formData.gpsImei || undefined : undefined,
+      gpsMat: formData.hasGPS ? formData.gpsMat || undefined : undefined,
+      gpsFuelSensorMode: formData.hasGPS ? formData.gpsFuelSensorMode || undefined : undefined
     };
 
     if (this.selectedVehicle?.id) {

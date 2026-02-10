@@ -11,6 +11,7 @@ public record CreateVehicleCommand(
     int? Year,
     string? Color,
     int Mileage = 0,
+    string? FuelType = null,
     int? FuelTankCapacity = null,
     int? GpsDeviceId = null,
     GpsDeviceInfo? NewGpsDevice = null
