@@ -421,6 +421,7 @@
                       <th>Conso. (L)</th>
                       <th>Coût (TND)</th>
                       <th>L/100km</th>
+                      <th>Remplissages</th>
                       <th>Efficacité</th>
                     </tr>
                   </thead>
@@ -435,6 +436,15 @@
                         <td class="value-cell">{{ vehicle.totalFuelConsumedLiters | number:'1.1-1' }}</td>
                         <td class="cost-cell" style="font-weight:600; color:#16a34a;">{{ vehicle.totalFuelCost | number:'1.2-2' }}</td>
                         <td class="speed-cell">{{ vehicle.averageConsumptionPer100Km | number:'1.2-2' }}</td>
+                        <td>
+                          @if (vehicle.refuels && vehicle.refuels.length > 0) {
+                            <span class="badge badge-trip" style="cursor:help;" [title]="getRefuelTooltip(vehicle.refuels)">
+                              ⛽ {{ vehicle.refuels.length }}x ({{ getTotalRefuelLiters(vehicle.refuels) | number:'1.1-1' }} L)
+                            </span>
+                          } @else {
+                            <span style="color:#94a3b8;">-</span>
+                          }
+                        </td>
                         <td>
                           <span class="badge" [class.badge-trip]="vehicle.deviationFromFleetAverage <= 0" [class.badge-stop]="vehicle.deviationFromFleetAverage > 0">
                             {{ getEfficiencyLabel(vehicle.deviationFromFleetAverage) }}

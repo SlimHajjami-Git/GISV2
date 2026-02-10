@@ -86,23 +86,35 @@ public class FuelCalculationService : IFuelCalculationService
             totalDistance = await CalculateDistanceFromGps(vehicle.GpsDeviceId.Value, startDateUtc, endDateUtc, cancellationToken);
         }
 
-        // ===== 3. Calculate fuel consumption from fuel_records =====
+        // ===== 3. Calculate fuel consumption + detect refuels from fuel_records =====
         decimal totalFuelConsumedPercent = 0;
         bool hasFuelData = false;
         var dailyConsumption = new Dictionary<DateTime, (decimal fuelPercent, int distance)>();
+        var refuels = new List<FuelRefillEventDto>();
 
         if (deduped.Count >= 2)
         {
-            // Sum all negative fuel_change values (consumption events)
-            // Also track level drops between consecutive readings
             for (int i = 1; i < deduped.Count; i++)
             {
                 var prev = deduped[i - 1];
                 var curr = deduped[i];
 
-                // Skip if current is a refuel event (fuel went up)
-                if (curr.FuelPercent > prev.FuelPercent)
+                // Detect refuel: fuel went up significantly
+                if (curr.FuelPercent > prev.FuelPercent + 3) // +3% threshold to avoid noise
+                {
+                    var addedPercent = curr.FuelPercent - prev.FuelPercent;
+                    var addedLiters = (addedPercent / 100m) * tankCapacity;
+                    var priceForRefuel = fuelPrices.GetValueOrDefault(fuelType, 0);
+                    refuels.Add(new FuelRefillEventDto(
+                        Timestamp: curr.RecordedAt,
+                        VehicleId: vehicle.Id,
+                        FuelAddedLiters: Math.Round(addedLiters, 2),
+                        EstimatedCost: Math.Round(addedLiters * priceForRefuel, 2),
+                        Latitude: curr.Latitude,
+                        Longitude: curr.Longitude
+                    ));
                     continue;
+                }
 
                 var drop = prev.FuelPercent - curr.FuelPercent;
                 if (drop > 0 && drop < 80) // Sanity: ignore drops > 80% (sensor error)
@@ -184,7 +196,8 @@ public class FuelCalculationService : IFuelCalculationService
             DeviationFromFleetAverage: 0,
             TotalDistanceKm: totalDistance,
             IsEstimated: useEstimation,
-            DailyConsumption: dailyDtos
+            DailyConsumption: dailyDtos,
+            Refuels: refuels
         );
     }
 

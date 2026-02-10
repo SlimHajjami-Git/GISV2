@@ -4670,6 +4670,18 @@ export class ReportsComponent implements OnInit {
     return 'Mauvais';
   }
 
+  getTotalRefuelLiters(refuels: any[]): number {
+    return refuels.reduce((sum: number, r: any) => sum + (r.fuelAddedLiters || 0), 0);
+  }
+
+  getRefuelTooltip(refuels: any[]): string {
+    return refuels.map((r: any) => {
+      const date = new Date(r.timestamp);
+      const dateStr = date.toLocaleDateString('fr-FR') + ' ' + date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      return `${dateStr}: +${r.fuelAddedLiters.toFixed(1)} L (~${(r.estimatedCost || 0).toFixed(2)} TND)`;
+    }).join('\n');
+  }
+
   getStatKeys(): string[] {
     return Object.keys(this.statisticsData);
   }

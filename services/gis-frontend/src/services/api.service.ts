@@ -2802,6 +2802,16 @@ export interface VehicleFuelExpenseDto {
   totalDistanceKm: number;
   isEstimated: boolean;
   dailyConsumption: DailyFuelConsumptionDto[];
+  refuels: FuelRefillEventDto[];
+}
+
+export interface FuelRefillEventDto {
+  timestamp: string;
+  vehicleId: number;
+  fuelAddedLiters: number;
+  estimatedCost?: number;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface DailyFuelConsumptionDto {
