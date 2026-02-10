@@ -1382,13 +1382,19 @@ export class ReportsComponent implements OnInit {
     const now = new Date();
     const startDate = start || new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
     const endDate = end || now;
+    const selectedVehicleId = this.selectedVehicleId ? parseInt(this.selectedVehicleId) : null;
     
-    // Fetch all vehicles' GPS positions and detect driving incidents
+    // Fetch vehicles — filter by selected vehicle if one is chosen
     this.apiService.getVehicles().subscribe({
       next: (vehicles) => {
+        let targetVehicles = vehicles;
+        if (selectedVehicleId) {
+          targetVehicles = vehicles.filter(v => v.id === selectedVehicleId);
+        }
+
         const allIncidents: any[] = [];
         let completedRequests = 0;
-        const totalVehicles = vehicles.length;
+        const totalVehicles = targetVehicles.length;
         
         if (totalVehicles === 0) {
           this.ngZone.run(() => {
@@ -1402,7 +1408,7 @@ export class ReportsComponent implements OnInit {
           return;
         }
         
-        vehicles.forEach(vehicle => {
+        targetVehicles.forEach(vehicle => {
           this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 10000).subscribe({
             next: (positions) => {
               const incidents = this.detectDrivingIncidents(positions, vehicle);
@@ -1418,6 +1424,7 @@ export class ReportsComponent implements OnInit {
                   this.currentPage = 1;
                   this.cdr.detectChanges();
                   this.appRef.tick();
+                  setTimeout(() => this.createChart(), 100);
                 });
               }
             },
@@ -1432,6 +1439,7 @@ export class ReportsComponent implements OnInit {
                   this.currentPage = 1;
                   this.cdr.detectChanges();
                   this.appRef.tick();
+                  setTimeout(() => this.createChart(), 100);
                 });
               }
             }
@@ -1607,41 +1615,55 @@ export class ReportsComponent implements OnInit {
     // Fetch addresses for rows without one
     this.enrichDrivingBehaviorAddresses();
     
-    // Chart data - group by incident type
-    const byType: { [key: string]: number } = {};
+    // Group by incident type with colors
+    const byType: { [key: string]: { count: number; color: string; icon: string } } = {};
     incidents.forEach(inc => {
       const info = getIncidentInfo(inc.type);
-      byType[info.label] = (byType[info.label] || 0) + 1;
+      if (!byType[info.label]) byType[info.label] = { count: 0, color: info.color, icon: info.icon };
+      byType[info.label].count++;
     });
     
-    this.chartData = Object.entries(byType)
-      .map(([label, value]) => ({ label, value }));
+    // Group by vehicle
+    const byVehicle: { [key: string]: number } = {};
+    incidents.forEach(inc => {
+      byVehicle[inc.vehicleName] = (byVehicle[inc.vehicleName] || 0) + 1;
+    });
+    const vehicleCount = Object.keys(byVehicle).length;
     
-    // Statistics
+    // Primary chart: by incident type (always useful)
+    this.chartData = Object.entries(byType)
+      .sort((a, b) => b[1].count - a[1].count)
+      .map(([label, data]) => ({ label: `${data.icon} ${label}`, value: data.count, color: data.color }));
+    
+    // Severity stats
     const bySeverity = {
       high: incidents.filter(i => i.severity === 'high').length,
       medium: incidents.filter(i => i.severity === 'medium').length,
       low: incidents.filter(i => i.severity === 'low').length
     };
     
-    // Secondary chart data - severity distribution
+    // Secondary chart: severity distribution (doughnut)
     this.secondaryChartData = [
       { label: '🟢 Léger', value: bySeverity.low, color: '#22C55E' },
       { label: '🟡 Modéré', value: bySeverity.medium, color: '#F59E0B' },
       { label: '🔴 Grave', value: bySeverity.high, color: '#EF4444' }
     ].filter(d => d.value > 0);
     
-    const byVehicle: { [key: string]: number } = {};
-    incidents.forEach(inc => {
-      byVehicle[inc.vehicleName] = (byVehicle[inc.vehicleName] || 0) + 1;
-    });
+    // Statistics with percentages
+    const highPct = ((bySeverity.high / incidents.length) * 100).toFixed(0);
+    const mediumPct = ((bySeverity.medium / incidents.length) * 100).toFixed(0);
+    const lowPct = ((bySeverity.low / incidents.length) * 100).toFixed(0);
+    
+    // Find worst incident type
+    const worstType = Object.entries(byType).sort((a, b) => b[1].count - a[1].count)[0];
     
     this.statisticsData = {
-      'Total incidents': incidents.length.toString(),
-      '🔴 Incidents graves': bySeverity.high.toString(),
-      '🟡 Incidents modérés': bySeverity.medium.toString(),
-      '🟢 Incidents légers': bySeverity.low.toString(),
-      'Véhicules concernés': Object.keys(byVehicle).length.toString()
+      '🚨 Total incidents': incidents.length.toString(),
+      '🔴 Graves': `${bySeverity.high} (${highPct}%)`,
+      '🟡 Modérés': `${bySeverity.medium} (${mediumPct}%)`,
+      '🟢 Légers': `${bySeverity.low} (${lowPct}%)`,
+      '⚠️ Type dominant': worstType ? `${worstType[0]} (${worstType[1].count})` : '-',
+      '🚗 Véhicules': vehicleCount.toString()
     };
   }
 
@@ -3826,27 +3848,42 @@ export class ReportsComponent implements OnInit {
         };
       }
     } else if (type === 'driving-behavior') {
-      // Polar area chart for incident types
+      // Horizontal bar chart with incident type colors
+      const incidentColors = this.chartData.map(d => (d.color || '#3B82F6') + 'CC');
+      const incidentBorders = this.chartData.map(d => d.color || '#3B82F6');
       config = {
-        type: 'polarArea',
+        type: 'bar',
         data: {
           labels: this.chartData.map(d => d.label),
           datasets: [{
+            label: 'Nombre d\'incidents',
             data: this.chartData.map(d => d.value),
-            backgroundColor: ['#EF4444CC', '#F97316CC', '#F59E0BCC', '#10B981CC', '#3B82F6CC', '#8B5CF6CC'],
+            backgroundColor: incidentColors,
+            borderColor: incidentBorders,
             borderWidth: 2,
-            borderColor: '#1e293b'
+            borderRadius: 8
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          indexAxis: 'y',
           plugins: {
-            legend: { position: 'right', labels: { usePointStyle: true, font: { size: 11 } } },
-            title: { display: true, text: '🚨 Types d\'incidents de conduite', font: { size: 14, weight: 'bold' } }
+            legend: { display: false },
+            title: { display: true, text: '🚨 Incidents par type de comportement', font: { size: 14, weight: 'bold' } },
+            tooltip: {
+              callbacks: {
+                label: (context: any) => {
+                  const total = this.chartData.reduce((s, d) => s + d.value, 0);
+                  const pct = total > 0 ? ((context.raw / total) * 100).toFixed(1) : 0;
+                  return `${context.raw} incidents (${pct}%)`;
+                }
+              }
+            }
           },
           scales: {
-            r: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' } }
+            x: { beginAtZero: true, title: { display: true, text: 'Nombre d\'incidents' }, ticks: { stepSize: 1 } },
+            y: { grid: { display: false } }
           }
         }
       };
