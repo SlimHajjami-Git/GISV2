@@ -718,6 +718,28 @@ impl TelemetryStore for Database {
 
         Ok(row.get::<i64, _>("id"))
     }
+
+    async fn get_last_fuel_record(&self, device_id: i32) -> Result<Option<(i16, u32, chrono::DateTime<chrono::Utc>)>> {
+        let row = sqlx::query(
+            r#"
+            SELECT fuel_percent, odometer_km, recorded_at
+            FROM fuel_records
+            WHERE device_id = $1
+            ORDER BY recorded_at DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(device_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| {
+            let fuel_percent: i16 = r.get("fuel_percent");
+            let odometer_km: i64 = r.try_get("odometer_km").unwrap_or(0);
+            let recorded_at: DateTime<Utc> = r.get("recorded_at");
+            (fuel_percent, odometer_km as u32, recorded_at)
+        }))
+    }
 }
 
 impl Database {
@@ -936,28 +958,6 @@ impl Database {
         .await?;
 
         Ok(row.get::<i32, _>("id"))
-    }
-
-    async fn get_last_fuel_record(&self, device_id: i32) -> Result<Option<(i16, u32, chrono::DateTime<chrono::Utc>)>> {
-        let row = sqlx::query(
-            r#"
-            SELECT fuel_percent, odometer_km, recorded_at
-            FROM fuel_records
-            WHERE device_id = $1
-            ORDER BY recorded_at DESC
-            LIMIT 1
-            "#,
-        )
-        .bind(device_id)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row.map(|r| {
-            let fuel_percent: i16 = r.get("fuel_percent");
-            let odometer_km: i64 = r.try_get("odometer_km").unwrap_or(0);
-            let recorded_at: DateTime<Utc> = r.get("recorded_at");
-            (fuel_percent, odometer_km as u32, recorded_at)
-        }))
     }
 }
 
