@@ -871,6 +871,35 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
 
+        // Auto-update vehicle mileage from GPS odometer (NEMS L sends odometer, NEMS S does not)
+        // Only update if odometer > 0 and only increase (never decrease)
+        if let Some(odo) = odometer_km {
+            if odo > 0 {
+                let updated = sqlx::query(
+                    r#"
+                    UPDATE vehicles
+                    SET mileage = $1, updated_at = NOW()
+                    WHERE gps_device_id = (SELECT id FROM gps_devices WHERE id = $2)
+                      AND mileage < $1
+                    "#,
+                )
+                .bind(odo as i32)
+                .bind(device_id)
+                .execute(&self.pool)
+                .await;
+
+                if let Ok(result) = updated {
+                    if result.rows_affected() > 0 {
+                        tracing::info!(
+                            device_id = device_id,
+                            odometer_km = odo,
+                            "Auto-updated vehicle mileage from GPS odometer"
+                        );
+                    }
+                }
+            }
+        }
+
         Ok(row.map(|r| r.get::<i64, _>("id")).unwrap_or(0))
     }
 
