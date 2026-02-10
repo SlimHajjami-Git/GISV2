@@ -205,19 +205,32 @@ public class FuelCalculationService : IFuelCalculationService
         var positions = await _context.GpsPositions
             .Where(p => p.DeviceId == deviceId && p.RecordedAt >= startUtc && p.RecordedAt <= endUtc)
             .OrderBy(p => p.RecordedAt)
-            .Select(p => new { p.OdometerKm, p.Latitude, p.Longitude, p.SpeedKph })
+            .Select(p => new { p.OdometerKm, p.Latitude, p.Longitude, p.SpeedKph, p.IgnitionOn, p.RecordedAt })
             .ToListAsync(ct);
 
         if (positions.Count < 2) return 0;
 
-        // Always compute Haversine distance
+        // Compute Haversine distance — only when vehicle is actually moving
         double haversineKm = 0;
         for (int i = 1; i < positions.Count; i++)
         {
             var prev = positions[i - 1];
             var curr = positions[i];
+
+            // Skip if ignition is off (parked — GPS jitter)
+            if (curr.IgnitionOn == false && prev.IgnitionOn == false) continue;
+
+            // Skip if time gap is too large (> 10 min → unreliable straight-line distance)
+            var timeDiff = (curr.RecordedAt - prev.RecordedAt).TotalMinutes;
+            if (timeDiff > 10) continue;
+
+            // Speed must be > 5 km/h on at least one point (filters GPS drift)
+            var maxSpeed = Math.Max(curr.SpeedKph ?? 0, prev.SpeedKph ?? 0);
+            if (maxSpeed <= 5) continue;
+
             var dist = HaversineKm(prev.Latitude, prev.Longitude, curr.Latitude, curr.Longitude);
-            if (dist > 0.01 && dist < 50 && (curr.SpeedKph ?? 0) > 2)
+            // Min 20m (noise), max 50km (teleport)
+            if (dist > 0.02 && dist < 50)
                 haversineKm += dist;
         }
 
@@ -249,7 +262,7 @@ public class FuelCalculationService : IFuelCalculationService
         var positions = await _context.GpsPositions
             .Where(p => p.DeviceId == deviceId && p.RecordedAt >= startUtc && p.RecordedAt <= endUtc)
             .OrderBy(p => p.RecordedAt)
-            .Select(p => new { p.RecordedAt, p.OdometerKm, p.Latitude, p.Longitude, p.SpeedKph })
+            .Select(p => new { p.RecordedAt, p.OdometerKm, p.Latitude, p.Longitude, p.SpeedKph, p.IgnitionOn })
             .ToListAsync(ct);
 
         for (int i = 1; i < positions.Count; i++)
@@ -258,10 +271,20 @@ public class FuelCalculationService : IFuelCalculationService
             var curr = positions[i];
             var date = curr.RecordedAt.Date;
 
-            // Estimation mode = S-type device → odometer is garbage, always use Haversine
+            // Skip if ignition off on both points (parked — GPS jitter)
+            if (curr.IgnitionOn == false && prev.IgnitionOn == false) continue;
+
+            // Skip if time gap too large (> 10 min)
+            var timeDiff = (curr.RecordedAt - prev.RecordedAt).TotalMinutes;
+            if (timeDiff > 10) continue;
+
+            // Speed must be > 5 km/h on at least one point
+            var maxSpeed = Math.Max(curr.SpeedKph ?? 0, prev.SpeedKph ?? 0);
+            if (maxSpeed <= 5) continue;
+
             decimal segDist = 0;
             var h = HaversineKm(prev.Latitude, prev.Longitude, curr.Latitude, curr.Longitude);
-            if (h > 0.01 && h < 50 && (curr.SpeedKph ?? 0) > 2)
+            if (h > 0.02 && h < 50)
                 segDist = (decimal)h;
 
             if (segDist <= 0) continue;
