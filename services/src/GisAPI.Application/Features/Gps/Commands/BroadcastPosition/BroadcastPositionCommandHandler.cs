@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using GisAPI.Application.Common.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -6,8 +7,21 @@ using Microsoft.Extensions.Logging;
 namespace GisAPI.Application.Features.Gps.Commands.BroadcastPosition;
 
 /// <summary>
+/// Cached device→vehicle mapping to avoid DB queries per GPS frame
+/// </summary>
+public record DeviceCacheEntry(
+    int DeviceId,
+    string DeviceUid,
+    int CompanyId,
+    int? VehicleId,
+    string? VehicleName,
+    string? Plate,
+    DateTime CachedAt
+);
+
+/// <summary>
 /// Handler for broadcasting GPS position updates in real-time
-/// Every GPS frame received is immediately broadcasted to connected clients
+/// Uses in-memory cache for device lookups and dedup to prevent double broadcasts
 /// </summary>
 public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPositionCommand, BroadcastPositionResult>
 {
@@ -16,6 +30,12 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
     private readonly ILogger<BroadcastPositionCommandHandler> _logger;
 
     private const double SPEED_THRESHOLD = 10.0; // km/h threshold for "moving"
+
+    // Static caches shared across all handler instances (scoped per request)
+    private static readonly ConcurrentDictionary<string, DeviceCacheEntry> _deviceCache = new();
+    private static readonly ConcurrentDictionary<string, DateTime> _lastBroadcast = new();
+    private static readonly TimeSpan _cacheTtl = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan _dedupWindow = TimeSpan.FromSeconds(2);
 
     public BroadcastPositionCommandHandler(
         IGisDbContext context,
@@ -32,16 +52,46 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
         var ignitionOn = request.IgnitionOn ?? false;
         var speed = request.SpeedKph ?? 0;
 
-        // Look up device and vehicle
-        var device = await _context.GpsDevices
-            .AsNoTracking()
-            .Include(d => d.Vehicle)
-            .FirstOrDefaultAsync(d => d.DeviceUid == request.DeviceUid, ct);
-
-        if (device == null)
+        // Dedup: skip if same device+recordedAt was broadcast within 2 seconds
+        var dedupKey = $"{request.DeviceUid}:{request.RecordedAt:O}";
+        var now = DateTime.UtcNow;
+        if (_lastBroadcast.TryGetValue(dedupKey, out var lastTime) && (now - lastTime) < _dedupWindow)
         {
-            _logger.LogDebug("Device not found: {DeviceUid}", request.DeviceUid);
-            return new BroadcastPositionResult(false, null, "Device not found");
+            return new BroadcastPositionResult(false, null, "Duplicate (already broadcast)");
+        }
+        _lastBroadcast[dedupKey] = now;
+
+        // Cleanup old dedup entries periodically (every ~100 entries)
+        if (_lastBroadcast.Count > 500)
+        {
+            var cutoff = now - TimeSpan.FromMinutes(2);
+            foreach (var key in _lastBroadcast.Keys)
+            {
+                if (_lastBroadcast.TryGetValue(key, out var ts) && ts < cutoff)
+                    _lastBroadcast.TryRemove(key, out _);
+            }
+        }
+
+        // Look up device from cache first, then DB
+        var cached = GetCachedDevice(request.DeviceUid);
+        if (cached == null)
+        {
+            var device = await _context.GpsDevices
+                .AsNoTracking()
+                .Include(d => d.Vehicle)
+                .FirstOrDefaultAsync(d => d.DeviceUid == request.DeviceUid, ct);
+
+            if (device == null)
+            {
+                _logger.LogDebug("Device not found: {DeviceUid}", request.DeviceUid);
+                return new BroadcastPositionResult(false, null, "Device not found");
+            }
+
+            cached = new DeviceCacheEntry(
+                device.Id, device.DeviceUid, device.CompanyId,
+                device.Vehicle?.Id, device.Vehicle?.Name, device.Vehicle?.Plate,
+                DateTime.UtcNow);
+            _deviceCache[request.DeviceUid] = cached;
         }
 
         // Round speed to whole number, set to 0 if ignition off
@@ -50,11 +100,11 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
         // Prepare position update DTO
         var positionUpdate = new VehiclePositionUpdateDto
         {
-            DeviceId = device.Id,
-            DeviceUid = device.DeviceUid,
-            VehicleId = device.Vehicle?.Id,
-            VehicleName = device.Vehicle?.Name,
-            Plate = device.Vehicle?.Plate,
+            DeviceId = cached.DeviceId,
+            DeviceUid = cached.DeviceUid,
+            VehicleId = cached.VehicleId,
+            VehicleName = cached.VehicleName,
+            Plate = cached.Plate,
             Latitude = request.Latitude,
             Longitude = request.Longitude,
             SpeedKph = displaySpeed,
@@ -62,19 +112,19 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             IgnitionOn = ignitionOn,
             IsMoving = ignitionOn && speed >= SPEED_THRESHOLD,
             RecordedAt = request.RecordedAt,
-            Timestamp = DateTime.UtcNow
+            Timestamp = now
         };
 
         // Broadcast to company group
-        if (device.CompanyId > 0)
+        if (cached.CompanyId > 0)
         {
-            await _gpsHubService.SendPositionUpdateAsync(device.CompanyId, positionUpdate);
+            await _gpsHubService.SendPositionUpdateAsync(cached.CompanyId, positionUpdate);
         }
 
         // Broadcast to specific vehicle subscribers
-        if (device.Vehicle != null)
+        if (cached.VehicleId.HasValue)
         {
-            await _gpsHubService.SendVehiclePositionAsync(device.Vehicle.Id, positionUpdate);
+            await _gpsHubService.SendVehiclePositionAsync(cached.VehicleId.Value, positionUpdate);
         }
 
         // Handle alerts
@@ -84,30 +134,41 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
         {
             var alert = new VehicleAlertDto
             {
-                DeviceId = device.Id,
-                VehicleId = device.Vehicle?.Id,
-                VehicleName = device.Vehicle?.Name,
+                DeviceId = cached.DeviceId,
+                VehicleId = cached.VehicleId,
+                VehicleName = cached.VehicleName,
                 Type = request.AlertType,
                 Latitude = request.Latitude,
                 Longitude = request.Longitude,
                 Timestamp = request.RecordedAt
             };
 
-            if (device.CompanyId > 0)
+            if (cached.CompanyId > 0)
             {
-                await _gpsHubService.SendAlertAsync(device.CompanyId, alert);
+                await _gpsHubService.SendAlertAsync(cached.CompanyId, alert);
             }
         }
 
         _logger.LogInformation(
             "📡 SignalR Broadcast: Device={DeviceUid}, Vehicle={VehicleName}, VehicleId={VehicleId}, CompanyId={CompanyId}, Speed={Speed}km/h, IsMoving={IsMoving}",
-            request.DeviceUid, device.Vehicle?.Name, device.Vehicle?.Id, device.CompanyId, displaySpeed, positionUpdate.IsMoving);
+            request.DeviceUid, cached.VehicleName, cached.VehicleId, cached.CompanyId, displaySpeed, positionUpdate.IsMoving);
 
         return new BroadcastPositionResult(
             Broadcasted: true,
-            VehicleId: device.Vehicle?.Id,
+            VehicleId: cached.VehicleId,
             SkipReason: null
         );
+    }
+
+    private static DeviceCacheEntry? GetCachedDevice(string deviceUid)
+    {
+        if (_deviceCache.TryGetValue(deviceUid, out var entry))
+        {
+            if ((DateTime.UtcNow - entry.CachedAt) < _cacheTtl)
+                return entry;
+            _deviceCache.TryRemove(deviceUid, out _);
+        }
+        return null;
     }
 }
 

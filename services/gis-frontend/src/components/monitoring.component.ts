@@ -183,45 +183,45 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   handlePositionUpdate(update: PositionUpdate) {
-    console.log('Real-time position update:', update);
-    
-    // Find the vehicle and update its position
-    const vehicleIndex = this.vehicles.findIndex(
-      v => v.id?.toString() === update.vehicleId?.toString()
-    );
+    this.ngZone.run(() => {
+      // Find the vehicle and update its position
+      const vehicleIndex = this.vehicles.findIndex(
+        v => v.id?.toString() === update.vehicleId?.toString()
+      );
 
-    if (vehicleIndex !== -1) {
-      const vehicle = this.vehicles[vehicleIndex] as any;
-      
-      // Update vehicle data from SignalR push
-      vehicle.currentLocation = {
-        lat: update.latitude,
-        lng: update.longitude
-      };
-      // Speed is already rounded and set to 0 if ignition off by backend
-      vehicle.currentSpeed = update.speedKph || 0;
-      vehicle.isOnline = true;
-      vehicle.isMoving = update.isMoving;
-      vehicle.ignitionOn = update.ignitionOn;
-      (vehicle as any).lastCommunication = update.timestamp;
+      if (vehicleIndex !== -1) {
+        const vehicle = this.vehicles[vehicleIndex] as any;
+        
+        // Update vehicle data from SignalR push
+        vehicle.currentLocation = {
+          lat: update.latitude,
+          lng: update.longitude
+        };
+        // Speed is already rounded and set to 0 if ignition off by backend
+        vehicle.currentSpeed = update.speedKph || 0;
+        vehicle.isOnline = true;
+        vehicle.isMoving = update.isMoving;
+        vehicle.ignitionOn = update.ignitionOn;
+        (vehicle as any).lastCommunication = update.timestamp;
 
-      // Update the marker on the map
-      this.updateSingleVehicleMarker(vehicle);
-      
-      // Update stats
-      this.updateStats();
-      
-      // Update filtered vehicles to reflect changes in sidebar
-      this.updateFilteredVehicle(vehicle);
-      
-      // If this vehicle is selected, update the panel
-      if (this.selectedVehicle?.id === vehicle.id) {
-        this.selectedVehicle = { ...vehicle };
+        // Update the marker on the map with smooth animation
+        this.updateSingleVehicleMarker(vehicle);
+        
+        // Update stats
+        this.updateStats();
+        
+        // Update filtered vehicles to reflect changes in sidebar
+        this.updateFilteredVehicle(vehicle);
+        
+        // If this vehicle is selected, update the panel
+        if (this.selectedVehicle?.id === vehicle.id) {
+          this.selectedVehicle = { ...vehicle };
+        }
+        
+        // Force change detection
+        this.cdr.detectChanges();
       }
-      
-      // Force change detection
-      this.cdr.detectChanges();
-    }
+    });
   }
 
   // Update a single vehicle in filteredVehicles without re-filtering all
@@ -237,21 +237,60 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
+  // Track active marker animations to cancel them on new updates
+  private markerAnimations = new Map<string, number>();
+
   updateSingleVehicleMarker(vehicle: any) {
     if (!this.map || !this.mapReady || !vehicle.currentLocation) return;
 
     const markerId = vehicle.id?.toString();
     const existingMarker = this.vehicleMarkers.get(markerId);
-    // Use vehicle.isMoving from SignalR if available, otherwise calculate from speed
     const isMoving = vehicle.isMoving ?? (vehicle.currentSpeed || 0) > 3;
     const icon = this.createVehicleIcon(vehicle, isMoving);
     const newLatLng = L.latLng(vehicle.currentLocation.lat, vehicle.currentLocation.lng);
 
     if (existingMarker) {
-      // Animate marker movement
-      existingMarker.setLatLng(newLatLng);
+      // Cancel any ongoing animation for this marker
+      const existingAnim = this.markerAnimations.get(markerId);
+      if (existingAnim) cancelAnimationFrame(existingAnim);
+
+      const oldLatLng = existingMarker.getLatLng();
+      const distance = oldLatLng.distanceTo(newLatLng);
+
       existingMarker.setIcon(icon);
       existingMarker.setPopupContent(this.createPopupContent(vehicle));
+
+      // Smooth animate if distance is reasonable (< 5km, > 1m)
+      if (distance > 1 && distance < 5000) {
+        const duration = Math.min(1500, Math.max(500, distance * 2)); // 500ms-1500ms
+        const startTime = performance.now();
+        const startLat = oldLatLng.lat;
+        const startLng = oldLatLng.lng;
+        const dLat = newLatLng.lat - startLat;
+        const dLng = newLatLng.lng - startLng;
+
+        const animate = (now: number) => {
+          const elapsed = now - startTime;
+          const t = Math.min(elapsed / duration, 1);
+          // Ease-out cubic for smooth deceleration
+          const eased = 1 - Math.pow(1 - t, 3);
+          
+          existingMarker.setLatLng([
+            startLat + dLat * eased,
+            startLng + dLng * eased
+          ]);
+
+          if (t < 1) {
+            this.markerAnimations.set(markerId, requestAnimationFrame(animate));
+          } else {
+            this.markerAnimations.delete(markerId);
+          }
+        };
+        this.markerAnimations.set(markerId, requestAnimationFrame(animate));
+      } else {
+        // Jump directly for very small or very large distances
+        existingMarker.setLatLng(newLatLng);
+      }
     } else {
       // Create new marker
       const marker = L.marker(newLatLng, { icon })
