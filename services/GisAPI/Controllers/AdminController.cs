@@ -621,6 +621,16 @@ public class AdminController : ControllerBase
             {
                 gpsDevice.Mat = request.GpsMat;
             }
+
+            if (!string.IsNullOrWhiteSpace(request.GpsBrand))
+            {
+                gpsDevice.Brand = request.GpsBrand;
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.GpsModel))
+            {
+                gpsDevice.FirmwareVersion = request.GpsModel; // L or S
+            }
             
             if (!string.IsNullOrWhiteSpace(request.GpsFuelSensorMode))
             {
@@ -746,6 +756,12 @@ public class AdminController : ControllerBase
 
                 if (!string.IsNullOrWhiteSpace(request.GpsMat))
                     gpsDevice.Mat = request.GpsMat;
+
+                if (!string.IsNullOrWhiteSpace(request.GpsBrand))
+                    gpsDevice.Brand = request.GpsBrand;
+
+                if (!string.IsNullOrWhiteSpace(request.GpsModel))
+                    gpsDevice.FirmwareVersion = request.GpsModel; // L or S
                     
                 if (!string.IsNullOrWhiteSpace(request.GpsFuelSensorMode))
                     gpsDevice.FuelSensorMode = request.GpsFuelSensorMode;
@@ -1418,6 +1434,8 @@ public class CreateAdminVehicleRequest
     public int? GpsDeviceId { get; set; }
     public string? GpsImei { get; set; }
     public string? GpsMat { get; set; }
+    public string? GpsBrand { get; set; }
+    public string? GpsModel { get; set; }
     public string? GpsFuelSensorMode { get; set; }
 }
 
@@ -1439,5 +1457,7 @@ public class UpdateAdminVehicleRequest
     public int? GpsDeviceId { get; set; }
     public string? GpsImei { get; set; }
     public string? GpsMat { get; set; }
+    public string? GpsBrand { get; set; }
+    public string? GpsModel { get; set; }
     public string? GpsFuelSensorMode { get; set; }
 }

@@ -35,8 +35,8 @@ pub trait TelemetryStore: Send + Sync {
     /// Insert a fuel event record
     async fn insert_fuel_record(&self, event: &FuelEvent, vehicle_id: Option<i32>, company_id: i32) -> anyhow::Result<i64>;
 
-    /// Get device_id and company_id for a device
-    async fn get_device_vehicle_info(&self, device_id: i32) -> anyhow::Result<(Option<i32>, i32)>;
+    /// Get vehicle_id, company_id, and firmware_version for a device
+    async fn get_device_vehicle_info(&self, device_id: i32) -> anyhow::Result<(Option<i32>, i32, Option<String>)>;
 
     /// Get fuel sensor configuration for a device
     /// Returns (fuel_sensor_mode, tank_capacity_liters)

@@ -559,11 +559,12 @@ async fn process_single_frame(
                 }
 
                 // Get vehicle and company info first (needed for parallel operations)
-                let (vehicle_id, company_id) = if let Some(device_id) = device_id_opt {
+                let (vehicle_id, company_id, firmware_version) = if let Some(device_id) = device_id_opt {
                     database.get_device_vehicle_info(device_id).await?
                 } else {
-                    (None, 1) // Default company_id
+                    (None, 1, None) // Default company_id
                 };
+                let is_l_type = firmware_version.as_deref().map(|fw| fw.eq_ignore_ascii_case("L")).unwrap_or(false);
 
                 // PARALLEL EXECUTION: DB write + Redis cache + RabbitMQ publish
                 // These operations are independent and can run concurrently
@@ -613,9 +614,9 @@ async fn process_single_frame(
                         }
                     }
 
-                    // Process fuel tracking - ONLY for L-type firmware (gps_type_1) which has FMS data
-                    // S-type (gps_type_2) sends garbage fuel_raw values (e.g. always 100)
-                    if protocol == "gps_type_1" && frame.fuel_raw > 0 {
+                    // Process fuel tracking - ONLY for L-type firmware which has FMS data
+                    // S-type sends garbage fuel_raw values (e.g. always 100)
+                    if is_l_type && frame.fuel_raw > 0 {
                         // Restore fuel state from DB on first encounter (survives service restarts)
                         if !services.fuel_tracker.has_state(device_id).await {
                             if let Ok(Some((last_pct, last_odo, last_ts))) = database.get_last_fuel_record(device_id).await {
@@ -931,8 +932,8 @@ mod tests {
             Ok(1) // Mock record_id
         }
 
-        async fn get_device_vehicle_info(&self, _device_id: i32) -> anyhow::Result<(Option<i32>, i32)> {
-            Ok((Some(1), 1)) // Mock vehicle_id and company_id
+        async fn get_device_vehicle_info(&self, _device_id: i32) -> anyhow::Result<(Option<i32>, i32, Option<String>)> {
+            Ok((Some(1), 1, Some("L".to_string()))) // Mock vehicle_id, company_id, firmware_version
         }
 
         async fn get_fuel_config(&self, _device_id: i32) -> anyhow::Result<(String, Option<i32>)> {

@@ -1073,6 +1073,8 @@ export class AdminVehiclesComponent implements OnInit {
       gpsDeviceId: formData.hasGPS ? formData.gpsDeviceId : undefined,
       gpsImei: formData.hasGPS ? formData.gpsImei || undefined : undefined,
       gpsMat: formData.hasGPS ? formData.gpsMat || undefined : undefined,
+      gpsBrand: formData.hasGPS ? formData.gpsBrand || undefined : undefined,
+      gpsModel: formData.hasGPS ? formData.gpsModel || undefined : undefined,
       gpsFuelSensorMode: formData.hasGPS ? formData.gpsFuelSensorMode || undefined : undefined
     };
 
@@ -1119,6 +1121,8 @@ export class AdminVehiclesComponent implements OnInit {
       gpsDeviceId: this.vehicleForm.hasGps ? this.vehicleForm.gpsDeviceId : undefined,
       gpsImei: this.vehicleForm.hasGps ? this.vehicleForm.gpsImei || undefined : undefined,
       gpsMat: this.vehicleForm.hasGps ? this.vehicleForm.gpsMat || undefined : undefined,
+      gpsBrand: this.vehicleForm.hasGps ? (this.vehicleForm as any).gpsBrand || undefined : undefined,
+      gpsModel: this.vehicleForm.hasGps ? this.vehicleForm.gpsModel || undefined : undefined,
       gpsFuelSensorMode: this.vehicleForm.hasGps ? (this.vehicleForm as any).gpsFuelSensorMode || undefined : undefined
     };
 

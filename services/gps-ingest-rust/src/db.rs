@@ -38,7 +38,7 @@ impl Database {
         event_key: &str,
     ) -> Result<()> {
         let metadata = ProtocolMetadata::from_protocol(protocol_type);
-        let device_id = self
+        let (device_id, firmware_version) = self
             .ensure_device(device_uid, protocol_type, metadata)
             .await?;
 
@@ -115,7 +115,9 @@ impl Database {
         }
         */
 
-        let has_fms = protocol_type == "gps_type_1";
+        // Use firmware_version from DB (set by admin) to determine L vs S
+        // L = FMS data (fuel, odometer, RPM), S = GPS only
+        let has_fms = firmware_version.eq_ignore_ascii_case("L");
         let position_id = self.insert_position(device_id, frame, event_key, has_fms).await?;
         
         if position_id == 0 {
@@ -457,11 +459,11 @@ impl TelemetryStore for Database {
         Ok(row.map(|r| r.get::<i64, _>("id")).unwrap_or(0))
     }
 
-    async fn get_device_vehicle_info(&self, device_id: i32) -> Result<(Option<i32>, i32)> {
-        // Get company_id from gps_devices and vehicle_id from vehicles table
+    async fn get_device_vehicle_info(&self, device_id: i32) -> Result<(Option<i32>, i32, Option<String>)> {
+        // Get company_id, vehicle_id, and firmware_version from gps_devices
         let row = sqlx::query(
             r#"
-            SELECT d.company_id, v.id as vehicle_id
+            SELECT d.company_id, d.firmware_version, v.id as vehicle_id
             FROM gps_devices d
             LEFT JOIN vehicles v ON v.gps_device_id = d.id
             WHERE d.id = $1
@@ -474,9 +476,10 @@ impl TelemetryStore for Database {
         if let Some(row) = row {
             let vehicle_id: Option<i32> = row.try_get("vehicle_id").ok();
             let company_id: i32 = row.get("company_id");
-            Ok((vehicle_id, company_id))
+            let firmware_version: Option<String> = row.try_get("firmware_version").ok().flatten();
+            Ok((vehicle_id, company_id, firmware_version))
         } else {
-            Ok((None, 1)) // Default company_id = 1
+            Ok((None, 1, None)) // Default company_id = 1
         }
     }
 
@@ -755,7 +758,7 @@ impl Database {
         device_uid: &str,
         protocol_type: &str,
         metadata: ProtocolMetadata,
-    ) -> Result<i32> {
+    ) -> Result<(i32, String)> {
         // Use gps_devices table with EF Core column naming (PascalCase)
         // Default CompanyId = 1 (Belive) for testing
         const DEFAULT_COMPANY_ID: i32 = 1; // Belive company
@@ -779,7 +782,7 @@ impl Database {
                         ELSE gps_devices.firmware_version
                     END,
                     updated_at = NOW()
-            RETURNING id
+            RETURNING id, firmware_version
             "#,
         )
         .bind(device_uid)
@@ -790,7 +793,9 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        Ok(row.get::<i32, _>("id"))
+        let id = row.get::<i32, _>("id");
+        let fw: String = row.try_get("firmware_version").unwrap_or_default();
+        Ok((id, fw))
     }
 
     async fn insert_position(&self, device_id: i32, frame: &HhFrame, event_key: &str, has_fms: bool) -> Result<i64> {
