@@ -867,7 +867,11 @@ export class ReportsComponent implements OnInit {
       };
     });
 
-    this.tableData = tripResults;
+    this.tableData = tripResults.sort((a, b) => {
+      const timeA = new Date(a.startTime.split('/').reverse().join('-')).getTime();
+      const timeB = new Date(b.startTime.split('/').reverse().join('-')).getTime();
+      return timeB - timeA;
+    });
     const totalDistance = tripResults.reduce((sum, t) => sum + t.distanceKm, 0);
     const totalDurationMin = tripResults.reduce((sum, t) => sum + t.durationMin, 0);
 
@@ -1095,8 +1099,8 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
-    // Sort by start time
-    stops.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+    // Sort by start time descending (most recent first)
+    stops.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
 
     const formatDuration = (seconds: number): string => {
       const minutes = seconds / 60;
@@ -2216,7 +2220,7 @@ export class ReportsComponent implements OnInit {
         break;
       case 'day':
         console.log('Processing daily data:', report.dailyBreakdown?.length, 'items');
-        this.tableData = (report.dailyBreakdown || []).map((d: DailyMileagePeriod) => ({
+        this.tableData = (report.dailyBreakdown || []).reverse().map((d: DailyMileagePeriod) => ({
           period: d.dateLabel,
           dayOfWeek: d.dayOfWeek,
           distance: `${d.distanceKm.toFixed(1)} km`,
@@ -2229,7 +2233,7 @@ export class ReportsComponent implements OnInit {
         break;
       case 'month':
         console.log('Processing monthly data:', report.monthlyBreakdown?.length, 'items');
-        this.tableData = (report.monthlyBreakdown || []).map((m: MonthlyMileagePeriod) => ({
+        this.tableData = (report.monthlyBreakdown || []).reverse().map((m: MonthlyMileagePeriod) => ({
           period: m.monthLabel,
           distance: `${m.distanceKm.toFixed(1)} km`,
           distanceValue: m.distanceKm,
@@ -2836,6 +2840,9 @@ export class ReportsComponent implements OnInit {
       return false;
     });
 
+    // Reverse to show most recent first
+    significantPositions.reverse();
+
     this.tableData = significantPositions.map((pos: any, index: number) => {
       const prevPos = index > 0 ? significantPositions[index - 1] : null;
       const fuelChange = prevPos ? (pos.fuelRaw || 0) - (prevPos.fuelRaw || 0) : 0;
@@ -3072,6 +3079,9 @@ export class ReportsComponent implements OnInit {
       const durationMs = new Date(stop.end.recordedAt).getTime() - new Date(stop.start.recordedAt).getTime();
       return durationMs >= 2 * 60 * 1000;
     });
+
+    // Sort stops most recent first
+    filteredStops.sort((a: any, b: any) => new Date(b.start.recordedAt).getTime() - new Date(a.start.recordedAt).getTime());
 
     this.tableData = filteredStops.slice(0, 50).map((stop: any) => {
       const durationMs = new Date(stop.end.recordedAt).getTime() - new Date(stop.start.recordedAt).getTime();
@@ -3420,15 +3430,19 @@ export class ReportsComponent implements OnInit {
       return `${Math.round(minutes)}min`;
     };
 
+    // Reverse to show most recent first
+    meaningfulSegments.reverse();
+
     // Build table data with alternating trips and stops
-    let tripNumber = 0;
+    const totalTrips = meaningfulSegments.filter(s => s.type === 'trip').length;
+    let tripNumber = totalTrips + 1;
     this.tableData = meaningfulSegments.map((seg, index) => {
       const startTime = new Date(seg.start.recordedAt);
       const endTime = new Date(seg.end.recordedAt);
       const durationMin = (endTime.getTime() - startTime.getTime()) / 60000;
 
       if (seg.type === 'trip') {
-        tripNumber++;
+        tripNumber--;
         let distanceKm = seg.distanceKm;
         
         // Try odometer first
