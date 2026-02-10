@@ -130,24 +130,27 @@ public class FuelCalculationService : IFuelCalculationService
         decimal avgConsumption = 0;
         bool useEstimation = false;
 
-        if (hasFuelRecords)
+        if (hasFuelRecords && totalFuelConsumedLiters > 0)
         {
-            // Fuel sensor data exists — trust it, even if consumption is 0
-            // (e.g. vehicle refueled and hasn't consumed much since)
-            avgConsumption = totalDistance > 0 && totalFuelConsumedLiters > 0
+            // Fuel sensor captured real consumption drops → use actual data
+            avgConsumption = totalDistance > 0
                 ? (totalFuelConsumedLiters / totalDistance) * 100
                 : 0;
         }
         else if (totalDistance > 0)
         {
-            // No fuel records at all → estimate from distance and default rate
+            // Either no fuel records, or sensor shows 0 drops (precision too low for short trips)
+            // → estimate consumption from distance + default L/100km rate
             useEstimation = true;
             avgConsumption = DefaultConsumptionRates.GetValueOrDefault(vehicleType, 8.0m);
             totalFuelConsumedLiters = (avgConsumption / 100m) * totalDistance;
 
-            // Build daily from GPS positions
-            dailyConsumption = await BuildDailyFromGps(
-                vehicle.GpsDeviceId.Value, startDateUtc, endDateUtc, avgConsumption, cancellationToken);
+            if (!hasFuelRecords)
+            {
+                // No fuel records at all → also build daily breakdown from GPS
+                dailyConsumption = await BuildDailyFromGps(
+                    vehicle.GpsDeviceId.Value, startDateUtc, endDateUtc, avgConsumption, cancellationToken);
+            }
         }
 
         // ===== 4. Apply fuel price =====
