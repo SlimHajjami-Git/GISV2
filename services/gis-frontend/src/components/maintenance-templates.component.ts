@@ -35,6 +35,7 @@ interface VehicleMaintenanceStatus {
 }
 
 interface MaintenanceItem {
+  scheduleId: number | null;
   templateId: string;
   templateName: string;
   lastDoneDate: Date | null;
@@ -1069,6 +1070,7 @@ export class MaintenanceTemplatesComponent implements OnInit {
             vehiclePlate: v.vehiclePlate || '',
             currentMileage: v.currentMileage || 0,
             maintenanceItems: (v.maintenanceItems || []).map(m => ({
+              scheduleId: m.scheduleId ?? null,
               templateId: m.templateId?.toString() || '',
               templateName: m.templateName || '',
               lastDoneDate: m.lastDoneDate ? new Date(m.lastDoneDate) : null,
@@ -1231,31 +1233,49 @@ export class MaintenanceTemplatesComponent implements OnInit {
   getInvoiceTotal(): number { return this.markData.invoiceLines.reduce((sum: number, line: any) => sum + (line.price || 0), 0); }
   confirmMarkDone() {
     const v = this.vehicleSchedules.find(x => x.vehicleId === this.markData.vehicleId);
-    if (v) {
-      // Process each invoice line
-      for (const line of this.markData.invoiceLines) {
-        if (line.templateId && line.price) {
-          // Save last paid price
-          this.lastPaidPrices.set(line.templateId, line.price);
-          
-          // Update maintenance item if it exists for this vehicle
-          const m = v.maintenanceItems.find(x => x.templateId === line.templateId);
-          if (m) {
-            m.lastDoneDate = new Date(this.markData.date);
-            m.lastDoneKm = this.markData.mileage;
-            const t = this.templates.find(x => x.id === m.templateId);
-            if (t && t.intervalKm) { 
-              m.nextDueKm = this.markData.mileage + t.intervalKm; 
-              m.kmUntilDue = (m.nextDueKm || 0) - this.markData.mileage; 
-              m.status = m.kmUntilDue > 5000 ? 'ok' : m.kmUntilDue > 0 ? 'upcoming' : 'overdue'; 
+    if (!v) return;
+
+    let completed = 0;
+    const validLines = this.markData.invoiceLines.filter((l: InvoiceLine) => l.templateId && l.price);
+    const total = validLines.length;
+
+    if (total === 0) {
+      this.closeMarkDone();
+      return;
+    }
+
+    for (const line of validLines) {
+      if (line.templateId && line.price) {
+        this.lastPaidPrices.set(line.templateId, line.price);
+
+        const request = {
+          vehicleId: parseInt(this.markData.vehicleId),
+          templateId: parseInt(line.templateId),
+          date: this.markData.date,
+          mileage: this.markData.mileage,
+          cost: line.price,
+          notes: this.markData.notes || undefined
+        };
+
+        this.apiService.markMaintenanceDone(request).subscribe({
+          next: () => {
+            completed++;
+            if (completed === total) {
+              this.loadVehicles();
+              this.closeMarkDone();
+            }
+          },
+          error: (err) => {
+            console.error('Error marking maintenance done:', err);
+            completed++;
+            if (completed === total) {
+              this.loadVehicles();
+              this.closeMarkDone();
             }
           }
-        }
+        });
       }
-      v.currentMileage = this.markData.mileage;
     }
-    this.filterVehicles();
-    this.closeMarkDone();
   }
 
   // Vehicle-centric methods
@@ -1302,24 +1322,39 @@ export class MaintenanceTemplatesComponent implements OnInit {
 
   confirmAddToVehicle() {
     if (this.addToVehicleData.selectedTemplateIds.length === 0) return;
-    let v = this.vehicleSchedules.find(x => x.vehicleId === this.addToVehicleData.vehicleId);
-    if (!v) {
-      v = { vehicleId:this.addToVehicleData.vehicleId, vehicleName:this.addToVehicleData.vehicleName, vehiclePlate:this.addToVehicleData.vehiclePlate, currentMileage:this.addToVehicleData.vehicleMileage, maintenanceItems:[] };
-      this.vehicleSchedules.push(v);
-    }
+    const vehicleId = parseInt(this.addToVehicleData.vehicleId);
+    let completed = 0;
+    const total = this.addToVehicleData.selectedTemplateIds.length;
+
     for (const templateId of this.addToVehicleData.selectedTemplateIds) {
-      const t = this.templates.find(x => x.id === templateId);
-      if (!t) continue;
-      const nextKm = t.intervalKm ? this.addToVehicleData.vehicleMileage + t.intervalKm : null;
-      const kmUntil = nextKm ? nextKm - this.addToVehicleData.vehicleMileage : null;
-      v.maintenanceItems.push({ templateId:t.id, templateName:t.name, lastDoneDate:null, lastDoneKm:null, nextDueKm:nextKm, status:'upcoming', kmUntilDue:kmUntil });
+      this.apiService.assignMaintenanceTemplate(vehicleId, parseInt(templateId)).subscribe({
+        next: () => {
+          completed++;
+          if (completed === total) {
+            this.loadVehicles();
+            this.closeAddToVehicle();
+          }
+        },
+        error: (err) => {
+          console.error('Error assigning template:', err);
+          completed++;
+          if (completed === total) {
+            this.loadVehicles();
+            this.closeAddToVehicle();
+          }
+        }
+      });
     }
-    this.filterVehicles();
-    this.closeAddToVehicle();
   }
 
   removeMaintenanceFromVehicle(v: VehicleMaintenanceStatus, m: MaintenanceItem) {
-    if (confirm('Retirer cet entretien du véhicule ?')) {
+    if (!confirm('Retirer cet entretien du véhicule ?')) return;
+    if (m.scheduleId) {
+      this.apiService.removeMaintenanceSchedule(m.scheduleId).subscribe({
+        next: () => this.loadVehicles(),
+        error: (err) => console.error('Error removing schedule:', err)
+      });
+    } else {
       v.maintenanceItems = v.maintenanceItems.filter(x => x.templateId !== m.templateId);
       this.filterVehicles();
     }
