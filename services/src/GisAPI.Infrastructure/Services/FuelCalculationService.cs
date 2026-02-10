@@ -68,24 +68,12 @@ public class FuelCalculationService : IFuelCalculationService
             .OrderBy(fr => fr.RecordedAt)
             .ToList();
 
-        // ===== 2. Calculate distance from fuel_records odometer or GPS positions =====
-        int totalDistance = 0;
-        if (deduped.Count >= 2)
-        {
-            var firstOdo = deduped.First().OdometerKm;
-            var lastOdo = deduped.Last().OdometerKm;
-            if (firstOdo.HasValue && lastOdo.HasValue && lastOdo.Value > firstOdo.Value)
-            {
-                totalDistance = (int)(lastOdo.Value - firstOdo.Value);
-            }
-        }
-
-        // Fallback distance from GPS positions if fuel_records odometer didn't work
+        // ===== 2. Calculate distance: always use GPS positions (most reliable) =====
+        // fuel_records odometer only captures snapshots during fuel events — not the full trip distance.
+        // GPS positions cover the entire period, so always compute from there.
         var hasFuelRecords = deduped.Count >= 2;
-        if (totalDistance == 0)
-        {
-            totalDistance = await CalculateDistanceFromGps(vehicle.GpsDeviceId.Value, startDateUtc, endDateUtc, hasFuelRecords, cancellationToken);
-        }
+        int totalDistance = await CalculateDistanceFromGps(
+            vehicle.GpsDeviceId.Value, startDateUtc, endDateUtc, hasFuelRecords, cancellationToken);
 
         // ===== 3. Calculate fuel consumption + detect refuels from fuel_records =====
         decimal totalFuelConsumedPercent = 0;
@@ -203,8 +191,9 @@ public class FuelCalculationService : IFuelCalculationService
     }
 
     /// <summary>
-    /// Calculate distance from GPS positions (odometer preferred, Haversine fallback)
-    /// trustOdometer=false for S-type devices that stored garbage odometer values
+    /// Calculate distance from GPS positions.
+    /// Computes both odometer-based and Haversine-based distances, returns the larger value
+    /// to avoid undercounting from sparse odometer snapshots or filtered Haversine segments.
     /// </summary>
     private async Task<int> CalculateDistanceFromGps(
         int deviceId, DateTime startUtc, DateTime endUtc, bool trustOdometer, CancellationToken ct)
@@ -217,26 +206,32 @@ public class FuelCalculationService : IFuelCalculationService
 
         if (positions.Count < 2) return 0;
 
-        // Try odometer only for L-type devices (trustOdometer=true means we have fuel_records)
-        if (trustOdometer)
-        {
-            var first = positions.First();
-            var last = positions.Last();
-            if (first.OdometerKm.HasValue && last.OdometerKm.HasValue && last.OdometerKm.Value > first.OdometerKm.Value)
-                return (int)(last.OdometerKm.Value - first.OdometerKm.Value);
-        }
-
-        // Haversine fallback (always used for S-type devices)
-        double totalKm = 0;
+        // Always compute Haversine distance
+        double haversineKm = 0;
         for (int i = 1; i < positions.Count; i++)
         {
             var prev = positions[i - 1];
             var curr = positions[i];
             var dist = HaversineKm(prev.Latitude, prev.Longitude, curr.Latitude, curr.Longitude);
             if (dist > 0.01 && dist < 50 && (curr.SpeedKph ?? 0) > 2)
-                totalKm += dist;
+                haversineKm += dist;
         }
-        return (int)Math.Round(totalKm);
+
+        int haversineDist = (int)Math.Round(haversineKm);
+
+        // For L-type devices, also try odometer and take the larger value
+        if (trustOdometer)
+        {
+            var first = positions.First();
+            var last = positions.Last();
+            if (first.OdometerKm.HasValue && last.OdometerKm.HasValue && last.OdometerKm.Value > first.OdometerKm.Value)
+            {
+                int odometerDist = (int)(last.OdometerKm.Value - first.OdometerKm.Value);
+                return Math.Max(odometerDist, haversineDist);
+            }
+        }
+
+        return haversineDist;
     }
 
     /// <summary>
