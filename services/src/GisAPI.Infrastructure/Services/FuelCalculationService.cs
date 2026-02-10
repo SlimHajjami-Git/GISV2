@@ -92,12 +92,15 @@ public class FuelCalculationService : IFuelCalculationService
         // Calculate total distance from odometer or Haversine
         int totalDistance = CalculateTotalDistance(allPositions);
 
-        // Separate positions that have fuel data
+        // Separate positions that have fuel data and check if values actually vary
         var fuelPositions = allPositions.Where(p => p.FuelRaw.HasValue).ToList();
-        bool hasSensorData = fuelPositions.Count >= 2;
+        var distinctFuelValues = fuelPositions.Select(p => p.FuelRaw!.Value).Distinct().Count();
+        // Sensor data is only useful if we have >=2 positions with >=2 distinct fuel values
+        bool hasSensorData = fuelPositions.Count >= 2 && distinctFuelValues >= 2;
 
         decimal totalFuelConsumed = 0;
         decimal avgConsumption = 0;
+        bool useEstimation = false;
         var dailyConsumption = new Dictionary<DateTime, (decimal fuel, int distance)>();
 
         if (hasSensorData)
@@ -133,8 +136,20 @@ public class FuelCalculationService : IFuelCalculationService
             avgConsumption = totalDistance > 0 
                 ? (totalFuelConsumed / totalDistance) * 100 
                 : 0;
+
+            // Fallback: if sensor gave 0 consumption but vehicle actually moved, use estimation
+            if (totalFuelConsumed == 0 && totalDistance > 5)
+            {
+                useEstimation = true;
+                dailyConsumption.Clear();
+            }
         }
         else
+        {
+            useEstimation = true;
+        }
+
+        if (useEstimation && totalDistance > 0)
         {
             // ===== MODE 2: Estimate from distance using default consumption rate =====
             avgConsumption = DefaultConsumptionRates.GetValueOrDefault(vehicleType, 8.0m);
@@ -189,7 +204,7 @@ public class FuelCalculationService : IFuelCalculationService
             AverageConsumptionPer100Km: Math.Round(avgConsumption, 2),
             DeviationFromFleetAverage: 0,
             TotalDistanceKm: totalDistance,
-            IsEstimated: !hasSensorData,
+            IsEstimated: useEstimation,
             DailyConsumption: dailyDtos
         );
     }
