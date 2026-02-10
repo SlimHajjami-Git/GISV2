@@ -657,9 +657,12 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   fuelTypes = [
     { code: 'diesel', name: 'Diesel' },
     { code: 'essence', name: 'Essence' },
+    { code: 'sans_plomb', name: 'Essence Sans Plomb' },
     { code: 'gpl', name: 'GPL' },
+    { code: 'gnv', name: 'GNV' },
     { code: 'electrique', name: 'Électrique' },
-    { code: 'hybride', name: 'Hybride' }
+    { code: 'hybride', name: 'Hybride' },
+    { code: 'hybride_rechargeable', name: 'Hybride Rechargeable' }
   ];
   loadingModels = false;
 
