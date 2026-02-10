@@ -81,9 +81,10 @@ public class FuelCalculationService : IFuelCalculationService
         }
 
         // Fallback distance from GPS positions if fuel_records odometer didn't work
+        var hasFuelRecords = deduped.Count >= 2;
         if (totalDistance == 0)
         {
-            totalDistance = await CalculateDistanceFromGps(vehicle.GpsDeviceId.Value, startDateUtc, endDateUtc, cancellationToken);
+            totalDistance = await CalculateDistanceFromGps(vehicle.GpsDeviceId.Value, startDateUtc, endDateUtc, hasFuelRecords, cancellationToken);
         }
 
         // ===== 3. Calculate fuel consumption + detect refuels from fuel_records =====
@@ -203,9 +204,10 @@ public class FuelCalculationService : IFuelCalculationService
 
     /// <summary>
     /// Calculate distance from GPS positions (odometer preferred, Haversine fallback)
+    /// trustOdometer=false for S-type devices that stored garbage odometer values
     /// </summary>
     private async Task<int> CalculateDistanceFromGps(
-        int deviceId, DateTime startUtc, DateTime endUtc, CancellationToken ct)
+        int deviceId, DateTime startUtc, DateTime endUtc, bool trustOdometer, CancellationToken ct)
     {
         var positions = await _context.GpsPositions
             .Where(p => p.DeviceId == deviceId && p.RecordedAt >= startUtc && p.RecordedAt <= endUtc)
@@ -215,13 +217,16 @@ public class FuelCalculationService : IFuelCalculationService
 
         if (positions.Count < 2) return 0;
 
-        // Try odometer
-        var first = positions.First();
-        var last = positions.Last();
-        if (first.OdometerKm.HasValue && last.OdometerKm.HasValue && last.OdometerKm.Value > first.OdometerKm.Value)
-            return (int)(last.OdometerKm.Value - first.OdometerKm.Value);
+        // Try odometer only for L-type devices (trustOdometer=true means we have fuel_records)
+        if (trustOdometer)
+        {
+            var first = positions.First();
+            var last = positions.Last();
+            if (first.OdometerKm.HasValue && last.OdometerKm.HasValue && last.OdometerKm.Value > first.OdometerKm.Value)
+                return (int)(last.OdometerKm.Value - first.OdometerKm.Value);
+        }
 
-        // Haversine fallback
+        // Haversine fallback (always used for S-type devices)
         double totalKm = 0;
         for (int i = 1; i < positions.Count; i++)
         {
@@ -254,15 +259,11 @@ public class FuelCalculationService : IFuelCalculationService
             var curr = positions[i];
             var date = curr.RecordedAt.Date;
 
+            // Estimation mode = S-type device → odometer is garbage, always use Haversine
             decimal segDist = 0;
-            if (prev.OdometerKm.HasValue && curr.OdometerKm.HasValue && curr.OdometerKm.Value > prev.OdometerKm.Value)
-                segDist = curr.OdometerKm.Value - prev.OdometerKm.Value;
-            else
-            {
-                var h = HaversineKm(prev.Latitude, prev.Longitude, curr.Latitude, curr.Longitude);
-                if (h > 0.01 && h < 50 && (curr.SpeedKph ?? 0) > 2)
-                    segDist = (decimal)h;
-            }
+            var h = HaversineKm(prev.Latitude, prev.Longitude, curr.Latitude, curr.Longitude);
+            if (h > 0.01 && h < 50 && (curr.SpeedKph ?? 0) > 2)
+                segDist = (decimal)h;
 
             if (segDist <= 0) continue;
 
