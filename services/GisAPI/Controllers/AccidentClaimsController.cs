@@ -1,8 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using MediatR;
 using GisAPI.Application.Features.AccidentClaims.Queries;
 using GisAPI.Application.Features.AccidentClaims.Commands;
+using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Entities;
 
 namespace GisAPI.Controllers;
 
@@ -12,10 +15,14 @@ namespace GisAPI.Controllers;
 public class AccidentClaimsController : ControllerBase
 {
     private readonly IMediator _mediator;
+    private readonly IGisDbContext _context;
+    private readonly IWebHostEnvironment _env;
 
-    public AccidentClaimsController(IMediator mediator)
+    public AccidentClaimsController(IMediator mediator, IGisDbContext context, IWebHostEnvironment env)
     {
         _mediator = mediator;
+        _context = context;
+        _env = env;
     }
 
     /// <summary>
@@ -191,6 +198,88 @@ public class AccidentClaimsController : ControllerBase
         if (!success)
             return NotFound();
         return Ok(new { Message = "Claim closed" });
+    }
+    /// <summary>
+    /// Upload documents/photos to an accident claim
+    /// </summary>
+    [HttpPost("{id}/documents")]
+    [RequestSizeLimit(50_000_000)] // 50MB max
+    public async Task<ActionResult> UploadDocuments(int id, [FromForm] List<IFormFile> files, [FromForm] string? documentType)
+    {
+        var claim = await _context.AccidentClaims.FindAsync(id);
+        if (claim == null) return NotFound();
+
+        var uploadsDir = Path.Combine(_env.ContentRootPath, "uploads", "claims", id.ToString());
+        if (!Directory.Exists(uploadsDir)) Directory.CreateDirectory(uploadsDir);
+
+        var uploadedDocs = new List<object>();
+        foreach (var file in files)
+        {
+            if (file.Length == 0) continue;
+            if (file.Length > 10_000_000) continue; // Skip files > 10MB
+
+            var ext = Path.GetExtension(file.FileName).ToLower();
+            var allowedExts = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf", ".doc", ".docx" };
+            if (!allowedExts.Contains(ext)) continue;
+
+            var uniqueName = $"{Guid.NewGuid()}{ext}";
+            var filePath = Path.Combine(uploadsDir, uniqueName);
+
+            using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await file.CopyToAsync(stream);
+            }
+
+            var doc = new AccidentClaimDocument
+            {
+                ClaimId = id,
+                DocumentType = documentType ?? (file.ContentType.StartsWith("image/") ? "photo" : "document"),
+                FileName = file.FileName,
+                FileUrl = $"/uploads/claims/{id}/{uniqueName}",
+                FileSize = (int)file.Length,
+                MimeType = file.ContentType,
+                UploadedAt = DateTime.UtcNow
+            };
+            _context.AccidentClaimDocuments.Add(doc);
+            uploadedDocs.Add(new { doc.Id, doc.FileName, doc.FileUrl, doc.FileSize, doc.MimeType, doc.DocumentType });
+        }
+
+        await _context.SaveChangesAsync(CancellationToken.None);
+        return Ok(uploadedDocs);
+    }
+
+    /// <summary>
+    /// Get all documents for an accident claim
+    /// </summary>
+    [HttpGet("{id}/documents")]
+    public async Task<ActionResult> GetDocuments(int id)
+    {
+        var docs = await _context.AccidentClaimDocuments
+            .Where(d => d.ClaimId == id)
+            .OrderByDescending(d => d.UploadedAt)
+            .Select(d => new { d.Id, d.DocumentType, d.FileName, d.FileUrl, d.FileSize, d.MimeType, d.UploadedAt })
+            .ToListAsync();
+        return Ok(docs);
+    }
+
+    /// <summary>
+    /// Delete a document from an accident claim
+    /// </summary>
+    [HttpDelete("{claimId}/documents/{documentId}")]
+    public async Task<ActionResult> DeleteDocument(int claimId, int documentId)
+    {
+        var doc = await _context.AccidentClaimDocuments
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.ClaimId == claimId);
+        if (doc == null) return NotFound();
+
+        // Delete physical file
+        var filePath = Path.Combine(_env.ContentRootPath, doc.FileUrl.TrimStart('/'));
+        if (System.IO.File.Exists(filePath))
+            System.IO.File.Delete(filePath);
+
+        _context.AccidentClaimDocuments.Remove(doc);
+        await _context.SaveChangesAsync(CancellationToken.None);
+        return NoContent();
     }
 }
 

@@ -1240,6 +1240,22 @@ export class ApiService {
     return this.http.post<{ message: string }>(`${this.API_URL}/accident-claims/${id}/close`, {}, { headers: this.getHeaders() });
   }
 
+  uploadAccidentClaimDocuments(claimId: number, files: File[], documentType?: string): Observable<AccidentClaimDocumentDto[]> {
+    const formData = new FormData();
+    files.forEach(f => formData.append('files', f));
+    if (documentType) formData.append('documentType', documentType);
+    const headers = this.getHeaders().delete('Content-Type');
+    return this.http.post<AccidentClaimDocumentDto[]>(`${this.API_URL}/accident-claims/${claimId}/documents`, formData, { headers });
+  }
+
+  getAccidentClaimDocuments(claimId: number): Observable<AccidentClaimDocumentDto[]> {
+    return this.http.get<AccidentClaimDocumentDto[]>(`${this.API_URL}/accident-claims/${claimId}/documents`, { headers: this.getHeaders() });
+  }
+
+  deleteAccidentClaimDocument(claimId: number, documentId: number): Observable<void> {
+    return this.http.delete<void>(`${this.API_URL}/accident-claims/${claimId}/documents/${documentId}`, { headers: this.getHeaders() });
+  }
+
   // ==================== MAINTENANCE TEMPLATES ====================
 
   getMaintenanceTemplates(options?: { category?: string; isActive?: boolean; page?: number; pageSize?: number }): Observable<PaginatedResult<MaintenanceTemplateDto>> {

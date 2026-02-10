@@ -380,6 +380,29 @@ interface AccidentClaim {
               <p class="description-text">{{ selectedClaim.description }}</p>
             </div>
 
+            <!-- Photos -->
+            <div class="info-section" *ngIf="claimPhotos.length > 0">
+              <h3 class="section-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  <circle cx="8.5" cy="8.5" r="1.5"/>
+                  <polyline points="21 15 16 10 5 21"/>
+                </svg>
+                Photos ({{ claimPhotos.length }})
+              </h3>
+              <div class="detail-photos-grid">
+                <div class="detail-photo" *ngFor="let photo of claimPhotos" (click)="openPhotoFullscreen(photo)">
+                  <img [src]="getPhotoUrl(photo.fileUrl)" [alt]="photo.fileName">
+                </div>
+              </div>
+            </div>
+
+            <!-- Fullscreen photo viewer -->
+            <div class="photo-viewer-overlay" *ngIf="fullscreenPhoto" (click)="fullscreenPhoto = null">
+              <img [src]="getPhotoUrl(fullscreenPhoto.fileUrl)" [alt]="fullscreenPhoto.fileName" (click)="$event.stopPropagation()">
+              <button class="photo-viewer-close" (click)="fullscreenPhoto = null">×</button>
+            </div>
+
             <!-- Historique -->
             <div class="info-section">
               <h3 class="section-title">
@@ -562,6 +585,32 @@ interface AccidentClaim {
                 <label>Circonstances de l'accident *</label>
                 <textarea [(ngModel)]="formData.description" rows="4" 
                           placeholder="Décrivez les circonstances de l'accident..." required></textarea>
+              </div>
+            </div>
+
+            <!-- Photos -->
+            <div class="form-section">
+              <h3 class="form-section-title">📷 Photos</h3>
+              <div class="upload-zone" (click)="photoInput.click()"
+                   (dragover)="$event.preventDefault()" (drop)="onPhotoDrop($event)">
+                <input type="file" #photoInput multiple accept="image/*" (change)="onPhotosSelected($event)" hidden>
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <p>Cliquez ou glissez vos photos ici</p>
+                <span>JPG, PNG, WEBP — max 10 Mo</span>
+              </div>
+              <div class="photos-grid" *ngIf="pendingPhotos.length > 0 || existingPhotos.length > 0">
+                <div class="photo-thumb" *ngFor="let photo of existingPhotos; let i = index">
+                  <img [src]="getPhotoUrl(photo.fileUrl)" [alt]="photo.fileName">
+                  <button class="remove-photo-btn" (click)="removeExistingPhoto(photo, i); $event.stopPropagation()">×</button>
+                </div>
+                <div class="photo-thumb" *ngFor="let photo of pendingPhotos; let i = index">
+                  <img [src]="photo.preview" [alt]="photo.file.name">
+                  <button class="remove-photo-btn" (click)="removePendingPhoto(i); $event.stopPropagation()">×</button>
+                </div>
               </div>
             </div>
           </div>
@@ -1512,6 +1561,115 @@ interface AccidentClaim {
         flex-direction: column;
       }
     }
+
+    /* Upload Zone */
+    .upload-zone {
+      border: 2px dashed #e2e8f0;
+      border-radius: 12px;
+      padding: 28px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 12px;
+    }
+    .upload-zone:hover {
+      border-color: #3b82f6;
+      background: #f8fafc;
+    }
+    .upload-zone svg { color: #94a3b8; margin-bottom: 8px; }
+    .upload-zone p { font-size: 13px; color: #1e293b; margin: 0 0 4px; }
+    .upload-zone span { font-size: 11px; color: #94a3b8; }
+
+    .photos-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    .photo-thumb {
+      position: relative;
+      aspect-ratio: 1;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #f1f5f9;
+    }
+    .photo-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .remove-photo-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 22px;
+      height: 22px;
+      background: rgba(0,0,0,0.6);
+      border: none;
+      border-radius: 50%;
+      color: white;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+    .remove-photo-btn:hover { background: #dc2626; }
+
+    /* Detail Photos Grid */
+    .detail-photos-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .detail-photo {
+      aspect-ratio: 1;
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .detail-photo:hover { transform: scale(1.03); }
+    .detail-photo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Fullscreen Photo Viewer */
+    .photo-viewer-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      padding: 40px;
+    }
+    .photo-viewer-overlay img {
+      max-width: 90%;
+      max-height: 90%;
+      border-radius: 8px;
+      object-fit: contain;
+    }
+    .photo-viewer-close {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 40px;
+      height: 40px;
+      background: rgba(255,255,255,0.2);
+      border: none;
+      border-radius: 50%;
+      color: white;
+      font-size: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .photo-viewer-close:hover { background: rgba(255,255,255,0.4); }
   `]
 })
 export class AccidentClaimsComponent implements OnInit {
@@ -1525,22 +1683,9 @@ export class AccidentClaimsComponent implements OnInit {
   statusFilter = '';
   severityFilter = '';
 
-  // Form data
-  vehicles = [
-    { id: 'v1', name: 'Peugeot 208', plate: '245 TUN 7890' },
-    { id: 'v2', name: 'Renault Clio', plate: '189 TUN 4521' },
-    { id: 'v3', name: 'Citroën Berlingo', plate: '312 TUN 1122' },
-    { id: 'v4', name: 'Volkswagen Caddy', plate: '456 TUN 7788' },
-    { id: 'v5', name: 'Fiat Ducato', plate: '678 TUN 3344' }
-  ];
-
-  drivers = [
-    { id: 'd1', name: 'Ahmed Ben Ali' },
-    { id: 'd2', name: 'Fatma Trabelsi' },
-    { id: 'd3', name: 'Mohamed Sassi' },
-    { id: 'd4', name: 'Sami Gharbi' },
-    { id: 'd5', name: 'Karim Mejri' }
-  ];
+  // Form data - loaded from API
+  vehicles: { id: string; name: string; plate: string }[] = [];
+  drivers: { id: string; name: string }[] = [];
 
   severityOptions = [
     { value: 'minor', label: 'Mineur' },
@@ -1553,6 +1698,12 @@ export class AccidentClaimsComponent implements OnInit {
 
   formData: any = this.getEmptyFormData();
 
+  // Photo management
+  pendingPhotos: { file: File; preview: string }[] = [];
+  existingPhotos: any[] = [];
+  claimPhotos: any[] = [];
+  fullscreenPhoto: any = null;
+
   loading = false;
 
   constructor(
@@ -1563,6 +1714,29 @@ export class AccidentClaimsComponent implements OnInit {
 
   ngOnInit() {
     this.loadClaims();
+    this.loadVehiclesAndDrivers();
+  }
+
+  loadVehiclesAndDrivers() {
+    this.apiService.getVehicles().subscribe({
+      next: (vehicles: any[]) => {
+        this.vehicles = vehicles.map(v => ({
+          id: v.id?.toString() || '',
+          name: v.name || v.brand + ' ' + v.model || '',
+          plate: v.plate || v.licensePlate || ''
+        }));
+        this.cdr.detectChanges();
+      }
+    });
+    this.apiService.getUsers().subscribe({
+      next: (users: any[]) => {
+        this.drivers = users.map(u => ({
+          id: u.id?.toString() || '',
+          name: u.fullName || u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim()
+        }));
+        this.cdr.detectChanges();
+      }
+    });
   }
 
   loadClaims() {
@@ -1667,6 +1841,17 @@ export class AccidentClaimsComponent implements OnInit {
 
   selectClaim(claim: AccidentClaim) {
     this.selectedClaim = claim;
+    this.claimPhotos = [];
+    // Load photos from API
+    const claimId = parseInt(claim.id);
+    if (claimId) {
+      this.apiService.getAccidentClaimDocuments(claimId).subscribe({
+        next: (docs) => {
+          this.claimPhotos = docs.filter(d => d.documentType === 'photo' || d.mimeType?.startsWith('image/'));
+          this.cdr.detectChanges();
+        }
+      });
+    }
   }
 
   closeClaim() {
@@ -1697,6 +1882,8 @@ export class AccidentClaimsComponent implements OnInit {
   openAddForm() {
     this.editingClaim = null;
     this.formData = this.getEmptyFormData();
+    this.pendingPhotos = [];
+    this.existingPhotos = [];
     this.isFormOpen = true;
   }
 
@@ -1718,6 +1905,18 @@ export class AccidentClaimsComponent implements OnInit {
       thirdPartyInsurance: claim.thirdPartyInsurance || '',
       description: claim.description
     };
+    this.pendingPhotos = [];
+    this.existingPhotos = [];
+    // Load existing photos for editing
+    const claimId = parseInt(claim.id);
+    if (claimId) {
+      this.apiService.getAccidentClaimDocuments(claimId).subscribe({
+        next: (docs) => {
+          this.existingPhotos = docs.filter(d => d.documentType === 'photo' || d.mimeType?.startsWith('image/'));
+          this.cdr.detectChanges();
+        }
+      });
+    }
     this.isFormOpen = true;
     this.closeClaim();
   }
@@ -1726,6 +1925,8 @@ export class AccidentClaimsComponent implements OnInit {
     this.isFormOpen = false;
     this.editingClaim = null;
     this.formData = this.getEmptyFormData();
+    this.pendingPhotos = [];
+    this.existingPhotos = [];
   }
 
   isFormValid(): boolean {
@@ -1759,65 +1960,43 @@ export class AccidentClaimsComponent implements OnInit {
   }
 
   saveClaim() {
-    const vehicle = this.vehicles.find(v => v.id === this.formData.vehicleId);
-    const driver = this.drivers.find(d => d.id === this.formData.driverId);
+    const request: any = {
+      vehicleId: parseInt(this.formData.vehicleId) || 0,
+      driverId: parseInt(this.formData.driverId) || undefined,
+      accidentDate: this.formData.accidentDate,
+      accidentTime: this.formData.accidentTime,
+      location: this.formData.location,
+      description: this.formData.description,
+      severity: this.formData.severity,
+      estimatedDamage: this.formData.estimatedDamage || 0,
+      damagedZones: this.formData.damagedZones,
+      thirdPartyInvolved: this.formData.thirdPartyInvolved,
+      thirdPartyName: this.formData.thirdPartyName || undefined,
+      thirdPartyPhone: this.formData.thirdPartyPhone || undefined,
+      thirdPartyVehiclePlate: this.formData.thirdPartyVehicle || undefined,
+      thirdPartyInsurance: this.formData.thirdPartyInsurance || undefined
+    };
 
     if (this.editingClaim) {
-      // Update existing claim
-      const index = this.claims.findIndex(c => c.id === this.editingClaim!.id);
-      if (index !== -1) {
-        this.claims[index] = {
-          ...this.editingClaim,
-          vehicleId: this.formData.vehicleId,
-          vehicleName: vehicle?.name || '',
-          vehiclePlate: vehicle?.plate || '',
-          driverName: driver?.name || '',
-          accidentDate: new Date(this.formData.accidentDate),
-          accidentTime: this.formData.accidentTime,
-          location: this.formData.location,
-          severity: this.formData.severity,
-          estimatedDamage: this.formData.estimatedDamage,
-          damagedZones: this.formData.damagedZones,
-          thirdPartyInvolved: this.formData.thirdPartyInvolved,
-          thirdPartyName: this.formData.thirdPartyName,
-          thirdPartyPhone: this.formData.thirdPartyPhone,
-          thirdPartyVehicle: this.formData.thirdPartyVehicle,
-          thirdPartyInsurance: this.formData.thirdPartyInsurance,
-          description: this.formData.description,
-          updatedAt: new Date()
-        };
-      }
+      const claimId = parseInt(this.editingClaim.id);
+      this.apiService.updateAccidentClaim(claimId, request).subscribe({
+        next: () => {
+          this.uploadPendingPhotos(claimId);
+          this.loadClaims();
+          this.closeForm();
+        },
+        error: (err) => console.error('Update error:', err)
+      });
     } else {
-      // Create new claim
-      const newClaim: AccidentClaim = {
-        id: 'c' + Date.now(),
-        claimNumber: 'SIN-2026-' + String(this.claims.length + 1).padStart(3, '0'),
-        vehicleId: this.formData.vehicleId,
-        vehicleName: vehicle?.name || '',
-        vehiclePlate: vehicle?.plate || '',
-        driverName: driver?.name || '',
-        accidentDate: new Date(this.formData.accidentDate),
-        accidentTime: this.formData.accidentTime,
-        location: this.formData.location,
-        description: this.formData.description,
-        status: 'draft',
-        severity: this.formData.severity,
-        estimatedDamage: this.formData.estimatedDamage,
-        thirdPartyInvolved: this.formData.thirdPartyInvolved,
-        thirdPartyName: this.formData.thirdPartyName,
-        thirdPartyPhone: this.formData.thirdPartyPhone,
-        thirdPartyVehicle: this.formData.thirdPartyVehicle,
-        thirdPartyInsurance: this.formData.thirdPartyInsurance,
-        damagedZones: this.formData.damagedZones,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        photos: []
-      };
-      this.claims.unshift(newClaim);
+      this.apiService.createAccidentClaim(request).subscribe({
+        next: (claimId) => {
+          this.uploadPendingPhotos(claimId);
+          this.loadClaims();
+          this.closeForm();
+        },
+        error: (err) => console.error('Create error:', err)
+      });
     }
-
-    this.filterClaims();
-    this.closeForm();
   }
 
   deleteClaim(claim: AccidentClaim) {
@@ -1831,5 +2010,69 @@ export class AccidentClaimsComponent implements OnInit {
     claim.status = 'submitted';
     claim.updatedAt = new Date();
     this.closeClaim();
+  }
+
+  // Photo handling
+  onPhotosSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files) return;
+    Array.from(input.files).forEach(file => {
+      if (!file.type.startsWith('image/') || file.size > 10_000_000) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        this.pendingPhotos.push({ file, preview: e.target?.result as string });
+        this.cdr.detectChanges();
+      };
+      reader.readAsDataURL(file);
+    });
+    input.value = '';
+  }
+
+  onPhotoDrop(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!event.dataTransfer?.files) return;
+    Array.from(event.dataTransfer.files).forEach(file => {
+      if (!file.type.startsWith('image/') || file.size > 10_000_000) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        this.pendingPhotos.push({ file, preview: e.target?.result as string });
+        this.cdr.detectChanges();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  removePendingPhoto(index: number) {
+    this.pendingPhotos.splice(index, 1);
+  }
+
+  removeExistingPhoto(photo: any, index: number) {
+    const claimId = parseInt(this.editingClaim?.id || '0');
+    if (claimId && photo.id) {
+      this.apiService.deleteAccidentClaimDocument(claimId, photo.id).subscribe();
+    }
+    this.existingPhotos.splice(index, 1);
+  }
+
+  uploadPendingPhotos(claimId: number) {
+    if (this.pendingPhotos.length === 0) return;
+    const files = this.pendingPhotos.map(p => p.file);
+    this.apiService.uploadAccidentClaimDocuments(claimId, files, 'photo').subscribe({
+      next: () => {
+        this.pendingPhotos = [];
+        this.cdr.detectChanges();
+      },
+      error: (err) => console.error('Upload error:', err)
+    });
+  }
+
+  getPhotoUrl(fileUrl: string): string {
+    if (fileUrl.startsWith('http')) return fileUrl;
+    return fileUrl;
+  }
+
+  openPhotoFullscreen(photo: any) {
+    this.fullscreenPhoto = photo;
   }
 }
