@@ -1099,8 +1099,15 @@ export class ReportsComponent implements OnInit {
       return;
     }
 
+    // Filter out short "Circulation" stops (ignition ON, < 10 min) — traffic lights, brief pauses
+    // Only keep real stops: ignition OFF (parked) or long ignition-ON pauses (> 10 min)
+    const meaningfulStops = stops.filter((stop: any) => {
+      if (stop.ignitionOff) return true; // Always keep real parked stops
+      return stop.durationSeconds >= 600; // Keep circulation stops only if >= 10 min
+    });
+
     // Sort by start time descending (most recent first)
-    stops.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+    meaningfulStops.sort((a: any, b: any) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
 
     const formatDuration = (seconds: number): string => {
       const minutes = seconds / 60;
@@ -1112,9 +1119,9 @@ export class ReportsComponent implements OnInit {
       return `${Math.round(minutes)}min`;
     };
 
-    this.tableData = stops.map((stop: any) => {
+    this.tableData = meaningfulStops.map((stop: any) => {
       const stopTypeCode = stop.ignitionOff ? 'A' : 'C';
-      const stopTypeLabel = stop.ignitionOff ? '🅿️ Arrêt' : '🚦 Circulation';
+      const stopTypeLabel = stop.ignitionOff ? '🅿️ Arrêt' : '🚦 Ralenti prolongé';
       const durationMinutes = stop.durationSeconds / 60;
 
       return {
