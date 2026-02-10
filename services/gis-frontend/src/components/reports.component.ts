@@ -2838,7 +2838,7 @@ export class ReportsComponent implements OnInit {
       const isFirst = index === 0;
       const isLast = index === positions.length - 1;
       const hasSignificantChange = Math.abs(fuel - lastFuel) >= 2;
-      const isEveryNth = index % 10 === 0; // Show every 10th position
+      const isEveryNth = index % 10 === 0;
       
       if (isFirst || isLast || hasSignificantChange || isEveryNth) {
         lastFuel = fuel;
@@ -2847,14 +2847,11 @@ export class ReportsComponent implements OnInit {
       return false;
     });
 
-    // Reverse to show most recent first
-    significantPositions.reverse();
-
-    this.tableData = significantPositions.map((pos: any, index: number) => {
+    // Compute fuel changes BEFORE reversing (while still in chronological order)
+    const enriched = significantPositions.map((pos: any, index: number) => {
       const prevPos = index > 0 ? significantPositions[index - 1] : null;
       const fuelChange = prevPos ? (pos.fuelRaw || 0) - (prevPos.fuelRaw || 0) : 0;
-      
-      // Determine event type based on fuel change
+
       let eventType = 'Lecture';
       let isAnomaly = false;
       if (fuelChange > 5) {
@@ -2868,7 +2865,6 @@ export class ReportsComponent implements OnInit {
         eventType = '📈 Augmentation';
       }
 
-      // Use real odometer if available, otherwise calculate distance
       let odometer = '-';
       if (pos.odometerKm && pos.odometerKm > 0) {
         odometer = `${pos.odometerKm.toLocaleString('fr-FR')} km`;
@@ -2879,7 +2875,6 @@ export class ReportsComponent implements OnInit {
         }
       }
 
-      // Use address from API if available, otherwise show coordinates
       const location = pos.address || `${pos.latitude.toFixed(4)}°, ${pos.longitude.toFixed(4)}°`;
 
       return {
@@ -2898,6 +2893,10 @@ export class ReportsComponent implements OnInit {
         isAnomaly
       };
     });
+
+    // NOW reverse to show most recent first (changes already computed correctly)
+    enriched.reverse();
+    this.tableData = enriched;
 
     // Fetch addresses asynchronously for positions without address
     this.enrichWithAddresses();
