@@ -59,6 +59,9 @@ pub trait TelemetryStore: Send + Sync {
 
     /// Insert a driving event
     async fn insert_driving_event(&self, event: &DrivingEventRecord) -> anyhow::Result<i64>;
+
+    /// Load the last fuel record for a device (used to restore fuel_tracker state after restart)
+    async fn get_last_fuel_record(&self, device_id: i32) -> anyhow::Result<Option<(i16, u32, chrono::DateTime<chrono::Utc>)>>;
 }
 
 #[async_trait]

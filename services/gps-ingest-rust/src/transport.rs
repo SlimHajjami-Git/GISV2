@@ -613,17 +613,27 @@ async fn process_single_frame(
                         }
                     }
 
-                    // Process fuel tracking - store raw value as received from frame
-                    if let Some(fuel_event) = services.fuel_tracker.process_frame(device_id, &frame).await {
-                        if let Err(err) = database.insert_fuel_record(&fuel_event, vehicle_id, company_id).await {
-                            warn!(?err, device_id, "Failed to insert fuel record");
-                        } else {
-                            info!(
-                                device_id,
-                                event_type = fuel_event.event_type.as_str(),
-                                fuel_percent = fuel_event.fuel_percent,
-                                "Fuel event recorded"
-                            );
+                    // Process fuel tracking - ONLY for L-type firmware (gps_type_1) which has FMS data
+                    // S-type (gps_type_2) sends garbage fuel_raw values (e.g. always 100)
+                    if protocol == "gps_type_1" && frame.fuel_raw > 0 {
+                        // Restore fuel state from DB on first encounter (survives service restarts)
+                        if !services.fuel_tracker.has_state(device_id).await {
+                            if let Ok(Some((last_pct, last_odo, last_ts))) = database.get_last_fuel_record(device_id).await {
+                                services.fuel_tracker.seed_state(device_id, last_pct, last_odo, last_ts).await;
+                            }
+                        }
+
+                        if let Some(fuel_event) = services.fuel_tracker.process_frame(device_id, &frame).await {
+                            if let Err(err) = database.insert_fuel_record(&fuel_event, vehicle_id, company_id).await {
+                                warn!(?err, device_id, "Failed to insert fuel record");
+                            } else {
+                                info!(
+                                    device_id,
+                                    event_type = fuel_event.event_type.as_str(),
+                                    fuel_percent = fuel_event.fuel_percent,
+                                    "Fuel event recorded"
+                                );
+                            }
                         }
                     }
 
@@ -947,6 +957,10 @@ mod tests {
 
         async fn get_last_position(&self, _device_id: i32) -> anyhow::Result<Option<crate::db::LastKnownPosition>> {
             Ok(None) // No last position for tests
+        }
+
+        async fn get_last_fuel_record(&self, _device_id: i32) -> anyhow::Result<Option<(i16, u32, chrono::DateTime<chrono::Utc>)>> {
+            Ok(None) // No fuel history for tests
         }
     }
 

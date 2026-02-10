@@ -115,7 +115,8 @@ impl Database {
         }
         */
 
-        let position_id = self.insert_position(device_id, frame, event_key).await?;
+        let has_fms = protocol_type == "gps_type_1";
+        let position_id = self.insert_position(device_id, frame, event_key, has_fms).await?;
         
         if position_id == 0 {
             tracing::warn!(
@@ -430,6 +431,7 @@ impl TelemetryStore for Database {
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW()
             )
+            ON CONFLICT (vehicle_id, recorded_at, fuel_percent) DO NOTHING
             RETURNING id
             "#,
         )
@@ -448,10 +450,11 @@ impl TelemetryStore for Database {
         .bind(event.is_anomaly)
         .bind(&event.anomaly_reason)
         .bind(company_id)
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.get::<i64, _>("id"))
+        // ON CONFLICT DO NOTHING returns no row on duplicate — return 0
+        Ok(row.map(|r| r.get::<i64, _>("id")).unwrap_or(0))
     }
 
     async fn get_device_vehicle_info(&self, device_id: i32) -> Result<(Option<i32>, i32)> {
@@ -768,7 +771,7 @@ impl Database {
         Ok(row.get::<i32, _>("id"))
     }
 
-    async fn insert_position(&self, device_id: i32, frame: &HhFrame, event_key: &str) -> Result<i64> {
+    async fn insert_position(&self, device_id: i32, frame: &HhFrame, event_key: &str, has_fms: bool) -> Result<i64> {
         // Metadata for additional fields not in dedicated columns
         let metadata = json!({
             "power_source_rescue": frame.power_source_rescue,
@@ -797,13 +800,10 @@ impl Database {
             None
         };
         
-        // Store fuel and odometer independently - don't skip based on combined condition
-        // fuel_raw: store if > 0 (0 means no data or empty tank - we store raw value)
-        let fuel_raw: Option<i32> = if frame.fuel_raw > 0 { Some(i32::from(frame.fuel_raw)) } else { None };
-        // odometer: always store if > 0 (independent of fuel)
-        let odometer_km: Option<i64> = if frame.odometer_km > 0 { Some(frame.odometer_km as i64) } else { None };
-        // rpm: store if available and > 0
-        let rpm: Option<i16> = frame.rpm.filter(|&r| r > 0).map(|r| r as i16);
+        // FMS fields: only store for L-type (has_fms) devices — S-type sends garbage values
+        let fuel_raw: Option<i32> = if has_fms && frame.fuel_raw > 0 { Some(i32::from(frame.fuel_raw)) } else { None };
+        let odometer_km: Option<i64> = if has_fms && frame.odometer_km > 0 { Some(frame.odometer_km as i64) } else { None };
+        let rpm: Option<i16> = if has_fms { frame.rpm.filter(|&r| r > 0).map(|r| r as i16) } else { None };
 
         let row = sqlx::query(
             r#"
@@ -867,7 +867,7 @@ impl Database {
         .bind(frame.send_flag as i16)
         .bind(protocol_version)
         .bind(&frame.address) // Geocoded address
-        .bind(frame.fuel_rate_l_per_100km) // FMS Fuel Rate in L/100km
+        .bind(if has_fms { frame.fuel_rate_l_per_100km } else { None }) // FMS Fuel Rate in L/100km
         .fetch_optional(&self.pool)
         .await?;
 
@@ -936,6 +936,28 @@ impl Database {
         .await?;
 
         Ok(row.get::<i32, _>("id"))
+    }
+
+    async fn get_last_fuel_record(&self, device_id: i32) -> Result<Option<(i16, u32, chrono::DateTime<chrono::Utc>)>> {
+        let row = sqlx::query(
+            r#"
+            SELECT fuel_percent, odometer_km, recorded_at
+            FROM fuel_records
+            WHERE device_id = $1
+            ORDER BY recorded_at DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(device_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| {
+            let fuel_percent: i16 = r.get("fuel_percent");
+            let odometer_km: i64 = r.try_get("odometer_km").unwrap_or(0);
+            let recorded_at: DateTime<Utc> = r.get("recorded_at");
+            (fuel_percent, odometer_km as u32, recorded_at)
+        }))
     }
 }
 

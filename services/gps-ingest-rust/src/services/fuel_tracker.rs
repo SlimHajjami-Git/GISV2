@@ -87,6 +87,23 @@ impl FuelTracker {
         self
     }
 
+    /// Check if a device already has a known fuel state in memory
+    pub async fn has_state(&self, device_id: i32) -> bool {
+        self.fuel_states.read().await.contains_key(&device_id)
+    }
+
+    /// Seed fuel state from database (used to restore state after service restart)
+    pub async fn seed_state(&self, device_id: i32, fuel_percent: i16, odometer_km: u32, timestamp: DateTime<Utc>) {
+        let state = FuelState {
+            device_id,
+            last_fuel_percent: fuel_percent,
+            last_odometer_km: odometer_km,
+            last_timestamp: timestamp,
+        };
+        self.fuel_states.write().await.insert(device_id, state);
+        debug!(device_id, fuel_percent, odometer_km, "Fuel state restored from DB");
+    }
+
     /// Process a frame and detect fuel events
     /// Returns Some(FuelEvent) if a significant event occurred
     pub async fn process_frame(
