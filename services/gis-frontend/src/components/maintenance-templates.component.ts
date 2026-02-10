@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, NgZone, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -1017,7 +1017,7 @@ export class MaintenanceTemplatesComponent implements OnInit {
   loading = false;
   lastPaidPrices: Map<string, number> = new Map();
 
-  constructor(private apiService: ApiService) {}
+  constructor(private apiService: ApiService, private ngZone: NgZone, private cdr: ChangeDetectorRef) {}
 
   ngOnInit() { this.loadTemplates(); this.loadVehicles(); this.loadAllVehicles(); }
 
@@ -1035,19 +1035,22 @@ export class MaintenanceTemplatesComponent implements OnInit {
     this.loading = true;
     this.apiService.getMaintenanceTemplates({ pageSize: 100 }).subscribe({
       next: (result) => {
-        this.templates = result.items.map(t => ({
-          id: t.id?.toString() || '',
-          name: t.name,
-          description: t.description || '',
-          intervalKm: t.intervalKm ?? null,
-          intervalMonths: t.intervalMonths ?? null,
-          estimatedCost: t.estimatedCost || 0,
-          priority: (t.priority as 'low' | 'medium' | 'high' | 'critical') || 'medium',
-          category: t.category || 'Autre',
-          isActive: t.isActive
-        }));
-        this.filterTemplates();
-        this.loading = false;
+        this.ngZone.run(() => {
+          this.templates = result.items.map(t => ({
+            id: t.id?.toString() || '',
+            name: t.name,
+            description: t.description || '',
+            intervalKm: t.intervalKm ?? null,
+            intervalMonths: t.intervalMonths ?? null,
+            estimatedCost: t.estimatedCost || 0,
+            priority: (t.priority as 'low' | 'medium' | 'high' | 'critical') || 'medium',
+            category: t.category || 'Autre',
+            isActive: t.isActive
+          }));
+          this.filterTemplates();
+          this.loading = false;
+          this.cdr.detectChanges();
+        });
       },
       error: (err) => {
         console.error('Error loading templates:', err);
@@ -1059,22 +1062,25 @@ export class MaintenanceTemplatesComponent implements OnInit {
   loadVehicles() {
     this.apiService.getVehicleMaintenanceSchedule({ pageSize: 100 }).subscribe({
       next: (result) => {
-        this.vehicleSchedules = result.items.map(v => ({
-          vehicleId: v.vehicleId.toString(),
-          vehicleName: v.vehicleName || '',
-          vehiclePlate: v.vehiclePlate || '',
-          currentMileage: v.currentMileage || 0,
-          maintenanceItems: (v.maintenanceItems || []).map(m => ({
-            templateId: m.templateId?.toString() || '',
-            templateName: m.templateName || '',
-            lastDoneDate: m.lastDoneDate ? new Date(m.lastDoneDate) : null,
-            lastDoneKm: m.lastDoneKm ?? null,
-            nextDueKm: m.nextDueKm ?? null,
-            status: (m.status as 'ok' | 'upcoming' | 'due' | 'overdue') || 'ok',
-            kmUntilDue: m.kmUntilDue ?? null
-          }))
-        }));
-        this.filterVehicles();
+        this.ngZone.run(() => {
+          this.vehicleSchedules = result.items.map(v => ({
+            vehicleId: v.vehicleId.toString(),
+            vehicleName: v.vehicleName || '',
+            vehiclePlate: v.vehiclePlate || '',
+            currentMileage: v.currentMileage || 0,
+            maintenanceItems: (v.maintenanceItems || []).map(m => ({
+              templateId: m.templateId?.toString() || '',
+              templateName: m.templateName || '',
+              lastDoneDate: m.lastDoneDate ? new Date(m.lastDoneDate) : null,
+              lastDoneKm: m.lastDoneKm ?? null,
+              nextDueKm: m.nextDueKm ?? null,
+              status: (m.status as 'ok' | 'upcoming' | 'due' | 'overdue') || 'ok',
+              kmUntilDue: m.kmUntilDue ?? null
+            }))
+          }));
+          this.filterVehicles();
+          this.cdr.detectChanges();
+        });
       },
       error: (err) => console.error('Error loading vehicle schedules:', err)
     });
@@ -1254,14 +1260,20 @@ export class MaintenanceTemplatesComponent implements OnInit {
 
   // Vehicle-centric methods
   loadAllVehicles() {
-    this.allVehicles = [
-      { id:'v1', name:'Peugeot 208', plate:'245 TUN 7890', mileage:52000 },
-      { id:'v2', name:'Renault Clio', plate:'189 TUN 4521', mileage:78500 },
-      { id:'v3', name:'Citroën Berlingo', plate:'312 TUN 1122', mileage:125000 },
-      { id:'v4', name:'Dacia Duster', plate:'456 TUN 3344', mileage:35000 },
-      { id:'v5', name:'Peugeot Partner', plate:'789 TUN 5566', mileage:92000 },
-      { id:'v6', name:'Renault Kangoo', plate:'147 TUN 8899', mileage:68000 }
-    ];
+    this.apiService.getVehicles().subscribe({
+      next: (vehicles) => {
+        this.ngZone.run(() => {
+          this.allVehicles = vehicles.map((v: any) => ({
+            id: v.id?.toString() || '',
+            name: v.name || `${v.brand || ''} ${v.model || ''}`.trim(),
+            plate: v.plate || '',
+            mileage: v.mileage || 0
+          }));
+          this.cdr.detectChanges();
+        });
+      },
+      error: (err) => console.error('Error loading vehicles:', err)
+    });
   }
 
   openAddToVehicle(v: VehicleMaintenanceStatus) {

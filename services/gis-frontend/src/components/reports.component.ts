@@ -555,7 +555,7 @@ export class ReportsComponent implements OnInit {
     }
 
     // Reports that require a single vehicle
-    const singleVehicleReports = ['fuel', 'daily', 'mileage', 'mileage-period'];
+    const singleVehicleReports = ['fuel', 'daily', 'mileage'];
     if (!this.selectedVehicleId && singleVehicleReports.includes(this.selectedTemplate.type)) {
       console.warn('No vehicle selected for single-vehicle report');
       this.tableData = [];
@@ -606,7 +606,11 @@ export class ReportsComponent implements OnInit {
 
     // Handle mileage period report (Hour/Day/Month)
     if (this.selectedTemplate.type === 'mileage-period') {
-      this.executeMileagePeriodReport(vehicleId!, startDate, endDate);
+      if (vehicleId) {
+        this.executeMileagePeriodReport(vehicleId, startDate, endDate);
+      } else {
+        this.executeMileagePeriodReportAllVehicles(startDate, endDate);
+      }
       return;
     }
 
@@ -1409,7 +1413,7 @@ export class ReportsComponent implements OnInit {
   }
 
   detectDrivingIncidents(positions: any[], vehicle: any): any[] {
-    const incidents: any[] = [];
+    const rawIncidents: any[] = [];
     
     for (let i = 1; i < positions.length; i++) {
       const prev = positions[i - 1];
@@ -1419,11 +1423,12 @@ export class ReportsComponent implements OnInit {
       if (timeDiff <= 0 || timeDiff > 300) continue; // Skip if time gap is invalid or too large
       
       const speedDiff = (curr.speedKph || 0) - (prev.speedKph || 0);
-      const acceleration = speedDiff / timeDiff * 3.6; // m/s² approximation
+      // speedDiff is km/h, timeDiff is seconds → divide by 3.6 to get m/s²
+      const acceleration = speedDiff / timeDiff / 3.6;
       
       // Detect harsh acceleration (> 3 m/s²)
       if (this.drivingBehaviorFilters['harshAcceleration'] && acceleration > 3) {
-        incidents.push({
+        rawIncidents.push({
           type: 'harshAcceleration',
           vehicleId: vehicle.id,
           vehicleName: vehicle.name || vehicle.plate,
@@ -1439,7 +1444,7 @@ export class ReportsComponent implements OnInit {
       
       // Detect harsh braking (< -3 m/s²)
       if (this.drivingBehaviorFilters['harshBraking'] && acceleration < -3) {
-        incidents.push({
+        rawIncidents.push({
           type: 'harshBraking',
           vehicleId: vehicle.id,
           vehicleName: vehicle.name || vehicle.plate,
@@ -1459,7 +1464,7 @@ export class ReportsComponent implements OnInit {
         if (headingDiff > 180) headingDiff = 360 - headingDiff;
         
         if (headingDiff > 45 && (curr.speedKph || 0) > 20) {
-          incidents.push({
+          rawIncidents.push({
             type: 'sharpSteering',
             vehicleId: vehicle.id,
             vehicleName: vehicle.name || vehicle.plate,
@@ -1476,7 +1481,7 @@ export class ReportsComponent implements OnInit {
       
       // Detect overspeed (> 130 km/h)
       if (this.drivingBehaviorFilters['overspeed'] && (curr.speedKph || 0) > 130) {
-        incidents.push({
+        rawIncidents.push({
           type: 'overspeed',
           vehicleId: vehicle.id,
           vehicleName: vehicle.name || vehicle.plate,
@@ -1492,7 +1497,7 @@ export class ReportsComponent implements OnInit {
       
       // Detect high RPM (> 3500)
       if (this.drivingBehaviorFilters['highRpm'] && curr.rpm && curr.rpm > 3500) {
-        incidents.push({
+        rawIncidents.push({
           type: 'highRpm',
           vehicleId: vehicle.id,
           vehicleName: vehicle.name || vehicle.plate,
@@ -1507,7 +1512,19 @@ export class ReportsComponent implements OnInit {
       }
     }
     
-    return incidents;
+    // Deduplicate: for same vehicle + same type + same minute, keep only highest value
+    const severityRank: any = { 'high': 3, 'medium': 2, 'low': 1 };
+    const deduped = new Map<string, any>();
+    for (const inc of rawIncidents) {
+      const t = new Date(inc.time);
+      const minuteKey = `${inc.vehicleId}_${inc.type}_${t.getFullYear()}-${t.getMonth()}-${t.getDate()}-${t.getHours()}-${t.getMinutes()}`;
+      const existing = deduped.get(minuteKey);
+      if (!existing || inc.value > existing.value) {
+        deduped.set(minuteKey, inc);
+      }
+    }
+    
+    return Array.from(deduped.values());
   }
 
   processDrivingBehaviorReport(incidents: any[]) {
@@ -2042,6 +2059,124 @@ export class ReportsComponent implements OnInit {
         });
       }
     });
+  }
+
+  executeMileagePeriodReportAllVehicles(startDate?: Date, endDate?: Date) {
+    let start: Date;
+    let end: Date;
+    
+    switch (this.selectedMileagePeriodType) {
+      case 'hour':
+        start = this.mileagePeriodDate ? new Date(this.mileagePeriodDate) : new Date();
+        end = start;
+        break;
+      case 'day':
+        start = this.mileagePeriodStartDate ? new Date(this.mileagePeriodStartDate) : new Date();
+        end = this.mileagePeriodEndDate ? new Date(this.mileagePeriodEndDate) : new Date();
+        break;
+      case 'month':
+        start = new Date(this.mileagePeriodYear, this.mileagePeriodMonth - 1, 1);
+        end = new Date(this.mileagePeriodYear, this.mileagePeriodMonth, 0);
+        break;
+      default:
+        start = startDate || new Date();
+        end = endDate || new Date();
+    }
+
+    const allResults: any[] = [];
+    let completedRequests = 0;
+    const totalVehicles = this.vehicles.length;
+
+    if (totalVehicles === 0) {
+      this.ngZone.run(() => {
+        this.tableData = [];
+        this.chartData = [];
+        this.statisticsData = { 'Information': 'Aucun véhicule disponible' };
+        this.reportGenerated = true;
+        this.loading = false;
+        this.cdr.detectChanges();
+      });
+      return;
+    }
+
+    this.vehicles.forEach(vehicle => {
+      this.apiService.getMileagePeriodReport(vehicle.id, this.selectedMileagePeriodType, start, end).subscribe({
+        next: (report) => {
+          if (report.hasData) {
+            allResults.push({
+              vehicleName: vehicle.name || vehicle.plate,
+              vehiclePlate: vehicle.plate,
+              totalDistance: report.totalDistanceKm,
+              totalTrips: report.totalTripCount,
+              totalDriving: report.totalDrivingMinutes,
+              totalDrivingFormatted: report.totalDrivingFormatted,
+              avgDistance: report.averageDistanceKm,
+              maxDistance: report.maxDistanceKm
+            });
+          }
+          completedRequests++;
+
+          if (completedRequests === totalVehicles) {
+            this.ngZone.run(() => {
+              this.processMileagePeriodAllVehicles(allResults, start, end);
+              this.reportGenerated = true;
+              this.loading = false;
+              this.activeTab = 'table';
+              this.currentPage = 1;
+              this.cdr.detectChanges();
+              this.appRef.tick();
+              setTimeout(() => this.createChart(), 100);
+            });
+          }
+        },
+        error: () => {
+          completedRequests++;
+          if (completedRequests === totalVehicles) {
+            this.ngZone.run(() => {
+              this.processMileagePeriodAllVehicles(allResults, start, end);
+              this.reportGenerated = true;
+              this.loading = false;
+              this.activeTab = 'table';
+              this.currentPage = 1;
+              this.cdr.detectChanges();
+              this.appRef.tick();
+              setTimeout(() => this.createChart(), 100);
+            });
+          }
+        }
+      });
+    });
+  }
+
+  processMileagePeriodAllVehicles(results: any[], start: Date, end: Date) {
+    results.sort((a, b) => b.totalDistance - a.totalDistance);
+
+    this.tableData = results.map(r => ({
+      vehicle: `${r.vehicleName}${r.vehiclePlate ? ' (' + r.vehiclePlate + ')' : ''}`,
+      distance: `${r.totalDistance.toFixed(1)} km`,
+      distanceValue: r.totalDistance,
+      tripCount: r.totalTrips,
+      drivingTime: r.totalDrivingFormatted,
+      avgDistance: `${r.avgDistance.toFixed(1)} km`,
+      maxDistance: `${r.maxDistance.toFixed(1)} km`
+    }));
+
+    this.chartData = results.map(r => ({
+      label: r.vehicleName,
+      value: r.totalDistance
+    }));
+
+    const totalDist = results.reduce((s, r) => s + r.totalDistance, 0);
+    const totalTrips = results.reduce((s, r) => s + r.totalTrips, 0);
+
+    this.statisticsData = {
+      'Période': `${start.toLocaleDateString('fr-FR')} - ${end.toLocaleDateString('fr-FR')}`,
+      'Type': this.getMileagePeriodTypeLabel(this.selectedMileagePeriodType),
+      'Véhicules': results.length.toString(),
+      'Distance totale flotte': `${totalDist.toFixed(1)} km`,
+      'Nombre total de trajets': totalTrips.toString(),
+      'Moyenne par véhicule': results.length > 0 ? `${(totalDist / results.length).toFixed(1)} km` : '0 km'
+    };
   }
 
   processMileagePeriodReport(report: MileagePeriodReport) {
