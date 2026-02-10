@@ -19,12 +19,7 @@ public interface IFuelCalculationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Convert raw fuel value to liters based on sensor mode and tank capacity
-    /// </summary>
-    decimal ConvertFuelToLiters(int? rawValue, string sensorMode, int tankCapacity);
-
-    /// <summary>
-    /// Detect fuel refill events from GPS position data
+    /// Detect fuel refill events from fuel_records
     /// </summary>
     Task<List<FuelRefillEventDto>> DetectFuelRefillsAsync(
         int deviceId,
