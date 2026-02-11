@@ -104,6 +104,19 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             // If ignition is off, speed is 0
             var ignitionOn = position?.IgnitionOn ?? false;
             var rawSpeed = position?.SpeedKph ?? 0.0;
+
+            // Stale ignition detection: if last position says ignition ON but speed is 0
+            // and the position is older than 10 minutes, it's likely stale data
+            // (the ignition-OFF frame was missed due to GPS ingest throttling)
+            if (ignitionOn && rawSpeed <= 1 && position != null)
+            {
+                var positionAge = (DateTime.UtcNow - position.RecordedAt).TotalMinutes;
+                if (positionAge > 10)
+                {
+                    ignitionOn = false;
+                }
+            }
+
             var currentSpeed = ignitionOn ? Math.Round(rawSpeed) : 0.0;
             var isMoving = ignitionOn && rawSpeed > 5;
 
