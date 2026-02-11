@@ -549,7 +549,7 @@
                         <th>Variation</th>
                         <th>Type</th>
                         <th>Position</th>
-                        <th>Vitesse</th>
+                        <th>Km parcourus</th>
                         <th>Odomètre</th>
                       } @else if (selectedTemplate?.type === 'daily') {
                         <th class="th-narrow">#</th>
@@ -661,7 +661,7 @@
                           <td class="change-cell" [class.positive]="row.fuelChange?.startsWith('+')" [class.negative]="row.fuelChange?.startsWith('-')">{{ row.fuelChange }}</td>
                           <td>{{ row.eventType }}</td>
                           <td class="location-cell">{{ row.location }}</td>
-                          <td>{{ row.speed }}</td>
+                          <td>{{ row.mileage }}</td>
                           <td>{{ row.odometer }}</td>
                         } @else if (selectedTemplate?.type === 'daily') {
                           <td class="event-number-cell">{{ row.eventNumber }}</td>

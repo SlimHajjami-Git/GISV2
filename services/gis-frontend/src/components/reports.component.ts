@@ -2950,95 +2950,104 @@ export class ReportsComponent implements OnInit {
   }
 
   processFuelReport(positions: any[]) {
-    // Filter to show only significant fuel changes or periodic readings
-    let lastFuel = -1;
-    const significantPositions = positions.filter((pos: any, index: number) => {
-      const fuel = pos.fuelRaw || 0;
+    // Only show rows where fuel level CHANGES (no duplicate consecutive readings)
+    // Track mileage between changes instead of speed
+    const fuelChanges: any[] = [];
+    let lastFuelLevel = -1;
+    let lastOdometer = 0;
+    let lastChangeIndex = -1;
+
+    // First pass: identify positions where fuel level changes
+    positions.forEach((pos: any, index: number) => {
+      const fuel = pos.fuelRaw ?? 0;
+      const odometer = pos.odometerKm || 0;
       const isFirst = index === 0;
       const isLast = index === positions.length - 1;
-      const hasSignificantChange = Math.abs(fuel - lastFuel) >= 2;
-      const isEveryNth = index % 10 === 0;
-      
-      if (isFirst || isLast || hasSignificantChange || isEveryNth) {
-        lastFuel = fuel;
-        return true;
-      }
-      return false;
-    });
 
-    // Compute fuel changes BEFORE reversing (while still in chronological order)
-    const enriched = significantPositions.map((pos: any, index: number) => {
-      const prevPos = index > 0 ? significantPositions[index - 1] : null;
-      const fuelChange = prevPos ? (pos.fuelRaw || 0) - (prevPos.fuelRaw || 0) : 0;
+      if (isFirst || fuel !== lastFuelLevel || isLast) {
+        const fuelDelta = lastFuelLevel >= 0 ? fuel - lastFuelLevel : 0;
+        const kmDelta = (lastOdometer > 0 && odometer > 0) ? odometer - lastOdometer : 0;
 
-      let eventType = 'Lecture';
-      let isAnomaly = false;
-      if (fuelChange > 5) {
-        eventType = '⛽ Remplissage';
-      } else if (fuelChange < -15) {
-        eventType = '⚠️ Chute importante';
-        isAnomaly = true;
-      } else if (fuelChange < -5) {
-        eventType = '📉 Consommation';
-      } else if (fuelChange > 0) {
-        eventType = '📈 Augmentation';
-      }
-
-      let odometer = '-';
-      if (pos.odometerKm && pos.odometerKm > 0) {
-        odometer = `${pos.odometerKm.toLocaleString('fr-FR')} km`;
-      } else if (prevPos) {
-        const d = this.haversineDistance(prevPos.latitude, prevPos.longitude, pos.latitude, pos.longitude);
-        if (d > 0.1) {
-          odometer = `+${d.toFixed(1)} km`;
+        let eventType = 'Lecture';
+        let isAnomaly = false;
+        if (fuelDelta > 5) {
+          eventType = '⛽ Remplissage';
+        } else if (fuelDelta < -15) {
+          eventType = '⚠️ Chute importante';
+          isAnomaly = true;
+        } else if (fuelDelta < -5) {
+          eventType = '📉 Consommation';
+        } else if (fuelDelta > 0 && !isFirst) {
+          eventType = '📈 Augmentation';
         }
+
+        // Skip if same fuel level as last entry AND not first/last (dedup)
+        if (!isFirst && fuel === lastFuelLevel && !isLast) {
+          lastOdometer = odometer > 0 ? odometer : lastOdometer;
+          return;
+        }
+
+        const location = pos.address || `${pos.latitude.toFixed(4)}°, ${pos.longitude.toFixed(4)}°`;
+
+        fuelChanges.push({
+          time: new Date(pos.recordedAt).toLocaleString('fr-FR', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+          }),
+          fuelPercent: `${fuel}%`,
+          fuelChange: (fuelDelta !== 0 && !isFirst) ? `${fuelDelta > 0 ? '+' : ''}${fuelDelta}%` : '-',
+          eventType,
+          location,
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          mileage: kmDelta > 0 ? `${kmDelta.toLocaleString('fr-FR')} km` : '-',
+          odometer: odometer > 0 ? `${odometer.toLocaleString('fr-FR')} km` : '-',
+          isAnomaly
+        });
+
+        lastFuelLevel = fuel;
+        if (odometer > 0) lastOdometer = odometer;
+        lastChangeIndex = index;
+      } else {
+        // Same fuel level - just update odometer tracker
+        if (odometer > 0) lastOdometer = odometer;
       }
-
-      const location = pos.address || `${pos.latitude.toFixed(4)}°, ${pos.longitude.toFixed(4)}°`;
-
-      return {
-        time: new Date(pos.recordedAt).toLocaleString('fr-FR', {
-          day: '2-digit', month: '2-digit', year: 'numeric',
-          hour: '2-digit', minute: '2-digit'
-        }),
-        fuelPercent: `${pos.fuelRaw || 0}%`,
-        fuelChange: fuelChange !== 0 ? `${fuelChange > 0 ? '+' : ''}${fuelChange.toFixed(0)}%` : '-',
-        eventType,
-        location,
-        latitude: pos.latitude,
-        longitude: pos.longitude,
-        speed: pos.speedKph ? `${pos.speedKph.toFixed(0)} km/h` : '0 km/h',
-        odometer,
-        isAnomaly
-      };
     });
 
-    // NOW reverse to show most recent first (changes already computed correctly)
-    enriched.reverse();
-    this.tableData = enriched;
+    // Reverse to show most recent first
+    fuelChanges.reverse();
+    this.tableData = fuelChanges;
 
     // Fetch addresses asynchronously for positions without address
     this.enrichWithAddresses();
 
-    // Chart data - all positions for smooth graph
+    // Chart data - all positions for smooth fuel level graph
     this.chartData = positions.map((pos: any) => ({
       label: new Date(pos.recordedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
       value: pos.fuelRaw || 0
     }));
 
     // Statistics
-    const fuelValues = positions.map((p: any) => p.fuelRaw || 0).filter((f: number) => f > 0);
+    const fuelValues = positions.map((p: any) => p.fuelRaw ?? 0).filter((f: number) => f > 0);
     const avgFuel = fuelValues.length > 0 ? fuelValues.reduce((a: number, b: number) => a + b, 0) / fuelValues.length : 0;
+    const firstOdo = positions.find((p: any) => p.odometerKm > 0)?.odometerKm || 0;
+    const lastOdo = [...positions].reverse().find((p: any) => p.odometerKm > 0)?.odometerKm || 0;
+    const totalKm = (firstOdo > 0 && lastOdo > 0) ? lastOdo - firstOdo : 0;
+    const fuelStart = fuelValues.length > 0 ? fuelValues[0] : 0;
+    const fuelEnd = fuelValues.length > 0 ? fuelValues[fuelValues.length - 1] : 0;
     const refuels = this.tableData.filter((r: any) => r.eventType.includes('Remplissage')).length;
     const anomalies = this.tableData.filter((r: any) => r.isAnomaly).length;
 
     this.statisticsData = {
-      'Enregistrements': positions.length.toString(),
-      'Niveau moyen': `${avgFuel.toFixed(1)}%`,
-      'Niveau min': fuelValues.length > 0 ? `${Math.min(...fuelValues)}%` : 'N/A',
-      'Niveau max': fuelValues.length > 0 ? `${Math.max(...fuelValues)}%` : 'N/A',
-      'Remplissages': refuels.toString(),
-      'Alertes': anomalies.toString()
+      '⛽ Niveau début': `${fuelStart}%`,
+      '⛽ Niveau fin': `${fuelEnd}%`,
+      '📉 Variation': `${fuelEnd - fuelStart > 0 ? '+' : ''}${fuelEnd - fuelStart}%`,
+      '📏 Distance parcourue': totalKm > 0 ? `${totalKm.toLocaleString('fr-FR')} km` : 'N/A',
+      '⛽ Remplissages': refuels.toString(),
+      '⚠️ Alertes': anomalies.toString(),
+      '📊 Niveau moyen': `${avgFuel.toFixed(1)}%`,
+      '📈 Niveau max': fuelValues.length > 0 ? `${Math.max(...fuelValues)}%` : 'N/A',
+      '📉 Niveau min': fuelValues.length > 0 ? `${Math.min(...fuelValues)}%` : 'N/A'
     };
   }
 
