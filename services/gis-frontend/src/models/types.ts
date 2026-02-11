@@ -78,14 +78,26 @@ export interface VehicleDocument {
 
 export interface Employee {
   id: string;
-  companyId: string;
+  companyId?: string;
+  firstName: string;
+  lastName: string;
   name: string;
   email: string;
   phone: string;
-  role: 'driver' | 'accountant' | 'hr' | 'supervisor' | 'other';
-  assignedVehicles: string[];
+  employeeRole: 'driver' | 'accountant' | 'hr' | 'supervisor' | 'other';
+  role?: string;
+  assignedVehicles?: string[];
+  assignedVehicleId?: number;
+  assignedVehicleName?: string;
+  assignedVehiclePlate?: string;
+  assignedVehicleIds?: number[];
   status: 'active' | 'inactive';
-  hireDate: Date;
+  hireDate?: Date;
+  permitNumber?: string;
+  permitType?: string;
+  permitExpiry?: Date;
+  cin?: string;
+  dateOfBirth?: Date;
 }
 
 export interface GPSLocation {

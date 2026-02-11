@@ -82,11 +82,12 @@ export class EmployeesComponent implements OnInit {
 
   filterEmployees() {
     this.employees = this.allEmployees.filter(e => {
+      const fullName = e.name || ((e.firstName || '') + ' ' + (e.lastName || ''));
       const matchesSearch = !this.searchQuery || 
-        e.name.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+        fullName.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
         e.email.toLowerCase().includes(this.searchQuery.toLowerCase());
       const matchesStatus = !this.filterStatus || e.status === this.filterStatus;
-      const matchesRole = !this.filterRole || e.role === this.filterRole;
+      const matchesRole = !this.filterRole || (e.employeeRole || e.role) === this.filterRole;
       return matchesSearch && matchesStatus && matchesRole;
     });
   }
@@ -130,9 +131,35 @@ export class EmployeesComponent implements OnInit {
     this.selectedEmployee = null;
   }
 
-  saveEmployee(employeeData: Partial<Employee>) {
-    console.log('Saving employee:', employeeData);
-    this.closePopup();
+  saveEmployee(employeeData: any) {
+    if (this.selectedEmployee?.id) {
+      // Update
+      this.apiService.updateEmployee(parseInt(this.selectedEmployee.id), employeeData).subscribe({
+        next: () => {
+          this.closePopup();
+          this.loadEmployees();
+        },
+        error: (err: any) => console.error('Error updating employee:', err)
+      });
+    } else {
+      // Create
+      this.apiService.createEmployee(employeeData).subscribe({
+        next: () => {
+          this.closePopup();
+          this.loadEmployees();
+        },
+        error: (err: any) => console.error('Error creating employee:', err)
+      });
+    }
+  }
+
+  deleteEmployee(employee: Employee) {
+    if (confirm(`Supprimer ${employee.name || (employee.firstName + ' ' + employee.lastName)} ?`)) {
+      this.apiService.deleteEmployee(parseInt(employee.id)).subscribe({
+        next: () => this.loadEmployees(),
+        error: (err: any) => console.error('Error deleting employee:', err)
+      });
+    }
   }
 
   // Driver Score Detail Methods
@@ -145,8 +172,10 @@ export class EmployeesComponent implements OnInit {
     console.log('Driver score found:', this.detailDriverScore);
     
     // Get assigned vehicle
-    if (employee.assignedVehicles && employee.assignedVehicles.length > 0) {
-      this.detailAssignedVehicle = this.allVehicles.find(v => v.id === employee.assignedVehicles[0]) || null;
+    if (employee.assignedVehicleId) {
+      this.detailAssignedVehicle = this.allVehicles.find(v => v.id === String(employee.assignedVehicleId)) || null;
+    } else if (employee.assignedVehicles && employee.assignedVehicles.length > 0) {
+      this.detailAssignedVehicle = this.allVehicles.find(v => v.id === employee.assignedVehicles![0]) || null;
     } else {
       this.detailAssignedVehicle = null;
     }

@@ -22,15 +22,27 @@ import { Employee } from '../../models/types';
 
         <form class="popup-body" (ngSubmit)="onSubmit()">
           <div class="form-grid">
-            <div class="form-group full-width">
-              <label for="name">Nom complet *</label>
+            <div class="form-group">
+              <label for="firstName">Prénom *</label>
               <input
                 type="text"
-                id="name"
-                name="name"
-                [(ngModel)]="formData.name"
+                id="firstName"
+                name="firstName"
+                [(ngModel)]="formData.firstName"
                 required
-                placeholder="Ex: Mohamed Ben Ali"
+                placeholder="Ex: Mohamed"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="lastName">Nom *</label>
+              <input
+                type="text"
+                id="lastName"
+                name="lastName"
+                [(ngModel)]="formData.lastName"
+                required
+                placeholder="Ex: Ben Ali"
               />
             </div>
 
@@ -42,25 +54,24 @@ import { Employee } from '../../models/types';
                 name="email"
                 [(ngModel)]="formData.email"
                 required
-                placeholder="exemple@email.com"
+                placeholder="exemple&#64;email.com"
               />
             </div>
 
             <div class="form-group">
-              <label for="phone">Téléphone *</label>
+              <label for="phone">Téléphone</label>
               <input
                 type="tel"
                 id="phone"
                 name="phone"
                 [(ngModel)]="formData.phone"
-                required
                 placeholder="+216 50 123 456"
               />
             </div>
 
             <div class="form-group">
               <label for="role">Rôle *</label>
-              <select id="role" name="role" [(ngModel)]="formData.role" required>
+              <select id="role" name="role" [(ngModel)]="formData.employeeRole" required>
                 <option value="">Sélectionner un rôle</option>
                 <option value="driver">Chauffeur</option>
                 <option value="accountant">Comptable</option>
@@ -71,23 +82,90 @@ import { Employee } from '../../models/types';
             </div>
 
             <div class="form-group">
-              <label for="status">Statut *</label>
-              <select id="status" name="status" [(ngModel)]="formData.status" required>
-                <option value="">Sélectionner un statut</option>
-                <option value="active">Actif</option>
-                <option value="inactive">Inactif</option>
-              </select>
+              <label for="cin">CIN</label>
+              <input
+                type="text"
+                id="cin"
+                name="cin"
+                [(ngModel)]="formData.cin"
+                placeholder="Ex: 12345678"
+              />
             </div>
 
             <div class="form-group">
-              <label for="hireDate">Date d'embauche *</label>
+              <label for="dateOfBirth">Date de naissance</label>
+              <input
+                type="date"
+                id="dateOfBirth"
+                name="dateOfBirth"
+                [(ngModel)]="formData.dateOfBirth"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="hireDate">Date d'embauche</label>
               <input
                 type="date"
                 id="hireDate"
                 name="hireDate"
                 [(ngModel)]="formData.hireDate"
-                required
               />
+            </div>
+
+            <!-- Driver-specific fields -->
+            <div class="form-group full-width section-title" *ngIf="formData.employeeRole === 'driver'">
+              <label style="font-size: 12px; font-weight: 600; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">
+                Permis de conduire
+              </label>
+            </div>
+
+            <div class="form-group" *ngIf="formData.employeeRole === 'driver'">
+              <label for="permitNumber">N° Permis</label>
+              <input
+                type="text"
+                id="permitNumber"
+                name="permitNumber"
+                [(ngModel)]="formData.permitNumber"
+                placeholder="Ex: 123456"
+              />
+            </div>
+
+            <div class="form-group" *ngIf="formData.employeeRole === 'driver'">
+              <label for="permitType">Catégorie Permis</label>
+              <select id="permitType" name="permitType" [(ngModel)]="formData.permitType">
+                <option value="">Sélectionner</option>
+                <option value="B">B - Véhicule léger</option>
+                <option value="C">C - Poids lourd</option>
+                <option value="D">D - Transport en commun</option>
+                <option value="CE">CE - Super poids lourd</option>
+                <option value="DE">DE - Transport en commun + remorque</option>
+              </select>
+            </div>
+
+            <div class="form-group" *ngIf="formData.employeeRole === 'driver'">
+              <label for="permitExpiry">Date d'expiration du permis</label>
+              <input
+                type="date"
+                id="permitExpiry"
+                name="permitExpiry"
+                [(ngModel)]="formData.permitExpiry"
+              />
+            </div>
+
+            <div class="form-group" *ngIf="formData.employeeRole === 'driver'">
+              <label for="status">Statut</label>
+              <select id="status" name="status" [(ngModel)]="formData.status">
+                <option value="active">Actif</option>
+                <option value="inactive">Inactif</option>
+              </select>
+            </div>
+
+            <div class="form-group" *ngIf="formData.employeeRole !== 'driver'">
+              <label for="status">Statut</label>
+              <select id="status2" name="status2" [(ngModel)]="formData.status">
+                <option value="active">Actif</option>
+                <option value="inactive">Inactif</option>
+              </select>
             </div>
           </div>
 
@@ -304,19 +382,30 @@ export class EmployeePopupComponent implements OnInit {
   @Output() closed = new EventEmitter<void>();
   @Output() saved = new EventEmitter<Partial<Employee>>();
 
-  formData: Partial<Employee> = {
-    name: '',
+  formData: any = {
+    firstName: '',
+    lastName: '',
     email: '',
     phone: '',
-    role: 'driver',
+    employeeRole: 'driver',
     status: 'active',
-    hireDate: new Date(),
-    assignedVehicles: []
+    cin: '',
+    permitNumber: '',
+    permitType: '',
+    permitExpiry: '',
+    dateOfBirth: '',
+    hireDate: ''
   };
 
   ngOnInit() {
     if (this.employee) {
-      this.formData = { ...this.employee };
+      this.formData = {
+        ...this.employee,
+        permitExpiry: this.employee.permitExpiry ? new Date(this.employee.permitExpiry).toISOString().split('T')[0] : '',
+        dateOfBirth: this.employee.dateOfBirth ? new Date(this.employee.dateOfBirth).toISOString().split('T')[0] : '',
+        hireDate: this.employee.hireDate ? new Date(this.employee.hireDate).toISOString().split('T')[0] : '',
+        employeeRole: this.employee.employeeRole || this.employee.role || 'driver'
+      };
     }
   }
 
