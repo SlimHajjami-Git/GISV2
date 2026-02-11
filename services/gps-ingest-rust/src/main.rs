@@ -172,6 +172,25 @@ async fn main() -> Result<()> {
 
             info!("GPS Ingest service running in WRITE-ONLY mode (API served by .NET)");
 
+            // Spawn a minimal health HTTP server so Docker/monitoring can check liveness
+            let api_port: u16 = std::env::var("API_PORT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(3000);
+            tokio::spawn(async move {
+                let app = axum::Router::new()
+                    .route("/api/health", axum::routing::get(|| async { "OK" }))
+                    .route("/health", axum::routing::get(|| async { "OK" }));
+                let addr = std::net::SocketAddr::from(([0, 0, 0, 0], api_port));
+                info!("Health endpoint listening on port {}", api_port);
+                if let Err(e) = axum::serve(
+                    tokio::net::TcpListener::bind(addr).await.unwrap(),
+                    app,
+                ).await {
+                    error!(?e, "Health HTTP server failed");
+                }
+            });
+
             let app_config = config::load_config("config/listeners.yaml")?;
             if app_config.listeners.is_empty() {
                 warn!("No listeners configured; service will idle");
