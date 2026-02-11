@@ -103,6 +103,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   dragOffset = { x: 0, y: 0 };
 
   refreshInterval: any;
+  stalenessInterval: any;
   signalRSubscription: Subscription | null = null;
   connectionStatus = 'Disconnected';
 
@@ -148,6 +149,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.loadData();
       this.initSignalR();
       this.startAutoRefresh();
+      this.startStalenessCheck();
     });
   }
 
@@ -159,6 +161,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   ngOnDestroy() {
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
+    }
+    if (this.stalenessInterval) {
+      clearInterval(this.stalenessInterval);
     }
     if (this.signalRSubscription) {
       this.signalRSubscription.unsubscribe();
@@ -798,18 +803,58 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   startAutoRefresh() {
-    // Auto-refresh is now a fallback for SignalR disconnection
-    // SignalR push handles real-time updates with adaptive intervals:
-    // - Moving vehicles: 30 seconds
-    // - Stopped vehicles: 2 minutes  
-    // - Parked vehicles (ignition off): 10 minutes
-    // This polling is just a safety net every 5 minutes
+    // Fallback polling every 60 seconds when SignalR is disconnected
     this.refreshInterval = setInterval(() => {
       if (this.connectionStatus !== 'Connected') {
-        // Only poll when SignalR is not connected
         this.loadData();
       }
-    }, 300000); // 5 minutes fallback
+    }, 60000); // 1 minute fallback
+  }
+
+  startStalenessCheck() {
+    // Every 30 seconds, check if any vehicle's last position is stale
+    // If a vehicle was "moving" but no update for 2+ minutes → mark stopped
+    // If no update for 5+ minutes → mark offline
+    this.stalenessInterval = setInterval(() => {
+      const now = new Date().getTime();
+      let changed = false;
+
+      this.vehicles.forEach((vehicle: any) => {
+        const lastUpdate = vehicle.lastCommunication || vehicle.lastRecordedAt;
+        if (!lastUpdate) return;
+
+        const lastTime = new Date(lastUpdate).getTime();
+        const ageMs = now - lastTime;
+        const ageMinutes = ageMs / 60000;
+
+        if (ageMinutes > 5 && vehicle.isOnline) {
+          // No data for 5+ minutes → offline
+          vehicle.isOnline = false;
+          vehicle.isMoving = false;
+          vehicle.currentSpeed = 0;
+          changed = true;
+        } else if (ageMinutes > 2 && vehicle.isMoving) {
+          // Was moving but no update for 2+ minutes → stopped
+          vehicle.isMoving = false;
+          vehicle.currentSpeed = 0;
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        this.ngZone.run(() => {
+          this.updateStats();
+          this.doApplyFilters();
+          this.cdr.detectChanges();
+          // Update markers to reflect new status colors
+          this.vehicles.forEach((v: any) => {
+            if (this.vehicleMarkers.has(v.id?.toString())) {
+              this.updateSingleVehicleMarker(v);
+            }
+          });
+        });
+      }
+    }, 30000); // Check every 30 seconds
   }
 
   refresh() {
