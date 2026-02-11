@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Notifications.Events;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -27,6 +28,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
 {
     private readonly IGisDbContext _context;
     private readonly IGpsHubService _gpsHubService;
+    private readonly IPublisher _publisher;
     private readonly ILogger<BroadcastPositionCommandHandler> _logger;
 
     private const double SPEED_THRESHOLD = 10.0; // km/h threshold for "moving"
@@ -37,13 +39,19 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
     private static readonly TimeSpan _cacheTtl = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan _dedupWindow = TimeSpan.FromSeconds(2);
 
+    // Speed alert cooldown: don't spam notifications for the same vehicle
+    private static readonly ConcurrentDictionary<int, DateTime> _speedAlertCooldown = new();
+    private static readonly TimeSpan _speedAlertCooldownPeriod = TimeSpan.FromMinutes(5);
+
     public BroadcastPositionCommandHandler(
         IGisDbContext context,
         IGpsHubService gpsHubService,
+        IPublisher publisher,
         ILogger<BroadcastPositionCommandHandler> logger)
     {
         _context = context;
         _gpsHubService = gpsHubService;
+        _publisher = publisher;
         _logger = logger;
     }
 
@@ -146,6 +154,26 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             if (cached.CompanyId > 0)
             {
                 await _gpsHubService.SendAlertAsync(cached.CompanyId, alert);
+            }
+
+            // Publish speed alert notification (with cooldown per vehicle)
+            if (request.AlertType == "overspeed" && cached.VehicleId.HasValue && speed > 0)
+            {
+                var vehicleId = cached.VehicleId.Value;
+                var shouldNotify = true;
+                if (_speedAlertCooldown.TryGetValue(vehicleId, out var lastAlert))
+                {
+                    shouldNotify = (now - lastAlert) > _speedAlertCooldownPeriod;
+                }
+
+                if (shouldNotify)
+                {
+                    _speedAlertCooldown[vehicleId] = now;
+                    _ = _publisher.Publish(new SpeedAlertNotificationEvent(
+                        cached.CompanyId, cached.VehicleId, cached.VehicleName, cached.Plate,
+                        speed, request.Latitude, request.Longitude, request.RecordedAt
+                    ), ct);
+                }
             }
         }
 
