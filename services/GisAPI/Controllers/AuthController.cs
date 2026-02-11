@@ -4,6 +4,7 @@ using MediatR;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Application.Features.Auth.Commands.Login;
 using GisAPI.Application.Features.Auth.Commands.Register;
+using GisAPI.Application.Features.Auth.Commands.RefreshToken;
 using GisAPI.Domain.Entities;
 
 namespace GisAPI.Controllers;
@@ -26,6 +27,20 @@ public class AuthController : ControllerBase
     {
         var result = await _mediator.Send(new LoginCommand(request.Email, request.Password));
         return Ok(result);
+    }
+
+    [HttpPost("refresh")]
+    public async Task<ActionResult<LoginResponse>> Refresh([FromBody] RefreshRequest request)
+    {
+        try
+        {
+            var result = await _mediator.Send(new RefreshTokenCommand(request.Token, request.RefreshToken));
+            return Ok(result);
+        }
+        catch (GisAPI.Domain.Exceptions.DomainException ex)
+        {
+            return Unauthorized(new { message = ex.Message });
+        }
     }
 
     [HttpPost("register")]
@@ -154,6 +169,7 @@ public class AuthController : ControllerBase
 
 // Request DTOs for AuthController
 public record LoginRequest(string Email, string Password);
+public record RefreshRequest(string Token, string RefreshToken);
 public record RegisterRequest(
     string Email,
     string Password,

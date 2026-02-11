@@ -23,7 +23,7 @@ public class JwtService : IJwtService
         var key = _configuration["Jwt:Key"] ?? "DefaultSecretKeyForDevelopment123!";
         var issuer = _configuration["Jwt:Issuer"] ?? "GisAPI";
         var audience = _configuration["Jwt:Audience"] ?? "GisAPI";
-        var expiryMinutes = int.Parse(_configuration["Jwt:ExpiryMinutes"] ?? "1440");
+        var expiryMinutes = int.Parse(_configuration["Jwt:ExpiryMinutes"] ?? "60");
 
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
@@ -67,6 +67,40 @@ public class JwtService : IJwtService
         using var rng = RandomNumberGenerator.Create();
         rng.GetBytes(randomNumber);
         return Convert.ToBase64String(randomNumber);
+    }
+
+    public ClaimsPrincipal? ValidateExpiredToken(string token)
+    {
+        var key = _configuration["Jwt:Key"] ?? "DefaultSecretKeyForDevelopment123!";
+        var issuer = _configuration["Jwt:Issuer"] ?? "GisAPI";
+        var audience = _configuration["Jwt:Audience"] ?? "GisAPI";
+
+        var tokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateAudience = true,
+            ValidAudience = audience,
+            ValidateIssuer = true,
+            ValidIssuer = issuer,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)),
+            ValidateLifetime = false // Allow expired tokens for refresh
+        };
+
+        try
+        {
+            var principal = new JwtSecurityTokenHandler()
+                .ValidateToken(token, tokenValidationParameters, out var securityToken);
+
+            if (securityToken is not JwtSecurityToken jwtToken ||
+                !jwtToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
+                return null;
+
+            return principal;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
 

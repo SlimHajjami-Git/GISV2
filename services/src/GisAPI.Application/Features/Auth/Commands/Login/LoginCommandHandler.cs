@@ -49,10 +49,26 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
         }
 
         user.LastLoginAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync(ct);
 
         var token = _jwtService.GenerateToken(user);
-        var refreshToken = _jwtService.GenerateRefreshToken();
+        var refreshTokenStr = _jwtService.GenerateRefreshToken();
+
+        // Revoke any existing active refresh tokens for this user
+        var existingTokens = _context.RefreshTokens
+            .Where(rt => rt.UserId == user.Id && rt.RevokedAt == null && rt.ExpiresAt > DateTime.UtcNow);
+        foreach (var existing in existingTokens)
+            existing.RevokedAt = DateTime.UtcNow;
+
+        // Save new refresh token to DB
+        var refreshTokenEntity = new GisAPI.Domain.Entities.RefreshToken
+        {
+            Token = refreshTokenStr,
+            UserId = user.Id,
+            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.RefreshTokens.Add(refreshTokenEntity);
+        await _context.SaveChangesAsync(ct);
 
         // Build subscription features
         var subscriptionFeatures = BuildSubscriptionFeatures(user.Societe?.SubscriptionType);
@@ -71,7 +87,7 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
 
         return new LoginResponse(
             token,
-            refreshToken,
+            refreshTokenStr,
             new UserDto(
                 user.Id,
                 user.FirstName,

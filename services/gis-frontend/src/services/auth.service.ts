@@ -132,6 +132,7 @@ export class AuthService {
         user: mockUser
       };
       localStorage.setItem('auth_token', mockResponse.token);
+      localStorage.setItem('refresh_token', mockResponse.refreshToken);
       localStorage.setItem('auth_user', JSON.stringify(mockUser));
       this.currentUser$.next(mockUser);
       return of(mockUser);
@@ -165,6 +166,7 @@ export class AuthService {
         console.log('AuthService.login - Mapped subscriptionFeatures:', user.subscriptionFeatures);
         console.log('AuthService.login - User permissions:', user.permissions);
         localStorage.setItem('auth_token', response.token);
+        localStorage.setItem('refresh_token', response.refreshToken);
         localStorage.setItem('auth_user', JSON.stringify(user));
         this.currentUser$.next(user);
         console.log('AuthService.login - User mapped:', user);
@@ -217,6 +219,7 @@ export class AuthService {
           assignedVehicleIds: response.user.assignedVehicleIds ?? null
         };
         localStorage.setItem('auth_token', response.token);
+        localStorage.setItem('refresh_token', response.refreshToken);
         localStorage.setItem('auth_user', JSON.stringify(user));
         this.currentUser$.next(user);
         return user;
@@ -231,6 +234,7 @@ export class AuthService {
   logout() {
     // Clear all auth-related storage
     localStorage.removeItem('auth_token');
+    localStorage.removeItem('refresh_token');
     localStorage.removeItem('auth_user');
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_user');
@@ -238,7 +242,33 @@ export class AuthService {
   }
 
   isAuthenticated(): boolean {
-    return !!localStorage.getItem('auth_token');
+    const token = localStorage.getItem('auth_token');
+    if (!token) return false;
+    // Mock token doesn't expire
+    if (token === 'mock-jwt-token-for-testing') return true;
+    return !this.isTokenExpired(token);
+  }
+
+  isTokenExpiringSoon(): boolean {
+    const token = localStorage.getItem('auth_token');
+    if (!token || token === 'mock-jwt-token-for-testing') return false;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const exp = payload.exp * 1000;
+      // Consider "expiring soon" if less than 5 minutes remain
+      return (exp - Date.now()) < 5 * 60 * 1000;
+    } catch {
+      return true;
+    }
+  }
+
+  private isTokenExpired(token: string): boolean {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.exp * 1000 < Date.now();
+    } catch {
+      return true;
+    }
   }
 
   getCurrentUser(): Observable<AuthUser | null> {
@@ -251,5 +281,44 @@ export class AuthService {
 
   getToken(): string | null {
     return localStorage.getItem('auth_token');
+  }
+
+  getRefreshToken(): string | null {
+    return localStorage.getItem('refresh_token');
+  }
+
+  refreshAccessToken(): Observable<AuthResponse | null> {
+    const token = localStorage.getItem('auth_token');
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!token || !refreshToken) return of(null);
+
+    return this.http.post<AuthResponse>(`${this.API_URL}/auth/refresh`, { token, refreshToken }).pipe(
+      tap(response => {
+        const user: AuthUser = {
+          id: response.user.id?.toString() || '',
+          name: `${response.user.firstName} ${response.user.lastName}`.trim(),
+          email: response.user.email,
+          phone: response.user.phone,
+          roles: [response.user.roleName],
+          permissions: response.user.permissions || {},
+          companyId: response.user.companyId.toString(),
+          companyName: response.user.companyName,
+          isCompanyAdmin: response.user.isCompanyAdmin,
+          isSystemAdmin: response.user.isSystemAdmin,
+          subscriptionFeatures: response.user.subscriptionFeatures,
+          assignedVehicleIds: response.user.assignedVehicleIds ?? null
+        };
+        localStorage.setItem('auth_token', response.token);
+        localStorage.setItem('refresh_token', response.refreshToken);
+        localStorage.setItem('auth_user', JSON.stringify(user));
+        this.currentUser$.next(user);
+        console.log('AuthService - Token refreshed successfully');
+      }),
+      catchError(err => {
+        console.error('AuthService - Token refresh failed:', err);
+        this.logout();
+        return of(null);
+      })
+    );
   }
 }

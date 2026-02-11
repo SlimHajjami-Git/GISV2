@@ -1,17 +1,82 @@
-import { HttpInterceptorFn } from '@angular/common/http';
+import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
+import { inject } from '@angular/core';
+import { Router } from '@angular/router';
+import { catchError, switchMap, throwError } from 'rxjs';
+import { AuthService } from './auth.service';
+
+let isRefreshing = false;
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
+  const authService = inject(AuthService);
+  const router = inject(Router);
+
+  // Skip auth header for auth endpoints (login, register, refresh)
+  if (req.url.includes('/auth/login') || req.url.includes('/auth/register') || req.url.includes('/auth/refresh')) {
+    return next(req);
+  }
+
   // Check both auth_token (user app) and admin_token (admin panel)
   const token = localStorage.getItem('auth_token') || localStorage.getItem('admin_token');
-  
-  if (token) {
-    const clonedRequest = req.clone({
-      setHeaders: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-    return next(clonedRequest);
+
+  // Proactive refresh: if token is expiring soon, refresh before sending the request
+  if (token && authService.isTokenExpiringSoon() && !isRefreshing) {
+    isRefreshing = true;
+    return authService.refreshAccessToken().pipe(
+      switchMap(response => {
+        isRefreshing = false;
+        const newToken = localStorage.getItem('auth_token');
+        const clonedRequest = req.clone({
+          setHeaders: { Authorization: `Bearer ${newToken}` }
+        });
+        return next(clonedRequest);
+      }),
+      catchError(err => {
+        isRefreshing = false;
+        return next(req.clone({ setHeaders: { Authorization: `Bearer ${token}` } }));
+      })
+    );
   }
-  
-  return next(req);
+
+  let request = req;
+  if (token) {
+    request = req.clone({
+      setHeaders: { Authorization: `Bearer ${token}` }
+    });
+  }
+
+  return next(request).pipe(
+    catchError((error: HttpErrorResponse) => {
+      if (error.status === 401 && !req.url.includes('/auth/')) {
+        // Token expired — try to refresh
+        if (!isRefreshing) {
+          isRefreshing = true;
+          return authService.refreshAccessToken().pipe(
+            switchMap(response => {
+              isRefreshing = false;
+              if (response) {
+                const newToken = localStorage.getItem('auth_token');
+                const retryRequest = req.clone({
+                  setHeaders: { Authorization: `Bearer ${newToken}` }
+                });
+                return next(retryRequest);
+              }
+              // Refresh failed — force logout
+              authService.logout();
+              router.navigate(['/login']);
+              return throwError(() => error);
+            }),
+            catchError(refreshError => {
+              isRefreshing = false;
+              authService.logout();
+              router.navigate(['/login']);
+              return throwError(() => refreshError);
+            })
+          );
+        }
+        // Already refreshing, just fail
+        return throwError(() => error);
+      }
+      return throwError(() => error);
+    })
+  );
 };

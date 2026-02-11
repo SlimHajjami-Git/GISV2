@@ -58,6 +58,9 @@ public interface IGisDbContext
     // Notifications
     DbSet<Notification> Notifications { get; }
 
+    // Auth
+    DbSet<RefreshToken> RefreshTokens { get; }
+
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 
