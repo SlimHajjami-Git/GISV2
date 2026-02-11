@@ -101,7 +101,7 @@ export interface GPSLocation {
 export interface GPSAlert {
   id: string;
   vehicleId: string;
-  type: 'speeding' | 'stopped' | 'geofence' | 'other';
+  type: 'speeding' | 'stopped' | 'geofence' | 'maintenance' | 'other';
   message: string;
   timestamp: Date;
   resolved: boolean;

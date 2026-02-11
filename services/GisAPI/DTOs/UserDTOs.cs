@@ -1,12 +1,15 @@
 namespace GisAPI.DTOs;
 
+// UserListDto is now in GisAPI.Application.Features.Users namespace
+
 public record CreateUserRequest(
     string FirstName,
     string LastName,
     string Email,
     string? Phone,
     string Password,
-    int RoleId
+    int RoleId,
+    int[]? AssignedVehicleIds = null
 );
 
 public record UpdateUserRequest(
@@ -15,20 +18,8 @@ public record UpdateUserRequest(
     string Email,
     string? Phone,
     int? RoleId,
-    string? Status
-);
-
-public record UserListDto(
-    int Id,
-    string Name,
-    string Email,
-    string? Phone,
-    int RoleId,
-    string? RoleName,
-    bool IsCompanyAdmin,
-    string Status,
-    DateTime CreatedAt,
-    DateTime? LastLoginAt
+    string? Status,
+    int[]? AssignedVehicleIds = null
 );
 
 public record UserSettingsDto(

@@ -14,6 +14,8 @@ public record GetTemplatePartsQuery(int TemplateId) : IQuery<List<TemplatePartDt
 
 public record GetCurrentVehicleMileageQuery(int VehicleId) : IQuery<VehicleMileageDto>;
 
+public record GetMaintenanceLogsQuery(int VehicleId, int? TemplateId = null) : IQuery<List<MaintenanceLogDto>>;
+
 // DTOs
 public record VehicleScheduleDto(
     int Id,
@@ -67,6 +69,18 @@ public record VehicleMileageDto(
     int CurrentKm,
     string Source,
     DateTime? LastGpsUpdate
+);
+
+public record MaintenanceLogDto(
+    int Id,
+    int VehicleId,
+    int TemplateId,
+    string TemplateName,
+    DateTime DoneDate,
+    int DoneKm,
+    decimal ActualCost,
+    string? SupplierName,
+    string? Notes
 );
 
 

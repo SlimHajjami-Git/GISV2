@@ -2,6 +2,7 @@ using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Exceptions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace GisAPI.Application.Features.Auth.Commands.Login;
 
@@ -10,15 +11,18 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
     private readonly IGisDbContext _context;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtService _jwtService;
+    private readonly ILogger<LoginCommandHandler> _logger;
 
     public LoginCommandHandler(
         IGisDbContext context,
         IPasswordHasher passwordHasher,
-        IJwtService jwtService)
+        IJwtService jwtService,
+        ILogger<LoginCommandHandler> logger)
     {
         _context = context;
         _passwordHasher = passwordHasher;
         _jwtService = jwtService;
+        _logger = logger;
     }
 
     public async Task<LoginResponse> Handle(LoginCommand request, CancellationToken ct)
@@ -29,21 +33,20 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
             .FirstOrDefaultAsync(u => u.Email.ToLower() == request.Email.ToLower(), ct);
 
         if (user == null)
-            throw new NotFoundException("User", request.Email);
-        
-        // Debug: Log user found
-        Console.WriteLine($"[Login] Found user: {user.Email}, CompanyId: {user.CompanyId}, SubscriptionTypeId: {user.Societe?.SubscriptionTypeId}");
-        
+            throw new DomainException("Email ou mot de passe incorrect");
+
+        if (!_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
+            throw new DomainException("Email ou mot de passe incorrect");
+
+        if (user.Status != "active")
+            throw new DomainException("Compte désactivé");
+
         // Explicitly load SubscriptionType if Societe has one
         if (user.Societe?.SubscriptionTypeId != null)
         {
             user.Societe.SubscriptionType = await _context.SubscriptionTypes
                 .FirstOrDefaultAsync(st => st.Id == user.Societe.SubscriptionTypeId, ct);
-            Console.WriteLine($"[Login] Loaded SubscriptionType: {user.Societe.SubscriptionType?.Name ?? "NULL"}");
         }
-
-        if (!_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
-            throw new DomainException("Invalid credentials");
 
         user.LastLoginAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(ct);
@@ -51,46 +54,20 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
         var token = _jwtService.GenerateToken(user);
         var refreshToken = _jwtService.GenerateRefreshToken();
 
-        // Build subscription features from company's subscription type
-        SubscriptionFeaturesDto? subscriptionFeatures = null;
-        var subType = user.Societe?.SubscriptionType;
-        
-        // Debug logging
-        Console.WriteLine($"[Login] User: {user.Email}, CompanyId: {user.CompanyId}");
-        Console.WriteLine($"[Login] Societe: {user.Societe?.Name ?? "NULL"}, SubscriptionTypeId: {user.Societe?.SubscriptionTypeId}");
-        Console.WriteLine($"[Login] SubscriptionType: {subType?.Name ?? "NULL"}, Id: {subType?.Id}");
-        if (subType != null)
+        // Build subscription features
+        var subscriptionFeatures = BuildSubscriptionFeatures(user.Societe?.SubscriptionType);
+
+        // Load assigned vehicle IDs for non-admin users
+        int[]? assignedVehicleIds = null;
+        if (user.Role != null && !user.Role.IsCompanyAdmin && !user.Role.IsSystemRole)
         {
-            subscriptionFeatures = new SubscriptionFeaturesDto(
-                GpsTracking: subType.GpsTracking,
-                GpsInstallation: subType.GpsInstallation,
-                ApiAccess: subType.ApiAccess,
-                AdvancedReports: subType.AdvancedReports,
-                RealTimeAlerts: subType.RealTimeAlerts,
-                HistoryPlayback: subType.HistoryPlayback,
-                FuelAnalysis: subType.FuelAnalysis,
-                DrivingBehavior: subType.DrivingBehavior,
-                ModuleDashboard: subType.ModuleDashboard,
-                ModuleMonitoring: subType.ModuleMonitoring,
-                ModuleVehicles: subType.ModuleVehicles,
-                ModuleEmployees: subType.ModuleEmployees,
-                ModuleGeofences: subType.ModuleGeofences,
-                ModuleMaintenance: subType.ModuleMaintenance,
-                ModuleCosts: subType.ModuleCosts,
-                ModuleReports: subType.ModuleReports,
-                ModuleSettings: subType.ModuleSettings,
-                ModuleUsers: subType.ModuleUsers,
-                ModuleSuppliers: subType.ModuleSuppliers,
-                ModuleDocuments: subType.ModuleDocuments,
-                ModuleAccidents: subType.ModuleAccidents,
-                ModuleFleetManagement: subType.ModuleFleetManagement,
-                MaxVehicles: subType.MaxVehicles,
-                MaxUsers: subType.MaxUsers,
-                MaxGpsDevices: subType.MaxGpsDevices,
-                MaxGeofences: subType.MaxGeofences,
-                HistoryRetentionDays: subType.HistoryRetentionDays
-            );
+            assignedVehicleIds = await _context.UserVehicles
+                .Where(uv => uv.UserId == user.Id)
+                .Select(uv => uv.VehicleId)
+                .ToArrayAsync(ct);
         }
+
+        _logger.LogInformation("User {Email} logged in (CompanyId: {CompanyId})", user.Email, user.CompanyId);
 
         return new LoginResponse(
             token,
@@ -109,8 +86,45 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
                 user.CompanyId,
                 user.Societe?.Name ?? "",
                 user.Role?.Permissions,
-                subscriptionFeatures
+                subscriptionFeatures,
+                assignedVehicleIds
             )
+        );
+    }
+
+    private static SubscriptionFeaturesDto? BuildSubscriptionFeatures(
+        GisAPI.Domain.Entities.SubscriptionType? subType)
+    {
+        if (subType == null) return null;
+
+        return new SubscriptionFeaturesDto(
+            GpsTracking: subType.GpsTracking,
+            GpsInstallation: subType.GpsInstallation,
+            ApiAccess: subType.ApiAccess,
+            AdvancedReports: subType.AdvancedReports,
+            RealTimeAlerts: subType.RealTimeAlerts,
+            HistoryPlayback: subType.HistoryPlayback,
+            FuelAnalysis: subType.FuelAnalysis,
+            DrivingBehavior: subType.DrivingBehavior,
+            ModuleDashboard: subType.ModuleDashboard,
+            ModuleMonitoring: subType.ModuleMonitoring,
+            ModuleVehicles: subType.ModuleVehicles,
+            ModuleEmployees: subType.ModuleEmployees,
+            ModuleGeofences: subType.ModuleGeofences,
+            ModuleMaintenance: subType.ModuleMaintenance,
+            ModuleCosts: subType.ModuleCosts,
+            ModuleReports: subType.ModuleReports,
+            ModuleSettings: subType.ModuleSettings,
+            ModuleUsers: subType.ModuleUsers,
+            ModuleSuppliers: subType.ModuleSuppliers,
+            ModuleDocuments: subType.ModuleDocuments,
+            ModuleAccidents: subType.ModuleAccidents,
+            ModuleFleetManagement: subType.ModuleFleetManagement,
+            MaxVehicles: subType.MaxVehicles,
+            MaxUsers: subType.MaxUsers,
+            MaxGpsDevices: subType.MaxGpsDevices,
+            MaxGeofences: subType.MaxGeofences,
+            HistoryRetentionDays: subType.HistoryRetentionDays
         );
     }
 }

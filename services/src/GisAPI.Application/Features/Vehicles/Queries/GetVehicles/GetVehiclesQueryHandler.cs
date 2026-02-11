@@ -20,6 +20,8 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
     public async Task<PaginatedList<VehicleDto>> Handle(GetVehiclesQuery request, CancellationToken ct)
     {
         var companyId = _tenantService.CompanyId ?? 0;
+        var userId = _tenantService.UserId ?? 0;
+        var isAdmin = _tenantService.UserRoles.Any(r => r == "company_admin" || r == "admin" || r == "super_admin" || r == "system_admin");
 
         var query = _context.Vehicles
             .AsNoTracking()
@@ -28,6 +30,25 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
             .Include(v => v.AssignedSupervisor)
             .Include(v => v.GpsDevice)
             .AsQueryable();
+
+        // Non-admin users only see their assigned vehicles
+        if (!isAdmin && userId > 0)
+        {
+            var assignedVehicleIds = await _context.UserVehicles
+                .Where(uv => uv.UserId == userId)
+                .Select(uv => uv.VehicleId)
+                .ToListAsync(ct);
+
+            if (assignedVehicleIds.Any())
+            {
+                query = query.Where(v => assignedVehicleIds.Contains(v.Id));
+            }
+            else
+            {
+                // No vehicles assigned = see nothing
+                query = query.Where(v => false);
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(request.SearchTerm))
         {

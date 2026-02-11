@@ -24,6 +24,11 @@ interface InvoiceLine {
   description: string;
   price: number | null;
   isCustom: boolean;
+  isNewTemplate: boolean;
+  newTemplateName: string;
+  newTemplateCategory: string;
+  newTemplateIntervalKm: number | null;
+  newTemplateIntervalMonths: number | null;
 }
 
 interface VehicleMaintenanceStatus {
@@ -43,6 +48,22 @@ interface MaintenanceItem {
   nextDueKm: number | null;
   status: 'ok' | 'upcoming' | 'due' | 'overdue';
   kmUntilDue: number | null;
+}
+
+interface FlatRow {
+  vehicleId: string;
+  vehicleName: string;
+  vehiclePlate: string;
+  currentMileage: number;
+  templateId: string;
+  templateName: string;
+  scheduleId: number | null;
+  lastDoneDate: Date | null;
+  lastDoneKm: number | null;
+  nextDueKm: number | null;
+  status: 'ok' | 'upcoming' | 'due' | 'overdue';
+  kmUntilDue: number | null;
+  progressPercent: number;
 }
 
 @Component({
@@ -65,932 +86,598 @@ interface MaintenanceItem {
   ],
   template: `
     <app-layout>
-      <div class="maintenance-page">
-        <!-- Header -->
-        <div class="page-header">
-          <div class="header-content">
-            <h1>🔧 Gestion des Entretiens</h1>
-            <p>Planifiez et suivez les entretiens de votre flotte</p>
+      <div class="page">
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+          <div class="search-wrapper">
+            <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input type="text" class="search-input" placeholder="Rechercher vehicule ou entretien..." [(ngModel)]="searchQuery" (input)="rebuildRows()">
           </div>
-          <div class="header-tabs">
-            <button class="tab-btn" [class.active]="activeTab === 'templates'" (click)="activeTab = 'templates'">
-              📋 Modèles
-            </button>
-            <button class="tab-btn" [class.active]="activeTab === 'schedule'" (click)="activeTab = 'schedule'">
-              📅 Planning
-            </button>
+          <select class="filter-select" [(ngModel)]="statusFilter" (change)="rebuildRows()">
+            <option value="">Tous les statuts</option>
+            <option value="overdue">En retard</option>
+            <option value="due">A faire</option>
+            <option value="upcoming">A venir</option>
+            <option value="ok">OK</option>
+          </select>
+          <button class="btn-assign" (click)="openAssignPanel()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+            Affecter
+          </button>
+          <button class="btn-add" (click)="openTemplateForm()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nouveau modele
+          </button>
+        </div>
+
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+          <div class="stat-item">
+            <div class="stat-icon info"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></div>
+            <div class="stat-content"><span class="stat-value">{{ templates.length }}</span><span class="stat-label">Modeles</span></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-icon danger"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+            <div class="stat-content"><span class="stat-value">{{ countByStatus('overdue') + countByStatus('due') }}</span><span class="stat-label">Urgents</span></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-icon warning"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+            <div class="stat-content"><span class="stat-value">{{ countByStatus('upcoming') }}</span><span class="stat-label">A venir</span></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-icon active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+            <div class="stat-content"><span class="stat-value">{{ countByStatus('ok') }}</span><span class="stat-label">OK</span></div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-icon vehicles"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
+            <div class="stat-content"><span class="stat-value">{{ vehicleSchedules.length }}</span><span class="stat-label">Vehicules</span></div>
           </div>
         </div>
 
-        <!-- TAB 1: Modèles -->
-        <div class="tab-content" *ngIf="activeTab === 'templates'" @fadeIn>
-          <div class="filter-bar">
-            <div class="search-wrapper">
-              <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-              </svg>
-              <input type="text" class="search-input" placeholder="Rechercher..." [(ngModel)]="searchQuery" (input)="filterTemplates()">
-            </div>
-            <select class="filter-select" [(ngModel)]="categoryFilter" (change)="filterTemplates()">
-              <option value="">Toutes catégories</option>
-              <option *ngFor="let cat of categories" [value]="cat">{{ cat }}</option>
-            </select>
-            <button class="btn-add" (click)="openTemplateForm()">+ Nouveau modèle</button>
+        <!-- Template Pills -->
+        <div class="pills-bar">
+          <div class="pills-scroll">
+            <button class="pill" [class.active]="!templateFilter" (click)="templateFilter = ''; rebuildRows()">Tous</button>
+            @for (t of templates; track t.id) {
+              <button class="pill" [class.active]="templateFilter === t.id" [class]="t.priority" (click)="templateFilter = templateFilter === t.id ? '' : t.id; rebuildRows()">
+                <span class="pill-dot" [class]="t.priority"></span>
+                {{ t.name }}
+                <span class="pill-count" *ngIf="getTemplateCount(t.id) > 0">{{ getTemplateCount(t.id) }}</span>
+              </button>
+            }
           </div>
+          <button class="pill-manage" (click)="showModels = !showModels" title="Gerer les modeles">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+        </div>
 
-          <div class="stats-bar">
-            <div class="stat-item"><div class="stat-icon total">📋</div><div class="stat-content"><span class="stat-value">{{ templates.length }}</span><span class="stat-label">Modèles</span></div></div>
-            <div class="stat-item"><div class="stat-icon active">✅</div><div class="stat-content"><span class="stat-value">{{ getActiveTemplates() }}</span><span class="stat-label">Actifs</span></div></div>
-            <div class="stat-item"><div class="stat-icon critical">⚠️</div><div class="stat-content"><span class="stat-value">{{ getCriticalTemplates() }}</span><span class="stat-label">Critiques</span></div></div>
-          </div>
-
-          <div class="templates-grid">
+        <!-- Models management panel (collapsible) -->
+        <div class="models-panel" *ngIf="showModels" @fadeIn>
+          <div class="models-grid">
             @for (t of filteredTemplates; track t.id) {
-              <div class="template-card" [class.inactive]="!t.isActive" (click)="selectTemplate(t)">
-                <div class="card-header">
-                  <div class="card-icon" [class]="t.priority">🔧</div>
-                  <span class="priority-badge" [class]="t.priority">{{ getPriorityLabel(t.priority) }}</span>
+              <div class="model-chip" [class]="t.priority" [class.inactive]="!t.isActive" (click)="selectTemplate(t)">
+                <div class="chip-left">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                  <div>
+                    <span class="chip-name">{{ t.name }}</span>
+                    <span class="chip-meta">{{ t.intervalKm ? (t.intervalKm | number) + ' km' : '' }}{{ t.intervalKm && t.intervalMonths ? ' / ' : '' }}{{ t.intervalMonths ? t.intervalMonths + ' mois' : '' }} · {{ t.category }}</span>
+                  </div>
                 </div>
-                <h3 class="card-title">{{ t.name }}</h3>
-                <p class="card-desc">{{ t.description }}</p>
-                <div class="card-intervals">
-                  <span *ngIf="t.intervalKm">{{ t.intervalKm | number }} km</span>
-                  <span *ngIf="t.intervalMonths">{{ t.intervalMonths }} mois</span>
-                </div>
-                <div class="card-footer">
-                  <span class="category-tag">{{ t.category }}</span>
-                  <span class="cost">~{{ t.estimatedCost | number }} DT</span>
-                </div>
+                <span class="chip-cost">~{{ t.estimatedCost | number }} DT</span>
               </div>
             }
           </div>
-          <div class="empty-state" *ngIf="filteredTemplates.length === 0"><p>Aucun modèle</p></div>
         </div>
 
-        <!-- TAB 2: Planning -->
-        <div class="tab-content" *ngIf="activeTab === 'schedule'" @fadeIn>
-          <!-- Stats Summary Cards -->
-          <div class="planning-stats">
-            <div class="plan-stat-card urgent">
-              <div class="stat-icon-wrap urgent">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-              </div>
-              <div class="stat-info">
-                <span class="stat-number">{{ urgentItems.length }}</span>
-                <span class="stat-text">Urgents</span>
-              </div>
-              <span class="stat-desc">Entretiens dépassés ou à faire immédiatement</span>
-            </div>
-            <div class="plan-stat-card warning">
-              <div class="stat-icon-wrap warning">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                </svg>
-              </div>
-              <div class="stat-info">
-                <span class="stat-number">{{ soonItems.length }}</span>
-                <span class="stat-text">À venir</span>
-              </div>
-              <span class="stat-desc">Dans les 5 000 prochains km</span>
-            </div>
-            <div class="plan-stat-card success">
-              <div class="stat-icon-wrap success">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-                </svg>
-              </div>
-              <div class="stat-info">
-                <span class="stat-number">{{ okItems.length }}</span>
-                <span class="stat-text">OK</span>
-              </div>
-              <span class="stat-desc">Aucune action requise</span>
-            </div>
-            <div class="plan-stat-card info">
-              <div class="stat-icon-wrap info">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
-                </svg>
-              </div>
-              <div class="stat-info">
-                <span class="stat-number">{{ filteredVehicleSchedules.length }}</span>
-                <span class="stat-text">Véhicules</span>
-              </div>
-              <span class="stat-desc">Avec entretiens planifiés</span>
-            </div>
-          </div>
+        <!-- Main Table -->
+        <div class="table-wrap">
+          <table class="main-table" *ngIf="filteredRows.length > 0">
+            <thead>
+              <tr>
+                <th class="col-vehicle" (click)="sortBy('vehicleName')">Vehicule <span class="sort-icon">{{ getSortIcon('vehicleName') }}</span></th>
+                <th class="col-maint" (click)="sortBy('templateName')">Entretien <span class="sort-icon">{{ getSortIcon('templateName') }}</span></th>
+                <th class="col-progress">Progression</th>
+                <th class="col-km" (click)="sortBy('kmUntilDue')">Km restants <span class="sort-icon">{{ getSortIcon('kmUntilDue') }}</span></th>
+                <th class="col-status" (click)="sortBy('status')">Statut <span class="sort-icon">{{ getSortIcon('status') }}</span></th>
+                <th class="col-date">Dernier</th>
+                <th class="col-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of filteredRows; track row.vehicleId + row.templateId) {
+                <tr [class]="row.status">
+                  <td class="col-vehicle">
+                    <div class="cell-vehicle">
+                      <div class="vehicle-avatar" [class]="row.status">{{ row.vehicleName.charAt(0) }}</div>
+                      <div>
+                        <span class="cell-name">{{ row.vehicleName }}</span>
+                        <span class="cell-plate">{{ row.vehiclePlate }}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="col-maint">
+                    <span class="cell-maint-name">{{ row.templateName }}</span>
+                  </td>
+                  <td class="col-progress">
+                    <div class="progress-cell">
+                      <div class="progress-track">
+                        <div class="progress-fill" [class]="row.status" [style.width.%]="row.progressPercent"></div>
+                      </div>
+                      <span class="progress-pct" [class]="row.status">{{ row.progressPercent | number:'1.0-0' }}%</span>
+                    </div>
+                  </td>
+                  <td class="col-km">
+                    <span class="cell-km" [class]="row.status">
+                      {{ row.kmUntilDue !== null ? (row.kmUntilDue > 0 ? (row.kmUntilDue | number) + ' km' : ((-row.kmUntilDue) | number) + ' km depasses') : '-' }}
+                    </span>
+                  </td>
+                  <td class="col-status">
+                    <span class="status-tag" [class]="row.status">{{ getStatusLabel(row.status) }}</span>
+                  </td>
+                  <td class="col-date">
+                    <span class="cell-date">{{ row.lastDoneDate ? formatDate(row.lastDoneDate) : 'Jamais' }}</span>
+                  </td>
+                  <td class="col-actions">
+                    <button class="btn-act history" (click)="openHistory(row)" title="Historique">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    </button>
+                    <button class="btn-act done" (click)="openMarkDoneFromRow(row)" title="Marquer fait">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                    <button class="btn-act del" (click)="removeFromRow(row)" title="Retirer">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
 
-          <!-- Filter & View Toggle -->
-          <div class="planning-toolbar">
-            <div class="search-box">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-              </svg>
-              <input type="text" placeholder="Rechercher un véhicule..." [(ngModel)]="vehicleSearchQuery" (input)="filterVehicles()">
-            </div>
-            <div class="view-switcher">
-              <button [class.active]="scheduleView === 'agenda'" (click)="scheduleView = 'agenda'">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-                  <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-                </svg>
-                Liste
-              </button>
-              <button [class.active]="scheduleView === 'vehicles'" (click)="scheduleView = 'vehicles'">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-                  <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-                </svg>
-                Véhicules
-              </button>
-            </div>
-          </div>
-
-          <!-- AGENDA/LIST VIEW -->
-          <div class="planning-list" *ngIf="scheduleView === 'agenda'">
-            <!-- Urgent Section -->
-            <div class="list-section" *ngIf="urgentItems.length > 0">
-              <div class="section-title urgent">
-                <span class="title-icon">🔴</span>
-                <span class="title-text">Action requise immédiatement</span>
-                <span class="title-count">{{ urgentItems.length }}</span>
-              </div>
-              <div class="maintenance-cards">
-                @for (item of urgentItems; track item.templateId + item.vehicleId) {
-                  <div class="maint-card urgent">
-                    <div class="card-left">
-                      <div class="card-icon urgent">🔧</div>
-                    </div>
-                    <div class="card-body">
-                      <div class="card-top">
-                        <span class="maint-type">{{ item.templateName }}</span>
-                        <span class="status-pill urgent">{{ item.kmUntilDue !== null && item.kmUntilDue < 0 ? 'Dépassé' : 'À faire' }}</span>
-                      </div>
-                      <div class="card-vehicle">
-                        <span class="vehicle-name">{{ item.vehicleName }}</span>
-                        <span class="vehicle-plate">{{ item.vehiclePlate }}</span>
-                      </div>
-                      <div class="card-km">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-                        </svg>
-                        {{ item.kmUntilDue !== null && item.kmUntilDue < 0 ? ((-item.kmUntilDue) | number) + ' km dépassés' : 'Maintenance due' }}
-                      </div>
-                    </div>
-                    <div class="card-action">
-                      <button class="btn-mark-done" (click)="openMarkDoneFromAgenda(item)">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                        Fait
-                      </button>
-                    </div>
-                  </div>
-                }
-              </div>
-            </div>
-
-            <!-- Upcoming Section -->
-            <div class="list-section" *ngIf="soonItems.length > 0">
-              <div class="section-title warning">
-                <span class="title-icon">🟠</span>
-                <span class="title-text">À prévoir prochainement</span>
-                <span class="title-count">{{ soonItems.length }}</span>
-              </div>
-              <div class="maintenance-cards">
-                @for (item of soonItems; track item.templateId + item.vehicleId) {
-                  <div class="maint-card warning">
-                    <div class="card-left">
-                      <div class="card-icon warning">🔧</div>
-                    </div>
-                    <div class="card-body">
-                      <div class="card-top">
-                        <span class="maint-type">{{ item.templateName }}</span>
-                        <span class="status-pill warning">À venir</span>
-                      </div>
-                      <div class="card-vehicle">
-                        <span class="vehicle-name">{{ item.vehicleName }}</span>
-                        <span class="vehicle-plate">{{ item.vehiclePlate }}</span>
-                      </div>
-                      <div class="card-km">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-                        </svg>
-                        Dans {{ item.kmUntilDue | number }} km
-                      </div>
-                    </div>
-                    <div class="card-action">
-                      <button class="btn-mark-done" (click)="openMarkDoneFromAgenda(item)">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                        Fait
-                      </button>
-                    </div>
-                  </div>
-                }
-              </div>
-            </div>
-
-            <!-- OK Section -->
-            <div class="list-section" *ngIf="okItems.length > 0">
-              <div class="section-title success" (click)="showOkItems = !showOkItems" style="cursor:pointer">
-                <span class="title-icon">🟢</span>
-                <span class="title-text">Tout est OK</span>
-                <span class="title-count">{{ okItems.length }}</span>
-                <span class="expand-icon">{{ showOkItems ? '▲' : '▼' }}</span>
-              </div>
-              <div class="maintenance-cards" *ngIf="showOkItems">
-                @for (item of okItems; track item.templateId + item.vehicleId) {
-                  <div class="maint-card ok">
-                    <div class="card-left">
-                      <div class="card-icon ok">✓</div>
-                    </div>
-                    <div class="card-body">
-                      <div class="card-top">
-                        <span class="maint-type">{{ item.templateName }}</span>
-                        <span class="status-pill ok">OK</span>
-                      </div>
-                      <div class="card-vehicle">
-                        <span class="vehicle-name">{{ item.vehicleName }}</span>
-                        <span class="vehicle-plate">{{ item.vehiclePlate }}</span>
-                      </div>
-                      <div class="card-km ok">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-                        </svg>
-                        Dans {{ item.kmUntilDue | number }} km
-                      </div>
-                    </div>
-                  </div>
-                }
-              </div>
-            </div>
-
-            <!-- Empty State -->
-            <div class="empty-planning" *ngIf="urgentItems.length === 0 && soonItems.length === 0 && okItems.length === 0">
-              <div class="empty-icon">📋</div>
-              <h3>Aucun entretien planifié</h3>
-              <p>Commencez par assigner des modèles d'entretien à vos véhicules</p>
-              <button class="btn-switch-view" (click)="scheduleView = 'vehicles'">Voir les véhicules</button>
-            </div>
-          </div>
-
-          <!-- VEHICLES GRID VIEW -->
-          <div class="vehicles-grid" *ngIf="scheduleView === 'vehicles'">
-            @for (v of filteredVehicleSchedules; track v.vehicleId) {
-              <div class="vehicle-tile" [class.expanded]="expanded.includes(v.vehicleId)">
-                <div class="tile-header" (click)="toggleVehicle(v.vehicleId)">
-                  <div class="tile-icon">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
-                      <circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
-                    </svg>
-                  </div>
-                  <div class="tile-info">
-                    <h4>{{ v.vehicleName }}</h4>
-                    <div class="tile-meta">
-                      <span class="tile-plate">{{ v.vehiclePlate }}</span>
-                      <span class="tile-km">{{ v.currentMileage | number }} km</span>
-                    </div>
-                  </div>
-                  <div class="tile-badges">
-                    <span class="tile-badge urgent" *ngIf="getCount(v,'overdue') + getCount(v,'due') > 0">{{ getCount(v,'overdue') + getCount(v,'due') }}</span>
-                    <span class="tile-badge warning" *ngIf="getCount(v,'upcoming') > 0">{{ getCount(v,'upcoming') }}</span>
-                    <span class="tile-badge ok" *ngIf="getCount(v,'ok') > 0">{{ getCount(v,'ok') }}</span>
-                  </div>
-                  <span class="tile-arrow" [class.open]="expanded.includes(v.vehicleId)">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                  </span>
-                </div>
-                <div class="tile-content" *ngIf="expanded.includes(v.vehicleId)">
-                  @for (m of v.maintenanceItems; track m.templateId) {
-                    <div class="tile-maint-row" [class]="m.status">
-                      <div class="row-icon" [class]="m.status">🔧</div>
-                      <div class="row-info">
-                        <span class="row-name">{{ m.templateName }}</span>
-                        <span class="row-date">{{ m.lastDoneDate ? 'Dernier: ' + formatDate(m.lastDoneDate) : 'Jamais effectué' }}</span>
-                      </div>
-                      <div class="row-status">
-                        <span class="row-km" [class]="m.status">
-                          {{ m.kmUntilDue !== null ? (m.kmUntilDue > 0 ? 'Dans ' + (m.kmUntilDue | number) + ' km' : 'Dépassé ' + ((-m.kmUntilDue) | number) + ' km') : '-' }}
-                        </span>
-                        <span class="row-badge" [class]="m.status">{{ getStatusLabel(m.status) }}</span>
-                      </div>
-                      <div class="row-actions">
-                        <button class="btn-done-sm" (click)="openMarkDone(v, m); $event.stopPropagation()" title="Marquer comme fait">✓</button>
-                        <button class="btn-remove-sm" (click)="removeMaintenanceFromVehicle(v, m); $event.stopPropagation()" title="Retirer">✕</button>
-                      </div>
-                    </div>
-                  }
-                  <button class="btn-add-maint-tile" (click)="openAddToVehicle(v); $event.stopPropagation()">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                    </svg>
-                    Ajouter un entretien
-                  </button>
-                </div>
-              </div>
-            }
-            
-            <!-- Empty vehicles -->
-            <div class="empty-vehicles" *ngIf="filteredVehicleSchedules.length === 0">
-              <div class="empty-icon">🚗</div>
-              <h3>Aucun véhicule avec entretien</h3>
-              <p>Assignez des modèles d'entretien à vos véhicules</p>
-            </div>
+          <div class="empty-state" *ngIf="filteredRows.length === 0">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <h3>Aucun entretien</h3>
+            <p>Creez des modeles et assignez-les a vos vehicules</p>
           </div>
         </div>
       </div>
 
-      <!-- Form Panel -->
+      <!-- ==================== PANELS ==================== -->
+
+      <!-- Template Form Panel -->
       <div class="overlay" *ngIf="isFormOpen" @fadeIn (click)="closeForm()">
         <div class="panel" @slideIn (click)="$event.stopPropagation()">
-          <div class="panel-header blue">
-            <h2>{{ editing ? 'Modifier' : 'Nouveau' }} modèle</h2>
-            <button class="btn-close" (click)="closeForm()">✕</button>
+          <div class="panel-head blue">
+            <h2>{{ editing ? 'Modifier' : 'Nouveau' }} modele</h2>
+            <button class="panel-close" (click)="closeForm()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
           </div>
           <div class="panel-body">
-            <div class="form-group"><label>Nom *</label><input [(ngModel)]="form.name" placeholder="Vidange moteur"></div>
-            <div class="form-group"><label>Description</label><textarea [(ngModel)]="form.description" rows="2"></textarea></div>
-            <div class="form-row">
-              <div class="form-group"><label>Catégorie *</label><select [(ngModel)]="form.category"><option value="">Choisir</option><option *ngFor="let c of categories" [value]="c">{{c}}</option></select></div>
-              <div class="form-group"><label>Priorité</label><select [(ngModel)]="form.priority"><option value="low">Faible</option><option value="medium">Moyenne</option><option value="high">Haute</option><option value="critical">Critique</option></select></div>
+            <div class="field"><label>Nom *</label><input [(ngModel)]="form.name" placeholder="Ex: Vidange moteur"></div>
+            <div class="field"><label>Description</label><textarea [(ngModel)]="form.description" rows="2" placeholder="Description..."></textarea></div>
+            <div class="field-row">
+              <div class="field"><label>Categorie *</label><select [(ngModel)]="form.category"><option value="">Choisir</option><option *ngFor="let c of categories" [value]="c">{{c}}</option></select></div>
+              <div class="field"><label>Priorite</label><select [(ngModel)]="form.priority"><option value="low">Faible</option><option value="medium">Moyenne</option><option value="high">Haute</option><option value="critical">Critique</option></select></div>
             </div>
-            <div class="form-row">
-              <div class="form-group"><label>Intervalle (km)</label><input type="number" [(ngModel)]="form.intervalKm" placeholder="10000"></div>
-              <div class="form-group"><label>Intervalle (mois)</label><input type="number" [(ngModel)]="form.intervalMonths" placeholder="12"></div>
+            <div class="field-row">
+              <div class="field"><label>Intervalle (km)</label><input type="number" [(ngModel)]="form.intervalKm" placeholder="10000"></div>
+              <div class="field"><label>Intervalle (mois)</label><input type="number" [(ngModel)]="form.intervalMonths" placeholder="12"></div>
             </div>
-            <div class="form-group toggle"><label><input type="checkbox" [(ngModel)]="form.isActive"><span class="switch"></span> Actif</label></div>
-            
-            <div class="notification-section">
-              <h4>🔔 Notifications (optionnel)</h4>
-              <p class="section-hint">Configurez quand vous souhaitez être notifié avant l'échéance</p>
-              <div class="form-row">
-                <div class="form-group"><label>Notifier à X km restants</label><input type="number" [(ngModel)]="form.notifyKmBefore" placeholder="1000"></div>
-                <div class="form-group"><label>Notifier X jours avant</label><input type="number" [(ngModel)]="form.notifyDaysBefore" placeholder="7"></div>
-              </div>
+            <div class="field toggle"><label><input type="checkbox" [(ngModel)]="form.isActive"><span class="switch"></span> Actif</label></div>
+            <div class="divider"></div>
+            <h4 class="sub-title">Notifications (optionnel)</h4>
+            <div class="field-row">
+              <div class="field"><label>Notifier a X km restants</label><input type="number" [(ngModel)]="form.notifyKmBefore" placeholder="1000"></div>
+              <div class="field"><label>Notifier X jours avant</label><input type="number" [(ngModel)]="form.notifyDaysBefore" placeholder="7"></div>
             </div>
           </div>
-          <div class="panel-footer"><button class="btn-cancel" (click)="closeForm()">Annuler</button><button class="btn-save" (click)="saveTemplate()" [disabled]="!isFormValid()">Enregistrer</button></div>
+          <div class="panel-foot"><button class="btn-cancel" (click)="closeForm()">Annuler</button><button class="btn-save" (click)="saveTemplate()" [disabled]="!isFormValid()">Enregistrer</button></div>
         </div>
       </div>
 
       <!-- Mark Done Panel -->
       <div class="overlay" *ngIf="isMarkOpen" @fadeIn (click)="closeMarkDone()">
         <div class="panel" @slideIn (click)="$event.stopPropagation()">
-          <div class="panel-header green">
-            <h2>Entretien effectué</h2>
-            <button class="btn-close" (click)="closeMarkDone()">✕</button>
+          <div class="panel-head green">
+            <h2>Entretien effectue</h2>
+            <button class="panel-close" (click)="closeMarkDone()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
           </div>
           <div class="panel-body">
-            <div class="recap"><span class="label">{{ markData.vehicleName }}</span><span class="value">{{ markData.vehiclePlate }}</span></div>
-            
-            <div class="form-row">
-              <div class="form-group"><label>Date *</label><input type="date" [(ngModel)]="markData.date"></div>
-              <div class="form-group"><label>Kilométrage *</label><input type="number" [(ngModel)]="markData.mileage" placeholder="45000"></div>
+            <div class="recap-box">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+              <div><strong>{{ markData.vehicleName }}</strong><br><span class="text-muted">{{ markData.vehiclePlate }}</span></div>
             </div>
-            
-            <div class="form-group"><label>Fournisseur / Garage</label><input [(ngModel)]="markData.supplier" placeholder="Nom du prestataire..."></div>
-            
+            <div class="field-row">
+              <div class="field"><label>Date *</label><input type="date" [(ngModel)]="markData.date"></div>
+              <div class="field"><label>Kilometrage *</label><input type="number" [(ngModel)]="markData.mileage" placeholder="45000"></div>
+            </div>
+            <div class="field"><label>Fournisseur / Garage</label><input [(ngModel)]="markData.supplier" placeholder="Nom du prestataire..."></div>
             <div class="invoice-section">
-              <div class="invoice-header">
-                <h4>🧾 Détail de la facture</h4>
-              </div>
-              
+              <h4 class="sub-title">Detail de la facture</h4>
               <div class="invoice-lines">
-                <div class="invoice-line" *ngFor="let line of markData.invoiceLines; let i = index">
-                  <div class="line-top">
-                    <select class="line-select" [ngModel]="line.templateId || (line.isCustom ? 'other' : '')" (ngModelChange)="onLineTemplateChange(line, $event)">
-                      <option value="" disabled>Choisir un entretien...</option>
-                      <optgroup label="Entretiens du véhicule">
-                        <option *ngFor="let t of getVehicleMaintenanceTemplates()" [value]="t.id">{{ t.name }}</option>
-                      </optgroup>
-                      <optgroup label="Autres modèles">
-                        <option *ngFor="let t of getOtherTemplatesForDropdown()" [value]="t.id">{{ t.name }}</option>
-                      </optgroup>
-                      <option value="other">✏️ Autre (saisie libre)</option>
+                <div class="inv-line" *ngFor="let line of markData.invoiceLines; let i = index">
+                  <div class="inv-top">
+                    <select [ngModel]="line.templateId || (line.isNewTemplate ? 'new' : (line.isCustom ? 'other' : ''))" (ngModelChange)="onLineTemplateChange(line, $event)">
+                      <option value="" disabled>Choisir...</option>
+                      <optgroup label="Entretiens du vehicule"><option *ngFor="let t of getVehicleMaintenanceTemplates()" [value]="t.id">{{ t.name }}</option></optgroup>
+                      <optgroup label="Autres modeles"><option *ngFor="let t of getOtherTemplatesForDropdown()" [value]="t.id">{{ t.name }}</option></optgroup>
+                      <option value="new">+ Creer un nouveau modele</option>
+                      <option value="other">Autre (saisie libre)</option>
                     </select>
-                    <button class="btn-remove-line" (click)="removeInvoiceLine(i)" *ngIf="markData.invoiceLines.length > 1">✕</button>
+                    <button class="btn-act del" (click)="removeInvoiceLine(i)" *ngIf="markData.invoiceLines.length > 1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
                   </div>
-                  <div class="line-bottom">
-                    <input class="line-desc" [(ngModel)]="line.description" [placeholder]="line.isCustom ? 'Description personnalisée...' : line.description" [readonly]="!line.isCustom && line.templateId">
-                    <div class="line-price-wrap">
-                      <input class="line-price" type="number" [(ngModel)]="line.price" placeholder="0">
-                      <span class="price-unit">DT</span>
+                  <div class="new-tpl-fields" *ngIf="line.isNewTemplate">
+                    <div class="field"><label>Nom du modele *</label><input [(ngModel)]="line.newTemplateName" placeholder="Ex: Courroie distribution"></div>
+                    <div class="field-row">
+                      <div class="field"><label>Categorie</label><select [(ngModel)]="line.newTemplateCategory"><option value="">Choisir</option><option *ngFor="let c of categories" [value]="c">{{c}}</option></select></div>
+                      <div class="field"><label>Intervalle (km)</label><input type="number" [(ngModel)]="line.newTemplateIntervalKm" placeholder="10000"></div>
+                    </div>
+                    <div class="new-tpl-hint">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                      Ce modele sera cree et automatiquement affecte a ce vehicule
                     </div>
                   </div>
-                  <div class="line-hint" *ngIf="line.templateId && lastPaidPrices.get(line.templateId)">
-                    💡 Dernier prix payé: {{ lastPaidPrices.get(line.templateId) | number }} DT
+                  <div class="inv-bottom">
+                    <input class="inv-desc" [(ngModel)]="line.description" [placeholder]="line.isCustom ? 'Description...' : (line.isNewTemplate ? line.newTemplateName || 'Nom...' : line.description)" [readonly]="!line.isCustom && !line.isNewTemplate && line.templateId">
+                    <div class="inv-price"><input type="number" [(ngModel)]="line.price" placeholder="0"><span>DT</span></div>
                   </div>
+                  <div class="inv-hint" *ngIf="line.templateId && lastPaidPrices.get(line.templateId)">Dernier prix: {{ lastPaidPrices.get(line.templateId) | number }} DT</div>
                 </div>
               </div>
-              
-              <button class="btn-add-line" (click)="addInvoiceLine()">
-                <span>＋</span> Ajouter un autre entretien
-              </button>
-              
-              <div class="invoice-total">
-                <span class="total-label">Total</span>
-                <span class="total-value">{{ getInvoiceTotal() | number:'1.2-2' }} DT</span>
-              </div>
+              <button class="btn-add-line" (click)="addInvoiceLine()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Ajouter une ligne</button>
+              <div class="inv-total"><span>Total</span><strong>{{ getInvoiceTotal() | number:'1.2-2' }} DT</strong></div>
             </div>
-            
-            <div class="form-group"><label>Notes</label><textarea [(ngModel)]="markData.notes" rows="2" placeholder="Remarques, observations..."></textarea></div>
+            <div class="field"><label>Notes</label><textarea [(ngModel)]="markData.notes" rows="2" placeholder="Remarques..."></textarea></div>
           </div>
-          <div class="panel-footer"><button class="btn-cancel" (click)="closeMarkDone()">Annuler</button><button class="btn-save green" (click)="confirmMarkDone()" [disabled]="!isMarkValid()">Confirmer</button></div>
+          <div class="panel-foot"><button class="btn-cancel" (click)="closeMarkDone()">Annuler</button><button class="btn-save green" (click)="confirmMarkDone()" [disabled]="!isMarkValid()">Confirmer</button></div>
         </div>
       </div>
 
       <!-- Detail Panel -->
       <div class="overlay" *ngIf="selected" @fadeIn (click)="closeDetail()">
         <div class="panel" @slideIn (click)="$event.stopPropagation()">
-          <div class="panel-header" [class]="selected.priority">
+          <div class="panel-head" [class]="selected.priority">
             <h2>{{ selected.name }}</h2>
-            <button class="btn-close" (click)="closeDetail()">✕</button>
+            <button class="panel-close" (click)="closeDetail()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
           </div>
           <div class="panel-body">
-            <div class="badges"><span class="priority-badge" [class]="selected.priority">{{ getPriorityLabel(selected.priority) }}</span><span class="active-badge" [class.inactive]="!selected.isActive">{{ selected.isActive ? 'Actif' : 'Inactif' }}</span></div>
-            <div class="section" *ngIf="selected.description"><h4>Description</h4><p>{{ selected.description }}</p></div>
-            <div class="section"><h4>Intervalles</h4><div class="intervals"><div class="int-card" *ngIf="selected.intervalKm"><span class="int-val">{{ selected.intervalKm | number }}</span><span class="int-unit">km</span></div><span class="or" *ngIf="selected.intervalKm && selected.intervalMonths">OU</span><div class="int-card" *ngIf="selected.intervalMonths"><span class="int-val">{{ selected.intervalMonths }}</span><span class="int-unit">mois</span></div></div></div>
-            <div class="section" *ngIf="selected.notifyKmBefore || selected.notifyDaysBefore"><h4>🔔 Notifications</h4><div class="intervals"><div class="int-card" *ngIf="selected.notifyKmBefore"><span class="int-val">{{ selected.notifyKmBefore | number }}</span><span class="int-unit">km avant</span></div><div class="int-card" *ngIf="selected.notifyDaysBefore"><span class="int-val">{{ selected.notifyDaysBefore }}</span><span class="int-unit">jours avant</span></div></div></div>
-            <div class="section" *ngIf="lastPaidPrices.get(selected.id)"><h4>💰 Dernier prix payé</h4><div class="cost-display"><span class="cost-val">{{ lastPaidPrices.get(selected.id) | number }}</span><span class="cost-unit">DT</span></div></div>
+            <div class="detail-badges">
+              <span class="priority-badge" [class]="selected.priority">{{ getPriorityLabel(selected.priority) }}</span>
+              <span class="active-tag" [class.off]="!selected.isActive">{{ selected.isActive ? 'Actif' : 'Inactif' }}</span>
+            </div>
+            <div class="detail-section" *ngIf="selected.description"><h4>Description</h4><p>{{ selected.description }}</p></div>
+            <div class="detail-section">
+              <h4>Intervalles</h4>
+              <div class="detail-intervals">
+                <div class="int-card" *ngIf="selected.intervalKm"><span class="int-val">{{ selected.intervalKm | number }}</span><span class="int-unit">km</span></div>
+                <span class="int-or" *ngIf="selected.intervalKm && selected.intervalMonths">ou</span>
+                <div class="int-card" *ngIf="selected.intervalMonths"><span class="int-val">{{ selected.intervalMonths }}</span><span class="int-unit">mois</span></div>
+              </div>
+            </div>
           </div>
-          <div class="panel-footer"><button class="btn-cancel" (click)="closeDetail()">Fermer</button><button class="btn-edit" (click)="editTemplate(selected)">Modifier</button><button class="btn-delete" (click)="deleteTemplate(selected)">Supprimer</button></div>
+          <div class="panel-foot">
+            <button class="btn-cancel" (click)="closeDetail()">Fermer</button>
+            <button class="btn-save" (click)="editTemplate(selected)">Modifier</button>
+            <button class="btn-delete-confirm" (click)="deleteTemplate(selected)">Supprimer</button>
+          </div>
         </div>
       </div>
 
-      <!-- Add Maintenance to Vehicle Panel -->
+      <!-- Add to Vehicle Panel -->
       <div class="overlay" *ngIf="isAddToVehicleOpen" @fadeIn (click)="closeAddToVehicle()">
         <div class="panel" @slideIn (click)="$event.stopPropagation()">
-          <div class="panel-header purple">
-            <h2>Ajouter des entretiens</h2>
-            <button class="btn-close" (click)="closeAddToVehicle()">✕</button>
+          <div class="panel-head purple">
+            <h2>Affecter des entretiens</h2>
+            <button class="panel-close" (click)="closeAddToVehicle()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
           </div>
           <div class="panel-body">
-            <div class="vehicle-recap-box">
-              <span class="recap-icon">🚗</span>
-              <div class="recap-info">
-                <span class="recap-name">{{ addToVehicleData.vehicleName }}</span>
-                <span class="recap-plate">{{ addToVehicleData.vehiclePlate }} • {{ addToVehicleData.vehicleMileage | number }} km</span>
-              </div>
+            <div class="field"><label>Vehicule *</label>
+              <select [(ngModel)]="addToVehicleData.vehicleId" (ngModelChange)="onAssignVehicleChange($event)">
+                <option value="">Choisir un vehicule...</option>
+                <option *ngFor="let v of allVehicles" [value]="v.id">{{ v.name }} - {{ v.plate }}</option>
+              </select>
             </div>
-            <div class="select-header">
-              <h4 class="select-title">Sélectionnez les types d'entretien:</h4>
-              <div class="select-actions">
-                <button class="btn-select-all" (click)="selectAllTemplates()">Tout sélectionner</button>
-                <button class="btn-select-none" (click)="deselectAllTemplates()">Aucun</button>
-              </div>
+            <div class="recap-box" *ngIf="addToVehicleData.vehicleId">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+              <div><strong>{{ addToVehicleData.vehicleName }}</strong><br><span class="text-muted">{{ addToVehicleData.vehiclePlate }} - {{ addToVehicleData.vehicleMileage | number }} km</span></div>
             </div>
-            <div class="selected-count" *ngIf="addToVehicleData.selectedTemplateIds.length > 0">
-              <span class="count-badge purple">{{ addToVehicleData.selectedTemplateIds.length }}</span> sélectionné(s)
-            </div>
-            <div class="templates-select-list">
+            <div class="tpl-list" *ngIf="addToVehicleData.vehicleId">
               @for (t of getAvailableTemplatesForVehicle(); track t.id) {
-                <div class="template-select-item" [class.selected]="isTemplateSelected(t.id)" (click)="toggleTemplateSelection(t)">
-                  <div class="tpl-checkbox" [class.checked]="isTemplateSelected(t.id)">
-                    <span *ngIf="isTemplateSelected(t.id)">✓</span>
-                  </div>
-                  <div class="tpl-icon" [class]="t.priority">🔧</div>
-                  <div class="tpl-info">
-                    <span class="tpl-name">{{ t.name }}</span>
-                    <span class="tpl-interval">{{ t.intervalKm ? (t.intervalKm | number) + ' km' : '' }}{{ t.intervalKm && t.intervalMonths ? ' / ' : '' }}{{ t.intervalMonths ? t.intervalMonths + ' mois' : '' }}</span>
-                  </div>
-                  <span class="tpl-cost">~{{ t.estimatedCost }} DT</span>
+                <div class="tpl-item" [class.selected]="isTemplateSelected(t.id)" (click)="toggleTemplateSelection(t)">
+                  <div class="tpl-check" [class.checked]="isTemplateSelected(t.id)"><svg *ngIf="isTemplateSelected(t.id)" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+                  <div class="tpl-item-info"><span class="tpl-item-name">{{ t.name }}</span><span class="tpl-item-interval">{{ t.intervalKm ? (t.intervalKm | number) + ' km' : '' }}{{ t.intervalKm && t.intervalMonths ? ' / ' : '' }}{{ t.intervalMonths ? t.intervalMonths + ' mois' : '' }}</span></div>
+                  <span class="tpl-item-cost">~{{ t.estimatedCost }} DT</span>
                 </div>
               }
-              <div class="empty-templates" *ngIf="getAvailableTemplatesForVehicle().length === 0">
-                <p>Tous les entretiens sont déjà assignés à ce véhicule</p>
-              </div>
+              <div class="empty-state small" *ngIf="getAvailableTemplatesForVehicle().length === 0"><p>Tous les entretiens sont deja assignes</p></div>
             </div>
           </div>
-          <div class="panel-footer">
-            <span class="footer-info" *ngIf="addToVehicleData.selectedTemplateIds.length > 0">{{ addToVehicleData.selectedTemplateIds.length }} entretien(s)</span>
+          <div class="panel-foot">
+            <span class="foot-info" *ngIf="addToVehicleData.selectedTemplateIds.length > 0">{{ addToVehicleData.selectedTemplateIds.length }} selectionne(s)</span>
             <button class="btn-cancel" (click)="closeAddToVehicle()">Annuler</button>
             <button class="btn-save purple" (click)="confirmAddToVehicle()" [disabled]="addToVehicleData.selectedTemplateIds.length === 0">Ajouter</button>
           </div>
         </div>
       </div>
+
+      <!-- History Panel -->
+      <div class="overlay" *ngIf="isHistoryOpen" @fadeIn (click)="closeHistory()">
+        <div class="panel" @slideIn (click)="$event.stopPropagation()">
+          <div class="panel-head orange">
+            <h2>Historique</h2>
+            <button class="panel-close" (click)="closeHistory()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+          <div class="panel-body">
+            <div class="recap-box">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+              <div><strong>{{ historyVehicleName }}</strong> — {{ historyTemplateName }}<br><span class="text-muted">{{ historyVehiclePlate }}</span></div>
+            </div>
+            <div class="history-loading" *ngIf="historyLoading">Chargement...</div>
+            <div class="history-list" *ngIf="!historyLoading && historyLogs.length > 0">
+              <div class="history-item" *ngFor="let log of historyLogs">
+                <div class="history-dot"></div>
+                <div class="history-content">
+                  <div class="history-date">{{ formatDate(log.doneDate) }}</div>
+                  <div class="history-details">
+                    <span class="history-km">{{ log.doneKm | number }} km</span>
+                    <span class="history-cost">{{ log.actualCost | number:'1.2-2' }} DT</span>
+                    <span class="history-supplier" *ngIf="log.supplierName">{{ log.supplierName }}</span>
+                  </div>
+                  <div class="history-notes" *ngIf="log.notes">{{ log.notes }}</div>
+                </div>
+              </div>
+            </div>
+            <div class="empty-state small" *ngIf="!historyLoading && historyLogs.length === 0">
+              <p>Aucun historique pour cet entretien</p>
+            </div>
+          </div>
+          <div class="panel-foot"><button class="btn-cancel" (click)="closeHistory()">Fermer</button></div>
+        </div>
+      </div>
     </app-layout>
   `,
   styles: [`
-    .maintenance-page { flex:1; background:#f1f5f9; min-height:calc(100vh - 42px); }
-    
-    /* Header */
-    .page-header { display:flex; justify-content:space-between; align-items:center; padding:20px 24px; background:white; border-bottom:1px solid #e2e8f0; }
-    .header-content h1 { margin:0 0 4px; font-size:20px; font-weight:700; color:#1e293b; }
-    .header-content p { margin:0; font-size:13px; color:#64748b; }
-    .header-tabs { display:flex; gap:8px; }
-    .tab-btn { display:flex; align-items:center; gap:8px; padding:10px 20px; border:none; background:#f1f5f9; border-radius:8px; font-size:13px; font-weight:500; color:#64748b; cursor:pointer; transition:all .2s; }
-    .tab-btn:hover { background:#e2e8f0; }
-    .tab-btn.active { background:#1e3a5f; color:white; }
-    
-    /* Content */
-    .tab-content { padding:20px 24px; }
-    
+    .page { flex:1; background:#f1f5f9; display:flex; flex-direction:column; min-height:calc(100vh - 42px); }
+
     /* Filter Bar */
-    .filter-bar { display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap; align-items:center; }
-    .search-wrapper { flex:1; min-width:200px; max-width:320px; position:relative; }
-    .search-icon { position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94a3b8; }
-    .search-input { width:100%; padding:10px 12px 10px 38px; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; background:white; }
+    .filter-bar { display:flex; align-items:center; gap:12px; padding:10px 14px; background:white; border-bottom:1px solid #e2e8f0; }
+    .search-wrapper { position:relative; flex:1; max-width:300px; }
+    .search-icon { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#94a3b8; }
+    .search-input { width:100%; padding:6px 10px 6px 32px; font-size:12px; border:1px solid #e2e8f0; border-radius:3px; background:white; color:#1e293b; }
     .search-input:focus { outline:none; border-color:#3b82f6; }
-    .filter-select { padding:10px 14px; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; background:white; min-width:160px; }
-    .view-toggle { display:flex; gap:4px; background:white; border:1px solid #e2e8f0; padding:4px; border-radius:8px; }
-    .view-btn { padding:8px 16px; border:none; background:transparent; border-radius:6px; font-size:12px; font-weight:500; color:#64748b; cursor:pointer; transition:all .2s; }
-    .view-btn:hover { color:#1e293b; background:#f8fafc; }
-    .view-btn.active { background:#1e3a5f; color:white; }
-    .btn-add { padding:10px 18px; background:#1e3a5f; color:white; border:none; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer; margin-left:auto; transition:background .2s; }
-    .btn-add:hover { background:#2d4a6f; }
-    
+    .filter-select { padding:6px 10px; background:white; border:1px solid #e2e8f0; border-radius:3px; color:#1e293b; font-size:12px; cursor:pointer; }
+    .btn-assign { display:flex; align-items:center; gap:6px; padding:6px 12px; background:#7c3aed; color:white; border:none; border-radius:3px; font-size:12px; font-weight:500; cursor:pointer; margin-left:auto; }
+    .btn-assign:hover { background:#6d28d9; }
+    .btn-add { display:flex; align-items:center; gap:6px; padding:6px 12px; background:#3b82f6; color:white; border:none; border-radius:3px; font-size:12px; font-weight:500; cursor:pointer; }
+    .btn-add:hover { background:#2563eb; }
+
     /* Stats Bar */
-    .stats-bar { display:flex; gap:16px; margin-bottom:20px; }
-    .stat-item { display:flex; align-items:center; gap:12px; padding:16px 20px; background:white; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.05); }
-    .stat-icon { width:44px; height:44px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; }
-    .stat-icon.total { background:#dbeafe; }
-    .stat-icon.active { background:#dcfce7; }
-    .stat-icon.critical { background:#fee2e2; }
+    .stats-bar { display:flex; gap:16px; padding:12px 14px; background:white; border-bottom:1px solid #e2e8f0; }
+    .stat-item { display:flex; align-items:center; gap:10px; padding:8px 14px; background:#f8fafc; border-radius:6px; }
+    .stat-icon { width:32px; height:32px; border-radius:6px; display:flex; align-items:center; justify-content:center; }
+    .stat-icon.info { background:#dbeafe; color:#2563eb; }
+    .stat-icon.danger { background:#fee2e2; color:#dc2626; }
+    .stat-icon.warning { background:#fef3c7; color:#d97706; }
+    .stat-icon.active { background:#dcfce7; color:#16a34a; }
+    .stat-icon.vehicles { background:#f3e8ff; color:#7c3aed; }
     .stat-content { display:flex; flex-direction:column; }
-    .stat-value { font-size:22px; font-weight:700; color:#1e293b; line-height:1; }
-    .stat-label { font-size:12px; color:#64748b; margin-top:4px; }
-    
-    /* Templates Grid */
-    .templates-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
-    .template-card { background:white; border-radius:12px; padding:20px; cursor:pointer; border:2px solid transparent; transition:all .2s; box-shadow:0 1px 3px rgba(0,0,0,.05); }
-    .template-card:hover { border-color:#3b82f6; transform:translateY(-2px); box-shadow:0 4px 12px rgba(59,130,246,.15); }
-    .template-card.inactive { opacity:.6; }
-    .card-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; }
-    .card-icon { width:44px; height:44px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; }
-    .card-icon.low { background:#dcfce7; }
-    .card-icon.medium { background:#fef3c7; }
-    .card-icon.high { background:#fee2e2; }
-    .card-icon.critical { background:#1e293b; }
-    .priority-badge { padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; }
+    .stat-value { font-size:16px; font-weight:600; color:#1e293b; }
+    .stat-label { font-size:11px; color:#64748b; }
+
+    /* Template Pills */
+    .pills-bar { display:flex; align-items:center; gap:8px; padding:10px 14px; background:white; border-bottom:1px solid #e2e8f0; }
+    .pills-scroll { display:flex; gap:6px; flex:1; overflow-x:auto; padding-bottom:2px; }
+    .pills-scroll::-webkit-scrollbar { height:3px; }
+    .pills-scroll::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
+    .pill { display:flex; align-items:center; gap:5px; padding:5px 12px; border:1px solid #e2e8f0; border-radius:20px; background:white; font-size:11px; font-weight:500; color:#64748b; cursor:pointer; white-space:nowrap; transition:all .15s; }
+    .pill:hover { border-color:#94a3b8; color:#1e293b; }
+    .pill.active { background:#1e3a5f; border-color:#1e3a5f; color:white; }
+    .pill-dot { width:6px; height:6px; border-radius:50%; }
+    .pill-dot.low { background:#22c55e; }
+    .pill-dot.medium { background:#f59e0b; }
+    .pill-dot.high { background:#ef4444; }
+    .pill-dot.critical { background:#1e293b; }
+    .pill.active .pill-dot { background:white; }
+    .pill-count { background:rgba(0,0,0,.08); padding:1px 6px; border-radius:8px; font-size:10px; }
+    .pill.active .pill-count { background:rgba(255,255,255,.2); }
+    .pill-manage { width:32px; height:32px; border:1px solid #e2e8f0; border-radius:6px; background:white; color:#64748b; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .pill-manage:hover { background:#f1f5f9; }
+
+    /* Models Panel */
+    .models-panel { padding:10px 14px; background:#f8fafc; border-bottom:1px solid #e2e8f0; }
+    .models-grid { display:flex; flex-wrap:wrap; gap:8px; }
+    .model-chip { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 14px; background:white; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; transition:all .15s; min-width:240px; flex:1; max-width:360px; }
+    .model-chip:hover { border-color:#3b82f6; box-shadow:0 2px 8px rgba(0,0,0,.06); }
+    .model-chip.inactive { opacity:.5; }
+    .model-chip.low { border-left:3px solid #22c55e; }
+    .model-chip.medium { border-left:3px solid #f59e0b; }
+    .model-chip.high { border-left:3px solid #ef4444; }
+    .model-chip.critical { border-left:3px solid #1e293b; }
+    .chip-left { display:flex; align-items:center; gap:10px; color:#475569; }
+    .chip-name { display:block; font-size:12px; font-weight:600; color:#1e293b; }
+    .chip-meta { font-size:10px; color:#94a3b8; }
+    .chip-cost { font-size:12px; font-weight:600; color:#1e293b; white-space:nowrap; }
+
+    /* Main Table */
+    .table-wrap { flex:1; padding:12px; overflow:auto; }
+    .main-table { width:100%; border-collapse:separate; border-spacing:0; background:white; border-radius:8px; border:1px solid #e2e8f0; overflow:hidden; }
+    .main-table thead th { padding:10px 14px; font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.3px; background:#f8fafc; border-bottom:1px solid #e2e8f0; text-align:left; cursor:pointer; user-select:none; white-space:nowrap; }
+    .main-table thead th:hover { color:#1e293b; }
+    .sort-icon { font-size:10px; color:#94a3b8; }
+    .main-table tbody tr { transition:background .1s; }
+    .main-table tbody tr:hover { background:#f8fafc; }
+    .main-table tbody tr.overdue { background:#fef2f2; }
+    .main-table tbody tr.overdue:hover { background:#fee2e2; }
+    .main-table tbody tr.due { background:#fffbeb; }
+    .main-table tbody tr.due:hover { background:#fef3c7; }
+    .main-table tbody td { padding:10px 14px; font-size:12px; color:#475569; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+    .main-table tbody tr:last-child td { border-bottom:none; }
+    .col-vehicle { min-width:180px; }
+    .col-maint { min-width:120px; }
+    .col-progress { min-width:140px; }
+    .col-km { min-width:110px; }
+    .col-status { min-width:90px; }
+    .col-date { min-width:80px; }
+    .col-actions { min-width:70px; }
+
+    /* Table cells */
+    .cell-vehicle { display:flex; align-items:center; gap:10px; }
+    .vehicle-avatar { width:32px; height:32px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:white; flex-shrink:0; }
+    .vehicle-avatar.ok { background:#22c55e; }
+    .vehicle-avatar.upcoming { background:#3b82f6; }
+    .vehicle-avatar.due { background:#f59e0b; }
+    .vehicle-avatar.overdue { background:#dc2626; }
+    .cell-name { display:block; font-size:12px; font-weight:600; color:#1e293b; }
+    .cell-plate { font-family:monospace; font-size:10px; color:#94a3b8; }
+    .cell-maint-name { font-weight:500; color:#1e293b; }
+    .progress-cell { display:flex; align-items:center; gap:8px; }
+    .progress-track { flex:1; height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden; min-width:60px; }
+    .progress-fill { height:100%; border-radius:3px; transition:width .4s ease; }
+    .progress-fill.ok { background:#22c55e; }
+    .progress-fill.upcoming { background:#3b82f6; }
+    .progress-fill.due { background:#f59e0b; }
+    .progress-fill.overdue { background:#dc2626; }
+    .progress-pct { font-size:11px; font-weight:600; min-width:30px; }
+    .progress-pct.ok { color:#16a34a; }
+    .progress-pct.upcoming { color:#3b82f6; }
+    .progress-pct.due { color:#d97706; }
+    .progress-pct.overdue { color:#dc2626; }
+    .cell-km { font-weight:500; white-space:nowrap; }
+    .cell-km.ok { color:#16a34a; }
+    .cell-km.upcoming { color:#3b82f6; }
+    .cell-km.due { color:#d97706; }
+    .cell-km.overdue { color:#dc2626; }
+    .status-tag { padding:3px 8px; border-radius:3px; font-size:10px; font-weight:600; white-space:nowrap; }
+    .status-tag.ok { background:#dcfce7; color:#16a34a; }
+    .status-tag.upcoming { background:#dbeafe; color:#2563eb; }
+    .status-tag.due { background:#fef3c7; color:#d97706; }
+    .status-tag.overdue { background:#fee2e2; color:#dc2626; }
+    .cell-date { font-size:11px; color:#94a3b8; }
+    .btn-act { width:28px; height:28px; border-radius:4px; display:flex; align-items:center; justify-content:center; cursor:pointer; border:1px solid #e2e8f0; background:white; transition:all .15s; }
+    .btn-act.done { color:#16a34a; }
+    .btn-act.done:hover { background:#dcfce7; border-color:#16a34a; }
+    .btn-act.history { color:#f59e0b; }
+    .btn-act.history:hover { background:#fef3c7; border-color:#f59e0b; }
+    .btn-act.del { color:#dc2626; }
+    .btn-act.del:hover { background:#fee2e2; border-color:#dc2626; }
+
+    /* Empty */
+    .empty-state { text-align:center; padding:60px 20px; color:#94a3b8; }
+    .empty-state.small { padding:20px; font-size:12px; }
+    .empty-state svg { margin-bottom:12px; }
+    .empty-state h3 { margin:0 0 4px; font-size:14px; font-weight:600; color:#64748b; }
+    .empty-state p { margin:0; font-size:12px; }
+
+    /* Panels */
+    .overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; justify-content:flex-end; z-index:1000; }
+    .panel { width:100%; max-width:460px; height:100vh; background:white; display:flex; flex-direction:column; box-shadow:-4px 0 20px rgba(0,0,0,.1); }
+    .panel-head { display:flex; justify-content:space-between; align-items:center; padding:18px 20px; color:white; }
+    .panel-head.blue { background:linear-gradient(135deg,#3b82f6,#2563eb); }
+    .panel-head.green { background:linear-gradient(135deg,#22c55e,#16a34a); }
+    .panel-head.purple { background:linear-gradient(135deg,#8b5cf6,#7c3aed); }
+    .panel-head.orange { background:linear-gradient(135deg,#f59e0b,#d97706); }
+    .panel-head.low { background:linear-gradient(135deg,#22c55e,#16a34a); }
+    .panel-head.medium { background:linear-gradient(135deg,#f59e0b,#d97706); }
+    .panel-head.high { background:linear-gradient(135deg,#ef4444,#dc2626); }
+    .panel-head.critical { background:linear-gradient(135deg,#1e293b,#0f172a); }
+    .panel-head h2 { margin:0; font-size:16px; font-weight:600; }
+    .panel-close { background:rgba(255,255,255,.2); border:none; width:28px; height:28px; border-radius:6px; color:white; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+    .panel-body { flex:1; overflow-y:auto; padding:20px; }
+    .panel-foot { display:flex; justify-content:flex-end; align-items:center; gap:8px; padding:14px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; }
+
+    /* History */
+    .history-loading { text-align:center; padding:20px; color:#94a3b8; font-size:12px; }
+    .history-list { display:flex; flex-direction:column; gap:0; border-left:2px solid #e2e8f0; margin-left:10px; padding-left:0; }
+    .history-item { display:flex; gap:12px; padding:12px 0 12px 16px; position:relative; }
+    .history-item:not(:last-child) { border-bottom:1px solid #f1f5f9; }
+    .history-dot { width:10px; height:10px; border-radius:50%; background:#f59e0b; border:2px solid white; box-shadow:0 0 0 2px #f59e0b; flex-shrink:0; margin-top:4px; position:absolute; left:-7px; }
+    .history-content { margin-left:12px; flex:1; }
+    .history-date { font-size:13px; font-weight:600; color:#1e293b; margin-bottom:4px; }
+    .history-details { display:flex; gap:12px; flex-wrap:wrap; }
+    .history-km { font-size:12px; color:#3b82f6; font-weight:500; background:#eff6ff; padding:2px 8px; border-radius:3px; }
+    .history-cost { font-size:12px; color:#16a34a; font-weight:500; background:#f0fdf4; padding:2px 8px; border-radius:3px; }
+    .history-supplier { font-size:12px; color:#7c3aed; font-weight:500; background:#f5f3ff; padding:2px 8px; border-radius:3px; }
+    .history-notes { font-size:11px; color:#94a3b8; margin-top:4px; font-style:italic; }
+
+    /* Fields */
+    .field { margin-bottom:14px; }
+    .field label { display:block; font-size:11px; font-weight:600; color:#64748b; margin-bottom:5px; }
+    .field input, .field select, .field textarea { width:100%; padding:8px 10px; border:1px solid #e2e8f0; border-radius:3px; font-size:12px; color:#1e293b; }
+    .field input:focus, .field select:focus, .field textarea:focus { outline:none; border-color:#3b82f6; }
+    .field-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .field.toggle label { display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; color:#1e293b; }
+    .field.toggle input { display:none; width:auto; }
+    .switch { width:36px; height:20px; background:#e2e8f0; border-radius:10px; position:relative; transition:background .2s; }
+    .switch::after { content:''; position:absolute; width:16px; height:16px; background:white; border-radius:50%; top:2px; left:2px; transition:transform .2s; }
+    .field.toggle input:checked + .switch { background:#3b82f6; }
+    .field.toggle input:checked + .switch::after { transform:translateX(16px); }
+    .divider { height:1px; background:#e2e8f0; margin:16px 0; }
+    .sub-title { font-size:12px; font-weight:600; color:#1e293b; margin:0 0 12px; }
+    .text-muted { color:#94a3b8; font-size:11px; }
+
+    /* Buttons */
+    .btn-cancel { padding:8px 14px; background:white; border:1px solid #e2e8f0; border-radius:3px; font-size:12px; color:#64748b; cursor:pointer; }
+    .btn-save { padding:8px 16px; background:#3b82f6; border:none; border-radius:3px; font-size:12px; font-weight:500; color:white; cursor:pointer; }
+    .btn-save:disabled { opacity:.4; cursor:not-allowed; }
+    .btn-save.green { background:#16a34a; }
+    .btn-save.purple { background:#7c3aed; }
+    .btn-delete-confirm { padding:8px 14px; background:white; border:1px solid #fecaca; border-radius:3px; font-size:12px; color:#dc2626; cursor:pointer; }
+    .priority-badge { padding:3px 8px; border-radius:3px; font-size:10px; font-weight:600; }
     .priority-badge.low { background:#dcfce7; color:#16a34a; }
     .priority-badge.medium { background:#fef3c7; color:#d97706; }
     .priority-badge.high { background:#fee2e2; color:#dc2626; }
     .priority-badge.critical { background:#1e293b; color:white; }
-    .card-title { font-size:16px; font-weight:600; margin:0 0 8px; color:#1e293b; }
-    .card-desc { font-size:13px; color:#64748b; margin:0 0 14px; line-height:1.4; }
-    .card-intervals { display:flex; gap:16px; font-size:13px; color:#475569; margin-bottom:14px; }
-    .card-intervals span { display:flex; align-items:center; gap:4px; }
-    .card-footer { display:flex; justify-content:space-between; align-items:center; padding-top:14px; border-top:1px solid #f1f5f9; }
-    .category-tag { padding:5px 10px; background:#f1f5f9; border-radius:6px; font-size:11px; font-weight:500; color:#475569; }
-    .cost { font-size:14px; font-weight:600; color:#1e293b; }
-    .alerts-summary { display:flex; gap:12px; margin-bottom:16px; }
-    .alert-card { flex:1; padding:16px; border-radius:10px; text-align:center; }
-    .alert-card.overdue { background:#fee2e2; }
-    .alert-card.due { background:#fef3c7; }
-    .alert-card.upcoming { background:#dbeafe; }
-    .alert-card.ok { background:#dcfce7; }
-    .alert-count { font-size:24px; font-weight:700; }
-    .alert-card.overdue .alert-count { color:#dc2626; }
-    .alert-card.due .alert-count { color:#d97706; }
-    .alert-card.upcoming .alert-count { color:#2563eb; }
-    .alert-card.ok .alert-count { color:#16a34a; }
-    .alert-label { font-size:12px; color:#64748b; }
-    
-    /* Planning Stats */
-    .planning-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:20px; }
-    .plan-stat-card { background:white; border-radius:12px; padding:20px; display:flex; flex-direction:column; gap:12px; box-shadow:0 1px 3px rgba(0,0,0,.05); border-left:4px solid transparent; }
-    .plan-stat-card.urgent { border-left-color:#dc2626; }
-    .plan-stat-card.warning { border-left-color:#f59e0b; }
-    .plan-stat-card.success { border-left-color:#16a34a; }
-    .plan-stat-card.info { border-left-color:#3b82f6; }
-    .stat-icon-wrap { width:48px; height:48px; border-radius:12px; display:flex; align-items:center; justify-content:center; }
-    .stat-icon-wrap.urgent { background:#fee2e2; color:#dc2626; }
-    .stat-icon-wrap.warning { background:#fef3c7; color:#f59e0b; }
-    .stat-icon-wrap.success { background:#dcfce7; color:#16a34a; }
-    .stat-icon-wrap.info { background:#dbeafe; color:#3b82f6; }
-    .stat-info { display:flex; align-items:baseline; gap:8px; }
-    .stat-number { font-size:28px; font-weight:700; color:#1e293b; }
-    .stat-text { font-size:14px; font-weight:500; color:#64748b; }
-    .stat-desc { font-size:12px; color:#94a3b8; }
-    
-    /* Planning Toolbar */
-    .planning-toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; gap:16px; }
-    .search-box { flex:1; max-width:320px; display:flex; align-items:center; gap:10px; padding:10px 14px; background:white; border:1px solid #e2e8f0; border-radius:8px; }
-    .search-box svg { color:#94a3b8; flex-shrink:0; }
-    .search-box input { flex:1; border:none; outline:none; font-size:13px; background:transparent; }
-    .view-switcher { display:flex; gap:4px; background:white; border:1px solid #e2e8f0; padding:4px; border-radius:8px; }
-    .view-switcher button { display:flex; align-items:center; gap:6px; padding:8px 16px; border:none; background:transparent; border-radius:6px; font-size:13px; font-weight:500; color:#64748b; cursor:pointer; transition:all .2s; }
-    .view-switcher button:hover { background:#f8fafc; color:#1e293b; }
-    .view-switcher button.active { background:#1e3a5f; color:white; }
-    
-    /* Planning List */
-    .planning-list { display:flex; flex-direction:column; gap:24px; }
-    .list-section { background:white; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.05); }
-    .section-title { display:flex; align-items:center; gap:10px; padding:16px 20px; font-weight:600; border-bottom:1px solid #f1f5f9; }
-    .section-title.urgent { background:linear-gradient(135deg,#fef2f2,#fee2e2); }
-    .section-title.warning { background:linear-gradient(135deg,#fffbeb,#fef3c7); }
-    .section-title.success { background:linear-gradient(135deg,#f0fdf4,#dcfce7); }
-    .title-icon { font-size:16px; }
-    .title-text { flex:1; font-size:14px; color:#1e293b; }
-    .title-count { background:rgba(0,0,0,.1); padding:4px 10px; border-radius:12px; font-size:12px; }
-    .expand-icon { color:#94a3b8; font-size:12px; }
-    
-    /* Maintenance Cards */
-    .maintenance-cards { display:flex; flex-direction:column; }
-    .maint-card { display:flex; align-items:center; gap:16px; padding:16px 20px; border-bottom:1px solid #f1f5f9; transition:background .2s; }
-    .maint-card:last-child { border-bottom:none; }
-    .maint-card:hover { background:#f8fafc; }
-    .card-left { flex-shrink:0; }
-    .maint-card .card-icon { width:44px; height:44px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px; }
-    .maint-card .card-icon.urgent { background:#fee2e2; }
-    .maint-card .card-icon.warning { background:#fef3c7; }
-    .maint-card .card-icon.ok { background:#dcfce7; }
-    .card-body { flex:1; min-width:0; }
-    .card-top { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
-    .maint-type { font-size:15px; font-weight:600; color:#1e293b; }
-    .status-pill { padding:4px 10px; border-radius:12px; font-size:11px; font-weight:600; }
-    .status-pill.urgent { background:#fee2e2; color:#dc2626; }
-    .status-pill.warning { background:#fef3c7; color:#d97706; }
-    .status-pill.ok { background:#dcfce7; color:#16a34a; }
-    .card-vehicle { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
-    .vehicle-name { font-size:13px; color:#475569; }
-    .vehicle-plate { font-family:monospace; font-size:11px; background:#e2e8f0; padding:2px 8px; border-radius:4px; color:#64748b; }
-    .card-km { display:flex; align-items:center; gap:6px; font-size:12px; color:#64748b; }
-    .card-km.ok { color:#16a34a; }
-    .card-action { flex-shrink:0; }
-    .btn-mark-done { display:flex; align-items:center; gap:6px; padding:10px 16px; background:#dcfce7; border:none; border-radius:8px; color:#16a34a; font-size:13px; font-weight:500; cursor:pointer; transition:all .2s; }
-    .btn-mark-done:hover { background:#16a34a; color:white; }
-    
-    /* Empty Planning */
-    .empty-planning, .empty-vehicles { text-align:center; padding:60px 20px; background:white; border-radius:12px; }
-    .empty-planning .empty-icon, .empty-vehicles .empty-icon { font-size:48px; margin-bottom:16px; }
-    .empty-planning h3, .empty-vehicles h3 { margin:0 0 8px; font-size:18px; font-weight:600; color:#1e293b; }
-    .empty-planning p, .empty-vehicles p { margin:0 0 20px; font-size:14px; color:#64748b; }
-    .btn-switch-view { padding:10px 20px; background:#1e3a5f; color:white; border:none; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer; }
-    
-    /* Vehicles Grid */
-    .vehicles-grid { display:flex; flex-direction:column; gap:12px; }
-    .vehicle-tile { background:white; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.05); }
-    .tile-header { display:flex; align-items:center; gap:16px; padding:16px 20px; cursor:pointer; transition:background .2s; }
-    .tile-header:hover { background:#f8fafc; }
-    .tile-icon { width:48px; height:48px; background:#f1f5f9; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#64748b; }
-    .tile-info { flex:1; }
-    .tile-info h4 { margin:0 0 4px; font-size:15px; font-weight:600; color:#1e293b; }
-    .tile-meta { display:flex; align-items:center; gap:12px; }
-    .tile-plate { font-family:monospace; font-size:12px; background:#e2e8f0; padding:2px 8px; border-radius:4px; color:#475569; }
-    .tile-km { font-size:12px; color:#64748b; }
-    .tile-badges { display:flex; gap:6px; }
-    .tile-badge { min-width:24px; height:24px; padding:0 8px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; color:white; }
-    .tile-badge.urgent { background:#dc2626; }
-    .tile-badge.warning { background:#f59e0b; }
-    .tile-badge.ok { background:#16a34a; }
-    .tile-arrow { color:#94a3b8; transition:transform .2s; }
-    .tile-arrow.open { transform:rotate(180deg); }
-    .tile-content { border-top:1px solid #f1f5f9; padding:12px; background:#f8fafc; }
-    .tile-maint-row { display:flex; align-items:center; gap:12px; padding:12px; background:white; border-radius:8px; margin-bottom:8px; }
-    .tile-maint-row:last-of-type { margin-bottom:0; }
-    .row-icon { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:14px; }
-    .row-icon.ok { background:#dcfce7; }
-    .row-icon.upcoming { background:#dbeafe; }
-    .row-icon.due { background:#fef3c7; }
-    .row-icon.overdue { background:#fee2e2; }
-    .row-info { flex:1; min-width:0; }
-    .row-name { display:block; font-size:13px; font-weight:500; color:#1e293b; margin-bottom:2px; }
-    .row-date { font-size:11px; color:#94a3b8; }
-    .row-status { display:flex; flex-direction:column; align-items:flex-end; gap:4px; min-width:120px; }
-    .row-km { font-size:12px; font-weight:500; }
-    .row-km.ok { color:#16a34a; }
-    .row-km.upcoming { color:#3b82f6; }
-    .row-km.due { color:#d97706; }
-    .row-km.overdue { color:#dc2626; }
-    .row-badge { padding:3px 8px; border-radius:4px; font-size:10px; font-weight:600; }
-    .row-badge.ok { background:#dcfce7; color:#16a34a; }
-    .row-badge.upcoming { background:#dbeafe; color:#2563eb; }
-    .row-badge.due { background:#fef3c7; color:#d97706; }
-    .row-badge.overdue { background:#fee2e2; color:#dc2626; }
-    .row-actions { display:flex; gap:6px; }
-    .btn-done-sm, .btn-remove-sm { width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:12px; cursor:pointer; transition:all .2s; }
-    .btn-done-sm { background:#dcfce7; border:1px solid #bbf7d0; color:#16a34a; }
-    .btn-done-sm:hover { background:#16a34a; color:white; border-color:#16a34a; }
-    .btn-remove-sm { background:white; border:1px solid #fee2e2; color:#dc2626; }
-    .btn-remove-sm:hover { background:#fee2e2; }
-    .btn-add-maint-tile { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:12px; margin-top:8px; border:2px dashed #cbd5e1; border-radius:8px; background:transparent; color:#64748b; font-size:13px; font-weight:500; cursor:pointer; transition:all .2s; }
-    .btn-add-maint-tile:hover { border-color:#3b82f6; color:#3b82f6; background:#eff6ff; }
-    
-    .vehicles-schedule { display:flex; flex-direction:column; gap:12px; }
-    .vehicle-card { background:white; border-radius:10px; overflow:hidden; }
-    .vehicle-header { display:flex; justify-content:space-between; align-items:center; padding:16px; cursor:pointer; }
-    .vehicle-header:hover { background:#f8fafc; }
-    .vehicle-info h3 { margin:0 0 4px; font-size:14px; font-weight:600; }
-    .plate { font-family:monospace; font-size:12px; background:#e2e8f0; padding:2px 6px; border-radius:4px; margin-right:8px; }
-    .km { font-size:12px; color:#64748b; }
-    .vehicle-badges { display:flex; align-items:center; gap:8px; }
-    .badge { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:white; }
-    .badge.overdue { background:#dc2626; }
-    .badge.due { background:#f59e0b; }
-    .badge.upcoming { background:#3b82f6; }
-    .expand-arrow { color:#94a3b8; transition:transform .2s; }
-    .expand-arrow.open { transform:rotate(180deg); }
-    .maintenance-list { border-top:1px solid #f1f5f9; }
-    .maint-row { display:flex; align-items:center; padding:12px 16px; border-bottom:1px solid #f1f5f9; gap:16px; }
-    .maint-row.overdue { background:#fef2f2; }
-    .maint-row.due { background:#fffbeb; }
-    .maint-info { flex:1; }
-    .maint-name { display:block; font-size:13px; font-weight:500; margin-bottom:2px; }
-    .maint-last { font-size:11px; color:#64748b; }
-    .maint-next { min-width:120px; text-align:right; font-size:12px; color:#475569; }
-    .maint-actions { display:flex; align-items:center; gap:8px; }
-    .status-badge { padding:4px 8px; border-radius:4px; font-size:10px; font-weight:600; }
-    .status-badge.ok { background:#dcfce7; color:#16a34a; }
-    .status-badge.upcoming { background:#dbeafe; color:#2563eb; }
-    .status-badge.due { background:#fef3c7; color:#d97706; }
-    .status-badge.overdue { background:#fee2e2; color:#dc2626; }
-    .btn-done { width:28px; height:28px; border:1px solid #e2e8f0; border-radius:6px; background:white; color:#16a34a; cursor:pointer; font-weight:bold; }
-    .btn-done:hover { background:#dcfce7; border-color:#16a34a; }
-    .btn-remove { width:28px; height:28px; border:1px solid #e2e8f0; border-radius:6px; background:white; color:#dc2626; cursor:pointer; font-size:12px; }
-    .btn-remove:hover { background:#fee2e2; border-color:#dc2626; }
-    .btn-add-maint { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:14px; border:2px dashed #cbd5e1; border-radius:8px; background:transparent; color:#64748b; font-size:13px; font-weight:500; cursor:pointer; margin-top:8px; transition:all .2s; }
-    .btn-add-maint:hover { border-color:#8b5cf6; color:#8b5cf6; background:#f5f3ff; }
-    .btn-add-maint span { font-size:16px; }
-    .empty-state { text-align:center; padding:60px; color:#64748b; }
-    .agenda-view { display:flex; flex-direction:column; gap:20px; }
-    .agenda-summary { display:flex; gap:12px; }
-    .summary-card { flex:1; padding:20px; border-radius:12px; text-align:center; }
-    .summary-card.urgent { background:linear-gradient(135deg,#fee2e2,#fecaca); }
-    .summary-card.soon { background:linear-gradient(135deg,#fef3c7,#fde68a); }
-    .summary-card.ok { background:linear-gradient(135deg,#dcfce7,#bbf7d0); }
-    .sum-count { display:block; font-size:32px; font-weight:700; }
-    .summary-card.urgent .sum-count { color:#dc2626; }
-    .summary-card.soon .sum-count { color:#d97706; }
-    .summary-card.ok .sum-count { color:#16a34a; }
-    .sum-label { font-size:13px; color:#64748b; }
-    .agenda-section { background:white; border-radius:12px; overflow:hidden; }
-    .section-header { display:flex; align-items:center; gap:10px; padding:14px 16px; font-weight:600; }
-    .section-header.urgent { background:linear-gradient(135deg,#fee2e2,#fecaca); color:#dc2626; }
-    .section-header.soon { background:linear-gradient(135deg,#fef3c7,#fde68a); color:#d97706; }
-    .section-header.ok { background:linear-gradient(135deg,#dcfce7,#bbf7d0); color:#16a34a; }
-    .section-icon { font-size:16px; }
-    .section-title { flex:1; font-size:14px; }
-    .section-count { background:rgba(0,0,0,.1); padding:2px 8px; border-radius:10px; font-size:12px; }
-    .agenda-items { position:relative; padding-left:24px; }
-    .agenda-items::before { content:''; position:absolute; left:19px; top:0; bottom:0; width:2px; background:#e2e8f0; }
-    .agenda-items.collapsed { max-height:180px; overflow:hidden; }
-    .agenda-items.collapsed.expanded { max-height:none; }
-    .agenda-item { display:flex; align-items:center; gap:12px; padding:14px 16px 14px 20px; border-bottom:1px solid #f1f5f9; position:relative; }
-    .agenda-item:last-child { border-bottom:none; }
-    .timeline-dot { position:absolute; left:-5px; width:10px; height:10px; border-radius:50%; border:2px solid white; }
-    .agenda-item.urgent .timeline-dot { background:#dc2626; }
-    .agenda-item.soon .timeline-dot { background:#f59e0b; }
-    .agenda-item.ok .timeline-dot { background:#22c55e; }
-    .item-content { flex:1; }
-    .item-main { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
-    .item-maint { font-size:14px; font-weight:600; color:#1e293b; }
-    .item-vehicle { font-size:13px; color:#64748b; }
-    .item-meta { display:flex; align-items:center; gap:12px; }
-    .item-plate { font-family:monospace; font-size:11px; background:#e2e8f0; padding:2px 6px; border-radius:4px; }
-    .item-km { font-size:12px; font-weight:600; }
-    .item-km.urgent { color:#dc2626; }
-    .item-km.soon { color:#d97706; }
-    .item-km.ok { color:#16a34a; }
-    .item-actions { display:flex; gap:8px; }
-    .btn-action { padding:8px 14px; border:none; border-radius:6px; font-size:12px; font-weight:500; cursor:pointer; transition:all .2s; }
-    .btn-action.done { background:#dcfce7; color:#16a34a; }
-    .btn-action.done:hover { background:#16a34a; color:white; }
-    .btn-show-more { width:100%; padding:12px; border:none; background:#f8fafc; color:#64748b; font-size:12px; cursor:pointer; }
-    .btn-show-more:hover { background:#f1f5f9; color:#1e293b; }
-    .empty-agenda { text-align:center; padding:60px 20px; background:white; border-radius:12px; }
-    .empty-icon { font-size:48px; display:block; margin-bottom:12px; }
-    .empty-agenda p { font-size:16px; font-weight:500; color:#64748b; margin:0 0 8px; }
-    .empty-hint { font-size:13px; color:#94a3b8; }
-    .overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; justify-content:flex-end; z-index:1000; }
-    .panel { width:100%; max-width:480px; height:100vh; background:white; display:flex; flex-direction:column; }
-    .panel.narrow { max-width:400px; }
-    .panel-header { display:flex; justify-content:space-between; align-items:center; padding:20px; color:white; }
-    .panel-header.blue { background:linear-gradient(135deg,#3b82f6,#2563eb); }
-    .panel-header.green { background:linear-gradient(135deg,#22c55e,#16a34a); }
-    .panel-header.purple { background:linear-gradient(135deg,#8b5cf6,#7c3aed); }
-    .panel-header.low { background:linear-gradient(135deg,#22c55e,#16a34a); }
-    .panel-header.medium { background:linear-gradient(135deg,#f59e0b,#d97706); }
-    .panel-header.high { background:linear-gradient(135deg,#ef4444,#dc2626); }
-    .panel-header.critical { background:linear-gradient(135deg,#1e293b,#0f172a); }
-    .panel-header h2 { margin:0; font-size:18px; }
-    .btn-close { background:rgba(255,255,255,.2); border:none; width:32px; height:32px; border-radius:8px; color:white; cursor:pointer; font-size:16px; }
-    .panel-body { flex:1; overflow-y:auto; padding:20px; }
-    .form-group { margin-bottom:14px; }
-    .form-group label { display:block; font-size:12px; font-weight:500; color:#64748b; margin-bottom:6px; }
-    .form-group input, .form-group select, .form-group textarea { width:100%; padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; }
-    .form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-    .form-group.toggle label { display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; color:#1e293b; }
-    .form-group.toggle input { display:none; }
-    .switch { width:40px; height:22px; background:#e2e8f0; border-radius:11px; position:relative; transition:background .2s; }
-    .switch::after { content:''; position:absolute; width:18px; height:18px; background:white; border-radius:50%; top:2px; left:2px; transition:transform .2s; }
-    .form-group.toggle input:checked + .switch { background:#3b82f6; }
-    .form-group.toggle input:checked + .switch::after { transform:translateX(18px); }
-    .recap { background:#f8fafc; padding:12px; border-radius:8px; margin-bottom:20px; }
-    .recap .label { display:block; font-size:14px; font-weight:600; color:#1e293b; margin-bottom:4px; }
-    .recap .value { font-size:12px; color:#64748b; }
-    .badges { display:flex; gap:10px; margin-bottom:20px; }
-    .active-badge { padding:6px 12px; border-radius:6px; font-size:12px; font-weight:600; background:#dcfce7; color:#16a34a; }
-    .active-badge.inactive { background:#f1f5f9; color:#64748b; }
-    .section { margin-bottom:20px; }
-    .section h4 { font-size:13px; font-weight:600; margin:0 0 10px; color:#1e293b; }
-    .section p { font-size:13px; color:#475569; margin:0; padding:12px; background:#f8fafc; border-radius:8px; }
-    .intervals { display:flex; align-items:center; gap:16px; }
-    .int-card { flex:1; padding:16px; background:#f8fafc; border-radius:10px; text-align:center; }
-    .int-val { display:block; font-size:24px; font-weight:700; color:#1e293b; }
-    .int-unit { font-size:12px; color:#64748b; }
-    .or { font-size:12px; font-weight:600; color:#94a3b8; }
-    .cost-display { display:flex; align-items:baseline; gap:8px; padding:16px; background:#f8fafc; border-radius:10px; }
-    .cost-val { font-size:28px; font-weight:700; color:#1e293b; }
-    .cost-unit { font-size:14px; color:#64748b; }
-    .panel-footer { display:flex; justify-content:flex-end; gap:10px; padding:16px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; }
-    .btn-cancel { padding:10px 16px; background:white; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; color:#64748b; cursor:pointer; }
-    .btn-save { padding:10px 20px; background:#1e3a5f; border:none; border-radius:8px; font-size:13px; font-weight:500; color:white; cursor:pointer; }
-    .btn-save:disabled { opacity:.5; cursor:not-allowed; }
-    .btn-save.green { background:#16a34a; }
-    .btn-save.purple { background:#8b5cf6; }
-    .btn-save.purple:hover { background:#7c3aed; }
-    .btn-edit { padding:10px 16px; background:#3b82f6; border:none; border-radius:8px; font-size:13px; color:white; cursor:pointer; }
-    .btn-delete { padding:10px 16px; background:white; border:1px solid #fee2e2; border-radius:8px; font-size:13px; color:#dc2626; cursor:pointer; }
-    .vehicle-recap-box { display:flex; align-items:center; gap:12px; padding:16px; background:#f8fafc; border-radius:10px; margin-bottom:20px; }
-    .recap-icon { font-size:28px; }
-    .recap-info { flex:1; }
-    .recap-name { display:block; font-size:16px; font-weight:600; color:#1e293b; }
-    .recap-plate { font-size:12px; color:#64748b; }
-    .select-title { font-size:14px; font-weight:600; color:#1e293b; margin:0 0 12px; }
-    .templates-select-list { display:flex; flex-direction:column; gap:8px; }
-    .template-select-item { display:flex; align-items:center; gap:12px; padding:14px; background:white; border:2px solid #e2e8f0; border-radius:10px; cursor:pointer; transition:all .2s; }
-    .template-select-item:hover { border-color:#8b5cf6; }
-    .template-select-item.selected { border-color:#8b5cf6; background:#f5f3ff; }
-    .tpl-icon { width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:16px; }
-    .tpl-icon.low { background:#dcfce7; }
-    .tpl-icon.medium { background:#fef3c7; }
-    .tpl-icon.high { background:#fee2e2; }
-    .tpl-icon.critical { background:#1e293b; }
-    .tpl-info { flex:1; }
-    .tpl-name { display:block; font-size:14px; font-weight:500; color:#1e293b; }
-    .tpl-interval { font-size:11px; color:#64748b; }
-    .tpl-cost { font-size:12px; font-weight:600; color:#64748b; }
-    .tpl-check { width:24px; height:24px; background:#8b5cf6; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; }
-    .empty-templates { padding:30px; text-align:center; color:#64748b; font-size:13px; }
-    .btn-assign { padding:10px 16px; background:#8b5cf6; border:none; border-radius:8px; font-size:13px; color:white; cursor:pointer; }
-    .btn-assign:hover { background:#7c3aed; }
-    .assign-template-info { background:#f8fafc; padding:16px; border-radius:10px; margin-bottom:16px; }
-    .assign-label { display:block; font-size:11px; color:#64748b; margin-bottom:4px; }
-    .assign-name { display:block; font-size:16px; font-weight:600; color:#1e293b; margin-bottom:4px; }
-    .assign-interval { font-size:12px; color:#64748b; }
-    .assign-actions-bar { display:flex; gap:8px; margin-bottom:16px; }
-    .btn-select-all, .btn-select-none { padding:8px 12px; border:1px solid #e2e8f0; border-radius:6px; background:white; font-size:12px; color:#64748b; cursor:pointer; }
-    .btn-select-all:hover, .btn-select-none:hover { background:#f1f5f9; }
-    .vehicles-checklist { display:flex; flex-direction:column; gap:8px; }
-    .vehicle-checkbox { display:flex; align-items:center; gap:12px; padding:12px; background:white; border:2px solid #e2e8f0; border-radius:10px; cursor:pointer; transition:all .2s; }
-    .vehicle-checkbox:hover { border-color:#8b5cf6; }
-    .vehicle-checkbox.selected { border-color:#8b5cf6; background:#f5f3ff; }
-    .vehicle-checkbox.already { opacity:.6; cursor:not-allowed; border-color:#e2e8f0; background:#f8fafc; }
-    .vehicle-checkbox input { display:none; }
-    .vehicle-check-info { flex:1; }
-    .vehicle-check-name { display:block; font-size:14px; font-weight:500; color:#1e293b; }
-    .vehicle-check-plate { font-family:monospace; font-size:11px; background:#e2e8f0; padding:2px 6px; border-radius:4px; margin-right:8px; }
-    .vehicle-check-km { font-size:11px; color:#64748b; }
-    .already-badge { font-size:10px; background:#fef3c7; color:#d97706; padding:4px 8px; border-radius:4px; }
-    .check-icon { width:24px; height:24px; background:#8b5cf6; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; }
-    .assign-count { flex:1; font-size:13px; color:#64748b; }
-    .invoice-section { background:#f8fafc; border-radius:10px; padding:16px; margin-bottom:16px; }
-    .invoice-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
-    .invoice-header h4 { margin:0; font-size:14px; font-weight:600; color:#1e293b; }
-    .invoice-lines { display:flex; flex-direction:column; gap:12px; }
-    .invoice-line { background:white; border-radius:10px; padding:14px; border:1px solid #e2e8f0; }
-    .line-top { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
-    .line-select { flex:1; padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; background:white; cursor:pointer; }
-    .line-select:focus { outline:none; border-color:#3b82f6; }
-    .line-bottom { display:flex; gap:10px; align-items:center; }
-    .line-desc { flex:1; padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; background:#f8fafc; }
-    .line-desc:not([readonly]) { background:white; }
-    .line-desc[readonly] { color:#64748b; cursor:default; }
-    .line-price-wrap { display:flex; align-items:center; gap:6px; }
-    .line-price { width:90px; padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; text-align:right; }
-    .line-price:focus { outline:none; border-color:#3b82f6; }
-    .price-unit { font-size:12px; color:#64748b; font-weight:500; }
-    .line-hint { margin-top:8px; padding:8px 10px; background:#dbeafe; border-radius:6px; font-size:11px; color:#1d4ed8; }
-    .btn-remove-line { width:32px; height:32px; border:1px solid #fee2e2; border-radius:8px; background:white; color:#dc2626; cursor:pointer; font-size:14px; flex-shrink:0; }
-    .btn-remove-line:hover { background:#fee2e2; }
-    .btn-add-line { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:12px; border:2px dashed #cbd5e1; border-radius:8px; background:transparent; color:#64748b; font-size:13px; cursor:pointer; margin-top:12px; transition:all .2s; }
-    .btn-add-line:hover { border-color:#16a34a; color:#16a34a; background:#f0fdf4; }
-    .btn-add-line span { font-size:16px; }
-    .invoice-total { display:flex; justify-content:space-between; align-items:center; padding-top:16px; border-top:1px solid #e2e8f0; margin-top:16px; }
-    .total-label { font-size:14px; font-weight:600; color:#64748b; }
-    .total-value { font-size:20px; font-weight:700; color:#16a34a; }
-    .select-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
-    .select-actions { display:flex; gap:8px; }
-    .selected-count { display:flex; align-items:center; gap:8px; margin-bottom:12px; font-size:13px; color:#64748b; }
-    .count-badge.purple { background:#f3e8ff; color:#7c3aed; padding:4px 10px; border-radius:12px; font-weight:600; }
-    .tpl-checkbox { width:22px; height:22px; border:2px solid #e2e8f0; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:12px; color:white; transition:all .2s; }
-    .tpl-checkbox.checked { background:#8b5cf6; border-color:#8b5cf6; }
-    .footer-info { flex:1; font-size:13px; color:#64748b; }
-    .notification-section { margin-top:16px; padding-top:16px; border-top:1px solid #e2e8f0; }
-    .notification-section h4 { margin:0 0 6px; font-size:14px; font-weight:600; color:#1e293b; }
-    .section-hint { margin:0 0 12px; font-size:12px; color:#94a3b8; }
-    @media (max-width:768px) { .form-row { grid-template-columns:1fr; } .templates-grid { grid-template-columns:1fr; } .alerts-summary { flex-wrap:wrap; } .alert-card { min-width:calc(50% - 6px); } .invoice-row { flex-wrap:wrap; } .inv-col.type, .inv-col.desc, .inv-col.price { width:100%; } }
+    .active-tag { padding:4px 10px; border-radius:3px; font-size:11px; font-weight:600; background:#dcfce7; color:#16a34a; }
+    .active-tag.off { background:#f1f5f9; color:#94a3b8; }
+    .detail-badges { display:flex; gap:8px; margin-bottom:16px; }
+    .detail-section { margin-bottom:18px; }
+    .detail-section h4 { font-size:11px; font-weight:600; color:#94a3b8; margin:0 0 8px; text-transform:uppercase; }
+    .detail-section p { font-size:12px; color:#475569; margin:0; padding:10px; background:#f8fafc; border-radius:6px; border:1px solid #e2e8f0; }
+    .detail-intervals { display:flex; align-items:center; gap:12px; }
+    .int-card { flex:1; padding:14px; background:#f8fafc; border-radius:6px; text-align:center; border:1px solid #e2e8f0; }
+    .int-val { display:block; font-size:22px; font-weight:700; color:#1e293b; }
+    .int-unit { font-size:11px; color:#64748b; }
+    .int-or { font-size:11px; font-weight:600; color:#94a3b8; }
+
+    /* Invoice */
+    .recap-box { display:flex; align-items:center; gap:12px; padding:12px; background:#f8fafc; border-radius:6px; margin-bottom:16px; border:1px solid #e2e8f0; }
+    .recap-box strong { font-size:13px; color:#1e293b; }
+    .invoice-section { background:#f8fafc; border-radius:6px; padding:14px; margin-bottom:14px; border:1px solid #e2e8f0; }
+    .invoice-lines { display:flex; flex-direction:column; gap:8px; }
+    .inv-line { background:white; border-radius:6px; padding:10px; border:1px solid #e2e8f0; }
+    .inv-top { display:flex; gap:6px; align-items:center; margin-bottom:8px; }
+    .inv-top select { flex:1; padding:6px 10px; border:1px solid #e2e8f0; border-radius:3px; font-size:12px; }
+    .inv-bottom { display:flex; gap:8px; align-items:center; }
+    .inv-desc { flex:1; padding:6px 10px; border:1px solid #e2e8f0; border-radius:3px; font-size:12px; background:#f8fafc; }
+    .inv-desc:not([readonly]) { background:white; }
+    .inv-price { display:flex; align-items:center; gap:4px; }
+    .inv-price input { width:80px; padding:6px 10px; border:1px solid #e2e8f0; border-radius:3px; font-size:12px; text-align:right; }
+    .inv-price span { font-size:11px; color:#64748b; }
+    .inv-hint { margin-top:6px; padding:6px 8px; background:#dbeafe; border-radius:3px; font-size:10px; color:#1d4ed8; }
+    .new-tpl-fields { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:10px; margin-bottom:8px; }
+    .new-tpl-fields .field { margin-bottom:8px; }
+    .new-tpl-fields .field:last-of-type { margin-bottom:0; }
+    .new-tpl-hint { display:flex; align-items:center; gap:6px; font-size:10px; color:#16a34a; margin-top:8px; padding:6px 8px; background:#dcfce7; border-radius:3px; }
+    .btn-add-line { display:flex; align-items:center; justify-content:center; gap:6px; width:100%; padding:8px; border:1px dashed #cbd5e1; border-radius:3px; background:transparent; color:#64748b; font-size:11px; cursor:pointer; margin-top:8px; }
+    .inv-total { display:flex; justify-content:space-between; align-items:center; padding-top:12px; border-top:1px solid #e2e8f0; margin-top:12px; }
+    .inv-total span { font-size:12px; color:#64748b; }
+    .inv-total strong { font-size:18px; color:#16a34a; }
+
+    /* Add to vehicle */
+    .tpl-list { display:flex; flex-direction:column; gap:6px; }
+    .tpl-item { display:flex; align-items:center; gap:10px; padding:10px 12px; background:white; border:2px solid #e2e8f0; border-radius:6px; cursor:pointer; transition:all .15s; }
+    .tpl-item:hover { border-color:#8b5cf6; }
+    .tpl-item.selected { border-color:#8b5cf6; background:#faf5ff; }
+    .tpl-check { width:20px; height:20px; border:2px solid #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; color:white; flex-shrink:0; }
+    .tpl-check.checked { background:#7c3aed; border-color:#7c3aed; }
+    .tpl-item-info { flex:1; }
+    .tpl-item-name { display:block; font-size:12px; font-weight:600; color:#1e293b; }
+    .tpl-item-interval { font-size:10px; color:#94a3b8; }
+    .tpl-item-cost { font-size:11px; font-weight:600; color:#64748b; }
+    .foot-info { flex:1; font-size:12px; color:#64748b; }
+
+    @media (max-width:768px) { .field-row { grid-template-columns:1fr; } .stats-bar { flex-wrap:wrap; gap:8px; } }
   `]
 })
 export class MaintenanceTemplatesComponent implements OnInit {
-  activeTab: 'templates' | 'schedule' = 'templates';
   templates: MaintenanceTemplate[] = [];
   filteredTemplates: MaintenanceTemplate[] = [];
   selected: MaintenanceTemplate | null = null;
@@ -998,25 +685,38 @@ export class MaintenanceTemplatesComponent implements OnInit {
   isFormOpen = false;
   searchQuery = '';
   categoryFilter = '';
-  categories = ['Moteur', 'Freinage', 'Transmission', 'Filtres', 'Électrique', 'Suspension', 'Autre'];
+  statusFilter = '';
+  templateFilter = '';
+  categories = ['Moteur', 'Freinage', 'Transmission', 'Filtres', 'Electrique', 'Suspension', 'Autre'];
   form: any = this.getEmptyForm();
   vehicleSchedules: VehicleMaintenanceStatus[] = [];
   filteredVehicleSchedules: VehicleMaintenanceStatus[] = [];
   expanded: string[] = [];
   vehicleSearchQuery = '';
-  statusFilter = '';
   isMarkOpen = false;
   markData: any = this.getEmptyMark();
   isAddToVehicleOpen = false;
   addToVehicleData: any = this.getEmptyAddToVehicle();
   allVehicles: {id: string; name: string; plate: string; mileage: number}[] = [];
+  showModels = false;
+  loading = false;
+  lastPaidPrices: Map<string, number> = new Map();
+  isHistoryOpen = false;
+  historyLoading = false;
+  historyLogs: any[] = [];
+  historyVehicleName = '';
+  historyVehiclePlate = '';
+  historyTemplateName = '';
+  sortColumn = 'status';
+  sortDir: 'asc' | 'desc' = 'asc';
+  allRows: FlatRow[] = [];
+  filteredRows: FlatRow[] = [];
+  activeTab: 'templates' | 'schedule' = 'templates';
   scheduleView: 'agenda' | 'vehicles' = 'agenda';
   showOkItems = false;
   urgentItems: any[] = [];
   soonItems: any[] = [];
   okItems: any[] = [];
-  loading = false;
-  lastPaidPrices: Map<string, number> = new Map();
 
   constructor(private apiService: ApiService, private ngZone: NgZone, private cdr: ChangeDetectorRef) {}
 
@@ -1024,11 +724,7 @@ export class MaintenanceTemplatesComponent implements OnInit {
 
   getEmptyForm() { return { name:'', description:'', category:'', priority:'medium', intervalKm:null, intervalMonths:null, estimatedCost:0, isActive:true, notifyKmBefore:null, notifyDaysBefore:null }; }
   getEmptyMark() { 
-    return { 
-      vehicleId:'', vehicleName:'', vehiclePlate:'', templateId:'', maintenanceName:'', 
-      date:new Date().toISOString().split('T')[0], mileage:null, supplier:'', notes:'',
-      invoiceLines: [] as InvoiceLine[]
-    }; 
+    return { vehicleId:'', vehicleName:'', vehiclePlate:'', templateId:'', maintenanceName:'', date:new Date().toISOString().split('T')[0], mileage:null, supplier:'', notes:'', invoiceLines: [] as InvoiceLine[] }; 
   }
   getEmptyAddToVehicle() { return { vehicleId:'', vehicleName:'', vehiclePlate:'', vehicleMileage:0, selectedTemplateIds:[] as string[] }; }
 
@@ -1037,26 +733,14 @@ export class MaintenanceTemplatesComponent implements OnInit {
     this.apiService.getMaintenanceTemplates({ pageSize: 100 }).subscribe({
       next: (result) => {
         this.ngZone.run(() => {
-          this.templates = result.items.map(t => ({
-            id: t.id?.toString() || '',
-            name: t.name,
-            description: t.description || '',
-            intervalKm: t.intervalKm ?? null,
-            intervalMonths: t.intervalMonths ?? null,
-            estimatedCost: t.estimatedCost || 0,
-            priority: (t.priority as 'low' | 'medium' | 'high' | 'critical') || 'medium',
-            category: t.category || 'Autre',
-            isActive: t.isActive
-          }));
-          this.filterTemplates();
+          this.templates = result.items.map(t => ({ id: t.id?.toString() || '', name: t.name, description: t.description || '', intervalKm: t.intervalKm ?? null, intervalMonths: t.intervalMonths ?? null, estimatedCost: t.estimatedCost || 0, priority: (t.priority as any) || 'medium', category: t.category || 'Autre', isActive: t.isActive }));
+          this.filteredTemplates = [...this.templates];
           this.loading = false;
+          this.rebuildRows();
           this.cdr.detectChanges();
         });
       },
-      error: (err) => {
-        console.error('Error loading templates:', err);
-        this.loading = false;
-      }
+      error: (err) => { console.error('Error loading templates:', err); this.loading = false; }
     });
   }
 
@@ -1065,22 +749,11 @@ export class MaintenanceTemplatesComponent implements OnInit {
       next: (result) => {
         this.ngZone.run(() => {
           this.vehicleSchedules = result.items.map(v => ({
-            vehicleId: v.vehicleId.toString(),
-            vehicleName: v.vehicleName || '',
-            vehiclePlate: v.vehiclePlate || '',
-            currentMileage: v.currentMileage || 0,
-            maintenanceItems: (v.maintenanceItems || []).map(m => ({
-              scheduleId: m.scheduleId ?? null,
-              templateId: m.templateId?.toString() || '',
-              templateName: m.templateName || '',
-              lastDoneDate: m.lastDoneDate ? new Date(m.lastDoneDate) : null,
-              lastDoneKm: m.lastDoneKm ?? null,
-              nextDueKm: m.nextDueKm ?? null,
-              status: (m.status as 'ok' | 'upcoming' | 'due' | 'overdue') || 'ok',
-              kmUntilDue: m.kmUntilDue ?? null
-            }))
+            vehicleId: v.vehicleId.toString(), vehicleName: v.vehicleName || '', vehiclePlate: v.vehiclePlate || '', currentMileage: v.currentMileage || 0,
+            maintenanceItems: (v.maintenanceItems || []).map(m => ({ scheduleId: m.scheduleId ?? null, templateId: m.templateId?.toString() || '', templateName: m.templateName || '', lastDoneDate: m.lastDoneDate ? new Date(m.lastDoneDate) : null, lastDoneKm: m.lastDoneKm ?? null, nextDueKm: m.nextDueKm ?? null, status: (m.status as any) || 'ok', kmUntilDue: m.kmUntilDue ?? null }))
           }));
-          this.filterVehicles();
+          this.filteredVehicleSchedules = [...this.vehicleSchedules];
+          this.rebuildRows();
           this.cdr.detectChanges();
         });
       },
@@ -1088,45 +761,69 @@ export class MaintenanceTemplatesComponent implements OnInit {
     });
   }
 
-  filterTemplates() {
-    let r = [...this.templates];
-    if (this.searchQuery) { const q = this.searchQuery.toLowerCase(); r = r.filter(t => t.name.toLowerCase().includes(q)); }
-    if (this.categoryFilter) r = r.filter(t => t.category === this.categoryFilter);
-    this.filteredTemplates = r;
-  }
-
-  filterVehicles() {
-    let r = [...this.vehicleSchedules];
-    if (this.vehicleSearchQuery) { const q = this.vehicleSearchQuery.toLowerCase(); r = r.filter(v => v.vehicleName.toLowerCase().includes(q) || v.vehiclePlate.toLowerCase().includes(q)); }
-    if (this.statusFilter) r = r.filter(v => v.maintenanceItems.some(m => m.status === this.statusFilter));
-    this.filteredVehicleSchedules = r;
-    this.updateAgendaItems();
-  }
-
-  updateAgendaItems() {
-    this.urgentItems = [];
-    this.soonItems = [];
-    this.okItems = [];
-    for (const v of this.filteredVehicleSchedules) {
+  rebuildRows() {
+    const rows: FlatRow[] = [];
+    for (const v of this.vehicleSchedules) {
       for (const m of v.maintenanceItems) {
-        const km = m.kmUntilDue ?? 0;
-        const item = { ...m, vehicleId: v.vehicleId, vehicleName: v.vehicleName, vehiclePlate: v.vehiclePlate, currentMileage: v.currentMileage };
-        if (km <= 0 || m.status === 'overdue' || m.status === 'due') this.urgentItems.push(item);
-        else if (km <= 5000) this.soonItems.push(item);
-        else this.okItems.push(item);
+        const tpl = this.templates.find(t => t.id === m.templateId);
+        const intervalKm = tpl?.intervalKm || 10000;
+        const used = intervalKm - (m.kmUntilDue ?? intervalKm);
+        const pct = Math.min(100, Math.max(0, (used / intervalKm) * 100));
+        rows.push({
+          vehicleId: v.vehicleId, vehicleName: v.vehicleName, vehiclePlate: v.vehiclePlate, currentMileage: v.currentMileage,
+          templateId: m.templateId, templateName: m.templateName, scheduleId: m.scheduleId, lastDoneDate: m.lastDoneDate, lastDoneKm: m.lastDoneKm, nextDueKm: m.nextDueKm,
+          status: m.status, kmUntilDue: m.kmUntilDue, progressPercent: pct
+        });
       }
     }
-    this.urgentItems.sort((a, b) => (a.kmUntilDue ?? 0) - (b.kmUntilDue ?? 0));
-    this.soonItems.sort((a, b) => (a.kmUntilDue ?? 0) - (b.kmUntilDue ?? 0));
-    this.okItems.sort((a, b) => (a.kmUntilDue ?? 0) - (b.kmUntilDue ?? 0));
+    this.allRows = rows;
+    this.applyFilters();
   }
 
-  getActiveTemplates() { return this.templates.filter(t => t.isActive).length; }
-  getCriticalTemplates() { return this.templates.filter(t => t.priority === 'critical').length; }
+  applyFilters() {
+    let r = [...this.allRows];
+    if (this.searchQuery) {
+      const q = this.searchQuery.toLowerCase();
+      r = r.filter(row => row.vehicleName.toLowerCase().includes(q) || row.vehiclePlate.toLowerCase().includes(q) || row.templateName.toLowerCase().includes(q));
+    }
+    if (this.statusFilter) r = r.filter(row => row.status === this.statusFilter);
+    if (this.templateFilter) r = r.filter(row => row.templateId === this.templateFilter);
+    // Sort
+    const statusOrder: Record<string, number> = { overdue: 0, due: 1, upcoming: 2, ok: 3 };
+    r.sort((a, b) => {
+      let va: any, vb: any;
+      if (this.sortColumn === 'status') { va = statusOrder[a.status] ?? 4; vb = statusOrder[b.status] ?? 4; }
+      else if (this.sortColumn === 'kmUntilDue') { va = a.kmUntilDue ?? 99999; vb = b.kmUntilDue ?? 99999; }
+      else if (this.sortColumn === 'vehicleName') { va = a.vehicleName; vb = b.vehicleName; }
+      else if (this.sortColumn === 'templateName') { va = a.templateName; vb = b.templateName; }
+      else { va = 0; vb = 0; }
+      const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+      return this.sortDir === 'asc' ? cmp : -cmp;
+    });
+    this.filteredRows = r;
+    // Also update filteredTemplates
+    let ft = [...this.templates];
+    if (this.searchQuery) { const q = this.searchQuery.toLowerCase(); ft = ft.filter(t => t.name.toLowerCase().includes(q)); }
+    this.filteredTemplates = ft;
+  }
+
+  sortBy(col: string) {
+    if (this.sortColumn === col) this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
+    else { this.sortColumn = col; this.sortDir = 'asc'; }
+    this.applyFilters();
+  }
+
+  getSortIcon(col: string): string {
+    if (this.sortColumn !== col) return '';
+    return this.sortDir === 'asc' ? '▲' : '▼';
+  }
+
+  countByStatus(s: string): number { return this.allRows.filter(r => r.status === s).length; }
+  getTemplateCount(id: string): number { return this.allRows.filter(r => r.templateId === id).length; }
+
   getPriorityLabel(p: string) { return { low:'Faible', medium:'Moyenne', high:'Haute', critical:'Critique' }[p] || p; }
-  getStatusLabel(s: string) { return { ok:'OK', upcoming:'À venir', due:'À faire', overdue:'En retard' }[s] || s; }
+  getStatusLabel(s: string) { return { ok:'OK', upcoming:'A venir', due:'A faire', overdue:'En retard' }[s] || s; }
   formatDate(d: Date) { return new Date(d).toLocaleDateString('fr-FR'); }
-  getTotalByStatus(s: string) { return this.vehicleSchedules.reduce((sum, v) => sum + v.maintenanceItems.filter(m => m.status === s).length, 0); }
   getCount(v: VehicleMaintenanceStatus, s: string) { return v.maintenanceItems.filter(m => m.status === s).length; }
   toggleVehicle(id: string) { this.expanded.includes(id) ? this.expanded = this.expanded.filter(x => x !== id) : this.expanded.push(id); }
 
@@ -1138,249 +835,168 @@ export class MaintenanceTemplatesComponent implements OnInit {
   isFormValid() { return this.form.name && this.form.category && (this.form.intervalKm || this.form.intervalMonths); }
   saveTemplate() {
     if (!this.isFormValid()) return;
-    
-    const templateData = {
-      name: this.form.name,
-      description: this.form.description || '',
-      category: this.form.category,
-      priority: this.form.priority,
-      intervalKm: this.form.intervalKm || undefined,
-      intervalMonths: this.form.intervalMonths || undefined,
-      estimatedCost: this.form.estimatedCost || 0,
-      isActive: this.form.isActive
-    };
-
+    const d = { name: this.form.name, description: this.form.description || '', category: this.form.category, priority: this.form.priority, intervalKm: this.form.intervalKm || undefined, intervalMonths: this.form.intervalMonths || undefined, estimatedCost: this.form.estimatedCost || 0, isActive: this.form.isActive };
     if (this.editing) {
-      // Mise à jour via API
-      this.apiService.updateMaintenanceTemplate(parseInt(this.editing.id), templateData).subscribe({
-        next: () => {
-          this.loadTemplates();
-          this.closeForm();
-        },
-        error: (err) => console.error('Error updating template:', err)
-      });
+      this.apiService.updateMaintenanceTemplate(parseInt(this.editing.id), d).subscribe({ next: () => { this.loadTemplates(); this.closeForm(); }, error: (err) => console.error(err) });
     } else {
-      // Création via API
-      this.apiService.createMaintenanceTemplate(templateData).subscribe({
-        next: () => {
-          this.loadTemplates();
-          this.closeForm();
-        },
-        error: (err) => console.error('Error creating template:', err)
-      });
+      this.apiService.createMaintenanceTemplate(d).subscribe({ next: () => { this.loadTemplates(); this.closeForm(); }, error: (err) => console.error(err) });
     }
   }
   deleteTemplate(t: MaintenanceTemplate) { 
-    if (confirm('Supprimer ce modèle?')) { 
-      this.apiService.deleteMaintenanceTemplate(parseInt(t.id)).subscribe({
-        next: () => {
-          this.loadTemplates();
-          this.closeDetail();
-        },
-        error: (err) => console.error('Error deleting template:', err)
-      });
+    if (confirm('Supprimer ce modele?')) { 
+      this.apiService.deleteMaintenanceTemplate(parseInt(t.id)).subscribe({ next: () => { this.loadTemplates(); this.closeDetail(); }, error: (err) => console.error(err) });
     } 
   }
 
   openMarkDone(v: VehicleMaintenanceStatus, m: MaintenanceItem) { 
     const lastPrice = this.lastPaidPrices.get(m.templateId) || null;
-    this.markData = { 
-      vehicleId:v.vehicleId, vehicleName:v.vehicleName, vehiclePlate:v.vehiclePlate, 
-      templateId:m.templateId, maintenanceName:m.templateName, 
-      date:new Date().toISOString().split('T')[0], mileage:v.currentMileage, supplier:'', notes:'',
-      invoiceLines: [{ templateId: m.templateId, description: m.templateName, price: lastPrice, isCustom: false }]
-    }; 
+    this.markData = { vehicleId:v.vehicleId, vehicleName:v.vehicleName, vehiclePlate:v.vehiclePlate, templateId:m.templateId, maintenanceName:m.templateName, date:new Date().toISOString().split('T')[0], mileage:v.currentMileage, supplier:'', notes:'', invoiceLines: [{ templateId: m.templateId, description: m.templateName, price: lastPrice, isCustom: false, isNewTemplate: false, newTemplateName: '', newTemplateCategory: '', newTemplateIntervalKm: null, newTemplateIntervalMonths: null }] }; 
     this.isMarkOpen = true; 
   }
-  closeMarkDone() { this.isMarkOpen = false; this.markData = this.getEmptyMark(); }
-  isMarkValid() { return this.markData.date && this.markData.mileage && this.getInvoiceTotal() > 0; }
-  
-  addInvoiceLine() { this.markData.invoiceLines.push({ templateId: null, description: '', price: null, isCustom: false }); }
-  
-  onLineTemplateChange(line: InvoiceLine, templateId: string) {
-    if (templateId === 'other') {
-      line.templateId = null;
-      line.isCustom = true;
-      line.description = '';
-      line.price = null;
-    } else {
-      const t = this.templates.find(x => x.id === templateId);
-      if (t) {
-        line.templateId = t.id;
-        line.isCustom = false;
-        line.description = t.name;
-        line.price = this.lastPaidPrices.get(t.id) || null;
-      }
+
+  openMarkDoneFromRow(row: FlatRow) {
+    const v = this.vehicleSchedules.find(x => x.vehicleId === row.vehicleId);
+    const m = v?.maintenanceItems.find(x => x.templateId === row.templateId);
+    if (v && m) this.openMarkDone(v, m);
+  }
+
+  removeFromRow(row: FlatRow) {
+    if (!confirm('Retirer cet entretien ?')) return;
+    if (row.scheduleId) {
+      this.apiService.removeMaintenanceSchedule(row.scheduleId).subscribe({ next: () => this.loadVehicles(), error: (err) => console.error(err) });
     }
   }
-  
+
+  closeMarkDone() { this.isMarkOpen = false; this.markData = this.getEmptyMark(); }
+  isMarkValid() {
+    if (!this.markData.date || !this.markData.mileage) return false;
+    const hasExisting = this.markData.invoiceLines.some((l: InvoiceLine) => l.templateId && l.price);
+    const hasNew = this.markData.invoiceLines.some((l: InvoiceLine) => l.isNewTemplate && l.newTemplateName && l.price);
+    return hasExisting || hasNew;
+  }
+  addInvoiceLine() { this.markData.invoiceLines.push({ templateId: null, description: '', price: null, isCustom: false, isNewTemplate: false, newTemplateName: '', newTemplateCategory: '', newTemplateIntervalKm: null, newTemplateIntervalMonths: null }); }
+  onLineTemplateChange(line: InvoiceLine, templateId: string) {
+    if (templateId === 'new') {
+      line.templateId = null; line.isCustom = false; line.isNewTemplate = true;
+      line.description = ''; line.price = null;
+      line.newTemplateName = ''; line.newTemplateCategory = ''; line.newTemplateIntervalKm = null; line.newTemplateIntervalMonths = null;
+    } else if (templateId === 'other') {
+      line.templateId = null; line.isCustom = true; line.isNewTemplate = false; line.description = ''; line.price = null;
+    } else {
+      const t = this.templates.find(x => x.id === templateId);
+      if (t) { line.templateId = t.id; line.isCustom = false; line.isNewTemplate = false; line.description = t.name; line.price = this.lastPaidPrices.get(t.id) || null; }
+    }
+  }
   getVehicleMaintenanceTemplates(): MaintenanceTemplate[] {
     const v = this.vehicleSchedules.find(x => x.vehicleId === this.markData.vehicleId);
     if (!v) return this.templates.filter(t => t.isActive);
-    const assignedIds = v.maintenanceItems.map(m => m.templateId);
-    return this.templates.filter(t => t.isActive && assignedIds.includes(t.id));
+    return this.templates.filter(t => t.isActive && v.maintenanceItems.some(m => m.templateId === t.id));
   }
-  
-  getAllTemplatesForDropdown(): MaintenanceTemplate[] {
-    return this.templates.filter(t => t.isActive);
-  }
-  
   getOtherTemplatesForDropdown(): MaintenanceTemplate[] {
-    const vehicleTemplateIds = this.getVehicleMaintenanceTemplates().map(t => t.id);
-    return this.templates.filter(t => t.isActive && !vehicleTemplateIds.includes(t.id));
+    const ids = this.getVehicleMaintenanceTemplates().map(t => t.id);
+    return this.templates.filter(t => t.isActive && !ids.includes(t.id));
   }
-  removeInvoiceLine(index: number) { if (this.markData.invoiceLines.length > 1) this.markData.invoiceLines.splice(index, 1); }
-  getInvoiceTotal(): number { return this.markData.invoiceLines.reduce((sum: number, line: any) => sum + (line.price || 0), 0); }
+  removeInvoiceLine(i: number) { if (this.markData.invoiceLines.length > 1) this.markData.invoiceLines.splice(i, 1); }
+  getInvoiceTotal(): number { return this.markData.invoiceLines.reduce((s: number, l: any) => s + (l.price || 0), 0); }
   confirmMarkDone() {
-    const v = this.vehicleSchedules.find(x => x.vehicleId === this.markData.vehicleId);
-    if (!v) return;
+    const vehicleId = parseInt(this.markData.vehicleId);
+    const existingLines = this.markData.invoiceLines.filter((l: InvoiceLine) => l.templateId && l.price);
+    const newTplLines = this.markData.invoiceLines.filter((l: InvoiceLine) => l.isNewTemplate && l.newTemplateName && l.price);
+    const totalLines = existingLines.length + newTplLines.length;
+    if (totalLines === 0) { this.closeMarkDone(); return; }
 
-    let completed = 0;
-    const validLines = this.markData.invoiceLines.filter((l: InvoiceLine) => l.templateId && l.price);
-    const total = validLines.length;
+    let done = 0;
+    const onDone = () => { done++; if (done === totalLines) { this.loadTemplates(); this.loadVehicles(); this.closeMarkDone(); } };
 
-    if (total === 0) {
-      this.closeMarkDone();
-      return;
+    for (const line of existingLines) {
+      this.lastPaidPrices.set(line.templateId!, line.price!);
+      this.apiService.markMaintenanceDone({ vehicleId, templateId: parseInt(line.templateId!), date: this.markData.date, mileage: this.markData.mileage, cost: line.price!, notes: this.markData.notes || undefined }).subscribe({ next: onDone, error: onDone });
     }
 
-    for (const line of validLines) {
-      if (line.templateId && line.price) {
-        this.lastPaidPrices.set(line.templateId, line.price);
-
-        const request = {
-          vehicleId: parseInt(this.markData.vehicleId),
-          templateId: parseInt(line.templateId),
-          date: this.markData.date,
-          mileage: this.markData.mileage,
-          cost: line.price,
-          notes: this.markData.notes || undefined
-        };
-
-        this.apiService.markMaintenanceDone(request).subscribe({
-          next: () => {
-            completed++;
-            if (completed === total) {
-              this.loadVehicles();
-              this.closeMarkDone();
-            }
-          },
-          error: (err) => {
-            console.error('Error marking maintenance done:', err);
-            completed++;
-            if (completed === total) {
-              this.loadVehicles();
-              this.closeMarkDone();
-            }
-          }
-        });
-      }
+    for (const line of newTplLines) {
+      this.apiService.createMaintenanceTemplate({
+        name: line.newTemplateName, description: '', category: line.newTemplateCategory || 'Autre',
+        priority: 'medium', intervalKm: line.newTemplateIntervalKm || undefined, intervalMonths: line.newTemplateIntervalMonths || undefined,
+        estimatedCost: line.price!, isActive: true
+      }).subscribe({
+        next: (tplId: number) => {
+          this.apiService.assignMaintenanceTemplate(vehicleId, tplId).subscribe({
+            next: () => {
+              this.apiService.markMaintenanceDone({ vehicleId, templateId: tplId, date: this.markData.date, mileage: this.markData.mileage, cost: line.price!, notes: this.markData.notes || undefined }).subscribe({ next: onDone, error: onDone });
+            },
+            error: onDone
+          });
+        },
+        error: onDone
+      });
     }
   }
 
-  // Vehicle-centric methods
+  openHistory(row: FlatRow) {
+    this.historyVehicleName = row.vehicleName;
+    this.historyVehiclePlate = row.vehiclePlate;
+    this.historyTemplateName = row.templateName;
+    this.historyLogs = [];
+    this.historyLoading = true;
+    this.isHistoryOpen = true;
+    this.apiService.getMaintenanceLogs(parseInt(row.vehicleId), parseInt(row.templateId)).subscribe({
+      next: (logs) => { this.ngZone.run(() => { this.historyLogs = logs; this.historyLoading = false; this.cdr.detectChanges(); }); },
+      error: (err) => { console.error(err); this.historyLoading = false; }
+    });
+  }
+  closeHistory() { this.isHistoryOpen = false; this.historyLogs = []; }
+
   loadAllVehicles() {
     this.apiService.getVehicles().subscribe({
-      next: (vehicles) => {
-        this.ngZone.run(() => {
-          this.allVehicles = vehicles.map((v: any) => ({
-            id: v.id?.toString() || '',
-            name: v.name || `${v.brand || ''} ${v.model || ''}`.trim(),
-            plate: v.plate || '',
-            mileage: v.mileage || 0
-          }));
-          this.cdr.detectChanges();
-        });
-      },
-      error: (err) => console.error('Error loading vehicles:', err)
+      next: (vehicles) => { this.ngZone.run(() => { this.allVehicles = vehicles.map((v: any) => ({ id: v.id?.toString() || '', name: v.name || `${v.brand || ''} ${v.model || ''}`.trim(), plate: v.plate || '', mileage: v.mileage || 0 })); this.cdr.detectChanges(); }); },
+      error: (err) => console.error(err)
     });
   }
 
-  openAddToVehicle(v: VehicleMaintenanceStatus) {
-    this.addToVehicleData = { vehicleId:v.vehicleId, vehicleName:v.vehicleName, vehiclePlate:v.vehiclePlate, vehicleMileage:v.currentMileage, selectedTemplateIds:[] };
-    this.isAddToVehicleOpen = true;
+  openAssignPanel() { this.addToVehicleData = this.getEmptyAddToVehicle(); this.isAddToVehicleOpen = true; }
+  onAssignVehicleChange(vehicleId: string) {
+    const v = this.allVehicles.find(x => x.id === vehicleId);
+    if (v) { this.addToVehicleData.vehicleName = v.name; this.addToVehicleData.vehiclePlate = v.plate; this.addToVehicleData.vehicleMileage = v.mileage; }
+    this.addToVehicleData.selectedTemplateIds = [];
   }
-
+  openAddToVehicle(v: VehicleMaintenanceStatus) { this.addToVehicleData = { vehicleId:v.vehicleId, vehicleName:v.vehicleName, vehiclePlate:v.vehiclePlate, vehicleMileage:v.currentMileage, selectedTemplateIds:[] }; this.isAddToVehicleOpen = true; }
   closeAddToVehicle() { this.isAddToVehicleOpen = false; }
-
   getAvailableTemplatesForVehicle(): MaintenanceTemplate[] {
     const v = this.vehicleSchedules.find(x => x.vehicleId === this.addToVehicleData.vehicleId);
-    const assignedIds = v ? v.maintenanceItems.map(m => m.templateId) : [];
-    return this.templates.filter(t => t.isActive && !assignedIds.includes(t.id));
+    const ids = v ? v.maintenanceItems.map(m => m.templateId) : [];
+    return this.templates.filter(t => t.isActive && !ids.includes(t.id));
   }
-
-  toggleTemplateSelection(t: MaintenanceTemplate) {
-    const idx = this.addToVehicleData.selectedTemplateIds.indexOf(t.id);
-    if (idx === -1) this.addToVehicleData.selectedTemplateIds.push(t.id);
-    else this.addToVehicleData.selectedTemplateIds.splice(idx, 1);
-  }
-  
+  toggleTemplateSelection(t: MaintenanceTemplate) { const i = this.addToVehicleData.selectedTemplateIds.indexOf(t.id); if (i === -1) this.addToVehicleData.selectedTemplateIds.push(t.id); else this.addToVehicleData.selectedTemplateIds.splice(i, 1); }
   isTemplateSelected(id: string): boolean { return this.addToVehicleData.selectedTemplateIds.includes(id); }
-  
   selectAllTemplates() { this.addToVehicleData.selectedTemplateIds = this.getAvailableTemplatesForVehicle().map(t => t.id); }
   deselectAllTemplates() { this.addToVehicleData.selectedTemplateIds = []; }
-
   confirmAddToVehicle() {
     if (this.addToVehicleData.selectedTemplateIds.length === 0) return;
-    const vehicleId = parseInt(this.addToVehicleData.vehicleId);
-    let completed = 0;
-    const total = this.addToVehicleData.selectedTemplateIds.length;
-
-    for (const templateId of this.addToVehicleData.selectedTemplateIds) {
-      this.apiService.assignMaintenanceTemplate(vehicleId, parseInt(templateId)).subscribe({
-        next: () => {
-          completed++;
-          if (completed === total) {
-            this.loadVehicles();
-            this.closeAddToVehicle();
-          }
-        },
-        error: (err) => {
-          console.error('Error assigning template:', err);
-          completed++;
-          if (completed === total) {
-            this.loadVehicles();
-            this.closeAddToVehicle();
-          }
-        }
+    const vid = parseInt(this.addToVehicleData.vehicleId);
+    let done = 0; const total = this.addToVehicleData.selectedTemplateIds.length;
+    for (const tid of this.addToVehicleData.selectedTemplateIds) {
+      this.apiService.assignMaintenanceTemplate(vid, parseInt(tid)).subscribe({
+        next: () => { done++; if (done === total) { this.loadVehicles(); this.closeAddToVehicle(); } },
+        error: () => { done++; if (done === total) { this.loadVehicles(); this.closeAddToVehicle(); } }
       });
     }
   }
 
   removeMaintenanceFromVehicle(v: VehicleMaintenanceStatus, m: MaintenanceItem) {
-    if (!confirm('Retirer cet entretien du véhicule ?')) return;
-    if (m.scheduleId) {
-      this.apiService.removeMaintenanceSchedule(m.scheduleId).subscribe({
-        next: () => this.loadVehicles(),
-        error: (err) => console.error('Error removing schedule:', err)
-      });
-    } else {
-      v.maintenanceItems = v.maintenanceItems.filter(x => x.templateId !== m.templateId);
-      this.filterVehicles();
-    }
+    if (!confirm('Retirer?')) return;
+    if (m.scheduleId) { this.apiService.removeMaintenanceSchedule(m.scheduleId).subscribe({ next: () => this.loadVehicles(), error: (err) => console.error(err) }); }
+    else { v.maintenanceItems = v.maintenanceItems.filter(x => x.templateId !== m.templateId); this.rebuildRows(); }
   }
 
-  // Agenda methods
-  getAgendaItems(category: 'urgent' | 'soon' | 'ok'): any[] {
-    const items: any[] = [];
-    for (const v of this.filteredVehicleSchedules) {
-      for (const m of v.maintenanceItems) {
-        const km = m.kmUntilDue ?? 0;
-        let cat: 'urgent' | 'soon' | 'ok';
-        if (km <= 0 || m.status === 'overdue' || m.status === 'due') cat = 'urgent';
-        else if (km <= 5000) cat = 'soon';
-        else cat = 'ok';
-        if (cat === category) {
-          items.push({ ...m, vehicleId: v.vehicleId, vehicleName: v.vehicleName, vehiclePlate: v.vehiclePlate, currentMileage: v.currentMileage });
-        }
-      }
-    }
-    return items.sort((a, b) => (a.kmUntilDue ?? 0) - (b.kmUntilDue ?? 0));
-  }
-
-  openMarkDoneFromAgenda(item: any) {
-    const v = this.vehicleSchedules.find(x => x.vehicleId === item.vehicleId);
-    const m = v?.maintenanceItems.find(x => x.templateId === item.templateId);
-    if (v && m) this.openMarkDone(v, m);
-  }
+  // Keep for compatibility
+  updateAgendaItems() {}
+  filterVehicles() { this.filteredVehicleSchedules = [...this.vehicleSchedules]; this.rebuildRows(); }
+  filterTemplates() { this.filteredTemplates = [...this.templates]; }
+  getAgendaItems() { return []; }
+  openMarkDoneFromAgenda(item: any) { this.openMarkDoneFromRow(item); }
+  getProgressPercent(m: any) { return 0; }
+  getTotalByStatus(s: string) { return 0; }
+  getActiveTemplates() { return this.templates.filter(t => t.isActive).length; }
+  getCriticalTemplates() { return 0; }
+  getAllTemplatesForDropdown() { return this.templates.filter(t => t.isActive); }
 }

@@ -4,6 +4,7 @@ using GisAPI.Domain.Entities;
 using GisAPI.Domain.Exceptions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace GisAPI.Application.Features.Auth.Commands.Register;
 
@@ -12,24 +13,24 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResp
     private readonly IGisDbContext _context;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtService _jwtService;
+    private readonly ILogger<RegisterCommandHandler> _logger;
 
     public RegisterCommandHandler(
         IGisDbContext context,
         IPasswordHasher passwordHasher,
-        IJwtService jwtService)
+        IJwtService jwtService,
+        ILogger<RegisterCommandHandler> logger)
     {
         _context = context;
         _passwordHasher = passwordHasher;
         _jwtService = jwtService;
+        _logger = logger;
     }
 
     public async Task<LoginResponse> Handle(RegisterCommand request, CancellationToken ct)
     {
-        var existingUser = await _context.Users
-            .FirstOrDefaultAsync(u => u.Email.ToLower() == request.Email.ToLower(), ct);
-
-        if (existingUser != null)
-            throw new ConflictException("User with this email already exists");
+        if (await _context.Users.AnyAsync(u => u.Email.ToLower() == request.Email.ToLower(), ct))
+            throw new ConflictException("Cet email est déjà utilisé");
 
         // Get default subscription type
         var defaultSubscriptionType = await _context.SubscriptionTypes
@@ -91,14 +92,48 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResp
         _context.Users.Add(user);
         await _context.SaveChangesAsync(ct);
 
-        // Load the role for the response
+        // Load the role for JWT generation
         user.Role = adminRole;
 
         var token = _jwtService.GenerateToken(user);
         var refreshToken = _jwtService.GenerateRefreshToken();
 
-        // Build subscription features for the new registration (no subscription type yet)
+        // Build subscription features
         SubscriptionFeaturesDto? subscriptionFeatures = null;
+        if (defaultSubscriptionType != null)
+        {
+            subscriptionFeatures = new SubscriptionFeaturesDto(
+                GpsTracking: defaultSubscriptionType.GpsTracking,
+                GpsInstallation: defaultSubscriptionType.GpsInstallation,
+                ApiAccess: defaultSubscriptionType.ApiAccess,
+                AdvancedReports: defaultSubscriptionType.AdvancedReports,
+                RealTimeAlerts: defaultSubscriptionType.RealTimeAlerts,
+                HistoryPlayback: defaultSubscriptionType.HistoryPlayback,
+                FuelAnalysis: defaultSubscriptionType.FuelAnalysis,
+                DrivingBehavior: defaultSubscriptionType.DrivingBehavior,
+                ModuleDashboard: defaultSubscriptionType.ModuleDashboard,
+                ModuleMonitoring: defaultSubscriptionType.ModuleMonitoring,
+                ModuleVehicles: defaultSubscriptionType.ModuleVehicles,
+                ModuleEmployees: defaultSubscriptionType.ModuleEmployees,
+                ModuleGeofences: defaultSubscriptionType.ModuleGeofences,
+                ModuleMaintenance: defaultSubscriptionType.ModuleMaintenance,
+                ModuleCosts: defaultSubscriptionType.ModuleCosts,
+                ModuleReports: defaultSubscriptionType.ModuleReports,
+                ModuleSettings: defaultSubscriptionType.ModuleSettings,
+                ModuleUsers: defaultSubscriptionType.ModuleUsers,
+                ModuleSuppliers: defaultSubscriptionType.ModuleSuppliers,
+                ModuleDocuments: defaultSubscriptionType.ModuleDocuments,
+                ModuleAccidents: defaultSubscriptionType.ModuleAccidents,
+                ModuleFleetManagement: defaultSubscriptionType.ModuleFleetManagement,
+                MaxVehicles: defaultSubscriptionType.MaxVehicles,
+                MaxUsers: defaultSubscriptionType.MaxUsers,
+                MaxGpsDevices: defaultSubscriptionType.MaxGpsDevices,
+                MaxGeofences: defaultSubscriptionType.MaxGeofences,
+                HistoryRetentionDays: defaultSubscriptionType.HistoryRetentionDays
+            );
+        }
+
+        _logger.LogInformation("New company registered: {Company} by {Email}", societe.Name, user.Email);
 
         return new LoginResponse(
             token,

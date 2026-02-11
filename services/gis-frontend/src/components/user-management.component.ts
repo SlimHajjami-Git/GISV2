@@ -27,6 +27,13 @@ interface User {
   status: string;
   createdAt: string;
   lastLoginAt?: string;
+  assignedVehicleIds?: number[];
+}
+
+interface VehicleOption {
+  id: number;
+  name: string;
+  plate: string;
 }
 
 @Component({
@@ -297,6 +304,20 @@ interface User {
                       <option value="inactive">Inactif</option>
                     </select>
                   </div>
+                </div>
+              </div>
+              <div class="form-section" *ngIf="!isSelectedRoleAdmin()">
+                <h3 class="section-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                  Véhicules assignés
+                </h3>
+                <p class="section-hint">Sélectionnez les véhicules que cet utilisateur pourra superviser. Les administrateurs ont accès à tous les véhicules.</p>
+                <div class="vehicle-checkboxes">
+                  <label class="vehicle-check" *ngFor="let v of availableVehicles">
+                    <input type="checkbox" [checked]="isVehicleSelected(v.id)" (change)="toggleVehicle(v.id)">
+                    <span class="check-label">{{ v.name }} <span class="plate-tag">{{ v.plate }}</span></span>
+                  </label>
+                  <div class="empty-hint" *ngIf="availableVehicles.length === 0">Aucun véhicule disponible</div>
                 </div>
               </div>
             </div>
@@ -1369,6 +1390,17 @@ interface User {
       display: block;
     }
 
+    /* Vehicle Assignment */
+    .section-title { display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; color:#1e293b; margin:0 0 4px; }
+    .section-hint { font-size:12px; color:#94a3b8; margin:0 0 12px; }
+    .vehicle-checkboxes { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:8px; max-height:200px; overflow-y:auto; padding:4px 0; }
+    .vehicle-check { display:flex; align-items:center; gap:8px; padding:8px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; font-size:13px; transition:all .15s; }
+    .vehicle-check:hover { border-color:#3b82f6; background:#eff6ff; }
+    .vehicle-check input[type="checkbox"] { accent-color:#3b82f6; width:16px; height:16px; }
+    .check-label { flex:1; }
+    .plate-tag { display:inline-block; background:#e2e8f0; color:#475569; padding:1px 6px; border-radius:3px; font-size:11px; font-weight:500; margin-left:4px; }
+    .empty-hint { font-size:12px; color:#94a3b8; padding:12px; text-align:center; }
+
     /* Modal Footer */
     .modal-footer {
       display: flex;
@@ -1471,8 +1503,10 @@ export class UserManagementComponent implements OnInit {
     phone: '',
     password: '',
     roleId: 0,
-    status: 'active'
+    status: 'active',
+    assignedVehicleIds: [] as number[]
   };
+  availableVehicles: VehicleOption[] = [];
 
   // Role Modal
   showRoleModal = false;
@@ -1729,6 +1763,7 @@ export class UserManagementComponent implements OnInit {
   }
 
   openUserModal(user?: User) {
+    this.loadAvailableVehicles();
     if (user) {
       this.editingUser = user;
       const nameParts = user.name.split(' ');
@@ -1739,7 +1774,8 @@ export class UserManagementComponent implements OnInit {
         phone: user.phone || '',
         password: '',
         roleId: user.roleId,
-        status: user.status
+        status: user.status,
+        assignedVehicleIds: [...(user.assignedVehicleIds || [])]
       };
     } else {
       this.editingUser = null;
@@ -1750,7 +1786,8 @@ export class UserManagementComponent implements OnInit {
         phone: '',
         password: '',
         roleId: this.roles.length > 0 ? this.roles[0].id : 0,
-        status: 'active'
+        status: 'active',
+        assignedVehicleIds: []
       };
     }
     this.showUserModal = true;
@@ -1779,7 +1816,8 @@ export class UserManagementComponent implements OnInit {
         email: this.userForm.email,
         phone: this.userForm.phone,
         roleId: this.userForm.roleId,
-        status: this.userForm.status
+        status: this.userForm.status,
+        assignedVehicleIds: this.userForm.assignedVehicleIds
       }).subscribe({
         next: () => {
           this.toast.success('Succès', 'Utilisateur modifié avec succès');
@@ -1798,7 +1836,8 @@ export class UserManagementComponent implements OnInit {
         email: this.userForm.email,
         phone: this.userForm.phone,
         password: this.userForm.password,
-        roleId: this.userForm.roleId
+        roleId: this.userForm.roleId,
+        assignedVehicleIds: this.userForm.assignedVehicleIds
       }).subscribe({
         next: () => {
           this.toast.success('Succès', 'Utilisateur créé avec succès');
@@ -1826,6 +1865,40 @@ export class UserManagementComponent implements OnInit {
         }
       });
     }
+  }
+
+  // ============ VEHICLE ASSIGNMENT HELPERS ============
+
+  loadAvailableVehicles() {
+    this.apiService.getVehicles().subscribe({
+      next: (vehicles: any[]) => {
+        this.availableVehicles = vehicles.map((v: any) => ({
+          id: v.id,
+          name: v.name || `${v.brand || ''} ${v.model || ''}`.trim(),
+          plate: v.plate || ''
+        }));
+      },
+      error: () => { this.availableVehicles = []; }
+    });
+  }
+
+  isVehicleSelected(vehicleId: number): boolean {
+    return this.userForm.assignedVehicleIds.includes(vehicleId);
+  }
+
+  toggleVehicle(vehicleId: number) {
+    const idx = this.userForm.assignedVehicleIds.indexOf(vehicleId);
+    if (idx >= 0) {
+      this.userForm.assignedVehicleIds.splice(idx, 1);
+    } else {
+      this.userForm.assignedVehicleIds.push(vehicleId);
+    }
+  }
+
+  isSelectedRoleAdmin(): boolean {
+    if (!this.userForm.roleId) return false;
+    const role = this.roles.find(r => r.id === this.userForm.roleId);
+    return role?.isCompanyAdmin ?? false;
   }
 
   // ============ ROLE MANAGEMENT ============

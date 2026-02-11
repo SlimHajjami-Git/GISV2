@@ -15,6 +15,7 @@ export interface AuthUser {
   isCompanyAdmin: boolean;
   isSystemAdmin: boolean;
   subscriptionFeatures: SubscriptionFeatures | null;
+  assignedVehicleIds: number[] | null;
 }
 
 export interface AuthResponse {
@@ -34,6 +35,7 @@ export interface AuthResponse {
     companyName: string;
     permissions: Record<string, any>;
     subscriptionFeatures: SubscriptionFeatures | null;
+    assignedVehicleIds: number[] | null;
   };
 }
 
@@ -70,7 +72,8 @@ export class AuthService {
           companyName: parsed.companyName || '',
           isCompanyAdmin: parsed.isCompanyAdmin ?? false,
           isSystemAdmin: parsed.isSystemAdmin ?? false,
-          subscriptionFeatures: parsed.subscriptionFeatures ?? null
+          subscriptionFeatures: parsed.subscriptionFeatures ?? null,
+          assignedVehicleIds: parsed.assignedVehicleIds ?? null
         });
       } catch (e) {
         console.error('Error loading stored auth:', e);
@@ -92,6 +95,7 @@ export class AuthService {
         companyName: 'Demo Company',
         isCompanyAdmin: true,
         isSystemAdmin: true,
+        assignedVehicleIds: null,
         subscriptionFeatures: {
           gpsTracking: true,
           gpsInstallation: true,
@@ -155,7 +159,8 @@ export class AuthService {
           companyName: response.user.companyName,
           isCompanyAdmin: response.user.isCompanyAdmin,
           isSystemAdmin: response.user.isSystemAdmin,
-          subscriptionFeatures: response.user.subscriptionFeatures
+          subscriptionFeatures: response.user.subscriptionFeatures,
+          assignedVehicleIds: response.user.assignedVehicleIds ?? null
         };
         console.log('AuthService.login - Mapped subscriptionFeatures:', user.subscriptionFeatures);
         console.log('AuthService.login - User permissions:', user.permissions);
@@ -208,7 +213,8 @@ export class AuthService {
           companyName: response.user.companyName,
           isCompanyAdmin: response.user.isCompanyAdmin,
           isSystemAdmin: response.user.isSystemAdmin,
-          subscriptionFeatures: response.user.subscriptionFeatures
+          subscriptionFeatures: response.user.subscriptionFeatures,
+          assignedVehicleIds: response.user.assignedVehicleIds ?? null
         };
         localStorage.setItem('auth_token', response.token);
         localStorage.setItem('auth_user', JSON.stringify(user));

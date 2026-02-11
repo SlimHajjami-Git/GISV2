@@ -24,6 +24,7 @@ public interface IGisDbContext
     DbSet<VehicleStop> VehicleStops { get; }
     DbSet<FuelRecord> FuelRecords { get; }
     DbSet<VehicleAssignment> VehicleAssignments { get; }
+    DbSet<UserVehicle> UserVehicles { get; }
     DbSet<Supplier> Suppliers { get; }
     DbSet<SupplierService> SupplierServices { get; }
     DbSet<AccidentClaim> AccidentClaims { get; }

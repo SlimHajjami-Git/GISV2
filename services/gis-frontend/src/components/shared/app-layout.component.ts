@@ -165,6 +165,9 @@ import { GPSAlert } from '../../models/types';
                         <svg *ngIf="notif.type === 'stopped'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
                         </svg>
+                        <svg *ngIf="notif.type === 'maintenance'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                        </svg>
                         <svg *ngIf="notif.type === 'other'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                         </svg>
@@ -553,6 +556,7 @@ import { GPSAlert } from '../../models/types';
     .notif-icon.speeding { background: #fef3c7; color: #d97706; }
     .notif-icon.geofence { background: #dbeafe; color: #2563eb; }
     .notif-icon.stopped { background: #f1f5f9; color: #64748b; }
+    .notif-icon.maintenance { background: #fef2f2; color: #dc2626; }
     .notif-icon.other { background: #e0e7ff; color: #4f46e5; }
 
     .notif-content {
@@ -901,7 +905,7 @@ export class AppLayoutComponent implements OnInit {
   loadNotifications() {
     this.apiService.getAlerts(false, undefined, 20).subscribe({
       next: (alerts) => {
-        this.notifications = alerts.map(a => ({
+        const gpsNotifs = alerts.map(a => ({
           id: a.id?.toString() || '',
           vehicleId: a.vehicleId?.toString() || '',
           type: a.type as 'speeding' | 'stopped' | 'geofence' | 'other',
@@ -909,10 +913,33 @@ export class AppLayoutComponent implements OnInit {
           timestamp: new Date(a.timestamp),
           resolved: a.resolved
         })) as GPSAlert[];
-        this.unreadCount = this.notifications.filter(n => !n.resolved).length;
+        this.mergeNotifications(gpsNotifs);
       },
       error: (err) => console.error('Error loading alerts:', err)
     });
+    this.apiService.getMaintenanceAlerts().subscribe({
+      next: (items) => {
+        const maintNotifs = items.map((a: any) => ({
+          id: 'maint-' + (a.scheduleId || a.templateId),
+          vehicleId: '',
+          type: 'maintenance' as any,
+          message: `${a.templateName} — ${a.status === 'overdue' ? 'En retard' : 'A faire'}${a.kmUntilDue != null ? ' (' + Math.abs(a.kmUntilDue) + ' km)' : ''}`,
+          timestamp: new Date(),
+          resolved: false
+        })) as GPSAlert[];
+        this.mergeNotifications(maintNotifs);
+      },
+      error: () => {}
+    });
+  }
+
+  private _gpsNotifs: GPSAlert[] = [];
+  private _maintNotifs: GPSAlert[] = [];
+  mergeNotifications(notifs: GPSAlert[]) {
+    if (notifs.length > 0 && notifs[0].type === 'maintenance') this._maintNotifs = notifs;
+    else this._gpsNotifs = notifs;
+    this.notifications = [...this._maintNotifs, ...this._gpsNotifs].slice(0, 20);
+    this.unreadCount = this.notifications.filter(n => !n.resolved).length;
   }
 
   navigate(path: string) {
@@ -987,7 +1014,9 @@ export class AppLayoutComponent implements OnInit {
     }
     this.showNotifications = false;
     // Navigate based on notification type
-    if (notif.type === 'geofence') {
+    if (notif.type === 'maintenance') {
+      this.router.navigate(['/entretien-programmable']);
+    } else if (notif.type === 'geofence') {
       this.router.navigate(['/geofences']);
     } else if (notif.type === 'speeding') {
       this.router.navigate(['/monitoring']);
@@ -1006,6 +1035,7 @@ export class AppLayoutComponent implements OnInit {
       speeding: 'speeding',
       stopped: 'stopped',
       geofence: 'geofence',
+      maintenance: 'maintenance',
       other: 'other'
     };
     return typeMap[type] || 'other';

@@ -24,7 +24,8 @@ public record UserDto(
     int CompanyId,
     string CompanyName,
     Dictionary<string, object>? Permissions,
-    SubscriptionFeaturesDto? SubscriptionFeatures
+    SubscriptionFeaturesDto? SubscriptionFeatures,
+    int[]? AssignedVehicleIds = null
 );
 
 public record SubscriptionFeaturesDto(

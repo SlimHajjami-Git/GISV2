@@ -87,15 +87,26 @@ public class VehicleMaintenanceController : ControllerBase
     }
 
     /// <summary>
+    /// Get maintenance history/logs for a vehicle
+    /// </summary>
+    [HttpGet("vehicle/{vehicleId}/logs")]
+    public async Task<ActionResult<List<MaintenanceLogDto>>> GetMaintenanceLogs(int vehicleId, [FromQuery] int? templateId = null)
+    {
+        var logs = await _mediator.Send(new GetMaintenanceLogsQuery(vehicleId, templateId));
+        return Ok(logs);
+    }
+
+    /// <summary>
     /// Mark a maintenance as done
     /// </summary>
     [HttpPost("mark-done")]
     public async Task<ActionResult<int>> MarkDone([FromBody] MarkDoneRequest request)
     {
+        var dateUtc = request.Date.Kind == DateTimeKind.Utc ? request.Date : DateTime.SpecifyKind(request.Date, DateTimeKind.Utc);
         var command = new MarkMaintenanceDoneCommand(
             request.VehicleId,
             request.TemplateId,
-            request.Date,
+            dateUtc,
             request.Mileage,
             request.Cost,
             request.SupplierId,

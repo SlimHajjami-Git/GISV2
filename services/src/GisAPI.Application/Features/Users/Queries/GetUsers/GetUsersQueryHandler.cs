@@ -1,0 +1,46 @@
+using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Interfaces;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
+
+namespace GisAPI.Application.Features.Users.Queries.GetUsers;
+
+public class GetUsersQueryHandler : IRequestHandler<GetUsersQuery, List<UserListDto>>
+{
+    private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
+
+    public GetUsersQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
+    {
+        _context = context;
+        _tenantService = tenantService;
+    }
+
+    public async Task<List<UserListDto>> Handle(GetUsersQuery request, CancellationToken ct)
+    {
+        var companyId = _tenantService.CompanyId
+            ?? throw new GisAPI.Domain.Exceptions.DomainException("Société non identifiée");
+
+        var users = await _context.Users
+            .Include(u => u.Role)
+            .Include(u => u.UserVehicles)
+            .Where(u => u.CompanyId == companyId)
+            .OrderBy(u => u.LastName).ThenBy(u => u.FirstName)
+            .Select(u => new UserListDto(
+                u.Id,
+                u.FullName,
+                u.Email,
+                u.Phone,
+                u.RoleId,
+                u.Role != null ? u.Role.Name : null,
+                u.Role != null && u.Role.IsCompanyAdmin,
+                u.Status,
+                u.CreatedAt,
+                u.LastLoginAt,
+                u.UserVehicles.Select(uv => uv.VehicleId).ToArray()
+            ))
+            .ToListAsync(ct);
+
+        return users;
+    }
+}

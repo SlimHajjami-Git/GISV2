@@ -1,11 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
+using MediatR;
 using GisAPI.Infrastructure.Persistence;
-using GisAPI.DTOs;
+using GisAPI.Application.Features.Auth.Commands.Login;
+using GisAPI.Application.Features.Auth.Commands.Register;
 using GisAPI.Domain.Entities;
 
 namespace GisAPI.Controllers;
@@ -14,297 +12,36 @@ namespace GisAPI.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
+    private readonly IMediator _mediator;
     private readonly GisDbContext _context;
-    private readonly IConfiguration _configuration;
 
-    public AuthController(GisDbContext context, IConfiguration configuration)
+    public AuthController(IMediator mediator, GisDbContext context)
     {
+        _mediator = mediator;
         _context = context;
-        _configuration = configuration;
     }
 
     [HttpPost("login")]
-    public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest request)
+    public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest request)
     {
-        var user = await _context.Users
-            .Include(u => u.Societe)
-            .Include(u => u.Role)
-            .FirstOrDefaultAsync(u => u.Email == request.Email);
-
-        if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
-        {
-            return Unauthorized(new { message = "Email ou mot de passe incorrect" });
-        }
-
-        if (user.Status != "active")
-        {
-            return Unauthorized(new { message = "Compte désactivé" });
-        }
-
-        // Load SubscriptionType if Societe has one
-        SubscriptionFeaturesDto? subscriptionFeatures = null;
-        if (user.Societe?.SubscriptionTypeId != null)
-        {
-            var subType = await _context.SubscriptionTypes
-                .FirstOrDefaultAsync(st => st.Id == user.Societe.SubscriptionTypeId);
-            
-            if (subType != null)
-            {
-                subscriptionFeatures = new SubscriptionFeaturesDto(
-                    GpsTracking: subType.GpsTracking,
-                    GpsInstallation: subType.GpsInstallation,
-                    ApiAccess: subType.ApiAccess,
-                    AdvancedReports: subType.AdvancedReports,
-                    RealTimeAlerts: subType.RealTimeAlerts,
-                    HistoryPlayback: subType.HistoryPlayback,
-                    FuelAnalysis: subType.FuelAnalysis,
-                    DrivingBehavior: subType.DrivingBehavior,
-                    ModuleDashboard: subType.ModuleDashboard,
-                    ModuleMonitoring: subType.ModuleMonitoring,
-                    ModuleVehicles: subType.ModuleVehicles,
-                    ModuleEmployees: subType.ModuleEmployees,
-                    ModuleGeofences: subType.ModuleGeofences,
-                    ModuleMaintenance: subType.ModuleMaintenance,
-                    ModuleCosts: subType.ModuleCosts,
-                    ModuleReports: subType.ModuleReports,
-                    ModuleSettings: subType.ModuleSettings,
-                    ModuleUsers: subType.ModuleUsers,
-                    ModuleSuppliers: subType.ModuleSuppliers,
-                    ModuleDocuments: subType.ModuleDocuments,
-                    ModuleAccidents: subType.ModuleAccidents,
-                    ModuleFleetManagement: subType.ModuleFleetManagement,
-                    MaxVehicles: subType.MaxVehicles,
-                    MaxUsers: subType.MaxUsers,
-                    MaxGpsDevices: subType.MaxGpsDevices,
-                    MaxGeofences: subType.MaxGeofences,
-                    HistoryRetentionDays: subType.HistoryRetentionDays
-                );
-            }
-        }
-
-        user.LastLoginAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
-
-        var token = GenerateJwtToken(user);
-        var refreshToken = GenerateRefreshToken();
-
-        // Split name into first and last name
-        var nameParts = (user.Name ?? "").Split(' ', 2);
-        var firstName = nameParts.Length > 0 ? nameParts[0] : "";
-        var lastName = nameParts.Length > 1 ? nameParts[1] : "";
-
-        return Ok(new AuthResponse(
-            token,
-            refreshToken,
-            new UserDto(
-                user.Id,
-                firstName,
-                lastName,
-                user.Email,
-                user.Phone,
-                user.RoleId,
-                user.Role?.Name ?? "",
-                user.Role?.IsCompanyAdmin ?? false,
-                user.Role?.IsSystemAdmin ?? false,
-                user.CompanyId,
-                user.Societe?.Name ?? "",
-                user.Role?.Permissions,
-                subscriptionFeatures
-            )
-        ));
+        var result = await _mediator.Send(new LoginCommand(request.Email, request.Password));
+        return Ok(result);
     }
 
     [HttpPost("register")]
-    public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest request)
+    public async Task<ActionResult<LoginResponse>> Register([FromBody] RegisterRequest request)
     {
-        if (await _context.Users.AnyAsync(u => u.Email == request.Email))
-        {
-            return BadRequest(new { message = "Cet email est déjà utilisé" });
-        }
-
-        // Get default subscription type
-        var subscriptionType = await _context.SubscriptionTypes.FirstOrDefaultAsync();
-        if (subscriptionType == null)
-        {
-            subscriptionType = new SubscriptionType
-            {
-                Name = "Plan Gratuit",
-                Code = "plan-gratuit",
-                TargetCompanyType = "all",
-                YearlyPrice = 0,
-                MaxVehicles = 5,
-                GpsTracking = false,
-                GpsInstallation = false,
-                IsActive = true
-            };
-            _context.SubscriptionTypes.Add(subscriptionType);
-            await _context.SaveChangesAsync();
-        }
-
-        // Create company
-        var company = new Societe
-        {
-            Name = request.CompanyName,
-            Type = "transport",
-            SubscriptionTypeId = subscriptionType.Id
-        };
-        _context.Societes.Add(company);
-        await _context.SaveChangesAsync();
-
-        // Create admin role for the company
-        var adminRole = new Role
-        {
-            Name = "Administrateur",
-            Description = "Administrateur avec tous les accès",
-            SocieteId = company.Id,
-            IsCompanyAdmin = true,
-            Permissions = new Dictionary<string, object>
-            {
-                { "dashboard", true }, { "monitoring", true }, { "vehicles", true },
-                { "drivers", true }, { "geofences", true }, { "reports", true },
-                { "maintenance", true }, { "costs", true }, { "gps_devices", true },
-                { "users", true }, { "settings", true }
-            }
-        };
-        _context.Roles.Add(adminRole);
-        await _context.SaveChangesAsync();
-
-        // Create admin user
-        var user = new User
-        {
-            Name = request.Name,
-            Email = request.Email,
-            Phone = request.Phone,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-            RoleId = adminRole.Id,
-            CompanyId = company.Id,
-            Status = "active"
-        };
-        _context.Users.Add(user);
-        await _context.SaveChangesAsync();
-
-        var token = GenerateJwtToken(user);
-        var refreshToken = GenerateRefreshToken();
-
-        // Split name into first and last name
-        var nameParts = (user.Name ?? "").Split(' ', 2);
-        var firstName = nameParts.Length > 0 ? nameParts[0] : "";
-        var lastName = nameParts.Length > 1 ? nameParts[1] : "";
-
-        // Load subscription features for new user
-        SubscriptionFeaturesDto? subscriptionFeatures = null;
-        if (subscriptionType != null)
-        {
-            subscriptionFeatures = new SubscriptionFeaturesDto(
-                GpsTracking: subscriptionType.GpsTracking,
-                GpsInstallation: subscriptionType.GpsInstallation,
-                ApiAccess: subscriptionType.ApiAccess,
-                AdvancedReports: subscriptionType.AdvancedReports,
-                RealTimeAlerts: subscriptionType.RealTimeAlerts,
-                HistoryPlayback: subscriptionType.HistoryPlayback,
-                FuelAnalysis: subscriptionType.FuelAnalysis,
-                DrivingBehavior: subscriptionType.DrivingBehavior,
-                ModuleDashboard: subscriptionType.ModuleDashboard,
-                ModuleMonitoring: subscriptionType.ModuleMonitoring,
-                ModuleVehicles: subscriptionType.ModuleVehicles,
-                ModuleEmployees: subscriptionType.ModuleEmployees,
-                ModuleGeofences: subscriptionType.ModuleGeofences,
-                ModuleMaintenance: subscriptionType.ModuleMaintenance,
-                ModuleCosts: subscriptionType.ModuleCosts,
-                ModuleReports: subscriptionType.ModuleReports,
-                ModuleSettings: subscriptionType.ModuleSettings,
-                ModuleUsers: subscriptionType.ModuleUsers,
-                ModuleSuppliers: subscriptionType.ModuleSuppliers,
-                ModuleDocuments: subscriptionType.ModuleDocuments,
-                ModuleAccidents: subscriptionType.ModuleAccidents,
-                ModuleFleetManagement: subscriptionType.ModuleFleetManagement,
-                MaxVehicles: subscriptionType.MaxVehicles,
-                MaxUsers: subscriptionType.MaxUsers,
-                MaxGpsDevices: subscriptionType.MaxGpsDevices,
-                MaxGeofences: subscriptionType.MaxGeofences,
-                HistoryRetentionDays: subscriptionType.HistoryRetentionDays
-            );
-        }
-
-        return Ok(new AuthResponse(
-            token,
-            refreshToken,
-            new UserDto(
-                user.Id,
-                firstName,
-                lastName,
-                user.Email,
-                user.Phone,
-                adminRole.Id,
-                adminRole.Name,
-                adminRole.IsCompanyAdmin,
-                adminRole.IsSystemRole,
-                user.CompanyId,
-                company.Name,
-                adminRole.Permissions,
-                subscriptionFeatures
-            )
-        ));
-    }
-
-    private string GenerateJwtToken(User user)
-    {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
-            _configuration["Jwt:Key"] ?? "DefaultSecretKeyForDevelopment123!"));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-        var claims = new List<Claim>
-        {
-            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(ClaimTypes.Email, user.Email),
-            new(ClaimTypes.Name, user.Name),
-            new("companyId", user.CompanyId.ToString()),
-            new("userType", user.UserType ?? "user")
-        };
-
-        // Add role name as claim
-        if (user.Role != null)
-        {
-            claims.Add(new Claim(ClaimTypes.Role, user.Role.Name));
-            
-            // System admin gets super_admin role for backward compatibility
-            if (user.Role.IsSystemRole)
-            {
-                claims.Add(new Claim(ClaimTypes.Role, "super_admin"));
-                claims.Add(new Claim(ClaimTypes.Role, "system_admin"));
-            }
-            
-            // Company admin gets admin role
-            if (user.Role.IsCompanyAdmin)
-            {
-                claims.Add(new Claim(ClaimTypes.Role, "admin"));
-                claims.Add(new Claim(ClaimTypes.Role, "company_admin"));
-            }
-            
-            // Add permissions from role
-            if (user.Role.Permissions != null)
-            {
-                foreach (var permission in user.Role.Permissions.Keys)
-                {
-                    claims.Add(new Claim("permission", permission));
-                }
-            }
-        }
-
-        var token = new JwtSecurityToken(
-            issuer: _configuration["Jwt:Issuer"] ?? "GisAPI",
-            audience: _configuration["Jwt:Audience"] ?? "GisAPI",
-            claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(30),
-            signingCredentials: credentials
+        var command = new RegisterCommand(
+            request.FirstName ?? ((request.Name ?? "").Split(' ', 2).ElementAtOrDefault(0) ?? ""),
+            request.LastName ?? ((request.Name ?? "").Split(' ', 2).ElementAtOrDefault(1) ?? ""),
+            request.Email,
+            request.Password,
+            request.CompanyName,
+            request.Phone
         );
 
-        return new JwtSecurityTokenHandler().WriteToken(token);
-    }
-
-    private static string GenerateRefreshToken()
-    {
-        return Convert.ToBase64String(Guid.NewGuid().ToByteArray());
+        var result = await _mediator.Send(command);
+        return Ok(result);
     }
 
     [HttpPost("seed")]
@@ -323,10 +60,8 @@ public class AuthController : ControllerBase
             var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == "admin@belive.ma");
             if (existingUser != null)
             {
-                // Update password for existing user
                 existingUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Calypso@2026+");
                 existingUser.Status = "active";
-                // Role is already assigned via role_id
                 await _context.SaveChangesAsync();
                 return Ok(new { message = "User admin@belive.ma updated", password = "Calypso@2026+" });
             }
@@ -416,3 +151,15 @@ public class AuthController : ControllerBase
         }
     }
 }
+
+// Request DTOs for AuthController
+public record LoginRequest(string Email, string Password);
+public record RegisterRequest(
+    string Email,
+    string Password,
+    string CompanyName,
+    string? Phone = null,
+    string? Name = null,
+    string? FirstName = null,
+    string? LastName = null
+);

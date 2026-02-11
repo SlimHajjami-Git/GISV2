@@ -1331,6 +1331,12 @@ export class ApiService {
     return this.http.post<{ logId: number; message: string }>(`${this.API_URL}/vehicle-maintenance/mark-done`, request, { headers: this.getHeaders() });
   }
 
+  getMaintenanceLogs(vehicleId: number, templateId?: number): Observable<any[]> {
+    let params = new HttpParams();
+    if (templateId) params = params.set('templateId', templateId.toString());
+    return this.http.get<any[]>(`${this.API_URL}/vehicle-maintenance/vehicle/${vehicleId}/logs`, { headers: this.getHeaders(), params });
+  }
+
   // ==================== REPAIRS ====================
 
   getRepairs(options?: { vehicleId?: number; status?: string; fromDate?: string; toDate?: string; page?: number; pageSize?: number }): Observable<RepairsListResult> {

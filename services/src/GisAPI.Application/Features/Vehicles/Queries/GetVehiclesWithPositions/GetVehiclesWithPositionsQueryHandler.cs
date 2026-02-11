@@ -41,13 +41,31 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
     public async Task<List<VehicleWithPositionDto>> Handle(GetVehiclesWithPositionsQuery request, CancellationToken ct)
     {
         var companyId = _tenantService.CompanyId ?? 0;
+        var userId = _tenantService.UserId ?? 0;
+        var isAdmin = _tenantService.UserRoles.Any(r => r == "company_admin" || r == "admin" || r == "super_admin" || r == "system_admin");
 
         // Get vehicles with GPS devices
-        var vehicles = await _context.Vehicles
+        var vehicleQuery = _context.Vehicles
             .AsNoTracking()
             .Where(v => v.CompanyId == companyId)
             .Include(v => v.GpsDevice)
-            .ToListAsync(ct);
+            .AsQueryable();
+
+        // Non-admin users only see their assigned vehicles
+        if (!isAdmin && userId > 0)
+        {
+            var assignedVehicleIds = await _context.UserVehicles
+                .Where(uv => uv.UserId == userId)
+                .Select(uv => uv.VehicleId)
+                .ToListAsync(ct);
+
+            if (assignedVehicleIds.Any())
+                vehicleQuery = vehicleQuery.Where(v => assignedVehicleIds.Contains(v.Id));
+            else
+                vehicleQuery = vehicleQuery.Where(v => false);
+        }
+
+        var vehicles = await vehicleQuery.ToListAsync(ct);
 
         var deviceIds = vehicles
             .Where(v => v.GpsDevice != null)

@@ -197,6 +197,44 @@ public class GetTemplatePartsQueryHandler : IRequestHandler<GetTemplatePartsQuer
     }
 }
 
+public class GetMaintenanceLogsQueryHandler : IRequestHandler<GetMaintenanceLogsQuery, List<MaintenanceLogDto>>
+{
+    private readonly IGisDbContext _context;
+
+    public GetMaintenanceLogsQueryHandler(IGisDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<List<MaintenanceLogDto>> Handle(GetMaintenanceLogsQuery request, CancellationToken cancellationToken)
+    {
+        var query = _context.MaintenanceLogs
+            .Include(l => l.Template)
+            .Include(l => l.Supplier)
+            .Where(l => l.VehicleId == request.VehicleId);
+
+        if (request.TemplateId.HasValue)
+            query = query.Where(l => l.TemplateId == request.TemplateId.Value);
+
+        var logs = await query
+            .OrderByDescending(l => l.DoneDate)
+            .Take(50)
+            .ToListAsync(cancellationToken);
+
+        return logs.Select(l => new MaintenanceLogDto(
+            l.Id,
+            l.VehicleId,
+            l.TemplateId,
+            l.Template?.Name ?? "",
+            l.DoneDate,
+            l.DoneKm,
+            l.ActualCost,
+            l.Supplier?.Name,
+            l.Notes
+        )).ToList();
+    }
+}
+
 public class GetCurrentVehicleMileageQueryHandler : IRequestHandler<GetCurrentVehicleMileageQuery, VehicleMileageDto>
 {
     private readonly IGisDbContext _context;
