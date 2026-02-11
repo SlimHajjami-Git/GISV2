@@ -6,6 +6,10 @@ using GisAPI.Domain.Entities;
 using System.Text.Json;
 using MediatR;
 using GisAPI.Application.Features.Admin.Vehicles.Queries.GetAdminVehicles;
+using GisAPI.Application.Features.Admin.Vehicles.Queries.GetAdminVehicleById;
+using GisAPI.Application.Features.Admin.Vehicles.Commands.CreateAdminVehicle;
+using GisAPI.Application.Features.Admin.Vehicles.Commands.UpdateAdminVehicle;
+using GisAPI.Application.Features.Admin.Vehicles.Commands.DeleteAdminVehicle;
 using GisAPI.Application.Features.Admin.Users;
 using GisAPI.Application.Features.Admin.Companies;
 using GisAPI.Application.Features.Admin.Companies.Queries.GetCompanies;
@@ -223,427 +227,51 @@ public class AdminController : ControllerBase
     [HttpGet("vehicles/{id}")]
     public async Task<ActionResult<AdminVehicleDto>> GetVehicle(int id)
     {
-        var vehicle = await _context.Vehicles
-            .Include(v => v.Societe)
-            .Include(v => v.GpsDevice)
-            .Include(v => v.AssignedDriver)
-            .FirstOrDefaultAsync(v => v.Id == id);
-
-        if (vehicle == null)
-            return NotFound();
-
-        return Ok(new AdminVehicleDto
-        {
-            Id = vehicle.Id,
-            Name = vehicle.Name,
-            Type = vehicle.Type,
-            Brand = vehicle.Brand,
-            Model = vehicle.Model,
-            Plate = vehicle.Plate,
-            Year = vehicle.Year,
-            Color = vehicle.Color,
-            Status = vehicle.Status,
-            HasGps = vehicle.HasGps,
-            Mileage = vehicle.Mileage,
-            FuelType = vehicle.FuelType,
-            FuelTankCapacity = vehicle.FuelTankCapacity,
-            CompanyId = vehicle.CompanyId,
-            CompanyName = vehicle.Societe?.Name,
-            GpsDeviceId = vehicle.GpsDeviceId,
-            GpsImei = vehicle.GpsDevice?.DeviceUid,
-            GpsMat = vehicle.GpsDevice?.Mat,
-            GpsBrand = vehicle.GpsDevice?.Brand,
-            GpsModel = vehicle.GpsDevice?.Model,
-            GpsFirmwareVersion = vehicle.GpsDevice?.FirmwareVersion,
-            GpsFuelSensorMode = vehicle.GpsDevice?.FuelSensorMode,
-            AssignedDriverId = vehicle.AssignedDriverId,
-            AssignedDriverName = vehicle.AssignedDriver?.Name,
-            CreatedAt = vehicle.CreatedAt,
-            UpdatedAt = vehicle.UpdatedAt
-        });
+        var result = await _mediator.Send(new GetAdminVehicleByIdQuery(id));
+        return result != null ? Ok(result) : NotFound();
     }
 
     [HttpPost("vehicles")]
     public async Task<ActionResult<AdminVehicleDto>> CreateVehicle([FromBody] CreateAdminVehicleRequest request)
     {
-        var company = await _context.Societes.FindAsync(request.CompanyId);
-        if (company == null)
-            return BadRequest(new { message = "Société non trouvée" });
-
-        var vehicle = new Vehicle
-        {
-            Name = request.Name,
-            Type = request.Type ?? "camion",
-            Brand = request.Brand,
-            Model = request.Model,
-            Plate = request.Plate,
-            Year = request.Year,
-            Color = request.Color,
-            Status = request.Status ?? "available",
-            HasGps = request.HasGps,
-            Mileage = request.Mileage ?? 0,
-            FuelType = request.FuelType ?? "diesel",
-            FuelTankCapacity = request.FuelTankCapacity,
-            CompanyId = request.CompanyId
-        };
-
-        if (request.HasGps)
-        {
-            var (gpsDevice, error) = await ResolveGpsDeviceAsync(
-                request.CompanyId,
-                request.GpsDeviceId,
-                request.GpsImei,
-                request.GpsMat
-            );
-
-            if (error != null)
-                return BadRequest(new { message = error });
-
-            if (gpsDevice == null)
-                return BadRequest(new { message = "Impossible d'associer le GPS sans IMEI ou appareil existant." });
-
-            vehicle.GpsDeviceId = gpsDevice.Id;
-            vehicle.HasGps = true;
-            gpsDevice.Status = "assigned";
-            gpsDevice.Vehicle = vehicle;
-
-            if (!string.IsNullOrWhiteSpace(request.GpsMat))
-            {
-                gpsDevice.Mat = request.GpsMat;
-            }
-
-            if (!string.IsNullOrWhiteSpace(request.GpsBrand))
-            {
-                gpsDevice.Brand = request.GpsBrand;
-            }
-
-            if (!string.IsNullOrWhiteSpace(request.GpsModel))
-            {
-                gpsDevice.FirmwareVersion = request.GpsModel; // L or S
-            }
-            
-            if (!string.IsNullOrWhiteSpace(request.GpsFuelSensorMode))
-            {
-                gpsDevice.FuelSensorMode = request.GpsFuelSensorMode;
-            }
-        }
-        else
-        {
-            vehicle.HasGps = false;
-        }
-
-        _context.Vehicles.Add(vehicle);
-        await _context.SaveChangesAsync();
-
-        return CreatedAtAction(nameof(GetVehicle), new { id = vehicle.Id }, new AdminVehicleDto
-        {
-            Id = vehicle.Id,
-            Name = vehicle.Name,
-            Type = vehicle.Type,
-            Brand = vehicle.Brand,
-            Model = vehicle.Model,
-            Plate = vehicle.Plate,
-            Year = vehicle.Year,
-            Color = vehicle.Color,
-            Status = vehicle.Status,
-            HasGps = vehicle.HasGps,
-            Mileage = vehicle.Mileage,
-            FuelType = vehicle.FuelType,
-            FuelTankCapacity = vehicle.FuelTankCapacity,
-            CompanyId = vehicle.CompanyId,
-            CompanyName = company.Name,
-            GpsDeviceId = vehicle.GpsDeviceId,
-            GpsImei = vehicle.GpsDevice?.DeviceUid,
-            GpsMat = vehicle.GpsDevice?.Mat,
-            GpsBrand = vehicle.GpsDevice?.Brand,
-            GpsModel = vehicle.GpsDevice?.Model,
-            GpsFirmwareVersion = vehicle.GpsDevice?.FirmwareVersion,
-            GpsFuelSensorMode = vehicle.GpsDevice?.FuelSensorMode,
-            CreatedAt = vehicle.CreatedAt,
-            UpdatedAt = vehicle.UpdatedAt
-        });
+        var result = await _mediator.Send(new CreateAdminVehicleCommand(
+            request.Name, request.Type, request.Brand, request.Model, request.Plate,
+            request.Year, request.Color, request.Status, request.HasGps, request.Mileage,
+            request.FuelType, request.FuelTankCapacity, request.CompanyId,
+            request.GpsDeviceId, request.GpsImei, request.GpsMat,
+            request.GpsBrand, request.GpsModel, request.GpsFuelSensorMode
+        ));
+        if (!result.Success) return BadRequest(new { message = result.Error });
+        return CreatedAtAction(nameof(GetVehicle), new { id = result.Vehicle!.Id }, result.Vehicle);
     }
 
     [HttpPut("vehicles/{id}")]
     public async Task<ActionResult<AdminVehicleDto>> UpdateVehicle(int id, [FromBody] UpdateAdminVehicleRequest request)
     {
-        var vehicle = await _context.Vehicles
-            .Include(v => v.Societe)
-            .Include(v => v.GpsDevice)
-            .Include(v => v.AssignedDriver)
-            .FirstOrDefaultAsync(v => v.Id == id);
-
-        if (vehicle == null)
-            return NotFound();
-
-        if (!string.IsNullOrEmpty(request.Name)) vehicle.Name = request.Name;
-        if (request.Type != null) vehicle.Type = request.Type;
-        if (request.Brand != null) vehicle.Brand = request.Brand;
-        if (request.Model != null) vehicle.Model = request.Model;
-        if (request.Plate != null) vehicle.Plate = request.Plate;
-        if (request.Year.HasValue) vehicle.Year = request.Year.Value;
-        if (request.Color != null) vehicle.Color = request.Color;
-        if (request.Status != null) vehicle.Status = request.Status;
-        if (request.HasGps.HasValue) vehicle.HasGps = request.HasGps.Value;
-        if (request.Mileage.HasValue) vehicle.Mileage = request.Mileage.Value;
-        if (request.FuelType != null) vehicle.FuelType = request.FuelType;
-        if (request.FuelTankCapacity.HasValue) vehicle.FuelTankCapacity = request.FuelTankCapacity.Value;
-        if (request.CompanyId.HasValue) vehicle.CompanyId = request.CompanyId.Value;
-
-        var targetCompanyId = request.CompanyId ?? vehicle.CompanyId;
-
-        if (request.HasGps == false)
-        {
-            await ReleaseGpsDeviceAsync(vehicle.GpsDeviceId);
-            vehicle.GpsDeviceId = null;
-            vehicle.HasGps = false;
-        }
-        else if (request.HasGps == true ||
-                 request.GpsDeviceId.HasValue ||
-                 !string.IsNullOrWhiteSpace(request.GpsImei) ||
-                 !string.IsNullOrWhiteSpace(request.GpsMat) ||
-                 !string.IsNullOrWhiteSpace(request.GpsFuelSensorMode))
-        {
-            GpsDevice? gpsDevice = null;
-            
-            // If only updating FuelSensorMode on existing device, use the vehicle's current GPS
-            if (!request.GpsDeviceId.HasValue && 
-                string.IsNullOrWhiteSpace(request.GpsImei) && 
-                string.IsNullOrWhiteSpace(request.GpsMat) &&
-                vehicle.GpsDeviceId.HasValue)
-            {
-                gpsDevice = vehicle.GpsDevice;
-            }
-            else
-            {
-                var (resolvedDevice, error) = await ResolveGpsDeviceAsync(
-                    targetCompanyId,
-                    request.GpsDeviceId,
-                    request.GpsImei,
-                    request.GpsMat
-                );
-
-                if (error != null)
-                    return BadRequest(new { message = error });
-                    
-                gpsDevice = resolvedDevice;
-            }
-
-            if (gpsDevice != null)
-            {
-                if (vehicle.GpsDeviceId.HasValue && vehicle.GpsDeviceId != gpsDevice.Id)
-                {
-                    await ReleaseGpsDeviceAsync(vehicle.GpsDeviceId);
-                }
-
-                vehicle.GpsDeviceId = gpsDevice.Id;
-                vehicle.HasGps = true;
-                gpsDevice.Status = "assigned";
-                gpsDevice.Vehicle = vehicle;
-
-                if (!string.IsNullOrWhiteSpace(request.GpsImei))
-                    gpsDevice.DeviceUid = request.GpsImei!;
-
-                if (!string.IsNullOrWhiteSpace(request.GpsMat))
-                    gpsDevice.Mat = request.GpsMat;
-
-                if (!string.IsNullOrWhiteSpace(request.GpsBrand))
-                    gpsDevice.Brand = request.GpsBrand;
-
-                if (!string.IsNullOrWhiteSpace(request.GpsModel))
-                    gpsDevice.FirmwareVersion = request.GpsModel; // L or S
-                    
-                if (!string.IsNullOrWhiteSpace(request.GpsFuelSensorMode))
-                    gpsDevice.FuelSensorMode = request.GpsFuelSensorMode;
-            }
-        }
-
-        vehicle.UpdatedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
-
-        return Ok(new AdminVehicleDto
-        {
-            Id = vehicle.Id,
-            Name = vehicle.Name,
-            Type = vehicle.Type,
-            Brand = vehicle.Brand,
-            Model = vehicle.Model,
-            Plate = vehicle.Plate,
-            Year = vehicle.Year,
-            Color = vehicle.Color,
-            Status = vehicle.Status,
-            HasGps = vehicle.HasGps,
-            Mileage = vehicle.Mileage,
-            FuelType = vehicle.FuelType,
-            FuelTankCapacity = vehicle.FuelTankCapacity,
-            CompanyId = vehicle.CompanyId,
-            CompanyName = vehicle.Societe?.Name,
-            GpsDeviceId = vehicle.GpsDeviceId,
-            GpsImei = vehicle.GpsDevice?.DeviceUid,
-            GpsMat = vehicle.GpsDevice?.Mat,
-            GpsBrand = vehicle.GpsDevice?.Brand,
-            GpsModel = vehicle.GpsDevice?.Model,
-            GpsFirmwareVersion = vehicle.GpsDevice?.FirmwareVersion,
-            GpsFuelSensorMode = vehicle.GpsDevice?.FuelSensorMode,
-            AssignedDriverId = vehicle.AssignedDriverId,
-            AssignedDriverName = vehicle.AssignedDriver?.Name,
-            CreatedAt = vehicle.CreatedAt,
-            UpdatedAt = vehicle.UpdatedAt
-        });
+        var result = await _mediator.Send(new UpdateAdminVehicleCommand(
+            id, request.Name, request.Type, request.Brand, request.Model, request.Plate,
+            request.Year, request.Color, request.Status, request.HasGps, request.Mileage,
+            request.FuelType, request.FuelTankCapacity, request.CompanyId,
+            request.GpsDeviceId, request.GpsImei, request.GpsMat,
+            request.GpsBrand, request.GpsModel, request.GpsFuelSensorMode
+        ));
+        if (!result.Success && result.Error == "not_found") return NotFound();
+        if (!result.Success) return BadRequest(new { message = result.Error });
+        return Ok(result.Vehicle);
     }
 
     [HttpDelete("vehicles/{id}")]
     public async Task<ActionResult> DeleteVehicle(int id)
     {
-        var vehicle = await _context.Vehicles
-            .Include(v => v.GpsDevice)
-            .FirstOrDefaultAsync(v => v.Id == id);
-        if (vehicle == null) return NotFound();
-
-        // Release GPS device before deleting vehicle
-        if (vehicle.GpsDeviceId.HasValue)
-        {
-            await ReleaseGpsDeviceAsync(vehicle.GpsDeviceId);
-        }
-
-        _context.Vehicles.Remove(vehicle);
-        await _context.SaveChangesAsync();
-
-        return Ok(new { message = "Véhicule supprimé" });
+        var found = await _mediator.Send(new DeleteAdminVehicleCommand(id));
+        return found ? Ok(new { message = "Véhicule supprimé" }) : NotFound();
     }
 
     [HttpGet("company/{companyId}/vehicles")]
     public async Task<ActionResult<List<AdminVehicleDto>>> GetCompanyVehicles(int companyId)
     {
-        var vehicles = await _context.Vehicles
-            .Where(v => v.CompanyId == companyId)
-            .Include(v => v.Societe)
-            .Include(v => v.GpsDevice)
-            .Include(v => v.AssignedDriver)
-            .OrderByDescending(v => v.CreatedAt)
-            .ToListAsync();
-
-        return Ok(vehicles.Select(v => new AdminVehicleDto
-        {
-            Id = v.Id,
-            Name = v.Name,
-            Type = v.Type,
-            Brand = v.Brand,
-            Model = v.Model,
-            Plate = v.Plate,
-            Year = v.Year,
-            Color = v.Color,
-            Status = v.Status,
-            HasGps = v.HasGps,
-            Mileage = v.Mileage,
-            FuelType = v.FuelType,
-            FuelTankCapacity = v.FuelTankCapacity,
-            CompanyId = v.CompanyId,
-            CompanyName = v.Societe?.Name,
-            GpsDeviceId = v.GpsDeviceId,
-            GpsImei = v.GpsDevice?.DeviceUid,
-            GpsMat = v.GpsDevice?.Mat,
-            GpsBrand = v.GpsDevice?.Brand,
-            GpsModel = v.GpsDevice?.Model,
-            GpsFirmwareVersion = v.GpsDevice?.FirmwareVersion,
-            GpsFuelSensorMode = v.GpsDevice?.FuelSensorMode,
-            AssignedDriverId = v.AssignedDriverId,
-            AssignedDriverName = v.AssignedDriver?.Name,
-            CreatedAt = v.CreatedAt,
-            UpdatedAt = v.UpdatedAt
-        }));
-    }
-
-    private async Task<(GpsDevice? device, string? error)> ResolveGpsDeviceAsync(
-        int companyId,
-        int? gpsDeviceId,
-        string? gpsImei,
-        string? gpsMat)
-    {
-        if (gpsDeviceId.HasValue)
-        {
-            var device = await _context.GpsDevices.FirstOrDefaultAsync(d => d.Id == gpsDeviceId.Value);
-            if (device == null)
-                return (null, "Appareil GPS introuvable.");
-            if (device.CompanyId != companyId)
-                return (null, "Cet appareil GPS appartient à une autre société.");
-
-            return (device, null);
-        }
-
-        var normalizedImei = gpsImei?.Trim();
-        if (!string.IsNullOrEmpty(normalizedImei))
-        {
-            var device = await _context.GpsDevices
-                .Include(d => d.Vehicle)
-                .FirstOrDefaultAsync(d => d.DeviceUid == normalizedImei);
-            if (device != null)
-            {
-                // If device belongs to another company, update it to new company
-                // This allows reusing GPS devices across companies
-                if (device.CompanyId != companyId)
-                {
-                    device.CompanyId = companyId;
-                }
-
-                // Always update Mat if provided (overwrites existing)
-                if (!string.IsNullOrWhiteSpace(gpsMat))
-                {
-                    device.Mat = gpsMat.Trim();
-                }
-
-                // Release from previous vehicle if any
-                if (device.Vehicle != null)
-                {
-                    device.Vehicle.GpsDeviceId = null;
-                    device.Vehicle.HasGps = false;
-                }
-
-                device.UpdatedAt = DateTime.UtcNow;
-                return (device, null);
-            }
-
-            var newDevice = new GpsDevice
-            {
-                DeviceUid = normalizedImei,
-                Mat = gpsMat?.Trim(),
-                CompanyId = companyId,
-                Status = "unassigned",
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-
-            _context.GpsDevices.Add(newDevice);
-            return (newDevice, null);
-        }
-
-        var normalizedMat = gpsMat?.Trim();
-        if (!string.IsNullOrEmpty(normalizedMat))
-        {
-            var device = await _context.GpsDevices.FirstOrDefaultAsync(d => d.Mat == normalizedMat);
-            if (device != null)
-            {
-                if (device.CompanyId != companyId)
-                    return (null, "Un appareil avec ce MAT appartient déjà à une autre société.");
-
-                return (device, null);
-            }
-        }
-
-        return (null, null);
-    }
-
-    private async Task ReleaseGpsDeviceAsync(int? gpsDeviceId)
-    {
-        if (!gpsDeviceId.HasValue)
-            return;
-
-        var device = await _context.GpsDevices.FirstOrDefaultAsync(d => d.Id == gpsDeviceId.Value);
-        if (device == null)
-            return;
-
-        device.Status = "unassigned";
-        device.UpdatedAt = DateTime.UtcNow;
+        var vehicles = await _mediator.Send(new GetAdminVehiclesQuery(null, companyId, null));
+        return Ok(vehicles);
     }
 
     // ==================== SERVICE HEALTH ====================
