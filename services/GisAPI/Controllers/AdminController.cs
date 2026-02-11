@@ -24,6 +24,7 @@ using GisAPI.Application.Features.Admin.Subscriptions.Queries.GetSubscriptions;
 using GisAPI.Application.Features.Admin.Subscriptions.Commands.CreateSubscription;
 using GisAPI.Application.Features.Admin.Subscriptions.Commands.UpdateSubscription;
 using GisAPI.Application.Features.Admin.Subscriptions.Commands.DeleteSubscription;
+using GisAPI.Application.Features.Admin.Dashboard;
 using GisAPI.Application.Common.Interfaces;
 
 namespace GisAPI.Controllers;
@@ -384,50 +385,9 @@ public class AdminController : ControllerBase
     // ==================== ACTIVITY LOGS ====================
 
     [HttpGet("activity-logs")]
-    public async Task<ActionResult<List<ActivityLogDto>>> GetActivityLogs([FromQuery] int limit = 50)
+    public async Task<ActionResult<List<Application.Features.Admin.Dashboard.ActivityLogDto>>> GetActivityLogs([FromQuery] int limit = 50)
     {
-        // Get recent user logins as activity
-        var recentLogins = await _context.Users
-            .Where(u => u.LastLoginAt != null)
-            .OrderByDescending(u => u.LastLoginAt)
-            .Take(limit)
-            .Select(u => new ActivityLogDto
-            {
-                Id = $"login-{u.Id}",
-                UserId = u.Id,
-                UserName = u.Name,
-                CompanyId = u.CompanyId,
-                CompanyName = u.Societe != null ? u.Societe.Name : "Unknown",
-                Action = "login",
-                Details = "Connexion utilisateur",
-                IpAddress = "N/A",
-                Timestamp = u.LastLoginAt ?? DateTime.UtcNow
-            })
-            .ToListAsync();
-
-        // Get recent vehicle updates
-        var recentVehicles = await _context.Vehicles
-            .OrderByDescending(v => v.UpdatedAt)
-            .Take(20)
-            .Select(v => new ActivityLogDto
-            {
-                Id = $"vehicle-{v.Id}",
-                UserId = 0,
-                UserName = "System",
-                CompanyId = v.CompanyId,
-                CompanyName = v.Societe != null ? v.Societe.Name : "Unknown",
-                Action = "update_vehicle",
-                Details = $"Mise à jour véhicule: {v.Plate}",
-                IpAddress = "N/A",
-                Timestamp = v.UpdatedAt
-            })
-            .ToListAsync();
-
-        var logs = recentLogins.Concat(recentVehicles)
-            .OrderByDescending(l => l.Timestamp)
-            .Take(limit)
-            .ToList();
-
+        var logs = await _mediator.Send(new GetActivityLogsQuery(limit));
         return Ok(logs);
     }
 
@@ -449,33 +409,10 @@ public class AdminController : ControllerBase
     // ==================== DASHBOARD STATS ====================
 
     [HttpGet("dashboard/stats")]
-    public async Task<ActionResult<DashboardStatsDto>> GetDashboardStats()
+    public async Task<ActionResult<Application.Features.Admin.Dashboard.DashboardStatsDto>> GetDashboardStats()
     {
-        var today = DateTime.UtcNow.Date;
-        
-        var totalClients = await _context.Societes.CountAsync();
-        var activeClients = await _context.Societes.CountAsync(c => c.IsActive);
-        var totalUsers = await _context.Users.CountAsync();
-        var totalVehicles = await _context.Vehicles.CountAsync();
-        var activeDevices = await _context.GpsDevices.CountAsync();
-        var totalPositionsToday = await _context.GpsPositions.CountAsync(p => p.RecordedAt >= today);
-        
-        var firstOfMonth = new DateTime(today.Year, today.Month, 1);
-        var newClientsThisMonth = await _context.Societes.CountAsync(c => c.CreatedAt >= firstOfMonth);
-
-        return Ok(new DashboardStatsDto
-        {
-            TotalClients = totalClients,
-            ActiveClients = activeClients,
-            TotalUsers = totalUsers,
-            UsersOnline = 0,
-            TotalVehicles = totalVehicles,
-            ActiveDevices = activeDevices,
-            TotalPositionsToday = totalPositionsToday,
-            AlertsToday = 0,
-            RevenueThisMonth = 0,
-            NewClientsThisMonth = newClientsThisMonth
-        });
+        var stats = await _mediator.Send(new GetDashboardStatsQuery());
+        return Ok(stats);
     }
 
     [HttpGet("dashboard/feature-usage")]
