@@ -48,6 +48,9 @@ builder.Services.AddSingleton<GisAPI.Services.IValhallaService, GisAPI.Services.
 // GPS Interpolation Service (smart interpolation based on speed and time)
 builder.Services.AddSingleton<GisAPI.Services.IGpsInterpolationService, GisAPI.Services.GpsInterpolationService>();
 
+// HttpClient for health checks (GPS ingest, RabbitMQ, Frontend)
+builder.Services.AddHttpClient();
+
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "DefaultSecretKeyForDevelopment123!";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

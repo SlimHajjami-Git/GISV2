@@ -38,14 +38,16 @@ public class AdminController : ControllerBase
     private readonly IMediator _mediator;
     private readonly IConfiguration _configuration;
     private readonly IPermissionService _permissionService;
+    private readonly IHttpClientFactory _httpClientFactory;
     private static MaintenanceModeDto _maintenanceMode = new() { Enabled = false, Pages = new List<string>(), Message = "" };
 
-    public AdminController(GisDbContext context, IConfiguration configuration, IMediator mediator, IPermissionService permissionService)
+    public AdminController(GisDbContext context, IConfiguration configuration, IMediator mediator, IPermissionService permissionService, IHttpClientFactory httpClientFactory)
     {
         _context = context;
         _configuration = configuration;
         _mediator = mediator;
         _permissionService = permissionService;
+        _httpClientFactory = httpClientFactory;
     }
 
     // ==================== SUBSCRIPTIONS ====================
@@ -331,53 +333,129 @@ public class AdminController : ControllerBase
             });
         }
 
-        // Check GPS Ingest Service (via positions count)
+        // Check GPS Ingest Service (actual HTTP ping + data stats)
         var recentPositions = await _context.GpsPositions
             .Where(p => p.RecordedAt > DateTime.UtcNow.AddMinutes(-5))
             .CountAsync();
 
-        services.Add(new ServiceHealthDto
+        try
         {
-            Name = "GPS Ingest Service",
-            Status = recentPositions > 0 ? "healthy" : "degraded",
-            ResponseTime = 10,
-            LastCheck = DateTime.UtcNow,
-            Uptime = recentPositions > 0 ? 99.9 : 50,
-            Details = new Dictionary<string, object>
-            {
-                { "recentPositions", recentPositions },
-                { "status", recentPositions > 0 ? "receiving data" : "no recent data" }
-            }
-        });
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(3);
+            var sw2 = System.Diagnostics.Stopwatch.StartNew();
+            var gpsResponse = await client.GetAsync("http://gps-ingest:3000/api/health");
+            sw2.Stop();
 
-        // RabbitMQ status (simplified)
-        services.Add(new ServiceHealthDto
-        {
-            Name = "RabbitMQ",
-            Status = "healthy",
-            ResponseTime = 5,
-            LastCheck = DateTime.UtcNow,
-            Uptime = 99.95,
-            Details = new Dictionary<string, object>
+            services.Add(new ServiceHealthDto
             {
-                { "queues", 3 },
-                { "status", "connected" }
-            }
-        });
+                Name = "GPS Ingest Service",
+                Status = gpsResponse.IsSuccessStatusCode ? "healthy" : "degraded",
+                ResponseTime = (int)sw2.ElapsedMilliseconds,
+                LastCheck = DateTime.UtcNow,
+                Uptime = gpsResponse.IsSuccessStatusCode ? 99.9 : 50,
+                Details = new Dictionary<string, object>
+                {
+                    { "recentPositions", recentPositions },
+                    { "status", gpsResponse.IsSuccessStatusCode ? (recentPositions > 0 ? "receiving data" : "online, no recent data") : "unreachable" }
+                }
+            });
+        }
+        catch
+        {
+            services.Add(new ServiceHealthDto
+            {
+                Name = "GPS Ingest Service",
+                Status = "down",
+                ResponseTime = 0,
+                LastCheck = DateTime.UtcNow,
+                Uptime = 0,
+                Details = new Dictionary<string, object>
+                {
+                    { "recentPositions", recentPositions },
+                    { "status", "unreachable" }
+                }
+            });
+        }
 
-        // Frontend
-        services.Add(new ServiceHealthDto
+        // Check RabbitMQ (actual HTTP ping to management API)
+        try
         {
-            Name = "Frontend",
-            Status = "healthy",
-            ResponseTime = 50,
-            LastCheck = DateTime.UtcNow,
-            Uptime = 99.99,
-            Details = new Dictionary<string, object>
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(3);
+            var rabbitUser = _configuration["RabbitMQ:Username"] ?? "guest";
+            var rabbitPass = _configuration["RabbitMQ:Password"] ?? "guest";
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Basic", Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes($"{rabbitUser}:{rabbitPass}")));
+            var sw3 = System.Diagnostics.Stopwatch.StartNew();
+            var rabbitResponse = await client.GetAsync("http://rabbitmq:15672/api/overview");
+            sw3.Stop();
+
+            services.Add(new ServiceHealthDto
             {
-                { "version", "2.0.0" }
-            }
-        });
+                Name = "RabbitMQ",
+                Status = rabbitResponse.IsSuccessStatusCode ? "healthy" : "degraded",
+                ResponseTime = (int)sw3.ElapsedMilliseconds,
+                LastCheck = DateTime.UtcNow,
+                Uptime = rabbitResponse.IsSuccessStatusCode ? 99.95 : 50,
+                Details = new Dictionary<string, object>
+                {
+                    { "status", rabbitResponse.IsSuccessStatusCode ? "connected" : "management API unreachable" }
+                }
+            });
+        }
+        catch
+        {
+            services.Add(new ServiceHealthDto
+            {
+                Name = "RabbitMQ",
+                Status = "down",
+                ResponseTime = 0,
+                LastCheck = DateTime.UtcNow,
+                Uptime = 0,
+                Details = new Dictionary<string, object>
+                {
+                    { "status", "unreachable" }
+                }
+            });
+        }
+
+        // Check Frontend (actual HTTP ping)
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(3);
+            var sw4 = System.Diagnostics.Stopwatch.StartNew();
+            var frontendResponse = await client.GetAsync("http://frontend:80");
+            sw4.Stop();
+
+            services.Add(new ServiceHealthDto
+            {
+                Name = "Frontend",
+                Status = frontendResponse.IsSuccessStatusCode ? "healthy" : "degraded",
+                ResponseTime = (int)sw4.ElapsedMilliseconds,
+                LastCheck = DateTime.UtcNow,
+                Uptime = frontendResponse.IsSuccessStatusCode ? 99.99 : 50,
+                Details = new Dictionary<string, object>
+                {
+                    { "version", "2.0.0" }
+                }
+            });
+        }
+        catch
+        {
+            services.Add(new ServiceHealthDto
+            {
+                Name = "Frontend",
+                Status = "down",
+                ResponseTime = 0,
+                LastCheck = DateTime.UtcNow,
+                Uptime = 0,
+                Details = new Dictionary<string, object>
+                {
+                    { "version", "2.0.0" }
+                }
+            });
+        }
 
         return Ok(services);
     }
