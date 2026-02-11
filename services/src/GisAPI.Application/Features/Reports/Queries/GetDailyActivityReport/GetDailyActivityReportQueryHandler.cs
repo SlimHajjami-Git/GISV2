@@ -386,14 +386,24 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
 
         report.Activities = merged;
 
-        // Process fuel events (refuels, theft alerts, anomalies)
+        // Process fuel events (refuels and theft alerts only)
         var fuelEvents = new List<FuelEventDto>();
         var refuelRecords = fuelRecords
-            .Where(f => f.EventType == "refuel" || f.EventType == "theft_alert" || f.EventType == "consumption_spike")
+            .Where(f => f.EventType == "refuel" || f.EventType == "theft_alert")
             .ToList();
 
+        DateTime? lastRefuelTime = null;
         foreach (var fr in refuelRecords)
         {
+            // Deduplicate: skip consecutive refuel events within 5 minutes
+            if (fr.EventType == "refuel" && lastRefuelTime.HasValue &&
+                (fr.RecordedAt - lastRefuelTime.Value).TotalMinutes < 5)
+            {
+                continue;
+            }
+            if (fr.EventType == "refuel")
+                lastRefuelTime = fr.RecordedAt;
+
             var address = await _geocodingService.ReverseGeocodeAsync(fr.Latitude, fr.Longitude);
             fuelEvents.Add(new FuelEventDto
             {

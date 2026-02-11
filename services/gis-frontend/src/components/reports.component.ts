@@ -1806,13 +1806,11 @@ export class ReportsComponent implements OnInit {
         eventNumber++;
         const fuelLabels: Record<string, string> = {
           'refuel': 'Remplissage carburant',
-          'theft_alert': 'Alerte vol carburant',
-          'consumption_spike': 'Pic de consommation'
+          'theft_alert': 'Alerte vol carburant'
         };
         const fuelIcons: Record<string, string> = {
           'refuel': '⛽',
-          'theft_alert': '🚨',
-          'consumption_spike': '📈'
+          'theft_alert': '🚨'
         };
         const changeText = fe.fuelChange ? (fe.fuelChange > 0 ? `+${fe.fuelChange}%` : `${fe.fuelChange}%`) : '';
         const amountText = fe.refuelAmount ? `${fe.refuelAmount} L` : '';

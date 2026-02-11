@@ -148,14 +148,14 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                       <h3>⛽ Événements carburant</h3>
                       <div class="fuel-events-list">
                         @for (fe of report.fuelEvents; track fe.timestamp) {
-                          <div class="fuel-event-item" [class.refuel]="fe.eventType === 'refuel'" [class.theft]="fe.eventType === 'theft_alert'" [class.spike]="fe.eventType === 'consumption_spike'">
+                          <div class="fuel-event-item" [class.refuel]="fe.eventType === 'refuel'" [class.theft]="fe.eventType === 'theft_alert'">
                             <div class="fuel-event-icon">
-                              {{ fe.eventType === 'refuel' ? '⛽' : fe.eventType === 'theft_alert' ? '🚨' : '📈' }}
+                              {{ fe.eventType === 'refuel' ? '⛽' : '🚨' }}
                             </div>
                             <div class="fuel-event-content">
                               <div class="fuel-event-header">
                                 <span class="fuel-event-type">
-                                  {{ fe.eventType === 'refuel' ? 'Remplissage' : fe.eventType === 'theft_alert' ? 'Alerte vol' : 'Pic consommation' }}
+                                  {{ fe.eventType === 'refuel' ? 'Remplissage' : 'Alerte vol' }}
                                 </span>
                                 <span class="fuel-event-time">{{ formatTime(fe.timestamp) }}</span>
                               </div>
