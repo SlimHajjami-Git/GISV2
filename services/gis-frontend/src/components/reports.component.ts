@@ -2994,11 +2994,10 @@ export class ReportsComponent implements OnInit {
 
   processFuelReport(positions: any[]) {
     // Only show rows where fuel level CHANGES (no duplicate consecutive readings)
-    // Track mileage between changes instead of speed
+    // Track mileage between fuel level changes (not between individual readings)
     const fuelChanges: any[] = [];
     let lastFuelLevel = -1;
-    let lastOdometer = 0;
-    let lastChangeIndex = -1;
+    let lastChangeOdometer = 0; // Odometer at last FUEL CHANGE (not intermediate readings)
 
     // First pass: identify positions where fuel level changes
     positions.forEach((pos: any, index: number) => {
@@ -3007,9 +3006,16 @@ export class ReportsComponent implements OnInit {
       const isFirst = index === 0;
       const isLast = index === positions.length - 1;
 
+      // Only process if fuel level changed, or first/last entry
       if (isFirst || fuel !== lastFuelLevel || isLast) {
+        // Skip duplicate: last entry has same fuel as previous change
+        if (!isFirst && fuel === lastFuelLevel && isLast) {
+          return;
+        }
+
         const fuelDelta = lastFuelLevel >= 0 ? fuel - lastFuelLevel : 0;
-        const kmDelta = (lastOdometer > 0 && odometer > 0) ? odometer - lastOdometer : 0;
+        // km between this fuel change and the previous fuel change
+        const kmDelta = (lastChangeOdometer > 0 && odometer > 0) ? odometer - lastChangeOdometer : 0;
 
         let eventType = 'Lecture';
         let isAnomaly = false;
@@ -3022,12 +3028,6 @@ export class ReportsComponent implements OnInit {
           eventType = '📉 Consommation';
         } else if (fuelDelta > 0 && !isFirst) {
           eventType = '📈 Augmentation';
-        }
-
-        // Skip if same fuel level as last entry AND not first/last (dedup)
-        if (!isFirst && fuel === lastFuelLevel && !isLast) {
-          lastOdometer = odometer > 0 ? odometer : lastOdometer;
-          return;
         }
 
         const location = pos.address || `${pos.latitude.toFixed(4)}°, ${pos.longitude.toFixed(4)}°`;
@@ -3049,12 +3049,9 @@ export class ReportsComponent implements OnInit {
         });
 
         lastFuelLevel = fuel;
-        if (odometer > 0) lastOdometer = odometer;
-        lastChangeIndex = index;
-      } else {
-        // Same fuel level - just update odometer tracker
-        if (odometer > 0) lastOdometer = odometer;
+        if (odometer > 0) lastChangeOdometer = odometer;
       }
+      // Positions with same fuel level are simply skipped (no odometer update)
     });
 
     // Reverse to show most recent first
