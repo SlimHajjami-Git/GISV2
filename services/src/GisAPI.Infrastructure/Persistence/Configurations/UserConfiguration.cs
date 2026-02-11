@@ -40,6 +40,27 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(e => e.PermitNumber)
             .HasColumnName("permit_number")
             .HasMaxLength(50);
+
+        builder.Property(e => e.PermitType)
+            .HasColumnName("permit_type")
+            .HasMaxLength(50);
+
+        builder.Property(e => e.PermitExpiry)
+            .HasColumnName("permit_expiry");
+
+        builder.Property(e => e.CIN)
+            .HasColumnName("cin")
+            .HasMaxLength(50);
+
+        builder.Property(e => e.DateOfBirth)
+            .HasColumnName("date_of_birth");
+
+        builder.Property(e => e.EmployeeRole)
+            .HasColumnName("employee_role")
+            .HasMaxLength(50);
+
+        builder.Property(e => e.HireDate)
+            .HasColumnName("hire_date");
         
         builder.Property(e => e.RoleId)
             .HasColumnName("role_id")
@@ -75,8 +96,7 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Ignore(e => e.Permissions);
         builder.Ignore(e => e.AssignedVehicleIds);
         builder.Ignore(e => e.UserType);
-        builder.Ignore(e => e.CIN);
-        builder.Ignore(e => e.DateOfBirth);
+        builder.Ignore(e => e.IsDriver);
         builder.Ignore("_rolesCache");
         builder.Ignore("_permissionsCache");
         builder.Ignore("_assignedVehicleIdsCache");

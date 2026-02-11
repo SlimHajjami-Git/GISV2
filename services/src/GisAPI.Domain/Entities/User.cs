@@ -10,6 +10,12 @@ public class User : TenantEntity
     public string PasswordHash { get; set; } = string.Empty;
     public string? Phone { get; set; }
     public string? PermitNumber { get; set; }
+    public string? PermitType { get; set; }
+    public DateTime? PermitExpiry { get; set; }
+    public string? CIN { get; set; }
+    public DateTime? DateOfBirth { get; set; }
+    public string? EmployeeRole { get; set; }
+    public DateTime? HireDate { get; set; }
     public int RoleId { get; set; }
     public string Status { get; set; } = "active";
     public DateTime? LastLoginAt { get; set; }
@@ -41,11 +47,8 @@ public class User : TenantEntity
     // Legacy setter for Name (splits into FirstName/LastName)
     public string Name { get => FullName; set { var parts = (value ?? "").Split(' ', 2); FirstName = parts.Length > 0 ? parts[0] : ""; LastName = parts.Length > 1 ? parts[1] : ""; } }
     
-    // Legacy nullable properties (not stored in DB, for backwards compatibility)
-    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-    public string? CIN { get; set; }
-    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-    public DateTime? DateOfBirth { get; set; }
+    // Helper: is this user a driver?
+    public bool IsDriver => string.Equals(EmployeeRole, "driver", StringComparison.OrdinalIgnoreCase);
 }
 
 public class UserSettings : Entity
