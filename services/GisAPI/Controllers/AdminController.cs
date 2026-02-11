@@ -15,6 +15,11 @@ using GisAPI.Application.Features.Admin.Companies.Commands.CreateCompany;
 using GisAPI.Application.Features.Admin.Companies.Commands.UpdateCompany;
 using GisAPI.Application.Features.Admin.Companies.Commands.ChangeCompanyStatus;
 using GisAPI.Application.Features.Admin.Companies.Commands.DeleteCompany;
+using GisAPI.Application.Features.Admin.Subscriptions;
+using GisAPI.Application.Features.Admin.Subscriptions.Queries.GetSubscriptions;
+using GisAPI.Application.Features.Admin.Subscriptions.Commands.CreateSubscription;
+using GisAPI.Application.Features.Admin.Subscriptions.Commands.UpdateSubscription;
+using GisAPI.Application.Features.Admin.Subscriptions.Commands.DeleteSubscription;
 using GisAPI.Application.Common.Interfaces;
 
 namespace GisAPI.Controllers;
@@ -38,139 +43,50 @@ public class AdminController : ControllerBase
         _permissionService = permissionService;
     }
 
-    // ==================== SUBSCRIPTIONS (Legacy - use SubscriptionTypes) ====================
+    // ==================== SUBSCRIPTIONS ====================
 
     [HttpGet("subscriptions")]
-    public async Task<ActionResult<List<SubscriptionDto>>> GetSubscriptions()
+    public async Task<ActionResult<List<AdminSubscriptionDto>>> GetSubscriptions()
     {
-        var subscriptions = await _context.SubscriptionTypes
-            .Where(s => s.IsActive)
-            .OrderBy(s => s.YearlyPrice)
-            .Select(s => new SubscriptionDto
-            {
-                Id = s.Id,
-                Name = s.Name,
-                Type = s.TargetCompanyType,
-                Price = s.YearlyPrice,
-                MaxVehicles = s.MaxVehicles,
-                GpsTracking = s.GpsTracking,
-                GpsInstallation = s.GpsInstallation,
-                Features = GetSubscriptionTypeFeatures(s)
-            })
-            .ToListAsync();
-
-        return Ok(subscriptions);
+        var result = await _mediator.Send(new GetSubscriptionsQuery());
+        return Ok(result);
     }
 
     [HttpGet("subscriptions/{id}")]
-    public async Task<ActionResult<SubscriptionDto>> GetSubscription(int id)
+    public async Task<ActionResult<AdminSubscriptionDto>> GetSubscription(int id)
     {
-        var subscription = await _context.SubscriptionTypes.FindAsync(id);
-        if (subscription == null)
-            return NotFound();
-
-        return Ok(new SubscriptionDto
-        {
-            Id = subscription.Id,
-            Name = subscription.Name,
-            Type = subscription.TargetCompanyType,
-            Price = subscription.YearlyPrice,
-            MaxVehicles = subscription.MaxVehicles,
-            GpsTracking = subscription.GpsTracking,
-            GpsInstallation = subscription.GpsInstallation,
-            Features = GetSubscriptionTypeFeatures(subscription)
-        });
+        var all = await _mediator.Send(new GetSubscriptionsQuery());
+        var sub = all.FirstOrDefault(s => s.Id == id);
+        return sub != null ? Ok(sub) : NotFound();
     }
 
     [HttpPost("subscriptions")]
-    public async Task<ActionResult<SubscriptionDto>> CreateSubscription([FromBody] CreateSubscriptionRequest request)
+    public async Task<ActionResult<AdminSubscriptionDto>> CreateSubscription([FromBody] CreateSubscriptionRequest request)
     {
-        var subscription = new SubscriptionType
-        {
-            Name = request.Name,
-            Code = request.Name.ToLower().Replace(" ", "-"),
-            TargetCompanyType = request.Type ?? "all",
-            YearlyPrice = request.Price,
-            MaxVehicles = request.MaxVehicles,
-            GpsTracking = request.GpsTracking,
-            GpsInstallation = request.GpsInstallation,
-            IsActive = true
-        };
-
-        _context.SubscriptionTypes.Add(subscription);
-        await _context.SaveChangesAsync();
-
-        return CreatedAtAction(nameof(GetSubscription), new { id = subscription.Id }, new SubscriptionDto
-        {
-            Id = subscription.Id,
-            Name = subscription.Name,
-            Type = subscription.TargetCompanyType,
-            Price = subscription.YearlyPrice,
-            MaxVehicles = subscription.MaxVehicles,
-            GpsTracking = subscription.GpsTracking,
-            GpsInstallation = subscription.GpsInstallation,
-            Features = GetSubscriptionTypeFeatures(subscription)
-        });
+        var result = await _mediator.Send(new CreateSubscriptionCommand(
+            request.Name, request.Type, request.Price, request.MaxVehicles,
+            request.GpsTracking, request.GpsInstallation
+        ));
+        return CreatedAtAction(nameof(GetSubscription), new { id = result.Id }, result);
     }
 
     [HttpPut("subscriptions/{id}")]
-    public async Task<ActionResult<SubscriptionDto>> UpdateSubscription(int id, [FromBody] CreateSubscriptionRequest request)
+    public async Task<ActionResult<AdminSubscriptionDto>> UpdateSubscription(int id, [FromBody] CreateSubscriptionRequest request)
     {
-        var subscription = await _context.SubscriptionTypes.FindAsync(id);
-        if (subscription == null)
-            return NotFound();
-
-        subscription.Name = request.Name;
-        subscription.TargetCompanyType = request.Type ?? subscription.TargetCompanyType;
-        subscription.YearlyPrice = request.Price;
-        subscription.MaxVehicles = request.MaxVehicles;
-        subscription.GpsTracking = request.GpsTracking;
-        subscription.GpsInstallation = request.GpsInstallation;
-        subscription.UpdatedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
-
-        return Ok(new SubscriptionDto
-        {
-            Id = subscription.Id,
-            Name = subscription.Name,
-            Type = subscription.TargetCompanyType,
-            Price = subscription.YearlyPrice,
-            MaxVehicles = subscription.MaxVehicles,
-            GpsTracking = subscription.GpsTracking,
-            GpsInstallation = subscription.GpsInstallation,
-            Features = GetSubscriptionTypeFeatures(subscription)
-        });
+        var result = await _mediator.Send(new UpdateSubscriptionCommand(
+            id, request.Name, request.Type, request.Price, request.MaxVehicles,
+            request.GpsTracking, request.GpsInstallation
+        ));
+        return result != null ? Ok(result) : NotFound();
     }
 
     [HttpDelete("subscriptions/{id}")]
     public async Task<ActionResult> DeleteSubscription(int id)
     {
-        var subscription = await _context.SubscriptionTypes.FindAsync(id);
-        if (subscription == null)
-            return NotFound();
-
-        var companiesUsingSubscription = await _context.Societes.CountAsync(c => c.SubscriptionTypeId == id);
-        if (companiesUsingSubscription > 0)
-        {
-            return BadRequest(new { message = $"Impossible de supprimer: {companiesUsingSubscription} société(s) utilisent cet abonnement" });
-        }
-
-        _context.SubscriptionTypes.Remove(subscription);
-        await _context.SaveChangesAsync();
-
+        var error = await _mediator.Send(new DeleteSubscriptionCommand(id));
+        if (error == "not_found") return NotFound();
+        if (error != null) return BadRequest(new { message = error });
         return Ok(new { message = "Abonnement supprimé" });
-    }
-
-    private static List<string> GetSubscriptionTypeFeatures(SubscriptionType s)
-    {
-        var features = new List<string> { "Gestion du parc" };
-        if (s.GpsTracking) features.Add("Suivi GPS temps réel");
-        if (s.GpsInstallation) features.Add("Installation GPS");
-        if (s.MaxVehicles >= 50) features.Add("Rapports avancés");
-        if (s.MaxVehicles >= 100) features.Add("Géofencing");
-        if (s.GpsInstallation) features.Add("Support prioritaire");
-        return features;
     }
 
     // ==================== COMPANY MANAGEMENT ====================
