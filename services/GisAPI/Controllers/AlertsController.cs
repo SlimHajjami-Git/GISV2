@@ -1,9 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-using GisAPI.Infrastructure.Persistence;
-using GisAPI.Domain.Entities;
+using MediatR;
+using GisAPI.Application.Features.Alerts;
+using GisAPI.Application.Features.Alerts.Queries.GetAlerts;
+using GisAPI.Application.Features.Alerts.Queries.GetAlertUnreadCount;
+using GisAPI.Application.Features.Alerts.Commands.ResolveAlert;
+using GisAPI.Application.Features.Alerts.Commands.ResolveAllAlerts;
 
 namespace GisAPI.Controllers;
 
@@ -12,125 +15,49 @@ namespace GisAPI.Controllers;
 [Authorize]
 public class AlertsController : ControllerBase
 {
-    private readonly GisDbContext _context;
+    private readonly IMediator _mediator;
 
-    public AlertsController(GisDbContext context)
-    {
-        _context = context;
-    }
+    public AlertsController(IMediator mediator) => _mediator = mediator;
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
     private int GetUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
 
     [HttpGet]
-    public async Task<ActionResult<List<GpsAlert>>> GetAlerts(
+    public async Task<ActionResult<List<AlertDto>>> GetAlerts(
         [FromQuery] bool? resolved = null,
         [FromQuery] string? type = null,
         [FromQuery] int limit = 50)
     {
-        var companyId = GetCompanyId();
-
-        var vehicleIds = await _context.Vehicles
-            .Where(v => v.CompanyId == companyId)
-            .Select(v => v.Id)
-            .ToListAsync();
-
-        var query = _context.GpsAlerts
-            .Where(a => a.VehicleId.HasValue && vehicleIds.Contains(a.VehicleId.Value))
-            .Include(a => a.Vehicle)
-            .AsQueryable();
-
-        if (resolved.HasValue)
-            query = query.Where(a => a.Resolved == resolved.Value);
-
-        if (!string.IsNullOrEmpty(type))
-            query = query.Where(a => a.Type == type);
-
-        var alerts = await query
-            .OrderByDescending(a => a.Timestamp)
-            .Take(limit)
-            .ToListAsync();
-
-        return Ok(alerts);
+        var result = await _mediator.Send(new GetAlertsQuery(GetCompanyId(), resolved, type, limit));
+        return Ok(result);
     }
 
     [HttpGet("unread-count")]
     public async Task<ActionResult<int>> GetUnreadCount()
     {
-        var companyId = GetCompanyId();
-
-        var vehicleIds = await _context.Vehicles
-            .Where(v => v.CompanyId == companyId)
-            .Select(v => v.Id)
-            .ToListAsync();
-
-        var count = await _context.GpsAlerts
-            .Where(a => a.VehicleId.HasValue && 
-                        vehicleIds.Contains(a.VehicleId.Value) && 
-                        !a.Resolved)
-            .CountAsync();
-
+        var count = await _mediator.Send(new GetAlertUnreadCountQuery(GetCompanyId()));
         return Ok(count);
     }
 
     [HttpPost("{id}/resolve")]
     public async Task<ActionResult> ResolveAlert(int id)
     {
-        var userId = GetUserId();
-
-        var alert = await _context.GpsAlerts.FindAsync(id);
-
-        if (alert == null)
-            return NotFound();
-
-        alert.Resolved = true;
-        alert.ResolvedAt = DateTime.UtcNow;
-        alert.ResolvedByUserId = userId;
-
-        await _context.SaveChangesAsync();
-
-        return NoContent();
+        var found = await _mediator.Send(new ResolveAlertCommand(id, GetUserId()));
+        return found ? NoContent() : NotFound();
     }
 
     [HttpPost("resolve-all")]
     public async Task<ActionResult> ResolveAllAlerts()
     {
-        var companyId = GetCompanyId();
-        var userId = GetUserId();
-
-        var vehicleIds = await _context.Vehicles
-            .Where(v => v.CompanyId == companyId)
-            .Select(v => v.Id)
-            .ToListAsync();
-
-        var unresolvedAlerts = await _context.GpsAlerts
-            .Where(a => a.VehicleId.HasValue && 
-                        vehicleIds.Contains(a.VehicleId.Value) && 
-                        !a.Resolved)
-            .ToListAsync();
-
-        foreach (var alert in unresolvedAlerts)
-        {
-            alert.Resolved = true;
-            alert.ResolvedAt = DateTime.UtcNow;
-            alert.ResolvedByUserId = userId;
-        }
-
-        await _context.SaveChangesAsync();
-
-        return Ok(new { resolved = unresolvedAlerts.Count });
+        var resolved = await _mediator.Send(new ResolveAllAlertsCommand(GetCompanyId(), GetUserId()));
+        return Ok(new { resolved });
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<GpsAlert>> GetAlert(int id)
+    public async Task<ActionResult<AlertDto>> GetAlert(int id)
     {
-        var alert = await _context.GpsAlerts
-            .Include(a => a.Vehicle)
-            .FirstOrDefaultAsync(a => a.Id == id);
-
-        if (alert == null)
-            return NotFound();
-
-        return Ok(alert);
+        var alerts = await _mediator.Send(new GetAlertsQuery(GetCompanyId(), Limit: 1));
+        var alert = alerts.FirstOrDefault(a => a.Id == id);
+        return alert != null ? Ok(alert) : NotFound();
     }
 }
