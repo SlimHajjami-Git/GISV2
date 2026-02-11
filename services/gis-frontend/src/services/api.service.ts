@@ -1564,6 +1564,7 @@ export interface DailyActivityReport {
   firstStart?: DailyStartEvent;
   lastPosition?: DailyEndEvent;
   activities: ActivitySegment[];
+  fuelEvents: FuelEvent[];
   summary: DailySummary;
 }
 
@@ -1615,6 +1616,23 @@ export interface DailySummary {
   maxSpeedKph: number;
   avgSpeedKph: number;
   positionCount: number;
+  fuelRefillCount: number;
+  totalFuelRefillLiters?: number;
+  fuelStartPercent?: number;
+  fuelEndPercent?: number;
+}
+
+export interface FuelEvent {
+  timestamp: string;
+  eventType: string;
+  fuelPercent: number;
+  fuelLiters?: number;
+  fuelChange?: number;
+  refuelAmount?: number;
+  latitude: number;
+  longitude: number;
+  address?: string;
+  refuelStation?: string;
 }
 
 // ==================== MILEAGE REPORT INTERFACES ====================

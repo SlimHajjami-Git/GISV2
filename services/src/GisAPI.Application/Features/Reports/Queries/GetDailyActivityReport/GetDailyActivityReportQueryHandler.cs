@@ -72,8 +72,17 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
             };
         }
 
+        // Query fuel records for the same day
+        var fuelRecords = await _context.FuelRecords
+            .AsNoTracking()
+            .Where(f => f.VehicleId == vehicle.Id &&
+                        f.RecordedAt >= dayStart &&
+                        f.RecordedAt < dayEnd)
+            .OrderBy(f => f.RecordedAt)
+            .ToListAsync(ct);
+
         return await ProcessDailyActivityAsync(
-            vehicle, request.Date, positions,
+            vehicle, request.Date, positions, fuelRecords,
             request.MinStopDurationSeconds, request.StopSpeedThresholdKph, ct);
     }
 
@@ -81,6 +90,7 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
         Vehicle vehicle,
         DateTime reportDate,
         List<GpsPosition> positions,
+        List<FuelRecord> fuelRecords,
         int minStopDurationSeconds,
         double stopSpeedThresholdKph,
         CancellationToken ct)
@@ -376,6 +386,36 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
 
         report.Activities = merged;
 
+        // Process fuel events (refuels, theft alerts, anomalies)
+        var fuelEvents = new List<FuelEventDto>();
+        var refuelRecords = fuelRecords
+            .Where(f => f.EventType == "refuel" || f.EventType == "theft_alert" || f.EventType == "consumption_spike")
+            .ToList();
+
+        foreach (var fr in refuelRecords)
+        {
+            var address = await _geocodingService.ReverseGeocodeAsync(fr.Latitude, fr.Longitude);
+            fuelEvents.Add(new FuelEventDto
+            {
+                Timestamp = fr.RecordedAt,
+                EventType = fr.EventType,
+                FuelPercent = fr.FuelPercent,
+                FuelLiters = fr.FuelLiters.HasValue ? (double)fr.FuelLiters.Value : null,
+                FuelChange = fr.FuelChange,
+                RefuelAmount = fr.RefuelAmount.HasValue ? (double)fr.RefuelAmount.Value : null,
+                Latitude = fr.Latitude,
+                Longitude = fr.Longitude,
+                Address = address,
+                RefuelStation = fr.RefuelStation
+            });
+        }
+        report.FuelEvents = fuelEvents;
+
+        // Fuel start/end levels from all fuel records (not just events)
+        int? fuelStartPercent = fuelRecords.FirstOrDefault()?.FuelPercent;
+        int? fuelEndPercent = fuelRecords.LastOrDefault()?.FuelPercent;
+        var refuels = fuelEvents.Where(e => e.EventType == "refuel").ToList();
+
         // Calculate summary from merged activities
         var drives = merged.Where(a => a.Type == "drive").ToList();
         var stops = merged.Where(a => a.Type == "stop").ToList();
@@ -397,7 +437,11 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
             DriveCount = drives.Count,
             MaxSpeedKph = drives.Any() ? drives.Max(d => d.MaxSpeedKph ?? 0) : 0,
             AvgSpeedKph = drives.Any() ? Math.Round(drives.Average(d => d.AvgSpeedKph ?? 0), 1) : 0,
-            PositionCount = positions.Count
+            PositionCount = positions.Count,
+            FuelRefillCount = refuels.Count,
+            TotalFuelRefillLiters = refuels.Any() ? refuels.Sum(r => r.RefuelAmount ?? 0) : null,
+            FuelStartPercent = fuelStartPercent,
+            FuelEndPercent = fuelEndPercent
         };
 
         return report;

@@ -114,6 +114,20 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                         <span class="summary-label">Vitesse max</span>
                       </div>
                     </div>
+                    @if (report.summary.fuelRefillCount > 0 || report.summary.fuelStartPercent != null) {
+                      <div class="summary-card fuel">
+                        <div class="summary-icon">⛽</div>
+                        <div class="summary-content">
+                          @if (report.summary.fuelRefillCount > 0) {
+                            <span class="summary-value">{{ report.summary.fuelRefillCount }} remplissage{{ report.summary.fuelRefillCount > 1 ? 's' : '' }}</span>
+                            <span class="summary-label">{{ report.summary.totalFuelRefillLiters ? (report.summary.totalFuelRefillLiters | number:'1.0-1') + ' L' : 'Carburant' }}</span>
+                          } @else {
+                            <span class="summary-value">{{ report.summary.fuelStartPercent }}% → {{ report.summary.fuelEndPercent }}%</span>
+                            <span class="summary-label">Carburant</span>
+                          }
+                        </div>
+                      </div>
+                    }
                   </div>
 
                   <!-- First Start Info -->
@@ -124,6 +138,47 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                         <span class="start-label">Premier démarrage</span>
                         <span class="start-time">{{ formatTime(report.firstStart.timestamp) }}</span>
                         <span class="start-address">{{ report.firstStart.address || 'Adresse inconnue' }}</span>
+                      </div>
+                    </div>
+                  }
+
+                  <!-- Fuel Events -->
+                  @if (report.fuelEvents?.length) {
+                    <div class="fuel-events-section">
+                      <h3>⛽ Événements carburant</h3>
+                      <div class="fuel-events-list">
+                        @for (fe of report.fuelEvents; track fe.timestamp) {
+                          <div class="fuel-event-item" [class.refuel]="fe.eventType === 'refuel'" [class.theft]="fe.eventType === 'theft_alert'" [class.spike]="fe.eventType === 'consumption_spike'">
+                            <div class="fuel-event-icon">
+                              {{ fe.eventType === 'refuel' ? '⛽' : fe.eventType === 'theft_alert' ? '🚨' : '📈' }}
+                            </div>
+                            <div class="fuel-event-content">
+                              <div class="fuel-event-header">
+                                <span class="fuel-event-type">
+                                  {{ fe.eventType === 'refuel' ? 'Remplissage' : fe.eventType === 'theft_alert' ? 'Alerte vol' : 'Pic consommation' }}
+                                </span>
+                                <span class="fuel-event-time">{{ formatTime(fe.timestamp) }}</span>
+                              </div>
+                              <div class="fuel-event-details">
+                                <span class="fuel-level">Niveau: {{ fe.fuelPercent }}%</span>
+                                @if (fe.fuelChange) {
+                                  <span class="fuel-change" [class.positive]="fe.fuelChange > 0" [class.negative]="fe.fuelChange < 0">
+                                    {{ fe.fuelChange > 0 ? '+' : '' }}{{ fe.fuelChange }}%
+                                  </span>
+                                }
+                                @if (fe.refuelAmount) {
+                                  <span class="fuel-amount">{{ fe.refuelAmount }} L</span>
+                                }
+                                @if (fe.refuelStation) {
+                                  <span class="fuel-station">📍 {{ fe.refuelStation }}</span>
+                                }
+                              </div>
+                              @if (fe.address) {
+                                <div class="fuel-event-address">{{ fe.address }}</div>
+                              }
+                            </div>
+                          </div>
+                        }
                       </div>
                     </div>
                   }
@@ -650,6 +705,98 @@ import { AppLayoutComponent } from './shared/app-layout.component';
 
     .empty-state p {
       margin: 0;
+    }
+
+    .fuel-events-section {
+      padding: 16px 24px;
+    }
+
+    .fuel-events-section h3 {
+      margin: 0 0 12px 0;
+      font-size: 15px;
+      color: #1e293b;
+    }
+
+    .fuel-events-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .fuel-event-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 8px;
+      background: #fffbeb;
+      border-left: 3px solid #f59e0b;
+    }
+
+    .fuel-event-item.theft {
+      background: #fef2f2;
+      border-left-color: #ef4444;
+    }
+
+    .fuel-event-item.spike {
+      background: #fefce8;
+      border-left-color: #eab308;
+    }
+
+    .fuel-event-icon {
+      font-size: 20px;
+      min-width: 28px;
+    }
+
+    .fuel-event-content {
+      flex: 1;
+    }
+
+    .fuel-event-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .fuel-event-type {
+      font-weight: 600;
+      font-size: 13px;
+      color: #1e293b;
+    }
+
+    .fuel-event-time {
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .fuel-event-details {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: #475569;
+    }
+
+    .fuel-change.positive {
+      color: #16a34a;
+      font-weight: 600;
+    }
+
+    .fuel-change.negative {
+      color: #dc2626;
+      font-weight: 600;
+    }
+
+    .fuel-event-address {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+
+    .summary-card.fuel {
+      background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+      border: 1px solid #fcd34d;
     }
   `]
 })

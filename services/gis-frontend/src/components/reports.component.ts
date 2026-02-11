@@ -1800,6 +1800,42 @@ export class ReportsComponent implements OnInit {
       }
     });
 
+    // Insert fuel events into the timeline at correct chronological position
+    if (report.fuelEvents?.length) {
+      report.fuelEvents.forEach((fe: any) => {
+        eventNumber++;
+        const fuelLabels: Record<string, string> = {
+          'refuel': 'Remplissage carburant',
+          'theft_alert': 'Alerte vol carburant',
+          'consumption_spike': 'Pic de consommation'
+        };
+        const fuelIcons: Record<string, string> = {
+          'refuel': '⛽',
+          'theft_alert': '🚨',
+          'consumption_spike': '📈'
+        };
+        const changeText = fe.fuelChange ? (fe.fuelChange > 0 ? `+${fe.fuelChange}%` : `${fe.fuelChange}%`) : '';
+        const amountText = fe.refuelAmount ? `${fe.refuelAmount} L` : '';
+        const desc = [amountText, changeText, fe.refuelStation].filter(Boolean).join(' - ');
+
+        events.push({
+          eventNumber,
+          time: this.formatDateTime(fe.timestamp),
+          type: 'fuel',
+          typeIcon: fuelIcons[fe.eventType] || '⛽',
+          typeLabel: fuelLabels[fe.eventType] || fe.eventType,
+          description: desc || `Niveau: ${fe.fuelPercent}%`,
+          address: fe.address || `${fe.latitude.toFixed(4)}°, ${fe.longitude.toFixed(4)}°`,
+          latitude: fe.latitude,
+          longitude: fe.longitude,
+          duration: '-',
+          distance: '-',
+          speed: `${fe.fuelPercent}%`,
+          _sortTime: new Date(fe.timestamp).getTime()
+        });
+      });
+    }
+
     // Add last position event if different from last activity
     if (report.lastPosition) {
       eventNumber++;
@@ -1818,6 +1854,15 @@ export class ReportsComponent implements OnInit {
         speed: '-'
       });
     }
+
+    // Sort all events chronologically (fuel events may be out of order)
+    events.sort((a: any, b: any) => {
+      const timeA = a._sortTime || this.parseEventTime(a.time);
+      const timeB = b._sortTime || this.parseEventTime(b.time);
+      return timeA - timeB;
+    });
+    // Re-number after sort
+    events.forEach((e: any, idx: number) => e.eventNumber = idx + 1);
 
     this.tableData = events;
 
@@ -1844,7 +1889,7 @@ export class ReportsComponent implements OnInit {
     ];
 
     // Statistics
-    this.statisticsData = {
+    const stats: Record<string, string> = {
       '🚗 Véhicule': `${report.vehicleName}${report.plate ? ' (' + report.plate + ')' : ''}`,
       '📅 Date': reportDateFormatted,
       '🔑 Premier démarrage': report.firstStart ? this.formatDateTime(report.firstStart.timestamp) : 'N/A',
@@ -1856,6 +1901,20 @@ export class ReportsComponent implements OnInit {
       '🏎️ Vitesse max': `${report.summary.maxSpeedKph} km/h`,
       '⌀ Vitesse moy': `${report.summary.avgSpeedKph} km/h`
     };
+
+    // Add fuel info if available
+    if (report.summary.fuelStartPercent != null || report.summary.fuelEndPercent != null) {
+      stats['⛽ Carburant début'] = report.summary.fuelStartPercent != null ? `${report.summary.fuelStartPercent}%` : 'N/A';
+      stats['⛽ Carburant fin'] = report.summary.fuelEndPercent != null ? `${report.summary.fuelEndPercent}%` : 'N/A';
+    }
+    if (report.summary.fuelRefillCount > 0) {
+      stats['⛽ Remplissages'] = `${report.summary.fuelRefillCount}`;
+      if (report.summary.totalFuelRefillLiters) {
+        stats['⛽ Total rempli'] = `${report.summary.totalFuelRefillLiters.toFixed(1)} L`;
+      }
+    }
+
+    this.statisticsData = stats;
   }
 
   enrichDailyReportAddresses() {
@@ -1887,6 +1946,17 @@ export class ReportsComponent implements OnInit {
     const hours = d.getHours().toString().padStart(2, '0');
     const minutes = d.getMinutes().toString().padStart(2, '0');
     return `${day}/${month}/${year} ${hours}:${minutes}`;
+  }
+
+  parseEventTime(timeStr: string): number {
+    // Parse "DD/MM/YY HH:MM" or "DD/MM/YY HH:MM → DD/MM/YY HH:MM" format
+    const firstPart = timeStr.split('→')[0].trim();
+    const parts = firstPart.match(/(\d{2})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})/);
+    if (parts) {
+      const [, day, month, year, hours, minutes] = parts;
+      return new Date(2000 + parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes)).getTime();
+    }
+    return new Date(firstPart).getTime() || 0;
   }
 
   formatDate(dateStr: string): string {

@@ -27,6 +27,7 @@ public class DailyActivityReportDto
     public DailyStartEventDto? FirstStart { get; set; }
     public DailyEndEventDto? LastPosition { get; set; }
     public List<ActivitySegmentDto> Activities { get; set; } = new();
+    public List<FuelEventDto> FuelEvents { get; set; } = new();
     public DailySummaryDto Summary { get; set; } = new();
 }
 
@@ -83,6 +84,24 @@ public class DailySummaryDto
     public double MaxSpeedKph { get; set; }
     public double AvgSpeedKph { get; set; }
     public int PositionCount { get; set; }
+    public int FuelRefillCount { get; set; }
+    public double? TotalFuelRefillLiters { get; set; }
+    public int? FuelStartPercent { get; set; }
+    public int? FuelEndPercent { get; set; }
+}
+
+public class FuelEventDto
+{
+    public DateTime Timestamp { get; set; }
+    public string EventType { get; set; } = string.Empty;
+    public int FuelPercent { get; set; }
+    public double? FuelLiters { get; set; }
+    public int? FuelChange { get; set; }
+    public double? RefuelAmount { get; set; }
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+    public string? Address { get; set; }
+    public string? RefuelStation { get; set; }
 }
 
 
