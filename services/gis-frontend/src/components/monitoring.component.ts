@@ -815,7 +815,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   startStalenessCheck() {
     // Every 30 seconds, check if any vehicle's last position is stale
     // If a vehicle was "moving" but no update for 2+ minutes → mark stopped
-    // If no update for 5+ minutes → mark offline
+    // NOTE: Online/offline status is determined by the backend, not here.
+    // Parked vehicles may only send frames every 30 minutes (throttled).
     this.stalenessInterval = setInterval(() => {
       const now = new Date().getTime();
       let changed = false;
@@ -828,14 +829,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         const ageMs = now - lastTime;
         const ageMinutes = ageMs / 60000;
 
-        if (ageMinutes > 5 && vehicle.isOnline) {
-          // No data for 5+ minutes → offline
-          vehicle.isOnline = false;
-          vehicle.isMoving = false;
-          vehicle.currentSpeed = 0;
-          changed = true;
-        } else if (ageMinutes > 2 && vehicle.isMoving) {
-          // Was moving but no update for 2+ minutes → stopped
+        if (ageMinutes > 2 && vehicle.isMoving) {
+          // Was moving but no update for 2+ minutes → mark stopped
           vehicle.isMoving = false;
           vehicle.currentSpeed = 0;
           changed = true;
