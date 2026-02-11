@@ -213,8 +213,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                             @if (activity.type === 'drive') {
                               <div class="drive-stats">
                                 <span class="stat">📏 {{ activity.distanceKm }} km</span>
-                                <span class="stat">⌀ {{ activity.avgSpeedKph }} km/h</span>
-                                <span class="stat">⚡ {{ activity.maxSpeedKph }} km/h max</span>
+                                <span class="stat">⚡ max {{ activity.maxSpeedKph }} km/h</span>
                               </div>
                               <div class="locations">
                                 <div class="location from">

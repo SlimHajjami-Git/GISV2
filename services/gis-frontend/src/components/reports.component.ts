@@ -1761,33 +1761,73 @@ export class ReportsComponent implements OnInit {
       });
     }
 
-    // Process all activities
-    report.activities.forEach((activity: ActivitySegment) => {
+    // Process all activities — insert implicit stops between trips if there's a gap
+    let driveNumber = 0;
+    let stopNumber = 0;
+    let lastEndTime: string | null = null;
+    let lastEndLocation: any = null;
+
+    report.activities.forEach((activity: ActivitySegment, idx: number) => {
+      // Check for gap between previous activity end and this activity start
+      if (lastEndTime && activity.startTime) {
+        const gapMs = new Date(activity.startTime).getTime() - new Date(lastEndTime).getTime();
+        const gapSeconds = Math.floor(gapMs / 1000);
+        if (gapSeconds > 120) { // Gap > 2 minutes → insert implicit stop
+          stopNumber++;
+          eventNumber++;
+          const gapFormatted = gapSeconds >= 3600
+            ? `${Math.floor(gapSeconds / 3600)}h ${Math.floor((gapSeconds % 3600) / 60)}m`
+            : `${Math.floor(gapSeconds / 60)}m`;
+          const stopAddr = lastEndLocation?.address || 'Lieu inconnu';
+          events.push({
+            eventNumber,
+            time: `${this.formatDateTime(lastEndTime)} → ${this.formatDateTime(activity.startTime)}`,
+            type: 'stop',
+            typeIcon: '🅿️',
+            typeLabel: `Arrêt ${stopNumber}`,
+            description: stopAddr,
+            address: stopAddr,
+            latitude: lastEndLocation?.latitude || 0,
+            longitude: lastEndLocation?.longitude || 0,
+            duration: gapFormatted,
+            distance: '-',
+            speed: '-',
+            durationSeconds: gapSeconds,
+            _sortTime: new Date(lastEndTime).getTime()
+          });
+        }
+      }
+
       eventNumber++;
       if (activity.type === 'drive') {
+        driveNumber++;
         events.push({
           eventNumber,
           time: `${this.formatDateTime(activity.startTime)} → ${activity.endTime ? this.formatDateTime(activity.endTime) : '...'}`,
           type: 'drive',
           typeIcon: '🚗',
-          typeLabel: `Trajet ${activity.sequenceNumber}`,
+          typeLabel: `Trajet ${driveNumber}`,
           description: `${activity.startLocation.address || '?'} → ${activity.endLocation?.address || '?'}`,
           address: activity.endLocation?.address || activity.startLocation.address,
           latitude: activity.endLocation?.latitude || activity.startLocation.latitude,
           longitude: activity.endLocation?.longitude || activity.startLocation.longitude,
           duration: activity.durationFormatted,
           distance: `${(activity.distanceKm || 0).toFixed(1)} km`,
-          speed: `⌀ ${activity.avgSpeedKph || 0} | max ${activity.maxSpeedKph || 0} km/h`,
+          speed: `max ${activity.maxSpeedKph || 0} km/h`,
           distanceKm: activity.distanceKm || 0,
-          durationSeconds: activity.durationSeconds
+          durationSeconds: activity.durationSeconds,
+          _sortTime: new Date(activity.startTime).getTime()
         });
+        lastEndTime = activity.endTime || activity.startTime;
+        lastEndLocation = activity.endLocation || activity.startLocation;
       } else {
+        stopNumber++;
         events.push({
           eventNumber,
           time: `${this.formatDateTime(activity.startTime)} → ${activity.endTime ? this.formatDateTime(activity.endTime) : '...'}`,
           type: 'stop',
           typeIcon: '🅿️',
-          typeLabel: `Arrêt ${activity.sequenceNumber}`,
+          typeLabel: `Arrêt ${stopNumber}`,
           description: activity.startLocation.address || 'Lieu inconnu',
           address: activity.startLocation.address || `${activity.startLocation.latitude.toFixed(4)}°, ${activity.startLocation.longitude.toFixed(4)}°`,
           latitude: activity.startLocation.latitude,
@@ -1795,8 +1835,11 @@ export class ReportsComponent implements OnInit {
           duration: activity.durationFormatted,
           distance: '-',
           speed: '-',
-          durationSeconds: activity.durationSeconds
+          durationSeconds: activity.durationSeconds,
+          _sortTime: new Date(activity.startTime).getTime()
         });
+        lastEndTime = activity.endTime || activity.startTime;
+        lastEndLocation = activity.startLocation;
       }
     });
 
