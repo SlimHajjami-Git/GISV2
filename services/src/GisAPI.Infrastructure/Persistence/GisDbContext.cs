@@ -142,6 +142,8 @@ public class GisDbContext : DbContext, IGisDbContext
             modelBuilder.Entity<FuelRecord>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
             modelBuilder.Entity<AccidentClaim>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
             modelBuilder.Entity<MaintenanceTemplate>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
+            modelBuilder.Entity<GpsAlert>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
+            modelBuilder.Entity<VehicleMaintenanceSchedule>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
         }
 
         // Configure composite keys
@@ -247,6 +249,12 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<Societe>().OwnsOne(c => c.Settings, b => b.ToJson("settings"));
 
         // User configuration is handled by UserConfiguration.cs
+
+        // Column mappings for newly tenant-aware entities (CompanyId → company_id)
+        modelBuilder.Entity<GpsAlert>().Property(e => e.CompanyId).HasColumnName("company_id");
+        modelBuilder.Entity<VehicleMaintenanceSchedule>().Property(e => e.CompanyId).HasColumnName("company_id");
+        modelBuilder.Entity<GeofenceEvent>().Property(e => e.CompanyId).HasColumnName("company_id");
+        modelBuilder.Entity<MaintenanceLog>().Property(e => e.CompanyId).HasColumnName("company_id");
 
         // Configure unique indexes
         modelBuilder.Entity<DailyStatistics>()
