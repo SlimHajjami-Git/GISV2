@@ -73,7 +73,7 @@ public class GpsDevice
     // Navigation
     public Vehicle? Vehicle { get; set; }
     public ICollection<GpsPosition> Positions { get; set; } = new List<GpsPosition>();
-    public ICollection<GpsAlert> Alerts { get; set; } = new List<GpsAlert>();
+    // GpsAlert navigation removed — GpsAlert is now in Domain layer
 }
 
 public class GpsPosition
@@ -124,49 +124,7 @@ public class GpsPosition
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
-public class GpsAlert
-{
-    [Key]
-    public int Id { get; set; }
-
-    public int? DeviceId { get; set; }
-
-    [ForeignKey("DeviceId")]
-    public GpsDevice? Device { get; set; }
-
-    public int? VehicleId { get; set; }
-
-    [ForeignKey("VehicleId")]
-    public Vehicle? Vehicle { get; set; }
-
-    [Required]
-    [MaxLength(50)]
-    public string Type { get; set; } = string.Empty; // speeding, stopped, geofence, battery, sos, other
-
-    [MaxLength(50)]
-    public string Severity { get; set; } = "medium"; // low, medium, high, critical
-
-    [Required]
-    [MaxLength(500)]
-    public string Message { get; set; } = string.Empty;
-
-    public bool Resolved { get; set; }
-
-    public DateTime? ResolvedAt { get; set; }
-
-    public int? ResolvedByUserId { get; set; }
-
-    [ForeignKey("ResolvedByUserId")]
-    public User? ResolvedByUser { get; set; }
-
-    public double? Latitude { get; set; }
-
-    public double? Longitude { get; set; }
-
-    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
-
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-}
+// GpsAlert is now in GisAPI.Domain.Entities
 
 
 

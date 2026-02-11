@@ -135,12 +135,51 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             await _gpsHubService.SendVehiclePositionAsync(cached.VehicleId.Value, positionUpdate);
         }
 
-        // Handle alerts
+        // Handle alerts — persist to DB + broadcast via SignalR
         if (!string.IsNullOrEmpty(request.AlertType) && 
             request.AlertType != "normal" && 
             request.AlertType != "periodic")
         {
-            var alert = new VehicleAlertDto
+            // Persist alert to DB
+            var severity = request.AlertType == "overspeed" && speed > 140 ? "high"
+                : request.AlertType == "overspeed" ? "medium"
+                : "low";
+
+            var vehicleLabel = cached.VehicleName ?? cached.Plate ?? $"Device {cached.DeviceUid}";
+            var alertMessage = request.AlertType switch
+            {
+                "overspeed" => $"{vehicleLabel} — excès de vitesse: {speed:F0} km/h",
+                "ignition_on" => $"{vehicleLabel} — contact mis",
+                "ignition_off" => $"{vehicleLabel} — contact coupé",
+                "sos" => $"{vehicleLabel} — alerte SOS",
+                "battery_low" => $"{vehicleLabel} — batterie faible",
+                _ => $"{vehicleLabel} — alerte: {request.AlertType}"
+            };
+
+            var gpsAlert = new GisAPI.Domain.Entities.GpsAlert
+            {
+                DeviceId = cached.DeviceId,
+                VehicleId = cached.VehicleId,
+                Type = request.AlertType,
+                Severity = severity,
+                Message = alertMessage,
+                Latitude = request.Latitude,
+                Longitude = request.Longitude,
+                Timestamp = request.RecordedAt
+            };
+
+            try
+            {
+                _context.GpsAlerts.Add(gpsAlert);
+                await _context.SaveChangesAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to persist GpsAlert for device {DeviceUid}", request.DeviceUid);
+            }
+
+            // Broadcast via SignalR
+            var alertDto = new VehicleAlertDto
             {
                 DeviceId = cached.DeviceId,
                 VehicleId = cached.VehicleId,
@@ -153,7 +192,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
 
             if (cached.CompanyId > 0)
             {
-                await _gpsHubService.SendAlertAsync(cached.CompanyId, alert);
+                await _gpsHubService.SendAlertAsync(cached.CompanyId, alertDto);
             }
 
             // Publish speed alert notification (with cooldown per vehicle)
