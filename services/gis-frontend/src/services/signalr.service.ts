@@ -39,6 +39,23 @@ export interface GeofenceEvent {
   speed?: number;
 }
 
+export interface SignalRNotification {
+  id: number;
+  type: string;
+  title: string;
+  message: string;
+  priority: string;
+  referenceType?: string;
+  referenceId?: number;
+  actionUrl?: string;
+  metadata?: any;
+  createdAt: string;
+}
+
+export interface UnreadCountChange {
+  count: number;
+}
+
 export type ConnectionState = 'Disconnected' | 'Connecting' | 'Connected' | 'Reconnecting' | 'Error';
 
 @Injectable({
@@ -55,6 +72,8 @@ export class SignalRService implements OnDestroy {
   public positionUpdate$ = new Subject<PositionUpdate>();
   public alert$ = new Subject<GpsAlert>();
   public geofenceEvent$ = new Subject<GeofenceEvent>();
+  public notification$ = new Subject<SignalRNotification>();
+  public unreadCount$ = new BehaviorSubject<number>(0);
   public connectionState$ = this.connectionState.asObservable();
 
   constructor() {}
@@ -68,6 +87,8 @@ export class SignalRService implements OnDestroy {
     this.positionUpdate$.complete();
     this.alert$.complete();
     this.geofenceEvent$.complete();
+    this.notification$.complete();
+    this.unreadCount$.complete();
     this.connectionState.complete();
   }
 
@@ -185,6 +206,14 @@ export class SignalRService implements OnDestroy {
 
     this.hubConnection.on('GeofenceEvent', (event: GeofenceEvent) => {
       this.geofenceEvent$.next(event);
+    });
+
+    this.hubConnection.on('NewNotification', (notification: SignalRNotification) => {
+      this.notification$.next(notification);
+    });
+
+    this.hubConnection.on('UnreadCountChanged', (data: UnreadCountChange) => {
+      this.unreadCount$.next(data.count);
     });
   }
 

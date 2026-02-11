@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using System.Security.Claims;
 
 namespace GisAPI.Hubs;
 
@@ -16,6 +17,8 @@ public class GpsHub : Hub
     public override async Task OnConnectedAsync()
     {
         var companyId = Context.User?.FindFirst("companyId")?.Value;
+        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
         if (!string.IsNullOrEmpty(companyId))
         {
             // Add user to company group for multi-tenant isolation
@@ -23,18 +26,35 @@ public class GpsHub : Hub
             _logger.LogInformation("Client {ConnectionId} joined company group {CompanyId}", 
                 Context.ConnectionId, companyId);
         }
+
+        if (!string.IsNullOrEmpty(userId))
+        {
+            // Add user to personal notification group
+            await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{userId}");
+            _logger.LogDebug("Client {ConnectionId} joined user group {UserId}", 
+                Context.ConnectionId, userId);
+        }
+
         await base.OnConnectedAsync();
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         var companyId = Context.User?.FindFirst("companyId")?.Value;
+        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
         if (!string.IsNullOrEmpty(companyId))
         {
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"company_{companyId}");
             _logger.LogInformation("Client {ConnectionId} left company group {CompanyId}", 
                 Context.ConnectionId, companyId);
         }
+
+        if (!string.IsNullOrEmpty(userId))
+        {
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"user_{userId}");
+        }
+
         await base.OnDisconnectedAsync(exception);
     }
 

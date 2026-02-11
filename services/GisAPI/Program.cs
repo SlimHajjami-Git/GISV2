@@ -22,6 +22,7 @@ builder.Services.AddSignalR()
         options.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
     });
 builder.Services.AddSingleton<IGpsHubService, GpsHubService>();
+builder.Services.AddScoped<INotificationService, GisAPI.Services.NotificationService>();
 
 // GPS Telemetry Consumer (RabbitMQ -> SignalR)
 builder.Services.AddHostedService<GisAPI.Services.GpsTelemetryConsumer>();

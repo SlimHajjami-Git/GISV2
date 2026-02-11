@@ -1,9 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
-using GisAPI.Infrastructure.Persistence;
-using GisAPI.Domain.Entities;
+using MediatR;
+using GisAPI.Application.Features.Notifications;
+using GisAPI.Application.Features.Notifications.Queries.GetNotifications;
+using GisAPI.Application.Features.Notifications.Queries.GetUnreadCount;
+using GisAPI.Application.Features.Notifications.Commands.MarkNotificationRead;
+using GisAPI.Application.Features.Notifications.Commands.MarkAllNotificationsRead;
+using GisAPI.Application.Features.Notifications.Commands.DeleteNotification;
 
 namespace GisAPI.Controllers;
 
@@ -12,124 +15,49 @@ namespace GisAPI.Controllers;
 [Authorize]
 public class NotificationsController : ControllerBase
 {
-    private readonly GisDbContext _context;
+    private readonly IMediator _mediator;
 
-    public NotificationsController(GisDbContext context)
+    public NotificationsController(IMediator mediator)
     {
-        _context = context;
+        _mediator = mediator;
     }
 
-    private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
-    private int GetUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
-
     [HttpGet]
-    public async Task<ActionResult<List<Notification>>> GetNotifications(
-        [FromQuery] bool? isRead = null,
-        [FromQuery] string? type = null,
-        [FromQuery] int limit = 50)
+    public async Task<ActionResult<NotificationPageDto>> GetNotifications(
+        [FromQuery] int? pageSize = 20,
+        [FromQuery] int? page = 1,
+        [FromQuery] bool? unreadOnly = false,
+        [FromQuery] string? type = null)
     {
-        var userId = GetUserId();
-
-        var query = _context.Notifications
-            .Where(n => n.UserId == userId)
-            .AsQueryable();
-
-        if (isRead.HasValue)
-            query = query.Where(n => n.IsRead == isRead.Value);
-
-        if (!string.IsNullOrEmpty(type))
-            query = query.Where(n => n.Type == type);
-
-        var notifications = await query
-            .OrderByDescending(n => n.CreatedAt)
-            .Take(limit)
-            .ToListAsync();
-
-        return Ok(notifications);
+        var result = await _mediator.Send(new GetNotificationsQuery(pageSize, page, unreadOnly, type));
+        return Ok(result);
     }
 
     [HttpGet("unread-count")]
-    public async Task<ActionResult<int>> GetUnreadCount()
+    public async Task<ActionResult<UnreadCountDto>> GetUnreadCount()
     {
-        var userId = GetUserId();
-
-        var count = await _context.Notifications
-            .Where(n => n.UserId == userId && !n.IsRead)
-            .CountAsync();
-
-        return Ok(count);
+        var result = await _mediator.Send(new GetUnreadCountQuery());
+        return Ok(result);
     }
 
-    [HttpPost("{id}/read")]
-    public async Task<ActionResult> MarkAsRead(long id)
+    [HttpPut("{id}/read")]
+    public async Task<IActionResult> MarkAsRead(long id)
     {
-        var userId = GetUserId();
-
-        var notification = await _context.Notifications
-            .FirstOrDefaultAsync(n => n.Id == id && n.UserId == userId);
-
-        if (notification == null)
-            return NotFound();
-
-        notification.IsRead = true;
-        notification.ReadAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
-
+        await _mediator.Send(new MarkNotificationReadCommand(id));
         return NoContent();
     }
 
-    [HttpPost("read-all")]
-    public async Task<ActionResult> MarkAllAsRead()
+    [HttpPut("read-all")]
+    public async Task<IActionResult> MarkAllAsRead()
     {
-        var userId = GetUserId();
-
-        var unreadNotifications = await _context.Notifications
-            .Where(n => n.UserId == userId && !n.IsRead)
-            .ToListAsync();
-
-        foreach (var notification in unreadNotifications)
-        {
-            notification.IsRead = true;
-            notification.ReadAt = DateTime.UtcNow;
-        }
-
-        await _context.SaveChangesAsync();
-
-        return Ok(new { marked = unreadNotifications.Count });
+        await _mediator.Send(new MarkAllNotificationsReadCommand());
+        return NoContent();
     }
 
     [HttpDelete("{id}")]
-    public async Task<ActionResult> DeleteNotification(long id)
+    public async Task<IActionResult> DeleteNotification(long id)
     {
-        var userId = GetUserId();
-
-        var notification = await _context.Notifications
-            .FirstOrDefaultAsync(n => n.Id == id && n.UserId == userId);
-
-        if (notification == null)
-            return NotFound();
-
-        _context.Notifications.Remove(notification);
-        await _context.SaveChangesAsync();
-
+        await _mediator.Send(new DeleteNotificationCommand(id));
         return NoContent();
-    }
-
-    [HttpDelete("clear")]
-    public async Task<ActionResult> ClearNotifications([FromQuery] bool onlyRead = true)
-    {
-        var userId = GetUserId();
-
-        var query = _context.Notifications.Where(n => n.UserId == userId);
-
-        if (onlyRead)
-            query = query.Where(n => n.IsRead);
-
-        var notifications = await query.ToListAsync();
-        _context.Notifications.RemoveRange(notifications);
-        await _context.SaveChangesAsync();
-
-        return Ok(new { deleted = notifications.Count });
     }
 }

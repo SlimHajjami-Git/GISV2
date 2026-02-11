@@ -54,6 +54,9 @@ public interface IGisDbContext
     // Repairs
     DbSet<Repair> Repairs { get; }
     DbSet<RepairPart> RepairParts { get; }
+    
+    // Notifications
+    DbSet<Notification> Notifications { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

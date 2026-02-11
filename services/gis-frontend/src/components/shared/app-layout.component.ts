@@ -1,10 +1,11 @@
-import { Component, OnInit, HostListener } from '@angular/core';
+import { Component, OnInit, OnDestroy, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api.service';
 import { ThemeService } from '../../services/theme.service';
 import { PermissionService, ModuleKey } from '../../services/permission.service';
-import { GPSAlert } from '../../models/types';
+import { NotificationService, Notification } from '../../services/notification.service';
 
 @Component({
   selector: 'app-layout',
@@ -154,29 +155,30 @@ import { GPSAlert } from '../../models/types';
               <div class="dropdown-body">
                 <div class="notification-list" *ngIf="notifications.length > 0">
                   @for (notif of notifications; track notif.id) {
-                    <div class="notification-item" [class.unread]="!notif.resolved" (click)="onNotificationClick(notif)">
+                    <div class="notification-item" [class.unread]="!notif.isRead" (click)="onNotificationClick(notif)">
                       <div class="notif-icon" [class]="getNotifIconClass(notif.type)">
-                        <svg *ngIf="notif.type === 'speeding'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg *ngIf="notif.type === 'speed_alert'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
                         </svg>
-                        <svg *ngIf="notif.type === 'geofence'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg *ngIf="notif.type === 'geofence_event'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <circle cx="12" cy="10" r="3"/><path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 7 8 11.7z"/>
                         </svg>
-                        <svg *ngIf="notif.type === 'stopped'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg *ngIf="notif.type === 'vehicle_stop'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
                         </svg>
-                        <svg *ngIf="notif.type === 'maintenance'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg *ngIf="notif.type === 'maintenance_due'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
                         </svg>
-                        <svg *ngIf="notif.type === 'other'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg *ngIf="!['speed_alert','geofence_event','vehicle_stop','maintenance_due'].includes(notif.type)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                         </svg>
                       </div>
                       <div class="notif-content">
+                        <span class="notif-title">{{ notif.title }}</span>
                         <span class="notif-message">{{ notif.message }}</span>
-                        <span class="notif-time">{{ formatNotifTime(notif.timestamp) }}</span>
+                        <span class="notif-time">{{ formatNotifTime(notif.createdAt) }}</span>
                       </div>
-                      <div class="notif-unread-dot" *ngIf="!notif.resolved"></div>
+                      <div class="notif-unread-dot" *ngIf="!notif.isRead"></div>
                     </div>
                   }
                 </div>
@@ -564,10 +566,19 @@ import { GPSAlert } from '../../models/types';
       min-width: 0;
     }
 
-    .notif-message {
+    .notif-title {
       display: block;
       font-size: 13px;
+      font-weight: 600;
       color: #1f2937;
+      line-height: 1.3;
+      margin-bottom: 2px;
+    }
+
+    .notif-message {
+      display: block;
+      font-size: 12px;
+      color: #6b7280;
       line-height: 1.4;
       margin-bottom: 4px;
     }
@@ -877,17 +888,19 @@ import { GPSAlert } from '../../models/types';
     }
   `]
 })
-export class AppLayoutComponent implements OnInit {
-  notifications: GPSAlert[] = [];
+export class AppLayoutComponent implements OnInit, OnDestroy {
+  notifications: Notification[] = [];
   showNotifications = false;
   showUserMenu = false;
   unreadCount = 0;
+  private subs: Subscription[] = [];
 
   constructor(
     private router: Router,
     private apiService: ApiService,
     private themeService: ThemeService,
-    private permissionService: PermissionService
+    private permissionService: PermissionService,
+    private notificationService: NotificationService
   ) {}
 
   get isDarkMode(): boolean {
@@ -900,46 +913,37 @@ export class AppLayoutComponent implements OnInit {
 
   ngOnInit() {
     this.loadNotifications();
+    this.notificationService.loadUnreadCount();
+
+    // Subscribe to real-time unread count
+    this.subs.push(
+      this.notificationService.unreadCount$.subscribe(count => {
+        this.unreadCount = count;
+      })
+    );
+
+    // Subscribe to real-time new notifications
+    this.subs.push(
+      this.notificationService.notifications$.subscribe(notifications => {
+        this.notifications = notifications;
+      })
+    );
+  }
+
+  ngOnDestroy() {
+    this.subs.forEach(s => s.unsubscribe());
   }
 
   loadNotifications() {
-    this.apiService.getAlerts(false, undefined, 20).subscribe({
-      next: (alerts) => {
-        const gpsNotifs = alerts.map(a => ({
-          id: a.id?.toString() || '',
-          vehicleId: a.vehicleId?.toString() || '',
-          type: a.type as 'speeding' | 'stopped' | 'geofence' | 'other',
-          message: a.message,
-          timestamp: new Date(a.timestamp),
-          resolved: a.resolved
-        })) as GPSAlert[];
-        this.mergeNotifications(gpsNotifs);
+    this.notificationService.getNotifications(1, 20).subscribe({
+      next: (page) => {
+        this.notifications = page.items;
+        this.unreadCount = page.unreadCount;
+        this.notificationService.notifications$.next(page.items);
+        this.notificationService.unreadCount$.next(page.unreadCount);
       },
-      error: (err) => console.error('Error loading alerts:', err)
+      error: (err) => console.error('Error loading notifications:', err)
     });
-    this.apiService.getMaintenanceAlerts().subscribe({
-      next: (items) => {
-        const maintNotifs = items.map((a: any) => ({
-          id: 'maint-' + (a.scheduleId || a.templateId),
-          vehicleId: '',
-          type: 'maintenance' as any,
-          message: `${a.templateName} — ${a.status === 'overdue' ? 'En retard' : 'A faire'}${a.kmUntilDue != null ? ' (' + Math.abs(a.kmUntilDue) + ' km)' : ''}`,
-          timestamp: new Date(),
-          resolved: false
-        })) as GPSAlert[];
-        this.mergeNotifications(maintNotifs);
-      },
-      error: () => {}
-    });
-  }
-
-  private _gpsNotifs: GPSAlert[] = [];
-  private _maintNotifs: GPSAlert[] = [];
-  mergeNotifications(notifs: GPSAlert[]) {
-    if (notifs.length > 0 && notifs[0].type === 'maintenance') this._maintNotifs = notifs;
-    else this._gpsNotifs = notifs;
-    this.notifications = [...this._maintNotifs, ...this._gpsNotifs].slice(0, 20);
-    this.unreadCount = this.notifications.filter(n => !n.resolved).length;
   }
 
   navigate(path: string) {
@@ -999,29 +1003,26 @@ export class AppLayoutComponent implements OnInit {
   }
 
   markAllAsRead() {
-    this.apiService.resolveAllAlerts().subscribe({
-      next: () => this.loadNotifications(),
-      error: (err) => console.error('Error resolving alerts:', err)
-    });
+    this.notificationService.markAllAsReadLocal();
   }
 
-  onNotificationClick(notif: GPSAlert) {
-    if (!notif.resolved) {
-      this.apiService.resolveAlert(parseInt(notif.id)).subscribe({
-        next: () => this.loadNotifications(),
-        error: (err) => console.error('Error resolving alert:', err)
-      });
+  onNotificationClick(notif: Notification) {
+    if (!notif.isRead) {
+      this.notificationService.markAsReadLocal(notif.id);
     }
     this.showNotifications = false;
-    // Navigate based on notification type
-    if (notif.type === 'maintenance') {
+
+    // Navigate based on actionUrl or type
+    if (notif.actionUrl) {
+      this.router.navigateByUrl(notif.actionUrl);
+    } else if (notif.type === 'maintenance_due') {
       this.router.navigate(['/entretien-programmable']);
-    } else if (notif.type === 'geofence') {
+    } else if (notif.type === 'geofence_event') {
       this.router.navigate(['/geofences']);
-    } else if (notif.type === 'speeding') {
+    } else if (notif.type === 'speed_alert') {
       this.router.navigate(['/monitoring']);
     } else {
-      this.router.navigate(['/monitoring']);
+      this.router.navigate(['/notifications']);
     }
   }
 
@@ -1032,16 +1033,17 @@ export class AppLayoutComponent implements OnInit {
 
   getNotifIconClass(type: string): string {
     const typeMap: { [key: string]: string } = {
-      speeding: 'speeding',
-      stopped: 'stopped',
-      geofence: 'geofence',
-      maintenance: 'maintenance',
-      other: 'other'
+      speed_alert: 'speeding',
+      vehicle_stop: 'stopped',
+      geofence_event: 'geofence',
+      maintenance_due: 'maintenance',
+      user_created: 'other',
+      system: 'other'
     };
     return typeMap[type] || 'other';
   }
 
-  formatNotifTime(timestamp: Date): string {
+  formatNotifTime(timestamp: string | Date): string {
     const now = new Date();
     const date = new Date(timestamp);
     const diffMs = now.getTime() - date.getTime();
