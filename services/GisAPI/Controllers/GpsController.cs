@@ -32,6 +32,13 @@ public class GpsController : ControllerBase
         _redisCache = redisCache;
     }
 
+    // Npgsql 6+ requires DateTimeKind.Utc for timestamptz columns.
+    // GPS ingest stores local time as UTC (no offset), so we just tag the kind.
+    private static DateTime EnsureUtc(DateTime dt)
+    {
+        return dt.Kind == DateTimeKind.Utc ? dt : DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+    }
+
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
 
     // ==================== REAL-TIME POSITIONS (REDIS) ====================
@@ -252,13 +259,14 @@ public class GpsController : ControllerBase
         from ??= DateTime.UtcNow.AddHours(-24);
         to ??= DateTime.UtcNow;
 
-        // Timestamps in DB are already in local time (gps-ingest adds +1h offset)
-        // No additional adjustment needed - query directly with user's date range
+        // Ensure UTC kind for Npgsql timestamptz compatibility
+        var fromUtc = EnsureUtc(from.Value);
+        var toUtc = EnsureUtc(to.Value);
 
         var rawPositions = await _context.GpsPositions
             .Where(p => p.DeviceId == vehicle.GpsDeviceId &&
-                        p.RecordedAt >= from.Value &&
-                        p.RecordedAt <= to.Value)
+                        p.RecordedAt >= fromUtc &&
+                        p.RecordedAt <= toUtc)
             .OrderBy(p => p.RecordedAt)
             .Take(limit)
             .Select(p => new PositionDto
@@ -345,13 +353,14 @@ public class GpsController : ControllerBase
         from ??= DateTime.UtcNow.AddHours(-24);
         to ??= DateTime.UtcNow;
 
-        // Timestamps in DB are already in local time (gps-ingest adds +1h offset)
-        // No additional adjustment needed - query directly with user's date range
+        // Ensure UTC kind for Npgsql timestamptz compatibility
+        var fromUtc = EnsureUtc(from.Value);
+        var toUtc = EnsureUtc(to.Value);
 
         var positions = await _context.GpsPositions
             .Where(p => p.DeviceId == device.Id &&
-                        p.RecordedAt >= from.Value &&
-                        p.RecordedAt <= to.Value)
+                        p.RecordedAt >= fromUtc &&
+                        p.RecordedAt <= toUtc)
             .OrderBy(p => p.RecordedAt)
             .Take(limit)
             .Select(p => new PositionDto
@@ -429,10 +438,14 @@ public class GpsController : ControllerBase
         from ??= DateTime.UtcNow.Date;
         to ??= DateTime.UtcNow;
 
+        // Ensure UTC kind for Npgsql timestamptz compatibility
+        var fromUtc = EnsureUtc(from.Value);
+        var toUtc = EnsureUtc(to.Value);
+
         var positions = await _context.GpsPositions
             .Where(p => p.DeviceId == vehicle.GpsDeviceId &&
-                        p.RecordedAt >= from &&
-                        p.RecordedAt <= to)
+                        p.RecordedAt >= fromUtc &&
+                        p.RecordedAt <= toUtc)
             .ToListAsync();
 
         if (!positions.Any())
