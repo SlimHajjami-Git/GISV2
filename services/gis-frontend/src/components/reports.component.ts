@@ -386,8 +386,8 @@ export class ReportsComponent implements OnInit {
       case 'custom':
         // Dates are set via customStartDate / customEndDate inputs
         if (this.customStartDate && this.customEndDate) {
-          this.fromDate = new Date(this.customStartDate).toISOString().slice(0, 16);
-          this.toDate = new Date(this.customEndDate + 'T23:59:59').toISOString().slice(0, 16);
+          this.fromDate = this.toDateTime(new Date(this.customStartDate));
+          this.toDate = this.toDateTime(new Date(this.customEndDate + 'T23:59:59'));
         }
         break;
     }
@@ -416,8 +416,8 @@ export class ReportsComponent implements OnInit {
         break;
       case 'custom':
         if (this.customStartDate && this.customEndDate) {
-          this.fromDate = new Date(this.customStartDate).toISOString().slice(0, 16);
-          this.toDate = new Date(this.customEndDate + 'T23:59:59').toISOString().slice(0, 16);
+          this.fromDate = this.toDateTime(new Date(this.customStartDate));
+          this.toDate = this.toDateTime(new Date(this.customEndDate + 'T23:59:59'));
         }
         break;
     }
@@ -425,7 +425,13 @@ export class ReportsComponent implements OnInit {
 
 
   toDateTime(date: Date): string {
-    return date.toISOString().slice(0, 16);
+    // Format as local time (not UTC) - DB stores local time
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const h = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d}T${h}:${min}`;
   }
 
   selectTemplate(template: any) {

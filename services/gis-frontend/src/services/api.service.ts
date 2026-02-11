@@ -581,18 +581,28 @@ export class ApiService {
 
   getVehicleHistory(vehicleId: number, from?: Date, to?: Date, limit = 10000): Observable<PositionDto[]> {
     let params = new HttpParams();
-    if (from) params = params.set('from', from.toISOString());
-    if (to) params = params.set('to', to.toISOString());
+    if (from) params = params.set('from', this.toLocalIso(from));
+    if (to) params = params.set('to', this.toLocalIso(to));
     params = params.set('limit', limit.toString());
     return this.http.get<PositionDto[]>(`${this.getMonitoringApiUrl()}/gps/vehicles/${vehicleId}/history`, { headers: this.getHeaders(), params });
   }
 
   getDeviceHistory(deviceUid: string, from?: Date, to?: Date, limit = 10000): Observable<PositionDto[]> {
     let params = new HttpParams();
-    if (from) params = params.set('from', from.toISOString());
-    if (to) params = params.set('to', to.toISOString());
+    if (from) params = params.set('from', this.toLocalIso(from));
+    if (to) params = params.set('to', this.toLocalIso(to));
     params = params.set('limit', limit.toString());
     return this.http.get<any[]>(`${this.getMonitoringApiUrl()}/gps/devices/${deviceUid}/history`, { headers: this.getHeaders(), params });
+  }
+
+  private toLocalIso(date: Date): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const h = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    const sec = String(date.getSeconds()).padStart(2, '0');
+    return `${y}-${m}-${d}T${h}:${min}:${sec}`;
   }
 
   getVehicleGpsStats(vehicleId: number, from?: Date, to?: Date): Observable<any> {
