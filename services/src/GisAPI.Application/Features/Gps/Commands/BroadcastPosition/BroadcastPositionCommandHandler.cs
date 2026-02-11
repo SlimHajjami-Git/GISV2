@@ -160,6 +160,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             {
                 DeviceId = cached.DeviceId,
                 VehicleId = cached.VehicleId,
+                CompanyId = cached.CompanyId,
                 Type = request.AlertType,
                 Severity = severity,
                 Message = alertMessage,

@@ -30,7 +30,7 @@ public class MaintenanceTemplate : TenantEntity
     public ICollection<MaintenanceTemplatePart> Parts { get; set; } = new List<MaintenanceTemplatePart>();
 }
 
-public class VehicleMaintenanceSchedule : AuditableEntity
+public class VehicleMaintenanceSchedule : TenantEntity
 {
     public int VehicleId { get; set; }
     public Vehicle? Vehicle { get; set; }
@@ -73,6 +73,8 @@ public class MaintenanceLog : Entity
     
     public int? CostId { get; set; }
     public VehicleCost? Cost { get; set; }
+    
+    public int CompanyId { get; set; }
     
     public DateTime DoneDate { get; set; }
     public int DoneKm { get; set; }

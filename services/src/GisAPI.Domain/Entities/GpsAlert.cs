@@ -2,7 +2,7 @@ using GisAPI.Domain.Common;
 
 namespace GisAPI.Domain.Entities;
 
-public class GpsAlert : AuditableEntity
+public class GpsAlert : TenantEntity
 {
     public int? DeviceId { get; set; }
     public GpsDevice? Device { get; set; }
@@ -18,4 +18,7 @@ public class GpsAlert : AuditableEntity
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    // Navigation
+    public Societe? Societe { get; set; }
 }

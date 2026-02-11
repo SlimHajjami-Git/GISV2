@@ -1,11 +1,13 @@
+using System.Runtime.Serialization;
+
 namespace GisAPI.Domain.Enums;
 
 public enum AlertSeverity
 {
-    Low,
-    Medium,
-    High,
-    Critical
+    [EnumMember(Value = "low")] Low,
+    [EnumMember(Value = "medium")] Medium,
+    [EnumMember(Value = "high")] High,
+    [EnumMember(Value = "critical")] Critical
 }
 
 

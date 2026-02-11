@@ -53,6 +53,7 @@ public class GeofenceEvent : Entity
     public int VehicleId { get; set; }
     public Vehicle? Vehicle { get; set; }
     public int? DeviceId { get; set; }
+    public int CompanyId { get; set; }
     public string Type { get; set; } = string.Empty;
     public double Latitude { get; set; }
     public double Longitude { get; set; }
