@@ -7,6 +7,14 @@ using System.Text.Json;
 using MediatR;
 using GisAPI.Application.Features.Admin.Vehicles.Queries.GetAdminVehicles;
 using GisAPI.Application.Features.Admin.Users;
+using GisAPI.Application.Features.Admin.Companies;
+using GisAPI.Application.Features.Admin.Companies.Queries.GetCompanies;
+using GisAPI.Application.Features.Admin.Companies.Queries.GetCompanyById;
+using GisAPI.Application.Features.Admin.Companies.Queries.GetCompanyRoles;
+using GisAPI.Application.Features.Admin.Companies.Commands.CreateCompany;
+using GisAPI.Application.Features.Admin.Companies.Commands.UpdateCompany;
+using GisAPI.Application.Features.Admin.Companies.Commands.ChangeCompanyStatus;
+using GisAPI.Application.Features.Admin.Companies.Commands.DeleteCompany;
 using GisAPI.Application.Common.Interfaces;
 
 namespace GisAPI.Controllers;
@@ -168,105 +176,24 @@ public class AdminController : ControllerBase
     // ==================== COMPANY MANAGEMENT ====================
 
     [HttpGet("company")]
-    public async Task<ActionResult<List<AdminCompanyDto>>> GetCompanies([FromQuery] string? search, [FromQuery] string? status)
+    public async Task<ActionResult<List<Application.Features.Admin.Companies.AdminCompanyDto>>> GetCompanies([FromQuery] string? search, [FromQuery] string? status)
     {
-        var query = _context.Societes
-            .Include(c => c.SubscriptionType)
-            .Include(c => c.Vehicles)
-            .Include(c => c.Users)
-            .AsQueryable();
-
-        if (!string.IsNullOrEmpty(search))
-        {
-            query = query.Where(c => c.Name.Contains(search) || (c.Email != null && c.Email.Contains(search)));
-        }
-
-        if (!string.IsNullOrEmpty(status) && status != "all")
-        {
-            query = status switch
-            {
-                "active" => query.Where(c => c.IsActive),
-                "suspended" => query.Where(c => !c.IsActive),
-                _ => query
-            };
-        }
-
-        var companies = await query.OrderByDescending(c => c.CreatedAt).ToListAsync();
-
-        return Ok(companies.Select(c => new AdminCompanyDto
-        {
-            Id = c.Id,
-            Name = c.Name,
-            Email = c.Email,
-            Phone = c.Phone,
-            Type = c.Type,
-            SubscriptionId = c.SubscriptionTypeId,
-            SubscriptionName = c.SubscriptionType?.Name,
-            MaxVehicles = c.SubscriptionType?.MaxVehicles ?? 0,
-            CurrentVehicles = c.Vehicles?.Count ?? 0,
-            CurrentUsers = c.Users?.Count ?? 0,
-            Status = c.IsActive ? "active" : "suspended",
-            CreatedAt = c.CreatedAt,
-            LastActivity = c.UpdatedAt
-        }));
+        var result = await _mediator.Send(new GetCompaniesQuery(search, status));
+        return Ok(result);
     }
 
     [HttpGet("company/{id}")]
-    public async Task<ActionResult<AdminCompanyDto>> GetCompany(int id)
+    public async Task<ActionResult<Application.Features.Admin.Companies.AdminCompanyDto>> GetCompany(int id)
     {
-        var company = await _context.Societes
-            .Include(c => c.SubscriptionType)
-            .Include(c => c.Vehicles)
-            .Include(c => c.Users)
-            .FirstOrDefaultAsync(c => c.Id == id);
-
-        if (company == null)
-            return NotFound();
-
-        return Ok(new AdminCompanyDto
-        {
-            Id = company.Id,
-            Name = company.Name,
-            Email = company.Email,
-            Phone = company.Phone,
-            Type = company.Type,
-            SubscriptionId = company.SubscriptionTypeId,
-            SubscriptionName = company.SubscriptionType?.Name,
-            MaxVehicles = company.SubscriptionType?.MaxVehicles ?? 0,
-            CurrentVehicles = company.Vehicles?.Count ?? 0,
-            CurrentUsers = company.Users?.Count ?? 0,
-            Status = company.IsActive ? "active" : "suspended",
-            CreatedAt = company.CreatedAt,
-            LastActivity = company.UpdatedAt
-        });
+        var result = await _mediator.Send(new GetCompanyByIdQuery(id));
+        return result != null ? Ok(result) : NotFound();
     }
 
     [HttpGet("company/{id}/roles")]
-    public async Task<ActionResult<List<AdminRoleDto>>> GetCompanyRoles(int id)
+    public async Task<ActionResult<List<Application.Features.Admin.Companies.AdminRoleDto>>> GetCompanyRoles(int id)
     {
-        var company = await _context.Societes.FindAsync(id);
-        if (company == null)
-            return NotFound();
-
-        // Project directly to DTO to avoid JSONB deserialization issues
-        var roles = await _context.Roles
-            .Where(r => r.SocieteId == id)
-            .Select(r => new AdminRoleDto
-            {
-                Id = r.Id,
-                Name = r.Name,
-                Description = r.Description,
-                RoleType = r.Name, // Use Name as RoleType for compatibility
-                Permissions = null, // Skip permissions to avoid JSONB issues
-                IsSystem = false,
-                IsDefault = false,
-                UserCount = _context.Users.Count(u => u.RoleId == r.Id),
-                CreatedAt = r.CreatedAt,
-                UpdatedAt = r.UpdatedAt
-            })
-            .ToListAsync();
-
-        return Ok(roles);
+        var result = await _mediator.Send(new GetCompanyRolesQuery(id));
+        return Ok(result);
     }
 
     // ==================== PERMISSIONS ====================
@@ -290,205 +217,51 @@ public class AdminController : ControllerBase
     }
 
     [HttpPost("company")]
-    public async Task<ActionResult<AdminCompanyDto>> CreateCompany([FromBody] CreateAdminCompanyRequest request)
+    public async Task<ActionResult<Application.Features.Admin.Companies.AdminCompanyDto>> CreateCompany([FromBody] CreateAdminCompanyRequest request)
     {
-        if (!string.IsNullOrEmpty(request.Email) && await _context.Societes.AnyAsync(c => c.Email == request.Email))
+        try
         {
-            return BadRequest(new { message = "Une société avec cet email existe déjà" });
+            var result = await _mediator.Send(new CreateCompanyCommand(
+                request.Name, request.Email, request.Phone, request.Type,
+                request.SubscriptionId, request.BillingCycle,
+                request.AdminName, request.AdminEmail, request.AdminPassword
+            ));
+            return CreatedAtAction(nameof(GetCompany), new { id = result.Id }, result);
         }
-
-        var subscriptionType = await _context.SubscriptionTypes
-            .FirstOrDefaultAsync(s => s.Id == request.SubscriptionId);
-
-        // Calculate subscription dates based on billing cycle
-        var billingCycle = request.BillingCycle ?? "yearly";
-        var startDate = DateTime.UtcNow;
-        var durationDays = billingCycle switch
+        catch (GisAPI.Domain.Exceptions.DomainException ex)
         {
-            "monthly" => subscriptionType?.MonthlyDurationDays ?? 30,
-            "quarterly" => subscriptionType?.QuarterlyDurationDays ?? 90,
-            "yearly" => subscriptionType?.YearlyDurationDays ?? 365,
-            _ => 365
-        };
-        var expiresAt = startDate.AddDays(durationDays);
-
-        // Calculate price based on billing cycle
-        var price = billingCycle switch
-        {
-            "monthly" => subscriptionType?.MonthlyPrice ?? 0,
-            "quarterly" => subscriptionType?.QuarterlyPrice ?? 0,
-            "yearly" => subscriptionType?.YearlyPrice ?? 0,
-            _ => subscriptionType?.YearlyPrice ?? 0
-        };
-
-        var company = new Societe
-        {
-            Name = request.Name,
-            Email = request.Email,
-            Phone = request.Phone,
-            Type = request.Type ?? "transport",
-            SubscriptionTypeId = request.SubscriptionId > 0 ? request.SubscriptionId : null,
-            IsActive = true,
-            SubscriptionStartedAt = startDate,
-            SubscriptionExpiresAt = expiresAt,
-            BillingCycle = billingCycle,
-            SubscriptionStatus = "active",
-            NextPaymentAmount = price,
-            Settings = new SocieteSettings
-            {
-                Currency = "DT",
-                Timezone = "Africa/Tunis",
-                Language = "fr"
-            }
-        };
-
-        _context.Societes.Add(company);
-        await _context.SaveChangesAsync();
-
-        // Create admin role and user if provided
-        if (!string.IsNullOrEmpty(request.AdminEmail) && !string.IsNullOrEmpty(request.AdminPassword))
-        {
-            // First create an admin role for this company
-            var adminRole = new Role
-            {
-                Name = "Administrateur",
-                Description = "Administrateur de la société",
-                SocieteId = company.Id,
-                IsCompanyAdmin = true,
-                IsSystemRole = false,
-                Permissions = new Dictionary<string, object>
-                {
-                    { "dashboard", true },
-                    { "monitoring", true },
-                    { "vehicles", true },
-                    { "employees", true },
-                    { "maintenance", true },
-                    { "costs", true },
-                    { "reports", true },
-                    { "geofences", true },
-                    { "settings", true },
-                    { "users", true },
-                    { "suppliers", true },
-                    { "documents", true },
-                    { "accidents", true },
-                    { "fleet_management", true }
-                }
-            };
-            _context.Roles.Add(adminRole);
-            await _context.SaveChangesAsync();
-
-            // Then create the admin user with this role
-            var adminUser = new User
-            {
-                FirstName = request.AdminName?.Split(' ').FirstOrDefault() ?? "Admin",
-                LastName = request.AdminName?.Split(' ').Skip(1).FirstOrDefault() ?? company.Name,
-                Email = request.AdminEmail,
-                Phone = request.Phone,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.AdminPassword),
-                CompanyId = company.Id,
-                RoleId = adminRole.Id,
-                Status = "active"
-            };
-            _context.Users.Add(adminUser);
-            await _context.SaveChangesAsync();
+            return BadRequest(new { message = ex.Message });
         }
-
-        return CreatedAtAction(nameof(GetCompany), new { id = company.Id }, new AdminCompanyDto
-        {
-            Id = company.Id,
-            Name = company.Name,
-            Email = company.Email,
-            Phone = company.Phone,
-            Type = company.Type,
-            SubscriptionId = company.SubscriptionTypeId,
-            SubscriptionName = subscriptionType?.Name,
-            MaxVehicles = subscriptionType?.MaxVehicles ?? 0,
-            CurrentVehicles = 0,
-            CurrentUsers = !string.IsNullOrEmpty(request.AdminEmail) ? 1 : 0,
-            Status = "active",
-            CreatedAt = company.CreatedAt,
-            SubscriptionStatus = company.SubscriptionStatus,
-            SubscriptionStartedAt = company.SubscriptionStartedAt,
-            SubscriptionExpiresAt = company.SubscriptionExpiresAt,
-            BillingCycle = company.BillingCycle
-        });
     }
 
     [HttpPut("company/{id}")]
-    public async Task<ActionResult<AdminCompanyDto>> UpdateCompany(int id, [FromBody] UpdateAdminCompanyRequest request)
+    public async Task<ActionResult<Application.Features.Admin.Companies.AdminCompanyDto>> UpdateCompany(int id, [FromBody] UpdateAdminCompanyRequest request)
     {
-        var company = await _context.Societes
-            .Include(c => c.SubscriptionType)
-            .Include(c => c.Vehicles)
-            .Include(c => c.Users)
-            .FirstOrDefaultAsync(c => c.Id == id);
-
-        if (company == null)
-            return NotFound();
-
-        if (!string.IsNullOrEmpty(request.Name)) company.Name = request.Name;
-        if (request.Email != null) company.Email = request.Email;
-        if (request.Phone != null) company.Phone = request.Phone;
-        if (request.Type != null) company.Type = request.Type;
-        if (request.SubscriptionId.HasValue) company.SubscriptionTypeId = request.SubscriptionId.Value;
-
-        company.UpdatedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
-
-        return Ok(new AdminCompanyDto
-        {
-            Id = company.Id,
-            Name = company.Name,
-            Email = company.Email,
-            Phone = company.Phone,
-            Type = company.Type,
-            SubscriptionId = company.SubscriptionTypeId,
-            SubscriptionName = company.SubscriptionType?.Name,
-            MaxVehicles = company.SubscriptionType?.MaxVehicles ?? 0,
-            CurrentVehicles = company.Vehicles?.Count ?? 0,
-            CurrentUsers = company.Users?.Count ?? 0,
-            Status = company.IsActive ? "active" : "suspended",
-            CreatedAt = company.CreatedAt,
-            LastActivity = company.UpdatedAt
-        });
+        var result = await _mediator.Send(new UpdateCompanyCommand(
+            id, request.Name, request.Email, request.Phone, request.Type, request.SubscriptionId
+        ));
+        return result != null ? Ok(result) : NotFound();
     }
 
     [HttpPost("company/{id}/suspend")]
     public async Task<ActionResult> SuspendCompany(int id)
     {
-        var company = await _context.Societes.FindAsync(id);
-        if (company == null) return NotFound();
-
-        company.IsActive = false;
-        company.UpdatedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
-
-        return Ok(new { message = "Société suspendue" });
+        var found = await _mediator.Send(new ChangeCompanyStatusCommand(id, false));
+        return found ? Ok(new { message = "Société suspendue" }) : NotFound();
     }
 
     [HttpPost("company/{id}/activate")]
     public async Task<ActionResult> ActivateCompany(int id)
     {
-        var company = await _context.Societes.FindAsync(id);
-        if (company == null) return NotFound();
-
-        company.IsActive = true;
-        company.UpdatedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
-
-        return Ok(new { message = "Société activée" });
+        var found = await _mediator.Send(new ChangeCompanyStatusCommand(id, true));
+        return found ? Ok(new { message = "Société activée" }) : NotFound();
     }
 
     [HttpDelete("company/{id}")]
     public async Task<ActionResult> DeleteCompany(int id)
     {
-        var company = await _context.Societes.FindAsync(id);
-        if (company == null) return NotFound();
-
-        _context.Societes.Remove(company);
-        await _context.SaveChangesAsync();
-
-        return Ok(new { message = "Société supprimée" });
+        var found = await _mediator.Send(new DeleteCompanyCommand(id));
+        return found ? Ok(new { message = "Société supprimée" }) : NotFound();
     }
 
     [HttpGet("company/{companyId}/users")]
