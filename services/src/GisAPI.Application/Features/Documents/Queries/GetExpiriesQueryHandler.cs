@@ -8,7 +8,7 @@ namespace GisAPI.Application.Features.Documents.Queries;
 public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, PaginatedList<VehicleExpiryDto>>
 {
     private readonly IGisDbContext _context;
-    private static readonly string[] DocumentTypes = { "insurance", "technical_inspection", "tax", "registration", "transport_permit" };
+    private static readonly string[] DocumentTypes = { "insurance", "technical_inspection", "tax", "registration", "transport_permit", "driver_permit" };
 
     public GetExpiriesQueryHandler(IGisDbContext context)
     {
@@ -33,6 +33,39 @@ public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, Paginat
         {
             var vehicleExpiries = GetVehicleExpiries(vehicle, today);
             expiries.AddRange(vehicleExpiries);
+        }
+
+        // Add driver permit expiries (from users with PermitExpiry)
+        if (!request.VehicleId.HasValue)
+        {
+            var drivers = await _context.Users
+                .AsNoTracking()
+                .Where(u => u.PermitExpiry != null && u.EmployeeRole == "driver")
+                .ToListAsync(cancellationToken);
+
+            foreach (var driver in drivers)
+            {
+                var daysUntil = (int)(driver.PermitExpiry!.Value.Date - today).TotalDays;
+                var status = driver.PermitExpiry.Value.Date < today ? "expired"
+                    : daysUntil <= 30 ? "expiring_soon"
+                    : "ok";
+
+                // Find the vehicle assigned to this driver (if any)
+                var assignedVehicle = vehicles.FirstOrDefault(v => v.AssignedDriverId == driver.Id);
+
+                expiries.Add(new VehicleExpiryDto(
+                    assignedVehicle?.Id ?? 0,
+                    $"{driver.FirstName} {driver.LastName}".Trim(),
+                    driver.PermitType != null ? $"Permis {driver.PermitType}" : "Permis",
+                    "driver_permit",
+                    driver.PermitExpiry,
+                    status,
+                    daysUntil,
+                    null,
+                    null,
+                    driver.PermitNumber
+                ));
+            }
         }
 
         // Filter by document type

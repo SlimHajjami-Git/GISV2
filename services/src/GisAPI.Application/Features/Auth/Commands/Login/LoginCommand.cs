@@ -23,6 +23,7 @@ public record UserDto(
     bool IsSystemAdmin,
     int CompanyId,
     string CompanyName,
+    string? CompanyType,
     Dictionary<string, object>? Permissions,
     SubscriptionFeaturesDto? SubscriptionFeatures,
     int[]? AssignedVehicleIds = null

@@ -151,6 +151,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResp
                 adminRole.IsSystemAdmin,
                 user.CompanyId,
                 societe.Name,
+                societe.Type,
                 adminRole.Permissions,
                 subscriptionFeatures
             )

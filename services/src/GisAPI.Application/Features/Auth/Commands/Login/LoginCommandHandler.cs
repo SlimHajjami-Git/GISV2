@@ -101,6 +101,7 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
                 user.Role?.IsSystemAdmin ?? false,
                 user.CompanyId,
                 user.Societe?.Name ?? "",
+                user.Societe?.Type,
                 user.Role?.Permissions,
                 subscriptionFeatures,
                 assignedVehicleIds

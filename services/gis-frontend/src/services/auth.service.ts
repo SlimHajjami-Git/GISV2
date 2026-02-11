@@ -12,6 +12,7 @@ export interface AuthUser {
   permissions: Record<string, any>;  // Changed to object to preserve module permissions
   companyId: string;
   companyName: string;
+  companyType?: string;
   isCompanyAdmin: boolean;
   isSystemAdmin: boolean;
   subscriptionFeatures: SubscriptionFeatures | null;
@@ -33,6 +34,7 @@ export interface AuthResponse {
     isSystemAdmin: boolean;
     companyId: number;
     companyName: string;
+    companyType?: string;
     permissions: Record<string, any>;
     subscriptionFeatures: SubscriptionFeatures | null;
     assignedVehicleIds: number[] | null;
@@ -70,6 +72,7 @@ export class AuthService {
           permissions: parsed.permissions || [],
           companyId: parsed.companyId?.toString() || '',
           companyName: parsed.companyName || '',
+          companyType: parsed.companyType || '',
           isCompanyAdmin: parsed.isCompanyAdmin ?? false,
           isSystemAdmin: parsed.isSystemAdmin ?? false,
           subscriptionFeatures: parsed.subscriptionFeatures ?? null,
@@ -93,6 +96,7 @@ export class AuthService {
         permissions: { all: true },  // Object format for permissions
         companyId: '1',
         companyName: 'Demo Company',
+        companyType: 'transport',
         isCompanyAdmin: true,
         isSystemAdmin: true,
         assignedVehicleIds: null,
@@ -158,6 +162,7 @@ export class AuthService {
           permissions: response.user.permissions || {},  // Keep original permissions object
           companyId: response.user.companyId.toString(),
           companyName: response.user.companyName,
+          companyType: response.user.companyType || '',
           isCompanyAdmin: response.user.isCompanyAdmin,
           isSystemAdmin: response.user.isSystemAdmin,
           subscriptionFeatures: response.user.subscriptionFeatures,
