@@ -676,6 +676,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   isTemperatureHigh(vehicle: any): boolean {
+    if (!vehicle.ignitionOn) return false;
     const stats = this.getVehicleStats(vehicle);
     return stats?.temperature != null && stats.temperature >= 90;
   }

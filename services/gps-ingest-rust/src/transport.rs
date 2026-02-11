@@ -375,7 +375,7 @@ async fn process_single_frame(
 
                 // Ignition-off throttling: when vehicle is stopped (ignition off + slow speed),
                 // only store one position every 30 minutes to reduce database bloat
-                // This replaces the old "duplicate immobile sample" logic
+                // IMPORTANT: Always allow ignition state changes through (ON→OFF or OFF→ON)
                 const STOPPED_SPEED_THRESHOLD_KPH: f64 = 20.0;
                 const STOPPED_MIN_INTERVAL_SECS: i64 = 30 * 60; // 30 minutes
                 
@@ -383,21 +383,30 @@ async fn process_single_frame(
                     // Only apply throttling when ignition is OFF and speed is low
                     if !frame.ignition_on && frame.speed_kph < STOPPED_SPEED_THRESHOLD_KPH {
                         if let Some(last_position) = database.get_last_position(device_id).await? {
-                            // Compare GPS frame timestamps (both are in GPS local time, timezone-consistent)
-                            // Using Utc::now() caused false rejections due to GPS time being UTC+1 stored as UTC
-                            let seconds_since_last_stored =
-                                (frame.recorded_at - last_position.recorded_at).num_seconds();
-                            
-                            // Skip if less than 15 minutes of GPS time since last stored position
-                            if seconds_since_last_stored >= 0 && seconds_since_last_stored < STOPPED_MIN_INTERVAL_SECS {
+                            // Never throttle ignition state changes (vehicle just stopped or started)
+                            let ignition_changed = last_position.ignition_on != frame.ignition_on;
+                            if ignition_changed {
                                 info!(
                                     device_id,
-                                    seconds_since_last = seconds_since_last_stored,
-                                    speed_kph = frame.speed_kph,
-                                    min_interval_secs = STOPPED_MIN_INTERVAL_SECS,
-                                    "Frame skipped: ignition-off throttling (30 min interval not reached)"
+                                    ignition_on = frame.ignition_on,
+                                    "Ignition state changed - bypassing throttle"
                                 );
-                                return Ok(());
+                            } else {
+                                // Compare GPS frame timestamps (both are in GPS local time, timezone-consistent)
+                                let seconds_since_last_stored =
+                                    (frame.recorded_at - last_position.recorded_at).num_seconds();
+                                
+                                // Skip if less than 30 minutes of GPS time since last stored position
+                                if seconds_since_last_stored >= 0 && seconds_since_last_stored < STOPPED_MIN_INTERVAL_SECS {
+                                    info!(
+                                        device_id,
+                                        seconds_since_last = seconds_since_last_stored,
+                                        speed_kph = frame.speed_kph,
+                                        min_interval_secs = STOPPED_MIN_INTERVAL_SECS,
+                                        "Frame skipped: ignition-off throttling (30 min interval not reached)"
+                                    );
+                                    return Ok(());
+                                }
                             }
                         }
                     }
