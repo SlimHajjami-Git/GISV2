@@ -221,6 +221,16 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         vehicle.ignitionOn = update.ignitionOn;
         (vehicle as any).lastCommunication = update.timestamp;
 
+        // Keep stats object in sync with live data
+        if (vehicle.stats) {
+          vehicle.stats = {
+            ...vehicle.stats,
+            currentSpeed: update.speedKph || 0,
+            isMoving: update.isMoving,
+            isStopped: !update.isMoving
+          };
+        }
+
         // Update the marker on the map with smooth animation
         this.updateSingleVehicleMarker(vehicle);
         

@@ -101,20 +101,21 @@ public class VehiclesController : ControllerBase
                         // Only use cache if it's more recent than DB position
                         if (vehicle.LastPosition == null || cached.CachedAt > vehicle.LastPosition.RecordedAt)
                         {
-                            // Update with cached data using Application DTO
+                            // Preserve DB values for fields Redis doesn't store
+                            var dbPos = vehicle.LastPosition;
                             var updatedPosition = new GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions.PositionDto(
-                                0, // ID not available from cache
+                                dbPos?.Id ?? 0,
                                 cached.Latitude,
                                 cached.Longitude,
                                 cached.IgnitionOn ? Math.Round(cached.SpeedKph) : 0,
                                 cached.HeadingDeg,
                                 cached.IgnitionOn,
                                 cached.RecordedAt,
-                                cached.FuelRaw,
-                                null, // Temperature not in cache
-                                null, // Battery not in cache
-                                null, // Address not in cache
-                                null  // Odometer not in cache
+                                cached.FuelRaw ?? dbPos?.FuelRaw,
+                                dbPos?.TemperatureC,
+                                dbPos?.BatteryLevel,
+                                dbPos?.Address,
+                                dbPos?.OdometerKm
                             );
                             
                             // Create updated vehicle with cached position
