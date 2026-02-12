@@ -49,7 +49,28 @@ public class RabbitMqConsumerService : BackgroundService
             _connection = await factory.CreateConnectionAsync(stoppingToken);
             _channel = await _connection.CreateChannelAsync(cancellationToken: stoppingToken);
 
-            // Declare exchanges first
+            // Declare Dead Letter Exchange + Queue
+            await _channel.ExchangeDeclareAsync(
+                exchange: _settings.DeadLetterExchange,
+                type: ExchangeType.Fanout,
+                durable: true,
+                autoDelete: false,
+                cancellationToken: stoppingToken);
+
+            await _channel.QueueDeclareAsync(
+                queue: _settings.DeadLetterQueue,
+                durable: true,
+                exclusive: false,
+                autoDelete: false,
+                cancellationToken: stoppingToken);
+
+            await _channel.QueueBindAsync(
+                queue: _settings.DeadLetterQueue,
+                exchange: _settings.DeadLetterExchange,
+                routingKey: "",
+                cancellationToken: stoppingToken);
+
+            // Declare main exchanges
             await _channel.ExchangeDeclareAsync(
                 exchange: _settings.GpsExchange,
                 type: ExchangeType.Topic,
@@ -64,12 +85,19 @@ public class RabbitMqConsumerService : BackgroundService
                 autoDelete: false,
                 cancellationToken: stoppingToken);
 
-            // Declare queues and bind to exchanges
+            // Queue args: route rejected messages to DLX
+            var queueArgs = new Dictionary<string, object?>
+            {
+                { "x-dead-letter-exchange", _settings.DeadLetterExchange }
+            };
+
+            // Declare queues with DLX and bind to exchanges
             await _channel.QueueDeclareAsync(
                 queue: _settings.GpsPositionsQueue,
                 durable: true,
                 exclusive: false,
                 autoDelete: false,
+                arguments: queueArgs,
                 cancellationToken: stoppingToken);
 
             await _channel.QueueBindAsync(
@@ -83,6 +111,7 @@ public class RabbitMqConsumerService : BackgroundService
                 durable: true,
                 exclusive: false,
                 autoDelete: false,
+                arguments: queueArgs,
                 cancellationToken: stoppingToken);
 
             await _channel.QueueBindAsync(
@@ -90,6 +119,9 @@ public class RabbitMqConsumerService : BackgroundService
                 exchange: _settings.AlertsExchange,
                 routingKey: "",
                 cancellationToken: stoppingToken);
+
+            // Set prefetch to avoid overwhelming the consumer
+            await _channel.BasicQosAsync(0, 50, false, stoppingToken);
 
             // Set up consumer for GPS positions
             var gpsConsumer = new AsyncEventingBasicConsumer(_channel);
@@ -119,8 +151,22 @@ public class RabbitMqConsumerService : BackgroundService
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error processing GPS message");
-                    await _channel.BasicNackAsync(ea.DeliveryTag, false, true, stoppingToken);
+                    var retryCount = GetRetryCount(ea.BasicProperties);
+                    if (retryCount >= _settings.MaxRetries)
+                    {
+                        _logger.LogError(ex,
+                            "GPS message failed after {MaxRetries} retries, sending to DLQ. DeliveryTag={DeliveryTag}",
+                            _settings.MaxRetries, ea.DeliveryTag);
+                        // Reject without requeue → goes to DLX → DLQ
+                        await _channel.BasicNackAsync(ea.DeliveryTag, false, false, stoppingToken);
+                    }
+                    else
+                    {
+                        _logger.LogWarning(ex,
+                            "GPS message processing failed (attempt {Attempt}/{MaxRetries}), requeuing. DeliveryTag={DeliveryTag}",
+                            retryCount + 1, _settings.MaxRetries, ea.DeliveryTag);
+                        await _channel.BasicNackAsync(ea.DeliveryTag, false, true, stoppingToken);
+                    }
                 }
             };
 
@@ -175,6 +221,23 @@ public class RabbitMqConsumerService : BackgroundService
         {
             _logger.LogError(ex, "Error broadcasting position for device {DeviceUid}", msg.DeviceUid);
         }
+    }
+
+    private static int GetRetryCount(IReadOnlyBasicProperties properties)
+    {
+        if (properties.Headers == null || !properties.Headers.TryGetValue("x-death", out var deathObj))
+            return 0;
+
+        if (deathObj is List<object> deathList && deathList.Count > 0)
+        {
+            if (deathList[0] is Dictionary<string, object> deathEntry &&
+                deathEntry.TryGetValue("count", out var countObj))
+            {
+                return Convert.ToInt32(countObj);
+            }
+        }
+
+        return 0;
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

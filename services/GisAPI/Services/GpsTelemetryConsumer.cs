@@ -80,10 +80,18 @@ public class GpsTelemetryConsumer : BackgroundService
 
                 await _channel.ExchangeDeclareAsync(exchange, ExchangeType.Topic, durable: true, cancellationToken: stoppingToken);
                 
-                // Configure queue with TTL: messages expire after 5 minutes (300000ms)
+                // Configure queue with TTL and Dead Letter Exchange
+                var dlxExchange = _configuration["RabbitMQ:DeadLetterExchange"] ?? "gis.dlx";
+                var dlqQueue = _configuration["RabbitMQ:DeadLetterQueue"] ?? "gis.dead-letters";
+
+                await _channel.ExchangeDeclareAsync(dlxExchange, ExchangeType.Fanout, durable: true, cancellationToken: stoppingToken);
+                await _channel.QueueDeclareAsync(dlqQueue, durable: true, exclusive: false, autoDelete: false, cancellationToken: stoppingToken);
+                await _channel.QueueBindAsync(dlqQueue, dlxExchange, "", cancellationToken: stoppingToken);
+
                 var queueArgs = new Dictionary<string, object?>
                 {
-                    { "x-message-ttl", 300000 } // 5 minutes in milliseconds
+                    { "x-message-ttl", 300000 },
+                    { "x-dead-letter-exchange", dlxExchange }
                 };
                 await _channel.QueueDeclareAsync(queue, durable: true, exclusive: false, autoDelete: false, arguments: queueArgs, cancellationToken: stoppingToken);
                 await _channel.QueueBindAsync(queue, exchange, routingKey, cancellationToken: stoppingToken);
@@ -109,6 +117,8 @@ public class GpsTelemetryConsumer : BackgroundService
         var queue = _configuration["RabbitMQ:Queue"] ?? "gps.telemetry.dotnet";
         var consumer = new AsyncEventingBasicConsumer(_channel);
 
+        var maxRetries = int.Parse(_configuration["RabbitMQ:MaxRetries"] ?? "3");
+
         consumer.ReceivedAsync += async (model, ea) =>
         {
             try
@@ -122,8 +132,21 @@ public class GpsTelemetryConsumer : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing telemetry message");
-                await _channel.BasicNackAsync(ea.DeliveryTag, false, true);
+                var retryCount = GetRetryCount(ea.BasicProperties);
+                if (retryCount >= maxRetries)
+                {
+                    _logger.LogError(ex,
+                        "Telemetry message failed after {MaxRetries} retries, sending to DLQ. DeliveryTag={DeliveryTag}",
+                        maxRetries, ea.DeliveryTag);
+                    await _channel.BasicNackAsync(ea.DeliveryTag, false, false);
+                }
+                else
+                {
+                    _logger.LogWarning(ex,
+                        "Telemetry message failed (attempt {Attempt}/{MaxRetries}), requeuing. DeliveryTag={DeliveryTag}",
+                        retryCount + 1, maxRetries, ea.DeliveryTag);
+                    await _channel.BasicNackAsync(ea.DeliveryTag, false, true);
+                }
             }
         };
 
@@ -207,6 +230,23 @@ public class GpsTelemetryConsumer : BackgroundService
         {
             _logger.LogError(ex, "Error processing telemetry message: {Message}", message);
         }
+    }
+
+    private static int GetRetryCount(IReadOnlyBasicProperties properties)
+    {
+        if (properties.Headers == null || !properties.Headers.TryGetValue("x-death", out var deathObj))
+            return 0;
+
+        if (deathObj is List<object> deathList && deathList.Count > 0)
+        {
+            if (deathList[0] is Dictionary<string, object> deathEntry &&
+                deathEntry.TryGetValue("count", out var countObj))
+            {
+                return Convert.ToInt32(countObj);
+            }
+        }
+
+        return 0;
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

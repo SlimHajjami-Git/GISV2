@@ -539,6 +539,124 @@ public class AdminController : ControllerBase
         // In production, update the estimate in the database
         return Ok(new { message = $"Statut du devis {id} mis à jour: {request.Status}" });
     }
+
+    // ==================== DEAD LETTER QUEUE ====================
+
+    [HttpGet("dlq/messages")]
+    public async Task<ActionResult> GetDeadLetterMessages([FromQuery] int limit = 50)
+    {
+        try
+        {
+            var factory = new RabbitMQ.Client.ConnectionFactory
+            {
+                HostName = _configuration["RabbitMQ:Host"] ?? _configuration["RabbitMQ:HostName"] ?? "localhost",
+                Port = int.Parse(_configuration["RabbitMQ:Port"] ?? "5672"),
+                UserName = _configuration["RabbitMQ:Username"] ?? _configuration["RabbitMQ:UserName"] ?? "guest",
+                Password = _configuration["RabbitMQ:Password"] ?? "guest"
+            };
+
+            using var connection = await factory.CreateConnectionAsync();
+            using var channel = await connection.CreateChannelAsync();
+
+            var dlqName = _configuration["RabbitMQ:DeadLetterQueue"] ?? "gis.dead-letters";
+            var queueInfo = await channel.QueueDeclarePassiveAsync(dlqName);
+
+            var messages = new List<object>();
+            for (int i = 0; i < limit; i++)
+            {
+                var result = await channel.BasicGetAsync(dlqName, autoAck: false);
+                if (result == null) break;
+
+                var body = System.Text.Encoding.UTF8.GetString(result.Body.ToArray());
+                var deathInfo = result.BasicProperties.Headers != null &&
+                    result.BasicProperties.Headers.TryGetValue("x-death", out var xDeath)
+                    ? xDeath : null;
+
+                messages.Add(new
+                {
+                    deliveryTag = result.DeliveryTag,
+                    body,
+                    exchange = result.Exchange,
+                    routingKey = result.RoutingKey,
+                    redelivered = result.Redelivered,
+                    xDeath = deathInfo?.ToString()
+                });
+
+                // Reject back without requeue so it stays in DLQ
+                await channel.BasicNackAsync(result.DeliveryTag, false, true);
+            }
+
+            return Ok(new
+            {
+                queueName = dlqName,
+                messageCount = queueInfo.MessageCount,
+                messages
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    [HttpDelete("dlq/purge")]
+    public async Task<ActionResult> PurgeDeadLetterQueue()
+    {
+        try
+        {
+            var factory = new RabbitMQ.Client.ConnectionFactory
+            {
+                HostName = _configuration["RabbitMQ:Host"] ?? _configuration["RabbitMQ:HostName"] ?? "localhost",
+                Port = int.Parse(_configuration["RabbitMQ:Port"] ?? "5672"),
+                UserName = _configuration["RabbitMQ:Username"] ?? _configuration["RabbitMQ:UserName"] ?? "guest",
+                Password = _configuration["RabbitMQ:Password"] ?? "guest"
+            };
+
+            using var connection = await factory.CreateConnectionAsync();
+            using var channel = await connection.CreateChannelAsync();
+
+            var dlqName = _configuration["RabbitMQ:DeadLetterQueue"] ?? "gis.dead-letters";
+            var purged = await channel.QueuePurgeAsync(dlqName);
+
+            return Ok(new { queueName = dlqName, purgedMessages = purged });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("dlq/stats")]
+    public async Task<ActionResult> GetDeadLetterStats()
+    {
+        try
+        {
+            var factory = new RabbitMQ.Client.ConnectionFactory
+            {
+                HostName = _configuration["RabbitMQ:Host"] ?? _configuration["RabbitMQ:HostName"] ?? "localhost",
+                Port = int.Parse(_configuration["RabbitMQ:Port"] ?? "5672"),
+                UserName = _configuration["RabbitMQ:Username"] ?? _configuration["RabbitMQ:UserName"] ?? "guest",
+                Password = _configuration["RabbitMQ:Password"] ?? "guest"
+            };
+
+            using var connection = await factory.CreateConnectionAsync();
+            using var channel = await connection.CreateChannelAsync();
+
+            var dlqName = _configuration["RabbitMQ:DeadLetterQueue"] ?? "gis.dead-letters";
+            var queueInfo = await channel.QueueDeclarePassiveAsync(dlqName);
+
+            return Ok(new
+            {
+                queueName = dlqName,
+                messageCount = queueInfo.MessageCount,
+                consumerCount = queueInfo.ConsumerCount
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
 }
 
 // DTOs

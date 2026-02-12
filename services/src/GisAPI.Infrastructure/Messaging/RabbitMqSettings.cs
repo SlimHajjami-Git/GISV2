@@ -19,6 +19,11 @@ public class RabbitMqSettings
     public string GpsPositionsQueue { get; set; } = "gis.gps.positions";
     public string AlertsQueue { get; set; } = "gis.alerts.notifications";
     public string EventsQueue { get; set; } = "gis.events.all";
+    
+    // Dead Letter
+    public string DeadLetterExchange { get; set; } = "gis.dlx";
+    public string DeadLetterQueue { get; set; } = "gis.dead-letters";
+    public int MaxRetries { get; set; } = 3;
 }
 
 
