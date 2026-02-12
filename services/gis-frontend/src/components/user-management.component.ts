@@ -268,111 +268,143 @@ interface VehicleOption {
                 </svg>
               </button>
             </div>
+
+            <!-- Step Tabs -->
+            <div class="step-tabs">
+              <button class="step-tab" [class.active]="userModalStep === 1" (click)="userModalStep = 1">
+                <span class="step-num">1</span> Général
+              </button>
+              <button class="step-tab" [class.active]="userModalStep === 2" (click)="userModalStep = 2" *ngIf="userForm.employeeRole === 'driver'">
+                <span class="step-num">2</span> Chauffeur
+              </button>
+              <button class="step-tab" [class.active]="userModalStep === 3" (click)="userModalStep = 3" *ngIf="!isSelectedRoleAdmin()">
+                <span class="step-num">{{ userForm.employeeRole === 'driver' ? '3' : '2' }}</span> Véhicules
+              </button>
+            </div>
+
             <div class="modal-body">
-              <div class="form-section">
-                <div class="form-grid">
-                  <div class="form-group">
-                    <label>Prénom *</label>
-                    <input type="text" [(ngModel)]="userForm.firstName" placeholder="Prénom">
-                  </div>
-                  <div class="form-group">
-                    <label>Email *</label>
-                    <input type="email" [(ngModel)]="userForm.email" placeholder="email@exemple.com">
-                  </div>
-                  <div class="form-group">
-                    <label>Nom *</label>
-                    <input type="text" [(ngModel)]="userForm.lastName" placeholder="Nom">
-                  </div>
-                  <div class="form-group">
-                    <label>Téléphone</label>
-                    <input type="tel" [(ngModel)]="userForm.phone" placeholder="+216 XX XXX XXX">
-                  </div>
-                  <div class="form-group" *ngIf="!editingUser">
-                    <label>Mot de passe *</label>
-                    <input type="password" [(ngModel)]="userForm.password" placeholder="••••••••">
-                  </div>
-                  <div class="form-group">
-                    <label>Rôle *</label>
-                    <select [(ngModel)]="userForm.roleId">
-                      <option *ngFor="let role of roles" [ngValue]="role.id">{{ role.name }}</option>
-                    </select>
-                  </div>
-                  <div class="form-group" *ngIf="editingUser">
-                    <label>Statut</label>
-                    <select [(ngModel)]="userForm.status">
-                      <option value="active">Actif</option>
-                      <option value="inactive">Inactif</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-              <!-- Driver Section -->
-              <div class="form-section">
-                <div class="form-group">
-                  <label>Type d'employé</label>
-                  <select [(ngModel)]="userForm.employeeRole">
-                    <option value="">Utilisateur standard</option>
-                    <option value="driver">Chauffeur</option>
-                  </select>
-                </div>
-              </div>
-              <div class="form-section" *ngIf="userForm.employeeRole === 'driver'">
-                <h3 class="section-title">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-                  Permis de conduire
-                </h3>
-                <div class="form-grid">
-                  <div class="form-group">
-                    <label>N° Permis *</label>
-                    <input type="text" [(ngModel)]="userForm.permitNumber" placeholder="Ex: 123456">
-                  </div>
-                  <div class="form-group">
-                    <label>Catégorie *</label>
-                    <select [(ngModel)]="userForm.permitType">
-                      <option value="">Sélectionner</option>
-                      <option value="B">B - Véhicule léger</option>
-                      <option value="C">C - Poids lourd</option>
-                      <option value="D">D - Transport en commun</option>
-                      <option value="CE">CE - Super poids lourd</option>
-                      <option value="DE">DE - Transport + remorque</option>
-                    </select>
-                  </div>
-                  <div class="form-group">
-                    <label>Date d'expiration *</label>
-                    <input type="date" [(ngModel)]="userForm.permitExpiry">
-                  </div>
-                  <div class="form-group">
-                    <label>N° CIN</label>
-                    <input type="text" [(ngModel)]="userForm.cin" placeholder="Ex: 12345678">
-                  </div>
-                  <div class="form-group">
-                    <label>Date de naissance</label>
-                    <input type="date" [(ngModel)]="userForm.dateOfBirth">
-                  </div>
-                  <div class="form-group">
-                    <label>Date d'embauche</label>
-                    <input type="date" [(ngModel)]="userForm.hireDate">
+              <!-- Step 1: Général -->
+              <div *ngIf="userModalStep === 1">
+                <div class="form-section">
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label>Prénom *</label>
+                      <input type="text" [(ngModel)]="userForm.firstName" placeholder="Prénom">
+                    </div>
+                    <div class="form-group">
+                      <label>Nom *</label>
+                      <input type="text" [(ngModel)]="userForm.lastName" placeholder="Nom">
+                    </div>
+                    <div class="form-group">
+                      <label>Email *</label>
+                      <input type="email" [(ngModel)]="userForm.email" placeholder="email@exemple.com">
+                    </div>
+                    <div class="form-group">
+                      <label>Téléphone</label>
+                      <input type="tel" [(ngModel)]="userForm.phone" placeholder="+216 XX XXX XXX">
+                    </div>
+                    <div class="form-group" *ngIf="!editingUser">
+                      <label>Mot de passe *</label>
+                      <input type="password" [(ngModel)]="userForm.password" placeholder="••••••••">
+                    </div>
+                    <div class="form-group">
+                      <label>Rôle *</label>
+                      <select [(ngModel)]="userForm.roleId">
+                        <option *ngFor="let role of roles" [ngValue]="role.id">{{ role.name }}</option>
+                      </select>
+                    </div>
+                    <div class="form-group" *ngIf="editingUser">
+                      <label>Statut</label>
+                      <select [(ngModel)]="userForm.status">
+                        <option value="active">Actif</option>
+                        <option value="inactive">Inactif</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>Type d'employé</label>
+                      <select [(ngModel)]="userForm.employeeRole" (ngModelChange)="onEmployeeRoleChange()">
+                        <option value="">Utilisateur standard</option>
+                        <option value="driver">Chauffeur</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
               </div>
-              <div class="form-section" *ngIf="!isSelectedRoleAdmin()">
-                <h3 class="section-title">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-                  Véhicules assignés
-                </h3>
-                <p class="section-hint">Sélectionnez les véhicules que cet utilisateur pourra superviser. Les administrateurs ont accès à tous les véhicules.</p>
-                <div class="vehicle-checkboxes">
-                  <label class="vehicle-check" *ngFor="let v of availableVehicles">
-                    <input type="checkbox" [checked]="isVehicleSelected(v.id)" (change)="toggleVehicle(v.id)">
-                    <span class="check-label">{{ v.name }} <span class="plate-tag">{{ v.plate }}</span></span>
-                  </label>
-                  <div class="empty-hint" *ngIf="availableVehicles.length === 0">Aucun véhicule disponible</div>
+
+              <!-- Step 2: Chauffeur (only if driver) -->
+              <div *ngIf="userModalStep === 2 && userForm.employeeRole === 'driver'">
+                <div class="form-section">
+                  <h3 class="section-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                    Permis de conduire
+                  </h3>
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label>N° Permis *</label>
+                      <input type="text" [(ngModel)]="userForm.permitNumber" placeholder="Ex: 123456">
+                    </div>
+                    <div class="form-group">
+                      <label>Catégorie *</label>
+                      <select [(ngModel)]="userForm.permitType">
+                        <option value="">Sélectionner</option>
+                        <option value="B">B - Véhicule léger</option>
+                        <option value="C">C - Poids lourd</option>
+                        <option value="D">D - Transport en commun</option>
+                        <option value="CE">CE - Super poids lourd</option>
+                        <option value="DE">DE - Transport + remorque</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>Date d'expiration *</label>
+                      <input type="date" [(ngModel)]="userForm.permitExpiry">
+                    </div>
+                    <div class="form-group">
+                      <label>N° CIN</label>
+                      <input type="text" [(ngModel)]="userForm.cin" placeholder="Ex: 12345678">
+                    </div>
+                    <div class="form-group">
+                      <label>Date de naissance</label>
+                      <input type="date" [(ngModel)]="userForm.dateOfBirth">
+                    </div>
+                    <div class="form-group">
+                      <label>Date d'embauche</label>
+                      <input type="date" [(ngModel)]="userForm.hireDate">
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Step 3: Véhicules -->
+              <div *ngIf="userModalStep === 3 && !isSelectedRoleAdmin()">
+                <div class="form-section">
+                  <h3 class="section-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                    Véhicules assignés
+                  </h3>
+                  <p class="section-hint">Sélectionnez les véhicules que cet utilisateur pourra superviser. Les administrateurs ont accès à tous les véhicules.</p>
+                  <div class="vehicle-checkboxes">
+                    <label class="vehicle-check" *ngFor="let v of availableVehicles">
+                      <input type="checkbox" [checked]="isVehicleSelected(v.id)" (change)="toggleVehicle(v.id)">
+                      <span class="check-label">{{ v.name }} <span class="plate-tag">{{ v.plate }}</span></span>
+                    </label>
+                    <div class="empty-hint" *ngIf="availableVehicles.length === 0">Aucun véhicule disponible</div>
+                  </div>
                 </div>
               </div>
             </div>
+
             <div class="modal-footer">
+              <button class="btn-secondary" *ngIf="userModalStep > 1" (click)="prevUserStep()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                Précédent
+              </button>
+              <div style="flex:1"></div>
               <button class="btn-secondary" (click)="closeUserModal()">Annuler</button>
-              <button class="btn-primary" (click)="saveUser()">
+              <button class="btn-primary" *ngIf="hasNextUserStep()" (click)="nextUserStep()">
+                Suivant
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+              <button class="btn-primary" *ngIf="!hasNextUserStep()" (click)="saveUser()">
                 {{ editingUser ? 'Enregistrer' : 'Créer' }}
               </button>
             </div>
@@ -1148,6 +1180,57 @@ interface VehicleOption {
       color: #6b7280;
     }
 
+    .step-tabs {
+      display: flex;
+      border-bottom: 1px solid #e5e7eb;
+      background: #f9fafb;
+      padding: 0 24px;
+      gap: 0;
+    }
+
+    .step-tab {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border: none;
+      background: none;
+      font-size: 13px;
+      font-weight: 500;
+      color: #9ca3af;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .step-tab:hover {
+      color: #6b7280;
+    }
+
+    .step-tab.active {
+      color: #6366f1;
+      border-bottom-color: #6366f1;
+    }
+
+    .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #e5e7eb;
+      color: #6b7280;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .step-tab.active .step-num {
+      background: #6366f1;
+      color: white;
+    }
+
     .modal-header {
       display: flex;
       justify-content: space-between;
@@ -1545,6 +1628,7 @@ export class UserManagementComponent implements OnInit {
   // User Modal
   showUserModal = false;
   editingUser: User | null = null;
+  userModalStep = 1;
   userForm = {
     firstName: '',
     lastName: '',
@@ -1860,12 +1944,49 @@ export class UserManagementComponent implements OnInit {
         hireDate: ''
       };
     }
+    this.userModalStep = 1;
     this.showUserModal = true;
   }
 
   closeUserModal() {
     this.showUserModal = false;
     this.editingUser = null;
+    this.userModalStep = 1;
+  }
+
+  onEmployeeRoleChange() {
+    if (this.userForm.employeeRole !== 'driver' && this.userModalStep === 2) {
+      this.userModalStep = 1;
+    }
+  }
+
+  private getUserSteps(): number[] {
+    const steps = [1];
+    if (this.userForm.employeeRole === 'driver') steps.push(2);
+    if (!this.isSelectedRoleAdmin()) steps.push(3);
+    return steps;
+  }
+
+  hasNextUserStep(): boolean {
+    const steps = this.getUserSteps();
+    const currentIdx = steps.indexOf(this.userModalStep);
+    return currentIdx < steps.length - 1;
+  }
+
+  nextUserStep() {
+    const steps = this.getUserSteps();
+    const currentIdx = steps.indexOf(this.userModalStep);
+    if (currentIdx < steps.length - 1) {
+      this.userModalStep = steps[currentIdx + 1];
+    }
+  }
+
+  prevUserStep() {
+    const steps = this.getUserSteps();
+    const currentIdx = steps.indexOf(this.userModalStep);
+    if (currentIdx > 0) {
+      this.userModalStep = steps[currentIdx - 1];
+    }
   }
 
   saveUser() {
