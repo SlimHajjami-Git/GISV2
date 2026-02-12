@@ -9,5 +9,12 @@ public record CreateUserCommand(
     string? Phone,
     string Password,
     int RoleId,
-    int[]? AssignedVehicleIds = null
+    int[]? AssignedVehicleIds = null,
+    string? EmployeeRole = null,
+    string? PermitNumber = null,
+    string? PermitType = null,
+    DateTime? PermitExpiry = null,
+    string? CIN = null,
+    DateTime? DateOfBirth = null,
+    DateTime? HireDate = null
 ) : ICommand<UserListDto>;

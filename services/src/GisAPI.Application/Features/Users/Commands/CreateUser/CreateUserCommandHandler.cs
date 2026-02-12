@@ -70,7 +70,14 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
             PasswordHash = _passwordHasher.HashPassword(request.Password),
             RoleId = request.RoleId,
             CompanyId = companyId,
-            Status = "active"
+            Status = "active",
+            EmployeeRole = request.EmployeeRole,
+            PermitNumber = request.PermitNumber,
+            PermitType = request.PermitType,
+            PermitExpiry = request.PermitExpiry,
+            CIN = request.CIN,
+            DateOfBirth = request.DateOfBirth,
+            HireDate = request.HireDate
         };
 
         _context.Users.Add(user);

@@ -44,6 +44,13 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         user.Phone = request.Phone;
         if (!string.IsNullOrEmpty(request.Status))
             user.Status = request.Status;
+        user.EmployeeRole = request.EmployeeRole;
+        user.PermitNumber = request.PermitNumber;
+        user.PermitType = request.PermitType;
+        user.PermitExpiry = request.PermitExpiry;
+        user.CIN = request.CIN;
+        user.DateOfBirth = request.DateOfBirth;
+        user.HireDate = request.HireDate;
         user.UpdatedAt = DateTime.UtcNow;
 
         // Update vehicle assignments if provided

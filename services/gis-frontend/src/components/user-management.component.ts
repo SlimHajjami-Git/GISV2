@@ -306,6 +306,55 @@ interface VehicleOption {
                   </div>
                 </div>
               </div>
+              <!-- Driver Section -->
+              <div class="form-section">
+                <div class="form-group">
+                  <label>Type d'employé</label>
+                  <select [(ngModel)]="userForm.employeeRole">
+                    <option value="">Utilisateur standard</option>
+                    <option value="driver">Chauffeur</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-section" *ngIf="userForm.employeeRole === 'driver'">
+                <h3 class="section-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                  Permis de conduire
+                </h3>
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label>N° Permis *</label>
+                    <input type="text" [(ngModel)]="userForm.permitNumber" placeholder="Ex: 123456">
+                  </div>
+                  <div class="form-group">
+                    <label>Catégorie *</label>
+                    <select [(ngModel)]="userForm.permitType">
+                      <option value="">Sélectionner</option>
+                      <option value="B">B - Véhicule léger</option>
+                      <option value="C">C - Poids lourd</option>
+                      <option value="D">D - Transport en commun</option>
+                      <option value="CE">CE - Super poids lourd</option>
+                      <option value="DE">DE - Transport + remorque</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>Date d'expiration *</label>
+                    <input type="date" [(ngModel)]="userForm.permitExpiry">
+                  </div>
+                  <div class="form-group">
+                    <label>N° CIN</label>
+                    <input type="text" [(ngModel)]="userForm.cin" placeholder="Ex: 12345678">
+                  </div>
+                  <div class="form-group">
+                    <label>Date de naissance</label>
+                    <input type="date" [(ngModel)]="userForm.dateOfBirth">
+                  </div>
+                  <div class="form-group">
+                    <label>Date d'embauche</label>
+                    <input type="date" [(ngModel)]="userForm.hireDate">
+                  </div>
+                </div>
+              </div>
               <div class="form-section" *ngIf="!isSelectedRoleAdmin()">
                 <h3 class="section-title">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -1504,7 +1553,14 @@ export class UserManagementComponent implements OnInit {
     password: '',
     roleId: 0,
     status: 'active',
-    assignedVehicleIds: [] as number[]
+    assignedVehicleIds: [] as number[],
+    employeeRole: '',
+    permitNumber: '',
+    permitType: '',
+    permitExpiry: '',
+    cin: '',
+    dateOfBirth: '',
+    hireDate: ''
   };
   availableVehicles: VehicleOption[] = [];
 
@@ -1775,7 +1831,14 @@ export class UserManagementComponent implements OnInit {
         password: '',
         roleId: user.roleId,
         status: user.status,
-        assignedVehicleIds: [...(user.assignedVehicleIds || [])]
+        assignedVehicleIds: [...(user.assignedVehicleIds || [])],
+        employeeRole: (user as any).employeeRole || '',
+        permitNumber: (user as any).permitNumber || '',
+        permitType: (user as any).permitType || '',
+        permitExpiry: (user as any).permitExpiry ? new Date((user as any).permitExpiry).toISOString().split('T')[0] : '',
+        cin: (user as any).cin || '',
+        dateOfBirth: (user as any).dateOfBirth ? new Date((user as any).dateOfBirth).toISOString().split('T')[0] : '',
+        hireDate: (user as any).hireDate ? new Date((user as any).hireDate).toISOString().split('T')[0] : ''
       };
     } else {
       this.editingUser = null;
@@ -1787,7 +1850,14 @@ export class UserManagementComponent implements OnInit {
         password: '',
         roleId: this.roles.length > 0 ? this.roles[0].id : 0,
         status: 'active',
-        assignedVehicleIds: []
+        assignedVehicleIds: [],
+        employeeRole: '',
+        permitNumber: '',
+        permitType: '',
+        permitExpiry: '',
+        cin: '',
+        dateOfBirth: '',
+        hireDate: ''
       };
     }
     this.showUserModal = true;
@@ -1817,7 +1887,14 @@ export class UserManagementComponent implements OnInit {
         phone: this.userForm.phone,
         roleId: this.userForm.roleId,
         status: this.userForm.status,
-        assignedVehicleIds: this.userForm.assignedVehicleIds
+        assignedVehicleIds: this.userForm.assignedVehicleIds,
+        employeeRole: this.userForm.employeeRole || null,
+        permitNumber: this.userForm.permitNumber || null,
+        permitType: this.userForm.permitType || null,
+        permitExpiry: this.userForm.permitExpiry || null,
+        cin: this.userForm.cin || null,
+        dateOfBirth: this.userForm.dateOfBirth || null,
+        hireDate: this.userForm.hireDate || null
       }).subscribe({
         next: () => {
           this.toast.success('Succès', 'Utilisateur modifié avec succès');
@@ -1837,7 +1914,14 @@ export class UserManagementComponent implements OnInit {
         phone: this.userForm.phone,
         password: this.userForm.password,
         roleId: this.userForm.roleId,
-        assignedVehicleIds: this.userForm.assignedVehicleIds
+        assignedVehicleIds: this.userForm.assignedVehicleIds,
+        employeeRole: this.userForm.employeeRole || null,
+        permitNumber: this.userForm.permitNumber || null,
+        permitType: this.userForm.permitType || null,
+        permitExpiry: this.userForm.permitExpiry || null,
+        cin: this.userForm.cin || null,
+        dateOfBirth: this.userForm.dateOfBirth || null,
+        hireDate: this.userForm.hireDate || null
       }).subscribe({
         next: () => {
           this.toast.success('Succès', 'Utilisateur créé avec succès');
