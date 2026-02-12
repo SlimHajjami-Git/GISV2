@@ -9,6 +9,7 @@ public interface IGisDbContext
     DbSet<Societe> Societes { get; }
     DbSet<Role> Roles { get; }
     DbSet<User> Users { get; }
+    DbSet<Driver> Drivers { get; }
     DbSet<UserSettings> UserSettings { get; }
     DbSet<Vehicle> Vehicles { get; }
     DbSet<VehicleDocument> VehicleDocuments { get; }

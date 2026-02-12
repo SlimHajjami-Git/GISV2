@@ -23,6 +23,7 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<Societe> Societes => Set<Societe>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<Driver> Drivers => Set<Driver>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 

@@ -21,30 +21,28 @@
         <option value="active">Actifs</option>
         <option value="inactive">Inactifs</option>
       </select>
-      <a class="btn-add" routerLink="/users">
+      <button class="btn-add" (click)="openAddPopup()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-          <circle cx="9" cy="7" r="4"/>
-          <line x1="23" y1="11" x2="17" y2="11"/>
-          <line x1="20" y1="8" x2="20" y2="14"/>
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
-        Gérer les utilisateurs
-      </a>
+        Nouveau chauffeur
+      </button>
     </div>
     <div class="employees-grid">
-      @for (employee of employees; track employee.id) {
+      @for (driver of drivers; track driver.id) {
         <div class="employee-card">
           <div class="employee-header">
-            <div class="employee-avatar">{{ (employee.firstName || employee.name || 'E').charAt(0) }}</div>
+            <div class="employee-avatar">{{ (driver.firstName || 'C').charAt(0) }}</div>
             <div class="employee-status">
-              <span class="status-badge" [class.active]="employee.status === 'active'" [class.inactive]="employee.status === 'inactive'">
-                {{ employee.status === 'active' ? 'Actif' : 'Inactif' }}
+              <span class="status-badge" [class.active]="driver.status === 'active'" [class.inactive]="driver.status === 'inactive'">
+                {{ driver.status === 'active' ? 'Actif' : 'Inactif' }}
               </span>
             </div>
           </div>
 
           <div class="employee-body">
-            <h3>{{ employee.name || (employee.firstName + ' ' + employee.lastName) }}</h3>
+            <h3>{{ driver.firstName }} {{ driver.lastName }}</h3>
             <p class="employee-role">Chauffeur</p>
 
             <div class="employee-details">
@@ -53,67 +51,71 @@
                   <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
                   <polyline points="22,6 12,13 2,6"/>
                 </svg>
-                <span>{{ employee.email }}</span>
+                <span>{{ driver.email }}</span>
               </div>
-              <div class="detail-item">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-                </svg>
-                <span>{{ employee.phone }}</span>
-              </div>
+              @if (driver.phone) {
+                <div class="detail-item">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                  </svg>
+                  <span>{{ driver.phone }}</span>
+                </div>
+              }
             </div>
 
             <div class="employee-meta">
-              <div class="meta-item">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                  <line x1="16" y1="2" x2="16" y2="6"/>
-                  <line x1="8" y1="2" x2="8" y2="6"/>
-                  <line x1="3" y1="10" x2="21" y2="10"/>
-                </svg>
-                <span>Embauché le {{ employee.hireDate ? formatDate(employee.hireDate) : 'N/A' }}</span>
-              </div>
-              @if (employee.assignedVehicleName) {
+              @if (driver.hireDate) {
+                <div class="meta-item">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                    <line x1="16" y1="2" x2="16" y2="6"/>
+                    <line x1="8" y1="2" x2="8" y2="6"/>
+                    <line x1="3" y1="10" x2="21" y2="10"/>
+                  </svg>
+                  <span>Embauché le {{ formatDate(driver.hireDate) }}</span>
+                </div>
+              }
+              @if (driver.assignedVehicleName) {
                 <div class="meta-item">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M5 17h-2v-6l2-5h9l4 5v6h-2"/>
                     <circle cx="7" cy="17" r="2"/>
                     <circle cx="17" cy="17" r="2"/>
                   </svg>
-                  <span>{{ employee.assignedVehicleName }} ({{ employee.assignedVehiclePlate }})</span>
+                  <span>{{ driver.assignedVehicleName }} ({{ driver.assignedVehiclePlate }})</span>
                 </div>
               }
-              @if (employee.permitType) {
+              @if (driver.permitType) {
                 <div class="meta-item">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="2" y="5" width="20" height="14" rx="2"/>
                     <line x1="2" y1="10" x2="22" y2="10"/>
                   </svg>
-                  <span>Permis {{ employee.permitType }} {{ employee.permitExpiry ? '- Exp. ' + formatDate(employee.permitExpiry) : '' }}</span>
+                  <span>Permis {{ driver.permitType }} {{ driver.permitExpiry ? '- Exp. ' + formatDate(driver.permitExpiry) : '' }}</span>
                 </div>
               }
-              @if (employee.cin) {
+              @if (driver.cin) {
                 <div class="meta-item">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                     <circle cx="12" cy="7" r="4"/>
                   </svg>
-                  <span>CIN: {{ employee.cin }}</span>
+                  <span>CIN: {{ driver.cin }}</span>
                 </div>
               }
             </div>
           </div>
 
           <div class="employee-footer">
-            <button class="btn-secondary" (click)="openEditPopup(employee)">
+            <button class="btn-secondary" (click)="openEditPopup(driver)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
               </svg>
               Modifier
             </button>
-            <button class="btn-link" type="button" (click)="openDriverDetail(employee); $event.stopPropagation()">Détails</button>
-            <button class="btn-danger" type="button" (click)="deleteEmployee(employee); $event.stopPropagation()">
+            <button class="btn-link" type="button" (click)="openDriverDetail(driver); $event.stopPropagation()">Détails</button>
+            <button class="btn-danger" type="button" (click)="deleteDriver(driver); $event.stopPropagation()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="3 6 5 6 21 6"/>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -128,10 +130,11 @@
 
   <app-employee-popup
     [isOpen]="isPopupOpen"
-    [employee]="selectedEmployee"
+    [driver]="selectedDriver"
     [vehicles]="allVehicles"
+    [users]="allUsers"
     (closed)="closePopup()"
-    (saved)="saveEmployee($event)"
+    (saved)="saveDriver($event)"
   />
 
 </app-layout>

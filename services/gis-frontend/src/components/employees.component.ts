@@ -17,12 +17,12 @@ import { DriverScoreDetailComponent } from './shared/driver-score-detail.compone
   styleUrls: ['./employees.component.css']
 })
 export class EmployeesComponent implements OnInit {
-  employees: Employee[] = [];
-  allEmployees: Employee[] = [];
+  drivers: any[] = [];
+  allDrivers: any[] = [];
   allVehicles: Vehicle[] = [];
-  company: Company | null = null;
+  allUsers: any[] = [];
   isPopupOpen = false;
-  selectedEmployee: Employee | null = null;
+  selectedDriver: any = null;
 
   // Driver Score Detail
   isDetailOpen = false;
@@ -33,7 +33,6 @@ export class EmployeesComponent implements OnInit {
   // Filters
   searchQuery = '';
   filterStatus = '';
-  filterRole = '';
 
   constructor(
     private router: Router,
@@ -49,23 +48,19 @@ export class EmployeesComponent implements OnInit {
       this.router.navigate(['/login']);
       return;
     }
-
-    this.ngZone.run(() => {
-      this.loadEmployees();
-    });
+    this.loadData();
   }
 
-  loadEmployees() {
-    this.apiService.getEmployees().subscribe({
-      next: (employees) => {
+  loadData() {
+    this.apiService.getDrivers().subscribe({
+      next: (drivers) => {
         this.ngZone.run(() => {
-          this.allEmployees = employees;
-          this.employees = [...this.allEmployees];
+          this.allDrivers = drivers;
+          this.drivers = [...this.allDrivers];
           this.cdr.detectChanges();
-          this.appRef.tick();
         });
       },
-      error: (err) => console.error('Error loading employees:', err)
+      error: (err) => console.error('Error loading drivers:', err)
     });
 
     this.apiService.getVehicles().subscribe({
@@ -73,114 +68,96 @@ export class EmployeesComponent implements OnInit {
         this.ngZone.run(() => {
           this.allVehicles = vehicles;
           this.cdr.detectChanges();
-          this.appRef.tick();
         });
       },
       error: (err) => console.error('Error loading vehicles:', err)
     });
-  }
 
-  filterEmployees() {
-    this.employees = this.allEmployees.filter(e => {
-      const fullName = e.name || (e.firstName + ' ' + e.lastName);
-      const matchesSearch = !this.searchQuery || 
-        fullName.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
-        e.email.toLowerCase().includes(this.searchQuery.toLowerCase());
-      const matchesStatus = !this.filterStatus || e.status === this.filterStatus;
-      const matchesRole = !this.filterRole || e.employeeRole === this.filterRole;
-      return matchesSearch && matchesStatus && matchesRole;
+    this.apiService.getCompanyUsers().subscribe({
+      next: (users) => {
+        this.ngZone.run(() => {
+          this.allUsers = users;
+          this.cdr.detectChanges();
+        });
+      },
+      error: (err) => console.error('Error loading users:', err)
     });
   }
 
-  getRoleLabel(role: string): string {
-    const labels: any = {
-      driver: 'Chauffeur',
-      accountant: 'Comptable',
-      hr: 'Ressources Humaines',
-      supervisor: 'Superviseur',
-      other: 'Autre'
-    };
-    return labels[role] || role;
+  filterEmployees() {
+    this.drivers = this.allDrivers.filter(d => {
+      const fullName = (d.firstName || '') + ' ' + (d.lastName || '');
+      const matchesSearch = !this.searchQuery ||
+        fullName.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+        (d.email || '').toLowerCase().includes(this.searchQuery.toLowerCase());
+      const matchesStatus = !this.filterStatus || d.status === this.filterStatus;
+      return matchesSearch && matchesStatus;
+    });
   }
 
-  formatDate(date: Date): string {
+  formatDate(date: any): string {
+    if (!date) return 'N/A';
     return new Date(date).toLocaleDateString('fr-FR');
   }
 
-  navigate(path: string) {
-    this.router.navigate([path]);
-  }
-
-  logout() {
-    this.apiService.logout();
-    this.router.navigate(['/']);
-  }
-
   openAddPopup() {
-    this.selectedEmployee = null;
+    this.selectedDriver = null;
     this.isPopupOpen = true;
   }
 
-  openEditPopup(employee: Employee) {
-    this.selectedEmployee = employee;
+  openEditPopup(driver: any) {
+    this.selectedDriver = driver;
     this.isPopupOpen = true;
   }
 
   closePopup() {
     this.isPopupOpen = false;
-    this.selectedEmployee = null;
+    this.selectedDriver = null;
   }
 
-  saveEmployee(employeeData: any) {
-    if (this.selectedEmployee?.id) {
-      // Update
-      this.apiService.updateEmployee(parseInt(this.selectedEmployee.id), employeeData).subscribe({
+  saveDriver(driverData: any) {
+    if (this.selectedDriver?.id) {
+      this.apiService.updateDriver(this.selectedDriver.id, driverData).subscribe({
         next: () => {
           this.closePopup();
-          this.loadEmployees();
+          this.loadData();
         },
-        error: (err: any) => console.error('Error updating employee:', err)
+        error: (err: any) => console.error('Error updating driver:', err)
       });
     } else {
-      // Create
-      this.apiService.createEmployee(employeeData).subscribe({
+      this.apiService.createDriver(driverData).subscribe({
         next: () => {
           this.closePopup();
-          this.loadEmployees();
+          this.loadData();
         },
-        error: (err: any) => console.error('Error creating employee:', err)
+        error: (err: any) => console.error('Error creating driver:', err)
       });
     }
   }
 
-  deleteEmployee(employee: Employee) {
-    if (confirm(`Supprimer ${employee.name || (employee.firstName + ' ' + employee.lastName)} ?`)) {
-      this.apiService.deleteEmployee(parseInt(employee.id)).subscribe({
-        next: () => this.loadEmployees(),
-        error: (err: any) => console.error('Error deleting employee:', err)
+  deleteDriver(driver: any) {
+    if (confirm(`Supprimer le chauffeur ${driver.firstName} ${driver.lastName} ?`)) {
+      this.apiService.deleteDriver(driver.id).subscribe({
+        next: () => this.loadData(),
+        error: (err: any) => console.error('Error deleting driver:', err)
       });
     }
   }
 
   // Driver Score Detail Methods
-  openDriverDetail(employee: Employee) {
-    console.log('openDriverDetail called with:', employee);
-    this.detailEmployee = employee;
-    
-    // Get driver score from mock data
-    this.detailDriverScore = this.mockDataService.getDriverScoreByEmployee(employee.id) || null;
-    console.log('Driver score found:', this.detailDriverScore);
-    
-    // Get assigned vehicle
-    if (employee.assignedVehicleId) {
-      this.detailAssignedVehicle = this.allVehicles.find(v => v.id === String(employee.assignedVehicleId)) || null;
+  openDriverDetail(driver: any) {
+    this.detailEmployee = {
+      id: driver.id, firstName: driver.firstName, lastName: driver.lastName,
+      name: driver.firstName + ' ' + driver.lastName, email: driver.email,
+      phone: driver.phone, status: driver.status, employeeRole: 'driver'
+    } as any;
+    this.detailDriverScore = this.mockDataService.getDriverScoreByEmployee(String(driver.id)) || null;
+    if (driver.assignedVehicleId) {
+      this.detailAssignedVehicle = this.allVehicles.find(v => v.id === String(driver.assignedVehicleId)) || null;
     } else {
       this.detailAssignedVehicle = null;
     }
-    console.log('Assigned vehicle:', this.detailAssignedVehicle);
-    
     this.isDetailOpen = true;
-    console.log('isDetailOpen set to:', this.isDetailOpen);
   }
 
   closeDriverDetail() {
@@ -191,7 +168,6 @@ export class EmployeesComponent implements OnInit {
   }
 
   onDateFilterChanged(range: { from: string; to: string }) {
-    // In a real app, this would fetch new data for the selected date range
     console.log('Date filter changed:', range);
   }
 }

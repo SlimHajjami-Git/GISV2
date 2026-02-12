@@ -1,7 +1,7 @@
-import { Component, EventEmitter, Input, Output, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, EventEmitter, Input, Output, OnChanges, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Employee, Vehicle } from '../../models/types';
+import { Vehicle } from '../../models/types';
 
 @Component({
   selector: 'app-employee-popup',
@@ -18,7 +18,7 @@ import { Employee, Vehicle } from '../../models/types';
               <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
               <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
             </svg>
-            <h2>{{ employee?.id ? 'Modifier le chauffeur' : 'Nouveau chauffeur' }}</h2>
+            <h2>{{ driver ? 'Modifier le chauffeur' : 'Nouveau chauffeur' }}</h2>
           </div>
           <button class="close-btn" (click)="close()">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -29,52 +29,39 @@ import { Employee, Vehicle } from '../../models/types';
         </div>
 
         <form class="popup-body" (ngSubmit)="onSubmit()">
-          <!-- Section: Identité -->
-          <div class="form-section">
+          <!-- Section: Utilisateur lié -->
+          <div class="form-section" *ngIf="!driver">
             <div class="section-header">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                 <circle cx="12" cy="7" r="4"/>
               </svg>
-              <span>Identité</span>
+              <span>Utilisateur</span>
             </div>
-            <div class="form-grid">
-              <div class="form-group">
-                <label for="firstName">Prénom *</label>
-                <input type="text" id="firstName" name="firstName" [(ngModel)]="formData.firstName" required placeholder="Ex: Mohamed" />
-              </div>
-              <div class="form-group">
-                <label for="lastName">Nom *</label>
-                <input type="text" id="lastName" name="lastName" [(ngModel)]="formData.lastName" required placeholder="Ex: Ben Ali" />
-              </div>
-              <div class="form-group">
-                <label for="cin">N° CIN</label>
-                <input type="text" id="cin" name="cin" [(ngModel)]="formData.cin" placeholder="Ex: 12345678" />
-              </div>
-              <div class="form-group">
-                <label for="dateOfBirth">Date de naissance</label>
-                <input type="date" id="dateOfBirth" name="dateOfBirth" [(ngModel)]="formData.dateOfBirth" />
-              </div>
+            <div class="form-group">
+              <label for="userId">Compte utilisateur *</label>
+              <select id="userId" name="userId" [(ngModel)]="formData.userId" required>
+                <option [ngValue]="null">-- Sélectionner un utilisateur --</option>
+                <option *ngFor="let u of availableUsers" [ngValue]="u.id">{{ u.name || (u.firstName + ' ' + u.lastName) }} ({{ u.email }})</option>
+              </select>
             </div>
+            <p class="hint" *ngIf="availableUsers.length === 0">Aucun utilisateur disponible. Créez d'abord un utilisateur dans Gestion Utilisateurs.</p>
           </div>
 
-          <!-- Section: Contact -->
-          <div class="form-section">
+          <!-- Section: Utilisateur (read-only en edit) -->
+          <div class="form-section" *ngIf="driver">
             <div class="section-header">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                <polyline points="22,6 12,13 2,6"/>
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
               </svg>
-              <span>Contact</span>
+              <span>Utilisateur</span>
             </div>
-            <div class="form-grid">
-              <div class="form-group">
-                <label for="email">Email *</label>
-                <input type="email" id="email" name="email" [(ngModel)]="formData.email" required placeholder="exemple&#64;email.com" />
-              </div>
-              <div class="form-group">
-                <label for="phone">Téléphone</label>
-                <input type="tel" id="phone" name="phone" [(ngModel)]="formData.phone" placeholder="+216 50 123 456" />
+            <div class="user-badge">
+              <div class="badge-avatar">{{ (driver.firstName || 'C').charAt(0) }}</div>
+              <div class="badge-info">
+                <strong>{{ driver.firstName }} {{ driver.lastName }}</strong>
+                <span>{{ driver.email }}</span>
               </div>
             </div>
           </div>
@@ -108,6 +95,27 @@ import { Employee, Vehicle } from '../../models/types';
                 <label for="permitExpiry">Date d'expiration *</label>
                 <input type="date" id="permitExpiry" name="permitExpiry" [(ngModel)]="formData.permitExpiry" required />
               </div>
+            </div>
+          </div>
+
+          <!-- Section: Informations personnelles -->
+          <div class="form-section">
+            <div class="section-header">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="18" rx="2"/>
+                <line x1="2" y1="9" x2="22" y2="9"/>
+              </svg>
+              <span>Informations</span>
+            </div>
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="cin">N° CIN</label>
+                <input type="text" id="cin" name="cin" [(ngModel)]="formData.cin" placeholder="Ex: 12345678" />
+              </div>
+              <div class="form-group">
+                <label for="dateOfBirth">Date de naissance</label>
+                <input type="date" id="dateOfBirth" name="dateOfBirth" [(ngModel)]="formData.dateOfBirth" />
+              </div>
               <div class="form-group">
                 <label for="hireDate">Date d'embauche</label>
                 <input type="date" id="hireDate" name="hireDate" [(ngModel)]="formData.hireDate" />
@@ -116,7 +124,7 @@ import { Employee, Vehicle } from '../../models/types';
           </div>
 
           <!-- Section: Véhicule assigné -->
-          <div class="form-section" *ngIf="vehicles && vehicles.length > 0">
+          <div class="form-section">
             <div class="section-header vehicle">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M5 17h-2v-6l2-5h9l4 5v6h-2"/>
@@ -135,7 +143,7 @@ import { Employee, Vehicle } from '../../models/types';
           </div>
 
           <!-- Section: Statut -->
-          <div class="form-section" *ngIf="employee?.id">
+          <div class="form-section" *ngIf="driver">
             <div class="form-group">
               <label for="status">Statut</label>
               <select id="status" name="status" [(ngModel)]="formData.status">
@@ -151,7 +159,7 @@ import { Employee, Vehicle } from '../../models/types';
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="20 6 9 17 4 12"/>
               </svg>
-              {{ employee?.id ? 'Enregistrer' : 'Créer le chauffeur' }}
+              {{ driver ? 'Enregistrer' : 'Créer le chauffeur' }}
             </button>
           </div>
         </form>
@@ -267,6 +275,50 @@ import { Employee, Vehicle } from '../../models/types';
     .section-header.vehicle { color: #10b981; }
     .section-header.vehicle svg { color: #10b981; }
 
+    .user-badge {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      background: #f1f5f9;
+      border-radius: 6px;
+    }
+
+    .badge-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: #6366f1;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .badge-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .badge-info strong {
+      font-size: 13px;
+      color: #1e293b;
+    }
+
+    .badge-info span {
+      font-size: 11px;
+      color: #64748b;
+    }
+
+    .hint {
+      font-size: 11px;
+      color: #94a3b8;
+      margin: 8px 0 0;
+    }
+
     .form-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -359,55 +411,53 @@ import { Employee, Vehicle } from '../../models/types';
     }
   `]
 })
-export class EmployeePopupComponent implements OnInit, OnChanges {
+export class EmployeePopupComponent implements OnChanges {
   @Input() isOpen = false;
-  @Input() employee: Employee | null = null;
+  @Input() driver: any = null;
   @Input() vehicles: Vehicle[] = [];
+  @Input() users: any[] = [];
   @Output() closed = new EventEmitter<void>();
-  @Output() saved = new EventEmitter<Partial<Employee>>();
+  @Output() saved = new EventEmitter<any>();
 
-  formData: any = {
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    employeeRole: 'driver',
-    status: 'active',
-    cin: '',
-    permitNumber: '',
-    permitType: '',
-    permitExpiry: '',
-    dateOfBirth: '',
-    hireDate: '',
-    assignedVehicleId: null
-  };
+  availableUsers: any[] = [];
 
-  ngOnInit() {
-    this.initForm();
-  }
+  formData: any = {};
 
   ngOnChanges(changes: SimpleChanges) {
-    if (changes['employee'] || changes['isOpen']) {
+    if (changes['driver'] || changes['isOpen']) {
       this.initForm();
+    }
+    if (changes['users'] || changes['driver']) {
+      this.computeAvailableUsers();
     }
   }
 
+  private computeAvailableUsers() {
+    this.availableUsers = (this.users || []).filter(u => {
+      if (this.driver && u.id === this.driver.userId) return true;
+      return true;
+    });
+  }
+
   private initForm() {
-    if (this.employee) {
+    if (this.driver) {
       this.formData = {
-        ...this.employee,
-        permitExpiry: this.employee.permitExpiry ? new Date(this.employee.permitExpiry).toISOString().split('T')[0] : '',
-        dateOfBirth: this.employee.dateOfBirth ? new Date(this.employee.dateOfBirth).toISOString().split('T')[0] : '',
-        hireDate: this.employee.hireDate ? new Date(this.employee.hireDate).toISOString().split('T')[0] : '',
-        employeeRole: this.employee.employeeRole || 'driver',
-        assignedVehicleId: this.employee.assignedVehicleId || null
+        userId: this.driver.userId,
+        permitNumber: this.driver.permitNumber || '',
+        permitType: this.driver.permitType || '',
+        permitExpiry: this.driver.permitExpiry ? new Date(this.driver.permitExpiry).toISOString().split('T')[0] : '',
+        cin: this.driver.cin || '',
+        dateOfBirth: this.driver.dateOfBirth ? new Date(this.driver.dateOfBirth).toISOString().split('T')[0] : '',
+        hireDate: this.driver.hireDate ? new Date(this.driver.hireDate).toISOString().split('T')[0] : '',
+        assignedVehicleId: this.driver.assignedVehicleId || null,
+        status: this.driver.status || 'active'
       };
     } else {
       this.formData = {
-        firstName: '', lastName: '', email: '', phone: '',
-        employeeRole: 'driver', status: 'active', cin: '',
+        userId: null,
         permitNumber: '', permitType: '', permitExpiry: '',
-        dateOfBirth: '', hireDate: '', assignedVehicleId: null
+        cin: '', dateOfBirth: '', hireDate: '',
+        assignedVehicleId: null, status: 'active'
       };
     }
   }
@@ -423,6 +473,16 @@ export class EmployeePopupComponent implements OnInit, OnChanges {
   }
 
   onSubmit() {
-    this.saved.emit(this.formData);
+    this.saved.emit({
+      userId: this.formData.userId,
+      permitNumber: this.formData.permitNumber || null,
+      permitType: this.formData.permitType || null,
+      permitExpiry: this.formData.permitExpiry || null,
+      cin: this.formData.cin || null,
+      dateOfBirth: this.formData.dateOfBirth || null,
+      hireDate: this.formData.hireDate || null,
+      assignedVehicleId: this.formData.assignedVehicleId || null,
+      status: this.formData.status
+    });
   }
 }

@@ -319,14 +319,7 @@ export class ApiService {
     return this.getLatestPositions();
   }
 
-  // ==================== EMPLOYEES ====================
-
-  getEmployees(): Observable<any[]> {
-    if (this.isMockUser()) {
-      return this.mockDataService.getEmployees();
-    }
-    return this.http.get<any[]>(`${this.API_URL}/employees`, { headers: this.getHeaders() });
-  }
+  // ==================== DRIVERS ====================
 
   getDrivers(): Observable<any[]> {
     if (this.isMockUser()) {
@@ -334,39 +327,35 @@ export class ApiService {
         map(employees => employees.filter(e => e.employeeRole === 'driver'))
       );
     }
-    return this.http.get<any[]>(`${this.API_URL}/employees/drivers`, { headers: this.getHeaders() });
+    return this.http.get<any[]>(`${this.API_URL}/drivers`, { headers: this.getHeaders() });
   }
 
-  getSupervisors(): Observable<any[]> {
+  createDriver(driver: any): Observable<any> {
     if (this.isMockUser()) {
-      return this.mockDataService.getEmployees().pipe(
-        map(employees => employees.filter(e => e.employeeRole === 'supervisor'))
-      );
+      return of(driver);
     }
-    return this.http.get<any[]>(`${this.API_URL}/employees/supervisors`, { headers: this.getHeaders() });
+    return this.http.post<any>(`${this.API_URL}/drivers`, driver, { headers: this.getHeaders() });
   }
 
-  createEmployee(employee: any): Observable<any> {
+  updateDriver(id: number, driver: any): Observable<void> {
     if (this.isMockUser()) {
-      return of(this.mockDataService.addEmployee(employee));
-    }
-    return this.http.post<any>(`${this.API_URL}/employees`, employee, { headers: this.getHeaders() });
-  }
-
-  updateEmployee(id: number, employee: any): Observable<void> {
-    if (this.isMockUser()) {
-      this.mockDataService.updateEmployee({ ...employee, id: id.toString() });
       return of(void 0);
     }
-    return this.http.put<void>(`${this.API_URL}/employees/${id}`, employee, { headers: this.getHeaders() });
+    return this.http.put<void>(`${this.API_URL}/drivers/${id}`, { id, ...driver }, { headers: this.getHeaders() });
   }
 
-  deleteEmployee(id: number): Observable<void> {
+  deleteDriver(id: number): Observable<void> {
     if (this.isMockUser()) {
-      this.mockDataService.deleteEmployee(id.toString());
       return of(void 0);
     }
-    return this.http.delete<void>(`${this.API_URL}/employees/${id}`, { headers: this.getHeaders() });
+    return this.http.delete<void>(`${this.API_URL}/drivers/${id}`, { headers: this.getHeaders() });
+  }
+
+  getCompanyUsers(): Observable<any[]> {
+    if (this.isMockUser()) {
+      return of([]);
+    }
+    return this.http.get<any[]>(`${this.API_URL}/users`, { headers: this.getHeaders() });
   }
 
   // ==================== GEOFENCES ====================
