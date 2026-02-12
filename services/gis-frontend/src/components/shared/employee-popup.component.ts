@@ -152,17 +152,9 @@ import { Employee } from '../../models/types';
               />
             </div>
 
-            <div class="form-group" *ngIf="formData.employeeRole === 'driver'">
+            <div class="form-group">
               <label for="status">Statut</label>
               <select id="status" name="status" [(ngModel)]="formData.status">
-                <option value="active">Actif</option>
-                <option value="inactive">Inactif</option>
-              </select>
-            </div>
-
-            <div class="form-group" *ngIf="formData.employeeRole !== 'driver'">
-              <label for="status">Statut</label>
-              <select id="status2" name="status2" [(ngModel)]="formData.status">
                 <option value="active">Actif</option>
                 <option value="inactive">Inactif</option>
               </select>
@@ -404,7 +396,7 @@ export class EmployeePopupComponent implements OnInit {
         permitExpiry: this.employee.permitExpiry ? new Date(this.employee.permitExpiry).toISOString().split('T')[0] : '',
         dateOfBirth: this.employee.dateOfBirth ? new Date(this.employee.dateOfBirth).toISOString().split('T')[0] : '',
         hireDate: this.employee.hireDate ? new Date(this.employee.hireDate).toISOString().split('T')[0] : '',
-        employeeRole: this.employee.employeeRole || this.employee.role || 'driver'
+        employeeRole: this.employee.employeeRole || 'driver'
       };
     }
   }

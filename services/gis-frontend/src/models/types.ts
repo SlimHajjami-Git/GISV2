@@ -85,8 +85,6 @@ export interface Employee {
   email: string;
   phone: string;
   employeeRole: 'driver' | 'accountant' | 'hr' | 'supervisor' | 'other';
-  role?: string;
-  assignedVehicles?: string[];
   assignedVehicleId?: number;
   assignedVehicleName?: string;
   assignedVehiclePlate?: string;

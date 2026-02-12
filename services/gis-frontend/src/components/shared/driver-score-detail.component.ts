@@ -26,7 +26,7 @@ import { DateFilterBarComponent } from './ui/date-filter-bar.component';
                   </svg>
                 </button>
               </div>
-              <span class="role">{{ getRoleLabel(employee?.role) }}</span>
+              <span class="role">{{ getRoleLabel(employee?.employeeRole) }}</span>
             </div>
           </div>
           <button class="close-btn" (click)="close()">

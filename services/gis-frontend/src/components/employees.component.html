@@ -23,9 +23,11 @@
       </select>
       <select class="filter-select" [(ngModel)]="filterRole" (change)="filterEmployees()">
         <option value="">Tous les rôles</option>
-        <option value="driver">Conducteurs</option>
-        <option value="manager">Managers</option>
-        <option value="admin">Admins</option>
+        <option value="driver">Chauffeurs</option>
+        <option value="supervisor">Superviseurs</option>
+        <option value="accountant">Comptables</option>
+        <option value="hr">Ressources Humaines</option>
+        <option value="other">Autre</option>
       </select>
       <button class="btn-add" (click)="openAddPopup()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -39,7 +41,7 @@
       @for (employee of employees; track employee.id) {
         <div class="employee-card">
           <div class="employee-header">
-            <div class="employee-avatar">{{ employee.name?.charAt(0) || 'E' }}</div>
+            <div class="employee-avatar">{{ (employee.firstName || employee.name || 'E').charAt(0) }}</div>
             <div class="employee-status">
               <span class="status-badge" [class.active]="employee.status === 'active'" [class.inactive]="employee.status === 'inactive'">
                 {{ employee.status === 'active' ? 'Actif' : 'Inactif' }}
@@ -49,7 +51,7 @@
 
           <div class="employee-body">
             <h3>{{ employee.name || (employee.firstName + ' ' + employee.lastName) }}</h3>
-            <p class="employee-role">{{ getRoleLabel(employee.employeeRole || employee.role || '') }}</p>
+            <p class="employee-role">{{ getRoleLabel(employee.employeeRole) }}</p>
 
             <div class="employee-details">
               <div class="detail-item">
@@ -87,6 +89,24 @@
                   <span>{{ employee.assignedVehicleName }} ({{ employee.assignedVehiclePlate }})</span>
                 </div>
               }
+              @if (employee.employeeRole === 'driver' && employee.permitType) {
+                <div class="meta-item">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="5" width="20" height="14" rx="2"/>
+                    <line x1="2" y1="10" x2="22" y2="10"/>
+                  </svg>
+                  <span>Permis {{ employee.permitType }} {{ employee.permitExpiry ? '- Exp. ' + formatDate(employee.permitExpiry) : '' }}</span>
+                </div>
+              }
+              @if (employee.cin) {
+                <div class="meta-item">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                  </svg>
+                  <span>CIN: {{ employee.cin }}</span>
+                </div>
+              }
             </div>
           </div>
 
@@ -99,6 +119,13 @@
               Modifier
             </button>
             <button class="btn-link" type="button" (click)="openDriverDetail(employee); $event.stopPropagation()">Détails</button>
+            <button class="btn-danger" type="button" (click)="deleteEmployee(employee); $event.stopPropagation()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+              Supprimer
+            </button>
           </div>
         </div>
       }

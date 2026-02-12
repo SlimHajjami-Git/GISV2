@@ -82,12 +82,12 @@ export class EmployeesComponent implements OnInit {
 
   filterEmployees() {
     this.employees = this.allEmployees.filter(e => {
-      const fullName = e.name || ((e.firstName || '') + ' ' + (e.lastName || ''));
+      const fullName = e.name || (e.firstName + ' ' + e.lastName);
       const matchesSearch = !this.searchQuery || 
         fullName.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
         e.email.toLowerCase().includes(this.searchQuery.toLowerCase());
       const matchesStatus = !this.filterStatus || e.status === this.filterStatus;
-      const matchesRole = !this.filterRole || (e.employeeRole || e.role) === this.filterRole;
+      const matchesRole = !this.filterRole || e.employeeRole === this.filterRole;
       return matchesSearch && matchesStatus && matchesRole;
     });
   }
@@ -174,8 +174,6 @@ export class EmployeesComponent implements OnInit {
     // Get assigned vehicle
     if (employee.assignedVehicleId) {
       this.detailAssignedVehicle = this.allVehicles.find(v => v.id === String(employee.assignedVehicleId)) || null;
-    } else if (employee.assignedVehicles && employee.assignedVehicles.length > 0) {
-      this.detailAssignedVehicle = this.allVehicles.find(v => v.id === employee.assignedVehicles![0]) || null;
     } else {
       this.detailAssignedVehicle = null;
     }

@@ -331,7 +331,7 @@ export class ApiService {
   getDrivers(): Observable<any[]> {
     if (this.isMockUser()) {
       return this.mockDataService.getEmployees().pipe(
-        map(employees => employees.filter(e => e.role === 'driver'))
+        map(employees => employees.filter(e => e.employeeRole === 'driver'))
       );
     }
     return this.http.get<any[]>(`${this.API_URL}/employees/drivers`, { headers: this.getHeaders() });
@@ -340,7 +340,7 @@ export class ApiService {
   getSupervisors(): Observable<any[]> {
     if (this.isMockUser()) {
       return this.mockDataService.getEmployees().pipe(
-        map(employees => employees.filter(e => e.role === 'supervisor'))
+        map(employees => employees.filter(e => e.employeeRole === 'supervisor'))
       );
     }
     return this.http.get<any[]>(`${this.API_URL}/employees/supervisors`, { headers: this.getHeaders() });
