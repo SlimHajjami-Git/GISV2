@@ -1,7 +1,7 @@
 import { Component, OnInit, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 import { ApiService } from '../services/api.service';
 import { MockDataService } from '../services/mock-data.service';
 import { Employee, Company, Vehicle, DriverScore } from '../models/types';
@@ -12,7 +12,7 @@ import { DriverScoreDetailComponent } from './shared/driver-score-detail.compone
 @Component({
   selector: 'app-employees',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, EmployeePopupComponent, DriverScoreDetailComponent],
+  imports: [CommonModule, FormsModule, RouterModule, AppLayoutComponent, EmployeePopupComponent, DriverScoreDetailComponent],
   templateUrl: './employees.component.html',
   styleUrls: ['./employees.component.css']
 })
