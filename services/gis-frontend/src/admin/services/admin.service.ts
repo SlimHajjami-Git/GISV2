@@ -310,6 +310,11 @@ export class AdminService {
         };
         localStorage.setItem('admin_user', JSON.stringify(user));
         localStorage.setItem('admin_token', response.token);
+        // Also store as auth_token + refresh_token so the interceptor can refresh
+        localStorage.setItem('auth_token', response.token);
+        if (response.refreshToken) {
+          localStorage.setItem('refresh_token', response.refreshToken);
+        }
         this.adminUserSubject.next(user);
         return user;
       }),
@@ -326,6 +331,7 @@ export class AdminService {
     localStorage.removeItem('admin_token');
     localStorage.removeItem('auth_user');
     localStorage.removeItem('auth_token');
+    localStorage.removeItem('refresh_token');
     this.adminUserSubject.next(null);
   }
 
