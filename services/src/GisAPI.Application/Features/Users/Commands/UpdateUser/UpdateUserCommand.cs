@@ -18,5 +18,19 @@ public record UpdateUserCommand(
     DateTime? PermitExpiry = null,
     string? CIN = null,
     DateTime? DateOfBirth = null,
-    DateTime? HireDate = null
+    DateTime? HireDate = null,
+    string? AccessLevel = null,
+    bool? CanMonitoring = null,
+    bool? CanVehicles = null,
+    bool? CanDrivers = null,
+    bool? CanReports = null,
+    bool? CanGeofences = null,
+    bool? CanMaintenance = null,
+    bool? CanCosts = null,
+    bool? CanDocuments = null,
+    bool? CanAccidents = null,
+    bool? CanUsers = null,
+    bool? CanSettings = null,
+    bool? CanSuppliers = null,
+    bool? CanFleetManagement = null
 ) : ICommand;

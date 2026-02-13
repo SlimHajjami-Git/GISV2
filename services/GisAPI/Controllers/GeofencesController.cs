@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using MediatR;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
+using GisAPI.Application.Features.Notifications.Events;
 
 namespace GisAPI.Controllers;
 
@@ -12,13 +14,16 @@ namespace GisAPI.Controllers;
 public class GeofencesController : ControllerBase
 {
     private readonly GisDbContext _context;
+    private readonly IPublisher _publisher;
 
-    public GeofencesController(GisDbContext context)
+    public GeofencesController(GisDbContext context, IPublisher publisher)
     {
         _context = context;
+        _publisher = publisher;
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
+    private int GetUserId() => int.Parse(User.FindFirst("userId")?.Value ?? "0");
 
     // ==================== GEOFENCES ====================
 
@@ -99,6 +104,17 @@ public class GeofencesController : ControllerBase
 
         _context.Geofences.Add(geofence);
         await _context.SaveChangesAsync();
+
+        // Notify company admins
+        var actorId = GetUserId();
+        var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId);
+        if (actor != null && companyId > 0)
+        {
+            _ = _publisher.Publish(new AdminActionNotificationEvent(
+                companyId, actorId, actor.FullName,
+                "geofence_created", geofence.Name, geofence.Id, "geofence"
+            ));
+        }
 
         return CreatedAtAction(nameof(GetGeofence), new { id = geofence.Id }, geofence);
     }

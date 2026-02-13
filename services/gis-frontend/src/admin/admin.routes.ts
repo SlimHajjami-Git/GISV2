@@ -14,6 +14,7 @@ import { AdminRolesComponent } from './pages/admin-roles.component';
 import { AdminCompanyDetailsComponent } from './pages/admin-company-details.component';
 import { AdminBrandsComponent } from './pages/admin-brands.component';
 import { AdminPartsComponent } from './pages/admin-parts.component';
+import { AdminNotificationsComponent } from './pages/admin-notifications.component';
 import { AdminGuard } from './guards/admin.guard';
 
 export const adminRoutes: Routes = [
@@ -35,5 +36,6 @@ export const adminRoutes: Routes = [
   { path: 'features', component: AdminFeatureControlComponent, canActivate: [AdminGuard] },
   { path: 'estimates', component: AdminEstimatesComponent, canActivate: [AdminGuard] },
   { path: 'activity', component: AdminActivityComponent, canActivate: [AdminGuard] },
+  { path: 'notifications', component: AdminNotificationsComponent, canActivate: [AdminGuard] },
   { path: 'settings', component: AdminSettingsComponent, canActivate: [AdminGuard] },
 ];

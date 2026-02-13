@@ -34,7 +34,6 @@ public class GetDriversQueryHandler : IRequestHandler<GetDriversQuery, List<Driv
                 d.PermitExpiry,
                 d.CIN,
                 d.DateOfBirth,
-                d.HireDate,
                 d.AssignedVehicleId,
                 d.AssignedVehicle != null ? d.AssignedVehicle.Name : null,
                 d.AssignedVehicle != null ? d.AssignedVehicle.Plate : null,

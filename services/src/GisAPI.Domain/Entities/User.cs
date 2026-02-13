@@ -20,6 +20,22 @@ public class User : TenantEntity
     public string Status { get; set; } = "active";
     public DateTime? LastLoginAt { get; set; }
 
+    // Module permissions (per-user access control)
+    public string AccessLevel { get; set; } = "user"; // "admin" or "user"
+    public bool CanMonitoring { get; set; } = true;
+    public bool CanVehicles { get; set; } = true;
+    public bool CanDrivers { get; set; } = false;
+    public bool CanReports { get; set; } = false;
+    public bool CanGeofences { get; set; } = false;
+    public bool CanMaintenance { get; set; } = false;
+    public bool CanCosts { get; set; } = false;
+    public bool CanDocuments { get; set; } = false;
+    public bool CanAccidents { get; set; } = false;
+    public bool CanUsers { get; set; } = false;
+    public bool CanSettings { get; set; } = false;
+    public bool CanSuppliers { get; set; } = false;
+    public bool CanFleetManagement { get; set; } = false;
+
     // Navigation
     public Role Role { get; set; } = null!;
     public Societe Societe { get; set; } = null!;

@@ -51,7 +51,28 @@ public class UsersController : ControllerBase
             request.Phone,
             request.Password,
             request.RoleId,
-            request.AssignedVehicleIds
+            request.AssignedVehicleIds,
+            request.EmployeeRole,
+            request.PermitNumber,
+            request.PermitType,
+            request.PermitExpiry,
+            request.CIN,
+            request.DateOfBirth,
+            request.HireDate,
+            request.AccessLevel,
+            request.CanMonitoring,
+            request.CanVehicles,
+            request.CanDrivers,
+            request.CanReports,
+            request.CanGeofences,
+            request.CanMaintenance,
+            request.CanCosts,
+            request.CanDocuments,
+            request.CanAccidents,
+            request.CanUsers,
+            request.CanSettings,
+            request.CanSuppliers,
+            request.CanFleetManagement
         );
 
         var user = await _mediator.Send(command);

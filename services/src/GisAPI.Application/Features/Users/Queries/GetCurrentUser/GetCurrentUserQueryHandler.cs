@@ -31,7 +31,23 @@ public class GetCurrentUserQueryHandler : IRequestHandler<GetCurrentUserQuery, U
                 u.Status,
                 u.CreatedAt,
                 u.LastLoginAt,
-                u.UserVehicles.Select(uv => uv.VehicleId).ToArray()
+                u.UserVehicles.Select(uv => uv.VehicleId).ToArray(),
+                new GisAPI.Application.Features.Auth.Commands.Login.UserPermissionsDto(
+                    u.AccessLevel,
+                    u.CanMonitoring,
+                    u.CanVehicles,
+                    u.CanDrivers,
+                    u.CanReports,
+                    u.CanGeofences,
+                    u.CanMaintenance,
+                    u.CanCosts,
+                    u.CanDocuments,
+                    u.CanAccidents,
+                    u.CanUsers,
+                    u.CanSettings,
+                    u.CanSuppliers,
+                    u.CanFleetManagement
+                )
             ))
             .FirstOrDefaultAsync(ct);
 

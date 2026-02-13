@@ -1,7 +1,9 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Application.Features.Suppliers.Commands;
 
@@ -9,11 +11,13 @@ public class CreateSupplierCommandHandler : IRequestHandler<CreateSupplierComman
 {
     private readonly IGisDbContext _context;
     private readonly ICurrentTenantService _tenantService;
+    private readonly IPublisher _publisher;
 
-    public CreateSupplierCommandHandler(IGisDbContext context, ICurrentTenantService tenantService)
+    public CreateSupplierCommandHandler(IGisDbContext context, ICurrentTenantService tenantService, IPublisher publisher)
     {
         _context = context;
         _tenantService = tenantService;
+        _publisher = publisher;
     }
 
     public async Task<int> Handle(CreateSupplierCommand request, CancellationToken cancellationToken)
@@ -58,6 +62,18 @@ public class CreateSupplierCommandHandler : IRequestHandler<CreateSupplierComman
                 });
             }
             await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // Notify company admins
+        var companyId = _tenantService.CompanyId ?? 0;
+        var actorId = _tenantService.UserId ?? 0;
+        var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId, cancellationToken);
+        if (actor != null && companyId > 0)
+        {
+            _ = _publisher.Publish(new AdminActionNotificationEvent(
+                companyId, actorId, actor.FullName,
+                "supplier_created", supplier.Name, supplier.Id, "supplier"
+            ), cancellationToken);
         }
 
         return supplier.Id;

@@ -20,7 +20,6 @@ export class EmployeesComponent implements OnInit {
   drivers: any[] = [];
   allDrivers: any[] = [];
   allVehicles: Vehicle[] = [];
-  allUsers: any[] = [];
   isPopupOpen = false;
   selectedDriver: any = null;
 
@@ -73,15 +72,6 @@ export class EmployeesComponent implements OnInit {
       error: (err) => console.error('Error loading vehicles:', err)
     });
 
-    this.apiService.getCompanyUsers().subscribe({
-      next: (users) => {
-        this.ngZone.run(() => {
-          this.allUsers = users;
-          this.cdr.detectChanges();
-        });
-      },
-      error: (err) => console.error('Error loading users:', err)
-    });
   }
 
   filterEmployees() {
@@ -115,14 +105,22 @@ export class EmployeesComponent implements OnInit {
     this.selectedDriver = null;
   }
 
+  errorMessage = '';
+
   saveDriver(driverData: any) {
+    this.errorMessage = '';
     if (this.selectedDriver?.id) {
       this.apiService.updateDriver(this.selectedDriver.id, driverData).subscribe({
         next: () => {
           this.closePopup();
           this.loadData();
         },
-        error: (err: any) => console.error('Error updating driver:', err)
+        error: (err: any) => {
+          this.ngZone.run(() => {
+            this.errorMessage = err.error?.message || err.error?.title || 'Erreur lors de la mise à jour';
+            this.cdr.detectChanges();
+          });
+        }
       });
     } else {
       this.apiService.createDriver(driverData).subscribe({
@@ -130,7 +128,12 @@ export class EmployeesComponent implements OnInit {
           this.closePopup();
           this.loadData();
         },
-        error: (err: any) => console.error('Error creating driver:', err)
+        error: (err: any) => {
+          this.ngZone.run(() => {
+            this.errorMessage = err.error?.message || err.error?.title || 'Erreur lors de la création';
+            this.cdr.detectChanges();
+          });
+        }
       });
     }
   }

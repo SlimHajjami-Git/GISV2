@@ -26,6 +26,7 @@ using GisAPI.Application.Features.Admin.Subscriptions.Commands.UpdateSubscriptio
 using GisAPI.Application.Features.Admin.Subscriptions.Commands.DeleteSubscription;
 using GisAPI.Application.Features.Admin.Dashboard;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Interfaces;
 
 namespace GisAPI.Controllers;
 
@@ -540,6 +541,64 @@ public class AdminController : ControllerBase
         return Ok(new { message = $"Statut du devis {id} mis à jour: {request.Status}" });
     }
 
+    // ==================== TEST NOTIFICATIONS ====================
+
+    [HttpGet("notifications/users")]
+    public async Task<ActionResult> GetUsersForNotification()
+    {
+        var users = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.Status == "active")
+            .OrderBy(u => u.CompanyId)
+            .ThenBy(u => u.FirstName)
+            .Select(u => new
+            {
+                u.Id,
+                FullName = u.FirstName + " " + u.LastName,
+                u.Email,
+                u.CompanyId,
+                CompanyName = u.Societe != null ? u.Societe.Name : ""
+            })
+            .Take(500)
+            .ToListAsync();
+
+        return Ok(users);
+    }
+
+    [HttpPost("notifications/send")]
+    public async Task<ActionResult> SendTestNotification(
+        [FromBody] SendTestNotificationRequest request,
+        [FromServices] INotificationService notificationService)
+    {
+        var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == request.UserId);
+        if (user == null) return NotFound(new { message = "Utilisateur introuvable" });
+
+        var notification = await notificationService.CreateAndSendAsync(
+            companyId: user.CompanyId,
+            userId: user.Id,
+            type: request.Type,
+            title: request.Title,
+            message: request.Message,
+            priority: request.Priority,
+            referenceType: "test",
+            referenceId: null,
+            actionUrl: "/dashboard",
+            metadata: new Dictionary<string, object>
+            {
+                { "source", "admin_test" },
+                { "sentAt", DateTime.UtcNow.ToString("O") }
+            }
+        );
+
+        return Ok(new
+        {
+            success = true,
+            notificationId = notification.Id,
+            sentTo = user.FirstName + " " + user.LastName,
+            sentToEmail = user.Email
+        });
+    }
+
     // ==================== DEAD LETTER QUEUE ====================
 
     [HttpGet("dlq/messages")]
@@ -911,4 +970,13 @@ public class UpdateAdminVehicleRequest
     public string? GpsBrand { get; set; }
     public string? GpsModel { get; set; }
     public string? GpsFuelSensorMode { get; set; }
+}
+
+public class SendTestNotificationRequest
+{
+    public int UserId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public string Type { get; set; } = "info";
+    public string Priority { get; set; } = "normal";
 }

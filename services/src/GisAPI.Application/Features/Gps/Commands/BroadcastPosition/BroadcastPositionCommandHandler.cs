@@ -43,6 +43,16 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
     private static readonly ConcurrentDictionary<int, DateTime> _speedAlertCooldown = new();
     private static readonly TimeSpan _speedAlertCooldownPeriod = TimeSpan.FromMinutes(5);
 
+    // Driving behavior cooldown per vehicle
+    private static readonly ConcurrentDictionary<string, DateTime> _behaviorCooldown = new();
+    private static readonly TimeSpan _behaviorCooldownPeriod = TimeSpan.FromMinutes(3);
+
+    // Geofence state tracking: vehicleId -> set of geofenceIds the vehicle is currently inside
+    private static readonly ConcurrentDictionary<int, HashSet<int>> _vehicleGeofenceState = new();
+    // Geofence cache: companyId -> list of active geofences (refreshed every 2 minutes)
+    private static readonly ConcurrentDictionary<int, (DateTime CachedAt, List<GeofenceCacheEntry> Geofences)> _geofenceCache = new();
+    private static readonly TimeSpan _geofenceCacheTtl = TimeSpan.FromMinutes(2);
+
     public BroadcastPositionCommandHandler(
         IGisDbContext context,
         IGpsHubService gpsHubService,
@@ -215,6 +225,44 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
                     ), ct);
                 }
             }
+
+            // Publish driving behavior notifications (harsh_braking, rapid_acceleration, sharp_turn, etc.)
+            var drivingBehaviors = new[] { "harsh_braking", "rapid_acceleration", "sharp_turn", "pothole", "jerk" };
+            if (cached.VehicleId.HasValue && !string.IsNullOrEmpty(request.AlertType) && drivingBehaviors.Contains(request.AlertType))
+            {
+                var cooldownKey = $"{cached.VehicleId.Value}:{request.AlertType}";
+                var shouldNotifyBehavior = true;
+                if (_behaviorCooldown.TryGetValue(cooldownKey, out var lastBehavior))
+                {
+                    shouldNotifyBehavior = (now - lastBehavior) > _behaviorCooldownPeriod;
+                }
+
+                if (shouldNotifyBehavior)
+                {
+                    _behaviorCooldown[cooldownKey] = now;
+                    _ = _publisher.Publish(new DrivingBehaviorNotificationEvent(
+                        cached.CompanyId, cached.VehicleId, cached.VehicleName, cached.Plate,
+                        request.AlertType, speed, request.Latitude, request.Longitude, request.RecordedAt
+                    ), ct);
+                }
+            }
+        }
+
+        // Geofence checking
+        if (cached.VehicleId.HasValue && cached.CompanyId > 0)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await CheckGeofences(cached.CompanyId, cached.VehicleId.Value, cached.VehicleName, cached.Plate,
+                        request.Latitude, request.Longitude, speed, request.RecordedAt, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Geofence check failed for vehicle {VehicleId}", cached.VehicleId);
+                }
+            }, ct);
         }
 
         _logger.LogInformation(
@@ -238,7 +286,154 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
         }
         return null;
     }
+
+    /// <summary>
+    /// Check vehicle position against all company geofences.
+    /// Detects entry/exit transitions and publishes notification events.
+    /// </summary>
+    private async Task CheckGeofences(int companyId, int vehicleId, string? vehicleName, string? plate,
+        double lat, double lng, double speed, DateTime timestamp, CancellationToken ct)
+    {
+        // Get cached geofences for this company
+        var geofences = await GetCompanyGeofences(companyId, ct);
+        if (geofences.Count == 0) return;
+
+        // Get current state for this vehicle
+        var currentInside = _vehicleGeofenceState.GetOrAdd(vehicleId, _ => new HashSet<int>());
+        var newInside = new HashSet<int>();
+
+        foreach (var gf in geofences)
+        {
+            var isInside = IsPointInGeofence(lat, lng, gf);
+            if (isInside) newInside.Add(gf.Id);
+
+            var wasInside = currentInside.Contains(gf.Id);
+
+            // Entry detection
+            if (isInside && !wasInside && gf.AlertOnEntry)
+            {
+                _logger.LogInformation("🔔 Geofence ENTRY: Vehicle {Vehicle} entered \"{Geofence}\"",
+                    vehicleName ?? $"#{vehicleId}", gf.Name);
+
+                _ = _publisher.Publish(new GeofenceNotificationEvent(
+                    companyId, vehicleId, vehicleName ?? plate, gf.Id, gf.Name,
+                    "entry", lat, lng, timestamp
+                ), ct);
+
+                // Also broadcast via SignalR to geofence subscribers
+                await _gpsHubService.SendGeofenceEventAsync(gf.Id, new
+                {
+                    geofenceId = gf.Id,
+                    vehicleId,
+                    vehicleName = vehicleName ?? plate,
+                    eventType = "entry",
+                    latitude = lat,
+                    longitude = lng,
+                    timestamp
+                });
+            }
+
+            // Exit detection
+            if (!isInside && wasInside && gf.AlertOnExit)
+            {
+                _logger.LogInformation("🔔 Geofence EXIT: Vehicle {Vehicle} left \"{Geofence}\"",
+                    vehicleName ?? $"#{vehicleId}", gf.Name);
+
+                _ = _publisher.Publish(new GeofenceNotificationEvent(
+                    companyId, vehicleId, vehicleName ?? plate, gf.Id, gf.Name,
+                    "exit", lat, lng, timestamp
+                ), ct);
+
+                await _gpsHubService.SendGeofenceEventAsync(gf.Id, new
+                {
+                    geofenceId = gf.Id,
+                    vehicleId,
+                    vehicleName = vehicleName ?? plate,
+                    eventType = "exit",
+                    latitude = lat,
+                    longitude = lng,
+                    timestamp
+                });
+            }
+        }
+
+        // Update state
+        _vehicleGeofenceState[vehicleId] = newInside;
+    }
+
+    private async Task<List<GeofenceCacheEntry>> GetCompanyGeofences(int companyId, CancellationToken ct)
+    {
+        if (_geofenceCache.TryGetValue(companyId, out var cached) && (DateTime.UtcNow - cached.CachedAt) < _geofenceCacheTtl)
+        {
+            return cached.Geofences;
+        }
+
+        var geofences = await _context.Geofences
+            .AsNoTracking()
+            .Where(g => g.CompanyId == companyId && g.IsActive)
+            .Select(g => new GeofenceCacheEntry(
+                g.Id, g.Name, g.Type, g.Coordinates, g.CenterLat, g.CenterLng, g.Radius,
+                g.AlertOnEntry, g.AlertOnExit
+            ))
+            .ToListAsync(ct);
+
+        _geofenceCache[companyId] = (DateTime.UtcNow, geofences);
+        return geofences;
+    }
+
+    /// <summary>
+    /// Point-in-polygon / point-in-circle test for geofence containment
+    /// </summary>
+    private static bool IsPointInGeofence(double lat, double lng, GeofenceCacheEntry gf)
+    {
+        if (gf.Type == "circle" && gf.CenterLat.HasValue && gf.CenterLng.HasValue && gf.Radius.HasValue)
+        {
+            var dist = HaversineDistance(lat, lng, gf.CenterLat.Value, gf.CenterLng.Value);
+            return dist <= gf.Radius.Value;
+        }
+
+        if (gf.Coordinates == null || gf.Coordinates.Length < 3) return false;
+
+        // Ray-casting algorithm for polygon
+        var inside = false;
+        var n = gf.Coordinates.Length;
+        for (int i = 0, j = n - 1; i < n; j = i++)
+        {
+            var yi = gf.Coordinates[i].Lat;
+            var xi = gf.Coordinates[i].Lng;
+            var yj = gf.Coordinates[j].Lat;
+            var xj = gf.Coordinates[j].Lng;
+
+            if (((yi > lat) != (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi))
+                inside = !inside;
+        }
+        return inside;
+    }
+
+    private static double HaversineDistance(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double R = 6371000; // Earth radius in meters
+        var dLat = (lat2 - lat1) * Math.PI / 180;
+        var dLon = (lon2 - lon1) * Math.PI / 180;
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180) *
+                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+        return R * c;
+    }
 }
+
+public record GeofenceCacheEntry(
+    int Id,
+    string Name,
+    string Type,
+    GisAPI.Domain.Entities.GeofencePoint[]? Coordinates,
+    double? CenterLat,
+    double? CenterLng,
+    double? Radius,
+    bool AlertOnEntry,
+    bool AlertOnExit
+);
 
 /// <summary>
 /// DTO for vehicle position updates sent via SignalR

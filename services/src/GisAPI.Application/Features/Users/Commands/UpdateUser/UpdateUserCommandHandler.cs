@@ -53,6 +53,22 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         user.HireDate = request.HireDate;
         user.UpdatedAt = DateTime.UtcNow;
 
+        // Update permissions if provided
+        if (request.AccessLevel != null) user.AccessLevel = request.AccessLevel;
+        if (request.CanMonitoring.HasValue) user.CanMonitoring = request.CanMonitoring.Value;
+        if (request.CanVehicles.HasValue) user.CanVehicles = request.CanVehicles.Value;
+        if (request.CanDrivers.HasValue) user.CanDrivers = request.CanDrivers.Value;
+        if (request.CanReports.HasValue) user.CanReports = request.CanReports.Value;
+        if (request.CanGeofences.HasValue) user.CanGeofences = request.CanGeofences.Value;
+        if (request.CanMaintenance.HasValue) user.CanMaintenance = request.CanMaintenance.Value;
+        if (request.CanCosts.HasValue) user.CanCosts = request.CanCosts.Value;
+        if (request.CanDocuments.HasValue) user.CanDocuments = request.CanDocuments.Value;
+        if (request.CanAccidents.HasValue) user.CanAccidents = request.CanAccidents.Value;
+        if (request.CanUsers.HasValue) user.CanUsers = request.CanUsers.Value;
+        if (request.CanSettings.HasValue) user.CanSettings = request.CanSettings.Value;
+        if (request.CanSuppliers.HasValue) user.CanSuppliers = request.CanSuppliers.Value;
+        if (request.CanFleetManagement.HasValue) user.CanFleetManagement = request.CanFleetManagement.Value;
+
         // Update vehicle assignments if provided
         if (request.AssignedVehicleIds != null)
         {

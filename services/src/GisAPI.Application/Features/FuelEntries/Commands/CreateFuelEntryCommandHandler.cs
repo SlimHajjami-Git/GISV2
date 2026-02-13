@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -10,11 +11,13 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
 {
     private readonly IGisDbContext _context;
     private readonly ICurrentTenantService _tenantService;
+    private readonly IPublisher _publisher;
 
-    public CreateFuelEntryCommandHandler(IGisDbContext context, ICurrentTenantService tenantService)
+    public CreateFuelEntryCommandHandler(IGisDbContext context, ICurrentTenantService tenantService, IPublisher publisher)
     {
         _context = context;
         _tenantService = tenantService;
+        _publisher = publisher;
     }
 
     public async Task<int> Handle(CreateFuelEntryCommand request, CancellationToken cancellationToken)
@@ -53,6 +56,17 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
 
         _context.FuelEntries.Add(entry);
         await _context.SaveChangesAsync(cancellationToken);
+
+        // Notify company admins
+        var actorId = _tenantService.UserId ?? 0;
+        var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId, cancellationToken);
+        if (actor != null)
+        {
+            _ = _publisher.Publish(new AdminActionNotificationEvent(
+                companyId, actorId, actor.FullName,
+                "cost_created", request.VehiclePlate ?? $"Carburant #{entry.Id}", entry.Id, "cost"
+            ), cancellationToken);
+        }
 
         return entry.Id;
     }

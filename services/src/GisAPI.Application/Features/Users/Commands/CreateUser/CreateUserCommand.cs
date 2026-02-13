@@ -16,5 +16,19 @@ public record CreateUserCommand(
     DateTime? PermitExpiry = null,
     string? CIN = null,
     DateTime? DateOfBirth = null,
-    DateTime? HireDate = null
+    DateTime? HireDate = null,
+    string? AccessLevel = "user",
+    bool CanMonitoring = true,
+    bool CanVehicles = true,
+    bool CanDrivers = false,
+    bool CanReports = false,
+    bool CanGeofences = false,
+    bool CanMaintenance = false,
+    bool CanCosts = false,
+    bool CanDocuments = false,
+    bool CanAccidents = false,
+    bool CanUsers = false,
+    bool CanSettings = false,
+    bool CanSuppliers = false,
+    bool CanFleetManagement = false
 ) : ICommand<UserListDto>;

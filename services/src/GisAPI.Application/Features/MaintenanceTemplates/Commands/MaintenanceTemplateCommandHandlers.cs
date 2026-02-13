@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -10,11 +11,13 @@ public class CreateMaintenanceTemplateCommandHandler : IRequestHandler<CreateMai
 {
     private readonly IGisDbContext _context;
     private readonly ICurrentTenantService _tenantService;
+    private readonly IPublisher _publisher;
 
-    public CreateMaintenanceTemplateCommandHandler(IGisDbContext context, ICurrentTenantService tenantService)
+    public CreateMaintenanceTemplateCommandHandler(IGisDbContext context, ICurrentTenantService tenantService, IPublisher publisher)
     {
         _context = context;
         _tenantService = tenantService;
+        _publisher = publisher;
     }
 
     public async Task<int> Handle(CreateMaintenanceTemplateCommand request, CancellationToken cancellationToken)
@@ -37,6 +40,18 @@ public class CreateMaintenanceTemplateCommandHandler : IRequestHandler<CreateMai
 
         _context.MaintenanceTemplates.Add(template);
         await _context.SaveChangesAsync(cancellationToken);
+
+        // Notify company admins
+        var companyId = _tenantService.CompanyId ?? 0;
+        var actorId = _tenantService.UserId ?? 0;
+        var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId, cancellationToken);
+        if (actor != null && companyId > 0)
+        {
+            _ = _publisher.Publish(new AdminActionNotificationEvent(
+                companyId, actorId, actor.FullName,
+                "maintenance_created", template.Name, template.Id, "maintenance"
+            ), cancellationToken);
+        }
 
         return template.Id;
     }

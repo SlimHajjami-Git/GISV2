@@ -85,6 +85,23 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
 
         _logger.LogInformation("User {Email} logged in (CompanyId: {CompanyId})", user.Email, user.CompanyId);
 
+        var userPermissions = new UserPermissionsDto(
+            AccessLevel: user.AccessLevel,
+            CanMonitoring: user.CanMonitoring,
+            CanVehicles: user.CanVehicles,
+            CanDrivers: user.CanDrivers,
+            CanReports: user.CanReports,
+            CanGeofences: user.CanGeofences,
+            CanMaintenance: user.CanMaintenance,
+            CanCosts: user.CanCosts,
+            CanDocuments: user.CanDocuments,
+            CanAccidents: user.CanAccidents,
+            CanUsers: user.CanUsers,
+            CanSettings: user.CanSettings,
+            CanSuppliers: user.CanSuppliers,
+            CanFleetManagement: user.CanFleetManagement
+        );
+
         return new LoginResponse(
             token,
             refreshTokenStr,
@@ -104,7 +121,8 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
                 user.Societe?.Type,
                 user.Role?.Permissions,
                 subscriptionFeatures,
-                assignedVehicleIds
+                assignedVehicleIds,
+                userPermissions
             )
         );
     }

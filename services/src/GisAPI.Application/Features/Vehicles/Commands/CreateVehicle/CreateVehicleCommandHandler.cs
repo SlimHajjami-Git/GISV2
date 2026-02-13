@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -10,11 +11,13 @@ public class CreateVehicleCommandHandler : IRequestHandler<CreateVehicleCommand,
 {
     private readonly IGisDbContext _context;
     private readonly ICurrentTenantService _tenantService;
+    private readonly IPublisher _publisher;
 
-    public CreateVehicleCommandHandler(IGisDbContext context, ICurrentTenantService tenantService)
+    public CreateVehicleCommandHandler(IGisDbContext context, ICurrentTenantService tenantService, IPublisher publisher)
     {
         _context = context;
         _tenantService = tenantService;
+        _publisher = publisher;
     }
 
     public async Task<int> Handle(CreateVehicleCommand request, CancellationToken ct)
@@ -73,6 +76,17 @@ public class CreateVehicleCommandHandler : IRequestHandler<CreateVehicleCommand,
 
         _context.Vehicles.Add(vehicle);
         await _context.SaveChangesAsync(ct);
+
+        // Notify company admins about the new vehicle
+        var actorId = _tenantService.UserId ?? 0;
+        var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId, ct);
+        if (actor != null && companyId > 0)
+        {
+            _ = _publisher.Publish(new AdminActionNotificationEvent(
+                companyId, actorId, actor.FullName,
+                "vehicle_created", vehicle.Name ?? vehicle.Plate, vehicle.Id, "vehicle"
+            ), ct);
+        }
 
         return vehicle.Id;
     }

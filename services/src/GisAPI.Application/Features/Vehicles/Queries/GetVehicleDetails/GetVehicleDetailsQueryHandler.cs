@@ -19,6 +19,8 @@ public class GetVehicleDetailsQueryHandler : IRequestHandler<GetVehicleDetailsQu
     public async Task<VehicleDetailsDto?> Handle(GetVehicleDetailsQuery request, CancellationToken ct)
     {
         var companyId = _tenantService.CompanyId ?? 0;
+        var userId = _tenantService.UserId ?? 0;
+        var isAdmin = _tenantService.UserRoles.Any(r => r == "company_admin" || r == "admin" || r == "super_admin" || r == "system_admin");
 
         var vehicle = await _context.Vehicles
             .AsNoTracking()
@@ -32,6 +34,15 @@ public class GetVehicleDetailsQueryHandler : IRequestHandler<GetVehicleDetailsQu
 
         if (vehicle == null)
             return null;
+
+        // Non-admin users can only access their assigned vehicles
+        if (!isAdmin && userId > 0)
+        {
+            var hasAccess = await _context.UserVehicles
+                .AnyAsync(uv => uv.UserId == userId && uv.VehicleId == request.VehicleId, ct);
+            if (!hasAccess)
+                return null;
+        }
 
         var now = DateTime.UtcNow;
 

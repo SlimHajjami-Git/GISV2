@@ -166,19 +166,28 @@ import { NotificationService, Notification } from '../../services/notification.s
                   @for (notif of notifications; track notif.id) {
                     <div class="notification-item" [class.unread]="!notif.isRead" (click)="onNotificationClick(notif)">
                       <div class="notif-icon" [class]="getNotifIconClass(notif.type)">
-                        <svg *ngIf="notif.type === 'speed_alert'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+                        <!-- Speed / Driving behavior -->
+                        <svg *ngIf="notif.type === 'speed_alert' || notif.type === 'driving_behavior'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                         </svg>
-                        <svg *ngIf="notif.type === 'geofence_event'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <!-- Geofence -->
+                        <svg *ngIf="notif.type === 'geofence' || notif.type === 'geofence_event'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <circle cx="12" cy="10" r="3"/><path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 7 8 11.7z"/>
                         </svg>
-                        <svg *ngIf="notif.type === 'vehicle_stop'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+                        <!-- Admin action (employee actions) -->
+                        <svg *ngIf="notif.type === 'admin_action'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                         </svg>
+                        <!-- Maintenance -->
                         <svg *ngIf="notif.type === 'maintenance_due'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
                         </svg>
-                        <svg *ngIf="!['speed_alert','geofence_event','vehicle_stop','maintenance_due'].includes(notif.type)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <!-- Vehicle stop -->
+                        <svg *ngIf="notif.type === 'vehicle_stop'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+                        </svg>
+                        <!-- Default -->
+                        <svg *ngIf="!['speed_alert','driving_behavior','geofence','geofence_event','admin_action','maintenance_due','vehicle_stop'].includes(notif.type)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                         </svg>
                       </div>
@@ -568,6 +577,7 @@ import { NotificationService, Notification } from '../../services/notification.s
     .notif-icon.geofence { background: #dbeafe; color: #2563eb; }
     .notif-icon.stopped { background: #f1f5f9; color: #64748b; }
     .notif-icon.maintenance { background: #fef2f2; color: #dc2626; }
+    .notif-icon.admin-action { background: #ecfdf5; color: #059669; }
     .notif-icon.other { background: #e0e7ff; color: #4f46e5; }
 
     .notif-content {
@@ -1043,9 +1053,12 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   getNotifIconClass(type: string): string {
     const typeMap: { [key: string]: string } = {
       speed_alert: 'speeding',
+      driving_behavior: 'speeding',
       vehicle_stop: 'stopped',
       geofence_event: 'geofence',
+      geofence: 'geofence',
       maintenance_due: 'maintenance',
+      admin_action: 'admin-action',
       user_created: 'other',
       system: 'other'
     };

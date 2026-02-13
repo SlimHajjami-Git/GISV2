@@ -76,6 +76,26 @@ export class PermissionService {
 
   constructor(private authService: AuthService) {}
 
+  private userPermissionMapping: Record<string, string> = {
+    'dashboard': 'always',
+    'monitoring': 'canMonitoring',
+    'vehicles': 'canVehicles',
+    'employees': 'canDrivers',
+    'geofences': 'canGeofences',
+    'maintenance': 'canMaintenance',
+    'costs': 'canCosts',
+    'reports': 'canReports',
+    'settings': 'canSettings',
+    'users': 'canUsers',
+    'suppliers': 'canSuppliers',
+    'documents': 'canDocuments',
+    'accidents': 'canAccidents',
+    'fleet_management': 'canFleetManagement',
+    'carburant': 'canCosts',
+    'repairs': 'canMaintenance',
+    'expenses': 'canCosts'
+  };
+
   hasModuleAccess(module: ModuleKey): boolean {
     const user = this.authService.getCurrentUserSync();
     
@@ -94,43 +114,31 @@ export class PermissionService {
     if (features) {
       const featureKey = this.moduleMapping[module];
       if (featureKey && features[featureKey] === false) {
-        // Subscription explicitly disables this module
         return false;
       }
     }
     
-    // Step 2: Check role permissions (user-level limit)
-    // Company admins bypass role check
+    // Step 2: Company admins bypass user-level permissions
     if (user.isCompanyAdmin) {
       return true;
     }
-    
-    // For regular users, check role permissions
-    const permissions = user.permissions;
-    if (permissions) {
-      // Map module key to permission key (e.g., 'users' -> 'moduleUsers')
-      const featureKey = this.moduleMapping[module];
-      
-      // Check if permission exists with module prefix (moduleUsers, moduleFleetManagement, etc.)
-      if (featureKey && permissions[featureKey] === false) {
-        return false;
-      }
-      if (featureKey && permissions[featureKey] === true) {
-        return true;
-      }
-      
-      // Also check without prefix for backward compatibility
-      const permKey = module === 'fleet_management' ? 'fleetManagement' : module;
-      if (permissions[permKey] === false) {
-        return false;
-      }
-      if (permissions[permKey] === true) {
-        return true;
-      }
+
+    // Step 3: Admin access level = all modules
+    if (user.userPermissions?.accessLevel === 'admin') {
+      return true;
     }
     
-    // Fallback: if no explicit permission, allow basic modules
-    return module === 'dashboard' || module === 'vehicles';
+    // Step 4: Check per-user module permissions
+    const up = user.userPermissions;
+    if (up) {
+      const permKey = this.userPermissionMapping[module];
+      if (permKey === 'always') return true; // dashboard always accessible
+      if (permKey && (up as any)[permKey] === true) return true;
+      if (permKey && (up as any)[permKey] === false) return false;
+    }
+    
+    // Fallback: dashboard always accessible
+    return module === 'dashboard';
   }
 
   hasFeature(feature: keyof SubscriptionFeatures): boolean {

@@ -145,6 +145,7 @@ public class GisDbContext : DbContext, IGisDbContext
             modelBuilder.Entity<MaintenanceTemplate>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
             modelBuilder.Entity<GpsAlert>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
             modelBuilder.Entity<VehicleMaintenanceSchedule>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
+            modelBuilder.Entity<Driver>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
         }
 
         // Configure composite keys
@@ -220,6 +221,22 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<VehicleAssignment>().Property(a => a.AssignedBy).HasColumnName("assigned_by");
         modelBuilder.Entity<VehicleAssignment>().HasOne(a => a.Vehicle).WithMany().HasForeignKey(a => a.VehicleId);
         modelBuilder.Entity<VehicleAssignment>().HasOne(a => a.User).WithMany().HasForeignKey(a => a.UserId);
+
+        // User permission column mappings (snake_case)
+        modelBuilder.Entity<User>().Property(u => u.AccessLevel).HasColumnName("access_level");
+        modelBuilder.Entity<User>().Property(u => u.CanMonitoring).HasColumnName("can_monitoring");
+        modelBuilder.Entity<User>().Property(u => u.CanVehicles).HasColumnName("can_vehicles");
+        modelBuilder.Entity<User>().Property(u => u.CanDrivers).HasColumnName("can_drivers");
+        modelBuilder.Entity<User>().Property(u => u.CanReports).HasColumnName("can_reports");
+        modelBuilder.Entity<User>().Property(u => u.CanGeofences).HasColumnName("can_geofences");
+        modelBuilder.Entity<User>().Property(u => u.CanMaintenance).HasColumnName("can_maintenance");
+        modelBuilder.Entity<User>().Property(u => u.CanCosts).HasColumnName("can_costs");
+        modelBuilder.Entity<User>().Property(u => u.CanDocuments).HasColumnName("can_documents");
+        modelBuilder.Entity<User>().Property(u => u.CanAccidents).HasColumnName("can_accidents");
+        modelBuilder.Entity<User>().Property(u => u.CanUsers).HasColumnName("can_users");
+        modelBuilder.Entity<User>().Property(u => u.CanSettings).HasColumnName("can_settings");
+        modelBuilder.Entity<User>().Property(u => u.CanSuppliers).HasColumnName("can_suppliers");
+        modelBuilder.Entity<User>().Property(u => u.CanFleetManagement).HasColumnName("can_fleet_management");
 
         // Role configuration is handled by RoleConfiguration.cs
 

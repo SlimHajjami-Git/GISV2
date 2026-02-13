@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -11,11 +12,13 @@ public class CreateAccidentClaimCommandHandler : IRequestHandler<CreateAccidentC
 {
     private readonly IGisDbContext _context;
     private readonly ICurrentTenantService _tenantService;
+    private readonly IPublisher _publisher;
 
-    public CreateAccidentClaimCommandHandler(IGisDbContext context, ICurrentTenantService tenantService)
+    public CreateAccidentClaimCommandHandler(IGisDbContext context, ICurrentTenantService tenantService, IPublisher publisher)
     {
         _context = context;
         _tenantService = tenantService;
+        _publisher = publisher;
     }
 
     public async Task<int> Handle(CreateAccidentClaimCommand request, CancellationToken cancellationToken)
@@ -83,6 +86,18 @@ public class CreateAccidentClaimCommandHandler : IRequestHandler<CreateAccidentC
             };
             _context.AccidentClaimThirdParties.Add(thirdParty);
             await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // Notify company admins
+        var actorId = _tenantService.UserId ?? 0;
+        var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId, cancellationToken);
+        var vehicle = await _context.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken);
+        if (actor != null)
+        {
+            _ = _publisher.Publish(new AdminActionNotificationEvent(
+                companyId, actorId, actor.FullName,
+                "accident_created", vehicle?.Name ?? vehicle?.Plate ?? $"Sinistre {claimNumber}", claim.Id, "accident"
+            ), cancellationToken);
         }
 
         return claim.Id;

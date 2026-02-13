@@ -26,7 +26,25 @@ public record UserDto(
     string? CompanyType,
     Dictionary<string, object>? Permissions,
     SubscriptionFeaturesDto? SubscriptionFeatures,
-    int[]? AssignedVehicleIds = null
+    int[]? AssignedVehicleIds = null,
+    UserPermissionsDto? UserPermissions = null
+);
+
+public record UserPermissionsDto(
+    string AccessLevel,
+    bool CanMonitoring,
+    bool CanVehicles,
+    bool CanDrivers,
+    bool CanReports,
+    bool CanGeofences,
+    bool CanMaintenance,
+    bool CanCosts,
+    bool CanDocuments,
+    bool CanAccidents,
+    bool CanUsers,
+    bool CanSettings,
+    bool CanSuppliers,
+    bool CanFleetManagement
 );
 
 public record SubscriptionFeaturesDto(

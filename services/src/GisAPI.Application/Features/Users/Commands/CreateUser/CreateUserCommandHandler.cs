@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
@@ -12,15 +13,18 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
     private readonly IGisDbContext _context;
     private readonly ICurrentTenantService _tenantService;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly IPublisher _publisher;
 
     public CreateUserCommandHandler(
         IGisDbContext context,
         ICurrentTenantService tenantService,
-        IPasswordHasher passwordHasher)
+        IPasswordHasher passwordHasher,
+        IPublisher publisher)
     {
         _context = context;
         _tenantService = tenantService;
         _passwordHasher = passwordHasher;
+        _publisher = publisher;
     }
 
     public async Task<UserListDto> Handle(CreateUserCommand request, CancellationToken ct)
@@ -77,7 +81,21 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
             PermitExpiry = request.PermitExpiry,
             CIN = request.CIN,
             DateOfBirth = request.DateOfBirth,
-            HireDate = request.HireDate
+            HireDate = request.HireDate,
+            AccessLevel = request.AccessLevel ?? "user",
+            CanMonitoring = request.CanMonitoring,
+            CanVehicles = request.CanVehicles,
+            CanDrivers = request.CanDrivers,
+            CanReports = request.CanReports,
+            CanGeofences = request.CanGeofences,
+            CanMaintenance = request.CanMaintenance,
+            CanCosts = request.CanCosts,
+            CanDocuments = request.CanDocuments,
+            CanAccidents = request.CanAccidents,
+            CanUsers = request.CanUsers,
+            CanSettings = request.CanSettings,
+            CanSuppliers = request.CanSuppliers,
+            CanFleetManagement = request.CanFleetManagement
         };
 
         _context.Users.Add(user);
@@ -99,6 +117,16 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
             await _context.SaveChangesAsync(ct);
         }
 
+        // Notify company admins about the new user
+        var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == currentUserId, ct);
+        if (actor != null)
+        {
+            _ = _publisher.Publish(new AdminActionNotificationEvent(
+                companyId, currentUserId, actor.FullName,
+                "user_created", user.FullName, user.Id, "user"
+            ), ct);
+        }
+
         return new UserListDto(
             user.Id,
             user.FullName,
@@ -110,7 +138,23 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
             user.Status,
             user.CreatedAt,
             user.LastLoginAt,
-            request.AssignedVehicleIds
+            request.AssignedVehicleIds,
+            new GisAPI.Application.Features.Auth.Commands.Login.UserPermissionsDto(
+                user.AccessLevel,
+                user.CanMonitoring,
+                user.CanVehicles,
+                user.CanDrivers,
+                user.CanReports,
+                user.CanGeofences,
+                user.CanMaintenance,
+                user.CanCosts,
+                user.CanDocuments,
+                user.CanAccidents,
+                user.CanUsers,
+                user.CanSettings,
+                user.CanSuppliers,
+                user.CanFleetManagement
+            )
         );
     }
 }

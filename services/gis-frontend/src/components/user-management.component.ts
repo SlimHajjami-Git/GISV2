@@ -16,6 +16,23 @@ interface Role {
   usersCount?: number;
 }
 
+interface UserPermissions {
+  accessLevel: string;
+  canMonitoring: boolean;
+  canVehicles: boolean;
+  canDrivers: boolean;
+  canReports: boolean;
+  canGeofences: boolean;
+  canMaintenance: boolean;
+  canCosts: boolean;
+  canDocuments: boolean;
+  canAccidents: boolean;
+  canUsers: boolean;
+  canSettings: boolean;
+  canSuppliers: boolean;
+  canFleetManagement: boolean;
+}
+
 interface User {
   id: number;
   name: string;
@@ -28,6 +45,7 @@ interface User {
   createdAt: string;
   lastLoginAt?: string;
   assignedVehicleIds?: number[];
+  userPermissions?: UserPermissions;
 }
 
 interface VehicleOption {
@@ -275,7 +293,10 @@ interface VehicleOption {
                 <span class="step-num">1</span> Général
               </button>
               <button class="step-tab" [class.active]="userModalStep === 2" (click)="userModalStep = 2" *ngIf="!isSelectedRoleAdmin()">
-                <span class="step-num">2</span> Véhicules
+                <span class="step-num">2</span> Permissions
+              </button>
+              <button class="step-tab" [class.active]="userModalStep === 3" (click)="userModalStep = 3" *ngIf="!isSelectedRoleAdmin()">
+                <span class="step-num">3</span> Véhicules
               </button>
             </div>
 
@@ -321,8 +342,90 @@ interface VehicleOption {
                 </div>
               </div>
 
-              <!-- Step 2: Véhicules -->
+              <!-- Step 2: Permissions -->
               <div *ngIf="userModalStep === 2 && !isSelectedRoleAdmin()">
+                <div class="form-section">
+                  <h3 class="section-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    Accès aux modules
+                  </h3>
+                  <p class="section-hint">Cochez les modules auxquels cet utilisateur aura accès. Le tableau de bord est toujours accessible.</p>
+                  <div class="permissions-grid">
+                    <label class="perm-check">
+                      <input type="checkbox" [(ngModel)]="userForm.canMonitoring">
+                      <span class="perm-label">📍 Monitoring GPS</span>
+                      <span class="perm-desc">Suivi en temps réel sur carte</span>
+                    </label>
+                    <label class="perm-check">
+                      <input type="checkbox" [(ngModel)]="userForm.canVehicles">
+                      <span class="perm-label">🚗 Véhicules</span>
+                      <span class="perm-desc">Gestion du parc automobile</span>
+                    </label>
+                    <label class="perm-check">
+                      <input type="checkbox" [(ngModel)]="userForm.canDrivers">
+                      <span class="perm-label">👤 Chauffeurs</span>
+                      <span class="perm-desc">Gestion des chauffeurs</span>
+                    </label>
+                    <label class="perm-check">
+                      <input type="checkbox" [(ngModel)]="userForm.canReports">
+                      <span class="perm-label">📊 Rapports</span>
+                      <span class="perm-desc">Rapports d'activité et analyse</span>
+                    </label>
+                    <label class="perm-check">
+                      <input type="checkbox" [(ngModel)]="userForm.canGeofences">
+                      <span class="perm-label">🗺️ Géofences</span>
+                      <span class="perm-desc">Zones géographiques</span>
+                    </label>
+                    <label class="perm-check">
+                      <input type="checkbox" [(ngModel)]="userForm.canMaintenance">
+                      <span class="perm-label">🔧 Maintenance</span>
+                      <span class="perm-desc">Entretiens et réparations</span>
+                    </label>
+                    <label class="perm-check">
+                      <input type="checkbox" [(ngModel)]="userForm.canCosts">
+                      <span class="perm-label">💰 Dépenses</span>
+                      <span class="perm-desc">Coûts et carburant</span>
+                    </label>
+                    <label class="perm-check">
+                      <input type="checkbox" [(ngModel)]="userForm.canDocuments">
+                      <span class="perm-label">📄 Documents</span>
+                      <span class="perm-desc">Échéances et documents</span>
+                    </label>
+                    <label class="perm-check">
+                      <input type="checkbox" [(ngModel)]="userForm.canAccidents">
+                      <span class="perm-label">⚠️ Sinistres</span>
+                      <span class="perm-desc">Déclaration d'accidents</span>
+                    </label>
+                    <label class="perm-check">
+                      <input type="checkbox" [(ngModel)]="userForm.canSuppliers">
+                      <span class="perm-label">🏪 Fournisseurs</span>
+                      <span class="perm-desc">Garages et prestataires</span>
+                    </label>
+                    <label class="perm-check">
+                      <input type="checkbox" [(ngModel)]="userForm.canFleetManagement">
+                      <span class="perm-label">🚛 Gestion flotte</span>
+                      <span class="perm-desc">Configuration avancée du parc</span>
+                    </label>
+                    <label class="perm-check perm-critical">
+                      <input type="checkbox" [(ngModel)]="userForm.canUsers">
+                      <span class="perm-label">👥 Gestion utilisateurs</span>
+                      <span class="perm-desc">Créer/modifier des utilisateurs</span>
+                    </label>
+                    <label class="perm-check perm-critical">
+                      <input type="checkbox" [(ngModel)]="userForm.canSettings">
+                      <span class="perm-label">⚙️ Paramètres</span>
+                      <span class="perm-desc">Configuration de l'application</span>
+                    </label>
+                  </div>
+                  <div class="perm-actions">
+                    <button class="btn-text" (click)="selectAllPermissions()">Tout cocher</button>
+                    <button class="btn-text" (click)="deselectAllPermissions()">Tout décocher</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Step 3: Véhicules -->
+              <div *ngIf="userModalStep === 3 && !isSelectedRoleAdmin()">
                 <div class="form-section">
                   <h3 class="section-title">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -1480,6 +1583,19 @@ interface VehicleOption {
     .plate-tag { display:inline-block; background:#e2e8f0; color:#475569; padding:1px 6px; border-radius:3px; font-size:11px; font-weight:500; margin-left:4px; }
     .empty-hint { font-size:12px; color:#94a3b8; padding:12px; text-align:center; }
 
+    /* Permissions Grid */
+    .permissions-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:8px; max-height:320px; overflow-y:auto; padding:4px 0; }
+    .perm-check { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; cursor:pointer; transition:all .15s; }
+    .perm-check:hover { border-color:#6366f1; background:#f0f0ff; }
+    .perm-check input[type="checkbox"] { accent-color:#6366f1; width:16px; height:16px; }
+    .perm-label { font-size:13px; font-weight:600; color:#1e293b; flex:1; min-width:120px; }
+    .perm-desc { font-size:11px; color:#94a3b8; width:100%; padding-left:22px; }
+    .perm-check.perm-critical { border-color:#fecaca; background:#fff5f5; }
+    .perm-check.perm-critical:hover { border-color:#f87171; background:#fef2f2; }
+    .perm-actions { display:flex; gap:12px; margin-top:12px; }
+    .btn-text { background:none; border:none; color:#6366f1; font-size:12px; font-weight:500; cursor:pointer; padding:4px 8px; border-radius:4px; }
+    .btn-text:hover { background:#f0f0ff; }
+
     /* Modal Footer */
     .modal-footer {
       display: flex;
@@ -1584,7 +1700,20 @@ export class UserManagementComponent implements OnInit {
     password: '',
     roleId: 0,
     status: 'active',
-    assignedVehicleIds: [] as number[]
+    assignedVehicleIds: [] as number[],
+    canMonitoring: true,
+    canVehicles: true,
+    canDrivers: false,
+    canReports: false,
+    canGeofences: false,
+    canMaintenance: false,
+    canCosts: false,
+    canDocuments: false,
+    canAccidents: false,
+    canUsers: false,
+    canSettings: false,
+    canSuppliers: false,
+    canFleetManagement: false
   };
   availableVehicles: VehicleOption[] = [];
 
@@ -1847,6 +1976,7 @@ export class UserManagementComponent implements OnInit {
     if (user) {
       this.editingUser = user;
       const nameParts = user.name.split(' ');
+      const up = user.userPermissions;
       this.userForm = {
         firstName: nameParts[0] || '',
         lastName: nameParts.slice(1).join(' ') || '',
@@ -1855,7 +1985,20 @@ export class UserManagementComponent implements OnInit {
         password: '',
         roleId: user.roleId,
         status: user.status,
-        assignedVehicleIds: [...(user.assignedVehicleIds || [])]
+        assignedVehicleIds: [...(user.assignedVehicleIds || [])],
+        canMonitoring: up?.canMonitoring ?? true,
+        canVehicles: up?.canVehicles ?? true,
+        canDrivers: up?.canDrivers ?? false,
+        canReports: up?.canReports ?? false,
+        canGeofences: up?.canGeofences ?? false,
+        canMaintenance: up?.canMaintenance ?? false,
+        canCosts: up?.canCosts ?? false,
+        canDocuments: up?.canDocuments ?? false,
+        canAccidents: up?.canAccidents ?? false,
+        canUsers: up?.canUsers ?? false,
+        canSettings: up?.canSettings ?? false,
+        canSuppliers: up?.canSuppliers ?? false,
+        canFleetManagement: up?.canFleetManagement ?? false
       };
     } else {
       this.editingUser = null;
@@ -1867,7 +2010,20 @@ export class UserManagementComponent implements OnInit {
         password: '',
         roleId: this.roles.length > 0 ? this.roles[0].id : 0,
         status: 'active',
-        assignedVehicleIds: []
+        assignedVehicleIds: [],
+        canMonitoring: true,
+        canVehicles: true,
+        canDrivers: false,
+        canReports: false,
+        canGeofences: false,
+        canMaintenance: false,
+        canCosts: false,
+        canDocuments: false,
+        canAccidents: false,
+        canUsers: false,
+        canSettings: false,
+        canSuppliers: false,
+        canFleetManagement: false
       };
     }
     this.userModalStep = 1;
@@ -1882,7 +2038,10 @@ export class UserManagementComponent implements OnInit {
 
   private getUserSteps(): number[] {
     const steps = [1];
-    if (!this.isSelectedRoleAdmin()) steps.push(2);
+    if (!this.isSelectedRoleAdmin()) {
+      steps.push(2); // Permissions
+      steps.push(3); // Vehicles
+    }
     return steps;
   }
 
@@ -1908,6 +2067,38 @@ export class UserManagementComponent implements OnInit {
     }
   }
 
+  selectAllPermissions() {
+    this.userForm.canMonitoring = true;
+    this.userForm.canVehicles = true;
+    this.userForm.canDrivers = true;
+    this.userForm.canReports = true;
+    this.userForm.canGeofences = true;
+    this.userForm.canMaintenance = true;
+    this.userForm.canCosts = true;
+    this.userForm.canDocuments = true;
+    this.userForm.canAccidents = true;
+    this.userForm.canUsers = true;
+    this.userForm.canSettings = true;
+    this.userForm.canSuppliers = true;
+    this.userForm.canFleetManagement = true;
+  }
+
+  deselectAllPermissions() {
+    this.userForm.canMonitoring = false;
+    this.userForm.canVehicles = false;
+    this.userForm.canDrivers = false;
+    this.userForm.canReports = false;
+    this.userForm.canGeofences = false;
+    this.userForm.canMaintenance = false;
+    this.userForm.canCosts = false;
+    this.userForm.canDocuments = false;
+    this.userForm.canAccidents = false;
+    this.userForm.canUsers = false;
+    this.userForm.canSettings = false;
+    this.userForm.canSuppliers = false;
+    this.userForm.canFleetManagement = false;
+  }
+
   saveUser() {
     if (!this.userForm.firstName || !this.userForm.email || !this.userForm.roleId) {
       this.toast.error('Erreur', 'Veuillez remplir tous les champs requis');
@@ -1919,6 +2110,22 @@ export class UserManagementComponent implements OnInit {
       return;
     }
 
+    const permissionPayload = {
+      canMonitoring: this.userForm.canMonitoring,
+      canVehicles: this.userForm.canVehicles,
+      canDrivers: this.userForm.canDrivers,
+      canReports: this.userForm.canReports,
+      canGeofences: this.userForm.canGeofences,
+      canMaintenance: this.userForm.canMaintenance,
+      canCosts: this.userForm.canCosts,
+      canDocuments: this.userForm.canDocuments,
+      canAccidents: this.userForm.canAccidents,
+      canUsers: this.userForm.canUsers,
+      canSettings: this.userForm.canSettings,
+      canSuppliers: this.userForm.canSuppliers,
+      canFleetManagement: this.userForm.canFleetManagement
+    };
+
     if (this.editingUser) {
       this.apiService.updateUser(this.editingUser.id, {
         firstName: this.userForm.firstName,
@@ -1927,7 +2134,8 @@ export class UserManagementComponent implements OnInit {
         phone: this.userForm.phone,
         roleId: this.userForm.roleId,
         status: this.userForm.status,
-        assignedVehicleIds: this.userForm.assignedVehicleIds
+        assignedVehicleIds: this.userForm.assignedVehicleIds,
+        ...permissionPayload
       }).subscribe({
         next: () => {
           this.toast.success('Succès', 'Utilisateur modifié avec succès');
@@ -1947,7 +2155,8 @@ export class UserManagementComponent implements OnInit {
         phone: this.userForm.phone,
         password: this.userForm.password,
         roleId: this.userForm.roleId,
-        assignedVehicleIds: this.userForm.assignedVehicleIds
+        assignedVehicleIds: this.userForm.assignedVehicleIds,
+        ...permissionPayload
       }).subscribe({
         next: () => {
           this.toast.success('Succès', 'Utilisateur créé avec succès');

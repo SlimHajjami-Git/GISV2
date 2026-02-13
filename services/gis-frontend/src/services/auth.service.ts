@@ -3,13 +3,30 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, BehaviorSubject, of, tap, map, catchError } from 'rxjs';
 import { SubscriptionFeatures } from './permission.service';
 
+export interface UserPermissions {
+  accessLevel: string;
+  canMonitoring: boolean;
+  canVehicles: boolean;
+  canDrivers: boolean;
+  canReports: boolean;
+  canGeofences: boolean;
+  canMaintenance: boolean;
+  canCosts: boolean;
+  canDocuments: boolean;
+  canAccidents: boolean;
+  canUsers: boolean;
+  canSettings: boolean;
+  canSuppliers: boolean;
+  canFleetManagement: boolean;
+}
+
 export interface AuthUser {
   id: string;
   name: string;
   email: string;
   phone?: string;
   roles: string[];
-  permissions: Record<string, any>;  // Changed to object to preserve module permissions
+  permissions: Record<string, any>;
   companyId: string;
   companyName: string;
   companyType?: string;
@@ -17,6 +34,7 @@ export interface AuthUser {
   isSystemAdmin: boolean;
   subscriptionFeatures: SubscriptionFeatures | null;
   assignedVehicleIds: number[] | null;
+  userPermissions: UserPermissions | null;
 }
 
 export interface AuthResponse {
@@ -38,6 +56,7 @@ export interface AuthResponse {
     permissions: Record<string, any>;
     subscriptionFeatures: SubscriptionFeatures | null;
     assignedVehicleIds: number[] | null;
+    userPermissions: UserPermissions | null;
   };
 }
 
@@ -76,7 +95,8 @@ export class AuthService {
           isCompanyAdmin: parsed.isCompanyAdmin ?? false,
           isSystemAdmin: parsed.isSystemAdmin ?? false,
           subscriptionFeatures: parsed.subscriptionFeatures ?? null,
-          assignedVehicleIds: parsed.assignedVehicleIds ?? null
+          assignedVehicleIds: parsed.assignedVehicleIds ?? null,
+          userPermissions: parsed.userPermissions ?? null
         });
       } catch (e) {
         console.error('Error loading stored auth:', e);
@@ -93,13 +113,21 @@ export class AuthService {
         name: 'Admin Test',
         email: 'admin@test.com',
         roles: ['admin'],
-        permissions: { all: true },  // Object format for permissions
+        permissions: { all: true },
         companyId: '1',
         companyName: 'Demo Company',
         companyType: 'transport',
         isCompanyAdmin: true,
         isSystemAdmin: true,
         assignedVehicleIds: null,
+        userPermissions: {
+          accessLevel: 'admin',
+          canMonitoring: true, canVehicles: true, canDrivers: true,
+          canReports: true, canGeofences: true, canMaintenance: true,
+          canCosts: true, canDocuments: true, canAccidents: true,
+          canUsers: true, canSettings: true, canSuppliers: true,
+          canFleetManagement: true
+        },
         subscriptionFeatures: {
           gpsTracking: true,
           gpsInstallation: true,
@@ -159,17 +187,18 @@ export class AuthService {
           email: response.user.email,
           phone: response.user.phone,
           roles: [response.user.roleName],
-          permissions: response.user.permissions || {},  // Keep original permissions object
+          permissions: response.user.permissions || {},
           companyId: response.user.companyId.toString(),
           companyName: response.user.companyName,
           companyType: response.user.companyType || '',
           isCompanyAdmin: response.user.isCompanyAdmin,
           isSystemAdmin: response.user.isSystemAdmin,
           subscriptionFeatures: response.user.subscriptionFeatures,
-          assignedVehicleIds: response.user.assignedVehicleIds ?? null
+          assignedVehicleIds: response.user.assignedVehicleIds ?? null,
+          userPermissions: response.user.userPermissions ?? null
         };
         console.log('AuthService.login - Mapped subscriptionFeatures:', user.subscriptionFeatures);
-        console.log('AuthService.login - User permissions:', user.permissions);
+        console.log('AuthService.login - User permissions:', user.userPermissions);
         localStorage.setItem('auth_token', response.token);
         localStorage.setItem('refresh_token', response.refreshToken);
         localStorage.setItem('auth_user', JSON.stringify(user));
@@ -215,13 +244,14 @@ export class AuthService {
           email: response.user.email,
           phone: response.user.phone,
           roles: [response.user.roleName],
-          permissions: response.user.permissions || {},  // Keep original permissions object
+          permissions: response.user.permissions || {},
           companyId: response.user.companyId.toString(),
           companyName: response.user.companyName,
           isCompanyAdmin: response.user.isCompanyAdmin,
           isSystemAdmin: response.user.isSystemAdmin,
           subscriptionFeatures: response.user.subscriptionFeatures,
-          assignedVehicleIds: response.user.assignedVehicleIds ?? null
+          assignedVehicleIds: response.user.assignedVehicleIds ?? null,
+          userPermissions: response.user.userPermissions ?? null
         };
         localStorage.setItem('auth_token', response.token);
         localStorage.setItem('refresh_token', response.refreshToken);
@@ -311,7 +341,8 @@ export class AuthService {
           isCompanyAdmin: response.user.isCompanyAdmin,
           isSystemAdmin: response.user.isSystemAdmin,
           subscriptionFeatures: response.user.subscriptionFeatures,
-          assignedVehicleIds: response.user.assignedVehicleIds ?? null
+          assignedVehicleIds: response.user.assignedVehicleIds ?? null,
+          userPermissions: response.user.userPermissions ?? null
         };
         localStorage.setItem('auth_token', response.token);
         localStorage.setItem('refresh_token', response.refreshToken);

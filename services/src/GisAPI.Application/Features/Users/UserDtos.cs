@@ -1,3 +1,5 @@
+using GisAPI.Application.Features.Auth.Commands.Login;
+
 namespace GisAPI.Application.Features.Users;
 
 public record UserListDto(
@@ -11,5 +13,6 @@ public record UserListDto(
     string Status,
     DateTime CreatedAt,
     DateTime? LastLoginAt,
-    int[]? AssignedVehicleIds = null
+    int[]? AssignedVehicleIds = null,
+    UserPermissionsDto? UserPermissions = null
 );

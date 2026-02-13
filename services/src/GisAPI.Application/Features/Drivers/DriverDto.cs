@@ -12,7 +12,6 @@ public record DriverDto(
     DateTime? PermitExpiry,
     string? CIN,
     DateTime? DateOfBirth,
-    DateTime? HireDate,
     int? AssignedVehicleId,
     string? AssignedVehicleName,
     string? AssignedVehiclePlate,
