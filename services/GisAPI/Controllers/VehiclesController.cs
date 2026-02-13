@@ -81,7 +81,7 @@ public class VehiclesController : ControllerBase
         var vehicles = await _mediator.Send(new GetVehiclesWithPositionsQuery());
         
         // Try to enhance positions from Redis cache (faster, more recent)
-        var companyIdClaim = User.FindFirst("company_id")?.Value;
+        var companyIdClaim = User.FindFirst("companyId")?.Value;
         if (int.TryParse(companyIdClaim, out var companyId))
         {
             var cachedPositions = await _redisCache.GetAllPositionsForCompanyAsync(companyId);

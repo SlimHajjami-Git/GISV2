@@ -210,7 +210,8 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                     TimeSpan.FromMinutes(stoppedMinutes),
                     isMoving ? null : position?.RecordedAt,
                     isMoving ? position?.RecordedAt : null
-                )
+                ),
+                v.Mileage
             );
         }).ToList();
 

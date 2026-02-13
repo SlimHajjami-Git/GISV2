@@ -168,7 +168,6 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.signalRSubscription) {
       this.signalRSubscription.unsubscribe();
     }
-    this.signalRService.stopConnection();
     if (this.map) {
       this.map.remove();
     }
@@ -381,7 +380,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
             lastAddress: v.lastPosition?.address || null,
             lastRecordedAt: v.lastPosition?.recordedAt || null,
             // Vehicle mileage
-            odometerKm: v.lastPosition?.odometerKm || null
+            odometerKm: v.lastPosition?.odometerKm ?? v.mileage ?? null
           }));
           
           // Assign to trigger change detection
