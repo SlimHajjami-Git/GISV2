@@ -98,9 +98,9 @@ public class CreateDriverCommandHandler : IRequestHandler<CreateDriverCommand, D
             User = user,
             PermitNumber = request.PermitNumber,
             PermitType = request.PermitType,
-            PermitExpiry = request.PermitExpiry,
+            PermitExpiry = request.PermitExpiry.HasValue ? DateTime.SpecifyKind(request.PermitExpiry.Value, DateTimeKind.Utc) : null,
             CIN = request.CIN,
-            DateOfBirth = request.DateOfBirth,
+            DateOfBirth = request.DateOfBirth.HasValue ? DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc) : null,
             AssignedVehicleId = request.AssignedVehicleId,
             Status = "active"
         };

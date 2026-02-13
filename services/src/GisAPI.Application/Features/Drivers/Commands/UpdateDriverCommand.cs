@@ -60,9 +60,9 @@ public class UpdateDriverCommandHandler : IRequestHandler<UpdateDriverCommand>
         // Update driver info
         driver.PermitNumber = request.PermitNumber;
         driver.PermitType = request.PermitType;
-        driver.PermitExpiry = request.PermitExpiry;
+        driver.PermitExpiry = request.PermitExpiry.HasValue ? DateTime.SpecifyKind(request.PermitExpiry.Value, DateTimeKind.Utc) : null;
         driver.CIN = request.CIN;
-        driver.DateOfBirth = request.DateOfBirth;
+        driver.DateOfBirth = request.DateOfBirth.HasValue ? DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc) : null;
         driver.AssignedVehicleId = request.AssignedVehicleId;
         if (!string.IsNullOrEmpty(request.Status))
             driver.Status = request.Status;
