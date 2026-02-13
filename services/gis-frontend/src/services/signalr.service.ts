@@ -1,4 +1,4 @@
-import { Injectable, OnDestroy } from '@angular/core';
+import { Injectable, NgZone, OnDestroy } from '@angular/core';
 import * as signalR from '@microsoft/signalr';
 import { Subject, BehaviorSubject, Subscription, timer } from 'rxjs';
 
@@ -76,7 +76,7 @@ export class SignalRService implements OnDestroy {
   public unreadCount$ = new BehaviorSubject<number>(0);
   public connectionState$ = this.connectionState.asObservable();
 
-  constructor() {}
+  constructor(private ngZone: NgZone) {}
 
   ngOnDestroy(): void {
     this.cleanup();
@@ -193,27 +193,27 @@ export class SignalRService implements OnDestroy {
     if (!this.hubConnection) return;
 
     this.hubConnection.on('PositionUpdate', (position: PositionUpdate) => {
-      this.positionUpdate$.next(position);
+      this.ngZone.run(() => this.positionUpdate$.next(position));
     });
 
     this.hubConnection.on('VehiclePosition', (position: PositionUpdate) => {
-      this.positionUpdate$.next(position);
+      this.ngZone.run(() => this.positionUpdate$.next(position));
     });
 
     this.hubConnection.on('Alert', (alert: GpsAlert) => {
-      this.alert$.next(alert);
+      this.ngZone.run(() => this.alert$.next(alert));
     });
 
     this.hubConnection.on('GeofenceEvent', (event: GeofenceEvent) => {
-      this.geofenceEvent$.next(event);
+      this.ngZone.run(() => this.geofenceEvent$.next(event));
     });
 
     this.hubConnection.on('NewNotification', (notification: SignalRNotification) => {
-      this.notification$.next(notification);
+      this.ngZone.run(() => this.notification$.next(notification));
     });
 
     this.hubConnection.on('UnreadCountChanged', (data: UnreadCountChange) => {
-      this.unreadCount$.next(data.count);
+      this.ngZone.run(() => this.unreadCount$.next(data.count));
     });
   }
 
