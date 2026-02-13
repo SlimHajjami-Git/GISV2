@@ -292,10 +292,10 @@ interface VehicleOption {
               <button class="step-tab" [class.active]="userModalStep === 1" (click)="userModalStep = 1">
                 <span class="step-num">1</span> Général
               </button>
-              <button class="step-tab" [class.active]="userModalStep === 2" (click)="userModalStep = 2" *ngIf="!isSelectedRoleAdmin()">
+              <button class="step-tab" [class.active]="userModalStep === 2" (click)="userModalStep = 2">
                 <span class="step-num">2</span> Permissions
               </button>
-              <button class="step-tab" [class.active]="userModalStep === 3" (click)="userModalStep = 3" *ngIf="!isSelectedRoleAdmin()">
+              <button class="step-tab" [class.active]="userModalStep === 3" (click)="userModalStep = 3">
                 <span class="step-num">3</span> Véhicules
               </button>
             </div>
@@ -343,7 +343,7 @@ interface VehicleOption {
               </div>
 
               <!-- Step 2: Permissions -->
-              <div *ngIf="userModalStep === 2 && !isSelectedRoleAdmin()">
+              <div *ngIf="userModalStep === 2">
                 <div class="form-section">
                   <h3 class="section-title">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -425,7 +425,7 @@ interface VehicleOption {
               </div>
 
               <!-- Step 3: Véhicules -->
-              <div *ngIf="userModalStep === 3 && !isSelectedRoleAdmin()">
+              <div *ngIf="userModalStep === 3">
                 <div class="form-section">
                   <h3 class="section-title">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -2037,12 +2037,7 @@ export class UserManagementComponent implements OnInit {
   }
 
   private getUserSteps(): number[] {
-    const steps = [1];
-    if (!this.isSelectedRoleAdmin()) {
-      steps.push(2); // Permissions
-      steps.push(3); // Vehicles
-    }
-    return steps;
+    return [1, 2, 3];
   }
 
   hasNextUserStep(): boolean {
