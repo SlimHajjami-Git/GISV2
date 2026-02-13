@@ -145,7 +145,7 @@ public class DashboardController : ControllerBase
     {
         var companyId = GetCompanyId();
         var today = DateTime.UtcNow.Date;
-        var thisMonth = new DateTime(today.Year, today.Month, 1);
+        var thisMonth = DateTime.SpecifyKind(new DateTime(today.Year, today.Month, 1), DateTimeKind.Utc);
         var cutoffTime = DateTime.UtcNow.AddMinutes(-5);
 
         // Vehicle stats

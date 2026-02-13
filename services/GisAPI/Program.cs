@@ -117,6 +117,9 @@ builder.Services.AddCors(options =>
     });
 });
 
+// In-memory cache for dashboard and reports
+builder.Services.AddMemoryCache();
+
 // OpenAPI/Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

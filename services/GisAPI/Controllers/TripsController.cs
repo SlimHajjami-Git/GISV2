@@ -43,10 +43,10 @@ public class TripsController : ControllerBase
             query = query.Where(t => t.DriverId == driverId);
 
         if (startDate.HasValue)
-            query = query.Where(t => t.StartTime >= startDate);
+            query = query.Where(t => t.StartTime >= DateTime.SpecifyKind(startDate.Value, DateTimeKind.Utc));
 
         if (endDate.HasValue)
-            query = query.Where(t => t.EndTime <= endDate);
+            query = query.Where(t => t.EndTime <= DateTime.SpecifyKind(endDate.Value.Date.AddDays(1), DateTimeKind.Utc));
 
         var trips = await query
             .OrderByDescending(t => t.StartTime)
@@ -95,10 +95,10 @@ public class TripsController : ControllerBase
             .AsQueryable();
 
         if (startDate.HasValue)
-            query = query.Where(t => t.StartTime >= startDate);
+            query = query.Where(t => t.StartTime >= DateTime.SpecifyKind(startDate.Value, DateTimeKind.Utc));
 
         if (endDate.HasValue)
-            query = query.Where(t => t.EndTime <= endDate);
+            query = query.Where(t => t.EndTime <= DateTime.SpecifyKind(endDate.Value.Date.AddDays(1), DateTimeKind.Utc));
 
         var trips = await query
             .OrderByDescending(t => t.StartTime)
@@ -133,13 +133,13 @@ public class TripsController : ControllerBase
         [FromQuery] DateTime? endDate = null)
     {
         var companyId = GetCompanyId();
-        startDate ??= DateTime.UtcNow.AddMonths(-1);
-        endDate ??= DateTime.UtcNow;
+        var utcStart = DateTime.SpecifyKind((startDate ?? DateTime.UtcNow.AddMonths(-1)).Date, DateTimeKind.Utc);
+        var utcEnd = DateTime.SpecifyKind((endDate ?? DateTime.UtcNow).Date.AddDays(1), DateTimeKind.Utc);
 
         var trips = await _context.Trips
             .Where(t => t.CompanyId == companyId && 
-                        t.StartTime >= startDate && 
-                        t.EndTime <= endDate &&
+                        t.StartTime >= utcStart && 
+                        t.EndTime <= utcEnd &&
                         t.Status == "completed")
             .ToListAsync();
 
@@ -149,12 +149,12 @@ public class TripsController : ControllerBase
             TotalDistanceKm = trips.Sum(t => t.DistanceKm),
             TotalDurationMinutes = trips.Sum(t => t.DurationMinutes),
             TotalFuelConsumed = trips.Sum(t => t.FuelConsumedLiters ?? 0),
-            AverageSpeedKph = trips.Average(t => t.AverageSpeedKph ?? 0),
-            MaxSpeedKph = trips.Max(t => t.MaxSpeedKph ?? 0),
+            AverageSpeedKph = trips.Count > 0 ? trips.Average(t => t.AverageSpeedKph ?? 0) : 0,
+            MaxSpeedKph = trips.Count > 0 ? trips.Max(t => t.MaxSpeedKph ?? 0) : 0,
             TotalHarshBraking = trips.Sum(t => t.HarshBrakingCount ?? 0),
             TotalHarshAcceleration = trips.Sum(t => t.HarshAccelerationCount ?? 0),
             TotalOverspeeding = trips.Sum(t => t.OverspeedingCount ?? 0),
-            Period = new { StartDate = startDate, EndDate = endDate }
+            Period = new { StartDate = utcStart, EndDate = utcEnd }
         };
 
         return Ok(summary);
