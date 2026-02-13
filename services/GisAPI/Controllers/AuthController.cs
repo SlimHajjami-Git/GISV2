@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using MediatR;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Application.Features.Auth.Commands.Login;
-using GisAPI.Application.Features.Auth.Commands.Register;
 using GisAPI.Application.Features.Auth.Commands.RefreshToken;
 using GisAPI.Domain.Entities;
 
@@ -41,22 +40,6 @@ public class AuthController : ControllerBase
         {
             return Unauthorized(new { message = ex.Message });
         }
-    }
-
-    [HttpPost("register")]
-    public async Task<ActionResult<LoginResponse>> Register([FromBody] RegisterRequest request)
-    {
-        var command = new RegisterCommand(
-            request.FirstName ?? ((request.Name ?? "").Split(' ', 2).ElementAtOrDefault(0) ?? ""),
-            request.LastName ?? ((request.Name ?? "").Split(' ', 2).ElementAtOrDefault(1) ?? ""),
-            request.Email,
-            request.Password,
-            request.CompanyName,
-            request.Phone
-        );
-
-        var result = await _mediator.Send(command);
-        return Ok(result);
     }
 
     [HttpPost("seed")]
@@ -170,12 +153,3 @@ public class AuthController : ControllerBase
 // Request DTOs for AuthController
 public record LoginRequest(string Email, string Password);
 public record RefreshRequest(string Token, string RefreshToken);
-public record RegisterRequest(
-    string Email,
-    string Password,
-    string CompanyName,
-    string? Phone = null,
-    string? Name = null,
-    string? FirstName = null,
-    string? LastName = null
-);

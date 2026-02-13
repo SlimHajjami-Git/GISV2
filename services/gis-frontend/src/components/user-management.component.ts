@@ -64,16 +64,10 @@ interface VehicleOption {
         <div class="page-header">
           <div class="header-left">
             <h1>Gestion des Utilisateurs</h1>
-            <p class="subtitle">Gérez les utilisateurs et les rôles de votre équipe</p>
+            <p class="subtitle">Gérez les utilisateurs de votre équipe</p>
           </div>
           <div class="header-actions">
-            <button class="btn-secondary" (click)="openRoleModal()" *ngIf="activeTab === 'roles'">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-              Nouveau Rôle
-            </button>
-            <button class="btn-primary" (click)="openUserModal()" *ngIf="activeTab === 'users'">
+            <button class="btn-primary" (click)="openUserModal()">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
@@ -82,24 +76,9 @@ interface VehicleOption {
           </div>
         </div>
 
-        <!-- Tabs -->
-        <div class="tabs">
-          <button class="tab" [class.active]="activeTab === 'users'" (click)="setActiveTab('users')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-            </svg>
-            Utilisateurs ({{ users.length }})
-          </button>
-          <button class="tab" [class.active]="activeTab === 'roles'" (click)="setActiveTab('roles')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-            </svg>
-            Rôles ({{ roles.length }})
-          </button>
-        </div>
 
         <!-- Stats Cards -->
-        <div class="stats-row" *ngIf="activeTab === 'users'">
+        <div class="stats-row">
           <div class="stat-card">
             <div class="stat-icon users">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -147,7 +126,7 @@ interface VehicleOption {
         </div>
 
         <!-- Users Table -->
-        <div class="users-card" *ngIf="activeTab === 'users'">
+        <div class="users-card">
           <div class="card-header">
             <div class="search-box">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -219,58 +198,6 @@ interface VehicleOption {
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
               </svg>
               <p>Aucun utilisateur trouvé</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Roles Table -->
-        <div class="users-card" *ngIf="activeTab === 'roles'">
-          <div class="table-container">
-            <table class="users-table">
-              <thead>
-                <tr>
-                  <th>Nom du rôle</th>
-                  <th>Description</th>
-                  <th>Utilisateurs</th>
-                  <th>Type</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr *ngFor="let role of roles">
-                  <td>
-                    <div class="role-info">
-                      <span class="role-name">{{ role.name }}</span>
-                    </div>
-                  </td>
-                  <td>{{ role.description || '-' }}</td>
-                  <td>{{ getUsersCountByRole(role.id) }}</td>
-                  <td>
-                    <span class="type-badge" [class.admin]="role.isCompanyAdmin" [class.system]="role.isSystem">
-                      {{ role.isSystem ? 'Système' : (role.isCompanyAdmin ? 'Admin' : 'Standard') }}
-                    </span>
-                  </td>
-                  <td>
-                    <div class="action-buttons">
-                      <button class="btn-icon" title="Modifier" (click)="openRoleModal(role)" [disabled]="role.isSystem">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                        </svg>
-                      </button>
-                      <button class="btn-icon danger" title="Supprimer" (click)="deleteRole(role)" [disabled]="role.isSystem">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <polyline points="3 6 5 6 21 6"/>
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                        </svg>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <div class="empty-state" *ngIf="roles.length === 0 && !loading">
-              <p>Aucun rôle trouvé</p>
             </div>
           </div>
         </div>
@@ -461,111 +388,6 @@ interface VehicleOption {
           </div>
         </div>
 
-        <!-- Role Modal -->
-        <div class="modal-overlay" *ngIf="showRoleModal" (click)="closeRoleModal()">
-          <div class="modal-content modal-lg" (click)="$event.stopPropagation()">
-            <div class="modal-header">
-              <h2>{{ editingRole ? 'Modifier' : 'Nouveau' }} Rôle</h2>
-              <button class="btn-close" (click)="closeRoleModal()">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </div>
-            <div class="modal-body">
-              <div class="form-section">
-                <h3>Informations générales</h3>
-                <div class="form-grid">
-                  <div class="form-group">
-                    <label>Nom du rôle *</label>
-                    <input type="text" [(ngModel)]="roleForm.name" placeholder="Ex: Superviseur">
-                  </div>
-                  <div class="form-group">
-                    <label>Description</label>
-                    <input type="text" [(ngModel)]="roleForm.description" placeholder="Description du rôle">
-                  </div>
-                </div>
-                <div class="form-group checkbox-group">
-                  <label class="checkbox-label">
-                    <input type="checkbox" [(ngModel)]="roleForm.isCompanyAdmin">
-                    <span>Administrateur de la société</span>
-                  </label>
-                  <p class="hint">Les administrateurs ont accès à toutes les fonctionnalités</p>
-                </div>
-              </div>
-
-              <!-- Permissions by category -->
-              <ng-container *ngIf="!roleForm.isCompanyAdmin">
-                <div class="form-section permission-category" *ngFor="let category of permissionCategories" [class.critical]="category.critical">
-                  <div class="category-header">
-                    <span class="category-icon">{{ category.icon }}</span>
-                    <div class="category-info">
-                      <h3>{{ category.name }}</h3>
-                      <p class="category-desc">{{ category.description }}</p>
-                    </div>
-                  </div>
-                  <div class="permissions-list">
-                    <label *ngFor="let perm of category.permissions" 
-                           class="permission-item" 
-                           [class.selected]="roleForm.modules[perm.key]"
-                           [class.critical-perm]="perm.desc.includes('CRITIQUE')">
-                      <input type="checkbox" [(ngModel)]="roleForm.modules[perm.key]" (change)="onModuleToggle(perm.key)">
-                      <div class="perm-content">
-                        <span class="perm-label">{{ perm.label }}</span>
-                        <span class="perm-desc">{{ perm.desc }}</span>
-                      </div>
-                      <svg class="check-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                      </svg>
-                    </label>
-                  </div>
-                </div>
-
-                <!-- Reports permissions - Only show if moduleReports is enabled -->
-                <div class="form-section permission-category" [class.disabled]="!roleForm.modules['moduleReports']">
-                  <div class="category-header">
-                    <span class="category-icon">📈</span>
-                    <div class="category-info">
-                      <h3>Types de rapports</h3>
-                      <p class="category-desc" *ngIf="roleForm.modules['moduleReports']">Choisissez les rapports que ce rôle peut générer et consulter</p>
-                      <p class="category-desc warning" *ngIf="!roleForm.modules['moduleReports']">⚠️ Activez d'abord "Rapports" dans la catégorie "Rapports & Analyse" ci-dessus</p>
-                    </div>
-                  </div>
-                  <div class="permissions-list reports-list" *ngIf="roleForm.modules['moduleReports']">
-                    <label *ngFor="let rep of reportPermissions" 
-                           class="permission-item compact" 
-                           [class.selected]="roleForm.reports[rep.key]">
-                      <input type="checkbox" [(ngModel)]="roleForm.reports[rep.key]" (change)="onReportToggle(rep.key)">
-                      <div class="perm-content">
-                        <span class="perm-label">{{ rep.label }}</span>
-                        <span class="perm-desc">{{ rep.desc }}</span>
-                      </div>
-                      <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12"/>
-                      </svg>
-                    </label>
-                  </div>
-                  <div class="disabled-overlay" *ngIf="!roleForm.modules['moduleReports']">
-                    <p>Les rapports individuels seront disponibles après activation du module Rapports</p>
-                  </div>
-                </div>
-              </ng-container>
-
-              <div class="admin-notice" *ngIf="roleForm.isCompanyAdmin">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-                <span>Les administrateurs ont automatiquement accès à tous les modules et rapports de l'abonnement.</span>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button class="btn-secondary" (click)="closeRoleModal()">Annuler</button>
-              <button class="btn-primary" (click)="saveRole()">
-                {{ editingRole ? 'Enregistrer' : 'Créer' }}
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     </app-layout>
   `,

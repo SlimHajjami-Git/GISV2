@@ -242,42 +242,6 @@ export class AuthService {
     return result;
   }
 
-  register(name: string, email: string, password: string, companyName: string, phone?: string): Observable<AuthUser | null> {
-    return this.http.post<AuthResponse>(`${this.API_URL}/auth/register`, { 
-      name, email, password, companyName, phone 
-    }).pipe(
-      tap(response => {
-        console.log('AuthService.register - Response received:', response);
-      }),
-      map(response => {
-        const user: AuthUser = {
-          id: response.user.id?.toString() || '',
-          name: `${response.user.firstName} ${response.user.lastName}`.trim(),
-          email: response.user.email,
-          phone: response.user.phone,
-          roles: [response.user.roleName],
-          permissions: response.user.permissions || {},
-          companyId: response.user.companyId.toString(),
-          companyName: response.user.companyName,
-          isCompanyAdmin: response.user.isCompanyAdmin,
-          isSystemAdmin: response.user.isSystemAdmin,
-          subscriptionFeatures: response.user.subscriptionFeatures,
-          assignedVehicleIds: response.user.assignedVehicleIds ?? null,
-          userPermissions: response.user.userPermissions ?? null
-        };
-        localStorage.setItem('auth_token', response.token);
-        localStorage.setItem('refresh_token', response.refreshToken);
-        localStorage.setItem('auth_user', JSON.stringify(user));
-        this.currentUser$.next(user);
-        return user;
-      }),
-      catchError(err => {
-        console.error('Register failed:', err);
-        return of(null);
-      })
-    );
-  }
-
   logout() {
     // Clear all auth-related storage
     localStorage.removeItem('auth_token');

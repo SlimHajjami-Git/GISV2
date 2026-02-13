@@ -66,7 +66,7 @@ import { AuthService } from '../services/auth.service';
           </form>
 
           <div class="auth-footer">
-            <p>Pas encore de compte? <a [routerLink]="['/register']" class="link">Créer un compte</a></p>
+            <p>Contactez votre administrateur pour obtenir un accès</p>
           </div>
         </div>
 

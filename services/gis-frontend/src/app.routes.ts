@@ -1,7 +1,6 @@
 import { Routes } from '@angular/router';
 import { LandingComponent } from './components/landing.component';
 import { LoginComponent } from './components/login.component';
-import { RegisterComponent } from './components/register.component';
 import { DashboardComponent } from './components/dashboard.component';
 import { VehiclesComponent } from './components/vehicles.component';
 import { EmployeesComponent } from './components/employees.component';
@@ -35,8 +34,6 @@ export const routes: Routes = [
   // Public routes (no auth required)
   { path: '', component: LandingComponent },
   { path: 'login', component: LoginComponent },
-  { path: 'register', component: RegisterComponent },
-  
   // Protected routes - Dashboard (always accessible when logged in)
   { path: 'dashboard', component: DashboardComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'dashboard' } },
   

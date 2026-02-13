@@ -23,8 +23,7 @@ import { Subscription } from '../models/types';
             <a href="#features">Fonctionnalités</a>
             <a href="#pricing">Tarifs</a>
             <a href="#contact">Contact</a>
-            <button class="btn-secondary" (click)="goToLogin()">Connexion</button>
-            <button class="btn-primary" (click)="goToRegister()">Commencer</button>
+            <button class="btn-primary" (click)="goToLogin()">Connexion</button>
           </nav>
         </div>
       </header>
@@ -35,7 +34,7 @@ import { Subscription } from '../models/types';
             <h1>Gérez votre parc automobile en toute simplicité</h1>
             <p>Solution complète de gestion de flotte avec suivi GPS en temps réel. Optimisez vos opérations et réduisez vos coûts.</p>
             <div class="hero-buttons">
-              <button class="btn-primary btn-large" (click)="goToRegister()">Essai gratuit 14 jours</button>
+              <button class="btn-primary btn-large" (click)="goToLogin()">Accéder à la plateforme</button>
               <button class="btn-outline btn-large" (click)="scrollTo('pricing')">Voir les tarifs</button>
             </div>
             <div class="hero-stats">
@@ -161,7 +160,7 @@ import { Subscription } from '../models/types';
           <div class="cta-content">
             <h2>Prêt à optimiser votre flotte?</h2>
             <p>Rejoignez des centaines d'entreprises qui nous font confiance</p>
-            <button class="btn-primary btn-large" (click)="goToRegister()">Commencer maintenant</button>
+            <button class="btn-primary btn-large" (click)="goToLogin()">Accéder à la plateforme</button>
           </div>
         </div>
       </section>
@@ -704,12 +703,8 @@ export class LandingComponent {
     this.router.navigate(['/login']);
   }
 
-  goToRegister() {
-    this.router.navigate(['/register']);
-  }
-
   selectPlan(planId: string) {
-    this.router.navigate(['/register'], { queryParams: { plan: planId } });
+    this.router.navigate(['/login']);
   }
 
   scrollTo(id: string) {
