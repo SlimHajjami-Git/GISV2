@@ -157,6 +157,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<TripWaypoint>().ToTable("trip_waypoints");
         modelBuilder.Entity<DrivingEvent>().ToTable("driving_events");
         modelBuilder.Entity<DailyStatistics>().ToTable("daily_statistics");
+        modelBuilder.Entity<Driver>().ToTable("drivers");
         modelBuilder.Entity<DriverAssignment>().ToTable("driver_assignments");
         modelBuilder.Entity<DriverScore>().ToTable("driver_scores");
         modelBuilder.Entity<UserVehicle>().ToTable("user_vehicles");
