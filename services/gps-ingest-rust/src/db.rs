@@ -817,12 +817,20 @@ impl Database {
         };
 
         // Temperature: FMS temperature takes priority over base temp (same as GISV1 lines 740-744)
-        let temperature_c: Option<i16> = if let Some(fms_temp) = frame.fms_temperature_c {
-            // FMS temperature from CAN bus - more reliable
-            if fms_temp != 0 { Some(fms_temp) } else { None }
+        // Only use FMS temperature for L-type devices — non-FMS devices send garbage (e.g. -32768)
+        let temperature_c: Option<i16> = if has_fms {
+            if let Some(fms_temp) = frame.fms_temperature_c {
+                // FMS temperature from CAN bus - more reliable (valid range: -50 to 200°C)
+                if fms_temp != 0 && fms_temp > -50 && fms_temp < 200 { Some(fms_temp) } else { None }
+            } else if frame.temperature_raw > 0 {
+                Some((frame.temperature_raw as i16).saturating_sub(40))
+            } else {
+                None
+            }
         } else if frame.temperature_raw > 0 {
-            // Base frame temperature: raw - 40 = Celsius
-            Some((frame.temperature_raw as i16).saturating_sub(40))
+            // Non-FMS: only use base frame temperature (raw - 40 = Celsius)
+            let temp = (frame.temperature_raw as i16).saturating_sub(40);
+            if temp > -50 && temp < 200 { Some(temp) } else { None }
         } else {
             None
         };
