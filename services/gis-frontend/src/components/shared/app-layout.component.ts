@@ -6,6 +6,7 @@ import { ApiService } from '../../services/api.service';
 import { ThemeService } from '../../services/theme.service';
 import { PermissionService, ModuleKey } from '../../services/permission.service';
 import { NotificationService, Notification } from '../../services/notification.service';
+import { SignalRService } from '../../services/signalr.service';
 
 @Component({
   selector: 'app-layout',
@@ -919,7 +920,8 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     private apiService: ApiService,
     private themeService: ThemeService,
     private permissionService: PermissionService,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private signalR: SignalRService
   ) {}
 
   get isDarkMode(): boolean {
@@ -931,6 +933,9 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
+    // Start SignalR globally so real-time notifications work on all pages
+    this.signalR.startConnection();
+
     this.loadNotifications();
     this.notificationService.loadUnreadCount();
 
@@ -951,6 +956,7 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.subs.forEach(s => s.unsubscribe());
+    this.signalR.stopConnection();
   }
 
   loadNotifications() {
