@@ -3,6 +3,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde_json::json;
 use sqlx::{postgres::PgPool, Row};
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 use crate::{
     ports::TelemetryStore,
@@ -14,6 +16,9 @@ use crate::{
 pub struct Database {
     pool: PgPool,
     gap_filler: GapFiller,
+    /// Accumulates fractional km per device for GPS-based mileage (V1 frames)
+    /// Flushes to DB when accumulated distance >= 1 km
+    mileage_accumulator: Mutex<HashMap<i32, f64>>,
 }
 
 pub struct LastKnownPosition {
@@ -42,12 +47,15 @@ impl Database {
             .ensure_device(device_uid, protocol_type, metadata)
             .await?;
 
+        // Fetch last position (needed for stopped-vehicle check AND GPS-based mileage)
+        let last_pos = self.fetch_last_position(device_id).await?;
+
         // Check if vehicle is stopped (ignition off AND speed < 10 km/h)
         let is_stopped = !frame.ignition_on && frame.speed_kph < STOPPED_SPEED_THRESHOLD;
 
         // For stopped vehicles, apply recording interval (but always record ignition state changes)
         if is_stopped {
-            if let Some(last_pos) = self.fetch_last_position(device_id).await? {
+            if let Some(ref last_pos) = last_pos {
                 // Always record if ignition state changed (first stop or engine turned on)
                 let ignition_changed = last_pos.ignition_on != frame.ignition_on;
                 
@@ -75,6 +83,11 @@ impl Database {
                 }
             }
         }
+
+        // Auto-detect FMS capability from the frame itself:
+        // V3 frames (payload >= 100 chars) contain FMS data (fuel, odometer, RPM, temp)
+        // V1 frames (payload < 100 chars) are GPS-only (no FMS)
+        let has_fms = matches!(frame.version, crate::telemetry::model::FrameVersion::V3);
 
         // Gap filling: DISABLED - Store raw GPS positions only (like GISV1)
         // The interpolated positions were causing less accurate playback compared to raw data
@@ -115,10 +128,6 @@ impl Database {
         }
         */
 
-        // Auto-detect FMS capability from the frame itself:
-        // V3 frames (payload >= 100 chars) contain FMS data (fuel, odometer, RPM, temp)
-        // V1 frames (payload < 100 chars) are GPS-only (no FMS)
-        let has_fms = matches!(frame.version, crate::telemetry::model::FrameVersion::V3);
         let position_id = self.insert_position(device_id, frame, event_key, has_fms).await?;
         
         if position_id == 0 {
@@ -129,6 +138,21 @@ impl Database {
                 ignition = frame.ignition_on,
                 "Position rejected by DB (duplicate event_key)"
             );
+        }
+
+        // GPS-based mileage calculation for V1 frames (no FMS odometer)
+        // Accumulate Haversine distance between consecutive positions
+        if !has_fms && position_id > 0 && frame.speed_kph > 0.0 && frame.is_valid {
+            if let Some(ref last) = last_pos {
+                let distance_km = haversine_distance_km(
+                    last.latitude, last.longitude,
+                    frame.latitude, frame.longitude,
+                );
+                // Min 10m (filter noise), max 10km per frame (filter GPS jumps)
+                if distance_km > 0.01 && distance_km < 10.0 {
+                    self.increment_vehicle_mileage(device_id, distance_km).await;
+                }
+            }
         }
 
         // Insert alert if send_flag indicates an event
@@ -751,6 +775,7 @@ impl Database {
         Self { 
             pool,
             gap_filler: GapFiller::new(osrm_base_url),
+            mileage_accumulator: Mutex::new(HashMap::new()),
         }
     }
 
@@ -939,6 +964,47 @@ impl Database {
         Ok(row.map(|r| r.get::<i64, _>("id")).unwrap_or(0))
     }
 
+    /// Accumulate GPS-calculated distance and flush to DB when >= 1 km
+    /// This avoids losing fractional km due to integer mileage column
+    async fn increment_vehicle_mileage(&self, device_id: i32, distance_km: f64) {
+        let km_to_flush = {
+            let mut acc = self.mileage_accumulator.lock().unwrap();
+            let total = acc.entry(device_id).or_insert(0.0);
+            *total += distance_km;
+            if *total >= 1.0 {
+                let flush = *total as i32; // Floor to integer km
+                *total -= flush as f64;    // Keep remainder
+                flush
+            } else {
+                0
+            }
+        };
+
+        if km_to_flush > 0 {
+            let result = sqlx::query(
+                r#"
+                UPDATE vehicles
+                SET mileage = mileage + $1, updated_at = NOW()
+                WHERE gps_device_id = (SELECT id FROM gps_devices WHERE id = $2)
+                "#,
+            )
+            .bind(km_to_flush)
+            .bind(device_id)
+            .execute(&self.pool)
+            .await;
+
+            if let Ok(r) = result {
+                if r.rows_affected() > 0 {
+                    tracing::info!(
+                        device_id,
+                        added_km = km_to_flush,
+                        "GPS-based mileage increment (V1 frame, no FMS odometer)"
+                    );
+                }
+            }
+        }
+    }
+
     async fn insert_alert(&self, device_id: i32, frame: &HhFrame) -> Result<i32> {
         // Use gps_alerts table with EF Core column naming
         let alert_type = map_send_flag(frame.send_flag);
@@ -973,6 +1039,22 @@ impl Database {
 
         Ok(row.get::<i32, _>("id"))
     }
+}
+
+/// Calculate Haversine distance between two GPS coordinates in kilometers
+fn haversine_distance_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    const EARTH_RADIUS_KM: f64 = 6371.0;
+
+    let lat1_rad = lat1.to_radians();
+    let lat2_rad = lat2.to_radians();
+    let delta_lat = (lat2 - lat1).to_radians();
+    let delta_lon = (lon2 - lon1).to_radians();
+
+    let a = (delta_lat / 2.0).sin().powi(2)
+        + lat1_rad.cos() * lat2_rad.cos() * (delta_lon / 2.0).sin().powi(2);
+    let c = 2.0 * a.sqrt().asin();
+
+    EARTH_RADIUS_KM * c
 }
 
 fn map_send_flag(flag: u8) -> &'static str {
