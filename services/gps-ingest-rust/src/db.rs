@@ -38,7 +38,7 @@ impl Database {
         event_key: &str,
     ) -> Result<()> {
         let metadata = ProtocolMetadata::from_protocol(protocol_type);
-        let (device_id, firmware_version) = self
+        let (device_id, _firmware_version) = self
             .ensure_device(device_uid, protocol_type, metadata)
             .await?;
 
@@ -115,9 +115,10 @@ impl Database {
         }
         */
 
-        // Use firmware_version from DB (set by admin) to determine L vs S
-        // L = FMS data (fuel, odometer, RPM), S = GPS only
-        let has_fms = firmware_version.eq_ignore_ascii_case("L");
+        // Auto-detect FMS capability from the frame itself:
+        // V3 frames (payload >= 100 chars) contain FMS data (fuel, odometer, RPM, temp)
+        // V1 frames (payload < 100 chars) are GPS-only (no FMS)
+        let has_fms = matches!(frame.version, crate::telemetry::model::FrameVersion::V3);
         let position_id = self.insert_position(device_id, frame, event_key, has_fms).await?;
         
         if position_id == 0 {
@@ -817,7 +818,7 @@ impl Database {
         };
 
         // Temperature: FMS temperature takes priority over base temp (same as GISV1 lines 740-744)
-        // Only use FMS temperature for L-type devices — non-FMS devices send garbage (e.g. -32768)
+        // Only use FMS temperature for V3 frames — V1 frames send garbage (e.g. -32768)
         let temperature_c: Option<i16> = if has_fms {
             if let Some(fms_temp) = frame.fms_temperature_c {
                 // FMS temperature from CAN bus - more reliable (valid range: -50 to 200°C)
@@ -835,7 +836,7 @@ impl Database {
             None
         };
         
-        // FMS fields: only store for L-type (has_fms) devices — S-type sends garbage values
+        // FMS fields: only store for V3 frames (has_fms) — V1 frames don't have FMS data
         let fuel_raw: Option<i32> = if has_fms && frame.fuel_raw > 0 { Some(i32::from(frame.fuel_raw)) } else { None };
         let odometer_km: Option<i64> = if has_fms && frame.odometer_km > 0 { Some(frame.odometer_km as i64) } else { None };
         let rpm: Option<i16> = if has_fms { frame.rpm.filter(|&r| r > 0).map(|r| r as i16) } else { None };

@@ -568,12 +568,13 @@ async fn process_single_frame(
                 }
 
                 // Get vehicle and company info first (needed for parallel operations)
-                let (vehicle_id, company_id, firmware_version) = if let Some(device_id) = device_id_opt {
+                let (vehicle_id, company_id, _firmware_version) = if let Some(device_id) = device_id_opt {
                     database.get_device_vehicle_info(device_id).await?
                 } else {
                     (None, 1, None) // Default company_id
                 };
-                let is_l_type = firmware_version.as_deref().map(|fw| fw.eq_ignore_ascii_case("L")).unwrap_or(false);
+                // Auto-detect FMS capability from frame version (V3 = FMS data present)
+                let is_fms_frame = matches!(frame.version, crate::telemetry::model::FrameVersion::V3);
 
                 // PARALLEL EXECUTION: DB write + Redis cache + RabbitMQ publish
                 // These operations are independent and can run concurrently
@@ -623,9 +624,9 @@ async fn process_single_frame(
                         }
                     }
 
-                    // Process fuel tracking - ONLY for L-type firmware which has FMS data
-                    // S-type sends garbage fuel_raw values (e.g. always 100)
-                    if is_l_type && frame.fuel_raw > 0 {
+                    // Process fuel tracking - ONLY for V3 frames which contain FMS data
+                    // V1 frames don't have FMS, fuel_raw is base value (often garbage)
+                    if is_fms_frame && frame.fuel_raw > 0 {
                         // Restore fuel state from DB on first encounter (survives service restarts)
                         if !services.fuel_tracker.has_state(device_id).await {
                             if let Ok(Some((last_pct, last_odo, last_ts))) = database.get_last_fuel_record(device_id).await {
