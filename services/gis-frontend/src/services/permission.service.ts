@@ -24,6 +24,18 @@ export interface SubscriptionFeatures {
   moduleDocuments: boolean;
   moduleAccidents: boolean;
   moduleFleetManagement: boolean;
+  reportTrips: boolean;
+  reportFuel: boolean;
+  reportSpeed: boolean;
+  reportStops: boolean;
+  reportMileage: boolean;
+  reportCosts: boolean;
+  reportMaintenance: boolean;
+  reportDaily: boolean;
+  reportMonthly: boolean;
+  reportMileagePeriod: boolean;
+  reportSpeedInfraction: boolean;
+  reportDrivingBehavior: boolean;
   maxVehicles: number;
   maxUsers: number;
   maxGpsDevices: number;
@@ -176,5 +188,33 @@ export class PermissionService {
     const features = this.getSubscriptionFeatures();
     if (!features) return 0;
     return features[limit] ?? 0;
+  }
+
+  hasReportAccess(reportKey: string): boolean {
+    const user = this.authService.getCurrentUserSync();
+    if (!user) return false;
+    if (user.isSystemAdmin) return true;
+
+    const features = user.subscriptionFeatures;
+    if (!features) return true; // No subscription = allow all
+
+    const reportMapping: Record<string, keyof SubscriptionFeatures> = {
+      'trips': 'reportTrips',
+      'fuel': 'reportFuel',
+      'speed': 'reportSpeed',
+      'stops': 'reportStops',
+      'mileage': 'reportMileage',
+      'costs': 'reportCosts',
+      'maintenance': 'reportMaintenance',
+      'daily': 'reportDaily',
+      'monthly': 'reportMonthly',
+      'mileage_period': 'reportMileagePeriod',
+      'speed_infraction': 'reportSpeedInfraction',
+      'driving_behavior': 'reportDrivingBehavior'
+    };
+
+    const featureKey = reportMapping[reportKey];
+    if (!featureKey) return true;
+    return features[featureKey] !== false;
   }
 }

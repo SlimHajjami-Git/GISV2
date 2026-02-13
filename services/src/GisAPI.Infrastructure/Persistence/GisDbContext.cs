@@ -209,6 +209,34 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<SubscriptionType>().Property(s => s.SortOrder).HasColumnName("sort_order");
         modelBuilder.Entity<SubscriptionType>().Property(s => s.IsActive).HasColumnName("is_active");
         modelBuilder.Entity<SubscriptionType>().Property(s => s.AccessRights).HasColumnType("jsonb").HasColumnName("access_rights");
+        // Module permissions
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ModuleDashboard).HasColumnName("module_dashboard");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ModuleMonitoring).HasColumnName("module_monitoring");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ModuleVehicles).HasColumnName("module_vehicles");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ModuleEmployees).HasColumnName("module_employees");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ModuleGeofences).HasColumnName("module_geofences");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ModuleMaintenance).HasColumnName("module_maintenance");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ModuleCosts).HasColumnName("module_costs");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ModuleReports).HasColumnName("module_reports");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ModuleSettings).HasColumnName("module_settings");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ModuleUsers).HasColumnName("module_users");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ModuleSuppliers).HasColumnName("module_suppliers");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ModuleDocuments).HasColumnName("module_documents");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ModuleAccidents).HasColumnName("module_accidents");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ModuleFleetManagement).HasColumnName("module_fleet_management");
+        // Report permissions
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ReportTrips).HasColumnName("report_trips");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ReportFuel).HasColumnName("report_fuel");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ReportSpeed).HasColumnName("report_speed");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ReportStops).HasColumnName("report_stops");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ReportMileage).HasColumnName("report_mileage");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ReportCosts).HasColumnName("report_costs");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ReportMaintenance).HasColumnName("report_maintenance");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ReportDaily).HasColumnName("report_daily");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ReportMonthly).HasColumnName("report_monthly");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ReportMileagePeriod).HasColumnName("report_mileage_period");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ReportSpeedInfraction).HasColumnName("report_speed_infraction");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.ReportDrivingBehavior).HasColumnName("report_driving_behavior");
         modelBuilder.Entity<SubscriptionType>().Property(s => s.CreatedAt).HasColumnName("created_at");
         modelBuilder.Entity<SubscriptionType>().Property(s => s.UpdatedAt).HasColumnName("updated_at");
         modelBuilder.Entity<SubscriptionType>().HasIndex(s => s.Code).IsUnique();
