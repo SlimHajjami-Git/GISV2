@@ -483,7 +483,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return L.divIcon({
       html: iconHtml,
       className: 'custom-vehicle-marker',
-      iconSize: [92, 58],
+      iconSize: [92, 66],
       iconAnchor: [46, 26]
     });
   }
@@ -1842,6 +1842,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Fetch route between two GPS points for animation (uses pre-matched coords if available)
   private async fetchValhallaRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
+    // Calculate straight-line distance between the two GPS points
+    const straightDist = this.calculateDistance(
+      fromPos.latitude, fromPos.longitude,
+      toPos.latitude, toPos.longitude
+    );
+
     if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0) {
       const gpsIndex = this.playbackIndex;
       
@@ -1853,6 +1859,29 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         const segment = this.matchedRouteCoords.slice(startIdx, endIdx + 1);
         
         if (segment.length >= 2) {
+          // GPS drift detection: if the routed distance is much longer than
+          // the straight-line distance, it means Valhalla routed through a
+          // U-turn/detour (likely GPS drifted to opposite lane).
+          // In that case, use straight line instead.
+          let routedDist = 0;
+          for (let i = 1; i < segment.length; i++) {
+            routedDist += this.calculateDistance(
+              segment[i - 1].lat, segment[i - 1].lng,
+              segment[i].lat, segment[i].lng
+            );
+          }
+          
+          // If routed path is > 3x the straight-line distance AND straight distance
+          // is small (< 200m), this is likely a GPS drift to opposite lane
+          const detourRatio = straightDist > 5 ? routedDist / straightDist : 1;
+          if (detourRatio > 3 && straightDist < 200) {
+            console.warn(`GPS drift detected at index ${gpsIndex}: routed ${Math.round(routedDist)}m vs straight ${Math.round(straightDist)}m (ratio ${detourRatio.toFixed(1)}x). Using straight line.`);
+            return [
+              L.latLng(fromPos.latitude, fromPos.longitude),
+              L.latLng(toPos.latitude, toPos.longitude)
+            ];
+          }
+          
           return segment;
         }
       }
@@ -2079,19 +2108,33 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const fromPos = this.playbackPositions[fromIndex];
     const toPos = this.playbackPositions[toIndex];
     
-    // Skip drawing when vehicle is stationary (speed < 3 km/h or ignition off)
-    // This prevents "point clouds" from GPS drift when parked/stopped
     const speed = toPos.speedKph || 0;
     const ignitionOn = toPos.ignitionOn !== false;
-    if (speed < 3 || !ignitionOn) {
-      this.traceDrawnUpToIndex = toIndex;
-      return;
-    }
     
     // Determine color based on vehicle status at the destination point
     const color = this.getStatusColor(toPos);
     
-    // Always use road snapping for accurate route display
+    if (speed < 3 || !ignitionOn) {
+      // Draw a small circle at the stopped position so the user sees where
+      // the vehicle was parked/stopped, instead of skipping entirely
+      const stopColor = !ignitionOn ? '#ef4444' : '#f59e0b';
+      const circle = L.circleMarker(
+        [toPos.latitude, toPos.longitude],
+        {
+          radius: 4,
+          color: stopColor,
+          fillColor: stopColor,
+          fillOpacity: 0.6,
+          weight: 1.5,
+          opacity: 0.8
+        }
+      ).addTo(this.map!);
+      this.progressivePolylines.push(circle as any);
+      this.traceDrawnUpToIndex = toIndex;
+      return;
+    }
+    
+    // For moving segments, use road snapping for accurate route display
     this.drawRoutedSegment(fromPos, toPos, color);
     
     this.traceDrawnUpToIndex = toIndex;
@@ -2176,6 +2219,30 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         const segmentCoords = this.matchedRouteCoords.slice(startIdx, endIdx + 1);
         
         if (segmentCoords.length >= 2) {
+          // GPS drift guard: check if routed segment makes a big detour
+          const straightDist = this.calculateDistance(
+            fromPos.latitude, fromPos.longitude,
+            toPos.latitude, toPos.longitude
+          );
+          let routedDist = 0;
+          for (let i = 1; i < segmentCoords.length; i++) {
+            routedDist += this.calculateDistance(
+              segmentCoords[i - 1].lat, segmentCoords[i - 1].lng,
+              segmentCoords[i].lat, segmentCoords[i].lng
+            );
+          }
+          const detourRatio = straightDist > 5 ? routedDist / straightDist : 1;
+          
+          if (detourRatio > 3 && straightDist < 200) {
+            // GPS drifted to opposite lane — draw straight line instead of U-turn
+            const fallback = L.polyline(
+              [[fromPos.latitude, fromPos.longitude], [toPos.latitude, toPos.longitude]],
+              { color, weight: 4, opacity: 0.9, dashArray: '10, 8', lineCap: 'round', lineJoin: 'round' }
+            ).addTo(this.map!);
+            this.progressivePolylines.push(fallback);
+            return;
+          }
+          
           const segment = L.polyline(segmentCoords, {
             color: color,
             weight: 4,
