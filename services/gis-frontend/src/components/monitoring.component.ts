@@ -969,22 +969,23 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         // Hide the live marker of the selected vehicle during playback
         this.hideLiveMarker(vehicleId.toString());
 
-        // Use raw GPS coordinates directly - no Valhalla processing that reduces points
-        this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
-        this.segmentBoundaries = [];
-        this.matchedRouteIndex = 0;
-        this.playbackLoading = false;
-        
-        // Draw the complete route polyline
-        this.drawPlaybackRoute();
-        
-        // Position the playback marker at start
-        this.updatePlaybackMarker();
-        
-        // Force change detection to update UI with new point count
-        this.cdr.detectChanges();
-        
-        console.log(`Playback loaded for vehicle ${vehicleId}: ${this.playbackPositions.length} GPS points (raw, no filtering)`);
+        // Process route: batch road correction via Valhalla (10 points at a time)
+        this.processPlaybackRoute().then(() => {
+          this.playbackLoading = false;
+          this.drawPlaybackRoute();
+          this.updatePlaybackMarker();
+          this.cdr.detectChanges();
+          console.log(`[Playback] Loaded for vehicle ${vehicleId}: ${this.playbackPositions.length} GPS points -> ${this.matchedRouteCoords.length} road points`);
+        }).catch((err: Error) => {
+          console.error('[Playback] Batch road correction FAILED, using raw GPS:', err);
+          this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
+          this.segmentBoundaries = [];
+          this.matchedRouteIndex = 0;
+          this.playbackLoading = false;
+          this.drawPlaybackRoute();
+          this.updatePlaybackMarker();
+          this.cdr.detectChanges();
+        });
       },
       error: (err) => {
         console.error('Error loading playback data:', err);
@@ -1849,77 +1850,167 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return allCoords;
   }
 
-  // Process playback route with smart interpolation (speed/time-based) + optional road snapping
+  // Process playback route: split into MOVING and STOPPED segments.
+  // Only MOVING segments are sent to Valhalla (batches of 10) for road correction.
+  // STOPPED points keep raw GPS — Valhalla is NOT called (avoids routing around buildings/garages).
   private async processPlaybackRoute(): Promise<void> {
-    if (this.playbackPositions.length < 2) {
+    const totalPositions = this.playbackPositions.length;
+    if (totalPositions < 2) {
       this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
+      this.segmentBoundaries = [];
       this.matchedRouteIndex = 0;
       return;
     }
 
-    // Prepare points for the API with speed and timestamp data
-    const points = this.playbackPositions.map(p => ({
-      lat: p.latitude,
-      lon: p.longitude,
-      timestamp: p.recordedAt ? new Date(p.recordedAt).getTime() : null,
-      speed: p.speedKph || 0,
-      heading: p.courseDeg || null,
-      ignitionOn: p.ignitionOn
-    }));
+    const BATCH_SIZE = 10;
+    const SPEED_THRESHOLD = 3; // km/h — below this, vehicle is considered stopped
+    const allRoadPath: L.LatLng[] = [];
+    const allSegmentBoundaries: number[] = [];
+    let movingBatches = 0;
+    let stoppedPoints = 0;
 
-    try {
-      // Call the smart processing endpoint (interpolation + optional road snapping)
-      const response = await fetch('/api/routing/process', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-        },
-        body: JSON.stringify({ 
-          points,
-          enableRoadSnapping: true 
-        })
-      });
+    // Step 1: Split positions into segments of consecutive MOVING or STOPPED points
+    const segments: { type: 'moving' | 'stopped'; startIdx: number; endIdx: number }[] = [];
+    let currentType: 'moving' | 'stopped' = this.isPointMoving(0) ? 'moving' : 'stopped';
+    let segStart = 0;
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+    for (let i = 1; i < totalPositions; i++) {
+      const moving = this.isPointMoving(i);
+      const newType = moving ? 'moving' : 'stopped';
+      if (newType !== currentType) {
+        segments.push({ type: currentType, startIdx: segStart, endIdx: i - 1 });
+        segStart = i;
+        currentType = newType;
       }
+    }
+    segments.push({ type: currentType, startIdx: segStart, endIdx: totalPositions - 1 });
 
-      const data = await response.json();
+    console.log(`[Playback] Route segments: ${segments.length} (${segments.filter(s => s.type === 'moving').length} moving, ${segments.filter(s => s.type === 'stopped').length} stopped)`);
 
-      if (data.roadPath && data.roadPath.length > 0) {
-        // Check if Valhalla returned a degraded result (very few road points vs GPS points)
-        // e.g. 164 GPS -> 2 road points means map matching essentially failed
-        const ratio = data.roadPath.length / this.playbackPositions.length;
-        if (ratio < 0.1 && data.roadPath.length < 10) {
-          console.warn(`Route degraded: ${data.originalCount} GPS -> only ${data.roadPathCount} road points (ratio ${ratio.toFixed(2)}), falling back to raw GPS`);
-          this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
-          this.segmentBoundaries = [];
-          this.matchedRouteIndex = 0;
-        } else {
-          // Use the full road path from Valhalla for vehicle animation
-          this.matchedRouteCoords = data.roadPath.map((p: any) => L.latLng(p.lat, p.lon));
-          this.segmentBoundaries = data.segmentBoundaries || [];
-          this.matchedRouteIndex = 0;
-          
-          console.log(`Route processed: ${data.originalCount} GPS -> ${data.roadPathCount} road path points, method: ${data.method}`);
-          console.log(`Segment boundaries: [${this.segmentBoundaries.join(', ')}]`);
+    // Step 2: Process each segment
+    for (const seg of segments) {
+      if (seg.type === 'stopped') {
+        // STOPPED: add raw GPS points directly, no Valhalla
+        for (let i = seg.startIdx; i <= seg.endIdx; i++) {
+          const pos = this.playbackPositions[i];
+          allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
+          allSegmentBoundaries.push(allRoadPath.length - 1);
+          stoppedPoints++;
         }
-      } else if (data.points && data.points.length > 0) {
-        // Fallback to GPS points
-        this.matchedRouteCoords = data.points.map((p: any) => L.latLng(p.lat, p.lon));
-        this.segmentBoundaries = [];
-        this.matchedRouteIndex = 0;
-        console.log(`Route processed: ${data.originalCount} GPS -> ${data.finalCount} points (no road path)`);
       } else {
-        throw new Error('No points returned from processing');
+        // MOVING: send to Valhalla in batches of BATCH_SIZE for road correction
+        const movingCount = seg.endIdx - seg.startIdx + 1;
+
+        if (movingCount < 2) {
+          // Single moving point — just add raw
+          const pos = this.playbackPositions[seg.startIdx];
+          allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
+          allSegmentBoundaries.push(allRoadPath.length - 1);
+          continue;
+        }
+
+        // Process in batches of BATCH_SIZE with 1-point overlap
+        for (let batchStart = seg.startIdx; batchStart <= seg.endIdx; batchStart += (BATCH_SIZE - 1)) {
+          const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, seg.endIdx);
+          const batchPositions = this.playbackPositions.slice(batchStart, batchEnd + 1);
+
+          if (batchPositions.length < 2) {
+            // Single remaining point
+            const pos = batchPositions[0];
+            allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
+            allSegmentBoundaries.push(allRoadPath.length - 1);
+            break;
+          }
+
+          const batchPoints = batchPositions.map(p => ({
+            lat: p.latitude,
+            lon: p.longitude,
+            timestamp: p.recordedAt ? new Date(p.recordedAt).getTime() : null,
+            speed: p.speedKph || 0,
+            heading: p.courseDeg || null,
+            ignitionOn: p.ignitionOn
+          }));
+
+          try {
+            const response = await fetch('/api/routing/process', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+              },
+              body: JSON.stringify({ points: batchPoints, enableRoadSnapping: true })
+            });
+
+            if (!response.ok) throw new Error(`API error: ${response.status}`);
+            const data = await response.json();
+
+            if (data.roadPath && data.roadPath.length >= 2) {
+              const batchRoadCoords: L.LatLng[] = data.roadPath.map((p: any) => L.latLng(p.lat, p.lon));
+              const batchBoundaries: number[] = data.segmentBoundaries || [];
+              const roadOffset = allRoadPath.length;
+              const isFirstBatchInSegment = (batchStart === seg.startIdx);
+              const skipFirst = (!isFirstBatchInSegment && allRoadPath.length > 0) ? 1 : 0;
+
+              allRoadPath.push(...batchRoadCoords.slice(skipFirst));
+
+              // Map each GPS point in this batch to the combined road path
+              const gpsSkip = (!isFirstBatchInSegment) ? 1 : 0; // Skip overlap point
+              for (let j = gpsSkip; j < batchBoundaries.length && (batchStart + j) <= batchEnd; j++) {
+                const localRoadIdx = batchBoundaries[j];
+                const globalRoadIdx = roadOffset + localRoadIdx - skipFirst;
+                allSegmentBoundaries.push(Math.max(0, Math.min(globalRoadIdx, allRoadPath.length - 1)));
+              }
+              movingBatches++;
+            } else {
+              // Valhalla failed for this batch — add raw GPS
+              this.addRawBatchFallback(batchStart, batchEnd, batchStart > seg.startIdx, allRoadPath, allSegmentBoundaries);
+            }
+          } catch (error) {
+            console.error(`[Playback] Moving batch FAILED (indices ${batchStart}-${batchEnd}):`, error);
+            this.addRawBatchFallback(batchStart, batchEnd, batchStart > seg.startIdx, allRoadPath, allSegmentBoundaries);
+          }
+        }
       }
-    } catch (error) {
-      console.error('[Playback] processPlaybackRoute FAILED, falling back to raw GPS:', error);
-      // Fallback to raw GPS coordinates
+    }
+
+    // Ensure exactly one boundary per GPS point
+    while (allSegmentBoundaries.length < totalPositions) {
+      allSegmentBoundaries.push(Math.max(0, allRoadPath.length - 1));
+    }
+    if (allSegmentBoundaries.length > totalPositions) {
+      allSegmentBoundaries.length = totalPositions;
+    }
+
+    if (allRoadPath.length >= 2) {
+      this.matchedRouteCoords = allRoadPath;
+      this.segmentBoundaries = allSegmentBoundaries;
+      this.matchedRouteIndex = 0;
+      console.log(`[Playback] Road correction complete: ${totalPositions} GPS -> ${allRoadPath.length} road points (${movingBatches} moving batches, ${stoppedPoints} stopped points kept raw)`);
+    } else {
+      console.warn('[Playback] All processing failed, using raw GPS');
       this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
       this.segmentBoundaries = [];
       this.matchedRouteIndex = 0;
+    }
+  }
+
+  // Check if a GPS point represents a moving vehicle
+  private isPointMoving(index: number): boolean {
+    const pos = this.playbackPositions[index];
+    if (!pos) return false;
+    const speed = pos.speedKph || pos.speed || 0;
+    const ignitionOn = pos.ignitionOn !== false;
+    return ignitionOn && speed >= 3;
+  }
+
+  // Helper: add raw GPS points as fallback for a failed moving batch
+  private addRawBatchFallback(batchStart: number, batchEnd: number, skipOverlap: boolean, allRoadPath: L.LatLng[], allSegmentBoundaries: number[]) {
+    const startJ = skipOverlap ? 1 : 0;
+    for (let j = batchStart + startJ; j <= batchEnd; j++) {
+      if (j >= this.playbackPositions.length) break;
+      const pos = this.playbackPositions[j];
+      allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
+      allSegmentBoundaries.push(allRoadPath.length - 1);
     }
   }
 
