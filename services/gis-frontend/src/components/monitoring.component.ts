@@ -1247,12 +1247,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
 
-  // Get snapped road position for a given playback index (1:1 with playbackPositions)
+  // Get snapped road position for a given playback index (uses segmentBoundaries)
   private getSnappedLatLng(index: number): L.LatLngExpression {
-    if (this.matchedRouteCoords.length > 0 && index < this.matchedRouteCoords.length) {
-      const snapped = this.matchedRouteCoords[index];
-      if (snapped && !isNaN(snapped.lat) && !isNaN(snapped.lng)) {
-        return [snapped.lat, snapped.lng];
+    if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0 && index < this.segmentBoundaries.length) {
+      const roadIdx = this.segmentBoundaries[index];
+      if (roadIdx !== undefined && roadIdx < this.matchedRouteCoords.length) {
+        const snapped = this.matchedRouteCoords[roadIdx];
+        if (snapped && !isNaN(snapped.lat) && !isNaN(snapped.lng)) {
+          return [snapped.lat, snapped.lng];
+        }
       }
     }
     const pos = this.playbackPositions[index];
@@ -1847,9 +1850,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return allCoords;
   }
 
-  // Snap all GPS points to nearest road via Valhalla trace_route.
-  // Simple 1:1 mapping: each GPS point gets its snapped road position.
-  // No batching, no filtering — just align points on the road.
+  // Process playback route: let Valhalla calculate the ROAD ROUTE between GPS points
+  // Only route when: ignition ON + distance > 20m (vehicle actually moving on road)
+  // Otherwise: raw GPS coords (parked, close points, ignition off)
+  // Consecutive moving points are grouped into trips → one Valhalla call per trip
   private async processPlaybackRoute(): Promise<void> {
     const totalPositions = this.playbackPositions.length;
     if (totalPositions < 2) {
@@ -1859,67 +1863,171 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    const snapPoints = this.playbackPositions.map(p => ({
-      lat: p.latitude,
-      lon: p.longitude,
-      timestamp: p.recordedAt ? new Date(p.recordedAt).getTime() : null
-    }));
+    // Step 1: Classify each transition (i → i+1) as "route" or "raw"
+    const transitions: boolean[] = []; // true = should route via Valhalla
+    for (let i = 0; i < totalPositions - 1; i++) {
+      const from = this.playbackPositions[i];
+      const to = this.playbackPositions[i + 1];
+      const ignitionOn = to.ignitionOn !== false;
+      const dist = this.calculateDistance(from.latitude, from.longitude, to.latitude, to.longitude);
+      transitions.push(ignitionOn && dist > 20);
+    }
 
-    try {
-      const response = await fetch('/api/routing/snap', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-        },
-        body: JSON.stringify({ points: snapPoints })
-      });
+    // Step 2: Group consecutive "route" transitions into trips
+    // A trip is a sequence of GPS points connected by "route" transitions
+    const allRoadPath: L.LatLng[] = [];
+    const allSegmentBoundaries: number[] = [];
+    let routedTrips = 0;
+    let rawTransitions = 0;
+    let i = 0;
 
-      if (!response.ok) throw new Error(`API error: ${response.status}`);
-      const data = await response.json();
+    while (i < totalPositions) {
+      // Add current point's boundary
+      allSegmentBoundaries.push(allRoadPath.length);
 
-      if (data.points && data.points.length > 0) {
-        let snappedCount = 0;
-        // 1:1 mapping — one snapped coord per GPS point
-        this.matchedRouteCoords = data.points.map((sp: any, i: number) => {
-          if (sp.isMatched) {
-            snappedCount++;
-            return L.latLng(sp.snappedLat, sp.snappedLon);
-          }
-          // Unmatched: keep raw GPS position
-          const raw = this.playbackPositions[i];
-          return L.latLng(raw.latitude, raw.longitude);
-        });
-        // segmentBoundaries empty = use matchedRouteCoords directly (1:1 with playbackPositions)
-        this.segmentBoundaries = [];
-        this.matchedRouteIndex = 0;
-        console.log(`[Playback] Snap to road: ${totalPositions} GPS points, ${snappedCount} snapped to road, ${totalPositions - snappedCount} kept raw`);
-      } else {
-        throw new Error('No snapped points returned');
+      if (i >= totalPositions - 1) {
+        // Last point — just add it
+        const pos = this.playbackPositions[i];
+        allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
+        break;
       }
-    } catch (error) {
-      console.error('[Playback] Snap to road FAILED, using raw GPS:', error);
+
+      if (!transitions[i]) {
+        // Raw transition: add current point as-is, move to next
+        const pos = this.playbackPositions[i];
+        allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
+        rawTransitions++;
+        i++;
+        continue;
+      }
+
+      // Start of a routed trip: collect consecutive "route" transitions
+      const tripStart = i;
+      while (i < totalPositions - 1 && transitions[i]) {
+        i++;
+      }
+      const tripEnd = i; // inclusive — last point of this trip
+
+      // Trip waypoints: GPS points from tripStart to tripEnd
+      const waypoints = [];
+      for (let j = tripStart; j <= tripEnd; j++) {
+        const p = this.playbackPositions[j];
+        waypoints.push({
+          lat: p.latitude,
+          lon: p.longitude,
+          timestamp: p.recordedAt ? new Date(p.recordedAt).getTime() : null,
+          speed: p.speedKph || 0,
+          heading: p.courseDeg || null,
+          ignitionOn: p.ignitionOn
+        });
+      }
+
+      try {
+        const response = await fetch('/api/routing/process', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+          },
+          body: JSON.stringify({ points: waypoints, enableRoadSnapping: true })
+        });
+
+        if (!response.ok) throw new Error(`API error: ${response.status}`);
+        const data = await response.json();
+
+        if (data.roadPath && data.roadPath.length >= 2 && data.segmentBoundaries) {
+          const tripRoadCoords: L.LatLng[] = data.roadPath.map((p: any) => L.latLng(p.lat, p.lon));
+          const tripBoundaries: number[] = data.segmentBoundaries;
+          const roadOffset = allRoadPath.length;
+
+          allRoadPath.push(...tripRoadCoords);
+
+          // First waypoint boundary already added above (allSegmentBoundaries.push)
+          // Update it to point to correct road offset
+          allSegmentBoundaries[allSegmentBoundaries.length - 1] = roadOffset + (tripBoundaries[0] || 0);
+
+          // Add boundaries for remaining waypoints in this trip
+          for (let j = 1; j <= tripEnd - tripStart; j++) {
+            const localBound = j < tripBoundaries.length ? tripBoundaries[j] : tripRoadCoords.length - 1;
+            allSegmentBoundaries.push(roadOffset + localBound);
+          }
+
+          routedTrips++;
+        } else {
+          // Valhalla failed — add raw GPS for this trip
+          this.addTripRawFallback(tripStart, tripEnd, allRoadPath, allSegmentBoundaries);
+        }
+      } catch (error) {
+        console.error(`[Playback] Trip routing FAILED (points ${tripStart}-${tripEnd}):`, error);
+        this.addTripRawFallback(tripStart, tripEnd, allRoadPath, allSegmentBoundaries);
+      }
+
+      // Don't increment i — it's already at the next point after the trip
+      continue;
+    }
+
+    // Ensure exactly one boundary per GPS point
+    while (allSegmentBoundaries.length < totalPositions) {
+      allSegmentBoundaries.push(Math.max(0, allRoadPath.length - 1));
+    }
+    if (allSegmentBoundaries.length > totalPositions) {
+      allSegmentBoundaries.length = totalPositions;
+    }
+
+    if (allRoadPath.length >= 2) {
+      this.matchedRouteCoords = allRoadPath;
+      this.segmentBoundaries = allSegmentBoundaries;
+      this.matchedRouteIndex = 0;
+      console.log(`[Playback] Route built: ${totalPositions} GPS points -> ${allRoadPath.length} road coords (${routedTrips} routed trips, ${rawTransitions} raw transitions)`);
+    } else {
+      console.warn('[Playback] Route processing failed, using raw GPS');
       this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
       this.segmentBoundaries = [];
       this.matchedRouteIndex = 0;
     }
   }
 
-  // Fetch route between two GPS points for animation
-  // Uses snapped coords (1:1 with playbackPositions) for straight-line animation between snapped points
-  private async fetchValhallaRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
-    const fromSnapped = this.getSnappedLatLngAsLatLng(this.playbackIndex);
-    const toSnapped = this.getSnappedLatLngAsLatLng(this.playbackIndex + 1);
-    return [fromSnapped, toSnapped];
+  // Fallback: add raw GPS points for a trip that failed Valhalla routing
+  private addTripRawFallback(tripStart: number, tripEnd: number, allRoadPath: L.LatLng[], allSegmentBoundaries: number[]) {
+    // First point's boundary was already added by the caller, update it
+    const pos0 = this.playbackPositions[tripStart];
+    allRoadPath.push(L.latLng(pos0.latitude, pos0.longitude));
+    allSegmentBoundaries[allSegmentBoundaries.length - 1] = allRoadPath.length - 1;
+
+    for (let j = tripStart + 1; j <= tripEnd; j++) {
+      const pos = this.playbackPositions[j];
+      allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
+      allSegmentBoundaries.push(allRoadPath.length - 1);
+    }
   }
 
-  // Helper: get snapped position as L.LatLng object (1:1 mapping with playbackPositions)
+  // Fetch route between two GPS points for animation (uses road path from segmentBoundaries)
+  private async fetchValhallaRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
+    if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0) {
+      const gpsIndex = this.playbackIndex;
+      if (gpsIndex < this.segmentBoundaries.length - 1) {
+        const startIdx = this.segmentBoundaries[gpsIndex];
+        const endIdx = this.segmentBoundaries[gpsIndex + 1];
+        if (endIdx > startIdx) {
+          const segment = this.matchedRouteCoords.slice(startIdx, endIdx + 1);
+          if (segment.length >= 2) return segment;
+        }
+      }
+    }
+    // Fallback: straight line between raw GPS points
+    const from = this.playbackPositions[this.playbackIndex];
+    const to = this.playbackPositions[this.playbackIndex + 1];
+    if (!from || !to) return [];
+    return [L.latLng(from.latitude, from.longitude), L.latLng(to.latitude, to.longitude)];
+  }
+
+  // Helper: get snapped position as L.LatLng object
   private getSnappedLatLngAsLatLng(index: number): L.LatLng {
-    // matchedRouteCoords is 1:1 with playbackPositions (same length, same order)
-    if (this.matchedRouteCoords.length > 0 && index < this.matchedRouteCoords.length) {
-      const snapped = this.matchedRouteCoords[index];
-      if (snapped && !isNaN(snapped.lat) && !isNaN(snapped.lng)) {
-        return snapped;
+    if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0 && index < this.segmentBoundaries.length) {
+      const roadIdx = this.segmentBoundaries[index];
+      if (roadIdx !== undefined && roadIdx < this.matchedRouteCoords.length) {
+        const snapped = this.matchedRouteCoords[roadIdx];
+        if (snapped && !isNaN(snapped.lat) && !isNaN(snapped.lng)) return snapped;
       }
     }
     const pos = this.playbackPositions[index];
