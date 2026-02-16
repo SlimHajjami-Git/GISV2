@@ -1,0 +1,324 @@
+================================================================================
+   QUESTIONS D'ENTRETIEN CV - PARTIE 5 : SENIOR DEVOPS / RUST ARCHITECTURE
+   RABBITMQ / GIT / PIPELINES / ECOSYSTEME (Questions 221-320)
+================================================================================
+
+
+################################################################################
+RUST - ARCHITECTURE APPLICATION & DEVOPS (Questions 221-260)
+################################################################################
+
+Q221: Comment structurez-vous un projet Rust en production ?
+R221: Workspace Cargo avec plusieurs crates: une lib (logique metier, parsing, DB) et un bin (main, CLI, bootstrap). Separation claire: src/telemetry/ (protocoles), src/db.rs (persistence), src/transport.rs (TCP), src/redis_cache.rs (cache), src/publisher.rs (messaging). Chaque module a une responsabilite unique. Les types publics sont exposes via lib.rs, l'implementation reste privee.
+
+Q222: Comment gerez-vous la configuration en Rust pour differents environnements ?
+R222: Hierarchie de configuration: 1) Fichier YAML par defaut (config/listeners.yaml), 2) Fichier par environnement (config/production.yaml), 3) Variables d'environnement (DATABASE_URL, REDIS_URL) qui overrident tout. Le crate config ou figment charge et merge les sources. En Docker, les env vars sont injectees via docker-compose. Jamais de secrets dans les fichiers commites.
+
+Q223: Comment implementez-vous le logging structure en Rust pour la production ?
+R223: Le crate tracing avec tracing-subscriber. Niveaux: ERROR, WARN, INFO, DEBUG, TRACE. Spans pour le contexte: #[instrument] sur les fonctions critiques. Format JSON en production (tracing-subscriber::fmt::json()), format humain en dev. Champs structures: device_id, protocol, frame_count. Envoi vers stdout (Docker capture), ou vers un collecteur (Jaeger, Loki).
+
+Q224: Comment gerez-vous les metriques Prometheus en Rust ?
+R224: Crate prometheus ou metrics avec metrics-exporter-prometheus. Metriques cles: positions_received_total (Counter), active_connections (Gauge), frame_decode_duration_seconds (Histogram), db_insert_duration_seconds (Histogram), errors_total par type. Endpoint HTTP /metrics expose par un serveur Hyper/Axum leger. Grafana scrape et affiche les dashboards.
+
+Q225: Comment implementez-vous le health check en Rust ?
+R225: Endpoint HTTP /health (Axum ou Hyper) qui verifie: 1) PostgreSQL: SELECT 1, 2) Redis: PING, 3) RabbitMQ: channel alive. Retourne 200 si tout OK, 503 si un service est down avec detail JSON. Docker HEALTHCHECK appelle cet endpoint. Kubernetes utilise livenessProbe et readinessProbe.
+
+Q226: Comment gerez-vous le graceful shutdown complet en Rust ?
+R226: 1) tokio::signal::ctrl_c() ou SIGTERM capture. 2) Stopper l'acceptation de nouvelles connexions TCP (drop le listener). 3) Envoyer CancellationToken a toutes les taches actives. 4) Attendre que les taches en cours terminent (avec timeout). 5) Flush le batch buffer vers PostgreSQL. 6) Fermer les connexions DB/Redis/RabbitMQ proprement. 7) Log "shutdown complete" et exit 0. Essentiel pour Docker stop (SIGTERM + 10s grace period).
+
+Q227: Comment profiler et optimiser un service Rust en production ?
+R227: 1) cargo flamegraph pour les flamegraphs CPU. 2) perf ou dtrace pour le profiling systeme. 3) tokio-console pour debugger les taches async (blocked, idle). 4) Metriques Prometheus pour les latences. 5) Allocator: jemalloc pour les allocations frequentes. 6) cargo bench avec criterion pour les micro-benchmarks du parsing. 7) Compiler avec LTO (Link Time Optimization) et codegen-units=1 pour la perf maximale.
+
+Q228: Comment gerez-vous les erreurs de connexion aux services externes en Rust ?
+R228: Pattern retry avec backoff exponentiel: tentative 1 (1s), 2 (2s), 3 (4s), 4 (8s), max 5 tentatives. Crate backoff ou tokio-retry. Circuit breaker: apres N echecs consecutifs, on arrete de tenter pendant un cooldown. Fallback: si Redis down, lire directement PostgreSQL (degrade mais fonctionnel). Chaque erreur est loggee avec le contexte (service, tentative, duree).
+
+Q229: Comment securisez-vous les connexions en Rust (TLS) ?
+R229: Pour PostgreSQL: tokio-postgres avec rustls ou native-tls (sslmode=require). Pour Redis: connexion TLS via redis crate avec tls feature. Pour RabbitMQ: lapin crate avec TLS. En interne Docker: pas de TLS necessaire (reseau isole). En production exposee: TLS obligatoire sur les listeners TCP GPS avec tokio-rustls.
+
+Q230: Comment gerez-vous la memoire en Rust pour un service long-running ?
+R230: Pas de GC donc pas de pauses. Vigilance sur: 1) Les Vec qui grandissent indefiniment (limiter la taille, shrink_to_fit()). 2) Les channels non bornes (toujours bounded). 3) Les connexions TCP qui leakent (timeout + drop). 4) Monitoring RSS via /proc/self/status ou metriques. 5) jemalloc pour moins de fragmentation. 6) String interning pour les identifiants repetitifs.
+
+Q231: Comment testez-vous un service Rust qui depend de PostgreSQL et Redis ?
+R231: 1) Tests unitaires: mock les traits (trait DbWriter avec impl MockDbWriter). 2) Tests integration: testcontainers-rs lance PostgreSQL et Redis en Docker automatiquement pour chaque test. 3) Tests de charge: criterion pour le throughput du parsing, k6 ou wrk pour les endpoints HTTP. 4) Tests end-to-end: envoyer de vraies trames TCP et verifier les positions en DB.
+
+Q232: Quelle est votre strategie de versioning pour un service Rust ?
+R232: Semantic Versioning (SemVer): MAJOR.MINOR.PATCH. Le Cargo.toml porte la version. Git tags (v1.2.3) declenchent le build CI. L'image Docker est taguee avec la version + le commit SHA. Le binaire expose sa version via --version (Clap). Le health endpoint retourne la version pour le monitoring.
+
+Q233: Comment gerez-vous les feature flags en Rust ?
+R233: Cargo features dans Cargo.toml: [features] fms_support = [], mems_support = ["fms_support"]. Code conditionnel: #[cfg(feature = "fms_support")]. Permet de compiler des variantes du service. En runtime: fichier de config ou variable d'environnement pour activer/desactiver des fonctionnalites sans recompiler.
+
+Q234: Comment implementez-vous le rate limiting en Rust pour les connexions GPS ?
+R234: Semaphore global limitant les connexions simultanees (ex: 5000 max). Par device: tracking du nombre de trames/minute, drop si depasse le seuil (protection contre les boitiers defaillants qui spamment). Token bucket par IP source pour les attaques. Le crate governor fournit des rate limiters prets a l'emploi.
+
+Q235: Comment gerez-vous le deploiement zero-downtime du service Rust ?
+R235: 1) Load balancer devant N instances. 2) Rolling update: deployer instance par instance. 3) Le graceful shutdown termine les connexions en cours. 4) Le health check signale "pas pret" pendant le drain. 5) Les boitiers GPS se reconnectent automatiquement a une autre instance. 6) Blue/green deployment pour les changements majeurs.
+
+Q236: Comment gerez-vous la compatibilite binaire des protocoles GPS ?
+R236: Parser tolerant: les champs inconnus sont ignores (forward compatibility). Versioning du protocole dans la trame (V1/V2/V3). Le decodeur detecte la version et utilise le parser correspondant. Tests de regression avec des trames captures de chaque version. Jamais de breaking change dans le format de sortie vers RabbitMQ.
+
+Q237: Comment implementez-vous l'observabilite distribuee entre Rust et .NET ?
+R237: OpenTelemetry: le service Rust genere des trace IDs (crate opentelemetry + tracing-opentelemetry). Le trace ID est inclus dans les messages RabbitMQ. L'API .NET extrait le trace ID et continue la trace. Jaeger ou Tempo collecte et correle les traces. On peut suivre une position GPS depuis le TCP jusqu'a l'ecran du client.
+
+Q238: Comment gerez-vous les migrations de schema DB depuis le service Rust ?
+R238: Deux approches: 1) Le .NET gere toutes les migrations EF Core (source unique de verite). Le Rust s'adapte aux colonnes existantes. 2) Pour les tables specifiques Rust: sqlx avec les migrations embarquees (sqlx migrate). Les migrations sont idempotentes et versionnees dans le repo.
+
+Q239: Comment construisez-vous l'image Docker Rust optimale ?
+R239: Multi-stage build: Stage 1 (chef): cargo-chef pour cacher les dependances separement du code. Stage 2 (builder): compilation release avec RUSTFLAGS="-C target-cpu=native" si meme archi. Stage 3 (runtime): debian-slim ou distroless (google/distroless). Copier uniquement le binaire + certificats TLS + fichiers config. Image finale: 20-50MB. Scan de vulnerabilites avec trivy.
+
+Q240: Qu'est-ce que cargo-chef et pourquoi l'utiliser ?
+R240: cargo-chef optimise le Docker layer caching pour Rust. Il extrait un "recipe" (Cargo.toml + Cargo.lock sans le code source) pour compiler les dependances dans un layer separe. Quand seul le code change, les deps ne sont pas recompilees. Reduit le build Docker de 10-15 minutes a 1-2 minutes pour les changements de code.
+
+Q241: Comment gerez-vous le cross-compilation Rust pour differentes architectures ?
+R241: cross (crate) pour compiler vers ARM/Linux depuis une machine x86. Utile pour deployer sur Raspberry Pi ou serveurs ARM. Docker multi-arch avec buildx: docker buildx build --platform linux/amd64,linux/arm64. Le binaire Rust peut etre compile statiquement avec musl pour une portabilite maximale.
+
+Q242: Comment implementez-vous un systeme de plugins en Rust ?
+R242: Traits comme interface de plugin: trait ProtocolDecoder { fn decode(&self, bytes: &[u8]) -> Result<GpsFrame>; }. Chaque protocole (HH, AAP) implemente le trait. Le transport selectionne le decodeur selon le port/config. Pour les plugins dynamiques: libloading + ABI C stable. Preferer les plugins statiques (compile-time) pour la securite.
+
+Q243: Comment gerez-vous le hot-reload de configuration en Rust ?
+R243: Watcher sur le fichier de config (crate notify). A chaque modification, recharger et valider la config. Arc<RwLock<Config>> partage entre les taches. Les taches lisent la config via read lock (pas de blocage entre elles). Utile pour changer les seuils d'alerte sans restart.
+
+Q244: Comment gerez-vous les panics en production Rust ?
+R244: std::panic::set_hook pour capter les panics: logger le backtrace, envoyer une alerte. std::panic::catch_unwind dans tokio::spawn pour eviter qu'un panic kill le runtime. Compiler avec panic = "abort" en release pour un crash propre. Supervision: Docker restart policy always.
+
+Q245: Quelle est votre strategie de gestion des dependances Rust ?
+R245: 1) Cargo.lock commite (reproductibilite). 2) cargo audit pour les vulnerabilites connues (en CI). 3) cargo outdated pour les mises a jour. 4) Dependabot/Renovate pour les PR automatiques de mise a jour. 5) Minimiser les deps: preferer la stdlib quand possible. 6) Verifier la qualite: downloads, maintenance, license.
+
+Q246: Comment implementez-vous le backpressure entre Rust et PostgreSQL ?
+R246: Channel mpsc borne (ex: 10000 messages). Si le buffer est plein, le producteur (TCP handler) est suspendu. Metriques: taille de la queue. Si la queue approche la capacite max, alerter. Solutions: augmenter les workers DB, batch plus gros, ajuster le pool de connexions. En dernier recours: drop les positions les moins critiques (periodiques plutot que events).
+
+Q247: Comment gerez-vous la serialisation des messages entre Rust et .NET via RabbitMQ ?
+R247: Format commun: JSON avec un schema documente. Rust serialise avec serde_json. .NET deserialise avec System.Text.Json. Schema versionne: { "version": 2, "type": "position", "data": {...} }. Le consumer verifie la version et utilise le deserialiseur correspondant. Alternative: Protocol Buffers (protobuf) pour la performance et le schema strict.
+
+Q248: Comment testez-vous la compatibilite des messages RabbitMQ entre Rust et .NET ?
+R248: Contract testing: 1) Rust genere des messages de test (fixtures JSON). 2) .NET les deserialise dans ses tests. 3) Reciproquement, .NET genere des messages que Rust valide. 4) Ces fixtures sont versionnees dans le repo partage. 5) CI echoue si un changement de schema casse la compatibilite. Alternative: Pact framework pour le consumer-driven contract testing.
+
+Q249: Comment debuggez-vous un probleme de performance en production Rust ?
+R249: 1) Metriques Prometheus: identifier le goulot (parsing? DB? Redis?). 2) tracing spans: mesurer chaque etape. 3) tokio-console: taches bloquees ou idle. 4) perf record + flamegraph: hotspots CPU. 5) strace: syscalls lents. 6) pg_stat_statements: requetes DB lentes. 7) Reproduire en staging avec le meme volume de donnees.
+
+Q250: Comment gerez-vous les donnees sensibles (GDPR) dans le service Rust ?
+R250: Les positions GPS sont des donnees personnelles (localisation). 1) Chiffrement at-rest (PostgreSQL TDE ou disk encryption). 2) Chiffrement in-transit (TLS). 3) Retention limitee: archiver/supprimer apres X mois. 4) Anonymisation pour les exports. 5) Logs sans donnees personnelles (pas de lat/lng dans les logs). 6) Droit a l'effacement: endpoint pour purger les donnees d'un vehicule.
+
+Q251: Comment implementez-vous le circuit breaker en Rust ?
+R251: Etats: Closed (normal), Open (echecs > seuil, on arrete d'appeler), Half-Open (apres cooldown, on teste). Implementation: struct CircuitBreaker { state, failure_count, last_failure_time }. Wrap les appels Redis/RabbitMQ. Si Open: retourner Err immediatement sans appeler le service. Crate: recloser ou implementation manuelle.
+
+Q252: Comment gerez-vous la decouverte de services en Rust ?
+R252: Simple: noms DNS Docker (postgres, redis, rabbitmq) resolus par Docker DNS. Avance: Consul ou etcd pour la decouverte dynamique. Le service Rust s'enregistre au demarrage, les consommateurs decouvrent son adresse. En Kubernetes: DNS natif (service-name.namespace.svc.cluster.local).
+
+Q253: Comment compilez-vous Rust pour une taille de binaire minimale ?
+R253: Cargo.toml [profile.release]: opt-level = "z" (taille), lto = true, codegen-units = 1, strip = true, panic = "abort". UPX pour la compression post-build. Resultat: binaire de 5-10MB au lieu de 30-50MB. Utile pour les images Docker minimales et les systemes embarques.
+
+Q254: Comment gerez-vous le multi-threading CPU-bound en Rust ?
+R254: rayon pour le parallelisme data (map-reduce sur les positions). tokio::spawn_blocking pour les operations CPU-bound dans un runtime async (eviter de bloquer le runtime Tokio). Thread pool dedie pour les calculs lourds (calibration carburant, aggregation).
+
+Q255: Quelle est votre approche pour la documentation Rust ?
+R255: /// doc comments sur les types et fonctions publics. Exemples dans la doc (testes par cargo test). README.md par crate avec architecture, configuration, deploiement. cargo doc genere la doc HTML. En CI: cargo doc --no-deps pour verifier que la doc compile.
+
+Q256: Comment gerez-vous les breaking changes dans le service Rust ?
+R256: 1) Versioning semantique. 2) Deprecation: anciennes fonctions marquees #[deprecated]. 3) Feature flags pour les nouvelles fonctionnalites. 4) Migration progressive: supporter l'ancien et le nouveau format simultanement. 5) Changelog maintenu a jour. 6) Communication a l'equipe avant chaque breaking change.
+
+Q257: Comment implementez-vous le blue/green deployment pour le service Rust GPS ?
+R257: Deux instances (blue = actuelle, green = nouvelle version). 1) Deployer green. 2) Health check OK. 3) Basculer le load balancer vers green. 4) Les boitiers GPS se reconnectent. 5) Si probleme: rebasculer vers blue. 6) Si OK: detruire blue. Avantage: rollback instantane.
+
+Q258: Comment gerez-vous les certificats TLS pour les boitiers GPS ?
+R258: Les boitiers GPS envoient en TCP brut (pas de TLS en general). Si TLS requis: tokio-rustls avec certificat serveur. Rotation des certificats: watcher sur le fichier cert, rechargement sans restart. Let's Encrypt pour les certificats auto-renouveles. CA interne pour les environnements prives.
+
+Q259: Comment testez-vous la resilience du service Rust ?
+R259: Chaos engineering: 1) Tuer PostgreSQL pendant le fonctionnement (le service doit buffer et retenter). 2) Tuer Redis (fallback sur DB). 3) Saturer le reseau (le backpressure doit fonctionner). 4) Envoyer des trames invalides (le parser ne doit pas panic). 5) Simuler des milliers de connexions simultanees (load test).
+
+Q260: Comment gerez-vous le logging en production sans impacter la performance ?
+R260: 1) Niveau INFO en production (pas DEBUG/TRACE). 2) Logging asynchrone (tracing avec un writer non-bloquant). 3) Sampling: logger 1 position sur 100 en detail. 4) Les logs WARN/ERROR toujours complets. 5) Rotation des fichiers (tracing-appender). 6) Metriques separees du logging (Prometheus = chiffres, logs = evenements).
+
+
+################################################################################
+RABBITMQ EN PROFONDEUR (Questions 261-285)
+################################################################################
+
+Q261: Qu'est-ce que RabbitMQ et pourquoi l'utiliser ?
+R261: Message broker AMQP. Decouple les producteurs (Rust GPS) des consommateurs (.NET API). Avantages: communication asynchrone, buffer en cas de surcharge, fiabilite (messages persistants), routing flexible. Le Rust publie sans se soucier de qui consomme.
+
+Q262: Expliquez le modele AMQP de RabbitMQ.
+R262: Producer -> Exchange -> Binding -> Queue -> Consumer. L'exchange route les messages vers les queues selon des regles (binding keys). Le consumer recoit les messages de sa queue. Separation producteur/consommateur totale.
+
+Q263: Quels types d'exchange existent ?
+R263: 1) Direct: routing key exacte. 2) Fanout: broadcast a toutes les queues bindees. 3) Topic: routing key avec wildcards (*.position.#). 4) Headers: routing sur les headers du message. Pour le GPS: fanout pour broadcast a tous les consumers, ou topic pour filtrer par type d'event.
+
+Q264: Comment fonctionne la persistance des messages ?
+R264: Queue declaree durable (survit au restart). Messages publies avec delivery_mode=2 (persistent). RabbitMQ ecrit le message sur disque avant de confirmer. Trade-off: plus lent mais pas de perte de messages. Pour les positions GPS temps reel: persistent optionnel (perte acceptable pour le temps reel).
+
+Q265: Qu'est-ce que le message acknowledgment ?
+R265: Le consumer envoie un ACK apres traitement reussi. Si pas d'ACK (crash du consumer): RabbitMQ remet le message dans la queue (redelivery). basic_ack pour confirmer, basic_nack ou basic_reject pour refuser. auto_ack=false en production pour la fiabilite.
+
+Q266: Comment gerez-vous les messages en echec (Dead Letter Queue) ?
+R266: Configurer une DLQ: messages rejetes (nack sans requeue) ou expires sont routes vers la dead-letter exchange -> DLQ. Un worker analyse les DLQ messages, les corrige ou les log. Evite que les messages problematiques bloquent la queue principale. Alerte si la DLQ grandit.
+
+Q267: Comment gerez-vous la concurrence des consumers ?
+R267: prefetch_count = N (ex: 10). RabbitMQ envoie N messages en avance au consumer. Le consumer traite en parallele et ACK individuellement. Plusieurs consumers sur la meme queue = load balancing round-robin automatique. Augmenter les consumers pour scaler le traitement.
+
+Q268: Qu'est-ce que le publisher confirm ?
+R268: Le producer recoit un ACK de RabbitMQ quand le message est persiste. Si pas d'ACK: retenter la publication. En Rust avec lapin: publisher_confirm(). Garantit que le message n'est pas perdu entre le producteur et RabbitMQ.
+
+Q269: Comment gerez-vous l'ordre des messages ?
+R269: RabbitMQ garantit l'ordre FIFO par queue avec un seul consumer. Avec plusieurs consumers: l'ordre n'est pas garanti. Solution: partitionner par device_id (chaque vehicule sur une queue dediee). Ou utiliser le consistent-hash exchange pour router par cle.
+
+Q270: Comment monitorez-vous RabbitMQ ?
+R270: Management UI (port 15672): queues, exchanges, connections, rates. API HTTP pour les metriques. Prometheus plugin (rabbitmq_prometheus). Alertes sur: queue depth > seuil, consumers = 0, memory > 80%, messages unacked croissants.
+
+Q271: Comment gerez-vous la saturation d'une queue RabbitMQ ?
+R271: 1) Alerte sur queue depth. 2) Ajouter des consumers. 3) TTL sur les messages (expiration des vieux messages). 4) Queue max-length avec overflow: drop-head ou reject-publish. 5) Analyser pourquoi les consumers sont lents (DB? traitement lourd?). 6) Augmenter le prefetch_count.
+
+Q272: Quelle est la difference entre RabbitMQ et Kafka ?
+R272: RabbitMQ: message broker classique, push vers consumers, message supprime apres ACK, routing flexible. Kafka: event log distribue, pull par consumers, messages retenus (replay possible), partitionnement natif, throughput superieur. RabbitMQ pour la simplicite et le routing. Kafka pour le volume massif et le replay.
+
+Q273: Comment gerez-vous les messages dupliques ?
+R273: RabbitMQ peut delivrer un message deux fois (redelivery apres timeout). Le consumer doit etre idempotent. Strategies: 1) Deduplication par message ID (cache Redis des IDs traites). 2) INSERT ON CONFLICT DO NOTHING en DB. 3) Version/timestamp sur les entites.
+
+Q274: Comment securisez-vous RabbitMQ ?
+R274: 1) Authentification: users avec permissions par vhost. 2) TLS pour les connexions. 3) Vhosts pour l'isolation (un par environnement ou par service). 4) Permissions granulaires: configure, write, read par exchange/queue. 5) Pas de guest user en production.
+
+Q275: Comment gerez-vous le clustering RabbitMQ ?
+R275: Cluster de 3 noeuds minimum (quorum). Queues mirrored ou quorum queues pour la HA. Si un noeud tombe, les queues sont disponibles sur les autres. Load balancer devant le cluster. En Docker: docker compose avec 3 instances rabbitmq liees.
+
+Q276: Qu'est-ce qu'une quorum queue ?
+R276: Queue repliquee avec consensus Raft. Remplace les mirrored queues (deprecated). Plus fiable: pas de perte de messages lors d'un failover. Configuration: x-queue-type: quorum. Recommande pour les messages critiques en production.
+
+Q277: Comment testez-vous l'integration RabbitMQ ?
+R277: testcontainers-rs (Rust) ou Testcontainers (.NET) pour lancer RabbitMQ en Docker pendant les tests. Publier un message Rust, verifier que le consumer .NET le recoit et le traite correctement. Tests de contract sur le format JSON.
+
+Q278: Comment gerez-vous les upgrades RabbitMQ sans downtime ?
+R278: Rolling upgrade du cluster noeud par noeud. 1) Drain un noeud (stop app). 2) Upgrade. 3) Restart et rejoin cluster. 4) Verifier la synchronisation des queues. 5) Passer au noeud suivant. Les quorum queues gerent nativement les noeuds manquants.
+
+Q279: Comment dimensionnez-vous RabbitMQ ?
+R279: Facteurs: debit messages/seconde, taille des messages, nombre de queues, retention. Pour le GPS (1000 vehicules x 1 msg/min = ~17 msg/s): un seul noeud RabbitMQ suffit largement. 3 noeuds pour la HA. RAM: 2-4 GB. Disk: SSD pour la persistance.
+
+Q280: Comment implementez-vous le pattern request/reply avec RabbitMQ ?
+R280: Le producer publie avec reply_to (queue de reponse) et correlation_id. Le consumer traite et publie la reponse sur reply_to avec le meme correlation_id. Le producer match la reponse. Utilise pour les commandes synchrones (ex: demander la position actuelle a un boitier GPS).
+
+Q281: Qu'est-ce que le message TTL ?
+R281: Time-To-Live: duree maximale d'un message dans la queue. Apres expiration: message supprime ou route vers la DLQ. Configurable par queue (x-message-ttl) ou par message (expiration header). Pour le GPS: TTL de 60s sur les positions (une position perimee est inutile).
+
+Q282: Comment gerez-vous les exchanges et queues en code ?
+R282: Declaration idempotente au demarrage: le producer et le consumer declarent les exchanges et queues. Si elles existent deja, pas d'erreur. Convention de nommage: gps.positions.exchange, gps.positions.queue, gps.alerts.queue. Infrastructure as code: definitions exportees via rabbitmqadmin.
+
+Q283: Qu'est-ce que le shovel et la federation RabbitMQ ?
+R283: Shovel: transfere des messages d'une queue/cluster a une autre (replication inter-datacenter). Federation: des exchanges/queues dans un cluster recoivent des messages d'un autre cluster. Utile pour la geo-distribution: GPS ingestion locale, traitement centralise.
+
+Q284: Comment gerez-vous le backpressure avec RabbitMQ ?
+R284: RabbitMQ applique du flow control: si la memoire ou le disque atteint les seuils (vm_memory_high_watermark, disk_free_limit), les publishers sont bloques. Cote consumer: prefetch_count limite les messages en transit. Cote application: le bounded channel Rust ralentit le producteur.
+
+Q285: Comment loggez-vous les messages RabbitMQ pour le debugging ?
+R285: Firehose tracer: rabbitmqctl trace_on capture tous les messages (dev uniquement). En production: logger les message IDs et metadata dans le producer et le consumer. Correlation ID pour tracer un message de bout en bout. RabbitMQ Management UI montre les rates et les queues en temps reel.
+
+
+################################################################################
+POSTGRESQL AVANCE (Questions 286-300)
+################################################################################
+
+Q286: Comment gerez-vous le partitionnement de gps_positions en production ?
+R286: Partitionnement par range sur recorded_at (mensuel). CREATE TABLE gps_positions (... ) PARTITION BY RANGE (recorded_at). Partitions: gps_positions_2025_01, _02, etc. Creation automatique des futures partitions via pg_partman ou un cron. Les requetes avec WHERE recorded_at filtrent automatiquement les partitions.
+
+Q287: Comment optimisez-vous les aggregations sur des millions de lignes ?
+R287: 1) Materialized views pre-calculees (stats journalieres). 2) Index partiels: CREATE INDEX ON gps_positions (device_id) WHERE speed > 0 (uniquement les positions en mouvement). 3) Parallel query (PostgreSQL 10+). 4) BRIN index pour les colonnes correlees au stockage physique (recorded_at).
+
+Q288: Qu'est-ce qu'un BRIN index et quand l'utiliser ?
+R288: Block Range Index: stocke les min/max par bloc de pages. Tres compact (< 1% de la taille d'un B-tree). Ideal pour les colonnes naturellement ordonnees (recorded_at dans gps_positions car les insertions sont chronologiques). Exclusion rapide des blocs hors range.
+
+Q289: Comment gerez-vous les connexions concurrentes a PostgreSQL ?
+R289: max_connections PostgreSQL (defaut 100, augmenter a 200-500). PgBouncer en front pour le connection pooling (modes: session, transaction, statement). Le pool Rust (deadpool) limite ses connexions au max supporte. Monitoring: pg_stat_activity pour les connexions actives.
+
+Q290: Comment diagnostiquez-vous un slow query PostgreSQL ?
+R290: 1) pg_stat_statements: top queries par total_time. 2) EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) sur la requete. 3) Verifier: Seq Scan sur grande table? Nested Loop sur tables larges? 4) Solutions: index manquant, vacuum needed, statistiques obsoletes (ANALYZE), requete a reecrire.
+
+Q291: Qu'est-ce que le WAL (Write-Ahead Log) PostgreSQL ?
+R291: Journal de transactions: toute modification est ecrite dans le WAL avant la DB. Garantit la durabilite (ACID). Utilise pour: recovery apres crash, streaming replication, point-in-time recovery (PITR). Configuration: wal_level, max_wal_size, archive_mode.
+
+Q292: Comment gerez-vous la retention des donnees GPS ?
+R292: Policy: positions > 1 an archivees dans des tables/tablespaces secondaires (disque lent). Positions > 3 ans: supprimees ou exportees en Parquet/CSV sur S3. Le partitionnement facilite: DROP PARTITION supprime des millions de lignes instantanement (pas de vacuum).
+
+Q293: Comment tuner PostgreSQL pour un workload GPS (write-heavy) ?
+R293: shared_buffers: 25% RAM. effective_cache_size: 75% RAM. wal_buffers: 64MB. checkpoint_completion_target: 0.9. max_wal_size: 4GB. synchronous_commit: off (acceptable pour GPS, gain de performance 2-5x). work_mem: 64-256MB pour les sorts/aggregations.
+
+Q294: Qu'est-ce que le logical replication PostgreSQL ?
+R294: Replique des changements au niveau logique (INSERT/UPDATE/DELETE) vers un autre serveur. Permet de repliquer des tables specifiques (pas toute la DB). Utilise pour: analytics server (repliquer gps_positions vers un serveur de rapports), migration zero-downtime.
+
+Q295: Comment gerez-vous les locks PostgreSQL ?
+R295: Row-level locks (SELECT FOR UPDATE, UPDATE, DELETE). Table-level locks pour DDL (ALTER TABLE). Monitoring: pg_locks + pg_stat_activity pour detecter les deadlocks. Eviter les transactions longues. Index CONCURRENTLY pour ne pas bloquer les ecritures.
+
+Q296: Comment implementez-vous le full-text search PostgreSQL ?
+R296: tsvector + tsquery pour la recherche textuelle. Index GIN sur la colonne tsvector. Utilise pour: rechercher des vehicules par nom/immatriculation, rechercher des adresses. Plus performant que LIKE '%terme%'. Supporte le stemming et les poids.
+
+Q297: Comment gerez-vous les backups incrementaux PostgreSQL ?
+R297: pg_basebackup pour le backup initial + WAL archiving continu. Restauration point-in-time (PITR): restaurer a un instant precis. Outils: pgBackRest ou Barman pour la gestion automatisee des backups, retention, verification.
+
+Q298: Qu'est-ce que le Foreign Data Wrapper (FDW) ?
+R298: Permet d'acceder a des donnees externes comme des tables locales. postgres_fdw pour acceder a un autre PostgreSQL. file_fdw pour lire des CSV. Utilise pour: acceder a la DB d'archivage depuis la DB principale, federer plusieurs sources.
+
+Q299: Comment testez-vous les performances PostgreSQL ?
+R299: pgbench pour les benchmarks standards. Scripts custom simulant le workload GPS (INSERT massifs + SELECT range). EXPLAIN ANALYZE avant/apres chaque optimisation. Profiling: pg_stat_statements reset + workload + analyse des stats.
+
+Q300: Comment gerez-vous les extensions PostgreSQL ?
+R300: CREATE EXTENSION postgis (geospatial), pg_trgm (similarite texte), pg_stat_statements (stats requetes), pgcrypto (chiffrement). Liste des extensions dans le script d'initialisation Docker. En migration EF Core: migrationBuilder.Sql("CREATE EXTENSION IF NOT EXISTS postgis").
+
+
+################################################################################
+GIT / PIPELINES / CI-CD (Questions 301-320)
+################################################################################
+
+Q301: Quelle strategie de branching Git utilisez-vous ?
+R301: Git Flow adapte: main (production), develop (integration), feature/* (fonctionnalites), hotfix/* (corrections urgentes). Les feature branches partent de develop et y reviennent via PR. Hotfix part de main et merge dans main + develop. Tags sur main pour les releases.
+
+Q302: Comment structurez-vous vos commits Git ?
+R302: Conventional Commits: type(scope): description. Types: feat (fonctionnalite), fix (correction), refactor, perf, docs, chore, test. Ex: feat(gps): add AAP v3 protocol decoder, fix(auth): handle expired JWT token. Permet la generation automatique du changelog.
+
+Q303: Comment gerez-vous les code reviews ?
+R303: PR obligatoire pour merge dans develop/main. Checklist: tests passes, pas de TODO, code style conforme, pas de secrets, doc mise a jour. Review par au moins 1 autre dev. Commentaires constructifs. Approval requis avant merge. Squash merge pour un historique propre.
+
+Q304: Comment gerez-vous les conflits de merge ?
+R304: PRs frequentes et petites pour minimiser les conflits. Rebase sur develop avant la PR. En cas de conflit: comprendre les deux changements, merger manuellement, tester. Jamais de merge --force sur des branches partagees. Communication avec l'auteur de l'autre changement.
+
+Q305: Comment structurez-vous le pipeline CI/CD ?
+R305: Stages: 1) Lint (clippy, eslint, dotnet format). 2) Build (cargo build, dotnet build, ng build). 3) Test (cargo test, dotnet test, ng test). 4) Security (cargo audit, npm audit, SAST). 5) Docker Build. 6) Push Registry. 7) Deploy Staging. 8) Tests E2E. 9) Deploy Production (manual gate).
+
+Q306: Comment testez-vous dans le pipeline CI ?
+R306: Rust: cargo test (unitaires + integration). .NET: dotnet test (xUnit/NUnit). Angular: ng test (Karma/Jest). Coverage: cargo tarpaulin, dotnet-coverage, ng test --code-coverage. Seuil minimum de coverage (ex: 70%). Tests parallelises pour la vitesse.
+
+Q307: Comment gerez-vous les secrets dans le pipeline ?
+R307: Variables secretes du CI (GitHub Secrets, GitLab CI Variables). Jamais en clair dans le code ou les logs. Masquees dans les outputs. Injectees comme variables d'environnement pendant le build/deploy. Rotation reguliere. Principe du moindre privilege: chaque pipeline a uniquement les secrets necessaires.
+
+Q308: Comment implementez-vous le deploiement automatique ?
+R308: Push sur develop -> deploy staging automatique. Push sur main (ou tag) -> deploy production avec approval manuel. Script de deploy: ssh + docker compose pull + docker compose up -d --build. Ou Ansible/Terraform pour l'infra as code. Rollback automatique si health check echoue.
+
+Q309: Comment gerez-vous les environnements (dev/staging/prod) ?
+R309: Fichiers de config par environnement: .env.dev, .env.staging, .env.prod. Docker compose override par env. Le CI selectionne le fichier selon la branche/tag. Staging = copie de production avec donnees anonymisees. Meme images Docker en staging et prod.
+
+Q310: Comment gerez-vous le versioning des releases ?
+R310: Semantic Versioning (SemVer). Git tags: v1.2.3. Le CI construit l'image Docker avec le tag version. Changelog genere automatiquement depuis les conventional commits (standard-version, semantic-release). Release notes avec les features/fixes inclus.
+
+Q311: Comment implementez-vous le rollback automatique ?
+R311: Apres deploy: attendre 5 minutes + verifier health checks + metriques (error rate). Si anomalie: docker compose up -d avec le tag precedent. Les images precedentes sont toujours dans le registry. Script de rollback: lire le tag precedent depuis un fichier de state, pull et restart.
+
+Q312: Comment gerez-vous le monorepo avec Git ?
+R312: GISV2 est un monorepo (Rust, .NET, Angular). CI optimise: detecter les fichiers modifies, ne builder que les services impactes. Si gps-ingest-rust/ modifie -> build + test Rust uniquement. Si services/GisAPI/ -> build + test .NET. path filters dans le pipeline.
+
+Q313: Comment gerez-vous les migrations DB dans le pipeline ?
+R313: Le pipeline staging execute les migrations automatiquement (dotnet ef database update). En production: migration manuelle ou via le deploy script avec verification. Backup DB avant migration. Rollback script prepare (migration inverse). Migrations testees en staging d'abord.
+
+Q314: Comment implementez-vous les tests de securite dans le pipeline ?
+R314: SAST: cargo audit (Rust), dotnet list package --vulnerable (.NET), npm audit (Angular). DAST: scan de l'API deployee en staging (OWASP ZAP). Container scanning: trivy sur les images Docker. Dependency check: Dependabot/Renovate pour les mises a jour automatiques. Pipeline echoue si vulnerabilite critique.
+
+Q315: Comment optimisez-vous la vitesse du pipeline ?
+R315: 1) Cache: Cargo registry + target/, NuGet packages, node_modules. 2) Paralleliser: build Rust || build .NET || build Angular. 3) Incremental builds. 4) Docker layer caching. 5) Runners puissants (4+ CPU, SSD). 6) Tests parallelises. Cible: pipeline < 10 minutes.
+
+Q316: Comment gerez-vous les feature branches longues ?
+R316: Eviter: PRs petites et frequentes (max 1-2 jours). Si necessaire: rebase regulier sur develop. Feature flags pour merger du code inactif en develop. Branch protection: merge automatique bloquee si trop de conflits.
+
+Q317: Qu'est-ce que le trunk-based development ?
+R317: Tous les devs commitent sur une seule branche (main/trunk). Feature flags pour cacher le code incomplet. Deploys frequents (plusieurs par jour). Avantage: pas de branches longues, pas de merge hell. Necessite: bonne CI, feature flags, tests solides.
+
+Q318: Comment gerez-vous les database migrations en equipe ?
+R318: Convention: un fichier de migration par feature. Nom avec timestamp: 20250214_AddFuelSensor. PR inclut migration + code. Review de la migration (performance, rollback). En cas de conflit: supprimer la migration locale, regenrer apres merge develop. Ne jamais modifier une migration deployee.
+
+Q319: Comment implementez-vous le GitOps ?
+R319: L'etat desire de l'infrastructure est dans Git. Push sur main -> ArgoCD/Flux detecte le changement -> deploy automatiquement. Docker compose ou Kubernetes manifests dans le repo. Tout changement d'infra passe par une PR. Audit trail complet via l'historique Git.
+
+Q320: Comment gerez-vous la documentation dans le pipeline ?
+R320: 1) Swagger/OpenAPI genere automatiquement et publie. 2) cargo doc pour la doc Rust. 3) Compodoc pour Angular. 4) Le pipeline verifie que la doc compile (pas de liens casses). 5) README mis a jour dans les PRs. 6) Architecture Decision Records (ADR) dans le repo.

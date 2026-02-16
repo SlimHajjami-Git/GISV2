@@ -1,0 +1,154 @@
+================================================================================
+   QUESTIONS D'ENTRETIEN CV - PARTIE 2 : .NET 8 / CLEAN ARCHITECTURE / CQRS
+   (Questions 51-100)
+================================================================================
+
+Q51: Qu'est-ce que Clean Architecture en .NET ?
+R51: Couches concentriques: Domain (entites, interfaces) -> Application (use cases, CQRS) -> Infrastructure (DB, services externes) -> Presentation (API). Dependances pointent vers l'interieur. Le Domain ne depend de rien.
+
+Q52: Qu'est-ce que CQRS ?
+R52: Command Query Responsibility Segregation. Lectures (Queries) separees des ecritures (Commands). Chaque operation a son handler. Avantages: separation des responsabilites, optimisation independante, testabilite.
+
+Q53: Comment implementer CQRS avec MediatR ?
+R53: Command/Query implemente IRequest<T>. Handler implemente IRequestHandler<TRequest, TResponse>. Controller envoie via _mediator.Send(command). Pipeline Behaviors pour validation, logging, transactions.
+
+Q54: Pattern Repository ?
+R54: Abstraction de l'acces donnees. IVehicleRepository dans Domain, VehicleRepository dans Infrastructure. Permet le mocking pour les tests et le changement d'ORM.
+
+Q55: Multi-tenancy dans le projet ?
+R55: Chaque entite herite TenantEntity (CompanyId). Query filters EF Core: HasQueryFilter(v => v.CompanyId == tenantId). Tenant extrait du JWT. Impossible d'acceder aux donnees d'une autre societe.
+
+Q56: Entity Framework Core dans le projet ?
+R56: ORM. GisDbContext avec DbSet et Fluent API. Migrations pour le schema. Query filters pour multi-tenancy. AsNoTracking() pour lectures, projections Select(), batch operations.
+
+Q57: Injection de dependances en .NET ?
+R57: IoC container resout les dependances. builder.Services.AddScoped<IRepo, Repo>(). Injection par constructeur. Lifetimes: Singleton, Scoped, Transient.
+
+Q58: Difference Scoped, Transient, Singleton ?
+R58: Singleton = une instance pour toute l'app. Scoped = une par requete HTTP (ideal DbContext). Transient = nouvelle a chaque injection.
+
+Q59: Authentification JWT ?
+R59: Login -> verification credentials -> generation JWT avec claims (userId, companyId, permissions). Token dans header Authorization: Bearer. Middleware valide et extrait les claims.
+
+Q60: SignalR et son utilisation ?
+R60: Communication temps reel bidirectionnelle (WebSocket). GpsHub diffuse positions aux clients. Groupes: company_{id}, vehicle_{id}. Positions RabbitMQ -> Hub -> Clients web.
+
+Q61: Pipeline Behaviors MediatR ?
+R61: S'executent avant/apres chaque handler. ValidationBehavior (FluentValidation), LoggingBehavior, TransactionBehavior. Separation des cross-cutting concerns.
+
+Q62: Migrations EF Core ?
+R62: dotnet ef migrations add Nom -> genere le code. dotnet ef database update -> applique. En production: migrations au demarrage. Versionnees dans le code source.
+
+Q63: Middleware ASP.NET Core ?
+R63: Composant dans le pipeline HTTP. Requete traverse les middlewares en sequence. Custom: extraction tenant, gestion exceptions globale, logging, correlation IDs.
+
+Q64: Gestion d'erreurs globale ?
+R64: Middleware d'exception catch toutes les exceptions, log, retourne ProblemDetails. Exceptions metier (NotFoundException, ForbiddenException) mappees vers status HTTP (404, 403).
+
+Q65: FluentValidation ?
+R65: Regles de validation fluides. RuleFor(x => x.Name).NotEmpty().MaximumLength(100). ValidationBehavior execute avant le handler. Invalide = 400 Bad Request.
+
+Q66: Optimisation requetes EF Core ?
+R66: AsNoTracking(), Select() projections, Include() selectif, pagination Skip/Take, index DB, compiled queries frequentes.
+
+Q67: Pattern Unit of Work ?
+R67: Regroupe operations DB dans une transaction. EF Core nativement via SaveChanges(). Toutes modifications commitees atomiquement. Un seul SaveChanges() par Command handler.
+
+Q68: Autorisation dans l'API ?
+R68: [Authorize] sur controllers. Policies custom pour permissions. Verification permissions JSONB dans handlers. Multi-tenancy filtre automatique par company.
+
+Q69: AutoMapper ?
+R69: Mappe entites Domain vers DTOs automatiquement. CreateMap<Vehicle, VehicleDto>(). Controle ce qui est expose. Evite code repetitif de mapping.
+
+Q70: Pagination API ?
+R70: Parametres PageNumber, PageSize. Skip((page-1)*size).Take(size). Reponse: TotalCount, PageNumber, PageSize, TotalPages. Evite charger des milliers d'entites.
+
+Q71: Pattern Specification ?
+R71: Encapsule criteres de requete dans des objets. ActiveVehiclesSpec, VehiclesInGeofenceSpec. Composable: spec1.And(spec2). Requetes complexes reutilisables.
+
+Q72: Permissions JSONB ?
+R72: Stockees dans table roles. { "vehicles": { "read": true, "write": true } }. Backend verifie dans handlers. Frontend recoit au login, affiche/masque fonctionnalites.
+
+Q73: Health Checks ASP.NET ?
+R73: Verifie sante de l'app et dependances (PostgreSQL, Redis, RabbitMQ). Endpoint /health. Docker utilise pour detecter services defaillants.
+
+Q74: Integration RabbitMQ .NET ?
+R74: MassTransit ou RabbitMQ.Client. Consumer recoit positions GPS du service Rust. Met a jour caches, evalue geofences, notifie clients via SignalR.
+
+Q75: Background Service .NET ?
+R75: IHostedService tourne en arriere-plan. Consommer messages RabbitMQ, evaluer alertes maintenance, calculer stats periodiques, nettoyer donnees anciennes.
+
+Q76: Comment testez-vous l'API ?
+R76: Unitaires: handlers CQRS avec mocks (Moq). Integration: WebApplicationFactory + DB test. Validation: FluentValidation validators testes isolement.
+
+Q77: Pattern Options en .NET ?
+R77: IOptions<T> injecte config typee depuis appsettings.json. builder.Services.Configure<JwtSettings>(config.GetSection("Jwt")). Type-safe et reloadable.
+
+Q78: Gestion fichiers/documents ?
+R78: Upload via IFormFile. Stockage filesystem ou cloud (S3). Metadonnees en DB. Documents vehicules (carte grise, assurance), photos sinistres.
+
+Q79: Rate limiting ASP.NET ?
+R79: Middleware natif ASP.NET Core 7+. Fixed Window, Sliding Window, Token Bucket. Protege contre les abus. Essentiel pour endpoints publics (login).
+
+Q80: CORS ?
+R80: Configure dans Program.cs. Autorise frontend Angular a faire des requetes API. Headers, methodes, origins specifies dans la policy.
+
+Q81: Pattern Outbox ?
+R81: Transactional Outbox: ecrire message dans table outbox dans meme transaction DB au lieu de publier directement sur RabbitMQ. Worker envoie ensuite. Coherence garantie.
+
+Q82: Seed de donnees ?
+R82: Au demarrage: insere donnees initiales (admin, roles defaut, subscription types). Idempotent: pas de doublons si existe deja.
+
+Q83: Minimal API vs Controllers ?
+R83: Minimal: app.MapGet("/api/...", handler). Moins de boilerplate. Controllers: plus structure, meilleure organisation pour gros projets. GISV2 utilise controllers.
+
+Q84: Logging .NET ?
+R84: ILogger<T> injecte. Serilog pour logging structure (JSON). Sinks: console, fichiers, ELK/Seq. Correlation IDs pour tracer requetes entre services.
+
+Q85: Pattern Decorator en DI ?
+R85: Wrappe un service pour ajouter du comportement. CachedVehicleRepository wrappe VehicleRepository + caching Redis. Transparent pour l'appelant.
+
+Q86: Qu'est-ce que le Domain-Driven Design (DDD) ?
+R86: Approche centrant le code sur le domaine metier. Entites, Value Objects, Aggregates, Domain Events. Dans GISV2: Vehicle est un aggregate root, Trip, GpsPosition sont des entites du domaine fleet management.
+
+Q87: Difference entre entite et value object ?
+R87: Entite = identite unique (Vehicle avec Id). Value Object = defini par ses attributs, pas d'identite (Coordinates avec lat/lng). Deux Coordinates identiques sont equivalentes.
+
+Q88: Qu'est-ce qu'un aggregate root ?
+R88: Entite principale qui garantit la coherence d'un groupe d'objets. Vehicle est aggregate root: on accede aux documents, couts, maintenance via Vehicle. Pas d'acces direct aux sous-entites.
+
+Q89: Comment gerez-vous les Domain Events ?
+R89: Un evenement declenche quand quelque chose d'important se passe dans le domaine. VehicleEnteredGeofence, MaintenanceDue. MediatR publie l'event, les handlers reagissent (envoyer notification, creer alerte).
+
+Q90: Qu'est-ce que le pattern REPR (Request-Endpoint-Response) ?
+R90: Alternative aux controllers: un endpoint par fichier. Chaque endpoint = une classe avec Request, Response, Handler. Plus decouple que les controllers avec 10+ methodes. Compatible avec CQRS.
+
+Q91: Comment securisez-vous les endpoints admin ?
+R91: [Authorize(Policy = "SystemAdmin")] sur les controllers admin. Verification du claim role dans le JWT. Guard cote frontend (SystemAdminGuard). Double verification: frontend masque + backend refuse.
+
+Q92: Qu'est-ce que le API versioning ?
+R92: Gerer plusieurs versions de l'API simultanement. Strategies: URL (/api/v1/vehicles), header (Api-Version), query string (?version=1). Permet d'evoluer l'API sans casser les clients existants.
+
+Q93: Comment gerez-vous le caching cote API ?
+R93: Response caching pour les endpoints statiques. Redis distributed cache pour les donnees partagees (positions temps reel). In-memory cache pour les donnees rarement modifiees (subscription types, config).
+
+Q94: Qu'est-ce que le pattern Strategy en .NET ?
+R94: Encapsule des algorithmes interchangeables derriere une interface. Ex: IFuelCalculationStrategy avec DieselStrategy, ElectricStrategy. Le service selectionne la strategie selon le type de vehicule.
+
+Q95: Comment gerez-vous les long-running operations ?
+R95: Background service + queue. L'API recoit la requete, met en queue, retourne 202 Accepted. Le worker traite en arriere-plan. Le client poll le status ou recoit une notification SignalR.
+
+Q96: Qu'est-ce que le structured logging ?
+R96: Logger en JSON avec des proprietes structurees au lieu de strings. _logger.LogInformation("Vehicle {VehicleId} entered geofence {GeofenceId}", id1, id2). Permet la recherche et l'analyse dans ELK/Seq.
+
+Q97: Comment gerez-vous les migrations en equipe ?
+R97: Chaque developpeur cree sa migration. En cas de conflit: supprimer la migration locale, pull, recreer. La CI/CD detecte les conflits. Convention de nommage: YYYYMMDD_Description.
+
+Q98: Qu'est-ce que le Global Query Filter EF Core ?
+R98: Filtre applique automatiquement a toutes les requetes d'un DbSet. modelBuilder.Entity<Vehicle>().HasQueryFilter(v => v.CompanyId == tenantId && !v.IsDeleted). Transparent pour le code metier. IgnoreQueryFilters() pour bypass.
+
+Q99: Comment gerez-vous la concurrence optimiste ?
+R99: Colonne RowVersion/ConcurrencyToken sur l'entite. EF Core verifie que la valeur n'a pas change entre la lecture et l'ecriture. Si conflit: DbUpdateConcurrencyException. Le client recharge et reessaie.
+
+Q100: Comment structurez-vous les DTOs ?
+R100: Separer: CreateVehicleRequest, UpdateVehicleRequest, VehicleResponse, VehicleListItem. Chaque DTO expose uniquement les champs necessaires. Records C# pour l'immutabilite: public record VehicleResponse(int Id, string Name, ...);

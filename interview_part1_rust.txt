@@ -1,0 +1,153 @@
+================================================================================
+   QUESTIONS D'ENTRETIEN CV - PARTIE 1 : RUST (Questions 1-50)
+================================================================================
+
+Q1: Qu'est-ce que l'ownership en Rust ?
+R1: Chaque valeur a un unique proprietaire. Quand il sort du scope, la valeur est liberee. Pas de garbage collector, securite memoire garantie a la compilation.
+
+Q2: Difference entre &T et &mut T ?
+R2: &T = reference partagee (lecture, multiples ok). &mut T = reference mutable (ecriture, une seule a la fois). Previent les data races a la compilation.
+
+Q3: Qu'est-ce que le borrowing ?
+R3: Passer une reference sans transferer l'ownership. Le borrow checker verifie a la compilation qu'aucune reference n'est invalide.
+
+Q4: Qu'est-ce qu'un lifetime ?
+R4: Annotation indiquant combien de temps une reference est valide. Garantit qu'une reference ne survit jamais a la donnee pointee. Syntaxe: fn foo<'a>(x: &'a str) -> &'a str.
+
+Q5: Difference entre String et &str ?
+R5: String = owned, heap, mutable. &str = reference/slice vers du UTF-8, leger, zero-copy. Preferer &str en parametre de fonction.
+
+Q6: Qu'est-ce qu'un enum algebrique en Rust ?
+R6: Un enum peut contenir des donnees (ADT). Ex: enum GpsFrame { HH(HHFrame), AAP(AAPFrame) }. Le pattern matching exhaustif couvre tous les cas.
+
+Q7: Comment fonctionne le pattern matching ?
+R7: match destructure enums, tuples, structs. Exhaustif: le compilateur force a traiter tous les cas. Elimine les bugs d'oubli.
+
+Q8: Comment fonctionne le trait system ?
+R8: Traits = comportement partage (interfaces). Polymorphisme statique via generics (monomorphisation, zero-cost). Ex: trait Decode { fn decode(&[u8]) -> Result<Self>; }
+
+Q9: Qu'est-ce que Result<T, E> ?
+R9: Ok(T) pour succes, Err(E) pour erreur. Operateur ? pour propager. thiserror pour types custom. Jamais de unwrap() en production.
+
+Q10: Qu'est-ce que Option<T> ?
+R10: Some(T) ou None. Remplace null. Le compilateur force a gerer le cas None.
+
+Q11: Difference entre panic! et Result ?
+R11: panic! arrete le thread (irrecuperable). Result gere l'erreur proprement. En production: Result pour tout, panic! pour bugs logiques.
+
+Q12: Qu'est-ce que le zero-cost abstraction ?
+R12: Generics, traits, iterators n'ont aucun cout runtime. Le compilateur monomorphise (code specialise par type). Aussi rapide que du code a la main.
+
+Q13: Systeme de modules en Rust ?
+R13: Chaque fichier = module. Visibilite privee par defaut, pub pour exposer. Structure: main.rs -> mod telemetry; -> telemetry/mod.rs -> pub mod hh;
+
+Q14: Qu'est-ce que Cargo ?
+R14: Gestionnaire de packages et build system. Cargo.toml = dependances. Cargo.lock = versions exactes. Commandes: build, run, test, clippy.
+
+Q15: Qu'est-ce que Clippy ?
+R15: Linter officiel Rust. Detecte patterns non-idiomatiques, performances sous-optimales. Best practice en CI.
+
+Q16: Qu'est-ce que rustfmt ?
+R16: Formateur de code officiel. Style uniforme. Configure via rustfmt.toml. Integrer en pre-commit hook.
+
+Q17: Send et Sync ?
+R17: Send = transferable entre threads. Sync = referencable depuis plusieurs threads. Le compilateur garantit la thread safety a la compilation.
+
+Q18: Qu'est-ce que derive macro ?
+R18: Genere automatiquement des implementations de traits. #[derive(Debug, Clone, Serialize, Deserialize)].
+
+Q19: Comment fonctionne Serde ?
+R19: Framework serialisation. Derive macros generent le code a la compilation. Supporte JSON, YAML, TOML. Utilise pour config YAML et messages RabbitMQ.
+
+Q20: Vec<T> ?
+R20: Tableau dynamique sur le heap. Taille variable. Vec<GpsPosition> pour accumuler avant batch insert.
+
+Q21: iter(), into_iter(), iter_mut() ?
+R21: iter() emprunte (&T), into_iter() consomme (T), iter_mut() emprunte mutablement (&mut T).
+
+Q22: Closures en Rust ?
+R22: Fonction anonyme capturant l'environnement. |x| x + 1. Impl Fn/FnMut/FnOnce. Ex: positions.filter(|p| p.speed > 0.0)
+
+Q23: Shadowing ?
+R23: Redeclarer une variable avec le meme nom, meme un type different. Idiomatique pour transformer des donnees etape par etape.
+
+Q24: Box<T> ?
+R24: Allocation heap, un seul proprietaire. Pour: trait objects (Box<dyn Error>), types recursifs, gros types.
+
+Q25: Arc<T> et Mutex<T> ?
+R25: Arc = partage entre threads (ref count atomique). Mutex = acces mutable exclusif. Arc<Mutex<T>> = etat mutable partage entre taches async.
+
+Q26: Securite du type system Rust ?
+R26: Compile-time: pas de null (Option), pas de data races (Send/Sync), pas de dangling pointers (lifetimes), pas de double-free (ownership).
+
+Q27: Type d'erreur custom ?
+R27: Avec thiserror: #[derive(Error)] enum GpsError { #[error("Parse: {0}")] Parse(String), #[error("DB")] Db(#[from] PgError) }. Conversion auto avec ?.
+
+Q28: cfg et compilation conditionnelle ?
+R28: #[cfg(test)] = code test uniquement. #[cfg(feature = "...")] = features optionnelles. Pas de runtime cost.
+
+Q29: unsafe en Rust ?
+R29: Desactive certaines verifications (raw pointers, FFI). A utiliser rarement, encapsuler dans des abstractions safe. Pas utilise dans le projet GPS.
+
+Q30: Stack vs Heap ?
+R30: Stack = rapide, taille fixe (i32, structs). Heap = taille dynamique (String, Vec, Box). Rust alloue sur le stack par defaut.
+
+Q31: Programmation asynchrone en Rust ?
+R31: async/await pour I/O non-bloquant. Les Futures sont executees par Tokio. Milliers de connexions TCP avec peu de threads OS.
+
+Q32: Pourquoi Tokio ?
+R32: Runtime async le plus mature. Event loop multi-thread, TCP async, timers, channels, task spawning. Ecosysteme riche (tokio-postgres, redis-rs).
+
+Q33: Comment fonctionne async/await ?
+R33: async fn retourne un Future. await suspend jusqu'a completion. Le compilateur genere une state machine. Futures Rust sont lazy.
+
+Q34: Qu'est-ce qu'un Future ?
+R34: Trait: poll(cx) -> Poll<T> retourne Ready(T) ou Pending. Le runtime appelle poll() quand pret. async/await abstrait poll().
+
+Q35: Connexions TCP concurrentes avec Tokio ?
+R35: TcpListener::bind().await, puis tokio::spawn(handle_connection(stream)) par connexion. Chaque tache = green thread leger multiplex sur threads OS.
+
+Q36: tokio::spawn ?
+R36: Cree une tache async independante en arriere-plan. Chaque connexion GPS est une tache qui lit, decode et persiste.
+
+Q37: Eviter les deadlocks async ?
+R37: Ne pas tenir un MutexGuard a travers un .await. Preferer les channels mpsc. Liberer les verrous rapidement.
+
+Q38: tokio::sync::Mutex vs std::sync::Mutex ?
+R38: std bloque le thread OS. tokio suspend la tache async. std pour sections rapides sans await, tokio si await dans la section critique.
+
+Q39: Channel mpsc Tokio ?
+R39: Multi-Producer, Single-Consumer. Plusieurs connexions GPS envoient vers un seul writer DB pour batch inserts.
+
+Q40: tokio::select! ?
+R40: Attend plusieurs futures, execute la branche du premier complete. Ex: lire socket ET ecouter shutdown signal.
+
+Q41: Graceful shutdown avec Tokio ?
+R41: tokio::signal capte SIGTERM. CancellationToken propage aux taches. Les taches flush buffers et ferment proprement. Compatible Docker/K8s.
+
+Q42: Backpressure ?
+R42: Producteur plus rapide que consommateur. Bounded channels (mpsc::channel(capacity)) bloquent le producteur quand plein. Protege la memoire.
+
+Q43: Timeout async ?
+R43: tokio::time::timeout(Duration::from_secs(30), op).await. Retourne Err(Elapsed) si expire. Pour connexions GPS silencieuses.
+
+Q44: Connection pooling en Rust ?
+R44: deadpool-postgres ou bb8. Pool de N connexions reutilisables partagees via Arc<Pool>. Reduit latence et charge DB.
+
+Q45: Lire un flux TCP par trames ?
+R45: AsyncReadExt + BufReader. Lire jusqu'au delimiteur de trame, puis passer les bytes au decodeur du protocole (HH ou AAP).
+
+Q46: Pinning en async ?
+R46: Pin<T> empeche le deplacement memoire. Necessaire pour Futures auto-referentiels. tokio::spawn() gere le pinning.
+
+Q47: Batch processing async ?
+R47: Accumuler dans Vec via mpsc. Timer periodique ou seuil de taille declenche batch insert. Reduit round-trips DB de 90%.
+
+Q48: Work-stealing scheduler Tokio ?
+R48: Thread sans taches "vole" des taches d'un autre. Repartition equilibree automatique. Threads = nombre de cores CPU.
+
+Q49: Tester du code async ?
+R49: #[tokio::test] pour tests async. tokio::io::duplex() pour mocker TCP. testcontainers-rs pour PostgreSQL/Redis en Docker pendant les tests.
+
+Q50: Pattern actor en async Rust ?
+R50: Tache avec etat prive, communication par messages (channel). DatabaseActor recoit Insert/Query via mpsc. Simplifie la concurrence sans Mutex.

@@ -1762,6 +1762,9 @@
   border: 3px solid #fff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: absolute;
+  top: 0;
+  left: 2px;
 }
 
 :global(.vehicle-marker:hover) {

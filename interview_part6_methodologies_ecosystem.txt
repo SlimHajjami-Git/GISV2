@@ -1,0 +1,314 @@
+================================================================================
+   QUESTIONS D'ENTRETIEN CV - PARTIE 6 : METHODOLOGIES SENIOR / ECOSYSTEME
+   SECURITE / PERFORMANCE / LEADERSHIP TECHNIQUE (Questions 321-420)
+================================================================================
+
+
+################################################################################
+METHODOLOGIES & PRATIQUES SENIOR (Questions 321-360)
+################################################################################
+
+Q321: Quelle est votre approche pour concevoir une nouvelle fonctionnalite ?
+R321: 1) Comprendre le besoin metier (pas juste la spec technique). 2) Identifier les contraintes (performance, securite, UX). 3) Proposer 2-3 options avec trade-offs. 4) Prototyper l'option choisie. 5) Review d'architecture avec l'equipe. 6) Implementer incrementalement avec tests. 7) Deployer derriere un feature flag. 8) Mesurer et iterer.
+
+Q322: Comment prenez-vous des decisions d'architecture ?
+R322: Framework de decision: 1) Definir le probleme precisement. 2) Lister les contraintes non-negociables. 3) Evaluer les options (build vs buy, techno A vs B). 4) Documenter dans un ADR (Architecture Decision Record): contexte, decision, consequences. 5) Reviser avec l'equipe. 6) Accepter qu'on ne peut pas tout prevoir.
+
+Q323: Qu'est-ce qu'un ADR (Architecture Decision Record) ?
+R323: Document court qui capture: Titre, Date, Statut (proposed/accepted/deprecated), Contexte (pourquoi cette decision), Decision (ce qu'on fait), Consequences (trade-offs acceptes). Exemple: "ADR-003: Utiliser Rust pour le service GPS" avec les raisons (performance, securite memoire) et les consequences (courbe d'apprentissage, moins de devs disponibles).
+
+Q324: Comment gerez-vous la dette technique ?
+R324: 1) La rendre visible: backlog dedie, metriques (complexite, duplication, coverage). 2) Budget: 20% du sprint pour la dette technique. 3) Prioriser par impact: la dette qui ralentit le plus le dev ou qui cause des bugs. 4) Refactoring continu: chaque PR ameliore le code touche. 5) Ne jamais laisser la dette s'accumuler au point de bloquer les features.
+
+Q325: Comment estimez-vous l'effort de developpement ?
+R325: 1) Decomposer en taches de max 1 jour. 2) T-shirt sizing (S/M/L/XL) pour les epics. 3) Story points relatifs pour les stories. 4) Ajouter un buffer de 30% pour l'incertitude. 5) Tracker velocity pour ameliorer les estimations. 6) Communiquer l'incertitude: "3-5 jours" plutot que "4 jours".
+
+Q326: Comment gerez-vous un projet qui prend du retard ?
+R326: 1) Identifier la cause (scope creep? complexite sous-estimee? bloqueurs?). 2) Communiquer tot au stakeholder. 3) Options: reduire le scope (MVP), ajouter des ressources (avec prudence, loi de Brooks), repousser la deadline. 4) Re-prioriser: livrer la valeur maximale d'abord. 5) Retrospective pour eviter la recurrence.
+
+Q327: Quelle est votre approche du TDD (Test-Driven Development) ?
+R327: Red-Green-Refactor: 1) Ecrire un test qui echoue. 2) Ecrire le code minimal pour le faire passer. 3) Refactorer. Applique surtout pour la logique metier (decodage GPS, calcul trajets, geofencing). Moins strict pour le code d'infrastructure (DB, HTTP). Le compilateur Rust remplace partiellement le TDD pour les erreurs de type.
+
+Q328: Quelle est la difference entre tests unitaires, integration et E2E ?
+R328: Unitaires: testent une fonction/classe isolement (mock des deps). Rapides, nombreux. Integration: testent l'interaction entre composants (API + DB reelle). Plus lents, moins nombreux. E2E: testent le systeme complet (UI -> API -> DB). Tres lents, critiques. Pyramide des tests: beaucoup de unitaires, quelques integration, peu de E2E.
+
+Q329: Comment gerez-vous le code legacy ?
+R329: 1) Comprendre avant de changer (lire, debugger, tracer). 2) Ajouter des tests sur le comportement existant (characterization tests). 3) Refactorer par petits pas (extract method, rename, move). 4) Pattern Strangler Fig pour remplacer progressivement. 5) Ne pas reecrire from scratch sauf si vraiment justifie.
+
+Q330: Qu'est-ce que le SOLID en pratique ?
+R330: S: Single Responsibility (un handler CQRS par use case). O: Open/Closed (nouveau protocole GPS = nouveau module, pas de modification de l'existant). L: Liskov Substitution (tout ProtocolDecoder interchangeable). I: Interface Segregation (traits Rust petits et specifiques). D: Dependency Inversion (le domain depend d'abstractions, pas d'EF Core).
+
+Q331: Comment appliquez-vous le DRY sans sur-abstraire ?
+R331: DRY ne veut pas dire "pas de duplication de code" mais "pas de duplication de connaissance". Deux fonctions similaires mais avec des raisons de changer differentes ne sont PAS de la duplication. Rule of Three: abstraire seulement quand le pattern apparait 3 fois. Preferer la duplication a une mauvaise abstraction.
+
+Q332: Comment choisissez-vous entre monolithe et microservices ?
+R332: Commencer par un monolithe bien structure (modulaire). Extraire en microservice quand: 1) un module a des besoins de scaling differents (GPS ingestion vs API), 2) une equipe differente le maintient, 3) un langage different est plus adapte (Rust pour la perf). GISV2: 2 services (Rust perf-critical + .NET logique metier) = bon compromis.
+
+Q333: Comment gerez-vous la performance des l'inception ?
+R333: 1) Definir les SLOs (Service Level Objectives): latence p95 < 200ms, throughput > 1000 msg/s. 2) Mesurer des le debut (metriques Prometheus). 3) Identifier les goulots AVANT qu'ils deviennent des problemes. 4) Ne pas optimiser prematurement mais concevoir pour la performance (index DB, caching, batch inserts). 5) Load testing regulier.
+
+Q334: Qu'est-ce que le Twelve-Factor App ?
+R334: 12 principes pour les apps cloud-native: 1) Codebase unique. 2) Dependances explicites. 3) Config dans l'environnement. 4) Backing services (DB, Redis) attachables. 5) Build/Release/Run separes. 6) Processus stateless. 7) Port binding. 8) Concurrence par processus. 9) Disposability (start rapide, graceful shutdown). 10) Dev/prod parity. 11) Logs comme streams. 12) Admin processes.
+
+Q335: Comment documentez-vous un projet ?
+R335: Niveaux: 1) README: setup, run, deploy. 2) ADR: decisions d'architecture. 3) Swagger/OpenAPI: API endpoints. 4) Code comments: POURQUOI (pas QUOI). 5) Diagrammes C4: contexte, containers, composants. 6) Runbooks: procedures de maintenance et incidents. La doc est du code: versionnee, reviewee, maintenue.
+
+Q336: Comment mentorez-vous un developpeur junior ?
+R336: 1) Pair programming regulier. 2) Code reviews constructives (expliquer le pourquoi). 3) Donner des taches progressivement complexes. 4) Encourager la curiosite (lire le code source, comprendre le why). 5) Ne pas faire a sa place mais guider. 6) Partager les erreurs passees (normaliser l'echec).
+
+Q337: Comment gerez-vous les desaccords techniques en equipe ?
+R337: 1) Ecouter tous les arguments factuellement. 2) Prototyper si le debat dure (le code tranche). 3) Definir les criteres de decision objectifs (performance, maintenabilite, delai). 4) Si pas de consensus: le tech lead tranche et on documente (ADR). 5) Une fois la decision prise, tout le monde s'aligne.
+
+Q338: Quelle est votre approche du pair programming ?
+R338: Driver (ecrit le code) + Navigator (revoit, reflechit). Alterner les roles toutes les 20-30 minutes. Efficace pour: code complexe (decodeur GPS), onboarding, debugging difficile. Pas necessaire pour le code routinier. Remote: VS Code Live Share ou partage d'ecran.
+
+Q339: Comment conduisez-vous une retrospective ?
+R339: Format: What went well / What didn't / Actions. Timebox: 1h max. Regles: pas de blame, focus sur les processus pas les personnes. Actions concretes et assignees. Suivi des actions de la retro precedente. Varier les formats (Start/Stop/Continue, 4Ls, Mad/Sad/Glad).
+
+Q340: Comment gerez-vous les incidents de production ?
+R340: Processus: 1) Detection (alerte monitoring). 2) Triage (severite: P1-P4). 3) Communication (status page, Slack). 4) Investigation (logs, metriques, traces). 5) Mitigation (rollback, scale up, feature flag off). 6) Resolution definitive. 7) Post-mortem blameless: timeline, root cause, actions preventives.
+
+Q341: Qu'est-ce qu'un post-mortem blameless ?
+R341: Analyse d'incident sans chercher de coupable. Focus sur les systemes et processus, pas les individus. Questions: Qu'est-ce qui a echoue? Pourquoi les controles n'ont pas detecte? Comment prevenir la recurrence? Actions: monitoring ameliore, tests ajoutes, runbooks mis a jour, alertes ajustees.
+
+Q342: Comment definissez-vous les SLOs/SLAs ?
+R342: SLI (Indicator): metrique mesurable (latence p95, uptime, error rate). SLO (Objective): cible interne (99.9% uptime, latence < 200ms). SLA (Agreement): engagement contractuel avec le client (penalites si non respecte). Definir les SLOs a partir des besoins utilisateur, pas des capacites techniques.
+
+Q343: Comment priorisez-vous les bugs vs les features ?
+R343: Matrice impact/urgence. Bugs critiques (data loss, securite, crash) = priorite absolue. Bugs majeurs (fonctionnalite cassee) = sprint en cours. Bugs mineurs (UI, edge cases) = backlog. Features priorisees par valeur business. Un systeme stable est prerequis pour delivrer de nouvelles features.
+
+Q344: Quelle est votre approche de la securite (Security by Design) ?
+R344: 1) Threat modeling au design. 2) Input validation partout (ne jamais faire confiance aux donnees GPS). 3) Principe du moindre privilege (permissions, acces DB). 4) Defense in depth (auth + authz + tenant isolation + validation). 5) Dependances a jour (audit automatique). 6) Tests de securite dans le pipeline. 7) Jamais de secrets en dur.
+
+Q345: Comment gerez-vous les performances sous charge ?
+R345: 1) Load testing regulier (k6, artillery). 2) Definir les limites: combien de vehicules simultanes? 3) Identifier les goulots: DB connections, memory, CPU, I/O. 4) Scaling horizontal (replicas API) ou vertical (plus de RAM DB). 5) Caching agressif (Redis). 6) Async/event-driven pour le decoupling.
+
+Q346: Qu'est-ce que le Domain-Driven Design strategique ?
+R346: Bounded Contexts: chaque domaine a ses propres modeles. Dans GISV2: GPS Tracking (positions, trips), Fleet Management (vehicules, chauffeurs), Maintenance (templates, schedules), Finance (couts, sinistres). Chaque context peut evoluer independamment. Anti-corruption layer entre les contexts.
+
+Q347: Comment gerez-vous la migration vers une nouvelle architecture ?
+R347: Pattern Strangler Fig: 1) Identifier un sous-systeme a migrer. 2) Construire le remplacement. 3) Router le trafic vers le nouveau (feature flag ou proxy). 4) Valider (metriques, tests). 5) Supprimer l'ancien. 6) Repeter. Jamais de big bang rewrite. Migration progressive, reversible a chaque etape.
+
+Q348: Comment evaluez-vous une nouvelle technologie ?
+R348: 1) Quel probleme resout-elle? (pas "c'est cool"). 2) Maturite: production-ready? communaute? maintenance active? 3) Prototype rapide (spike de 2-3 jours). 4) Evaluation: performance, integration, courbe d'apprentissage, recrutement. 5) Comparaison avec les alternatives. 6) Decision documentee (ADR).
+
+Q349: Quelle est votre philosophie de testing ?
+R349: Tester le comportement, pas l'implementation. Tests stables qui ne cassent pas au refactoring. Pyramide: beaucoup de unitaires (rapides), quelques integration (realistes), peu de E2E (critiques). Le compilateur Rust est un premier niveau de test (types, exhaustivite). Coverage comme guide, pas comme objectif.
+
+Q350: Comment gerez-vous le feature flagging ?
+R350: Flags dans la config ou un service dedie (LaunchDarkly, Unleash). Types: release flag (cacher du code non fini), ops flag (kill switch), experiment flag (A/B test). Code: if feature_enabled("new_protocol") { decode_v3() } else { decode_v2() }. Nettoyer les flags apres rollout complet.
+
+Q351: Quelle est votre approche du refactoring ?
+R351: 1) Tests d'abord (filet de securite). 2) Petits pas: un refactoring a la fois. 3) Commit apres chaque etape (revertible). 4) Refactoring != ajout de feature. 5) Types de refactoring: extract method/class, rename, move, simplify conditional. 6) Martin Fowler: "Refactoring is not a special task. It's part of everyday programming."
+
+Q352: Comment gerez-vous le on-call en production ?
+R352: Rotation hebdomadaire. Runbooks pour les incidents courants. Alertes avec severite et actions. Escalation si non resolu en X minutes. Post-mortem apres chaque incident. Ameliorer les runbooks et le monitoring continuellement. Objectif: reduire les alertes au fil du temps.
+
+Q353: Comment assurez-vous la backward compatibility ?
+R353: 1) API: jamais supprimer un champ existant, ajouter des champs optionnels. 2) DB: migrations additives (ADD COLUMN, pas DROP). 3) Messages RabbitMQ: versionnes, consumers tolerants aux champs inconnus. 4) Deprecation: annoncer, supporter pendant N versions, puis supprimer. 5) Tests de compatibilite dans le pipeline.
+
+Q354: Quelle est la loi de Conway et son impact ?
+R354: "Les organisations produisent des architectures qui refletent leur structure de communication." Si 2 equipes: probablement 2 services. Inverse Conway maneuver: structurer les equipes pour obtenir l'architecture desiree. GISV2: equipe GPS (Rust) + equipe Plateforme (.NET/Angular) = architecture en 2 services.
+
+Q355: Comment gerez-vous les dependances entre equipes ?
+R355: 1) API contracts claires et stables. 2) Contract testing (Pact). 3) Versioning des APIs. 4) Communication reguliere (sync hebdo, Slack channel). 5) Ownership claire: chaque service a un owner. 6) Documentation partagee (Swagger, schemas JSON).
+
+Q356: Qu'est-ce que le YAGNI et quand l'appliquer ?
+R356: "You Ain't Gonna Need It." Ne pas implementer une fonctionnalite tant qu'elle n'est pas necessaire. Eviter le over-engineering. Exemple: ne pas construire un systeme de plugins generique quand on a 2 protocoles GPS. Mais: concevoir pour l'extensibilite (traits/interfaces) ne viole pas YAGNI.
+
+Q357: Comment gerez-vous un systeme critique (GPS fleet tracking) ?
+R357: 1) Haute disponibilite: pas de SPOF (Single Point of Failure). 2) Monitoring 24/7. 3) Alertes sur les anomalies (pas de donnees = probleme). 4) Graceful degradation (si Redis down, lire DB). 5) Backups testes regulierement. 6) Runbooks pour chaque scenario de panne. 7) Chaos engineering pour valider la resilience.
+
+Q358: Comment gerez-vous la scalabilite future ?
+R358: 1) Concevoir stateless (facilite le scaling horizontal). 2) Identifier les limites actuelles (DB connections, throughput). 3) Planifier les etapes: 100 vehicules -> 1000 -> 10000. 4) Chaque etape a une solution: index DB, partitionnement, read replicas, sharding. 5) Ne pas sur-ingenierer pour le cas 10000 vehicules si on en a 100.
+
+Q359: Quelle est votre approche de l'API design ?
+R359: RESTful: resources (nouns), HTTP verbs (GET/POST/PUT/DELETE), status codes corrects (200/201/400/404/500). Pagination, filtrage, tri en query params. Versioning (/v1/). HATEOAS si complexe. Documentation Swagger. Coherence: memes conventions partout. Error format standardise (ProblemDetails RFC 7807).
+
+Q360: Comment mesurez-vous la qualite du code ?
+R360: Metriques: coverage (>70%), complexite cyclomatique (<10), duplication (<3%), dette technique (SonarQube). Qualitatives: lisibilite, testabilite, maintenabilite. Le meilleur indicateur: un nouveau developpeur comprend-il le code en 1 jour? Le code est lu 10x plus souvent qu'ecrit.
+
+
+################################################################################
+SECURITE / PERFORMANCE / ECOSYSTEME (Questions 361-420)
+################################################################################
+
+Q361: Comment securisez-vous une API REST ?
+R361: 1) HTTPS obligatoire. 2) JWT pour l'authentification. 3) Autorisation par endpoint (RBAC + permissions). 4) Input validation (FluentValidation). 5) Rate limiting. 6) CORS restrictif. 7) Headers securite (HSTS, X-Content-Type, CSP). 8) Pas de donnees sensibles dans les URLs. 9) Audit log des actions critiques.
+
+Q362: Comment protegez-vous contre les injections SQL ?
+R362: 1) Parametres prepares TOUJOURS (jamais de concatenation de strings). EF Core utilise des parametres natifs. tokio-postgres aussi: query("SELECT ... WHERE id = $1", &[&id]). 2) ORM avec LINQ/EF Core. 3) Principe du moindre privilege sur le user DB. 4) Input validation en amont.
+
+Q363: Comment gerez-vous l'authentification et les tokens ?
+R363: JWT avec expiration courte (15-60 min). Refresh token avec expiration longue (7 jours), stocke en DB. Rotation: chaque utilisation du refresh token en genere un nouveau et invalide l'ancien. Logout: blacklist du token (Redis TTL). Claims: userId, companyId, permissions (minimaux).
+
+Q364: Qu'est-ce que le RBAC vs ABAC ?
+R364: RBAC (Role-Based): permissions basees sur les roles (admin, manager, viewer). Simple, suffisant pour la plupart des cas. ABAC (Attribute-Based): permissions basees sur des attributs (departement, localisation, heure). Plus flexible mais plus complexe. GISV2 utilise RBAC avec permissions granulaires JSONB.
+
+Q365: Comment protegez-vous les donnees au repos ?
+R365: 1) Chiffrement disque (LUKS, BitLocker). 2) PostgreSQL TDE (Transparent Data Encryption). 3) Chiffrement des backups (gpg). 4) Pas de donnees sensibles en clair dans les logs. 5) Masquage des donnees en staging (anonymisation). 6) Rotation des cles de chiffrement.
+
+Q366: Comment gerez-vous les vulnerabilites des dependances ?
+R366: 1) cargo audit (Rust), npm audit (Angular), dotnet list package --vulnerable (.NET). 2) Dependabot/Renovate pour les PRs automatiques. 3) Scan dans le pipeline CI (bloquer si critique). 4) Politique: corriger les critiques en < 24h, hautes en < 7 jours. 5) Minimiser les dependances.
+
+Q367: Qu'est-ce que le threat modeling ?
+R367: Identifier les menaces au design: 1) Quels sont les assets? (positions GPS, donnees clients). 2) Qui sont les attaquants? (externes, insider). 3) Quels vecteurs d'attaque? (API, TCP GPS, RabbitMQ). 4) STRIDE: Spoofing, Tampering, Repudiation, Information disclosure, DoS, Elevation of privilege. 5) Mitigations pour chaque menace.
+
+Q368: Comment securisez-vous les connexions TCP des boitiers GPS ?
+R368: Defi: les boitiers GPS sont souvent limites (pas de TLS). Mitigations: 1) Validation stricte des trames (format, checksum). 2) Authentification par IMEI (whitelist en DB). 3) Rate limiting par IP et par device. 4) Firewall: seuls les ports GPS ouverts. 5) VPN si l'infrastructure le permet. 6) Monitoring des connexions suspectes.
+
+Q369: Comment protegez-vous contre les DDoS ?
+R369: 1) Rate limiting par IP (Nginx, iptables). 2) Cloudflare ou AWS Shield en front. 3) Connection limits sur les listeners TCP (Semaphore Rust). 4) Timeout agressifs sur les connexions inactives. 5) Blacklist des IPs malveillantes. 6) Scaling automatique pour absorber les pics.
+
+Q370: Comment auditez-vous les actions des utilisateurs ?
+R370: Audit log: chaque action critique enregistree (qui, quoi, quand, depuis quelle IP). Table audit_logs: userId, action, entityType, entityId, oldValue, newValue, timestamp. Middleware qui intercepte les modifications. Logs immuables (append-only). Retention longue (reglementaire).
+
+Q371: Comment optimisez-vous le temps de reponse de l'API ?
+R371: 1) Caching Redis pour les donnees frequentes. 2) Projections DB (SELECT colonnes necessaires, pas SELECT *). 3) Index DB optimises. 4) Pagination obligatoire. 5) Compression gzip. 6) Connection pooling. 7) Async partout. 8) CDN pour les assets statiques. Cible: p95 < 200ms.
+
+Q372: Comment identifiez-vous les goulots d'etranglement ?
+R372: 1) APM (Application Performance Monitoring): traces avec duree par etape. 2) Metriques Prometheus: latence par endpoint. 3) PostgreSQL: pg_stat_statements (top slow queries). 4) Redis: SLOWLOG. 5) Profiling: dotnet-trace (.NET), flamegraph (Rust). 6) Load testing: k6 avec montee en charge progressive.
+
+Q373: Comment gerez-vous la mise en cache invalidation ?
+R373: "There are only two hard things in CS: cache invalidation and naming things." Strategies: 1) TTL (expire apres N secondes). 2) Write-through (maj cache a chaque ecriture DB). 3) Event-driven (RabbitMQ event -> invalidate cache). 4) Cache-aside (lire cache, si miss -> lire DB -> ecrire cache). Pour les positions GPS: TTL de 5 min est suffisant.
+
+Q374: Comment optimisez-vous les requetes Leaflet (frontend) ?
+R374: 1) Clustering des marqueurs (Leaflet.markercluster) quand beaucoup de vehicules. 2) Simplification des polylines (Douglas-Peucker) pour les trajets longs. 3) Lazy loading des tuiles. 4) Canvas renderer au lieu de SVG pour > 1000 marqueurs. 5) Mise a jour des marqueurs existants au lieu de les recrer.
+
+Q375: Comment dimensionnez-vous l'infrastructure ?
+R375: 1) Estimer le volume: vehicules x positions/heure x taille message. 2) Calculer le stockage: 1000 vehicules x 60 pos/h x 24h x 365j x 200 bytes = ~1.7 TB/an. 3) Calculer le throughput: 1000 vehicules x 1 msg/min = ~17 msg/s (faible). 4) Dimensionner DB, Redis, RabbitMQ en consequence. 5) Planifier la croissance.
+
+Q376: Comment gerez-vous les pics de trafic ?
+R376: 1) Auto-scaling (si cloud). 2) Buffer RabbitMQ absorbe les pics. 3) Batch processing lisse les ecritures DB. 4) Redis reduit la charge lecture DB. 5) Rate limiting protege les services. 6) Graceful degradation: si surcharge, prioriser les positions (critique) vs les rapports (defer).
+
+Q377: Qu'est-ce que le SRE (Site Reliability Engineering) ?
+R377: Approche Google pour l'operations: traiter l'infra comme du code. Concepts cles: SLOs (objectifs de fiabilite), error budget (marge d'erreur acceptable), toil reduction (automatiser les taches repetitives), blameless post-mortems. Equilibre entre fiabilite et vitesse de livraison.
+
+Q378: Comment implementez-vous le distributed tracing ?
+R378: OpenTelemetry: chaque requete recoit un trace ID. Le trace ID est propage entre services: HTTP headers (traceparent), messages RabbitMQ (header custom). Chaque service ajoute des spans (operations). Collecteur: Jaeger ou Tempo. Visualisation: timeline complete d'une requete a travers tous les services.
+
+Q379: Comment gerez-vous les migrations zero-downtime DB ?
+R379: 1) ADD COLUMN (nullable ou avec default) = instantane en PG 11+. 2) Backfill en background. 3) Code supporte l'ancien ET le nouveau schema pendant la transition. 4) ALTER COLUMN type: creer nouvelle colonne, migrer, switcher. 5) DROP COLUMN seulement quand plus aucun code ne le reference. 6) Migrations blue/green.
+
+Q380: Comment testez-vous la charge du systeme GPS ?
+R380: 1) Script simulant N boitiers GPS envoyant des trames TCP. 2) Rust: outil custom ou tokio pour generer des connexions. 3) Metriques pendant le test: throughput, latence, CPU, memory, DB connections. 4) Augmenter progressivement: 100, 500, 1000, 5000 vehicules simules. 5) Identifier le point de rupture.
+
+Q381: Comment gerez-vous l'observabilite en microservices ?
+R381: Les 3 piliers: 1) Logs structures (JSON) avec correlation ID entre services. 2) Metriques (Prometheus): RED (Rate, Errors, Duration) par service. 3) Traces distribuees (OpenTelemetry): suivre une requete de bout en bout. Stack: Prometheus + Grafana + Loki + Tempo. Dashboards par service + dashboard global.
+
+Q382: Comment gerez-vous la configuration centralisee ?
+R382: Options: 1) Variables d'environnement (simple, Docker-native). 2) Fichiers montes (ConfigMap Kubernetes). 3) Consul/etcd pour la config dynamique. 4) Vault pour les secrets. Dans GISV2: env vars pour la connexion aux services, fichiers YAML pour la config metier, secrets geres par le CI/CD.
+
+Q383: Comment gerez-vous le versioning des schemas DB ?
+R383: EF Core Migrations pour .NET (source de verite). Chaque migration = fichier C# versionne. Historique dans __EFMigrationsHistory. En CI: verification que les migrations sont a jour. En production: appliquees au deploy. Rollback: migration Down() ou script SQL inverse prepare.
+
+Q384: Comment implementez-vous le health monitoring complet ?
+R384: 3 niveaux: 1) Liveness: le service est-il vivant? (process running). 2) Readiness: le service est-il pret? (DB connectee, warmup fait). 3) Startup: le service a-t-il demarre? (migrations appliquees). Kubernetes utilise les 3 probes. Docker utilise healthcheck (liveness).
+
+Q385: Qu'est-ce que le canary deployment ?
+R385: Deployer la nouvelle version sur un petit pourcentage de trafic (5-10%). Comparer les metriques (erreurs, latence) avec la version stable. Si OK: augmenter progressivement (25%, 50%, 100%). Si probleme: rollback instantane (0%). Plus sur que le big bang deploy.
+
+Q386: Comment gerez-vous les timeouts entre services ?
+R386: Chaque appel externe a un timeout explicite. Hierarchie: client timeout < server timeout < load balancer timeout. Retry avec backoff exponentiel. Circuit breaker apres N echecs. Valeurs typiques: DB 5s, Redis 1s, RabbitMQ 3s, API calls 10s. Jamais de timeout infini.
+
+Q387: Comment gerez-vous les logs en multi-service ?
+R387: 1) Format JSON uniforme (timestamp, service, level, message, correlation_id). 2) Correlation ID genere a l'entree et propage partout. 3) Centralisation: tous les logs vers Loki/ELK. 4) Recherche par correlation_id pour reconstituer le parcours. 5) Retention differentielle: ERROR 90j, INFO 30j, DEBUG 7j.
+
+Q388: Comment implementez-vous le A/B testing ?
+R388: Feature flags avec repartition: 50% users voient la version A, 50% la version B. Metriques par variante. Significativite statistique avant de conclure. Utilise pour: nouveau design de carte, nouvel algorithme de calcul de trajet. Outils: Unleash, LaunchDarkly, custom.
+
+Q389: Qu'est-ce que le GitOps et comment l'appliquer ?
+R389: L'infrastructure et la config sont dans Git. Un operateur (ArgoCD, Flux) synchronise l'etat du cluster avec le repo. Push dans Git = deploy. Avantages: audit trail, rollback via git revert, review des changements d'infra. Applique a: docker-compose files, Kubernetes manifests, config maps.
+
+Q390: Comment gerez-vous la compliance (RGPD) ?
+R390: 1) Privacy by Design: minimiser les donnees collectees. 2) Consentement: documenter la base legale (interet legitime pour le GPS fleet). 3) Droit d'acces: endpoint pour exporter les donnees d'un vehicule. 4) Droit a l'effacement: purge complete. 5) Data Processing Agreement avec les clients. 6) Registre des traitements.
+
+Q391: Comment gerez-vous le multi-region deployment ?
+R391: 1) CDN pour les assets frontend (proche des users). 2) DB replication cross-region pour les lectures. 3) GPS ingestion locale (un service Rust par region, proche des boitiers). 4) Centralisation du traitement (un .NET API). 5) RabbitMQ federation entre regions. 6) DNS geolocation pour router les clients.
+
+Q392: Comment concevez-vous un systeme pour la haute disponibilite ?
+R392: 1) Eliminer les SPOF: chaque composant a un replica. 2) Load balancer devant les services. 3) DB: primary + standby avec failover automatique. 4) Redis Sentinel. 5) RabbitMQ cluster. 6) Health checks + auto-restart. 7) Cible: 99.9% uptime = max 8.7h downtime/an.
+
+Q393: Comment gerez-vous les webhooks ?
+R393: Envoyer des notifications HTTP aux systemes clients quand un evenement se produit (vehicule entre dans une geofence). Implementation: 1) Table webhook_subscriptions (url, events, secret). 2) A chaque event: POST JSON vers l'URL avec signature HMAC. 3) Retry avec backoff si echec. 4) DLQ pour les webhooks en echec persistant.
+
+Q394: Comment implementez-vous le rate limiting distribue ?
+R394: Redis comme store partage. Algorithme: Token Bucket ou Sliding Window avec Redis MULTI/EXEC. Cle: rate_limit:{client_id}:{window}. INCR + EXPIRE atomique. Fonctionne avec plusieurs instances API derriere un load balancer car Redis est partage.
+
+Q395: Comment gerez-vous la compression des donnees ?
+R395: 1) HTTP: gzip/brotli (Nginx). 2) DB: TOAST compression automatique PostgreSQL pour les gros champs. 3) Messages RabbitMQ: compression optionnelle des payloads (snappy, lz4). 4) Archivage: positions GPS compressees en Parquet ou gzip CSV. Reduction: 5-10x sur les donnees texte/JSON.
+
+Q396: Qu'est-ce que le event sourcing et quand l'utiliser ?
+R396: Stocker les events (PositionReceived, TripStarted) au lieu de l'etat final. L'etat est reconstruit en rejouant les events. Avantages: audit complet, replay, temporal queries. Inconvenients: complexite, storage, eventual consistency. Pour le GPS: les positions SONT deja un event log naturel.
+
+Q397: Comment gerez-vous les long-running processes ?
+R397: Saga pattern: sequence d'etapes avec compensations. Ex: importer des vehicules en batch: 1) Creer vehicule, 2) Assigner GPS, 3) Creer schedule maintenance. Si etape 3 echoue: compenser en supprimant vehicule et GPS. Implementation via RabbitMQ messages ou un state machine.
+
+Q398: Comment gerez-vous la data migration entre versions ?
+R398: 1) Forward-only migrations (jamais modifier une migration deployee). 2) Data migration scripts separes du schema migration. 3) Backfill en background (pas bloquer le deploy). 4) Verification: count avant/apres. 5) Rollback plan: script inverse prepare.
+
+Q399: Comment integrez-vous des services tiers (cartographie, geocoding) ?
+R399: 1) Abstraction: interface IGeocoder, implementation NominatimGeocoder. 2) Circuit breaker sur les appels. 3) Cache agressif (une adresse ne change pas). 4) Fallback: si Nominatim down, retourner les coordonnees brutes. 5) Rate limiting respecte. 6) Self-hosted (Nominatim Docker) pour l'independance.
+
+Q400: Comment concevez-vous une API pour les clients externes ?
+R400: 1) REST standard (conventions, verbs, status codes). 2) Versioning (v1, v2). 3) Authentification (API key + OAuth2). 4) Rate limiting par client. 5) Documentation OpenAPI + sandbox. 6) SDK client optionnel. 7) Changelog des breaking changes. 8) Deprecation policy (6 mois minimum).
+
+Q401: Comment gerez-vous le data pipeline GPS complet ?
+R401: Pipeline: Boitier GPS -> TCP -> Rust decode -> Redis cache + PostgreSQL persist + RabbitMQ publish -> .NET consume -> Geofence eval + Trip calc + Alert -> SignalR -> Frontend carte. Chaque etape est monitoree (latence, throughput, erreurs). Le pipeline est resilient (retry, buffer, fallback).
+
+Q402: Comment faites-vous du capacity planning ?
+R402: 1) Mesurer le baseline (vehicules actuels, positions/jour, storage/mois). 2) Projeter la croissance (nouveaux clients, vehicules par client). 3) Identifier les limites (DB storage, connections, throughput). 4) Planifier les upgrades: quand atteint-on 80% de capacite? 5) Budget: cout par vehicule additionnel.
+
+Q403: Qu'est-ce que l'Infrastructure as Code (IaC) ?
+R403: Definir l'infrastructure en fichiers versionnes. Docker Compose = IaC pour les conteneurs. Terraform pour le cloud (VMs, DB, networking). Ansible pour la configuration des serveurs. Avantages: reproductible, versionne, reviewable, automatisable. Pas de "serveur configure a la main".
+
+Q404: Comment gerez-vous les feature toggles en production ?
+R404: Types: 1) Release toggle (cacher du code non fini). 2) Ops toggle (kill switch en cas de probleme). 3) Experiment toggle (A/B test). 4) Permission toggle (feature premium). Implementation: config file, DB, ou service dedie. Lifecycle: creer -> activer -> nettoyer le code -> supprimer le toggle.
+
+Q405: Comment gerez-vous la consistency des donnees entre Redis et PostgreSQL ?
+R405: PostgreSQL = source de verite. Redis = cache. Pattern write-through: ecrire en DB d'abord, puis mettre a jour Redis. Si Redis down: les lectures vont en DB (plus lent mais correct). TTL Redis: si le cache expire, on recharge depuis DB. Eventual consistency acceptable pour les positions temps reel.
+
+Q406: Comment implementez-vous le sharding ?
+R406: Diviser les donnees par cle (company_id ou device_id). Chaque shard = une DB/table. Routing: hash(company_id) % num_shards. Pour le GPS: partitionnement par company (chaque societe sur un shard). En PostgreSQL: Citus extension pour le sharding distribue. Necessaire uniquement a tres grande echelle.
+
+Q407: Comment gerez-vous les API gateways ?
+R407: Un point d'entree unique pour tous les services. Responsabilites: routing, auth, rate limiting, logging, transformation. Options: Nginx, Kong, Traefik, AWS API Gateway. Dans GISV2: Nginx comme reverse proxy simple. Un gateway complet si le nombre de services augmente.
+
+Q408: Comment definissez-vous les contrats d'API entre services ?
+R408: 1) Schema JSON documente (OpenAPI pour REST). 2) Consumer-driven contract testing (Pact): le consumer definit ses attentes, le provider les valide. 3) Versionning des schemas. 4) Breaking changes = nouvelle version majeure. 5) Tests de contract dans le pipeline CI.
+
+Q409: Qu'est-ce que le strangler fig pattern en detail ?
+R409: Nom: inspire du figuier etrangleur qui pousse autour d'un arbre. Application: 1) Creer un proxy devant le legacy. 2) Implementer une fonctionnalite dans le nouveau systeme. 3) Router cette fonctionnalite vers le nouveau. 4) Repeter jusqu'a ce que le legacy soit vide. 5) Supprimer le legacy. Chaque etape est reversible.
+
+Q410: Comment gerez-vous le logging structure pour le debugging distribue ?
+R410: Champs obligatoires: timestamp (ISO 8601 UTC), service_name, log_level, correlation_id, message. Champs contextuels: user_id, company_id, device_id, request_path. Format JSON. Centralise dans Loki/ELK. Query: correlation_id = "abc123" montre tout le parcours a travers Rust -> RabbitMQ -> .NET -> SignalR.
+
+Q411: Comment gerez-vous les websockets a grande echelle ?
+R411: SignalR avec Redis backplane: plusieurs instances .NET partagent les groupes via Redis pub/sub. Sticky sessions (load balancer) ou Redis backplane pour router les messages. Connection limits par serveur. Heartbeat pour detecter les connexions mortes. Reconnexion automatique cote client.
+
+Q412: Comment gerez-vous le batching des operations DB ?
+R412: Accumule les operations dans un buffer. Flush periodique (toutes les N secondes) ou par seuil (N operations). Insert multi-valeurs en une seule requete. EF Core: AddRange() + SaveChanges(). Rust: INSERT avec UNNEST ou VALUES multiples. Gain: 10-100x throughput vs inserts individuels.
+
+Q413: Comment implementez-vous le retry pattern correctement ?
+R413: 1) Retry uniquement les erreurs transitoires (timeout, connexion refusee). 2) Ne PAS retrier les erreurs logiques (400, 404). 3) Backoff exponentiel: 1s, 2s, 4s, 8s. 4) Jitter aleatoire (+/- 20%) pour eviter le thundering herd. 5) Max retries (5). 6) Circuit breaker apres N echecs consecutifs. 7) Logger chaque retry.
+
+Q414: Comment assurez-vous la coherence des fuseaux horaires dans tout le systeme ?
+R414: Regle d'or: TOUT en UTC en interne. Boitier GPS: UTC. Rust: stocke en UTC. PostgreSQL: timestamptz (UTC). .NET: DateTime.UtcNow, DateTimeOffset. RabbitMQ messages: UTC. Conversion vers le fuseau local: UNIQUEMENT dans le frontend Angular (pipe date avec timezone).
+
+Q415: Comment gerez-vous les WebSocket derriere un load balancer ?
+R415: Options: 1) Sticky sessions (hash sur le cookie/IP). 2) Redis backplane (SignalR): les messages sont publies sur Redis, tous les serveurs les recoivent et les distribuent a leurs clients locaux. 3) Layer 4 load balancing (TCP) au lieu de Layer 7 (HTTP). SignalR + Redis backplane est la solution recommandee.
+
+Q416: Comment mesurez-vous la latence end-to-end du systeme GPS ?
+R416: Timestamp a chaque etape: T1 = boitier GPS genere la trame, T2 = Rust recoit, T3 = Rust decode, T4 = Rust persiste, T5 = RabbitMQ delivre, T6 = .NET traite, T7 = SignalR envoie, T8 = Frontend affiche. Latence = T8 - T1. Cible: < 5 secondes pour le temps reel. Metriques Prometheus par etape.
+
+Q417: Comment gerez-vous les donnees temporelles (time series) ?
+R417: Les positions GPS sont des time series. Optimisations: 1) Partitionnement par temps. 2) BRIN index sur le timestamp. 3) Retention policy (archiver/supprimer). 4) Downsampling pour les vieux data (garder 1 point/heure au lieu de 1/minute). 5) Alternative: TimescaleDB (extension PostgreSQL pour time series).
+
+Q418: Comment integrez-vous le machine learning dans le pipeline ?
+R418: Cas d'usage: prediction de maintenance, detection d'anomalies de conduite, optimisation de routes. Architecture: 1) Export des donnees vers un data lake. 2) Entrainement du modele (Python, TensorFlow). 3) Serving: API de prediction. 4) Integration: le .NET appelle l'API ML. Ou modele embarque dans le Rust (ONNX Runtime) pour la detection temps reel.
+
+Q419: Comment gerez-vous la compatibilite multi-navigateurs du frontend ?
+R419: 1) Browserslist dans package.json (>0.5%, last 2 versions). 2) Polyfills automatiques (Angular CLI). 3) Tests manuels sur Chrome, Firefox, Safari, Edge. 4) CSS feature queries (@supports). 5) Leaflet est compatible tous navigateurs. 6) Progressive enhancement: fonctionnalites de base partout, features avancees si supportees.
+
+Q420: Quel conseil donneriez-vous a un developpeur qui demarre un projet similaire ?
+R420: 1) Commencer simple: monolithe bien structure avant les microservices. 2) Investir dans le monitoring des le jour 1. 3) Les tests sont non-negociables pour un systeme critique. 4) Choisir les technos pour les bonnes raisons (pas le hype). 5) Documenter les decisions (ADR). 6) Automatiser tout (CI/CD, infra). 7) Mesurer avant d'optimiser. 8) La securite n'est pas optionnelle. 9) Communiquer avec les utilisateurs finaux. 10) Iterer vite, deployer souvent.

@@ -1,0 +1,136 @@
+================================================================================
+   PARTIE 7A : POURQUOI CES FRAMEWORKS ET PAS D'AUTRES (Questions 421-480)
+================================================================================
+
+--- RUST vs ALTERNATIVES ---
+
+Q421: Pourquoi Rust et pas Go pour le service GPS ?
+R421: Go aurait fonctionne (goroutines, simplicite). Rust choisi pour: 1) Zero GC = latence predictible. 2) Pattern matching exhaustif parfait pour decoder 3 versions de protocoles binaires. 3) Type system elimine null, data races, dangling pointers a la compilation. 4) Performance brute superieure pour le parsing binaire. Trade-off: courbe d'apprentissage plus raide.
+
+Q422: Pourquoi Rust et pas C++ ?
+R422: Meme performance mais Rust garantit la securite memoire (pas de buffer overflow, use-after-free, data races). Pour un service 24/7 avec milliers de connexions TCP, c'est crucial. Cargo >> CMake. Tokio >> Boost.Asio en ergonomie.
+
+Q423: Pourquoi Rust et pas Java/Kotlin ?
+R423: JVM = GC pauses, empreinte memoire 10-20x superieure, demarrage lent (JIT warm-up). Rust: binaire natif 20MB, demarrage instantane, memoire predictible. Pour du parsing binaire haute frequence, Rust est nettement superieur.
+
+Q424: Pourquoi Rust et pas Node.js ?
+R424: Node est single-threaded. Parsing CPU-intensif bloquerait l'event loop. Rust + Tokio: multi-thread natif, parsing zero-copy, 10-50x plus performant pour le binaire. Node est ideal pour les API web, pas pour l'ingestion binaire.
+
+Q425: Pourquoi Rust et pas Python ?
+R425: Python est 50-100x plus lent pour le parsing binaire. GIL empeche le parallelisme. Python pour prototypage/ML, pas pour ingestion temps reel.
+
+Q426: Pourquoi Tokio et pas async-std ?
+R426: Tokio = standard de facto. Ecosysteme le plus riche (tokio-postgres, redis-rs, lapin). Performance prouvee en production (Discord, Cloudflare). tokio-console pour debugging.
+
+Q427: Pourquoi tokio-postgres et pas sqlx ou diesel ?
+R427: tokio-postgres: async natif, lightweight, controle fin. Pour 95% d'INSERTs, c'est le plus performant. sqlx serait mieux si on avait plus de logique metier (compile-time SQL checking). diesel est sync = pas adapte.
+
+Q428: Pourquoi serde ?
+R428: Standard absolu en Rust. Zero alternative credible. Performance excellente, derive macros, supporte tous les formats. Ne pas utiliser serde = ne pas utiliser Jackson en Java.
+
+Q429: Pourquoi lapin pour RabbitMQ ?
+R429: Client AMQP Rust le plus mature. Async natif, Tokio compatible, bien maintenu. Pour un composant critique, la maturite prime.
+
+Q430: Pourquoi Clap pour le CLI ?
+R430: Standard Rust. Derive macros, --help auto, validation. Plus mature que les alternatives (argh).
+
+--- .NET vs ALTERNATIVES ---
+
+Q431: Pourquoi .NET 8 et pas Spring Boot ?
+R431: Les deux excellents. .NET 8 choisi pour: performance (top TechEmpower), C# plus concis (records, LINQ), SignalR integre, EF Core excellent. Trade-off: Spring a un ecosysteme plus large.
+
+Q432: Pourquoi .NET et pas NestJS ?
+R432: Pour 41 controllers + CQRS + multi-tenancy: C# plus type-safe, EF Core > TypeORM, SignalR natif, performance superieure pour le CPU, Clean Architecture plus naturelle.
+
+Q433: Pourquoi .NET et pas FastAPI ?
+R433: .NET 10-50x plus rapide. Type safety compile-time. EF Core > SQLAlchemy. Query filters multi-tenancy sans equivalent Python. FastAPI bon pour microservice ML, pas API principale.
+
+Q434: Pourquoi EF Core et pas Dapper ?
+R434: EF Core pour 90%: LINQ type-safe, migrations, query filters multi-tenancy, relations. Dapper pour les rapports SQL complexes. EF Core 8 a ameliore la performance.
+
+Q435: Pourquoi MediatR ?
+R435: Routing command/query auto, Pipeline Behaviors (validation, logging, transactions), notifications. Standard industrie .NET. Alternative: Wolverine (plus de features mais moins mature).
+
+Q436: Pourquoi FluentValidation et pas DataAnnotations ?
+R436: Separation model/validation, regles conditionnelles, cross-property, testable independamment. Indispensable pour 41 controllers avec regles metier complexes.
+
+Q437: Pourquoi SignalR et pas WebSocket brut ?
+R437: Integre .NET, fallback auto, groupes natifs, hub pattern, reconnexion auto, scale-out Redis backplane. WebSocket brut = tout reimplementer.
+
+Q438: Pourquoi JWT et pas OAuth2 complet ?
+R438: JWT simple suffit pour app interne. OAuth2/OIDC (Keycloak) si: login social, SSO, API publique. Migration possible si besoin.
+
+Q439: Pourquoi pas gRPC entre services ?
+R439: gRPC = synchrone (request/reply). RabbitMQ = asynchrone (fire-and-forget, buffer, decoupling). GPS ingestion n'attend pas de reponse = RabbitMQ parfait. Les deux peuvent coexister.
+
+--- ANGULAR vs ALTERNATIVES ---
+
+Q440: Pourquoi Angular et pas React ?
+R440: Angular: framework complet (routing, forms, DI integres), TypeScript natif, structure opinionnee bonne pour 40+ composants, RxJS integre pour temps reel. React: plus flexible, plus de devs disponibles. Trade-off: plus de boilerplate Angular mais plus de structure.
+
+Q441: Pourquoi Angular et pas Vue.js ?
+R441: TypeScript first, DI native, guards routing natifs, adapte aux gros projets enterprise. Vue bon pour projets plus petits ou equipe moins experimentee.
+
+Q442: Pourquoi Angular et pas Svelte ?
+R442: Ecosysteme plus petit, moins de support enterprise, moins de devs disponibles. Angular = choix safe pour app enterprise complexe.
+
+Q443: Pourquoi Leaflet et pas Google Maps ?
+R443: Open source, gratuit, pas de cle API, plugins riches (Draw, MarkerCluster), compatible OpenStreetMap. Google Maps: payant, vendor lock-in. Cout zero pour un systeme de flotte.
+
+Q444: Pourquoi pas Next.js/Nuxt.js ?
+R444: GISV2 est une SPA pure (dashboard interne), pas de SEO, pas de SSR. Angular ideal pour SPA complexe. Next.js si site public avec SEO.
+
+--- INFRASTRUCTURE ---
+
+Q445: Pourquoi PostgreSQL et pas MySQL ?
+R445: PostGIS (geospatial critique), JSONB indexable, partitionnement natif, window functions avancees, full-text search. MySQL limite pour requetes geospatiales complexes.
+
+Q446: Pourquoi pas MongoDB ?
+R446: Relations importantes (vehicle -> positions -> company). JOINs complexes pour rapports. Transactions necessaires. PostGIS > MongoDB geospatial pour polygones complexes.
+
+Q447: Pourquoi pas TimescaleDB ?
+R447: Extension PostgreSQL pour time series (hypertables, compression). Partitionnement natif PostgreSQL suffit actuellement. TimescaleDB si volume > 1TB/an.
+
+Q448: Pourquoi Redis et pas Memcached ?
+R448: Types riches (hashes, sets), Pub/Sub natif (essentiel pour notifications temps reel), persistance optionnelle, TTL par cle. Memcached: key/value simple, pas de pub/sub.
+
+Q449: Pourquoi RabbitMQ et pas Kafka ?
+R449: ~17 msg/s pour 1000 vehicules: RabbitMQ largement suffisant et plus simple. Kafka si > 100K msg/s, replay d'events, multiple consumers independants.
+
+Q450: Pourquoi Docker Compose et pas Kubernetes ?
+R450: < 10 services, < 10 serveurs: Compose parfait. K8s = overhead operationnel enorme. Migrer vers K8s si multi-datacenter, auto-scaling, 50+ services.
+
+Q451: Pourquoi OSRM et pas Google Directions ?
+R451: Self-hosted = pas de cout par requete, pas de rate limits. Google: payant ($5-10/1000 req), donnees trafic (avantage). Pour du road snapping en volume, OSRM evite des couts enormes.
+
+Q452: Pourquoi Nominatim self-hosted ?
+R452: Pas de couts, pas de rate limits. APIs cloud (Google, Here): plus precis mais payant. Milliers de reverse geocoding/jour = economies significatives.
+
+Q453: Pourquoi pas GraphQL ?
+R453: Endpoints REST bien definis et stables. Caching HTTP natif. Plus simple a securiser. SignalR pour temps reel. GraphQL ajouterait complexite sans benefice clair.
+
+Q454: Pourquoi pas Protocol Buffers pour RabbitMQ ?
+R454: JSON lisible, simple a debugger, suffisant a ~17 msg/s. Protobuf si > 10K msg/s ou bande passante limitee.
+
+Q455: Pourquoi pas Elasticsearch ?
+R455: Loki plus leger et suffisant pour les logs. PostgreSQL full-text search pour la recherche. ELK si volume de logs explose.
+
+--- ARCHITECTURE ---
+
+Q456: Pourquoi 2 services et pas un monolithe .NET ?
+R456: Separation par besoin technique: Rust (perf TCP, parsing binaire) + .NET (logique metier, CQRS). Scaling independant. Un monolithe .NET avec TCP aurait fonctionne mais sous-optimal pour la performance.
+
+Q457: Pourquoi pas 5 microservices ?
+R457: Plus de services = plus de complexite. 2 = bon equilibre pour l'equipe et le volume. Se justifierait si equipes separees ou scaling tres different par service.
+
+Q458: Pourquoi CQRS et pas CRUD simple ?
+R458: Lectures/ecritures ont des modeles differents. Rapports ne doivent pas impacter les ecritures. Chaque use case testable independamment. Pipeline Behaviors transversaux.
+
+Q459: Pourquoi Clean Architecture ?
+R459: Domain testable sans DB, changement d'ORM sans impact metier. Plus de fichiers mais meilleure maintenabilite pour 36 entites, 41 controllers.
+
+Q460: Pourquoi multi-tenancy par filtre et pas par schema/DB ?
+R460: Une DB, query filters. Simple, performant, maintenance facile. Schema/DB par tenant si isolation stricte requise (reglementaire). Pour < 100 societes, filtre optimal.
+
+Q461-480: Si vous deviez refaire le projet, que changeriez-vous ?
+R461-480: Stack actuelle solide. Changements: sqlx au lieu de tokio-postgres (compile-time SQL), gRPC pour les appels sync, TailwindCSS, TimescaleDB si volume augmente, OpenTelemetry des le debut. Mais Rust + .NET + Angular + PostgreSQL + Redis + RabbitMQ = excellent ensemble.

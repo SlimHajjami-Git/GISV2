@@ -1,0 +1,156 @@
+================================================================================
+   QUESTIONS D'ENTRETIEN CV - PARTIE 3 : POSTGRESQL / REDIS / DOCKER / DEVOPS
+   (Questions 101-150)
+================================================================================
+
+Q101: Pourquoi PostgreSQL avec PostGIS ?
+R101: PostGIS ajoute types et fonctions geospatiales. ST_Contains pour geofencing, ST_Distance pour distances, ST_MakePoint pour points. Performance superieure aux calculs en memoire.
+
+Q102: Comment fonctionne le geofencing PostGIS ?
+R102: Geofences stockees comme polygones. Pour chaque position: SELECT ST_Contains(geofence_geometry, ST_MakePoint(lng, lat)). Entree/sortie declenche alerte.
+
+Q103: Optimisation table gps_positions ?
+R103: Index composite (device_id, recorded_at), partitionnement par date, requetes avec plage temporelle, LIMIT, archivage ancien.
+
+Q104: Partitionnement PostgreSQL ?
+R104: Divise une table en sous-tables par critere (date). gps_positions partitionnee par mois. PostgreSQL route vers la partition pertinente. Performance drastiquement amelioree.
+
+Q105: Types d'index PostgreSQL utilises ?
+R105: B-tree sur device_id, recorded_at, company_id. GiST pour donnees PostGIS. GIN pour JSONB (permissions). EXPLAIN ANALYZE pour valider.
+
+Q106: JSONB dans PostgreSQL ?
+R106: JSON binaire indexable. Pour: permissions roles, coordonnees geofences, settings societes. Schema flexible, pas de migration pour ajouter un champ.
+
+Q107: Redis dans l'architecture ?
+R107: Cache temps reel. Derniere position par vehicule (cle: vehicle:{id}:position, TTL: 5 min). Lectures en microsecondes vs millisecondes PostgreSQL.
+
+Q108: Redis cache vs message broker ?
+R108: Cache: GET/SET avec TTL pour positions. Broker: PUBLISH/SUBSCRIBE pour notifier. Rust SET+PUBLISH, .NET GET+SUBSCRIBE pour SignalR.
+
+Q109: Expiration donnees Redis ?
+R109: TTL sur chaque position. Si aucune nouvelle position, cache expire = vehicule hors-ligne. Redis nettoie automatiquement.
+
+Q110: Batch insert PostgreSQL depuis Rust ?
+R110: INSERT multi-valeurs: INSERT INTO gps_positions (...) VALUES ($1,...), ($3,...). Lots de 100-500 positions. Reduit round-trips, augmente throughput.
+
+Q111: EXPLAIN ANALYZE ?
+R111: Execute requete et montre plan reel: Seq Scan vs Index Scan, lignes, temps. Detecte requetes lentes, index manquants.
+
+Q112: Transactions PostgreSQL ?
+R112: BEGIN -> ops -> COMMIT/ROLLBACK. EF Core via SaveChanges(). BeginTransactionAsync pour operations complexes. Outbox pattern pour coherence DB+messages.
+
+Q113: VACUUM PostgreSQL ?
+R113: Recupere espace des lignes modifiees (MVCC). AUTOVACUUM automatique. Ajuster seuils pour gps_positions. VACUUM ANALYZE met a jour statistiques planificateur.
+
+Q114: Connection pooling PostgreSQL ?
+R114: PgBouncer ou deadpool-postgres en Rust. Pool de N connexions reutilisables. Evite cout ouverture/fermeture. Config: min=5, max=30.
+
+Q115: Stockage coordonnees GPS ?
+R115: Deux colonnes DOUBLE PRECISION (lat, lng) + geometry(Point, 4326) PostGIS. Index GiST sur geometry pour requetes spatiales.
+
+Q116: SRID 4326 ?
+R116: WGS84, systeme coordonnees GPS standard mondial. Lat/lng en degres. PostGIS l'utilise pour calculs distance corrects sur la sphere.
+
+Q117: Distance entre deux points GPS ?
+R117: PostGIS: ST_Distance(geog1, geog2) en metres. Ou formule Haversine en code. Distance routiere: OSRM.
+
+Q118: Migration schema tables volumineuses ?
+R118: ALTER TABLE ADD COLUMN avec DEFAULT instantane en PG 11+. Index crees CONCURRENTLY (pas de blocage). Ops destructives en maintenance window.
+
+Q119: BIGINT pour les IDs ?
+R119: INT max = 2.1 milliards. Milliers de vehicules x 1 position/minute = limite atteinte en quelques annees. BIGINT max = 9.2 quintillions.
+
+Q120: Soft delete ?
+R120: Colonne IsDeleted/DeletedAt. Query filter EF Core exclut auto. Restauration possible. Donnees jamais physiquement supprimees.
+
+Q121: Pub/sub Redis dans l'architecture ?
+R121: Rust PUBLISH sur "gps:positions". .NET SUBSCRIBE. A reception: maj cache, evaluation geofences, diffusion SignalR.
+
+Q122: Persistance Redis ?
+R122: RDB (snapshots) et AOF (append-only). Pour positions GPS cache: perte acceptable (donnees dans PostgreSQL). Redis en mode cache avec eviction LRU.
+
+Q123: Optimisation lectures historique GPS ?
+R123: Index (device_id, recorded_at DESC). Plage temporelle. Limite 10000 positions. Partitionnement par date scanne seule la partition pertinente.
+
+Q124: Materialized view ?
+R124: Stocke resultat d'une requete complexe. Stats journalieres kilometrage, consommation. REFRESH MATERIALIZED VIEW CONCURRENTLY sans bloquer lectures.
+
+Q125: Fuseaux horaires DB ?
+R125: TIMESTAMP WITH TIME ZONE (timestamptz) en UTC. Conversion fuseau local cote frontend. Evite ambiguites.
+
+Q126: Window functions PostgreSQL ?
+R126: LAG(fuel_level) OVER (PARTITION BY vehicle_id ORDER BY recorded_at) compare avec valeur precedente. Detecte anomalies carburant (chute soudaine = vol).
+
+Q127: CTE (Common Table Expression) ?
+R127: WITH cte AS (SELECT ...) SELECT ... FROM cte. Decompose requetes complexes. Rapports: filtrer positions -> calculer trajets -> aggreger stats.
+
+Q128: Replication PostgreSQL ?
+R128: Streaming replication: master + replica lecture. PgBouncer pour load balancing. WAL archiving pour restauration point-in-time. Backups pg_dump.
+
+--- DOCKER / DEVOPS ---
+
+Q129: Structure Docker Compose ?
+R129: Services: postgres, redis, rabbitmq, gps-ingest (Rust), gis-api (.NET), frontend (Angular+Nginx), osrm, nominatim. Volumes, ports, healthchecks, reseau partage.
+
+Q130: Multi-stage build Rust ?
+R130: Stage 1: rust image, cargo build --release. Stage 2: debian-slim, copie binaire uniquement. Image ~50MB vs ~2GB.
+
+Q131: Multi-stage build .NET ?
+R131: Stage 1: sdk image, dotnet publish. Stage 2: aspnet runtime, copie DLLs. Image ~200MB vs ~700MB.
+
+Q132: Build frontend Angular Docker ?
+R132: Stage 1: node, npm install + ng build --prod (tree shaking, AOT, minification). Stage 2: nginx:alpine, fichiers statiques. Config nginx: try_files pour SPA routing.
+
+Q133: Healthchecks Docker ?
+R133: PostgreSQL: pg_isready. Redis: redis-cli ping. RabbitMQ: rabbitmq-diagnostics check_running. API .NET: curl /health. Docker redémarre conteneurs unhealthy.
+
+Q134: Variables d'environnement Docker ?
+R134: .env.docker avec variables (DB_HOST, REDIS_URL). env_file dans compose. Production: Docker secrets ou vault. Jamais de credentials hardcodes.
+
+Q135: Volumes Docker ?
+R135: Volumes nommes: postgres_data, redis_data, rabbitmq_data. Survivent aux recreations. Logs montes sur host pour analyse.
+
+Q136: Networking Docker Compose ?
+R136: Reseau bridge interne. Communication par nom de service (DNS): postgres:5432, redis:6379. Ports exposes pour acces host. Services internes sans ports publics.
+
+Q137: Deploiement production ?
+R137: docker-compose.prod.yml: replicas, limites CPU/memoire, images taguees, TLS/SSL, reverse proxy Nginx/Traefik.
+
+Q138: OSRM ?
+R138: Open Source Routing Machine. Calcule itineraires routiers. Donnees OSM pre-processees. Road snapping: positions GPS brutes alignees sur routes reelles.
+
+Q139: Nominatim ?
+R139: Service geocoding OpenStreetMap. Coordonnees -> adresses (reverse geocoding). Docker local pour eviter rate limits APIs publiques.
+
+Q140: Logs Docker ?
+R140: stdout/stderr captures. docker logs -f service. Production: json-file avec rotation ou fluentd/loki. Logs structures JSON pour indexation.
+
+Q141: Rollback ?
+R141: Images taguees par version. docker compose pull (ancien tag) + up -d. DB: dotnet ef database update PreviousMigration. Backups reguliers.
+
+Q142: Monitoring conteneurs ?
+R142: docker stats pour CPU/memoire. Prometheus + cAdvisor pour metriques. Grafana dashboards. Alertes CPU>80%, memoire>90%, healthcheck failures.
+
+Q143: Optimisation build Docker ?
+R143: Ordre layers: deps avant code. COPY Cargo.toml -> cargo build (deps) -> COPY src -> cargo build (code). Rebuild ne recompile que le code modifie.
+
+Q144: Secrets production ?
+R144: Jamais dans code/images. Docker Secrets, env vars CI/CD, HashiCorp Vault, cloud secrets (AWS SM). .env.docker gitignore, valeurs dev uniquement.
+
+Q145: Reverse proxy ?
+R145: Nginx/Traefik en front. TLS termination, routing, load balancing, rate limiting, CORS, gzip. Un seul point d'entree HTTPS.
+
+Q146: Mise a l'echelle horizontale ?
+R146: Rust GPS scalable via load balancer TCP. .NET stateless (JWT), scalable par replicas. Redis+RabbitMQ coordonnent instances. PostgreSQL read replicas.
+
+Q147: CI/CD ?
+R147: Pipeline: 1) Tests unitaires, 2) Build images Docker, 3) Push registry, 4) Deploy docker compose pull + up. Branches main/develop declenchent auto.
+
+Q148: Backups base de donnees ?
+R148: pg_dump quotidien compresse. Stockage distant/cloud. Retention: 7 dailies, 4 weeklies, 12 monthlies. Test restauration regulier.
+
+Q149: Nginx pour SPA Angular ?
+R149: try_files $uri $uri/ /index.html. Routes inconnues -> index.html -> router Angular. Cache headers assets. Gzip active.
+
+Q150: Docker layer caching ?
+R150: Chaque instruction = layer cache. Instructions stables en haut (FROM, apt-get), code changeant en bas (COPY src). Build de minutes a secondes.

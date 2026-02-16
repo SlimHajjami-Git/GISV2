@@ -1,0 +1,225 @@
+================================================================================
+   QUESTIONS D'ENTRETIEN CV - PARTIE 4 : ANGULAR / PROJET GPS / ARCHITECTURE
+   (Questions 151-220)
+================================================================================
+
+--- ANGULAR / FRONTEND ---
+
+Q151: Pourquoi Angular 17 standalone components ?
+R151: Elimine NgModules. Chaque composant declare ses imports directement. Plus simple, meilleur tree-shaking, lazy loading par composant. Migration plus facile.
+
+Q152: Qu'est-ce qu'un standalone component ?
+R152: Composant auto-suffisant avec @Component({ standalone: true, imports: [...] }). Pas besoin de le declarer dans un module. Importe directement ses dependances.
+
+Q153: Comment fonctionne le routing Angular ?
+R153: app.routes.ts definit les routes avec loadComponent() pour le lazy loading. Guards (AuthGuard, FeatureGuard) protegent les routes. CanActivate verifie authentification et permissions.
+
+Q154: Qu'est-ce que le lazy loading en Angular ?
+R154: Charger les modules/composants a la demande (pas au demarrage). loadComponent: () => import('./component'). Reduit le bundle initial. Pages admin chargees uniquement pour les admins.
+
+Q155: Comment fonctionne l'injection de dependances Angular ?
+R155: providedIn: 'root' pour les singletons. inject() ou constructeur pour l'injection. Services partages entre composants pour la logique metier et les appels API.
+
+Q156: Comment integrez-vous Leaflet avec Angular ?
+R156: Import de leaflet dans le composant. Initialisation dans ngAfterViewInit (besoin du DOM). Layers: TileLayer (carte), Marker (vehicules), Polygon (geofences), Polyline (trajets). Mise a jour temps reel via SignalR.
+
+Q157: Comment fonctionne le playback GPS ?
+R157: Recuperation de l'historique via API (positions[]), puis animation avec setInterval deplacant un marqueur le long des positions. Controles: play/pause, vitesse, slider temporel. Option OSRM pour road snapping.
+
+Q158: Comment gerez-vous l'etat dans Angular ?
+R158: Services avec BehaviorSubject/Signal pour l'etat reactif. Pas de NgRx (overengineering pour ce projet). AuthService stocke le user/token. SignalRService gere les connexions WebSocket.
+
+Q159: Qu'est-ce que SignalR cote Angular ?
+R159: @microsoft/signalr package. HubConnectionBuilder pour se connecter au GpsHub. connection.on('PositionUpdate', callback) pour recevoir les positions temps reel. Reconnexion automatique configuree.
+
+Q160: Comment gerez-vous les permissions cote frontend ?
+R160: PermissionService charge les permissions du JWT au login. hasPermission('vehicles.write') verifie. FeatureGuard protege les routes. *ngIf="hasPermission('...')" masque les boutons/menus.
+
+Q161: Comment gerez-vous les formulaires Angular ?
+R161: Reactive Forms (FormGroup, FormControl) pour les formulaires complexes. Validators synchrones et async. Affichage d'erreurs conditionnel. FormArray pour les listes dynamiques (documents vehicule).
+
+Q162: HttpClient et interceptors Angular ?
+R162: HttpClient pour les requetes HTTP. Interceptors: AuthInterceptor ajoute le JWT token a chaque requete. ErrorInterceptor gere les erreurs globales (401 -> redirect login, 500 -> notification).
+
+Q163: Comment optimisez-vous la performance Angular ?
+R163: OnPush change detection pour les composants purs. TrackBy dans les *ngFor. Lazy loading des routes. Virtual scrolling pour les longues listes. Debounce sur les recherches.
+
+Q164: Comment fonctionne le dessin de geofences sur la carte ?
+R164: Leaflet.Draw plugin. L'utilisateur dessine un polygone ou cercle. Les coordonnees sont extraites et envoyees a l'API. Affichage des geofences existantes avec style conditionnel (couleur selon alerte).
+
+Q165: Comment affichez-vous les rapports ?
+R165: ReportsComponent (170KB) genere des rapports: trajets, carburant, vitesse, kilometrage. Tableaux avec tri/filtre, graphiques (Chart.js ou similaire), export PDF/Excel.
+
+Q166: Comment gerez-vous les notifications temps reel ?
+R166: SignalR envoie les alertes (geofence entry/exit, overspeed, maintenance due). Le frontend affiche des toast notifications. Badge de compteur sur l'icone notifications. Historique des alertes.
+
+Q167: Qu'est-ce que le change detection Angular ?
+R167: Angular verifie les changements de donnees pour mettre a jour le DOM. Default: verifie tout l'arbre. OnPush: verifie uniquement si les inputs changent ou un observable emet. OnPush + async pipe = performance optimale.
+
+Q168: Comment testez-vous les composants Angular ?
+R168: Jasmine + Karma pour les tests unitaires. TestBed pour configurer le module de test. ComponentFixture pour interagir avec le composant. HttpClientTestingModule pour mocker les appels API.
+
+Q169: Comment gerez-vous les erreurs API cote frontend ?
+R169: ErrorInterceptor catch les erreurs HTTP. 401 -> AuthService.logout() + redirect login. 403 -> notification "acces refuse". 500 -> notification generique. Retry automatique sur les erreurs reseau.
+
+Q170: Comment fonctionne le guard AuthGuard ?
+R170: CanActivate verifie si l'utilisateur est authentifie (token valide et non expire). Si non: redirect vers /login. FeatureGuard verifie en plus les permissions pour la fonctionnalite demandee.
+
+Q171: RxJS dans Angular ?
+R171: Observables pour les flux de donnees asynchrones. Operateurs: map, filter, switchMap, debounceTime, distinctUntilChanged. Subject/BehaviorSubject pour l'etat reactif. async pipe dans les templates.
+
+Q172: Comment implementez-vous la recherche avec debounce ?
+R172: Input -> valueChanges -> pipe(debounceTime(300), distinctUntilChanged(), switchMap(term => api.search(term))). Evite les appels API a chaque frappe. switchMap annule la requete precedente.
+
+Q173: Comment gerez-vous l'internationalisation (i18n) ?
+R173: Angular i18n ou ngx-translate. Fichiers de traduction JSON par langue. Pipe translate dans les templates. Le projet GISV2 supporte francais et arabe (RTL).
+
+Q174: Qu'est-ce que le tree-shaking Angular ?
+R174: Elimination du code non utilise lors du build production. Les standalone components ameliorent le tree-shaking (pas de module englobant). Resultat: bundle plus petit, chargement plus rapide.
+
+Q175: Comment gerez-vous le responsive design ?
+R175: CSS Flexbox/Grid. Media queries pour les breakpoints. La carte Leaflet s'adapte au conteneur. Menus collapsibles sur mobile. TailwindCSS utility classes pour le styling rapide.
+
+
+--- ARCHITECTURE / DESIGN PATTERNS ---
+
+Q176: Pourquoi une architecture microservices ?
+R176: Separation des responsabilites: API .NET (logique metier), service Rust (ingestion GPS haute perf), chaque service scale independamment. Le Rust gere le throughput GPS, le .NET gere la complexite metier.
+
+Q177: Comment communiquent les services ?
+R177: Rust -> PostgreSQL (persistence directe). Rust -> Redis (cache positions). Rust -> RabbitMQ (events). .NET <- RabbitMQ (consume events). .NET -> Redis (lecture cache). .NET -> SignalR -> Frontend (temps reel).
+
+Q178: Pourquoi RabbitMQ et pas Kafka ?
+R178: RabbitMQ suffit pour le volume (milliers de vehicules). Plus simple a operer. Routing flexible (exchanges, queues). Kafka serait justifie pour des millions de messages/seconde ou du replay d'events.
+
+Q179: Qu'est-ce que le pattern Event-Driven Architecture ?
+R179: Les services communiquent par events (pas d'appels directs). Le Rust publie PositionReceived. Le .NET consume et reagit (geofence check, trip calculation). Decouplage total entre services.
+
+Q180: Comment gerez-vous la consistance entre services ?
+R180: Eventual consistency. Le Rust insere en DB et publie sur RabbitMQ. Le .NET consume et met a jour ses caches. Un court delai est acceptable pour les positions GPS (temps reel = quelques secondes de latence OK).
+
+Q181: Qu'est-ce que le CAP theorem ?
+R181: Un systeme distribue ne peut garantir simultanement Consistency, Availability, Partition tolerance. GISV2 choisit AP: disponibilite et tolerance aux partitions. La consistance est eventuelle (acceptable pour le GPS temps reel).
+
+Q182: Pattern Circuit Breaker ?
+R182: Si un service externe echoue N fois, on "ouvre le circuit" et on arrete de l'appeler pendant un cooldown. Evite de surcharger un service defaillant. Polly en .NET. Retry + circuit breaker pour Redis/RabbitMQ.
+
+Q183: Comment gerez-vous l'idempotence ?
+R183: Les messages RabbitMQ peuvent etre delivres plusieurs fois. Chaque position a un identifiant unique (device_id + timestamp). INSERT ON CONFLICT DO NOTHING evite les doublons. Les operations sont idempotentes.
+
+Q184: Qu'est-ce que le pattern Saga ?
+R184: Coordonne des transactions distribuees entre services. Si une etape echoue, des compensations annulent les etapes precedentes. Exemple: creation vehicule -> assignation GPS -> si echec GPS: rollback vehicule.
+
+Q185: Comment documentez-vous l'API ?
+R185: Swagger/OpenAPI genere automatiquement depuis les controllers .NET. Annotations [ProducesResponseType] pour les codes de retour. SwaggerUI disponible en dev pour tester les endpoints.
+
+Q186: Qu'est-ce que le pattern Strangler Fig ?
+R186: Migration progressive d'un systeme legacy. On route les nouvelles requetes vers le nouveau systeme, les anciennes vers le legacy. Progressivement, tout migre. Utile si GISV2 remplace un ancien systeme.
+
+Q187: Comment gerez-vous le monitoring applicatif ?
+R187: Metriques: Prometheus (latence, throughput, erreurs). Logs: Serilog structure -> ELK/Loki. Traces: OpenTelemetry pour le tracing distribue entre Rust et .NET. Dashboards Grafana.
+
+Q188: Qu'est-ce que l'observabilite ?
+R188: Trois piliers: Logs (evenements), Metriques (chiffres agreges), Traces (parcours d'une requete). Ensemble, ils permettent de comprendre le comportement du systeme et diagnostiquer les problemes.
+
+Q189: Comment gerez-vous la scalabilite de la DB ?
+R189: Vertical: plus de RAM/CPU pour PostgreSQL. Horizontal: read replicas pour les lectures (rapports). Partitionnement pour gps_positions. Archivage des donnees anciennes. Index optimises.
+
+Q190: Pattern CQRS avec des DB separees ?
+R190: En version avancee, CQRS peut utiliser une DB d'ecriture (normalized) et une DB de lecture (denormalized, optimisee). Dans GISV2, une seule DB PostgreSQL suffit avec des vues materialisees pour les lectures complexes.
+
+
+--- PROJET GPS / METIER ---
+
+Q191: Qu'est-ce qu'une trame GPS ?
+R191: Paquet de donnees envoye par un boitier GPS. Contient: identifiant appareil (IMEI), latitude, longitude, vitesse, cap, date/heure, etat allumage, donnees capteurs (carburant, accelerometre).
+
+Q192: Difference entre protocole HH et AAP ?
+R192: HH: protocole simple, donnees basiques (position, vitesse, cap, allumage). AAP/ACI: protocole avance avec 3 versions (V1-V3), donnees MEMS (accelerometre), FMS (carburant, RPM, temperature, odometre), events de conduite.
+
+Q193: Comment decodez-vous les coordonnees NMEA ?
+R193: Format NMEA: ddmm.mmmm (degres et minutes). Conversion: degres = dd + mm.mmmm/60. Latitude N/S, Longitude E/W. Validation: lat entre -90 et 90, lng entre -180 et 180.
+
+Q194: Qu'est-ce que le send_flag dans le protocole AAP ?
+R194: Indique la raison de l'envoi: 0=commande user, 1=periodique, 2=GPS valide, 3=changement de cap >10°, 4=changement allumage (ON/OFF), 5=exces vitesse, 6=secousse, 7=iButton.
+
+Q195: Comment detectez-vous les trajets (trips) ?
+R195: Allumage ON (send_flag=4, ignition=true) = debut trajet. Allumage OFF = fin trajet. Entre les deux: accumulation des positions, calcul distance totale, duree, vitesse moyenne, waypoints.
+
+Q196: Comment detectez-vous les arrets vehicule ?
+R196: Vitesse = 0 pendant > seuil (ex: 5 minutes). Ou allumage OFF. Le VehicleStop enregistre: debut, fin, duree, position, type (arret moteur, pause, stationnement), geofence si applicable.
+
+Q197: Comment detectez-vous le freinage brusque ?
+R197: Donnees MEMS accelerometre (axe X). Deceleration > seuil (ex: -0.5g). Le protocole AAP V3 envoie les valeurs MEMS X/Y/Z. Seuils configurables par type de vehicule.
+
+Q198: Comment calculez-vous la consommation de carburant ?
+R198: Capteur carburant envoie le niveau brut (fuel_raw). Calibration par vehicule (courbe capteur -> litres). Consommation = difference de niveaux entre debut et fin de trajet. Anomalies: chute soudaine = vol potentiel.
+
+Q199: Qu'est-ce que le road snapping OSRM ?
+R199: Les positions GPS brutes ont une precision de 5-15m. OSRM aligne les points sur le reseau routier reel. Resultat: le trajet affiche suit les routes au lieu de couper a travers les batiments.
+
+Q200: Comment gerez-vous les positions GPS invalides ?
+R200: Validation: lat/lng dans les bornes, vitesse < max realiste (ex: 300 km/h), timestamp coherent (pas dans le futur, pas trop ancien). Positions invalides loggees mais pas stockees. GPS non fixe (satellites < 3) ignore.
+
+Q201: Qu'est-ce que le geofencing et ses cas d'usage ?
+R201: Zone geographique virtuelle. Alertes quand un vehicule entre ou sort. Cas: zones de livraison, zones interdites, depots, clients. Polygones (forme libre) ou cercles (rayon autour d'un point).
+
+Q202: Comment calculez-vous le kilometrage journalier ?
+R202: Somme des distances entre positions consecutives d'un vehicule sur 24h. Distance Haversine ou ST_Distance PostGIS. Ou via l'odometre du vehicule si disponible (FMS data).
+
+Q203: Comment gerez-vous la maintenance preventive ?
+R203: MaintenanceTemplate definit: type (vidange, pneus), intervalle km, intervalle mois. VehicleMaintenanceSchedule suit chaque vehicule. Alerte quand km ou date atteint le seuil. Reset apres realisation.
+
+Q204: Qu'est-ce que le multi-tenant dans le contexte fleet management ?
+R204: Chaque societe de transport voit uniquement ses vehicules, chauffeurs, rapports. Isolation totale des donnees. Un admin Belive (system admin) gere toutes les societes. Les societes ne se voient pas entre elles.
+
+Q205: Comment gerez-vous les rapports ?
+R205: Types: trajets (start/end, distance, duree), carburant (consommation, ravitaillements), vitesse (exces, moyenne), kilometrage (journalier, mensuel), arrets, alertes. Export PDF/Excel. Filtres: vehicule, date, chauffeur.
+
+
+--- QUESTIONS COMPORTEMENTALES / SOFT SKILLS ---
+
+Q206: Pourquoi avoir choisi Rust pour le service GPS ?
+R206: Performance critique: milliers de connexions TCP simultanees, decodage binaire a haute frequence. Rust offre: performance C/C++ avec securite memoire, async natif (Tokio), pas de GC (latence predictible). Ideal pour un service d'ingestion temps reel.
+
+Q207: Quel a ete le plus gros defi technique ?
+R207: Le decodage des protocoles GPS proprietaires (AAP/ACI). Documentation limitee, formats binaires complexes avec 3 versions. Reverse engineering des trames, validation avec des vrais boitiers GPS. Le pattern matching Rust a ete precieux pour gerer toutes les variations.
+
+Q208: Comment avez-vous assure la fiabilite du service GPS ?
+R208: Error handling exhaustif (pas de panic en production), graceful shutdown, reconnexion automatique aux services, structured logging pour le debugging, healthchecks Docker, monitoring des metriques (positions/seconde, erreurs).
+
+Q209: Comment gerez-vous les incidents en production ?
+R209: 1) Detection (monitoring/alertes), 2) Diagnostic (logs structures, traces), 3) Mitigation (rollback si necessaire), 4) Resolution (fix + test), 5) Post-mortem (cause racine, prevention).
+
+Q210: Comment travaillez-vous en equipe sur ce projet ?
+R210: Git flow (branches feature/develop/main). Code review obligatoire. CI/CD automatise. Documentation technique (README, Swagger). Communication via les PR et les issues.
+
+Q211: Comment priorisez-vous les taches ?
+R211: Impact business d'abord: fiabilite du service GPS (critique), puis les rapports (valeur client), puis les ameliorations UX. Les bugs de securite/data sont toujours priorite maximale.
+
+Q212: Comment assurez-vous la qualite du code ?
+R212: Rust: compilateur strict + Clippy + rustfmt. .NET: analyseurs Roslyn + tests unitaires. Angular: ESLint + tests. Code review. CI/CD qui bloque le merge si les tests echouent.
+
+Q213: Pourquoi Clean Architecture plutot que MVC simple ?
+R213: Separation des concerns, testabilite (domain independant de l'infra), flexibilite (changer de DB/framework sans impact metier). CQRS ajoute la separation lecture/ecriture. Plus de code initial mais meilleure maintenabilite long terme.
+
+Q214: Comment documentez-vous vos decisions techniques ?
+R214: ADR (Architecture Decision Records) pour les choix majeurs. README par service. Swagger pour l'API. Comments dans le code pour la logique complexe (decodage GPS). Docker Compose documente l'infrastructure.
+
+Q215: Comment gerez-vous la dette technique ?
+R215: Refactoring continu en petites doses. Chaque PR ameliore le code touche. Sprints dedies pour les gros refactorings. Metriques: couverture de tests, complexite cyclomatique, duplication.
+
+Q216: Si vous deviez recommencer, que changeriez-vous ?
+R216: Implementer les tests d'integration plus tot. Utiliser gRPC entre services au lieu de RabbitMQ pour les cas synchrones. Mettre en place le monitoring (Prometheus/Grafana) des le debut.
+
+Q217: Comment avez-vous appris Rust ?
+R217: The Rust Programming Language (le Book), Rust by Example, exercices sur Exercism. Puis application directe sur le projet GPS. Le compilateur est le meilleur professeur: il explique chaque erreur avec des suggestions.
+
+Q218: Quels sont les avantages de Rust vs Go pour ce use case ?
+R218: Rust: pas de GC (latence predictible), zero-cost abstractions, pattern matching exhaustif (ideal pour parser des protocoles binaires), systeme de types plus riche. Go: plus simple a apprendre, GC (acceptable pour la plupart des cas). Rust gagne pour le parsing binaire haute performance.
+
+Q219: Comment mesurez-vous la performance du systeme ?
+R219: Metriques cles: positions traitees/seconde (throughput), latence end-to-end (GPS -> ecran), taux d'erreur parsing, utilisation CPU/memoire du service Rust, temps de reponse API .NET (p95, p99).
+
+Q220: Quelle est l'evolution prevue du projet ?
+R220: Mobile app (Flutter/React Native), machine learning pour prediction de maintenance, optimisation de routes, integration ERP, API publique pour les clients, dashboards BI avances, support de nouveaux protocoles GPS.

@@ -1,0 +1,199 @@
+================================================================================
+   PARTIE 8 : ROLE SENIOR / GESTION D'EQUIPE / GESTION DE PROJET
+   QUESTIONS PIEGES D'ENTRETIEN (Questions 481-560)
+================================================================================
+
+
+################################################################################
+ROLE SENIOR & LEADERSHIP TECHNIQUE (Questions 481-520)
+################################################################################
+
+Q481: Quel est votre role dans le projet en tant que senior developer ?
+R481: 1) Architecture technique: choix stack, design services, patterns. 2) Lead technique: code reviews, standards qualite, mentoring. 3) Implementation parties critiques (service Rust GPS, multi-tenancy, SignalR). 4) DevOps: Docker, CI/CD, monitoring. 5) Interface technique avec stakeholders. 6) Decisions et trade-offs documentes (ADR).
+
+Q482: Comment organisez-vous une equipe de developpement ?
+R482: Roles clairs (backend, frontend, DevOps). Stand-up quotidien 15 min. Sprint 2 semaines avec planning/review/retro. Backlog priorise avec product owner. Pair programming pour knowledge sharing. Documentation des decisions. Autonomie: chaque dev responsable de ses taches.
+
+Q483: Comment integrez-vous un nouveau developpeur ?
+R483: Jour 1: Docker Compose up, tour du code, acces repos. Semaine 1: taches simples + pair programming avec senior. Semaine 2-4: features complexes progressivement, code reviews detaillees. Mois 2: autonome. Documentation: README, architecture, conventions.
+
+Q484: Comment definissez-vous les standards de code ?
+R484: Linters auto (Clippy, ESLint, Roslyn). Formateurs (rustfmt, Prettier). Pre-commit hooks. Conventions documentees. Templates de PR. CI qui bloque si standards non respectes. Standards evolues par consensus d'equipe.
+
+Q485: Comment conduisez-vous une code review ?
+R485: 1) Design avant details. 2) Questions plutot que critiques. 3) Distinguer bloquants (bugs, securite) des suggestions (style). 4) PRs < 400 lignes. 5) Automatiser lint/format/tests. 6) Repondre en < 24h. 7) Approuver quand "suffisamment bon".
+
+Q486: Comment gerez-vous les conflits techniques dans l'equipe ?
+R486: Ecouter les arguments factuellement. Ramener au factuel (benchmarks, prototypes). Criteres objectifs de decision. Si pas consensus: prototyper les deux (timebox). Si toujours pas: senior tranche et assume. Documenter (ADR). Tout le monde s'aligne.
+
+Q487: Comment motivez-vous votre equipe ?
+R487: Donner du sens (expliquer le pourquoi). Autonomie (laisser choisir l'approche). Reconnaissance publique. Opportunites d'apprendre. Pas de micro-management. Proteger des interruptions. Celebrer les victoires.
+
+Q488: Comment gerez-vous un developpeur en difficulte ?
+R488: Identifier la cause (technique? motivation? personnel?). Discussion privee bienveillante. Si technique: pair programming, formations, taches simples temporairement. Si motivation: comprendre aspirations, ajuster. Objectifs clairs, suivi 1:1 hebdo.
+
+Q489: Comment estimez-vous la charge de travail ?
+R489: Decomposer en taches 1-3 jours max. Planning Poker (estimation collective). Velocity historique. Buffer 20-30% pour imprevus. Ne pas remplir sprint a 100%. Les estimations s'ameliorent avec le temps.
+
+Q490: Comment priorisez-vous le backlog technique ?
+R490: Matrice Impact x Effort. Quick wins d'abord (impact eleve, effort faible). Projets strategiques planifies. Time sinks evites. Dette technique traitee comme feature avec sa priorite. Budget: 20% du sprint pour la dette.
+
+Q491: Comment faites-vous le knowledge sharing ?
+R491: Code reviews educatives. Tech talks internes mensuels. Pair programming tournant. ADR documentes. Rotation des taches. Wiki pour runbooks. README par service. Post-mortems partages.
+
+Q492: Comment gerez-vous les deadlines serrees ?
+R492: Negocier le scope (PAS la qualite). Identifier le MVP. Reporter les nice-to-have. Focus: pas de meetings inutiles. Communiquer les risques tot. JAMAIS sacrifier tests et securite.
+
+Q493: Comment communiquez-vous avec les non-techniques ?
+R493: Parler valeur business. Analogies. Demos (un ecran vaut mille mots). Eviter jargon. Transparent sur risques et trade-offs. Proposer options avec consequences. Comptes-rendus simples.
+
+Q494: Comment definissez-vous la roadmap technique ?
+R494: Aligner avec roadmap business. Identifier prerequis techniques. Planifier par trimestre. Quick wins entre gros chantiers. Reviser trimestriellement. Communiquer a l'equipe.
+
+Q495: Comment conduisez-vous une retrospective ?
+R495: What went well / What didn't / Actions. 1h max. Pas de blame, focus processus. Actions concretes assignees. Suivi de la retro precedente. Varier les formats.
+
+Q496: Comment gerez-vous le recrutement technique ?
+R496: Profil: competences requises vs nice-to-have. Test technique realiste (proche du projet). Entretien: problem solving, design, experience. Culture fit: curiosite, communication, humilite. Preferer le potentiel au savoir brut.
+
+Q497: Comment formez-vous l'equipe sur Rust ?
+R497: Plan progressif: Semaine 1-2 le Book + exercices. Semaine 3-4 contribution au projet (taches simples, reviews detaillees). Mois 2-3 taches complexes en pair. Mois 4+ autonome. Patience avec le borrow checker. Pas forcer tout le monde sur Rust.
+
+Q498: Approche du 1:1 avec l'equipe ?
+R498: Hebdomadaire, 30 min. Comment tu vas? Bloqueurs? Feedback bidirectionnel. Croissance: quelles competences developper? C'est le moment du developpeur. Ecouter plus que parler.
+
+Q499: Comment gerez-vous le travail remote ?
+R499: Communication asynchrone par defaut. Meetings synchrones pour decisions et social. Documentation ecrite. Stand-up video quotidien. Confiance: juger sur resultats. Moments sociaux virtuels.
+
+Q500: Comment mesurez-vous la performance de l'equipe ?
+R500: Velocity (tendance). Lead time (idee -> prod). DORA metrics: deployment frequency, lead time, change failure rate, time to restore. Satisfaction equipe. NE PAS mesurer: lignes de code, commits/jour.
+
+Q501: Comment gerez-vous un projet greenfield ?
+R501: Investir dans l'architecture des le debut. CI/CD tot. Standards de code from day 1. Ne pas sur-ingenierer. MVP d'abord puis iterer.
+
+Q502: Comment communiquez-vous les risques au management ?
+R502: Quantifier: "Si on ne fait pas X, Y probleme dans Z mois". Impact business. Options avec trade-offs. Ne pas crier au loup. Proposer solutions, pas juste problemes.
+
+Q503: Comment gerez-vous la pression du business ?
+R503: Negocier scope ("80% de la feature en moitie du temps"). Expliquer consequences de couper les corners. Proposer MVP + iterations. Ne jamais promettre l'impossible. Proteger l'equipe.
+
+Q504: Definition of Done ?
+R504: Code: compile, lint ok, tests, review approuvee. Feature: criteres d'acceptation valides, doc mise a jour. Deploy: deployable en un clic, health check ok. Non-negociable.
+
+Q505: Comment gerez-vous le bus factor ?
+R505: Pair programming et rotation. Documentation des connaissances critiques. 2 personnes minimum connaissent chaque service. Pas de hero developer. Runbooks pour operations critiques.
+
+Q506: Comment evaluez-vous la sante technique ?
+R506: Temps pour deployer un changement simple (< 1h = sain). Bugs en prod/semaine. Coverage > 70%. Temps onboarding < 1 semaine. Frequence deploy. Satisfaction equipe.
+
+Q507: Comment arbitrez-vous rapidite vs qualite ?
+R507: Jamais de compromis sur securite, donnees, tests critiques. Compromis ok: code pas parfait (refactorer later), UI (iterer). Cle: identifier irreversible (schema DB, API publique) vs reversible (code interne). Strict sur l'irreversible.
+
+Q508: Comment introduisez-vous de nouvelles pratiques ?
+R508: Montrer le probleme que la pratique resout. Prototype/demo. Commencer petit. Mesurer l'impact. Iterer avec feedback equipe. Lead by example.
+
+Q509: Comment gerez-vous les post-mortems ?
+R509: Dans les 48h. Timeline detaillee. Root cause (5 Whys). Blameless. Actions concretes assignees avec deadline. Suivi dans les sprints. Partager les learnings.
+
+Q510: Comment equilibrez-vous innovation et stabilite ?
+R510: 80/20: 80% stabilite/features, 20% innovation. Spikes de 2-3 jours. Prototype avant adoption. Jamais de nouvelle techno en prod sans experimentation.
+
+
+################################################################################
+GESTION DE PROJET & METHODOLOGIES (Questions 511-540)
+################################################################################
+
+Q511: Quelle methodologie Agile utilisez-vous ?
+R511: Scrum adapte: sprints de 2 semaines, daily standup, sprint planning, review, retro. Kanban pour les taches ops/support. Pas dogmatique: adapter les ceremonies au besoin de l'equipe. L'objectif est de livrer de la valeur, pas de suivre un framework.
+
+Q512: Comment structurez-vous un sprint planning ?
+R512: 1) Product owner presente les stories prioritaires. 2) L'equipe pose des questions (clarification). 3) Estimation collective (Planning Poker). 4) Engagement: combien de stories on peut prendre (basé sur velocity). 5) Decomposition en taches techniques. 6) Sprint goal defini. Duree: 2h max pour un sprint de 2 semaines.
+
+Q513: Comment gerez-vous le scope creep ?
+R513: 1) Backlog bien defini avant le sprint. 2) Changements mid-sprint = negociation (ajouter X = retirer Y). 3) "C'est une bonne idee, on la met dans le backlog pour le prochain sprint." 4) Proteger le sprint goal. 5) Si urgent (bug critique): exception documentee et communiquee.
+
+Q514: Comment gerez-vous les dependances entre taches ?
+R514: 1) Identifier les dependances au sprint planning. 2) Taches critiques en debut de sprint. 3) Communication quotidienne (standup). 4) Si blocage: escalader immediatement, pas attendre le standup. 5) Design des interfaces/contrats d'abord (debloquer les taches paralleles).
+
+Q515: Quelle est votre approche du MVP (Minimum Viable Product) ?
+R515: 1) Identifier le coeur de valeur: qu'est-ce que l'utilisateur DOIT pouvoir faire? 2) Couper tout le reste (nice-to-have, edge cases, polish). 3) Livrer vite, mesurer, iterer. Pour GISV2 MVP: voir les vehicules en temps reel sur la carte + alertes de geofence. Rapports, maintenance, couts = phase 2.
+
+Q516: Comment planifiez-vous une feature complexe ?
+R516: 1) User stories avec criteres d'acceptation. 2) Design technique (1-2 pages, pas un roman). 3) Decomposer en taches de 1-3 jours. 4) Identifier les risques techniques (spike si necessaire). 5) Planifier sur 2-3 sprints si grosse. 6) Demo intermediaire a chaque sprint. 7) Feature flag pour merger incrementalement.
+
+Q517: Comment mesurez-vous le succes d'un projet ?
+R517: Business: KPIs definis avec le product owner (vehicules geres, temps de reponse incidents, economies). Technique: uptime (99.9%), latence (< 5s temps reel), throughput (vehicules supportes). Equipe: velocity stable, peu de turnover, satisfaction. Le projet est un succes si les utilisateurs l'utilisent et en sont satisfaits.
+
+Q518: Comment gerez-vous la documentation du projet ?
+R518: Niveaux: 1) Code: noms clairs, comments pour le "pourquoi". 2) Repo: README (setup, run, deploy), CONTRIBUTING. 3) API: Swagger auto-genere. 4) Ops: runbooks. 5) Architecture: diagrammes C4, ADRs. La doc vit avec le code, reviewee dans les PRs. Doc obsolete = pire que pas de doc.
+
+Q519: Comment definissez-vous les KPIs techniques ?
+R519: DORA metrics: 1) Deployment frequency (cible: quotidien). 2) Lead time for changes (cible: < 1 jour). 3) Change failure rate (cible: < 5%). 4) Time to restore (cible: < 1h). Plus: uptime, latence p95, throughput, coverage, nombre de bugs.
+
+Q520: Comment gerez-vous un projet avec contraintes de budget ?
+R520: 1) Prioriser impitoyablement (MoSCoW: Must/Should/Could/Won't). 2) Open source d'abord (OSRM, Nominatim, PostgreSQL = 0 licence). 3) Self-hosted vs cloud (economie long terme). 4) MVP d'abord, iterate. 5) Automatiser pour reduire l'effort humain. 6) Communiquer clairement ce qui est possible avec le budget.
+
+
+################################################################################
+QUESTIONS PIEGES / MISES EN SITUATION (Questions 541-560)
+################################################################################
+
+Q541: "Votre service Rust crash en production a 3h du matin. Que faites-vous ?"
+R541: 1) Alerte recue via monitoring. 2) Verifier: Docker restart policy a-t-il relance? Healthcheck? 3) Si non: docker compose up -d gps-ingest. 4) Verifier les logs: docker logs gps-ingest --tail 100. 5) Identifier la cause: OOM? panic? DB down? 6) Mitigation immediate. 7) Fix et deploy le lendemain. 8) Post-mortem pour eviter la recurrence. Le graceful shutdown et le restart policy Docker sont la pour ca.
+
+Q542: "Un client dit que les positions GPS sont en retard de 5 minutes. Comment debuggez-vous ?"
+R542: Pipeline: boitier -> TCP -> Rust -> Redis/DB -> RabbitMQ -> .NET -> SignalR -> Frontend. Verifier chaque etape: 1) Le boitier envoie-t-il? (logs TCP). 2) Rust recoit et decode? (logs/metriques). 3) Redis a la position? (redis-cli GET). 4) RabbitMQ queue depth? (management UI). 5) .NET consume? (logs). 6) SignalR connecte? (hub logs). 7) Frontend recoit? (console.log). Isoler l'etape lente.
+
+Q543: "Le CEO veut une feature en 2 jours, vous estimez 2 semaines. Comment reagissez-vous ?"
+R543: 1) Expliquer calmement la decomposition (voici les 10 taches necessaires). 2) Proposer un MVP livrable en 2 jours (version minimaliste). 3) Montrer les risques de couper les corners (bugs, securite, dette). 4) Proposer un plan: MVP en 2 jours + version complete en 2 semaines. 5) Si insistance: documenter les risques acceptes. Ne jamais mentir sur l'estimation.
+
+Q544: "Un developpeur junior pousse du code qui casse la production. Que faites-vous ?"
+R544: 1) Rollback immediat (priorite). 2) Pas de blame public. 3) Analyser pourquoi le code a passe: tests insuffisants? review ratee? CI incomplete? 4) C'est un echec du systeme (process), pas de la personne. 5) Actions: ameliorer les tests, ajouter des checks CI, review plus attentive. 6) En prive: discussion bienveillante, expliquer et rassurer. Tout le monde fait des erreurs.
+
+Q545: "Vous devez choisir entre livrer une feature ou rembourser de la dette technique. Que choisissez-vous ?"
+R545: Depend du contexte: 1) Si la dette bloque la livraison de futures features -> dette d'abord. 2) Si la feature a une deadline business critique -> feature d'abord, dette dans le prochain sprint. 3) Idealement: integrer le remboursement de dette dans la feature (refactorer le code impacte). 4) Communiquer le trade-off au product owner avec les consequences.
+
+Q546: "Comment justifiez-vous l'utilisation de Rust alors que peu de developpeurs le maitrisent ?"
+R546: 1) Le service Rust est isole (un seul service bien defini, 5 fichiers principaux). 2) Il change rarement une fois stable (les protocoles GPS evoluent peu). 3) La performance justifie le choix (latence, throughput). 4) Documentation complete + tests. 5) 1-2 devs suffisent pour le maintenir. 6) Le reste de l'equipe travaille en .NET/Angular (technologies mainstream). Le Rust est un choix chirurgical, pas generalisé.
+
+Q547: "Votre base de donnees gps_positions atteint 100 millions de lignes. Les rapports sont lents. Que faites-vous ?"
+R547: 1) EXPLAIN ANALYZE sur les requetes lentes. 2) Partitionnement par mois si pas fait. 3) Index verifies (device_id, recorded_at). 4) Materialized views pour les stats pre-calculees. 5) Archiver les donnees > 1 an. 6) Read replica pour les rapports (pas impacter le temps reel). 7) Pagination stricte. 8) Si insuffisant: TimescaleDB ou sharding.
+
+Q548: "Un concurrent utilise Kafka, microservices, Kubernetes. Pourquoi votre stack est-elle meilleure ?"
+R548: La meilleure stack est celle qui resout le probleme avec la complexite minimale. Notre volume (~17 msg/s, < 100 societes) ne justifie pas Kafka/K8s. RabbitMQ + Docker Compose = 90% des benefices pour 10% de la complexite. Si on atteint les limites, on migre. L'over-engineering est un risque aussi reel que le sous-engineering.
+
+Q549: "Comment gerez-vous la securite des boitiers GPS qui envoient en TCP brut sans TLS ?"
+R549: Realite: la plupart des boitiers GPS sont limites (pas de TLS). Mitigations: 1) Validation stricte des trames (format, checksum, IMEI whiteliste). 2) Rate limiting par IP et device. 3) Firewall: seuls les ports GPS ouverts. 4) Monitoring connexions suspectes. 5) Les donnees critiques (positions) ne sont pas secretes, le risque est le spoofing. 6) Detection d'anomalies (position impossible, vitesse irrealiste).
+
+Q550: "Vous avez un bug que vous ne pouvez pas reproduire localement. Comment procedez-vous ?"
+R550: 1) Logs structures: chercher le correlation ID de l'incident. 2) Metriques: y a-t-il un pattern (heure, vehicule, protocole)? 3) Ajouter du logging cible en production (feature flag). 4) Reproduire avec les memes donnees (dump anonymise). 5) Si intermittent: race condition? Timing? Tester sous charge. 6) Si specifique a un device: capturer les trames brutes et les rejouer en local.
+
+Q551: "Le product owner veut ajouter 15 champs au formulaire vehicule. Comment reagissez-vous ?"
+R551: 1) Questionner le besoin: tous les champs sont-ils utilises? Par qui? 2) Prioriser: quels champs sont essentiels vs nice-to-have? 3) UX: un formulaire avec 30 champs est inutilisable. Proposer des onglets/sections. 4) Technique: schema DB flexible (JSONB pour les champs custom). 5) Livrer en iterations: 5 champs maintenant, 5 plus tard.
+
+Q552: "Comment gerez-vous une fuite de donnees client (breach) ?"
+R552: 1) Containment: isoler le vecteur d'attaque (fermer l'acces, revoquer les tokens). 2) Assessment: quelles donnees? combien de clients? 3) Notification: informer les clients et les autorites (RGPD: 72h). 4) Remediation: fixer la vulnerabilite. 5) Post-mortem: root cause, timeline, actions preventives. 6) Communication transparente. 7) Audit de securite complet.
+
+Q553: "Votre equipe n'est pas d'accord sur l'utilisation de CQRS. Certains trouvent ca trop complexe. Que faites-vous ?"
+R553: 1) Ecouter les arguments (ils ont peut-etre raison pour certains cas). 2) Montrer les benefices concrets: testabilite, separation, pipeline behaviors. 3) Compromis: CQRS pour les features complexes, CRUD simple pour les endpoints triviaux. 4) Documenter le guideline: quand utiliser CQRS vs CRUD. 5) Le pattern doit servir, pas asservir.
+
+Q554: "Comment gerez-vous un client qui demande une feature specifique qui ne beneficie qu'a lui ?"
+R554: 1) Evaluer: peut-on la generaliser pour tous les clients? 2) Si oui: la prioriser normalement dans le backlog. 3) Si non: feature flag ou config specifique au client. 4) Evaluer le cout vs le revenu du client. 5) Negocier: "c'est possible mais ca decale Y de Z semaines". 6) Ne pas creer de branches custom par client (maintenance nightmare).
+
+Q555: "Vous rejoignez un projet avec 0 tests. Par ou commencez-vous ?"
+R555: 1) Ne PAS tout tester d'un coup (impossible). 2) Ajouter des tests sur le code que je modifie (boy scout rule). 3) Prioriser: tester les chemins critiques d'abord (auth, paiement, positions GPS). 4) Tests d'integration sur les endpoints principaux. 5) CI qui execute les tests. 6) Incrementalement: chaque PR ajoute des tests. Objectif: 70% en 6 mois.
+
+Q556: "Donnez un exemple de decision technique que vous regrettez."
+R556: Ne pas avoir mis en place le monitoring (Prometheus/Grafana) des le debut du projet. On a debugge "a l'aveugle" pendant les premiers mois avec juste les logs. Quand on a ajoute les metriques, on a immediatement identifie des goulots qu'on ne soupconnait pas. Lecon: l'observabilite n'est pas un luxe, c'est un prerequis.
+
+Q557: "Comment reagissez-vous quand votre architecture ne scale plus ?"
+R557: 1) Identifier le goulot (metriques, profiling). 2) Quick fixes: index DB, cache, batch. 3) Si insuffisant: plan de migration incrementale (pas de big bang). 4) Communiquer le plan au management avec timeline et couts. 5) Migrer par etapes reversibles. 6) Chaque etape validee par les metriques. 7) Documenter les nouvelles limites.
+
+Q558: "Un collegue senior n'est pas d'accord avec votre choix d'utiliser Rust. Comment gerez-vous ?"
+R558: 1) Ecouter ses arguments serieusement (il a peut-etre des points valides). 2) Presenter mes arguments factuellement (benchmarks, securite memoire, type safety). 3) Proposer un prototype comparatif (Rust vs Go par exemple, 2 jours chacun). 4) Definir des criteres objectifs de decision (performance, maintenabilite, recrutement). 5) Si pas de consensus: escalader au CTO avec les arguments des deux. 6) Accepter la decision finale sans rancune.
+
+Q559: "Comment gerez-vous la transition quand vous quittez un projet ?"
+R559: 1) Documentation a jour (README, runbooks, ADR, diagrammes). 2) Knowledge transfer: sessions avec le successeur (enregistrees). 3) Identifier les zones de risque (bus factor). 4) Code propre et teste (le code doit parler de lui-meme). 5) Contacts disponibles pendant 1 mois apres le depart. 6) Pas de connaissances gardees en otage.
+
+Q560: "Si vous aviez un budget illimite et 6 mois, que feriez-vous pour ameliorer GISV2 ?"
+R560: 1) Observabilite complete (OpenTelemetry, Grafana stack). 2) App mobile (Flutter). 3) ML: prediction de maintenance, detection anomalies de conduite. 4) API publique pour les clients tiers. 5) Dashboard BI avance (Metabase/Superset). 6) Kubernetes pour le scaling auto. 7) Tests E2E complets (Playwright). 8) Multi-region deployment. 9) CI/CD pipeline parfait (< 5 min). 10) Equipe de 5 devs bien formee.
