@@ -199,4 +199,19 @@ export class EmployeesComponent implements OnInit {
     if (days <= 30) return `Permis expire dans ${days}j`;
     return `Permis valide (${days}j)`;
   }
+
+  getActiveCount(): number {
+    return this.allDrivers.filter(d => d.status === 'active').length;
+  }
+
+  getInactiveCount(): number {
+    return this.allDrivers.filter(d => d.status !== 'active').length;
+  }
+
+  getExpiringPermitsCount(): number {
+    return this.allDrivers.filter(d => {
+      const days = this.getDaysUntilPermitExpiry(d);
+      return days <= 30;
+    }).length;
+  }
 }

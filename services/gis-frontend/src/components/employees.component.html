@@ -8,132 +8,208 @@
 />
 
 <app-layout>
-  <div class="employees-page">
-    <div class="filter-bar">
-      <div class="search-wrapper">
-        <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-        </svg>
-        <input type="text" class="search-input" placeholder="Rechercher un chauffeur..." [(ngModel)]="searchQuery" (input)="filterEmployees()">
+  <div class="drivers-page">
+    <!-- Page Header -->
+    <div class="page-header">
+      <div class="header-left">
+        <div class="header-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="page-title">Chauffeurs</h1>
+          <p class="page-subtitle">{{ drivers.length }} chauffeur{{ drivers.length > 1 ? 's' : '' }} enregistré{{ drivers.length > 1 ? 's' : '' }}</p>
+        </div>
       </div>
-      <select class="filter-select" [(ngModel)]="filterStatus" (change)="filterEmployees()">
-        <option value="">Tous les statuts</option>
-        <option value="active">Actifs</option>
-        <option value="inactive">Inactifs</option>
-      </select>
       <button class="btn-add" (click)="openAddPopup()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <line x1="12" y1="5" x2="12" y2="19"/>
           <line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
         Nouveau chauffeur
       </button>
     </div>
-    <div class="employees-grid">
-      @for (driver of drivers; track driver.id) {
-        <div class="employee-card">
-          <div class="employee-header">
-            <div class="employee-avatar">{{ (driver.firstName || 'C').charAt(0) }}</div>
-            <div class="employee-status">
-              <span class="status-badge" [class.active]="driver.status === 'active'" [class.inactive]="driver.status === 'inactive'">
-                {{ driver.status === 'active' ? 'Actif' : 'Inactif' }}
-              </span>
-            </div>
-          </div>
 
-          <div class="employee-body">
-            <h3>{{ driver.firstName }} {{ driver.lastName }}</h3>
-            <p class="employee-role">Chauffeur</p>
+    <!-- Stats Row -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-icon total">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value">{{ allDrivers.length }}</span>
+          <span class="stat-label">Total</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon active">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value">{{ getActiveCount() }}</span>
+          <span class="stat-label">Actifs</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon inactive">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value">{{ getInactiveCount() }}</span>
+          <span class="stat-label">Inactifs</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon warning">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value">{{ getExpiringPermitsCount() }}</span>
+          <span class="stat-label">Permis &#224; renouveler</span>
+        </div>
+      </div>
+    </div>
 
-            <div class="employee-details">
-              <div class="detail-item">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                  <polyline points="22,6 12,13 2,6"/>
-                </svg>
-                <span>{{ driver.email }}</span>
-              </div>
-              @if (driver.phone) {
-                <div class="detail-item">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-                  </svg>
-                  <span>{{ driver.phone }}</span>
-                </div>
-              }
-            </div>
+    <!-- Filters -->
+    <div class="filter-bar">
+      <div class="search-wrapper">
+        <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input type="text" class="search-input" placeholder="Rechercher par nom, email..." [(ngModel)]="searchQuery" (input)="filterEmployees()">
+      </div>
+      <select class="filter-select" [(ngModel)]="filterStatus" (change)="filterEmployees()">
+        <option value="">Tous les statuts</option>
+        <option value="active">Actifs</option>
+        <option value="inactive">Inactifs</option>
+      </select>
+    </div>
 
-            <div class="employee-meta">
-              @if (driver.hireDate) {
-                <div class="meta-item">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                    <line x1="16" y1="2" x2="16" y2="6"/>
-                    <line x1="8" y1="2" x2="8" y2="6"/>
-                    <line x1="3" y1="10" x2="21" y2="10"/>
-                  </svg>
-                  <span>Embauché le {{ formatDate(driver.hireDate) }}</span>
+    <!-- Table -->
+    <div class="table-container">
+      <table class="drivers-table">
+        <thead>
+          <tr>
+            <th class="col-driver">Chauffeur</th>
+            <th class="col-contact">Contact</th>
+            <th class="col-permit">Permis</th>
+            <th class="col-vehicle">Véhicule</th>
+            <th class="col-status">Statut</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (driver of drivers; track driver.id) {
+            <tr class="driver-row" (click)="openDriverDetail(driver)">
+              <!-- Driver -->
+              <td class="col-driver">
+                <div class="driver-cell">
+                  <div class="driver-avatar" [class.active]="driver.status === 'active'" [class.inactive]="driver.status !== 'active'">
+                    {{ (driver.firstName || 'C').charAt(0) }}{{ (driver.lastName || '').charAt(0) }}
+                  </div>
+                  <div class="driver-name-group">
+                    <span class="driver-name">{{ driver.firstName }} {{ driver.lastName }}</span>
+                    @if (driver.cin) {
+                      <span class="driver-cin">CIN: {{ driver.cin }}</span>
+                    }
+                    @if (driver.hireDate) {
+                      <span class="driver-hire">Depuis le {{ formatDate(driver.hireDate) }}</span>
+                    }
+                  </div>
                 </div>
-              }
-              @if (driver.assignedVehicleName) {
-                <div class="meta-item">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M5 17h-2v-6l2-5h9l4 5v6h-2"/>
-                    <circle cx="7" cy="17" r="2"/>
-                    <circle cx="17" cy="17" r="2"/>
-                  </svg>
-                  <span>{{ driver.assignedVehicleName }} ({{ driver.assignedVehiclePlate }})</span>
+              </td>
+
+              <!-- Contact -->
+              <td class="col-contact">
+                <div class="contact-cell">
+                  <div class="contact-row">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                    <span>{{ driver.email || '-' }}</span>
+                  </div>
+                  @if (driver.phone) {
+                    <div class="contact-row">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.88.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.93.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                      <span>{{ driver.phone }}</span>
+                    </div>
+                  }
                 </div>
-              }
-              @if (driver.permitType) {
-                <div class="meta-item">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="2" y="5" width="20" height="14" rx="2"/>
-                    <line x1="2" y1="10" x2="22" y2="10"/>
-                  </svg>
-                  <span>Permis {{ driver.permitType }} {{ driver.permitExpiry ? '- Exp. ' + formatDate(driver.permitExpiry) : '' }}</span>
-                </div>
-              }
-              @if (driver.permitExpiry) {
-                <div class="permit-deadline" [class]="getPermitStatus(driver)">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                  </svg>
-                  <span>{{ getPermitAlertText(driver) }}</span>
-                  <button class="btn-edit-expiry" (click)="openEditPopup(driver); $event.stopPropagation()" title="Modifier la date d'expiration">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </td>
+
+              <!-- Permit -->
+              <td class="col-permit">
+                @if (driver.permitType) {
+                  <div class="permit-cell">
+                    <span class="permit-type">{{ driver.permitType }}</span>
+                    @if (driver.permitExpiry) {
+                      <div class="permit-expiry" [class]="getPermitStatus(driver)">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        {{ getPermitAlertText(driver) }}
+                      </div>
+                    }
+                  </div>
+                } @else {
+                  <span class="text-muted">-</span>
+                }
+              </td>
+
+              <!-- Vehicle -->
+              <td class="col-vehicle">
+                @if (driver.assignedVehicleName) {
+                  <div class="vehicle-cell">
+                    <div class="vehicle-badge">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 17h-2v-6l2-5h9l4 5v6h-2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
+                      <span>{{ driver.assignedVehicleName }}</span>
+                    </div>
+                    @if (driver.assignedVehiclePlate) {
+                      <span class="vehicle-plate">{{ driver.assignedVehiclePlate }}</span>
+                    }
+                  </div>
+                } @else {
+                  <span class="text-muted">Non assign&#233;</span>
+                }
+              </td>
+
+              <!-- Status -->
+              <td class="col-status">
+                <span class="status-pill" [class.active]="driver.status === 'active'" [class.inactive]="driver.status !== 'active'">
+                  <span class="status-dot"></span>
+                  {{ driver.status === 'active' ? 'Actif' : 'Inactif' }}
+                </span>
+              </td>
+
+              <!-- Actions -->
+              <td class="col-actions" (click)="$event.stopPropagation()">
+                <div class="actions-cell">
+                  <button class="action-btn edit" title="Modifier" (click)="openEditPopup(driver)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                  <button class="action-btn detail" title="Voir détails" (click)="openDriverDetail(driver)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                  <button class="action-btn danger" title="Supprimer" (click)="deleteDriver(driver)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                   </button>
                 </div>
-              }
-              @if (driver.cin) {
-                <div class="meta-item">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                    <circle cx="12" cy="7" r="4"/>
-                  </svg>
-                  <span>CIN: {{ driver.cin }}</span>
-                </div>
-              }
-            </div>
-          </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
 
-          <div class="employee-footer">
-            <button class="btn-secondary" (click)="openEditPopup(driver)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-              </svg>
-              Modifier
-            </button>
-            <button class="btn-link" type="button" (click)="openDriverDetail(driver); $event.stopPropagation()">Détails</button>
-            <button class="btn-danger" type="button" (click)="deleteDriver(driver); $event.stopPropagation()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-              </svg>
-              Supprimer
-            </button>
-          </div>
+      @if (drivers.length === 0) {
+        <div class="empty-state">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          <p>Aucun chauffeur trouv&#233;</p>
+          <span>Ajoutez un chauffeur ou modifiez vos filtres</span>
         </div>
       }
     </div>
