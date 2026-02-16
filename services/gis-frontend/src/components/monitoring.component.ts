@@ -1778,15 +1778,13 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // GPS devices send a position every ~30min when parked, but each drifts by 100-300m
   // causing Valhalla to route through buildings. This keeps only:
   //   - First position of each parked sequence (anchor)
-  //   - Last position before movement resumes (transition)
   //   - All moving positions untouched
+  //   - No artificial positions are created (coordinates are never modified)
   private deduplicateParkedPositions(positions: any[]): any[] {
     if (positions.length < 3) return positions;
     
     const result: any[] = [];
     let inParkedSequence = false;
-    let parkedAnchor: any = null;
-    let lastParkedPos: any = null;
     
     for (let i = 0; i < positions.length; i++) {
       const pos = positions[i];
@@ -1796,33 +1794,18 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       
       if (isParked) {
         if (!inParkedSequence) {
-          // Start of parked sequence: keep this as anchor
+          // Start of parked sequence: keep only the first position as anchor
           inParkedSequence = true;
-          parkedAnchor = pos;
           result.push(pos);
         }
-        // Track last parked position for transition
-        lastParkedPos = pos;
+        // Skip all subsequent parked positions (they are GPS drift noise)
       } else {
         if (inParkedSequence) {
-          // Transition from parked to moving: add last parked pos if different from anchor
-          if (lastParkedPos && lastParkedPos !== parkedAnchor) {
-            // Use anchor coordinates for the transition point to avoid GPS drift jump
-            const transitionPos = { ...lastParkedPos, latitude: parkedAnchor.latitude, longitude: parkedAnchor.longitude };
-            result.push(transitionPos);
-          }
           inParkedSequence = false;
-          parkedAnchor = null;
-          lastParkedPos = null;
         }
         // Always keep moving positions
         result.push(pos);
       }
-    }
-    
-    // If ended in a parked sequence, add the last position
-    if (inParkedSequence && lastParkedPos && lastParkedPos !== parkedAnchor) {
-      result.push({ ...lastParkedPos, latitude: parkedAnchor.latitude, longitude: parkedAnchor.longitude });
     }
     
     return result;
@@ -1836,22 +1819,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    // Only send moving positions to Valhalla for road snapping.
-    // Parked positions (speed=0, ignition off) should use raw GPS to avoid
-    // Valhalla routing through buildings between drifted parked points.
-    const points = this.playbackPositions.map(p => {
-      const speed = p.speedKph || p.speed || 0;
-      const ignitionOn = p.ignitionOn !== false;
-      return {
-        lat: p.latitude,
-        lon: p.longitude,
-        timestamp: p.recordedAt ? new Date(p.recordedAt).getTime() : null,
-        speed: speed,
-        heading: p.courseDeg || null,
-        ignitionOn: ignitionOn,
-        skipSnapping: speed < 2 && !ignitionOn  // Tell API to skip road snapping for parked points
-      };
-    });
+    // Prepare points for the API with speed and timestamp data
+    const points = this.playbackPositions.map(p => ({
+      lat: p.latitude,
+      lon: p.longitude,
+      timestamp: p.recordedAt ? new Date(p.recordedAt).getTime() : null,
+      speed: p.speedKph || 0,
+      heading: p.courseDeg || null,
+      ignitionOn: p.ignitionOn
+    }));
 
     try {
       // Call the smart processing endpoint (interpolation + optional road snapping)
@@ -1902,8 +1878,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     } catch (error) {
       console.warn('Smart route processing failed, using raw coordinates:', error);
-      // Fallback to raw GPS coordinates
+      // Fallback to raw GPS coordinates - MUST reset segmentBoundaries to avoid stale data
       this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
+      this.segmentBoundaries = [];
       this.matchedRouteIndex = 0;
     }
   }
