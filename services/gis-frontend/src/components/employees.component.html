@@ -97,6 +97,7 @@
             <th class="col-driver">Chauffeur</th>
             <th class="col-contact">Contact</th>
             <th class="col-permit">Permis</th>
+            <th class="col-deadline">Échéance</th>
             <th class="col-vehicle">Véhicule</th>
             <th class="col-status">Statut</th>
             <th class="col-actions">Actions</th>
@@ -142,14 +143,21 @@
               <!-- Permit -->
               <td class="col-permit">
                 @if (driver.permitType) {
-                  <div class="permit-cell">
-                    <span class="permit-type">{{ driver.permitType }}</span>
-                    @if (driver.permitExpiry) {
-                      <div class="permit-expiry" [class]="getPermitStatus(driver)">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                        {{ getPermitAlertText(driver) }}
-                      </div>
-                    }
+                  <span class="permit-type">{{ driver.permitType }}</span>
+                } @else {
+                  <span class="text-muted">-</span>
+                }
+              </td>
+
+              <!-- Échéance -->
+              <td class="col-deadline">
+                @if (driver.permitExpiry) {
+                  <div class="deadline-cell">
+                    <span class="deadline-date">{{ formatDate(driver.permitExpiry) }}</span>
+                    <div class="permit-expiry" [class]="getPermitStatus(driver)">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      {{ getPermitAlertText(driver) }}
+                    </div>
                   </div>
                 } @else {
                   <span class="text-muted">-</span>

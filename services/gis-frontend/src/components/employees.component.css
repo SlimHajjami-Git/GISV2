@@ -352,6 +352,19 @@
   50% { opacity: 0.7; }
 }
 
+/* Deadline Cell */
+.deadline-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.deadline-date {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
 /* Vehicle Cell */
 .vehicle-cell {
   display: flex;

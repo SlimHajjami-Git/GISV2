@@ -63,6 +63,17 @@
           </select>
         </div>
 
+        <!-- Driver Filter -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && drivers.length > 0">
+          <label class="field-label">Chauffeur</label>
+          <select class="field-select" [(ngModel)]="selectedDriverId" (change)="onDriverFilterChange()">
+            <option value="">Tous les chauffeurs</option>
+            @for (driver of drivers; track driver.id) {
+              <option [value]="driver.id">{{ driver.firstName }} {{ driver.lastName }}</option>
+            }
+          </select>
+        </div>
+
         <!-- Mileage Period Type Selector -->
         <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'mileage-period'">
           <label class="field-label">Type de période</label>

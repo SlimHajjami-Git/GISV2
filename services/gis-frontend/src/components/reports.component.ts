@@ -151,9 +151,11 @@ export class ReportsComponent implements OnInit {
   showTemplateDropdown = false;
 
   vehicles: any[] = [];
+  drivers: any[] = [];
   selectedTemplate: any = null;
   selectedTemplateId = '';
   selectedVehicleId = '';
+  selectedDriverId = '';
   selectedVehicleIds: string[] = [];
 
   // Mileage Period Report options
@@ -355,6 +357,19 @@ export class ReportsComponent implements OnInit {
       next: (vehicles) => this.vehicles = vehicles,
       error: (err) => console.error('Error loading vehicles:', err)
     });
+    this.apiService.getDrivers().subscribe({
+      next: (drivers) => this.drivers = drivers,
+      error: (err) => console.error('Error loading drivers:', err)
+    });
+  }
+
+  onDriverFilterChange() {
+    if (this.selectedDriverId) {
+      const driver = this.drivers.find(d => String(d.id) === String(this.selectedDriverId));
+      if (driver?.assignedVehicleId) {
+        this.selectedVehicleId = String(driver.assignedVehicleId);
+      }
+    }
   }
 
   initializeDates() {

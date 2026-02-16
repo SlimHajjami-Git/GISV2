@@ -7,11 +7,12 @@ import { ThemeService } from '../../services/theme.service';
 import { PermissionService, ModuleKey } from '../../services/permission.service';
 import { NotificationService, Notification } from '../../services/notification.service';
 import { SignalRService } from '../../services/signalr.service';
+import { ChatComponent } from './chat.component';
 
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterModule],
+  imports: [CommonModule, RouterModule, ChatComponent],
   template: `
     <div class="app-container">
       <!-- WIALON-STYLE TOP NAVIGATION BAR -->
@@ -298,6 +299,9 @@ import { SignalRService } from '../../services/signalr.service';
       <main class="main-content">
         <ng-content></ng-content>
       </main>
+
+      <!-- Chat Widget -->
+      <app-chat></app-chat>
     </div>
   `,
   styles: [`

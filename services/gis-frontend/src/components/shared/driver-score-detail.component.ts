@@ -11,30 +11,49 @@ import { DateFilterBarComponent } from './ui/date-filter-bar.component';
   template: `
     <div class="overlay" *ngIf="isOpen" (click)="close()">
       <div class="detail-panel" (click)="$event.stopPropagation()">
-        <!-- Header -->
+        <!-- Header with gradient -->
         <div class="panel-header">
-          <div class="driver-info">
-            <div class="avatar" [style.background]="getScoreColor(driverScore?.overallScore || 0)">
-              {{ employee?.name?.charAt(0) || '?' }}
-            </div>
-            <div class="info">
-              <div class="name-row">
-                <h2>{{ employee?.name }}</h2>
-                <button class="chat-btn" title="Chat instantané" (click)="openChat()">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                  </svg>
-                </button>
-              </div>
-              <span class="role">{{ getRoleLabel(employee?.employeeRole) }}</span>
-            </div>
-          </div>
+          <div class="header-bg"></div>
           <button class="close-btn" (click)="close()">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
+          <div class="header-content">
+            <div class="avatar-wrapper">
+              <div class="avatar" [style.border-color]="getScoreColor(driverScore?.overallScore || 0)">
+                {{ getInitials() }}
+              </div>
+              <div class="score-badge" [style.background]="getScoreColor(driverScore?.overallScore || 0)">
+                {{ driverScore?.overallScore || 0 }}
+              </div>
+            </div>
+            <h2 class="driver-name">{{ employee?.name }}</h2>
+            <div class="driver-meta">
+              <span class="role-tag">{{ getRoleLabel(employee?.employeeRole) }}</span>
+              <span class="status-tag" [class.active]="employee?.status === 'active'" [class.inactive]="employee?.status !== 'active'">
+                <span class="dot"></span>{{ employee?.status === 'active' ? 'Actif' : 'Inactif' }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Stats Bar -->
+        <div class="quick-stats">
+          <div class="qs-item">
+            <span class="qs-value">{{ driverScore?.totalTrips || 0 }}</span>
+            <span class="qs-label">Trajets</span>
+          </div>
+          <div class="qs-divider"></div>
+          <div class="qs-item">
+            <span class="qs-value">{{ driverScore?.totalKmDriven || 0 }}</span>
+            <span class="qs-label">Km parcourus</span>
+          </div>
+          <div class="qs-divider"></div>
+          <div class="qs-item">
+            <span class="qs-value">{{ driverScore?.averageSpeed || 0 }}</span>
+            <span class="qs-label">Km/h moy.</span>
+          </div>
         </div>
 
         <!-- Date Filter -->
@@ -50,33 +69,66 @@ import { DateFilterBarComponent } from './ui/date-filter-bar.component';
 
         <!-- Content -->
         <div class="panel-content">
-          <!-- Personal Info Section -->
-          <div class="section">
+          <!-- Info Cards Row -->
+          <div class="info-cards">
+            <div class="info-card">
+              <div class="ic-icon email-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              </div>
+              <div class="ic-content">
+                <span class="ic-label">Email</span>
+                <span class="ic-value">{{ employee?.email || '-' }}</span>
+              </div>
+            </div>
+            <div class="info-card">
+              <div class="ic-icon phone-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.88.37 1.9.7 2.81 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.93.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              </div>
+              <div class="ic-content">
+                <span class="ic-label">Téléphone</span>
+                <span class="ic-value">{{ employee?.phone || '-' }}</span>
+              </div>
+            </div>
+            <div class="info-card">
+              <div class="ic-icon date-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              </div>
+              <div class="ic-content">
+                <span class="ic-label">Embauché le</span>
+                <span class="ic-value">{{ formatDate(employee?.hireDate) }}</span>
+              </div>
+            </div>
+            <div class="info-card" *ngIf="employee?.cin">
+              <div class="ic-icon cin-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+              </div>
+              <div class="ic-content">
+                <span class="ic-label">CIN</span>
+                <span class="ic-value">{{ employee?.cin }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Permit Section -->
+          <div class="section" *ngIf="employee?.permitType">
             <h3 class="section-title">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
-              Informations Personnelles
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+              Permis de conduire
             </h3>
-            <div class="info-grid">
-              <div class="info-item">
-                <span class="label">Email</span>
-                <span class="value">{{ employee?.email }}</span>
+            <div class="permit-card">
+              <div class="permit-top">
+                <div class="permit-type-badge">{{ employee?.permitType }}</div>
+                <div class="permit-number" *ngIf="employee?.permitNumber">N° {{ employee?.permitNumber }}</div>
               </div>
-              <div class="info-item">
-                <span class="label">Téléphone</span>
-                <span class="value">{{ employee?.phone }}</span>
-              </div>
-              <div class="info-item">
-                <span class="label">Statut</span>
-                <span class="value status" [class.active]="employee?.status === 'active'">
-                  {{ employee?.status === 'active' ? 'Actif' : 'Inactif' }}
-                </span>
-              </div>
-              <div class="info-item">
-                <span class="label">Date d'embauche</span>
-                <span class="value">{{ formatDate(employee?.hireDate) }}</span>
+              <div class="permit-bottom" *ngIf="employee?.permitExpiry">
+                <div class="permit-expiry-info">
+                  <span class="permit-expiry-label">Date d'expiration</span>
+                  <span class="permit-expiry-date">{{ formatDate(employee?.permitExpiry) }}</span>
+                </div>
+                <div class="permit-status-badge" [class]="getPermitStatusClass()">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  {{ getPermitDeadlineText() }}
+                </div>
               </div>
             </div>
           </div>
@@ -84,100 +136,53 @@ import { DateFilterBarComponent } from './ui/date-filter-bar.component';
           <!-- Assigned Vehicle Section -->
           <div class="section" *ngIf="assignedVehicle">
             <h3 class="section-title">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M5 17h-2v-6l2-5h9l4 5v6h-2"/>
-                <circle cx="7" cy="17" r="2"/>
-                <circle cx="17" cy="17" r="2"/>
-              </svg>
-              Véhicule Assigné
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 17h-2v-6l2-5h9l4 5v6h-2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
+              Véhicule assigné
             </h3>
             <div class="vehicle-card">
-              <div class="vehicle-icon">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M5 17h-2v-6l2-5h9l4 5v6h-2"/>
-                  <circle cx="7" cy="17" r="2"/>
-                  <circle cx="17" cy="17" r="2"/>
-                </svg>
+              <div class="vc-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 17h-2v-6l2-5h9l4 5v6h-2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
               </div>
-              <div class="vehicle-info">
-                <h4>{{ assignedVehicle.name }}</h4>
-                <p>{{ assignedVehicle.brand }} {{ assignedVehicle.model }}</p>
-                <span class="plate">{{ assignedVehicle.plate }}</span>
+              <div class="vc-info">
+                <span class="vc-name">{{ assignedVehicle.name }}</span>
+                <span class="vc-brand">{{ assignedVehicle.brand }} {{ assignedVehicle.model }}</span>
               </div>
+              <span class="vc-plate">{{ assignedVehicle.plate }}</span>
             </div>
           </div>
 
           <!-- Driving Score Section -->
           <div class="section">
             <h3 class="section-title">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 20V10"/>
-                <path d="M18 20V4"/>
-                <path d="M6 20v-4"/>
-              </svg>
-              Score de Conduite
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+              Score de conduite
             </h3>
 
-            <!-- Overall Score -->
-            <div class="score-overview">
-              <div class="score-circle" [style.--score-color]="getScoreColor(driverScore?.overallScore || 0)">
-                <div class="score-value">{{ driverScore?.overallScore || 0 }}</div>
-                <div class="score-label">/ 100</div>
-              </div>
-              <div class="score-details">
-                <div class="detail-item">
-                  <span class="detail-label">Trajets effectués</span>
-                  <span class="detail-value">{{ driverScore?.totalTrips || 0 }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">Distance totale</span>
-                  <span class="detail-value">{{ driverScore?.totalKmDriven || 0 }} km</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">Vitesse moyenne</span>
-                  <span class="detail-value">{{ driverScore?.averageSpeed || 0 }} km/h</span>
-                </div>
-              </div>
-            </div>
-
             <!-- Behavior Metrics -->
-            <div class="metrics-grid">
-              <div class="metric-card warning">
-                <div class="metric-icon">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <line x1="12" y1="8" x2="12" y2="12"/>
-                    <line x1="12" y1="16" x2="12.01" y2="16"/>
-                  </svg>
+            <div class="metrics-row">
+              <div class="metric-tile braking">
+                <div class="mt-header">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  <span class="mt-count">{{ driverScore?.harshBrakingCount || 0 }}</span>
                 </div>
-                <div class="metric-value">{{ driverScore?.harshBrakingCount || 0 }}</div>
-                <div class="metric-label">Freinages Brusques</div>
+                <span class="mt-label">Freinages brusques</span>
+                <div class="mt-bar"><div class="mt-fill" [style.width.%]="getMetricPercent(driverScore?.harshBrakingCount || 0)"></div></div>
               </div>
-              <div class="metric-card danger">
-                <div class="metric-icon">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
-                    <polyline points="17 6 23 6 23 12"/>
-                  </svg>
+              <div class="metric-tile acceleration">
+                <div class="mt-header">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                  <span class="mt-count">{{ driverScore?.harshAccelerationCount || 0 }}</span>
                 </div>
-                <div class="metric-value">{{ driverScore?.harshAccelerationCount || 0 }}</div>
-                <div class="metric-label">Accélérations Brusques</div>
+                <span class="mt-label">Accélérations brusques</span>
+                <div class="mt-bar"><div class="mt-fill" [style.width.%]="getMetricPercent(driverScore?.harshAccelerationCount || 0)"></div></div>
               </div>
-              <div class="metric-card info">
-                <div class="metric-icon">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 2v4"/>
-                    <path d="m16.2 7.8 2.9-2.9"/>
-                    <path d="M18 12h4"/>
-                    <path d="m16.2 16.2 2.9 2.9"/>
-                    <path d="M12 18v4"/>
-                    <path d="m4.9 19.1 2.9-2.9"/>
-                    <path d="M2 12h4"/>
-                    <path d="m4.9 4.9 2.9 2.9"/>
-                  </svg>
+              <div class="metric-tile speeding">
+                <div class="mt-header">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/></svg>
+                  <span class="mt-count">{{ driverScore?.speedingCount || 0 }}</span>
                 </div>
-                <div class="metric-value">{{ driverScore?.speedingCount || 0 }}</div>
-                <div class="metric-label">Excès de Vitesse</div>
+                <span class="mt-label">Excès de vitesse</span>
+                <div class="mt-bar"><div class="mt-fill" [style.width.%]="getMetricPercent(driverScore?.speedingCount || 0)"></div></div>
               </div>
             </div>
           </div>
@@ -185,29 +190,26 @@ import { DateFilterBarComponent } from './ui/date-filter-bar.component';
           <!-- Consumption per Vehicle -->
           <div class="section" *ngIf="driverScore?.vehicleConsumption?.length">
             <h3 class="section-title">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 3v18h18"/>
-                <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/>
-              </svg>
-              Consommation par Véhicule
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>
+              Consommation par véhicule
             </h3>
             <div class="consumption-table">
-              <div class="table-header">
+              <div class="ct-header">
                 <span>Véhicule</span>
                 <span>Km</span>
-                <span>Conso. Conducteur</span>
-                <span>Conso. Véhicule</span>
-                <span>Différence</span>
+                <span>Conso.</span>
+                <span>Réf.</span>
+                <span>Diff.</span>
               </div>
-              <div class="table-row" *ngFor="let vc of driverScore?.vehicleConsumption">
-                <div class="vehicle-cell">
-                  <span class="vehicle-name">{{ vc.vehicleName }}</span>
-                  <span class="vehicle-plate">{{ vc.vehiclePlate }}</span>
+              <div class="ct-row" *ngFor="let vc of driverScore?.vehicleConsumption">
+                <div class="ct-vehicle">
+                  <span class="ct-name">{{ vc.vehicleName }}</span>
+                  <span class="ct-plate">{{ vc.vehiclePlate }}</span>
                 </div>
-                <span class="km-cell">{{ vc.kmDriven }}</span>
-                <span class="consumption-cell">{{ vc.avgConsumption }} L/100km</span>
-                <span class="consumption-cell">{{ vc.vehicleAvgConsumption }} L/100km</span>
-                <span class="diff-cell" [class.positive]="vc.avgConsumption <= vc.vehicleAvgConsumption" [class.negative]="vc.avgConsumption > vc.vehicleAvgConsumption">
+                <span class="ct-km">{{ vc.kmDriven }}</span>
+                <span class="ct-val">{{ vc.avgConsumption }}</span>
+                <span class="ct-val">{{ vc.vehicleAvgConsumption }}</span>
+                <span class="ct-diff" [class.positive]="vc.avgConsumption <= vc.vehicleAvgConsumption" [class.negative]="vc.avgConsumption > vc.vehicleAvgConsumption">
                   {{ getDiffLabel(vc.avgConsumption, vc.vehicleAvgConsumption) }}
                 </span>
               </div>
@@ -219,449 +221,207 @@ import { DateFilterBarComponent } from './ui/date-filter-bar.component';
   `,
   styles: [`
     .overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.5);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      z-index: 1000;
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px);
+      display: flex; justify-content: flex-end; z-index: 1000;
       animation: fadeIn 0.2s ease;
     }
-
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
     .detail-panel {
-      background: white;
-      border-radius: 12px;
-      width: 90%;
-      max-width: 800px;
-      max-height: 90vh;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      animation: slideUp 0.3s ease;
+      background: #fff; width: 520px; max-width: 100vw; height: 100vh;
+      display: flex; flex-direction: column; animation: slideIn 0.3s ease;
+      box-shadow: -8px 0 30px rgba(0,0,0,0.15);
     }
+    @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
 
-    @keyframes slideUp {
-      from { transform: translateY(20px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-
+    /* Header */
     .panel-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 20px 24px;
-      border-bottom: 1px solid #e2e8f0;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
+      position: relative; padding: 0; overflow: hidden;
     }
-
-    .driver-info {
-      display: flex;
-      align-items: center;
-      gap: 16px;
+    .header-bg {
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%);
     }
-
-    .avatar {
-      width: 56px;
-      height: 56px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 24px;
-      font-weight: 600;
-      color: white;
-      border: 3px solid rgba(255,255,255,0.3);
-    }
-
-    .name-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .info h2 {
-      margin: 0;
-      font-size: 20px;
-      font-weight: 600;
-    }
-
-    .chat-btn {
-      background: rgba(255,255,255,0.2);
-      border: none;
-      border-radius: 50%;
-      width: 32px;
-      height: 32px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      color: white;
-      transition: all 0.2s;
-    }
-
-    .chat-btn:hover {
-      background: rgba(255,255,255,0.3);
-      transform: scale(1.1);
-    }
-
-    .date-filter-wrapper :deep(.btn-apply) {
-      display: none;
-    }
-
-    .role {
-      font-size: 14px;
-      opacity: 0.9;
-    }
-
     .close-btn {
-      background: rgba(255,255,255,0.2);
-      border: none;
-      border-radius: 8px;
-      padding: 8px;
-      cursor: pointer;
-      color: white;
-      transition: background 0.2s;
+      position: absolute; top: 12px; right: 12px; z-index: 2;
+      width: 32px; height: 32px; border-radius: 8px;
+      background: rgba(255,255,255,0.15); border: none;
+      color: #fff; cursor: pointer; display: flex;
+      align-items: center; justify-content: center;
+      transition: background 0.15s;
     }
+    .close-btn:hover { background: rgba(255,255,255,0.25); }
 
-    .close-btn:hover {
-      background: rgba(255,255,255,0.3);
+    .header-content {
+      position: relative; z-index: 1; padding: 28px 24px 20px;
+      display: flex; flex-direction: column; align-items: center; text-align: center;
     }
-
-    .panel-content {
-      padding: 24px;
-      overflow-y: auto;
-      flex: 1;
-    }
-
-    .section {
-      margin-bottom: 28px;
-    }
-
-    .section-title {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 16px;
-      font-weight: 600;
-      color: #1e293b;
-      margin-bottom: 16px;
-      padding-bottom: 8px;
-      border-bottom: 2px solid #e2e8f0;
-    }
-
-    .section-title svg {
-      color: #6366f1;
-    }
-
-    .info-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 16px;
-    }
-
-    .info-item {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .info-item .label {
-      font-size: 12px;
-      color: #64748b;
+    .avatar-wrapper { position: relative; margin-bottom: 12px; }
+    .avatar {
+      width: 64px; height: 64px; border-radius: 50%;
+      background: rgba(255,255,255,0.15); border: 3px solid;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; font-weight: 700; color: #fff;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
     }
-
-    .info-item .value {
-      font-size: 14px;
-      color: #1e293b;
-      font-weight: 500;
+    .score-badge {
+      position: absolute; bottom: -4px; right: -4px;
+      width: 28px; height: 28px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 800; color: #fff;
+      border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.2);
     }
-
-    .info-item .value.status.active {
-      color: #10b981;
+    .driver-name { margin: 0; font-size: 18px; font-weight: 700; color: #fff; }
+    .driver-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    .role-tag {
+      padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;
+      background: rgba(255,255,255,0.2); color: #fff;
     }
-
-    .vehicle-card {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      padding: 16px;
-      background: #f8fafc;
-      border-radius: 10px;
-      border: 1px solid #e2e8f0;
+    .status-tag {
+      display: flex; align-items: center; gap: 4px;
+      padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;
     }
+    .status-tag.active { background: rgba(16,185,129,0.2); color: #a7f3d0; }
+    .status-tag.inactive { background: rgba(239,68,68,0.2); color: #fecaca; }
+    .status-tag .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 
-    .vehicle-icon {
-      width: 56px;
-      height: 56px;
-      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
+    /* Quick Stats */
+    .quick-stats {
+      display: flex; align-items: center; justify-content: center;
+      padding: 14px 24px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
     }
+    .qs-item { display: flex; flex-direction: column; align-items: center; flex: 1; }
+    .qs-value { font-size: 18px; font-weight: 800; color: #0f172a; }
+    .qs-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 1px; }
+    .qs-divider { width: 1px; height: 28px; background: #e2e8f0; }
 
-    .vehicle-info h4 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 600;
-      color: #1e293b;
+    .date-filter-wrapper { border-bottom: 1px solid #e2e8f0; }
+    .date-filter-wrapper :deep(.btn-apply) { display: none; }
+
+    /* Content */
+    .panel-content { padding: 20px 24px; overflow-y: auto; flex: 1; }
+
+    /* Info Cards */
+    .info-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+    .info-card {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
     }
-
-    .vehicle-info p {
-      margin: 4px 0;
-      font-size: 14px;
-      color: #64748b;
+    .ic-icon {
+      width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
     }
+    .ic-icon.email-icon { background: #ede9fe; color: #7c3aed; }
+    .ic-icon.phone-icon { background: #dcfce7; color: #16a34a; }
+    .ic-icon.date-icon { background: #dbeafe; color: #2563eb; }
+    .ic-icon.cin-icon { background: #fef3c7; color: #d97706; }
+    .ic-content { display: flex; flex-direction: column; min-width: 0; }
+    .ic-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.3px; }
+    .ic-value { font-size: 12px; font-weight: 600; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-    .plate {
-      display: inline-block;
-      padding: 4px 10px;
-      background: #1e293b;
-      color: white;
-      font-size: 12px;
-      font-weight: 600;
-      border-radius: 4px;
-      letter-spacing: 1px;
+    /* Sections */
+    .section { margin-bottom: 20px; }
+    .section-title {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; font-weight: 700; color: #0f172a;
+      margin: 0 0 10px; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0;
     }
+    .section-title svg { color: #6366f1; }
 
-    .score-overview {
-      display: flex;
-      align-items: center;
-      gap: 32px;
-      padding: 24px;
-      background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-      border-radius: 12px;
-      margin-bottom: 20px;
+    /* Permit Card */
+    .permit-card {
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden;
     }
-
-    .score-circle {
-      width: 120px;
-      height: 120px;
-      border-radius: 50%;
-      background: conic-gradient(var(--score-color) calc(var(--score, 0) * 3.6deg), #e2e8f0 0deg);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-    }
-
-    .score-circle::before {
-      content: '';
-      position: absolute;
-      width: 90px;
-      height: 90px;
-      background: white;
-      border-radius: 50%;
-    }
-
-    .score-value {
-      position: relative;
-      font-size: 36px;
-      font-weight: 700;
-      color: #1e293b;
-    }
-
-    .score-label {
-      position: relative;
-      font-size: 14px;
-      color: #64748b;
-    }
-
-    .score-details {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .score-details .detail-item {
-      display: flex;
-      justify-content: space-between;
-      padding: 8px 0;
+    .permit-top {
+      display: flex; align-items: center; gap: 10px; padding: 12px 14px;
       border-bottom: 1px solid #e2e8f0;
     }
+    .permit-type-badge {
+      padding: 4px 12px; background: linear-gradient(135deg, #6366f1, #4f46e5);
+      color: #fff; border-radius: 6px; font-size: 13px; font-weight: 800;
+    }
+    .permit-number { font-size: 12px; color: #64748b; }
+    .permit-bottom { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; }
+    .permit-expiry-info { display: flex; flex-direction: column; }
+    .permit-expiry-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; }
+    .permit-expiry-date { font-size: 13px; font-weight: 700; color: #0f172a; }
+    .permit-status-badge {
+      display: flex; align-items: center; gap: 4px;
+      padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
+    }
+    .permit-status-badge.ok { background: #dcfce7; color: #16a34a; }
+    .permit-status-badge.warning { background: #fef3c7; color: #d97706; }
+    .permit-status-badge.critical { background: #fee2e2; color: #dc2626; animation: pulse 2s infinite; }
+    .permit-status-badge.expired { background: #1e293b; color: #fff; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.7; } }
 
-    .score-details .detail-label {
-      color: #64748b;
-      font-size: 14px;
+    /* Vehicle Card */
+    .vehicle-card {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+    }
+    .vc-icon {
+      width: 44px; height: 44px; border-radius: 10px;
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0;
+    }
+    .vc-info { flex: 1; display: flex; flex-direction: column; }
+    .vc-name { font-size: 13px; font-weight: 600; color: #0f172a; }
+    .vc-brand { font-size: 11px; color: #64748b; }
+    .vc-plate {
+      padding: 4px 10px; background: #1e293b; color: #fff; border-radius: 4px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.5px; flex-shrink: 0;
     }
 
-    .score-details .detail-value {
-      font-weight: 600;
-      color: #1e293b;
-      font-size: 14px;
+    /* Metrics */
+    .metrics-row { display: flex; gap: 10px; }
+    .metric-tile {
+      flex: 1; padding: 14px; border-radius: 10px; border: 1px solid;
     }
+    .metric-tile.braking { background: #fef3c7; border-color: #fde68a; }
+    .metric-tile.braking svg { color: #d97706; }
+    .metric-tile.acceleration { background: #fee2e2; border-color: #fecaca; }
+    .metric-tile.acceleration svg { color: #dc2626; }
+    .metric-tile.speeding { background: #dbeafe; border-color: #bfdbfe; }
+    .metric-tile.speeding svg { color: #2563eb; }
 
-    .metrics-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
-    }
+    .mt-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .mt-count { font-size: 22px; font-weight: 800; color: #0f172a; }
+    .mt-label { font-size: 10px; color: #475569; text-transform: uppercase; letter-spacing: 0.3px; }
+    .mt-bar { height: 4px; background: rgba(0,0,0,0.08); border-radius: 2px; margin-top: 8px; }
+    .mt-fill { height: 100%; border-radius: 2px; background: currentColor; transition: width 0.3s; }
+    .metric-tile.braking .mt-fill { background: #d97706; }
+    .metric-tile.acceleration .mt-fill { background: #dc2626; }
+    .metric-tile.speeding .mt-fill { background: #2563eb; }
 
-    .metric-card {
-      padding: 20px;
-      border-radius: 12px;
-      text-align: center;
-      transition: transform 0.2s;
+    /* Consumption Table */
+    .consumption-table { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+    .ct-header {
+      display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+      padding: 8px 14px; background: #f8fafc;
+      font-size: 10px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.3px;
     }
-
-    .metric-card:hover {
-      transform: translateY(-2px);
+    .ct-row {
+      display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+      padding: 10px 14px; border-top: 1px solid #f1f5f9; align-items: center; font-size: 12px;
     }
-
-    .metric-card.warning {
-      background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-      border: 1px solid #f59e0b;
-    }
-
-    .metric-card.warning .metric-icon {
-      color: #d97706;
-    }
-
-    .metric-card.danger {
-      background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-      border: 1px solid #ef4444;
-    }
-
-    .metric-card.danger .metric-icon {
-      color: #dc2626;
-    }
-
-    .metric-card.info {
-      background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-      border: 1px solid #3b82f6;
-    }
-
-    .metric-card.info .metric-icon {
-      color: #2563eb;
-    }
-
-    .metric-value {
-      font-size: 32px;
-      font-weight: 700;
-      margin: 8px 0;
-      color: #1e293b;
-    }
-
-    .metric-label {
-      font-size: 12px;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .consumption-table {
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-
-    .table-header {
-      display: grid;
-      grid-template-columns: 2fr 1fr 1.5fr 1.5fr 1fr;
-      padding: 12px 16px;
-      background: #f8fafc;
-      font-size: 12px;
-      font-weight: 600;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .table-row {
-      display: grid;
-      grid-template-columns: 2fr 1fr 1.5fr 1.5fr 1fr;
-      padding: 14px 16px;
-      border-top: 1px solid #e2e8f0;
-      align-items: center;
-      font-size: 14px;
-    }
-
-    .table-row:hover {
-      background: #f8fafc;
-    }
-
-    .vehicle-cell {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .vehicle-name {
-      font-weight: 500;
-      color: #1e293b;
-    }
-
-    .vehicle-plate {
-      font-size: 12px;
-      color: #64748b;
-    }
-
-    .km-cell, .consumption-cell {
-      color: #475569;
-    }
-
-    .diff-cell {
-      font-weight: 600;
-      padding: 4px 8px;
-      border-radius: 4px;
-      text-align: center;
-    }
-
-    .diff-cell.positive {
-      background: #dcfce7;
-      color: #16a34a;
-    }
-
-    .diff-cell.negative {
-      background: #fee2e2;
-      color: #dc2626;
-    }
+    .ct-row:hover { background: #f8fafc; }
+    .ct-vehicle { display: flex; flex-direction: column; }
+    .ct-name { font-weight: 600; color: #0f172a; }
+    .ct-plate { font-size: 10px; color: #94a3b8; }
+    .ct-km, .ct-val { color: #475569; }
+    .ct-diff { font-weight: 700; padding: 2px 6px; border-radius: 4px; text-align: center; font-size: 11px; }
+    .ct-diff.positive { background: #dcfce7; color: #16a34a; }
+    .ct-diff.negative { background: #fee2e2; color: #dc2626; }
 
     @media (max-width: 768px) {
-      .detail-panel {
-        width: 100%;
-        max-width: none;
-        max-height: 100vh;
-        border-radius: 0;
-      }
-
-      .info-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .metrics-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .score-overview {
-        flex-direction: column;
-        text-align: center;
-      }
-
-      .table-header, .table-row {
-        grid-template-columns: 1.5fr 1fr 1fr;
-      }
-
-      .table-header span:nth-child(4),
-      .table-header span:nth-child(5),
-      .table-row .consumption-cell:last-of-type,
-      .table-row .diff-cell {
-        display: none;
-      }
+      .detail-panel { width: 100%; }
+      .info-cards { grid-template-columns: 1fr; }
+      .metrics-row { flex-direction: column; }
+      .ct-header, .ct-row { grid-template-columns: 2fr 1fr 1fr; }
+      .ct-header span:nth-child(4), .ct-header span:nth-child(5),
+      .ct-row span:nth-child(4), .ct-row span:nth-child(5) { display: none; }
     }
   `]
 })
@@ -741,8 +501,35 @@ export class DriverScoreDetailComponent implements OnInit, OnChanges {
     return `+${diff.toFixed(1)} ↑`;
   }
 
-  openChat() {
-    // TODO: Implement chat functionality
-    alert(`Ouvrir le chat avec ${this.employee?.name}`);
+  getInitials(): string {
+    const first = this.employee?.firstName || this.employee?.name?.split(' ')[0] || '?';
+    const last = this.employee?.lastName || this.employee?.name?.split(' ')[1] || '';
+    return (first.charAt(0) + last.charAt(0)).toUpperCase();
+  }
+
+  getMetricPercent(count: number): number {
+    return Math.min(count * 5, 100);
+  }
+
+  getPermitStatusClass(): string {
+    if (!this.employee?.permitExpiry) return 'ok';
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const expiry = new Date(this.employee.permitExpiry); expiry.setHours(0, 0, 0, 0);
+    const days = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (days < 0) return 'expired';
+    if (days <= 15) return 'critical';
+    if (days <= 30) return 'warning';
+    return 'ok';
+  }
+
+  getPermitDeadlineText(): string {
+    if (!this.employee?.permitExpiry) return '';
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const expiry = new Date(this.employee.permitExpiry); expiry.setHours(0, 0, 0, 0);
+    const days = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (days < 0) return 'Expiré';
+    if (days === 0) return "Expire aujourd'hui";
+    if (days <= 30) return `Expire dans ${days}j`;
+    return `Valide (${days}j)`;
   }
 }

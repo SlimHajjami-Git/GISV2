@@ -152,7 +152,10 @@ export class EmployeesComponent implements OnInit {
     this.detailEmployee = {
       id: driver.id, firstName: driver.firstName, lastName: driver.lastName,
       name: driver.firstName + ' ' + driver.lastName, email: driver.email,
-      phone: driver.phone, status: driver.status, employeeRole: 'driver'
+      phone: driver.phone, status: driver.status, employeeRole: 'driver',
+      hireDate: driver.hireDate, cin: driver.cin,
+      permitType: driver.permitType, permitNumber: driver.permitNumber,
+      permitExpiry: driver.permitExpiry
     } as any;
     this.detailDriverScore = this.mockDataService.getDriverScoreByEmployee(String(driver.id)) || null;
     if (driver.assignedVehicleId) {

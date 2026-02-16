@@ -115,12 +115,12 @@ interface VehicleOption {
           <div class="stat-card">
             <div class="stat-icon drivers">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/>
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
               </svg>
             </div>
             <div class="stat-info">
-              <span class="stat-value">{{ roles.length }}</span>
-              <span class="stat-label">Rôles</span>
+              <span class="stat-value">{{ getInactiveUsersCount() }}</span>
+              <span class="stat-label">Inactifs</span>
             </div>
           </div>
         </div>
@@ -148,7 +148,7 @@ interface VehicleOption {
               <thead>
                 <tr>
                   <th>Utilisateur</th>
-                  <th>Rôle</th>
+                  <th>Permissions</th>
                   <th>Statut</th>
                   <th>Actions</th>
                 </tr>
@@ -166,7 +166,7 @@ interface VehicleOption {
                   </td>
                   <td>
                     <span class="role-badge" [class.admin]="user.isCompanyAdmin">
-                      {{ user.roleName || getRoleName(user.roleId) }}
+                      {{ user.isCompanyAdmin ? 'Admin' : getPermissionsLabel(user) }}
                     </span>
                   </td>
                   <td>
@@ -251,12 +251,6 @@ interface VehicleOption {
                     <div class="form-group" *ngIf="!editingUser">
                       <label>Mot de passe *</label>
                       <input type="password" [(ngModel)]="userForm.password" placeholder="••••••••">
-                    </div>
-                    <div class="form-group">
-                      <label>Rôle *</label>
-                      <select [(ngModel)]="userForm.roleId">
-                        <option *ngFor="let role of roles" [ngValue]="role.id">{{ role.name }}</option>
-                      </select>
                     </div>
                     <div class="form-group" *ngIf="editingUser">
                       <label>Statut</label>
@@ -2203,5 +2197,22 @@ export class UserManagementComponent implements OnInit {
 
   getUsersCountByRole(roleId: number): number {
     return this.users.filter(u => u.roleId === roleId).length;
+  }
+
+  getInactiveUsersCount(): number {
+    return this.users.filter(u => u.status !== 'active').length;
+  }
+
+  getPermissionsLabel(user: User): string {
+    if (!user.userPermissions) return 'Standard';
+    const perms = user.userPermissions;
+    const count = [
+      perms.canMonitoring, perms.canVehicles, perms.canDrivers,
+      perms.canReports, perms.canGeofences, perms.canMaintenance,
+      perms.canCosts, perms.canDocuments, perms.canAccidents,
+      perms.canUsers, perms.canSettings, perms.canSuppliers,
+      perms.canFleetManagement
+    ].filter(Boolean).length;
+    return `${count} module${count > 1 ? 's' : ''}`;
   }
 }
