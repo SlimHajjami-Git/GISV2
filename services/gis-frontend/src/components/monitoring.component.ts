@@ -867,16 +867,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         });
 
         // Positions are now returned as a direct array
-        const sortedPositions = [...filteredPositions].sort((a: any, b: any) => 
+        this.playbackPositions = [...filteredPositions].sort((a: any, b: any) => 
           new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime()
         );
-        
-        // Collapse parked GPS drift: when vehicle is stationary (speed=0, ignition off),
-        // GPS still sends positions every ~30min that drift by 100-300m.
-        // This creates fake routes through buildings. Fix: keep only 1 position per
-        // parked sequence + the transition points.
-        this.playbackPositions = this.deduplicateParkedPositions(sortedPositions);
-        console.log(`Playback: ${sortedPositions.length} raw -> ${this.playbackPositions.length} after parked dedup`);
         
         if (this.playbackPositions.length === 0) {
           alert('Aucune position trouvée pour cette période');
