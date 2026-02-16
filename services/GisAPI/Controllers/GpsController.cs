@@ -6,6 +6,8 @@ using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Services;
+using GisAPI.Application.Features.Gps.Commands.BroadcastPosition;
+using MediatR;
 
 namespace GisAPI.Controllers;
 
@@ -23,13 +25,15 @@ public class GpsController : ControllerBase
     private readonly IGeocodingService _geocodingService;
     private readonly IGpsHubService _gpsHubService;
     private readonly IRedisCacheService _redisCache;
+    private readonly ISender _mediator;
 
-    public GpsController(GisDbContext context, IGeocodingService geocodingService, IGpsHubService gpsHubService, IRedisCacheService redisCache)
+    public GpsController(GisDbContext context, IGeocodingService geocodingService, IGpsHubService gpsHubService, IRedisCacheService redisCache, ISender mediator)
     {
         _context = context;
         _geocodingService = geocodingService;
         _gpsHubService = gpsHubService;
         _redisCache = redisCache;
+        _mediator = mediator;
     }
 
     // Npgsql 6+ requires DateTimeKind.Utc for timestamptz columns.
@@ -637,6 +641,51 @@ public class GpsController : ControllerBase
             ignitionOn
         });
     }
+
+    /// <summary>
+    /// Test endpoint to simulate a full GPS position (goes through MediatR → geofence checks → notifications)
+    /// </summary>
+    [HttpPost("test/simulate-position")]
+    public async Task<ActionResult> TestSimulatePosition([FromBody] SimulatePositionRequest request)
+    {
+        var companyId = GetCompanyId();
+
+        // Find vehicle and its GPS device
+        var vehicle = await _context.Vehicles
+            .Include(v => v.GpsDevice)
+            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId);
+
+        if (vehicle == null)
+            return NotFound(new { message = "Vehicle not found" });
+
+        var deviceUid = vehicle.GpsDevice?.DeviceUid ?? $"TEST-{vehicle.Id}";
+
+        // Send through MediatR → BroadcastPositionCommandHandler → geofence checks → notifications
+        var command = new BroadcastPositionCommand(
+            DeviceUid: deviceUid,
+            Latitude: request.Latitude,
+            Longitude: request.Longitude,
+            SpeedKph: request.SpeedKph ?? 40,
+            CourseDeg: 0,
+            IgnitionOn: true,
+            RecordedAt: DateTime.UtcNow
+        );
+
+        var result = await _mediator.Send(command);
+
+        return Ok(new
+        {
+            message = "Position simulated via MediatR pipeline",
+            companyId,
+            vehicleId = vehicle.Id,
+            vehicleName = vehicle.Name,
+            deviceUid,
+            latitude = request.Latitude,
+            longitude = request.Longitude,
+            broadcasted = result.Broadcasted,
+            skipReason = result.SkipReason
+        });
+    }
 }
 
 // ==================== DTOs ====================
@@ -717,4 +766,12 @@ public class TestPositionUpdateRequest
     public double? SpeedKph { get; set; }
     public bool? IgnitionOn { get; set; }
     public bool? IsMoving { get; set; }
+}
+
+public class SimulatePositionRequest
+{
+    public int VehicleId { get; set; }
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+    public double? SpeedKph { get; set; }
 }

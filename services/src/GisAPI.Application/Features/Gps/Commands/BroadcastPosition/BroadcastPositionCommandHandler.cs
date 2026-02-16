@@ -248,21 +248,18 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             }
         }
 
-        // Geofence checking
+        // Geofence checking (must be awaited — uses scoped DbContext)
         if (cached.VehicleId.HasValue && cached.CompanyId > 0)
         {
-            _ = Task.Run(async () =>
+            try
             {
-                try
-                {
-                    await CheckGeofences(cached.CompanyId, cached.VehicleId.Value, cached.VehicleName, cached.Plate,
-                        request.Latitude, request.Longitude, speed, request.RecordedAt, ct);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Geofence check failed for vehicle {VehicleId}", cached.VehicleId);
-                }
-            }, ct);
+                await CheckGeofences(cached.CompanyId, cached.VehicleId.Value, cached.VehicleName, cached.Plate,
+                    request.Latitude, request.Longitude, speed, request.RecordedAt, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Geofence check failed for vehicle {VehicleId}", cached.VehicleId);
+            }
         }
 
         _logger.LogInformation(
@@ -315,7 +312,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
                 _logger.LogInformation("🔔 Geofence ENTRY: Vehicle {Vehicle} entered \"{Geofence}\"",
                     vehicleName ?? $"#{vehicleId}", gf.Name);
 
-                _ = _publisher.Publish(new GeofenceNotificationEvent(
+                await _publisher.Publish(new GeofenceNotificationEvent(
                     companyId, vehicleId, vehicleName ?? plate, gf.Id, gf.Name,
                     "entry", lat, lng, timestamp
                 ), ct);
@@ -339,7 +336,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
                 _logger.LogInformation("🔔 Geofence EXIT: Vehicle {Vehicle} left \"{Geofence}\"",
                     vehicleName ?? $"#{vehicleId}", gf.Name);
 
-                _ = _publisher.Publish(new GeofenceNotificationEvent(
+                await _publisher.Publish(new GeofenceNotificationEvent(
                     companyId, vehicleId, vehicleName ?? plate, gf.Id, gf.Name,
                     "exit", lat, lng, timestamp
                 ), ct);
