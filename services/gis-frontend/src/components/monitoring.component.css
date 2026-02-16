@@ -1750,6 +1750,11 @@
 :global(.custom-vehicle-marker) {
   background: transparent !important;
   border: none !important;
+  overflow: visible !important;
+}
+
+:global(.leaflet-marker-icon.custom-vehicle-marker) {
+  overflow: visible !important;
 }
 
 :global(.vehicle-marker) {
@@ -1906,11 +1911,6 @@
 }
 
 /* Custom Vehicle Marker for Playback */
-:global(.custom-vehicle-marker) {
-  background: transparent !important;
-  border: none !important;
-}
-
 :global(.playback-vehicle-icon) {
   filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.3));
   transition: transform 0.3s ease;
