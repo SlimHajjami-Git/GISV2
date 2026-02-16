@@ -867,9 +867,16 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         });
 
         // Positions are now returned as a direct array
-        this.playbackPositions = [...filteredPositions].sort((a: any, b: any) => 
+        const sortedPositions = [...filteredPositions].sort((a: any, b: any) => 
           new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime()
         );
+        
+        // Collapse parked GPS drift: when vehicle is stationary (speed=0, ignition off),
+        // GPS still sends positions every ~30min that drift by 100-300m.
+        // This creates fake routes through buildings. Fix: keep only 1 position per
+        // parked sequence + the transition points.
+        this.playbackPositions = this.deduplicateParkedPositions(sortedPositions);
+        console.log(`Playback: ${sortedPositions.length} raw -> ${this.playbackPositions.length} after parked dedup`);
         
         if (this.playbackPositions.length === 0) {
           alert('Aucune position trouvée pour cette période');
@@ -1767,6 +1774,60 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return allCoords;
   }
 
+  // Collapse consecutive parked positions (speed=0, ignition off) into single anchor points.
+  // GPS devices send a position every ~30min when parked, but each drifts by 100-300m
+  // causing Valhalla to route through buildings. This keeps only:
+  //   - First position of each parked sequence (anchor)
+  //   - Last position before movement resumes (transition)
+  //   - All moving positions untouched
+  private deduplicateParkedPositions(positions: any[]): any[] {
+    if (positions.length < 3) return positions;
+    
+    const result: any[] = [];
+    let inParkedSequence = false;
+    let parkedAnchor: any = null;
+    let lastParkedPos: any = null;
+    
+    for (let i = 0; i < positions.length; i++) {
+      const pos = positions[i];
+      const speed = pos.speedKph || pos.speed || 0;
+      const ignitionOn = pos.ignitionOn !== false;
+      const isParked = speed < 2 && !ignitionOn;
+      
+      if (isParked) {
+        if (!inParkedSequence) {
+          // Start of parked sequence: keep this as anchor
+          inParkedSequence = true;
+          parkedAnchor = pos;
+          result.push(pos);
+        }
+        // Track last parked position for transition
+        lastParkedPos = pos;
+      } else {
+        if (inParkedSequence) {
+          // Transition from parked to moving: add last parked pos if different from anchor
+          if (lastParkedPos && lastParkedPos !== parkedAnchor) {
+            // Use anchor coordinates for the transition point to avoid GPS drift jump
+            const transitionPos = { ...lastParkedPos, latitude: parkedAnchor.latitude, longitude: parkedAnchor.longitude };
+            result.push(transitionPos);
+          }
+          inParkedSequence = false;
+          parkedAnchor = null;
+          lastParkedPos = null;
+        }
+        // Always keep moving positions
+        result.push(pos);
+      }
+    }
+    
+    // If ended in a parked sequence, add the last position
+    if (inParkedSequence && lastParkedPos && lastParkedPos !== parkedAnchor) {
+      result.push({ ...lastParkedPos, latitude: parkedAnchor.latitude, longitude: parkedAnchor.longitude });
+    }
+    
+    return result;
+  }
+
   // Process playback route with smart interpolation (speed/time-based) + optional road snapping
   private async processPlaybackRoute(): Promise<void> {
     if (this.playbackPositions.length < 2) {
@@ -1775,15 +1836,22 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    // Prepare points for the API with speed and timestamp data
-    const points = this.playbackPositions.map(p => ({
-      lat: p.latitude,
-      lon: p.longitude,
-      timestamp: p.recordedAt ? new Date(p.recordedAt).getTime() : null,
-      speed: p.speedKph || 0,
-      heading: p.courseDeg || null,
-      ignitionOn: p.ignitionOn
-    }));
+    // Only send moving positions to Valhalla for road snapping.
+    // Parked positions (speed=0, ignition off) should use raw GPS to avoid
+    // Valhalla routing through buildings between drifted parked points.
+    const points = this.playbackPositions.map(p => {
+      const speed = p.speedKph || p.speed || 0;
+      const ignitionOn = p.ignitionOn !== false;
+      return {
+        lat: p.latitude,
+        lon: p.longitude,
+        timestamp: p.recordedAt ? new Date(p.recordedAt).getTime() : null,
+        speed: speed,
+        heading: p.courseDeg || null,
+        ignitionOn: ignitionOn,
+        skipSnapping: speed < 2 && !ignitionOn  // Tell API to skip road snapping for parked points
+      };
+    });
 
     try {
       // Call the smart processing endpoint (interpolation + optional road snapping)
