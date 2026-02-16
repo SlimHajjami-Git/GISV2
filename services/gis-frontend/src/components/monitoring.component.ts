@@ -1526,7 +1526,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     // Start smooth animation to next point
-    this.animateToNextPoint().catch(e => console.warn('Playback start error:', e));
+    this.animateToNextPoint().catch(e => console.error('[Playback] start error:', e));
   }
 
   // Smooth animation using requestAnimationFrame
@@ -1580,7 +1580,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           this.ignitionOffAnchor = null;
         }
         
-        setTimeout(() => this.animateToNextPoint().catch(e => console.warn('Playback error:', e)), 30 / this.playbackSpeed);
+        setTimeout(() => this.animateToNextPoint().catch(e => console.error('[Playback] ignitionOff step error at index', this.playbackIndex, e)), 30 / this.playbackSpeed);
       });
       return;
     } else {
@@ -1624,7 +1624,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
             this.stoppedAnchor = null;
           }
           
-          setTimeout(() => this.animateToNextPoint().catch(e => console.warn('Playback error:', e)), 30 / this.playbackSpeed);
+          setTimeout(() => this.animateToNextPoint().catch(e => console.error('[Playback] stopped step error at index', this.playbackIndex, e)), 30 / this.playbackSpeed);
         });
         return;
       } else {
@@ -1639,7 +1639,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     try {
       this.currentRouteCoords = await this.fetchValhallaRoute(fromPos, toPos);
     } catch (routeErr) {
-      console.warn('fetchValhallaRoute failed, using raw GPS fallback:', routeErr);
+      console.error('[Playback] fetchValhallaRoute FAILED at index', this.playbackIndex, ':', routeErr);
       this.currentRouteCoords = [
         L.latLng(fromPos.latitude, fromPos.longitude),
         L.latLng(toPos.latitude, toPos.longitude)
@@ -1674,7 +1674,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         this.drawProgressiveSegment(previousIndex, this.playbackIndex);
         this.updatePlaybackMarker();
         this.cdr.detectChanges();
-        setTimeout(() => this.animateToNextPoint().catch(e => console.warn('Playback error:', e)), 30 / this.playbackSpeed);
+        setTimeout(() => this.animateToNextPoint().catch(e => console.error('[Playback] zero-distance step error at index', this.playbackIndex, e)), 30 / this.playbackSpeed);
       });
       return;
     }
@@ -1693,15 +1693,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     
     } catch (err) {
       // CRITICAL: Never let the animation chain break — advance to next point on any error
-      console.error('animateToNextPoint error at index', this.playbackIndex, ':', err);
+      console.error('[Playback] CRITICAL animateToNextPoint error at index', this.playbackIndex, '- pos:', this.playbackPositions[this.playbackIndex], '- err:', err);
       this.ngZone.run(() => {
         const previousIndex = this.playbackIndex;
         this.playbackIndex++;
         this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
-        try { this.drawProgressiveSegment(previousIndex, this.playbackIndex); } catch(_) {}
-        try { this.updatePlaybackMarker(); } catch(_) {}
+        try { this.drawProgressiveSegment(previousIndex, this.playbackIndex); } catch(segErr) { console.error('[Playback] drawProgressiveSegment failed at', previousIndex, '->', this.playbackIndex, segErr); }
+        try { this.updatePlaybackMarker(); } catch(mkErr) { console.error('[Playback] updatePlaybackMarker failed at index', this.playbackIndex, mkErr); }
         this.cdr.detectChanges();
-        setTimeout(() => this.animateToNextPoint().catch(e => console.warn('Playback recovery error:', e)), 50 / this.playbackSpeed);
+        setTimeout(() => this.animateToNextPoint().catch(e => console.error('[Playback] recovery chain error at index', this.playbackIndex, e)), 50 / this.playbackSpeed);
       });
     }
   }
@@ -1833,9 +1833,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         throw new Error('No points returned from processing');
       }
     } catch (error) {
-      console.warn('Smart route processing failed, using raw coordinates:', error);
+      console.error('[Playback] processPlaybackRoute FAILED, falling back to raw GPS:', error);
       // Fallback to raw GPS coordinates
       this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
+      this.segmentBoundaries = [];
       this.matchedRouteIndex = 0;
     }
   }
@@ -1925,7 +1926,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         this.playbackIndex++;
         this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
         this.cdr.detectChanges();
-        this.animateToNextPoint().catch(e => console.warn('Playback empty route skip:', e));
+        this.animateToNextPoint().catch(e => console.error('[Playback] empty route skip error at index', this.playbackIndex, e));
       });
       return;
     }
@@ -1991,7 +1992,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         
         // Continue to next segment
         this.isAnimatingSegment = false;
-        this.animateToNextPoint().catch(e => console.warn('Playback next segment error:', e));
+        this.animateToNextPoint().catch(e => console.error('[Playback] next segment error at index', this.playbackIndex, e));
       });
     }
   }
