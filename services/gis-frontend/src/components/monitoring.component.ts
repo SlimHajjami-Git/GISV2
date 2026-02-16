@@ -1767,43 +1767,6 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return allCoords;
   }
 
-  // Collapse consecutive parked positions (speed=0, ignition off) into single anchor points.
-  // GPS devices send a position every ~30min when parked, but each drifts by 100-300m
-  // causing Valhalla to route through buildings. This keeps only:
-  //   - First position of each parked sequence (anchor)
-  //   - All moving positions untouched
-  //   - No artificial positions are created (coordinates are never modified)
-  private deduplicateParkedPositions(positions: any[]): any[] {
-    if (positions.length < 3) return positions;
-    
-    const result: any[] = [];
-    let inParkedSequence = false;
-    
-    for (let i = 0; i < positions.length; i++) {
-      const pos = positions[i];
-      const speed = pos.speedKph || pos.speed || 0;
-      const ignitionOn = pos.ignitionOn !== false;
-      const isParked = speed < 2 && !ignitionOn;
-      
-      if (isParked) {
-        if (!inParkedSequence) {
-          // Start of parked sequence: keep only the first position as anchor
-          inParkedSequence = true;
-          result.push(pos);
-        }
-        // Skip all subsequent parked positions (they are GPS drift noise)
-      } else {
-        if (inParkedSequence) {
-          inParkedSequence = false;
-        }
-        // Always keep moving positions
-        result.push(pos);
-      }
-    }
-    
-    return result;
-  }
-
   // Process playback route with smart interpolation (speed/time-based) + optional road snapping
   private async processPlaybackRoute(): Promise<void> {
     if (this.playbackPositions.length < 2) {
@@ -1871,15 +1834,20 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     } catch (error) {
       console.warn('Smart route processing failed, using raw coordinates:', error);
-      // Fallback to raw GPS coordinates - MUST reset segmentBoundaries to avoid stale data
+      // Fallback to raw GPS coordinates
       this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
-      this.segmentBoundaries = [];
       this.matchedRouteIndex = 0;
     }
   }
 
   // Fetch route between two GPS points for animation (uses pre-matched coords if available)
   private async fetchValhallaRoute(fromPos: any, toPos: any): Promise<L.LatLng[]> {
+    // Calculate straight-line distance between the two GPS points
+    const straightDist = this.calculateDistance(
+      fromPos.latitude, fromPos.longitude,
+      toPos.latitude, toPos.longitude
+    );
+
     if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0) {
       const gpsIndex = this.playbackIndex;
       
@@ -1891,6 +1859,29 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         const segment = this.matchedRouteCoords.slice(startIdx, endIdx + 1);
         
         if (segment.length >= 2) {
+          // GPS drift detection: if the routed distance is much longer than
+          // the straight-line distance, it means Valhalla routed through a
+          // U-turn/detour (likely GPS drifted to opposite lane).
+          // In that case, use straight line instead.
+          let routedDist = 0;
+          for (let i = 1; i < segment.length; i++) {
+            routedDist += this.calculateDistance(
+              segment[i - 1].lat, segment[i - 1].lng,
+              segment[i].lat, segment[i].lng
+            );
+          }
+          
+          // If routed path is > 3x the straight-line distance AND straight distance
+          // is small (< 200m), this is likely a GPS drift to opposite lane
+          const detourRatio = straightDist > 5 ? routedDist / straightDist : 1;
+          if (detourRatio > 3 && straightDist < 200) {
+            console.warn(`GPS drift detected at index ${gpsIndex}: routed ${Math.round(routedDist)}m vs straight ${Math.round(straightDist)}m (ratio ${detourRatio.toFixed(1)}x). Using straight line.`);
+            return [
+              L.latLng(fromPos.latitude, fromPos.longitude),
+              L.latLng(toPos.latitude, toPos.longitude)
+            ];
+          }
+          
           return segment;
         }
       }
@@ -2124,6 +2115,21 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const color = this.getStatusColor(toPos);
     
     if (speed < 3 || !ignitionOn) {
+      // Draw a small circle at the stopped position so the user sees where
+      // the vehicle was parked/stopped, instead of skipping entirely
+      const stopColor = !ignitionOn ? '#ef4444' : '#f59e0b';
+      const circle = L.circleMarker(
+        [toPos.latitude, toPos.longitude],
+        {
+          radius: 4,
+          color: stopColor,
+          fillColor: stopColor,
+          fillOpacity: 0.6,
+          weight: 1.5,
+          opacity: 0.8
+        }
+      ).addTo(this.map!);
+      this.progressivePolylines.push(circle as any);
       this.traceDrawnUpToIndex = toIndex;
       return;
     }
@@ -2213,6 +2219,30 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         const segmentCoords = this.matchedRouteCoords.slice(startIdx, endIdx + 1);
         
         if (segmentCoords.length >= 2) {
+          // GPS drift guard: check if routed segment makes a big detour
+          const straightDist = this.calculateDistance(
+            fromPos.latitude, fromPos.longitude,
+            toPos.latitude, toPos.longitude
+          );
+          let routedDist = 0;
+          for (let i = 1; i < segmentCoords.length; i++) {
+            routedDist += this.calculateDistance(
+              segmentCoords[i - 1].lat, segmentCoords[i - 1].lng,
+              segmentCoords[i].lat, segmentCoords[i].lng
+            );
+          }
+          const detourRatio = straightDist > 5 ? routedDist / straightDist : 1;
+          
+          if (detourRatio > 3 && straightDist < 200) {
+            // GPS drifted to opposite lane — draw straight line instead of U-turn
+            const fallback = L.polyline(
+              [[fromPos.latitude, fromPos.longitude], [toPos.latitude, toPos.longitude]],
+              { color, weight: 4, opacity: 0.9, dashArray: '10, 8', lineCap: 'round', lineJoin: 'round' }
+            ).addTo(this.map!);
+            this.progressivePolylines.push(fallback);
+            return;
+          }
+          
           const segment = L.polyline(segmentCoords, {
             color: color,
             weight: 4,
