@@ -969,29 +969,22 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         // Hide the live marker of the selected vehicle during playback
         this.hideLiveMarker(vehicleId.toString());
 
-        // Process route with smart interpolation (based on speed/time) + optional road snapping
-        this.processPlaybackRoute().then(() => {
-          this.playbackLoading = false;
-          
-          // Draw the complete route polyline
-          this.drawPlaybackRoute();
-          
-          // Position the playback marker at start
-          this.updatePlaybackMarker();
-          
-          // Force change detection to update UI with new point count
-          this.cdr.detectChanges();
-          
-          console.log(`Playback loaded for vehicle ${vehicleId}: ${this.playbackPositions.length} GPS points -> ${this.matchedRouteCoords.length} processed points`);
-        }).catch((err: Error) => {
-          console.error('[Playback] Route processing FAILED, using raw coordinates:', err);
-          this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
-          this.matchedRouteIndex = 0;
-          this.playbackLoading = false;
-          this.drawPlaybackRoute();
-          this.updatePlaybackMarker();
-          this.cdr.detectChanges();
-        });
+        // Use raw GPS coordinates directly - no Valhalla processing that reduces points
+        this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
+        this.segmentBoundaries = [];
+        this.matchedRouteIndex = 0;
+        this.playbackLoading = false;
+        
+        // Draw the complete route polyline
+        this.drawPlaybackRoute();
+        
+        // Position the playback marker at start
+        this.updatePlaybackMarker();
+        
+        // Force change detection to update UI with new point count
+        this.cdr.detectChanges();
+        
+        console.log(`Playback loaded for vehicle ${vehicleId}: ${this.playbackPositions.length} GPS points (raw, no filtering)`);
       },
       error: (err) => {
         console.error('Error loading playback data:', err);
