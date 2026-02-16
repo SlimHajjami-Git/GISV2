@@ -2153,21 +2153,30 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const color = this.getStatusColor(toPos);
     
     if (speed < 3 || !ignitionOn) {
-      // Draw a small circle at the stopped position so the user sees where
-      // the vehicle was parked/stopped, instead of skipping entirely
-      const stopColor = !ignitionOn ? '#ef4444' : '#f59e0b';
-      const circle = L.circleMarker(
-        [toPos.latitude, toPos.longitude],
-        {
-          radius: 4,
-          color: stopColor,
-          fillColor: stopColor,
-          fillOpacity: 0.6,
-          weight: 1.5,
-          opacity: 0.8
-        }
-      ).addTo(this.map!);
-      this.progressivePolylines.push(circle as any);
+      // Only draw a circle for the FIRST position of a stopped sequence.
+      // Subsequent stopped positions are just GPS drift noise — drawing them
+      // creates hundreds of scattered circles across buildings.
+      const fromSpeed = fromPos.speedKph || 0;
+      const fromIgnition = fromPos.ignitionOn !== false;
+      const prevAlsoStopped = (fromSpeed < 3 || !fromIgnition) && fromIndex > 0;
+      
+      if (!prevAlsoStopped) {
+        // First stopped position in this sequence — draw a visible marker
+        const stopColor = !ignitionOn ? '#ef4444' : '#f59e0b';
+        const circle = L.circleMarker(
+          [toPos.latitude, toPos.longitude],
+          {
+            radius: 6,
+            color: stopColor,
+            fillColor: stopColor,
+            fillOpacity: 0.7,
+            weight: 2,
+            opacity: 0.9
+          }
+        ).addTo(this.map!);
+        this.progressivePolylines.push(circle as any);
+      }
+      // Skip drawing for subsequent stopped positions (GPS drift)
       this.traceDrawnUpToIndex = toIndex;
       return;
     }
