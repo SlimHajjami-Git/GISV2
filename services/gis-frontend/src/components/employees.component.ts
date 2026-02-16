@@ -173,4 +173,30 @@ export class EmployeesComponent implements OnInit {
   onDateFilterChanged(range: { from: string; to: string }) {
     console.log('Date filter changed:', range);
   }
+
+  // Permit deadline methods
+  getDaysUntilPermitExpiry(driver: any): number {
+    if (!driver.permitExpiry) return 999;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expiry = new Date(driver.permitExpiry);
+    expiry.setHours(0, 0, 0, 0);
+    return Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  }
+
+  getPermitStatus(driver: any): string {
+    const days = this.getDaysUntilPermitExpiry(driver);
+    if (days < 0) return 'expired';
+    if (days <= 15) return 'critical';
+    if (days <= 30) return 'warning';
+    return 'ok';
+  }
+
+  getPermitAlertText(driver: any): string {
+    const days = this.getDaysUntilPermitExpiry(driver);
+    if (days < 0) return 'Permis expiré';
+    if (days === 0) return "Permis expire aujourd'hui";
+    if (days <= 30) return `Permis expire dans ${days}j`;
+    return `Permis valide (${days}j)`;
+  }
 }

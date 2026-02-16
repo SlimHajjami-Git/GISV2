@@ -312,22 +312,87 @@ import * as L from 'leaflet';
                 </div>
               </div>
 
+              <!-- Vehicle Assignment Multi-Select -->
               <div class="alerts-section">
-                <span class="section-label">Alertes</span>
-                <div class="alerts-row">
-                  <label class="checkbox-label">
+                <span class="section-label">Véhicules surveillés</span>
+                <div class="vehicle-select-grid">
+                  <label class="vehicle-check" *ngFor="let v of vehicles" [class.selected]="isVehicleSelected(v.id)">
+                    <input type="checkbox" [checked]="isVehicleSelected(v.id)" (change)="toggleVehicle(v.id)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5a2 2 0 0 1-2 2h-1"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                    <span class="v-name">{{ v.name }}</span>
+                    <span class="v-plate">{{ v.plate || '' }}</span>
+                  </label>
+                </div>
+                <div class="select-actions" *ngIf="vehicles.length > 3">
+                  <button type="button" class="btn-select-all" (click)="selectAllVehicles()">Tout sélectionner</button>
+                  <button type="button" class="btn-select-all" (click)="deselectAllVehicles()">Tout désélectionner</button>
+                </div>
+              </div>
+
+              <!-- Alerts Configuration -->
+              <div class="alerts-section">
+                <span class="section-label">Configuration des alertes</span>
+                <div class="alerts-grid">
+                  <label class="alert-check" [class.active]="geofenceForm.alertOnEntry">
                     <input type="checkbox" [(ngModel)]="geofenceForm.alertOnEntry" name="alertOnEntry">
-                    <span>Entrée</span>
+                    <div class="alert-check-icon entry">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                    </div>
+                    <div class="alert-check-info">
+                      <strong>Entrée dans la zone</strong>
+                      <span>Alerter quand un véhicule entre</span>
+                    </div>
                   </label>
-                  <label class="checkbox-label">
+                  <label class="alert-check" [class.active]="geofenceForm.alertOnExit">
                     <input type="checkbox" [(ngModel)]="geofenceForm.alertOnExit" name="alertOnExit">
-                    <span>Sortie</span>
+                    <div class="alert-check-icon exit">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    </div>
+                    <div class="alert-check-info">
+                      <strong>Sortie de la zone</strong>
+                      <span>Alerter quand un véhicule sort</span>
+                    </div>
                   </label>
-                  <div class="speed-input">
-                    <label>Vitesse max:</label>
-                    <input type="number" [(ngModel)]="geofenceForm.alertSpeed" name="alertSpeed" min="0" step="5" placeholder="km/h">
+                  <label class="alert-check" [class.active]="geofenceForm.alertSpeedEnabled">
+                    <input type="checkbox" [(ngModel)]="geofenceForm.alertSpeedEnabled" name="alertSpeedEnabled">
+                    <div class="alert-check-icon speed">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    </div>
+                    <div class="alert-check-info">
+                      <strong>Contrôle de vitesse</strong>
+                      <span>Alerter en cas d'excès</span>
+                    </div>
+                  </label>
+                  <label class="alert-check" [class.active]="geofenceForm.alertMinStopEnabled">
+                    <input type="checkbox" [(ngModel)]="geofenceForm.alertMinStopEnabled" name="alertMinStopEnabled">
+                    <div class="alert-check-icon stop">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                    </div>
+                    <div class="alert-check-info">
+                      <strong>Temps d'arrêt minimum</strong>
+                      <span>Vérifier la durée d'arrêt</span>
+                    </div>
+                  </label>
+                </div>
+
+                <!-- Speed limit input (shown when speed control enabled) -->
+                <div class="alert-param-row" *ngIf="geofenceForm.alertSpeedEnabled">
+                  <label>Vitesse maximale autorisée:</label>
+                  <div class="param-input-group">
+                    <input type="number" [(ngModel)]="geofenceForm.alertSpeed" name="alertSpeed" min="10" max="200" step="5" placeholder="80">
+                    <span class="param-unit">km/h</span>
                   </div>
                 </div>
+
+                <!-- Min stop time input (shown when min stop enabled) -->
+                <div class="alert-param-row" *ngIf="geofenceForm.alertMinStopEnabled">
+                  <label>Temps d'arrêt minimum requis:</label>
+                  <div class="param-input-group">
+                    <input type="number" [(ngModel)]="geofenceForm.minStopMinutes" name="minStopMinutes" min="1" max="480" step="1" placeholder="15">
+                    <span class="param-unit">min</span>
+                  </div>
+                </div>
+
                 <div class="cooldown-row">
                   <label>Cooldown notifications:</label>
                   <input type="number" [(ngModel)]="geofenceForm.notificationCooldownMinutes" name="cooldown" min="0" step="1" placeholder="min"> min
@@ -933,6 +998,53 @@ import * as L from 'leaflet';
       font-weight: 500;
     }
 
+    /* Vehicle Select Grid */
+    .vehicle-select-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      max-height: 180px;
+      overflow-y: auto;
+      padding: 2px;
+    }
+
+    .vehicle-check {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 10px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      transition: all 0.15s;
+    }
+
+    .vehicle-check:hover { border-color: #93c5fd; background: #f0f9ff; }
+    .vehicle-check.selected { border-color: #3b82f6; background: #eff6ff; }
+    .vehicle-check input { width: 14px; height: 14px; flex-shrink: 0; }
+    .vehicle-check svg { color: #94a3b8; flex-shrink: 0; }
+    .vehicle-check.selected svg { color: #3b82f6; }
+    .v-name { font-weight: 500; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .v-plate { font-size: 10px; color: #94a3b8; font-family: monospace; margin-left: auto; white-space: nowrap; }
+
+    .select-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .btn-select-all {
+      font-size: 10px;
+      color: #3b82f6;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 2px 4px;
+    }
+    .btn-select-all:hover { text-decoration: underline; }
+
     /* Alerts Section */
     .alerts-section {
       padding: 12px;
@@ -951,31 +1063,85 @@ import * as L from 'leaflet';
       margin-bottom: 10px;
     }
 
-    .alerts-row {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
+    .alerts-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
     }
 
-    .speed-input {
+    .alert-check {
       display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-left: auto;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 12px;
+      background: white;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
     }
 
-    .speed-input label {
+    .alert-check:hover { border-color: #93c5fd; }
+    .alert-check.active { border-color: #3b82f6; background: #f0f9ff; }
+    .alert-check input { display: none; }
+
+    .alert-check-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .alert-check-icon.entry { background: #dcfce7; color: #16a34a; }
+    .alert-check-icon.exit { background: #fee2e2; color: #dc2626; }
+    .alert-check-icon.speed { background: #fef3c7; color: #d97706; }
+    .alert-check-icon.stop { background: #e0e7ff; color: #4f46e5; }
+
+    .alert-check-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .alert-check-info strong { font-size: 11px; color: #1e293b; font-weight: 600; }
+    .alert-check-info span { font-size: 10px; color: #94a3b8; }
+
+    .alert-param-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 10px;
+      padding: 8px 10px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+    }
+
+    .alert-param-row label {
       font-size: 11px;
       color: #64748b;
     }
 
-    .speed-input input {
-      width: 70px;
-      padding: 4px 8px;
+    .param-input-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .param-input-group input {
+      width: 65px;
+      padding: 5px 8px;
       border: 1px solid #e2e8f0;
       border-radius: 4px;
       font-size: 12px;
+      text-align: center;
+    }
+
+    .param-input-group input:focus { outline: none; border-color: #3b82f6; }
+
+    .param-unit {
+      font-size: 11px;
+      color: #94a3b8;
+      font-weight: 500;
     }
 
     .popup-footer {
@@ -1136,12 +1302,16 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     coordinates: [] as GeofencePoint[],
     alertOnEntry: true,
     alertOnExit: true,
+    alertSpeedEnabled: false,
     alertSpeed: null,
+    alertMinStopEnabled: false,
+    minStopMinutes: null,
     notificationCooldownMinutes: 5,
     activeStartTime: null as string | null,
     activeEndTime: null as string | null,
     activeDays: [] as string[],
-    groupId: null as number | null
+    groupId: null as number | null,
+    assignedVehicleIds: [] as string[]
   };
 
   // Leaflet maps
@@ -1524,7 +1694,16 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       coordinates: geofence.coordinates ? [...geofence.coordinates] : [],
       alertOnEntry: geofence.alertOnEntry,
       alertOnExit: geofence.alertOnExit,
-      alertSpeed: geofence.alertSpeed || null
+      alertSpeedEnabled: !!(geofence.alertSpeed),
+      alertSpeed: geofence.alertSpeed || null,
+      alertMinStopEnabled: !!(geofence as any).minStopMinutes,
+      minStopMinutes: (geofence as any).minStopMinutes || null,
+      notificationCooldownMinutes: (geofence as any).notificationCooldownMinutes || 5,
+      activeStartTime: (geofence as any).activeStartTime || null,
+      activeEndTime: (geofence as any).activeEndTime || null,
+      activeDays: (geofence as any).activeDays || [],
+      groupId: (geofence as any).groupId || null,
+      assignedVehicleIds: geofence.assignedVehicleIds ? [...geofence.assignedVehicleIds] : []
     };
     this.showPopup = true;
     this.initDrawMap();
@@ -1552,13 +1731,42 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       coordinates: [] as GeofencePoint[],
       alertOnEntry: true,
       alertOnExit: true,
+      alertSpeedEnabled: false,
       alertSpeed: null,
+      alertMinStopEnabled: false,
+      minStopMinutes: null,
       notificationCooldownMinutes: 5,
       activeStartTime: null,
       activeEndTime: null,
       activeDays: [],
-      groupId: null
+      groupId: null,
+      assignedVehicleIds: []
     };
+  }
+
+  // Vehicle multi-select helpers
+  isVehicleSelected(vehicleId: string): boolean {
+    return this.geofenceForm.assignedVehicleIds?.includes(vehicleId) || false;
+  }
+
+  toggleVehicle(vehicleId: string) {
+    if (!this.geofenceForm.assignedVehicleIds) {
+      this.geofenceForm.assignedVehicleIds = [];
+    }
+    const idx = this.geofenceForm.assignedVehicleIds.indexOf(vehicleId);
+    if (idx > -1) {
+      this.geofenceForm.assignedVehicleIds.splice(idx, 1);
+    } else {
+      this.geofenceForm.assignedVehicleIds.push(vehicleId);
+    }
+  }
+
+  selectAllVehicles() {
+    this.geofenceForm.assignedVehicleIds = this.vehicles.map(v => v.id);
+  }
+
+  deselectAllVehicles() {
+    this.geofenceForm.assignedVehicleIds = [];
   }
 
   closePopup() {
@@ -1645,7 +1853,10 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       isActive: this.geofenceForm.isActive,
       alertOnEntry: this.geofenceForm.alertOnEntry,
       alertOnExit: this.geofenceForm.alertOnExit,
-      alertSpeedLimit: this.geofenceForm.alertSpeed || null
+      alertSpeedLimit: this.geofenceForm.alertSpeedEnabled ? (this.geofenceForm.alertSpeed || null) : null,
+      minStopMinutes: this.geofenceForm.alertMinStopEnabled ? (this.geofenceForm.minStopMinutes || null) : null,
+      notificationCooldownMinutes: this.geofenceForm.notificationCooldownMinutes || 5,
+      assignedVehicleIds: this.geofenceForm.assignedVehicleIds || []
     };
 
     if (this.geofenceForm.type === 'circle') {

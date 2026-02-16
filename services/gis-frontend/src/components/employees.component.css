@@ -280,6 +280,61 @@
   border-color: rgba(239, 68, 68, 0.4);
 }
 
+/* Permit Deadline Alerts */
+.permit-deadline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+.permit-deadline.ok {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.permit-deadline.warning {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.permit-deadline.critical {
+  background: #fee2e2;
+  color: #dc2626;
+  animation: pulse-critical 2s ease-in-out infinite;
+}
+
+.permit-deadline.expired {
+  background: #1e293b;
+  color: #fff;
+}
+
+@keyframes pulse-critical {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.btn-edit-expiry {
+  margin-left: auto;
+  background: rgba(255,255,255,0.6);
+  border: none;
+  border-radius: 4px;
+  padding: 3px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+
+.btn-edit-expiry:hover {
+  background: rgba(255,255,255,0.9);
+}
+
 @media (max-width: 768px) {
   .filters-bar {
     flex-wrap: wrap;

@@ -544,16 +544,49 @@ interface AccidentClaim {
               </div>
             </div>
 
-            <!-- Tiers -->
+            <!-- Police Report & Constat -->
             <div class="form-section">
-              <h3 class="form-section-title">👥 Tiers Impliqué</h3>
-              <div class="form-group">
-                <label class="toggle-label">
-                  <input type="checkbox" [(ngModel)]="formData.thirdPartyInvolved">
-                  <span class="toggle-switch"></span>
-                  <span>Un tiers est impliqué</span>
-                </label>
+              <h3 class="form-section-title">� Constat & Police</h3>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>N° Rapport de police</label>
+                  <input type="text" [(ngModel)]="formData.policeReportNumber" placeholder="Ex: PV-2026-001234">
+                </div>
+                <div class="form-group">
+                  <label>Conditions météo</label>
+                  <select [(ngModel)]="formData.weatherConditions">
+                    <option value="">Sélectionner</option>
+                    <option value="clear">Clair / Ensoleillé</option>
+                    <option value="cloudy">Nuageux</option>
+                    <option value="rain">Pluie</option>
+                    <option value="fog">Brouillard</option>
+                    <option value="night">Nuit</option>
+                  </select>
+                </div>
               </div>
+              <div class="form-group">
+                <label>Conditions de la route</label>
+                <select [(ngModel)]="formData.roadConditions">
+                  <option value="">Sélectionner</option>
+                  <option value="dry">Sèche</option>
+                  <option value="wet">Mouillée</option>
+                  <option value="icy">Verglacée</option>
+                  <option value="unpaved">Non goudronnée</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Tiers Impliqué - repositioned before description for better flow -->
+            <div class="form-section">
+              <h3 class="form-section-title">
+                <span class="section-title-row">
+                  👥 Tiers Impliqué
+                  <label class="toggle-inline">
+                    <input type="checkbox" [(ngModel)]="formData.thirdPartyInvolved">
+                    <span class="toggle-switch-small"></span>
+                  </label>
+                </span>
+              </h3>
               <div class="third-party-fields" *ngIf="formData.thirdPartyInvolved">
                 <div class="form-row">
                   <div class="form-group">
@@ -591,9 +624,8 @@ interface AccidentClaim {
             <!-- Photos -->
             <div class="form-section">
               <h3 class="form-section-title">📷 Photos</h3>
-              <div class="upload-zone" (click)="photoInput.click()"
-                   (dragover)="$event.preventDefault()" (drop)="onPhotoDrop($event)">
-                <input type="file" #photoInput multiple accept="image/*" (change)="onPhotosSelected($event)" hidden>
+              <div class="upload-zone" (click)="triggerPhotoUpload($event)">
+                <input type="file" #photoInput multiple accept="image/*" (change)="onPhotosSelected($event)" style="display:none">
                 <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                   <polyline points="17 8 12 3 7 8"/>
@@ -605,11 +637,11 @@ interface AccidentClaim {
               <div class="photos-grid" *ngIf="pendingPhotos.length > 0 || existingPhotos.length > 0">
                 <div class="photo-thumb" *ngFor="let photo of existingPhotos; let i = index">
                   <img [src]="getPhotoUrl(photo.fileUrl)" [alt]="photo.fileName">
-                  <button class="remove-photo-btn" (click)="removeExistingPhoto(photo, i); $event.stopPropagation()">×</button>
+                  <button type="button" class="remove-photo-btn" (click)="removeExistingPhoto(photo, i); $event.stopPropagation()">×</button>
                 </div>
                 <div class="photo-thumb" *ngFor="let photo of pendingPhotos; let i = index">
                   <img [src]="photo.preview" [alt]="photo.file.name">
-                  <button class="remove-photo-btn" (click)="removePendingPhoto(i); $event.stopPropagation()">×</button>
+                  <button type="button" class="remove-photo-btn" (click)="removePendingPhoto(i); $event.stopPropagation()">×</button>
                 </div>
               </div>
             </div>
@@ -1486,6 +1518,53 @@ interface AccidentClaim {
       transform: translateX(18px);
     }
 
+    .section-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+
+    .toggle-inline {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .toggle-inline input {
+      display: none;
+    }
+
+    .toggle-switch-small {
+      width: 36px;
+      height: 20px;
+      background: #e2e8f0;
+      border-radius: 10px;
+      position: relative;
+      transition: background 0.2s;
+    }
+
+    .toggle-switch-small::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      background: white;
+      border-radius: 50%;
+      top: 2px;
+      left: 2px;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .toggle-inline input:checked + .toggle-switch-small {
+      background: #3b82f6;
+    }
+
+    .toggle-inline input:checked + .toggle-switch-small::after {
+      transform: translateX(16px);
+    }
+
     .third-party-fields {
       margin-top: 16px;
       padding: 16px;
@@ -1765,7 +1844,7 @@ export class AccidentClaimsComponent implements OnInit {
           thirdPartyPhone: c.thirdPartyPhone,
           thirdPartyVehicle: c.thirdPartyVehicle,
           thirdPartyInsurance: c.thirdPartyInsurance,
-          policeReportNumber: c.policeReportNumber,
+          policeReportNumber: c.policeReportNumber || '',
           damagedZones: c.damagedZones || [],
           createdAt: c.createdAt ? new Date(c.createdAt) : new Date(),
           updatedAt: c.updatedAt ? new Date(c.updatedAt) : new Date(),
@@ -1875,8 +1954,18 @@ export class AccidentClaimsComponent implements OnInit {
       thirdPartyPhone: '',
       thirdPartyVehicle: '',
       thirdPartyInsurance: '',
+      policeReportNumber: '',
+      weatherConditions: '',
+      roadConditions: '',
       description: ''
     };
+  }
+
+  triggerPhotoUpload(event: Event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const input = (event.currentTarget as HTMLElement).querySelector('input[type="file"]') as HTMLInputElement;
+    if (input) input.click();
   }
 
   openAddForm() {
@@ -1974,7 +2063,10 @@ export class AccidentClaimsComponent implements OnInit {
       thirdPartyName: this.formData.thirdPartyName || undefined,
       thirdPartyPhone: this.formData.thirdPartyPhone || undefined,
       thirdPartyVehiclePlate: this.formData.thirdPartyVehicle || undefined,
-      thirdPartyInsurance: this.formData.thirdPartyInsurance || undefined
+      thirdPartyInsurance: this.formData.thirdPartyInsurance || undefined,
+      policeReportNumber: this.formData.policeReportNumber || undefined,
+      weatherConditions: this.formData.weatherConditions || undefined,
+      roadConditions: this.formData.roadConditions || undefined
     };
 
     if (this.editingClaim) {
