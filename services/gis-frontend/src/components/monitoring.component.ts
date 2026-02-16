@@ -462,18 +462,29 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     const iconSvg = getVehicleIcon(vehicleType);
+    const heading = (vehicle as any).lastPosition?.courseDeg || 0;
+    const plate = vehicle.plate || (vehicle as any).registration_number || '';
+    const showArrow = isMoving && heading > 0;
 
     const iconHtml = `
-      <div class="vehicle-marker vehicle-marker--${statusClass}" style="background-color: ${color};">
-        <div class="marker-icon">${iconSvg}</div>
+      <div style="display: flex; flex-direction: column; align-items: center;">
+        <div style="position: relative; width: 40px; height: 40px;">
+          ${showArrow ? `<div style="position: absolute; inset: 0; transform: rotate(${heading}deg); pointer-events: none; z-index: 1;">
+            <div style="position: absolute; top: -8px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 10px solid ${color}; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));"></div>
+          </div>` : ''}
+          <div class="vehicle-marker vehicle-marker--${statusClass}" style="background-color: ${color};">
+            <div class="marker-icon">${iconSvg}</div>
+          </div>
+        </div>
+        ${plate ? `<div style="font-size: 9px; font-weight: 700; color: #1e293b; background: rgba(255,255,255,0.95); padding: 1px 5px; border-radius: 3px; white-space: nowrap; margin-top: 1px; box-shadow: 0 1px 3px rgba(0,0,0,0.25); border: 1px solid ${color}; line-height: 1.3; text-align: center; max-width: 90px; overflow: hidden; text-overflow: ellipsis;">${plate}</div>` : ''}
       </div>
     `;
 
     return L.divIcon({
       html: iconHtml,
       className: 'custom-vehicle-marker',
-      iconSize: [40, 40],
-      iconAnchor: [20, 20]
+      iconSize: [92, 66],
+      iconAnchor: [46, 26]
     });
   }
 
@@ -483,162 +494,72 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const speed = vehicle.currentSpeed || 0;
     const isMoving = speed > 5;
     
-    // Color-coded status: Red=parked, Orange=idle, Green=moving, Gray=offline
-    let statusColor = '#9e9e9e'; // Gray: offline
+    let statusColor = '#9e9e9e';
     let statusText = 'Hors ligne';
-    let statusBg = 'rgba(158, 158, 158, 0.1)';
     
     if (isOnline) {
       if (!ignitionOn) {
-        statusColor = '#ef4444'; // Red: parked
+        statusColor = '#ef4444';
         statusText = 'Stationné';
-        statusBg = 'rgba(239, 68, 68, 0.1)';
       } else if (isMoving) {
-        statusColor = '#4caf50'; // Green: moving
-        statusText = 'En marche';
-        statusBg = 'rgba(76, 175, 80, 0.1)';
+        statusColor = '#22c55e';
+        statusText = 'En mouvement';
       } else {
-        statusColor = '#ff9800'; // Orange: idle
+        statusColor = '#f59e0b';
         statusText = 'Au ralenti';
-        statusBg = 'rgba(255, 152, 0, 0.1)';
       }
     }
+
+    const plate = vehicle.plate || 'N/A';
+    const fuelLevel = vehicle.stats?.fuelLevel;
+    const heading = (vehicle as any).lastPosition?.courseDeg || 0;
+    const odometer = vehicle.odometerKm || vehicle.mileage;
+    const address = vehicle.lastAddress || 'Position en cours...';
+    const ignitionColor = ignitionOn ? '#22c55e' : '#ef4444';
+    const fuelColor = fuelLevel != null && fuelLevel < 20 ? '#ef4444' : '#f59e0b';
     
     return `
-      <div style="
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        min-width: 220px;
-        padding: 0;
-        margin: -14px -20px;
-      ">
-        <!-- Header with gradient -->
-        <div style="
-          background: linear-gradient(135deg, #1e3a5f 0%, #0f2744 100%);
-          padding: 14px 16px;
-          border-radius: 8px 8px 0 0;
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        ">
-          <div style="
-            width: 40px;
-            height: 40px;
-            background: rgba(255,255,255,0.15);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          ">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">
-              <rect x="1" y="3" width="15" height="13" rx="2"/>
-              <path d="M16 8h4l3 3v5a2 2 0 0 1-2 2h-1"/>
-              <circle cx="5.5" cy="18.5" r="2.5"/>
-              <circle cx="18.5" cy="18.5" r="2.5"/>
-            </svg>
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; width: 270px; margin: -14px -20px;">
+        <div style="background: linear-gradient(135deg, ${statusColor} 0%, ${statusColor}cc 100%); padding: 12px 16px; border-radius: 8px 8px 0 0; display: flex; align-items: center; gap: 12px;">
+          <div style="width: 38px; height: 38px; background: rgba(255,255,255,0.2); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5a2 2 0 0 1-2 2h-1"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
           </div>
-          <div style="flex: 1;">
-            <div style="font-weight: 600; font-size: 14px; color: #fff; margin-bottom: 2px;">
-              ${vehicle.name || vehicle.brand + ' ' + vehicle.model}
-            </div>
-            <div style="font-size: 12px; color: rgba(255,255,255,0.7); font-family: monospace;">
-              ${vehicle.plate || 'N/A'}
-            </div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-weight: 700; font-size: 14px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${plate}</div>
+            <div style="font-size: 11px; color: rgba(255,255,255,0.9); margin-top: 1px;">${statusText}</div>
+          </div>
+          <div style="text-align: right; flex-shrink: 0;">
+            <div style="font-size: 26px; font-weight: 800; color: #fff; line-height: 1;">${speed}</div>
+            <div style="font-size: 9px; color: rgba(255,255,255,0.85); text-transform: uppercase; letter-spacing: 0.5px;">km/h</div>
           </div>
         </div>
-        
-        <!-- Status bar -->
-        <div style="
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 10px 16px;
-          background: ${statusBg};
-          border-bottom: 1px solid #e5e7eb;
-        ">
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <div style="
-              width: 8px;
-              height: 8px;
-              background: ${statusColor};
-              border-radius: 50%;
-              ${isOnline ? 'box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);' : ''}
-            "></div>
-            <span style="font-size: 12px; font-weight: 500; color: ${statusColor};">${statusText}</span>
+        <div style="display: flex; background: #fff; border-bottom: 1px solid #f1f5f9;">
+          <div style="flex: 1; padding: 10px 0; text-align: center; border-right: 1px solid #f1f5f9;">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 4px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${ignitionColor}" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2m-3.5-7.5-1.4 1.4M6.3 17.7l-1.4 1.4m0-14.2 1.4 1.4m11.4 11.4 1.4 1.4"/></svg>
+              <span style="font-size: 12px; font-weight: 600; color: ${ignitionColor};">${ignitionOn ? 'Allumé' : 'Éteint'}</span>
+            </div>
+            <div style="font-size: 9px; color: #94a3b8; margin-top: 2px;">Moteur</div>
           </div>
-          ${isMoving ? `
-            <div style="
-              display: flex;
-              align-items: center;
-              gap: 4px;
-              padding: 3px 8px;
-              background: rgba(59, 130, 246, 0.1);
-              border-radius: 12px;
-            ">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="#3b82f6" stroke="none">
-                <path d="M12 2L4.5 20.3l.7.7 6.8-3 6.8 3 .7-.7L12 2z"/>
-              </svg>
-              <span style="font-size: 11px; font-weight: 600; color: #3b82f6;">En mouvement</span>
+          <div style="flex: 1; padding: 10px 0; text-align: center; border-right: 1px solid #f1f5f9;">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 4px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${fuelColor}" stroke-width="2"><path d="M3 22V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/><path d="M15 11h3.5a2 2 0 0 1 2 2v3a1.5 1.5 0 0 0 3 0v-7l-3-3"/></svg>
+              <span style="font-size: 12px; font-weight: 600; color: ${fuelLevel != null && fuelLevel < 20 ? '#ef4444' : '#1e293b'};">${fuelLevel != null ? fuelLevel + '%' : 'N/A'}</span>
             </div>
-          ` : ''}
-        </div>
-        
-        <!-- Address -->
-        <div style="
-          padding: 8px 16px;
-          background: #f8fafc;
-          border-bottom: 1px solid #e5e7eb;
-          font-size: 11px;
-          color: #64748b;
-          display: flex;
-          align-items: flex-start;
-          gap: 6px;
-        ">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" style="flex-shrink: 0; margin-top: 2px;">
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-          </svg>
-          <span style="line-height: 1.4;">${vehicle.lastAddress || 'Adresse non disponible'}</span>
-        </div>
-        
-        <!-- Info grid -->
-        <div style="padding: 12px 16px 14px; background: #fff; border-radius: 0 0 8px 8px;">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-            <div style="
-              background: #f8fafc;
-              padding: 10px 12px;
-              border-radius: 8px;
-              border: 1px solid #e2e8f0;
-            ">
-              <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Vitesse</div>
-              <div style="font-size: 18px; font-weight: 700; color: #1e293b;">${speed}<span style="font-size: 11px; font-weight: 500; color: #64748b;"> km/h</span></div>
-            </div>
-            <div style="
-              background: #f8fafc;
-              padding: 10px 12px;
-              border-radius: 8px;
-              border: 1px solid #e2e8f0;
-            ">
-              <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Carburant</div>
-              <div style="font-size: 14px; font-weight: 600; color: #1e293b;">${vehicle.stats?.fuelLevel != null ? vehicle.stats.fuelLevel + '%' : 'N/A'}</div>
-            </div>
-            <div style="
-              background: #f8fafc;
-              padding: 10px 12px;
-              border-radius: 8px;
-              border: 1px solid #e2e8f0;
-            ">
-              <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Kilométrage</div>
-              <div style="font-size: 14px; font-weight: 600; color: #1e293b;">${vehicle.odometerKm ? (vehicle.odometerKm).toLocaleString() + ' km' : (vehicle.mileage ? vehicle.mileage.toLocaleString() + ' km' : 'N/A')}</div>
-            </div>
-            <div style="
-              background: #f8fafc;
-              padding: 10px 12px;
-              border-radius: 8px;
-              border: 1px solid #e2e8f0;
-            ">
-              <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Batterie</div>
-              <div style="font-size: 14px; font-weight: 600; color: #1e293b;">${vehicle.stats?.batteryLevel != null ? vehicle.stats.batteryLevel + '%' : 'N/A'}</div>
-            </div>
+            <div style="font-size: 9px; color: #94a3b8; margin-top: 2px;">Carburant</div>
           </div>
+          <div style="flex: 1; padding: 10px 0; text-align: center;">
+            <div style="font-size: 12px; font-weight: 600; color: #1e293b;">${heading}°</div>
+            <div style="font-size: 9px; color: #94a3b8; margin-top: 2px;">Direction</div>
+          </div>
+        </div>
+        <div style="padding: 8px 14px; background: #f8fafc; border-bottom: 1px solid #f1f5f9; display: flex; align-items: flex-start; gap: 6px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="${statusColor}" stroke="none" style="flex-shrink: 0; margin-top: 2px;"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+          <span style="font-size: 11px; color: #64748b; line-height: 1.4;">${address}</span>
+        </div>
+        <div style="padding: 7px 14px; background: #f8fafc; border-radius: 0 0 8px 8px; display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 10px; color: #94a3b8;">${odometer ? Number(odometer).toLocaleString() + ' km' : ''}</span>
+          <span style="font-size: 10px; color: #94a3b8; font-family: 'SF Mono', Monaco, monospace;">${vehicle.currentLocation ? vehicle.currentLocation.lat.toFixed(5) + ', ' + vehicle.currentLocation.lng.toFixed(5) : ''}</span>
         </div>
       </div>
     `;
