@@ -1,7 +1,9 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api.service';
+import { SignalRService } from '../../services/signalr.service';
 
 interface ChatUser {
   id: number;
@@ -286,18 +288,31 @@ export class ChatComponent implements OnInit, OnDestroy {
   newMessage = '';
   searchQuery = '';
   totalUnread = 0;
+  loadingMessages = false;
 
   private currentUserId = 0;
   private refreshInterval: any;
+  private chatSub?: Subscription;
+  private readSub?: Subscription;
 
   constructor(
     private apiService: ApiService,
+    private signalRService: SignalRService,
     private cdr: ChangeDetectorRef,
     private ngZone: NgZone
   ) {}
 
   ngOnInit() {
+    // Get current user ID from stored user
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try { this.currentUserId = JSON.parse(storedUser).id || 0; } catch {}
+    }
+
     this.loadUsers();
+    this.loadUnreadCount();
+    this.setupSignalR();
+
     // Refresh user list every 30 seconds
     this.refreshInterval = setInterval(() => {
       if (this.isOpen) this.loadUsers();
@@ -306,23 +321,102 @@ export class ChatComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     if (this.refreshInterval) clearInterval(this.refreshInterval);
+    this.chatSub?.unsubscribe();
+    this.readSub?.unsubscribe();
+  }
+
+  private setupSignalR() {
+    // Listen for incoming chat messages via SignalR
+    if (this.signalRService.isConnected()) {
+      this.registerChatHandlers();
+    }
+    // Also try when connection state changes
+    this.signalRService.connectionState$.subscribe(state => {
+      if (state === 'Connected') {
+        this.registerChatHandlers();
+      }
+    });
+  }
+
+  private chatHandlersRegistered = false;
+  private registerChatHandlers() {
+    if (this.chatHandlersRegistered) return;
+    this.chatHandlersRegistered = true;
+
+    // Access the hub connection via the service's internal connection
+    // We use a workaround: listen through a custom Subject
+    // The SignalR service already registers on the hub, we add ChatMessage handler
+    const hub = (this.signalRService as any).hubConnection;
+    if (hub) {
+      hub.on('ChatMessage', (msg: any) => {
+        this.ngZone.run(() => {
+          this.handleIncomingMessage(msg);
+        });
+      });
+      hub.on('ChatMessagesRead', (data: any) => {
+        this.ngZone.run(() => {
+          // Mark messages as read in active conversation
+          if (this.activeUser && data.readBy === this.activeUser.id) {
+            this.messages.forEach(m => { if (m.isMine) m.isRead = true; });
+            this.cdr.detectChanges();
+          }
+        });
+      });
+    }
+  }
+
+  private handleIncomingMessage(msg: any) {
+    const chatMsg: ChatMessage = {
+      id: msg.id?.toString() || Date.now().toString(),
+      senderId: msg.senderId,
+      senderName: msg.senderName,
+      receiverId: msg.receiverId,
+      content: msg.content,
+      timestamp: new Date(msg.timestamp),
+      isRead: false,
+      isMine: false
+    };
+
+    // If conversation with this sender is open, add message and mark as read
+    if (this.activeUser && this.activeUser.id === msg.senderId) {
+      this.messages.push(chatMsg);
+      this.scrollToBottom();
+      this.apiService.markChatMessagesRead(msg.senderId).subscribe();
+    } else {
+      // Update unread count for the sender in user list
+      const sender = this.users.find(u => u.id === msg.senderId);
+      if (sender) {
+        sender.unreadCount = (sender.unreadCount || 0) + 1;
+      }
+      this.totalUnread++;
+    }
+    this.cdr.detectChanges();
   }
 
   loadUsers() {
-    this.apiService.getUsers().subscribe({
-      next: (apiUsers: any[]) => {
+    this.apiService.getChatUsers().subscribe({
+      next: (chatUsers: any[]) => {
         this.ngZone.run(() => {
-          this.users = apiUsers.map(u => ({
+          this.users = chatUsers.map(u => ({
             id: u.id,
             name: u.name,
             email: u.email,
-            isOnline: u.status === 'active',
-            unreadCount: 0
+            isOnline: u.isOnline,
+            lastSeen: u.lastSeen ? new Date(u.lastSeen) : undefined,
+            unreadCount: u.unreadCount || 0
           }));
+          this.totalUnread = this.users.reduce((sum, u) => sum + u.unreadCount, 0);
           this.filterUsers();
           this.cdr.detectChanges();
         });
       },
+      error: () => {}
+    });
+  }
+
+  loadUnreadCount() {
+    this.apiService.getChatUnreadCount().subscribe({
+      next: (res) => { this.totalUnread = res.count; this.cdr.detectChanges(); },
       error: () => {}
     });
   }
@@ -348,61 +442,76 @@ export class ChatComponent implements OnInit, OnDestroy {
 
   openConversation(user: ChatUser) {
     this.activeUser = user;
-    user.unreadCount = 0;
     this.messages = [];
-    // In a real implementation, load messages from API/SignalR here
-    this.scrollToBottom();
+    this.loadingMessages = true;
+    this.cdr.detectChanges();
+
+    // Load messages from API
+    this.apiService.getChatMessages(user.id).subscribe({
+      next: (msgs: any[]) => {
+        this.ngZone.run(() => {
+          this.messages = msgs.map(m => ({
+            id: m.id?.toString(),
+            senderId: m.senderId,
+            senderName: m.senderName,
+            receiverId: m.receiverId,
+            content: m.content,
+            timestamp: new Date(m.timestamp),
+            isRead: m.isRead,
+            isMine: m.isMine
+          }));
+          this.loadingMessages = false;
+          this.cdr.detectChanges();
+          this.scrollToBottom();
+        });
+      },
+      error: () => { this.loadingMessages = false; this.cdr.detectChanges(); }
+    });
+
+    // Mark messages as read
+    if (user.unreadCount > 0) {
+      this.totalUnread = Math.max(0, this.totalUnread - user.unreadCount);
+      user.unreadCount = 0;
+      this.apiService.markChatMessagesRead(user.id).subscribe();
+    }
   }
 
   sendMessage() {
     if (!this.newMessage.trim() || !this.activeUser) return;
-    const msg: ChatMessage = {
-      id: Date.now().toString(),
+    const content = this.newMessage.trim();
+    this.newMessage = '';
+
+    // Optimistic UI: add message immediately
+    const tempMsg: ChatMessage = {
+      id: 'temp_' + Date.now(),
       senderId: this.currentUserId,
       senderName: 'Moi',
       receiverId: this.activeUser.id,
-      content: this.newMessage.trim(),
+      content,
       timestamp: new Date(),
       isRead: false,
       isMine: true
     };
-    this.messages.push(msg);
-    this.newMessage = '';
+    this.messages.push(tempMsg);
     this.scrollToBottom();
 
-    // Simulate a reply after 1-2 seconds
-    setTimeout(() => {
-      if (this.activeUser) {
-        const reply: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          senderId: this.activeUser.id,
-          senderName: this.activeUser.name,
-          receiverId: this.currentUserId,
-          content: this.getAutoReply(),
-          timestamp: new Date(),
-          isRead: true,
-          isMine: false
-        };
-        this.ngZone.run(() => {
-          this.messages.push(reply);
-          this.cdr.detectChanges();
-          this.scrollToBottom();
-        });
+    // Send to API
+    this.apiService.sendChatMessage(this.activeUser.id, content).subscribe({
+      next: (savedMsg: any) => {
+        // Replace temp message with real one
+        const idx = this.messages.findIndex(m => m.id === tempMsg.id);
+        if (idx !== -1) {
+          this.messages[idx].id = savedMsg.id?.toString();
+        }
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        // Remove failed message
+        const idx = this.messages.findIndex(m => m.id === tempMsg.id);
+        if (idx !== -1) this.messages.splice(idx, 1);
+        this.cdr.detectChanges();
       }
-    }, 1000 + Math.random() * 1500);
-  }
-
-  private getAutoReply(): string {
-    const replies = [
-      'Bien reçu, merci !',
-      'OK, je m\'en occupe.',
-      'D\'accord, à tout à l\'heure.',
-      'Parfait, merci pour l\'info.',
-      'Je vérifie et je reviens vers vous.',
-      'Noté 👍',
-      'Compris, je vous tiens au courant.'
-    ];
-    return replies[Math.floor(Math.random() * replies.length)];
+    });
   }
 
   private scrollToBottom() {

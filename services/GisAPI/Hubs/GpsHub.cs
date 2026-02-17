@@ -81,6 +81,16 @@ public class GpsHub : Hub
     {
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"geofence_{geofenceId}");
     }
+
+    // Chat: notify a user that someone is typing
+    public async Task ChatTyping(int receiverId)
+    {
+        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            await Clients.Group($"user_{receiverId}").SendAsync("ChatTyping", new { SenderId = int.Parse(userId) });
+        }
+    }
 }
 
 // Implementation of the Application layer interface

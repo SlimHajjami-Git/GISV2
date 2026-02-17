@@ -113,6 +113,9 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<TourWaypoint> TourWaypoints => Set<TourWaypoint>();
     public DbSet<TourPause> TourPauses => Set<TourPause>();
 
+    // Chat
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -152,6 +155,7 @@ public class GisDbContext : DbContext, IGisDbContext
             modelBuilder.Entity<VehicleMaintenanceSchedule>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
             modelBuilder.Entity<Driver>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
             modelBuilder.Entity<Tour>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
+            modelBuilder.Entity<ChatMessage>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
         }
 
         // Configure composite keys
@@ -189,6 +193,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<Tour>().ToTable("tours");
         modelBuilder.Entity<TourWaypoint>().ToTable("tour_waypoints");
         modelBuilder.Entity<TourPause>().ToTable("tour_pauses");
+        modelBuilder.Entity<ChatMessage>().ToTable("chat_messages");
 
         // SubscriptionType configuration - all column mappings for PostgreSQL snake_case
         modelBuilder.Entity<SubscriptionType>().Property(s => s.Id).HasColumnName("id");
@@ -409,6 +414,32 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<Tour>().Property(t => t.EstimatedFuelLiters).HasPrecision(10, 2);
         modelBuilder.Entity<Tour>().Property(t => t.ActualDistanceKm).HasPrecision(10, 2);
         modelBuilder.Entity<Tour>().Property(t => t.ActualFuelLiters).HasPrecision(10, 2);
+
+        // ChatMessage configuration
+        modelBuilder.Entity<ChatMessage>().Property(m => m.SenderId).HasColumnName("sender_id");
+        modelBuilder.Entity<ChatMessage>().Property(m => m.ReceiverId).HasColumnName("receiver_id");
+        modelBuilder.Entity<ChatMessage>().Property(m => m.Content).HasColumnName("content");
+        modelBuilder.Entity<ChatMessage>().Property(m => m.IsRead).HasColumnName("is_read");
+        modelBuilder.Entity<ChatMessage>().Property(m => m.ReadAt).HasColumnName("read_at");
+        modelBuilder.Entity<ChatMessage>().Property(m => m.CompanyId).HasColumnName("company_id");
+        modelBuilder.Entity<ChatMessage>().Property(m => m.CreatedAt).HasColumnName("created_at");
+        modelBuilder.Entity<ChatMessage>().Property(m => m.UpdatedAt).HasColumnName("updated_at");
+        modelBuilder.Entity<ChatMessage>()
+            .HasOne(m => m.Sender)
+            .WithMany()
+            .HasForeignKey(m => m.SenderId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ChatMessage>()
+            .HasOne(m => m.Receiver)
+            .WithMany()
+            .HasForeignKey(m => m.ReceiverId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ChatMessage>()
+            .HasIndex(m => new { m.SenderId, m.ReceiverId, m.CreatedAt })
+            .HasDatabaseName("ix_chat_messages_sender_receiver_time");
+        modelBuilder.Entity<ChatMessage>()
+            .HasIndex(m => new { m.ReceiverId, m.IsRead })
+            .HasDatabaseName("ix_chat_messages_receiver_unread");
 
         // GpsPosition decimal precision
         modelBuilder.Entity<GpsPosition>().Property(p => p.FuelRateLPer100Km).HasPrecision(6, 2);

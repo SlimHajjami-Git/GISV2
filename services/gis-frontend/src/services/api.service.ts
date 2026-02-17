@@ -1536,6 +1536,30 @@ export class ApiService {
   createPart(request: { categoryId: number; name: string; description?: string; partNumber?: string }): Observable<VehiclePartDto> {
     return this.http.post<VehiclePartDto>(`${this.API_URL}/parts/parts`, request, { headers: this.getHeaders() });
   }
+
+  // ==================== CHAT ====================
+
+  getChatUsers(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.API_URL}/chat/users`, { headers: this.getHeaders() });
+  }
+
+  getChatMessages(otherUserId: number, limit = 50, beforeId?: number): Observable<any[]> {
+    let params = `limit=${limit}`;
+    if (beforeId) params += `&beforeId=${beforeId}`;
+    return this.http.get<any[]>(`${this.API_URL}/chat/messages/${otherUserId}?${params}`, { headers: this.getHeaders() });
+  }
+
+  sendChatMessage(receiverId: number, content: string): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/chat/messages`, { receiverId, content }, { headers: this.getHeaders() });
+  }
+
+  markChatMessagesRead(otherUserId: number): Observable<any> {
+    return this.http.put<any>(`${this.API_URL}/chat/messages/${otherUserId}/read`, {}, { headers: this.getHeaders() });
+  }
+
+  getChatUnreadCount(): Observable<{ count: number }> {
+    return this.http.get<{ count: number }>(`${this.API_URL}/chat/unread-count`, { headers: this.getHeaders() });
+  }
 }
 
 // ==================== FUEL RECORDS INTERFACES ====================
