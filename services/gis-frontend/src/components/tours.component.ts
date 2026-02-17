@@ -1,552 +1,626 @@
-import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, ElementRef, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { HttpClient } from '@angular/common/http';
 import { ApiService } from '../services/api.service';
-import { forkJoin } from 'rxjs';
+import { AppLayoutComponent } from './shared/app-layout.component';
+import { forkJoin, Subject, of, Subscription } from 'rxjs';
+import { debounceTime, switchMap, catchError } from 'rxjs/operators';
 
 declare let L: any;
 
 @Component({
   selector: 'app-tours',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, AppLayoutComponent],
   template: `
-    <div class="tours-container">
-      <!-- Header -->
-      <div class="tours-header">
-        <div class="header-left">
-          <h1>Gestion des Tournées</h1>
-          <p class="subtitle">Planifiez, suivez et analysez vos tournées</p>
+    <app-layout>
+
+    <!-- ══════════ MAIN LIST VIEW ══════════ -->
+    <div class="page" *ngIf="currentView === 'list'">
+      <div class="page-top">
+        <div class="page-title">
+          <h1>Tournees</h1>
+          <span class="title-count">{{tours.length}}</span>
         </div>
-        <div class="header-actions">
-          <button class="btn-primary" (click)="openCreateModal()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Nouvelle Tournée
-          </button>
-        </div>
+        <button class="btn-create" (click)="openCreate()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nouvelle tournee
+        </button>
       </div>
 
-      <!-- Stats Cards -->
-      <div class="stats-row">
-        <div class="stat-card">
-          <div class="stat-icon total"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H5a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm12-2h-4a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2z"/><polyline points="9 17 12 5 15 17"/></svg></div>
-          <div class="stat-info"><span class="stat-value">{{stats.total}}</span><span class="stat-label">Total</span></div>
+      <!-- Stats row -->
+      <div class="kpi-row">
+        <div class="kpi" (click)="filterStatus='';loadTours()" [class.kpi-active]="filterStatus===''">
+          <span class="kpi-val">{{stats.total}}</span><span class="kpi-lbl">Total</span>
         </div>
-        <div class="stat-card">
-          <div class="stat-icon planned"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
-          <div class="stat-info"><span class="stat-value">{{stats.planned}}</span><span class="stat-label">Planifiées</span></div>
+        <div class="kpi kpi-amber" (click)="filterStatus='planned';loadTours()" [class.kpi-active]="filterStatus==='planned'">
+          <span class="kpi-val">{{stats.planned}}</span><span class="kpi-lbl">Planifiees</span>
         </div>
-        <div class="stat-card">
-          <div class="stat-icon progress"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
-          <div class="stat-info"><span class="stat-value">{{stats.inProgress}}</span><span class="stat-label">En cours</span></div>
+        <div class="kpi kpi-blue" (click)="filterStatus='in_progress';loadTours()" [class.kpi-active]="filterStatus==='in_progress'">
+          <span class="kpi-val">{{stats.inProgress}}</span><span class="kpi-lbl">En cours</span>
         </div>
-        <div class="stat-card">
-          <div class="stat-icon completed"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
-          <div class="stat-info"><span class="stat-value">{{stats.completed}}</span><span class="stat-label">Terminées</span></div>
+        <div class="kpi kpi-green" (click)="filterStatus='completed';loadTours()" [class.kpi-active]="filterStatus==='completed'">
+          <span class="kpi-val">{{stats.completed}}</span><span class="kpi-lbl">Terminees</span>
         </div>
       </div>
 
       <!-- Filters -->
-      <div class="filters-row">
+      <div class="filter-row">
         <div class="filter-group">
-          <select [(ngModel)]="filterStatus" (change)="loadTours()">
-            <option value="">Tous les statuts</option>
-            <option value="planned">Planifiées</option>
-            <option value="in_progress">En cours</option>
-            <option value="completed">Terminées</option>
-            <option value="cancelled">Annulées</option>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          <select [(ngModel)]="filterVehicleId" (ngModelChange)="loadTours()">
+            <option [ngValue]="null">Tous les vehicules</option>
+            <option *ngFor="let v of vehicles" [ngValue]="v.id">{{v.name || v.plate}}</option>
           </select>
-        </div>
-        <div class="filter-group">
-          <select [(ngModel)]="filterVehicleId" (change)="loadTours()">
-            <option [ngValue]="null">Tous les véhicules</option>
-            <option *ngFor="let v of vehicles" [ngValue]="v.id">{{v.name}} ({{v.plate}})</option>
-          </select>
-        </div>
-        <div class="filter-group">
-          <select [(ngModel)]="filterDriverId" (change)="loadTours()">
+          <select [(ngModel)]="filterDriverId" (ngModelChange)="loadTours()">
             <option [ngValue]="null">Tous les chauffeurs</option>
             <option *ngFor="let d of drivers" [ngValue]="d.id">{{d.firstName}} {{d.lastName}}</option>
           </select>
         </div>
       </div>
 
-      <!-- Tours List -->
-      <div class="tours-list" *ngIf="!loading && tours.length > 0">
-        <div class="tour-card" *ngFor="let tour of tours" (click)="openDetailModal(tour)">
-          <div class="tour-status-bar" [class]="'status-' + tour.status"></div>
-          <div class="tour-card-body">
-            <div class="tour-card-header">
-              <h3>{{tour.name}}</h3>
-              <span class="status-badge" [class]="'badge-' + tour.status">{{getStatusLabel(tour.status)}}</span>
-            </div>
-            <div class="tour-route">
-              <div class="route-point origin">
-                <span class="dot"></span>
-                <span class="address">{{tour.origin || 'Départ'}}</span>
-              </div>
-              <div class="route-line" *ngIf="tour.waypointCount > 2">
-                <span class="waypoint-count">{{tour.waypointCount - 2}} arrêt(s)</span>
-              </div>
-              <div class="route-point destination">
-                <span class="dot"></span>
-                <span class="address">{{tour.destination || 'Arrivée'}}</span>
-              </div>
-            </div>
-            <div class="tour-meta">
-              <div class="meta-item">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-                <span>{{tour.vehicleName}}</span>
-              </div>
-              <div class="meta-item" *ngIf="tour.driverName">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                <span>{{tour.driverName}}</span>
-              </div>
-              <div class="meta-item">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                <span>{{formatDate(tour.scheduledStartTime)}}</span>
-              </div>
-              <div class="meta-item">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-                <span>{{tour.estimatedDistanceKm | number:'1.1-1'}} km</span>
-              </div>
-              <div class="meta-item">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                <span>~{{tour.estimatedFuelLiters | number:'1.1-1'}} L</span>
-              </div>
-              <div class="meta-item duration">
-                <span>{{formatDuration(tour.estimatedDurationMinutes)}}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Empty state -->
-      <div class="empty-state" *ngIf="!loading && tours.length === 0">
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5"><path d="M9 17H5a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm12-2h-4a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2z"/><polyline points="9 17 12 5 15 17"/></svg>
-        <h3>Aucune tournée</h3>
-        <p>Créez votre première tournée pour commencer</p>
-        <button class="btn-primary" (click)="openCreateModal()">Créer une tournée</button>
-      </div>
-
       <!-- Loading -->
-      <div class="loading" *ngIf="loading">
-        <div class="spinner"></div>
-        <p>Chargement...</p>
+      <div class="loading-state" *ngIf="loading">
+        <div class="lds-ring"><div></div><div></div><div></div><div></div></div>
       </div>
 
-      <!-- ═══════ CREATE/EDIT MODAL ═══════ -->
-      <div class="modal-overlay" *ngIf="showCreateModal" (click)="closeCreateModal()">
-        <div class="modal" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h2>{{editingTour ? 'Modifier la tournée' : 'Nouvelle Tournée'}}</h2>
-            <button class="close-btn" (click)="closeCreateModal()">&times;</button>
-          </div>
-          <div class="modal-body">
-            <div class="form-grid">
-              <div class="form-group full-width">
-                <label>Nom de la tournée</label>
-                <input type="text" [(ngModel)]="tourForm.name" placeholder="Ex: Livraison Tunis-Sousse">
-              </div>
-              <div class="form-group">
-                <label>Véhicule</label>
+      <!-- Empty -->
+      <div class="empty-state" *ngIf="!loading && tours.length === 0">
+        <div class="empty-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1"/></svg>
+        </div>
+        <h3>Aucune tournee trouvee</h3>
+        <p>Commencez par creer votre premiere tournee</p>
+        <button class="btn-create sm" (click)="openCreate()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Creer une tournee
+        </button>
+      </div>
+
+      <!-- Tour table -->
+      <div class="tour-table" *ngIf="!loading && tours.length > 0">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-status"></th>
+              <th>Nom</th>
+              <th>Trajet</th>
+              <th>Vehicule</th>
+              <th>Chauffeur</th>
+              <th>Depart</th>
+              <th>Distance</th>
+              <th>Duree</th>
+              <th class="col-actions"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let t of tours" (click)="openDetail(t)" class="tour-row">
+              <td class="col-status"><span class="status-dot" [class]="'sd-'+t.status"></span></td>
+              <td>
+                <div class="cell-name">{{t.name}}</div>
+                <span class="badge-sm" [class]="'bs-'+t.status">{{getStatusLabel(t.status)}}</span>
+              </td>
+              <td>
+                <div class="cell-route">
+                  <span class="route-tag origin">{{truncate(t.origin, 20) || 'Depart'}}</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                  <span class="route-tag dest">{{truncate(t.destination, 20) || 'Arrivee'}}</span>
+                  <span class="stop-count" *ngIf="t.waypointCount > 2">+{{t.waypointCount-2}}</span>
+                </div>
+              </td>
+              <td><span class="cell-sub">{{t.vehicleName}}</span></td>
+              <td><span class="cell-sub">{{t.driverName || '-'}}</span></td>
+              <td><span class="cell-sub">{{formatDateShort(t.scheduledStartTime)}}</span></td>
+              <td><strong class="cell-km">{{t.estimatedDistanceKm | number:'1.0-0'}} km</strong></td>
+              <td><span class="cell-dur">{{formatDuration(t.estimatedDurationMinutes)}}</span></td>
+              <td class="col-actions">
+                <button class="row-action" (click)="$event.stopPropagation();openDetail(t)" title="Details">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════════ CREATE / EDIT VIEW (Full screen split) ══════════ -->
+    <div class="create-view" *ngIf="currentView === 'create'">
+
+      <!-- Left panel: form -->
+      <div class="cv-left">
+        <div class="cv-left-head">
+          <button class="back-btn" (click)="closeCreate()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <h2>{{editingTour ? 'Modifier la tournee' : 'Planifier une tournee'}}</h2>
+        </div>
+
+        <div class="cv-left-scroll">
+          <!-- Step 1: Basic info -->
+          <div class="form-section">
+            <div class="fs-title">
+              <span class="step-num">1</span>
+              Informations
+            </div>
+            <div class="field">
+              <label>Nom *</label>
+              <input type="text" [(ngModel)]="tourForm.name" placeholder="Ex: Livraison Tunis - Sousse">
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label>Vehicule *</label>
                 <select [(ngModel)]="tourForm.vehicleId">
-                  <option [ngValue]="null">Sélectionner...</option>
+                  <option [ngValue]="null">Choisir...</option>
                   <option *ngFor="let v of vehicles" [ngValue]="v.id">{{v.name}} ({{v.plate}})</option>
                 </select>
               </div>
-              <div class="form-group">
+              <div class="field">
                 <label>Chauffeur</label>
                 <select [(ngModel)]="tourForm.driverId">
-                  <option [ngValue]="null">Sélectionner...</option>
+                  <option [ngValue]="null">Optionnel</option>
                   <option *ngFor="let d of drivers" [ngValue]="d.id">{{d.firstName}} {{d.lastName}}</option>
                 </select>
               </div>
-              <div class="form-group">
-                <label>Date & heure de départ</label>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label>Depart prevu *</label>
                 <input type="datetime-local" [(ngModel)]="tourForm.scheduledStartTime">
               </div>
-              <div class="form-group">
-                <label>Description</label>
-                <input type="text" [(ngModel)]="tourForm.description" placeholder="Description optionnelle">
+              <div class="field">
+                <label>Notes</label>
+                <input type="text" [(ngModel)]="tourForm.description" placeholder="Optionnel">
               </div>
             </div>
+          </div>
 
-            <!-- Waypoints -->
-            <div class="waypoints-section">
-              <div class="section-header">
-                <h3>Itinéraire</h3>
-                <button class="btn-sm" (click)="addWaypoint()">+ Ajouter un arrêt</button>
-              </div>
-              <div class="waypoints-list">
-                <div class="waypoint-item" *ngFor="let wp of tourForm.waypoints; let i = index; let first = first; let last = last">
-                  <div class="waypoint-marker" [class.origin]="first" [class.destination]="last && tourForm.waypoints.length > 1">
-                    <span class="marker-dot"></span>
-                    <span class="marker-line" *ngIf="!last"></span>
+          <!-- Step 2: Itinerary -->
+          <div class="form-section">
+            <div class="fs-title">
+              <span class="step-num">2</span>
+              Itineraire
+              <button class="add-stop-btn" (click)="addWaypoint()">+ Arret</button>
+            </div>
+
+            <div class="wp-timeline">
+              <div class="wp-node" *ngFor="let wp of tourForm.waypoints; let i = index; let first = first; let last = last">
+                <div class="wp-rail">
+                  <div class="wp-circle" [class.wpc-green]="first" [class.wpc-red]="last && !first" [class.wpc-blue]="!first && !last"
+                       [class.wpc-filled]="wp.latitude">
+                    <span *ngIf="!wp.latitude">{{i+1}}</span>
+                    <svg *ngIf="wp.latitude" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
                   </div>
-                  <div class="waypoint-fields">
-                    <div class="wp-row">
-                      <input type="text" [(ngModel)]="wp.name" [placeholder]="first ? 'Point de départ' : (last && tourForm.waypoints.length > 1 ? 'Destination' : 'Arrêt ' + i)" class="wp-name">
-                      <input type="text" [(ngModel)]="wp.address" placeholder="Adresse" class="wp-address">
+                  <div class="wp-rail-line" *ngIf="!last"></div>
+                </div>
+                <div class="wp-content">
+                  <div class="wp-label">{{first ? 'Depart' : (last && !first ? 'Destination' : 'Arret ' + i)}}</div>
+                  <div class="wp-search-wrap">
+                    <input type="text"
+                      [(ngModel)]="wp.searchText"
+                      (ngModelChange)="onSearchChange($event, i)"
+                      (focus)="onSearchFocus(i)"
+                      (blur)="onSearchBlur()"
+                      [placeholder]="first ? 'Rechercher une adresse de depart...' : (last && !first ? 'Rechercher la destination...' : 'Rechercher une adresse...')"
+                      class="wp-search-input"
+                      [class.wp-filled]="wp.latitude"
+                      autocomplete="off">
+                    <div class="wp-autocomplete" *ngIf="activeSearchIdx === i && searchResults.length > 0">
+                      <div class="wp-ac-item" *ngFor="let r of searchResults" (mousedown)="pickResult(r, i)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        <div class="wp-ac-text">
+                          <span class="wp-ac-main">{{getShortName(r.display_name)}}</span>
+                          <span class="wp-ac-sub">{{r.display_name}}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div class="wp-row coords">
-                      <input type="number" [(ngModel)]="wp.latitude" placeholder="Latitude" step="0.0001" class="wp-coord">
-                      <input type="number" [(ngModel)]="wp.longitude" placeholder="Longitude" step="0.0001" class="wp-coord">
-                      <input type="number" [(ngModel)]="wp.plannedPauseMinutes" placeholder="Pause (min)" class="wp-pause" min="0">
-                      <button class="btn-icon danger" *ngIf="!first && !(last && tourForm.waypoints.length <= 2)" (click)="removeWaypoint(i)" title="Supprimer">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </div>
+                  <div class="wp-meta" *ngIf="wp.latitude">
+                    <span class="wp-coord-tag">{{wp.latitude.toFixed(4)}}, {{wp.longitude.toFixed(4)}}</span>
+                    <div class="wp-opts">
+                      <label class="wp-pause-lbl" *ngIf="!first">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        <input type="number" [(ngModel)]="wp.plannedPauseMinutes" min="0" class="pause-input"> min
+                      </label>
+                      <button class="wp-clear" (click)="clearWaypoint(i)" title="Modifier ce point">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      </button>
+                      <button class="wp-remove" *ngIf="!first && !(last && tourForm.waypoints.length <= 2)" (click)="removeWaypoint(i)">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                       </button>
                     </div>
                   </div>
                 </div>
               </div>
+            </div>
 
-              <!-- Map for waypoint selection -->
-              <div class="map-container" id="tourMap" #tourMapEl></div>
-
-              <!-- Route estimation result -->
-              <div class="estimation-result" *ngIf="estimation">
-                <div class="est-item">
-                  <strong>Distance:</strong> {{estimation.distanceKm | number:'1.1-1'}} km
-                </div>
-                <div class="est-item">
-                  <strong>Durée:</strong> {{formatDuration(estimation.durationMinutes)}}
-                </div>
-                <div class="est-item">
-                  <strong>Durée + pauses:</strong> {{formatDuration(estimation.durationWithPausesMinutes)}}
-                </div>
-                <div class="est-item">
-                  <strong>Carburant estimé:</strong> ~{{estimation.estimatedFuelLiters | number:'1.1-1'}} L
-                </div>
-              </div>
-              <button class="btn-secondary" (click)="estimateRoute()" [disabled]="tourForm.waypoints.length < 2 || estimating">
-                {{estimating ? 'Calcul en cours...' : 'Estimer l\\'itinéraire'}}
-              </button>
+            <div class="map-tip">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              Cliquez sur la carte pour placer des points
             </div>
           </div>
-          <div class="modal-footer">
-            <button class="btn-cancel" (click)="closeCreateModal()">Annuler</button>
-            <button class="btn-primary" (click)="saveTour()" [disabled]="saving">
-              {{saving ? 'Enregistrement...' : (editingTour ? 'Modifier' : 'Créer la tournée')}}
+
+          <!-- Step 3: Estimation -->
+          <div class="form-section" *ngIf="canEstimate()">
+            <div class="fs-title">
+              <span class="step-num">3</span>
+              Estimation
+            </div>
+            <button class="est-btn" (click)="estimateRoute()" [disabled]="estimating">
+              <svg *ngIf="!estimating" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              <div class="mini-spin" *ngIf="estimating"></div>
+              {{estimating ? 'Calcul...' : 'Calculer l\\'itineraire'}}
             </button>
+            <div class="est-grid" *ngIf="estimation">
+              <div class="est-card">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                <div><span class="est-v">{{estimation.distanceKm | number:'1.1-1'}} km</span><span class="est-l">Distance</span></div>
+              </div>
+              <div class="est-card">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <div><span class="est-v">{{formatDuration(estimation.durationMinutes)}}</span><span class="est-l">Duree</span></div>
+              </div>
+              <div class="est-card">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <div><span class="est-v">{{formatDuration(estimation.durationWithPausesMinutes)}}</span><span class="est-l">Avec pauses</span></div>
+              </div>
+              <div class="est-card">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                <div><span class="est-v">~{{estimation.estimatedFuelLiters | number:'1.1-1'}} L</span><span class="est-l">Carburant</span></div>
+              </div>
+            </div>
           </div>
+        </div>
+
+        <!-- Bottom bar -->
+        <div class="cv-left-foot">
+          <button class="btn-cancel" (click)="closeCreate()">Annuler</button>
+          <button class="btn-save" (click)="saveTour()" [disabled]="saving || !tourForm.name || !tourForm.vehicleId">
+            <div class="mini-spin" *ngIf="saving"></div>
+            {{saving ? 'Enregistrement...' : (editingTour ? 'Modifier' : 'Creer la tournee')}}
+          </button>
         </div>
       </div>
 
-      <!-- ═══════ DETAIL MODAL ═══════ -->
-      <div class="modal-overlay" *ngIf="showDetailModal && selectedTour" (click)="closeDetailModal()">
-        <div class="modal detail-modal" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <div>
-              <h2>{{selectedTour.name}}</h2>
-              <span class="status-badge" [class]="'badge-' + selectedTour.status">{{getStatusLabel(selectedTour.status)}}</span>
-            </div>
-            <button class="close-btn" (click)="closeDetailModal()">&times;</button>
-          </div>
-          <div class="modal-body">
-            <!-- Detail Map -->
-            <div class="detail-map-container" id="detailMap" #detailMapEl></div>
-
-            <!-- Tour Info Grid -->
-            <div class="detail-grid">
-              <div class="detail-section">
-                <h4>Informations</h4>
-                <div class="info-row"><span class="label">Véhicule</span><span class="value">{{selectedTour.vehicleName}} ({{selectedTour.vehiclePlate}})</span></div>
-                <div class="info-row" *ngIf="selectedTour.driverName"><span class="label">Chauffeur</span><span class="value">{{selectedTour.driverName}}</span></div>
-                <div class="info-row"><span class="label">Départ prévu</span><span class="value">{{formatDate(selectedTour.scheduledStartTime)}}</span></div>
-                <div class="info-row" *ngIf="selectedTour.scheduledEndTime"><span class="label">Arrivée prévue</span><span class="value">{{formatDate(selectedTour.scheduledEndTime)}}</span></div>
-                <div class="info-row" *ngIf="selectedTour.actualStartTime"><span class="label">Départ réel</span><span class="value">{{formatDate(selectedTour.actualStartTime)}}</span></div>
-                <div class="info-row" *ngIf="selectedTour.actualEndTime"><span class="label">Arrivée réelle</span><span class="value">{{formatDate(selectedTour.actualEndTime)}}</span></div>
-              </div>
-
-              <!-- Comparison table -->
-              <div class="detail-section comparison" *ngIf="selectedTour.status === 'completed'">
-                <h4>Comparaison Estimé vs Réel</h4>
-                <table class="comparison-table">
-                  <thead><tr><th></th><th>Estimé</th><th>Réel</th><th>Écart</th></tr></thead>
-                  <tbody>
-                    <tr>
-                      <td>Distance</td>
-                      <td>{{selectedTour.estimatedDistanceKm | number:'1.1-1'}} km</td>
-                      <td>{{(selectedTour.actualDistanceKm || '-') | number:'1.1-1'}} km</td>
-                      <td [class.positive]="selectedTour.distanceDiffKm > 0" [class.negative]="selectedTour.distanceDiffKm < 0">
-                        {{selectedTour.distanceDiffKm !== null ? ((selectedTour.distanceDiffKm > 0 ? '+' : '') + (selectedTour.distanceDiffKm | number:'1.1-1') + ' km') : '-'}}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>Durée</td>
-                      <td>{{formatDuration(selectedTour.estimatedDurationMinutes)}}</td>
-                      <td>{{selectedTour.actualDurationMinutes ? formatDuration(selectedTour.actualDurationMinutes) : '-'}}</td>
-                      <td [class.positive]="selectedTour.delayMinutes > 0" [class.negative]="selectedTour.delayMinutes < 0">
-                        {{selectedTour.delayMinutes !== null ? ((selectedTour.delayMinutes > 0 ? '+' : '') + selectedTour.delayMinutes + ' min') : '-'}}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>Carburant</td>
-                      <td>{{selectedTour.estimatedFuelLiters | number:'1.1-1'}} L</td>
-                      <td>{{selectedTour.actualFuelLiters ? (selectedTour.actualFuelLiters | number:'1.1-1') + ' L' : '-'}}</td>
-                      <td [class.positive]="selectedTour.fuelDiffLiters > 0" [class.negative]="selectedTour.fuelDiffLiters < 0">
-                        {{selectedTour.fuelDiffLiters !== null ? ((selectedTour.fuelDiffLiters > 0 ? '+' : '') + (selectedTour.fuelDiffLiters | number:'1.1-1') + ' L') : '-'}}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>Pauses</td>
-                      <td colspan="2">{{selectedTour.totalPauseMinutes}} min</td>
-                      <td>{{selectedTour.pauses?.length || 0}} pause(s)</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <!-- Estimation only for non-completed -->
-              <div class="detail-section" *ngIf="selectedTour.status !== 'completed'">
-                <h4>Estimation</h4>
-                <div class="info-row"><span class="label">Distance</span><span class="value">{{selectedTour.estimatedDistanceKm | number:'1.1-1'}} km</span></div>
-                <div class="info-row"><span class="label">Durée estimée</span><span class="value">{{formatDuration(selectedTour.estimatedDurationMinutes)}}</span></div>
-                <div class="info-row"><span class="label">Carburant estimé</span><span class="value">~{{selectedTour.estimatedFuelLiters | number:'1.1-1'}} L</span></div>
-                <div class="info-row"><span class="label">Pauses prévues</span><span class="value">{{selectedTour.totalPauseMinutes}} min</span></div>
-              </div>
-            </div>
-
-            <!-- Waypoints timeline -->
-            <div class="detail-section">
-              <h4>Points de passage</h4>
-              <div class="timeline">
-                <div class="timeline-item" *ngFor="let wp of selectedTour.waypoints" [class.completed]="wp.isCompleted">
-                  <div class="timeline-marker" [class.origin]="wp.type === 'origin'" [class.destination]="wp.type === 'destination'">
-                    <svg *ngIf="wp.isCompleted" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                  </div>
-                  <div class="timeline-content">
-                    <div class="timeline-header">
-                      <strong>{{wp.name || wp.address || getWaypointTypeLabel(wp.type)}}</strong>
-                      <span class="timeline-time" *ngIf="wp.estimatedArrivalTime">{{formatTime(wp.estimatedArrivalTime)}}</span>
-                    </div>
-                    <div class="timeline-detail" *ngIf="wp.address">{{wp.address}}</div>
-                    <div class="timeline-detail" *ngIf="wp.actualArrivalTime">
-                      Arrivée réelle: {{formatTime(wp.actualArrivalTime)}}
-                      <span class="delay" *ngIf="wp.arrivalDelay" [class.late]="wp.arrivalDelay > 0" [class.early]="wp.arrivalDelay < 0">
-                        ({{wp.arrivalDelay > 0 ? '+' : ''}}{{wp.arrivalDelay}} min)
-                      </span>
-                    </div>
-                    <div class="timeline-detail pause" *ngIf="wp.plannedPauseMinutes > 0">Pause prévue: {{wp.plannedPauseMinutes}} min</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Pauses -->
-            <div class="detail-section" *ngIf="selectedTour.pauses?.length > 0">
-              <h4>Pauses effectuées</h4>
-              <div class="pauses-list">
-                <div class="pause-item" *ngFor="let pause of selectedTour.pauses">
-                  <div class="pause-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-                  </div>
-                  <div class="pause-info">
-                    <span class="pause-reason">{{getPauseLabel(pause.reason)}}</span>
-                    <span class="pause-time">{{formatTime(pause.startTime)}} - {{pause.endTime ? formatTime(pause.endTime) : 'En cours'}}</span>
-                    <span class="pause-duration" *ngIf="pause.durationMinutes">{{pause.durationMinutes}} min</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn-cancel" (click)="closeDetailModal()">Fermer</button>
-            <button class="btn-secondary" *ngIf="selectedTour.status === 'planned'" (click)="editTour()">Modifier</button>
-            <button class="btn-danger" *ngIf="selectedTour.status === 'planned' || selectedTour.status === 'in_progress'" (click)="cancelSelectedTour()">Annuler</button>
-            <button class="btn-primary" *ngIf="selectedTour.status === 'planned'" (click)="startSelectedTour()">Démarrer</button>
-            <button class="btn-success" *ngIf="selectedTour.status === 'in_progress'" (click)="completeSelectedTour()">Terminer</button>
-          </div>
-        </div>
+      <!-- Right panel: map -->
+      <div class="cv-right">
+        <div class="cv-map" #tourMapEl></div>
       </div>
     </div>
+
+    <!-- ══════════ DETAIL VIEW ══════════ -->
+    <div class="detail-view" *ngIf="currentView === 'detail' && selectedTour">
+      <div class="dv-left">
+        <div class="cv-left-head">
+          <button class="back-btn" (click)="closeDetail()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <h2>{{selectedTour.name}}</h2>
+          <span class="badge-sm" [class]="'bs-'+selectedTour.status" style="margin-left:8px">{{getStatusLabel(selectedTour.status)}}</span>
+        </div>
+
+        <div class="cv-left-scroll">
+          <!-- Info section -->
+          <div class="detail-section">
+            <h4>Informations</h4>
+            <div class="info-grid">
+              <div class="info-item"><span class="info-lbl">Vehicule</span><span class="info-val">{{selectedTour.vehicleName}}</span></div>
+              <div class="info-item" *ngIf="selectedTour.driverName"><span class="info-lbl">Chauffeur</span><span class="info-val">{{selectedTour.driverName}}</span></div>
+              <div class="info-item"><span class="info-lbl">Depart prevu</span><span class="info-val">{{formatDate(selectedTour.scheduledStartTime)}}</span></div>
+              <div class="info-item" *ngIf="selectedTour.actualStartTime"><span class="info-lbl">Depart reel</span><span class="info-val">{{formatDate(selectedTour.actualStartTime)}}</span></div>
+              <div class="info-item"><span class="info-lbl">Distance</span><span class="info-val">{{selectedTour.estimatedDistanceKm | number:'1.1-1'}} km</span></div>
+              <div class="info-item"><span class="info-lbl">Duree</span><span class="info-val">{{formatDuration(selectedTour.estimatedDurationMinutes)}}</span></div>
+              <div class="info-item"><span class="info-lbl">Carburant</span><span class="info-val">~{{selectedTour.estimatedFuelLiters | number:'1.1-1'}} L</span></div>
+              <div class="info-item"><span class="info-lbl">Pauses</span><span class="info-val">{{selectedTour.totalPauseMinutes}} min</span></div>
+            </div>
+          </div>
+
+          <!-- Compare -->
+          <div class="detail-section" *ngIf="selectedTour.status === 'completed'">
+            <h4>Comparaison Estime vs Reel</h4>
+            <table class="cmp-table">
+              <thead><tr><th></th><th>Estime</th><th>Reel</th><th>Ecart</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>Distance</td>
+                  <td>{{selectedTour.estimatedDistanceKm | number:'1.1-1'}} km</td>
+                  <td>{{selectedTour.actualDistanceKm ? (selectedTour.actualDistanceKm | number:'1.1-1') + ' km' : '-'}}</td>
+                  <td [class.c-red]="selectedTour.distanceDiffKm > 0" [class.c-green]="selectedTour.distanceDiffKm < 0">
+                    {{selectedTour.distanceDiffKm != null ? ((selectedTour.distanceDiffKm > 0 ? '+' : '') + (selectedTour.distanceDiffKm | number:'1.1-1') + ' km') : '-'}}
+                  </td>
+                </tr>
+                <tr>
+                  <td>Duree</td>
+                  <td>{{formatDuration(selectedTour.estimatedDurationMinutes)}}</td>
+                  <td>{{selectedTour.actualDurationMinutes ? formatDuration(selectedTour.actualDurationMinutes) : '-'}}</td>
+                  <td [class.c-red]="selectedTour.delayMinutes > 0" [class.c-green]="selectedTour.delayMinutes < 0">
+                    {{selectedTour.delayMinutes != null ? ((selectedTour.delayMinutes > 0 ? '+' : '') + selectedTour.delayMinutes + ' min') : '-'}}
+                  </td>
+                </tr>
+                <tr>
+                  <td>Carburant</td>
+                  <td>{{selectedTour.estimatedFuelLiters | number:'1.1-1'}} L</td>
+                  <td>{{selectedTour.actualFuelLiters ? (selectedTour.actualFuelLiters | number:'1.1-1') + ' L' : '-'}}</td>
+                  <td [class.c-red]="selectedTour.fuelDiffLiters > 0" [class.c-green]="selectedTour.fuelDiffLiters < 0">
+                    {{selectedTour.fuelDiffLiters != null ? ((selectedTour.fuelDiffLiters > 0 ? '+' : '') + (selectedTour.fuelDiffLiters | number:'1.1-1') + ' L') : '-'}}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Waypoints timeline -->
+          <div class="detail-section">
+            <h4>Points de passage</h4>
+            <div class="d-timeline">
+              <div class="dt-node" *ngFor="let wp of selectedTour.waypoints; let last = last" [class.dt-done]="wp.isCompleted">
+                <div class="dt-rail">
+                  <div class="dt-dot" [class.dt-origin]="wp.type==='origin'" [class.dt-dest]="wp.type==='destination'">
+                    <svg *ngIf="wp.isCompleted" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="dt-line" *ngIf="!last"></div>
+                </div>
+                <div class="dt-body">
+                  <div class="dt-main">
+                    <strong>{{wp.name || wp.address || getWaypointTypeLabel(wp.type)}}</strong>
+                    <span class="dt-time" *ngIf="wp.estimatedArrivalTime">{{formatTime(wp.estimatedArrivalTime)}}</span>
+                  </div>
+                  <div class="dt-sub" *ngIf="wp.address && wp.name">{{wp.address}}</div>
+                  <div class="dt-sub" *ngIf="wp.actualArrivalTime">
+                    Arrivee: {{formatTime(wp.actualArrivalTime)}}
+                    <span *ngIf="wp.arrivalDelay" [class.c-red]="wp.arrivalDelay>0" [class.c-green]="wp.arrivalDelay<0">({{wp.arrivalDelay>0?'+':''}}{{wp.arrivalDelay}} min)</span>
+                  </div>
+                  <div class="dt-sub dt-pause" *ngIf="wp.plannedPauseMinutes > 0">Pause: {{wp.plannedPauseMinutes}} min</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pauses -->
+          <div class="detail-section" *ngIf="selectedTour.pauses?.length > 0">
+            <h4>Pauses</h4>
+            <div class="pause-cards">
+              <div class="p-card" *ngFor="let p of selectedTour.pauses">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                <strong>{{getPauseLabel(p.reason)}}</strong>
+                <span>{{formatTime(p.startTime)}} - {{p.endTime ? formatTime(p.endTime) : 'En cours'}}</span>
+                <span class="p-dur" *ngIf="p.durationMinutes">{{p.durationMinutes}} min</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions footer -->
+        <div class="cv-left-foot">
+          <button class="btn-cancel" (click)="closeDetail()">Retour</button>
+          <button class="btn-outline-sm" *ngIf="selectedTour.status==='planned'" (click)="editTour()">Modifier</button>
+          <button class="btn-danger-sm" *ngIf="selectedTour.status==='planned'||selectedTour.status==='in_progress'" (click)="cancelSelectedTour()">Annuler</button>
+          <button class="btn-save" *ngIf="selectedTour.status==='planned'" (click)="startSelectedTour()">Demarrer</button>
+          <button class="btn-save green" *ngIf="selectedTour.status==='in_progress'" (click)="completeSelectedTour()">Terminer</button>
+        </div>
+      </div>
+      <div class="cv-right">
+        <div class="cv-map" #detailMapEl></div>
+      </div>
+    </div>
+
+    </app-layout>
   `,
   styles: [`
-    :host { display: block; height: 100%; }
-    .tours-container { padding: 24px; max-width: 1400px; margin: 0 auto; }
+    :host { display: block; height: 100%; overflow: hidden; }
 
-    /* Header */
-    .tours-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-    .tours-header h1 { font-size: 24px; font-weight: 700; color: #1e293b; margin: 0; }
-    .subtitle { color: #64748b; font-size: 14px; margin: 4px 0 0; }
-    .btn-primary { display: flex; align-items: center; gap: 8px; background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
-    .btn-primary:hover { background: #2563eb; }
-    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-    .btn-secondary { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
-    .btn-secondary:hover { background: #e2e8f0; }
-    .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-danger { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; }
-    .btn-danger:hover { background: #fecaca; }
-    .btn-success { background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
-    .btn-success:hover { background: #059669; }
-    .btn-cancel { background: transparent; color: #64748b; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+    /* ════ PAGE LIST ════ */
+    .page { padding: 24px 28px; height: 100%; box-sizing: border-box; overflow-y: auto; }
+    .page-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; }
+    .page-title { display: flex; align-items: center; gap: 10px; }
+    .page-title h1 { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0; }
+    .title-count { background: #eff6ff; color: #3b82f6; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
 
-    /* Stats */
-    .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
-    .stat-card { background: white; border-radius: 12px; padding: 16px; display: flex; align-items: center; gap: 16px; border: 1px solid #e2e8f0; }
-    .stat-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
-    .stat-icon.total { background: #eff6ff; color: #3b82f6; }
-    .stat-icon.planned { background: #fef3c7; color: #f59e0b; }
-    .stat-icon.progress { background: #dbeafe; color: #2563eb; }
-    .stat-icon.completed { background: #d1fae5; color: #10b981; }
-    .stat-value { font-size: 24px; font-weight: 700; color: #1e293b; display: block; }
-    .stat-label { font-size: 12px; color: #94a3b8; }
+    .btn-create { display: flex; align-items: center; gap: 7px; padding: 9px 20px; background: #3b82f6; color: white; border: none; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; box-shadow: 0 1px 3px rgba(59,130,246,0.3); }
+    .btn-create:hover { background: #2563eb; box-shadow: 0 4px 12px rgba(59,130,246,0.3); transform: translateY(-1px); }
+    .btn-create.sm { padding: 8px 16px; font-size: 12px; }
+
+    /* KPIs */
+    .kpi-row { display: flex; gap: 10px; margin-bottom: 18px; }
+    .kpi { padding: 12px 20px; background: white; border: 1px solid #e2e8f0; border-radius: 9px; cursor: pointer; transition: all .15s; min-width: 100px; text-align: center; }
+    .kpi:hover { border-color: #93c5fd; }
+    .kpi-active { border-color: #3b82f6; background: #eff6ff; }
+    .kpi-val { display: block; font-size: 22px; font-weight: 800; color: #0f172a; line-height: 1.1; }
+    .kpi-lbl { font-size: 11px; color: #64748b; font-weight: 500; }
+    .kpi-amber .kpi-val { color: #d97706; }
+    .kpi-blue .kpi-val { color: #2563eb; }
+    .kpi-green .kpi-val { color: #16a34a; }
 
     /* Filters */
-    .filters-row { display: flex; gap: 12px; margin-bottom: 20px; }
-    .filter-group select { padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; color: #475569; background: white; min-width: 180px; }
+    .filter-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+    .filter-group { display: flex; align-items: center; gap: 8px; }
+    .filter-group select { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 7px; font-size: 12px; color: #475569; background: white; cursor: pointer; }
+    .filter-group select:focus { outline: none; border-color: #93c5fd; }
 
-    /* Tour cards */
-    .tours-list { display: grid; gap: 12px; }
-    .tour-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.2s; display: flex; overflow: hidden; }
-    .tour-card:hover { border-color: #3b82f6; box-shadow: 0 4px 12px rgba(59,130,246,0.1); transform: translateY(-1px); }
-    .tour-status-bar { width: 4px; flex-shrink: 0; }
-    .tour-status-bar.status-planned { background: #f59e0b; }
-    .tour-status-bar.status-in_progress { background: #3b82f6; }
-    .tour-status-bar.status-completed { background: #10b981; }
-    .tour-status-bar.status-cancelled { background: #94a3b8; }
-    .tour-card-body { padding: 16px 20px; flex: 1; }
-    .tour-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-    .tour-card-header h3 { font-size: 16px; font-weight: 600; color: #1e293b; margin: 0; }
-    .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-    .badge-planned { background: #fef3c7; color: #b45309; }
-    .badge-in_progress { background: #dbeafe; color: #1d4ed8; }
-    .badge-completed { background: #d1fae5; color: #065f46; }
-    .badge-cancelled { background: #f1f5f9; color: #64748b; }
+    /* Loading / Empty */
+    .loading-state { display: flex; justify-content: center; padding: 60px 0; }
+    .lds-ring { display: inline-block; position: relative; width: 32px; height: 32px; }
+    .lds-ring div { box-sizing: border-box; display: block; position: absolute; width: 28px; height: 28px; margin: 2px; border: 3px solid #3b82f6; border-radius: 50%; animation: ldsring .8s cubic-bezier(.5,.1,.5,1) infinite; border-color: #3b82f6 transparent transparent transparent; }
+    .lds-ring div:nth-child(1) { animation-delay: -.3s; } .lds-ring div:nth-child(2) { animation-delay: -.2s; } .lds-ring div:nth-child(3) { animation-delay: -.1s; }
+    @keyframes ldsring { 0% { transform: rotate(0); } 100% { transform: rotate(360deg); } }
 
-    /* Route display */
-    .tour-route { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 8px 12px; background: #f8fafc; border-radius: 8px; }
-    .route-point { display: flex; align-items: center; gap: 6px; }
-    .route-point .dot { width: 8px; height: 8px; border-radius: 50%; }
-    .route-point.origin .dot { background: #10b981; }
-    .route-point.destination .dot { background: #ef4444; }
-    .route-point .address { font-size: 13px; color: #475569; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .route-line { flex: 1; border-top: 2px dashed #cbd5e1; position: relative; min-width: 40px; text-align: center; }
-    .waypoint-count { font-size: 11px; color: #94a3b8; background: #f8fafc; padding: 0 6px; position: relative; top: -8px; }
+    .empty-state { text-align: center; padding: 60px 20px; }
+    .empty-icon { margin-bottom: 12px; }
+    .empty-state h3 { font-size: 16px; color: #475569; margin: 0 0 6px; font-weight: 600; }
+    .empty-state p { font-size: 13px; color: #94a3b8; margin: 0 0 18px; }
 
-    /* Meta */
-    .tour-meta { display: flex; flex-wrap: wrap; gap: 16px; }
-    .meta-item { display: flex; align-items: center; gap: 5px; font-size: 13px; color: #64748b; }
-    .meta-item svg { color: #94a3b8; }
-    .meta-item.duration { font-weight: 600; color: #3b82f6; }
+    /* Tour Table */
+    .tour-table { background: white; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+    .tour-table table { width: 100%; border-collapse: collapse; }
+    .tour-table thead { background: #f8fafc; }
+    .tour-table th { padding: 10px 14px; font-size: 11px; font-weight: 600; color: #64748b; text-align: left; text-transform: uppercase; letter-spacing: .4px; border-bottom: 1px solid #e2e8f0; }
+    .tour-table td { padding: 12px 14px; font-size: 13px; color: #1e293b; border-bottom: 1px solid #f1f5f9; }
+    .tour-row { cursor: pointer; transition: background .1s; }
+    .tour-row:hover { background: #f8fafc; }
+    .tour-row:last-child td { border-bottom: none; }
+    .col-status { width: 24px; padding-right: 0 !important; }
+    .col-actions { width: 40px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .sd-planned { background: #f59e0b; }
+    .sd-in_progress { background: #3b82f6; animation: pulse 2s infinite; }
+    .sd-completed { background: #22c55e; }
+    .sd-cancelled { background: #94a3b8; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+    .cell-name { font-weight: 600; color: #0f172a; margin-bottom: 2px; }
+    .badge-sm { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
+    .bs-planned { background: #fef3c7; color: #92400e; }
+    .bs-in_progress { background: #dbeafe; color: #1e40af; }
+    .bs-completed { background: #dcfce7; color: #166534; }
+    .bs-cancelled { background: #f1f5f9; color: #64748b; }
+    .cell-route { display: flex; align-items: center; gap: 4px; }
+    .route-tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .route-tag.origin { background: #f0fdf4; color: #15803d; }
+    .route-tag.dest { background: #fef2f2; color: #b91c1c; }
+    .stop-count { font-size: 10px; color: #64748b; background: #f1f5f9; padding: 1px 5px; border-radius: 8px; font-weight: 600; }
+    .cell-sub { font-size: 12px; color: #64748b; }
+    .cell-km { font-size: 13px; color: #0f172a; }
+    .cell-dur { font-size: 12px; color: #3b82f6; font-weight: 600; }
+    .row-action { background: none; border: none; cursor: pointer; color: #94a3b8; padding: 4px; border-radius: 4px; }
+    .row-action:hover { background: #f1f5f9; color: #475569; }
 
-    /* Empty & Loading */
-    .empty-state { text-align: center; padding: 80px 20px; color: #94a3b8; }
-    .empty-state h3 { margin: 16px 0 8px; color: #475569; }
-    .empty-state .btn-primary { margin: 16px auto 0; }
-    .loading { text-align: center; padding: 60px 20px; color: #94a3b8; }
-    .spinner { width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px; }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    /* ════ CREATE / DETAIL VIEW ════ */
+    .create-view, .detail-view { display: flex; height: calc(100vh - 56px); }
+    .cv-left, .dv-left { width: 440px; min-width: 440px; display: flex; flex-direction: column; border-right: 1px solid #e2e8f0; background: white; height: 100%; }
+    .cv-right { flex: 1; position: relative; }
+    .cv-map { width: 100%; height: 100%; }
+    .cv-left-head { display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid #f1f5f9; flex-shrink: 0; }
+    .cv-left-head h2 { font-size: 15px; font-weight: 700; color: #0f172a; margin: 0; white-space: nowrap; }
+    .back-btn { background: none; border: none; cursor: pointer; color: #64748b; padding: 4px; border-radius: 6px; display: flex; }
+    .back-btn:hover { background: #f1f5f9; color: #0f172a; }
+    .cv-left-scroll { flex: 1; overflow-y: auto; padding: 0; }
+    .cv-left-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid #f1f5f9; flex-shrink: 0; background: white; }
+    .btn-cancel { padding: 8px 16px; background: transparent; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12px; color: #64748b; cursor: pointer; font-weight: 500; }
+    .btn-cancel:hover { background: #f8fafc; }
+    .btn-save { padding: 8px 20px; background: #3b82f6; color: white; border: none; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+    .btn-save:hover { background: #2563eb; }
+    .btn-save:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-save.green { background: #16a34a; }
+    .btn-save.green:hover { background: #15803d; }
+    .btn-outline-sm { padding: 8px 14px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12px; color: #475569; cursor: pointer; font-weight: 500; }
+    .btn-outline-sm:hover { background: #f8fafc; }
+    .btn-danger-sm { padding: 8px 14px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; font-size: 12px; color: #dc2626; cursor: pointer; font-weight: 500; }
+    .btn-danger-sm:hover { background: #fee2e2; }
 
-    /* Modal */
-    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 1000; display: flex; align-items: center; justify-content: center; }
-    .modal { background: white; border-radius: 16px; width: 95%; max-width: 780px; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 50px rgba(0,0,0,0.25); }
-    .detail-modal { max-width: 860px; }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid #e2e8f0; }
-    .modal-header h2 { font-size: 20px; font-weight: 700; color: #1e293b; margin: 0; }
-    .modal-header .status-badge { margin-left: 12px; }
-    .close-btn { background: none; border: none; font-size: 24px; color: #94a3b8; cursor: pointer; padding: 0 4px; }
-    .modal-body { padding: 24px; }
-    .modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 24px; border-top: 1px solid #e2e8f0; }
+    /* Form sections */
+    .form-section { padding: 16px 18px; border-bottom: 1px solid #f1f5f9; }
+    .fs-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 14px; }
+    .step-num { width: 22px; height: 22px; border-radius: 50%; background: #3b82f6; color: white; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+    .add-stop-btn { margin-left: auto; padding: 4px 10px; background: #eff6ff; color: #3b82f6; border: none; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; }
+    .add-stop-btn:hover { background: #dbeafe; }
+    .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+    .field label { font-size: 11px; font-weight: 600; color: #64748b; }
+    .field input, .field select { padding: 8px 11px; border: 1px solid #e2e8f0; border-radius: 7px; font-size: 13px; color: #0f172a; background: #fff; }
+    .field input:focus, .field select:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 2px rgba(59,130,246,.12); }
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-    /* Form */
-    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
-    .form-group { display: flex; flex-direction: column; gap: 6px; }
-    .form-group.full-width { grid-column: 1 / -1; }
-    .form-group label { font-size: 13px; font-weight: 600; color: #475569; }
-    .form-group input, .form-group select { padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; color: #1e293b; }
-    .form-group input:focus, .form-group select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+    /* Waypoint timeline */
+    .wp-timeline { display: flex; flex-direction: column; }
+    .wp-node { display: flex; gap: 12px; }
+    .wp-rail { display: flex; flex-direction: column; align-items: center; width: 22px; }
+    .wp-circle { width: 22px; height: 22px; border-radius: 50%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #94a3b8; flex-shrink: 0; transition: all .2s; }
+    .wpc-green { background: #dcfce7; color: #16a34a; }
+    .wpc-red { background: #fef2f2; color: #dc2626; }
+    .wpc-blue { background: #dbeafe; color: #2563eb; }
+    .wpc-filled { color: white !important; }
+    .wpc-filled.wpc-green { background: #16a34a; }
+    .wpc-filled.wpc-red { background: #dc2626; }
+    .wpc-filled.wpc-blue { background: #2563eb; }
+    .wp-rail-line { flex: 1; width: 2px; background: #e2e8f0; min-height: 16px; }
+    .wp-content { flex: 1; padding-bottom: 12px; min-width: 0; }
+    .wp-label { font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 4px; }
 
-    /* Waypoints */
-    .waypoints-section { border-top: 1px solid #e2e8f0; padding-top: 20px; }
-    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-    .section-header h3 { font-size: 16px; font-weight: 600; color: #1e293b; margin: 0; }
-    .btn-sm { background: #eff6ff; color: #3b82f6; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
-    .btn-sm:hover { background: #dbeafe; }
-    .waypoints-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
-    .waypoint-item { display: flex; gap: 12px; }
-    .waypoint-marker { display: flex; flex-direction: column; align-items: center; width: 20px; padding-top: 12px; }
-    .marker-dot { width: 12px; height: 12px; border-radius: 50%; background: #94a3b8; border: 2px solid white; box-shadow: 0 0 0 2px #94a3b8; }
-    .waypoint-marker.origin .marker-dot { background: #10b981; box-shadow: 0 0 0 2px #10b981; }
-    .waypoint-marker.destination .marker-dot { background: #ef4444; box-shadow: 0 0 0 2px #ef4444; }
-    .marker-line { flex: 1; width: 2px; background: #cbd5e1; margin-top: 4px; min-height: 30px; }
-    .waypoint-fields { flex: 1; }
-    .wp-row { display: flex; gap: 8px; margin-bottom: 6px; }
-    .wp-row.coords { margin-bottom: 0; }
-    .wp-name { flex: 1; padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; }
-    .wp-address { flex: 2; padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; }
-    .wp-coord { width: 110px; padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; }
-    .wp-pause { width: 90px; padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; }
-    .btn-icon { border: none; background: none; cursor: pointer; padding: 4px; border-radius: 4px; }
-    .btn-icon.danger { color: #ef4444; }
-    .btn-icon.danger:hover { background: #fee2e2; }
+    .wp-search-wrap { position: relative; }
+    .wp-search-input { width: 100%; padding: 8px 11px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 12px; color: #0f172a; box-sizing: border-box; transition: all .15s; background: #f8fafc; }
+    .wp-search-input:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,.1); background: white; }
+    .wp-search-input.wp-filled { border-color: #86efac; background: #f0fdf4; }
+    .wp-search-input::placeholder { color: #94a3b8; font-size: 12px; }
 
-    /* Map */
-    .map-container { height: 280px; border-radius: 10px; border: 1px solid #e2e8f0; margin-bottom: 16px; }
-    .detail-map-container { height: 300px; border-radius: 10px; border: 1px solid #e2e8f0; margin-bottom: 20px; }
+    .wp-autocomplete { position: absolute; top: calc(100% + 3px); left: 0; right: 0; background: white; border: 1px solid #e2e8f0; border-radius: 9px; box-shadow: 0 10px 30px rgba(0,0,0,.12); z-index: 100; max-height: 220px; overflow-y: auto; }
+    .wp-ac-item { display: flex; align-items: flex-start; gap: 8px; padding: 9px 11px; cursor: pointer; border-bottom: 1px solid #f8fafc; transition: background .1s; }
+    .wp-ac-item:last-child { border-bottom: none; }
+    .wp-ac-item:hover { background: #eff6ff; }
+    .wp-ac-item svg { flex-shrink: 0; margin-top: 2px; }
+    .wp-ac-text { display: flex; flex-direction: column; min-width: 0; }
+    .wp-ac-main { font-size: 12px; font-weight: 600; color: #1e293b; }
+    .wp-ac-sub { font-size: 10px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .wp-meta { display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+    .wp-coord-tag { font-size: 9px; color: #94a3b8; background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-family: monospace; }
+    .wp-opts { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+    .wp-pause-lbl { display: flex; align-items: center; gap: 3px; font-size: 10px; color: #94a3b8; }
+    .pause-input { width: 36px; padding: 2px 4px; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 11px; text-align: center; }
+    .pause-input:focus { outline: none; border-color: #93c5fd; }
+    .wp-clear { background: none; border: none; cursor: pointer; color: #3b82f6; padding: 2px; border-radius: 4px; display: flex; opacity: .6; }
+    .wp-clear:hover { opacity: 1; background: #eff6ff; }
+    .wp-remove { background: none; border: none; cursor: pointer; color: #ef4444; padding: 2px; border-radius: 4px; display: flex; opacity: .6; }
+    .wp-remove:hover { opacity: 1; background: #fef2f2; }
+
+    .map-tip { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #3b82f6; padding: 8px 18px; background: #eff6ff; margin: 0; border-top: 1px solid #dbeafe; }
 
     /* Estimation */
-    .estimation-result { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 12px; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0; margin-bottom: 12px; }
-    .est-item { font-size: 13px; color: #166534; }
-    .est-item strong { display: block; font-size: 11px; color: #15803d; margin-bottom: 2px; }
+    .est-btn { display: flex; align-items: center; gap: 6px; padding: 8px 16px; background: #0f172a; color: white; border: none; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; margin-bottom: 12px; }
+    .est-btn:hover { background: #1e293b; }
+    .est-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .mini-spin { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3); border-top-color: white; border-radius: 50%; animation: ldsring .6s linear infinite; }
+    .est-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .est-card { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #f1f5f9; }
+    .est-v { font-size: 14px; font-weight: 700; color: #0f172a; display: block; line-height: 1.1; }
+    .est-l { font-size: 10px; color: #94a3b8; }
 
-    /* Detail grid */
-    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
-    .detail-section { margin-bottom: 16px; }
-    .detail-section h4 { font-size: 14px; font-weight: 700; color: #1e293b; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0; }
-    .detail-section.comparison { grid-column: 1 / -1; }
-    .info-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
-    .info-row .label { color: #64748b; }
-    .info-row .value { color: #1e293b; font-weight: 500; }
+    /* ════ DETAIL VIEW ════ */
+    .detail-section { padding: 16px 18px; border-bottom: 1px solid #f1f5f9; }
+    .detail-section h4 { font-size: 12px; font-weight: 700; color: #0f172a; margin: 0 0 12px; text-transform: uppercase; letter-spacing: .4px; }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .info-item { display: flex; flex-direction: column; }
+    .info-lbl { font-size: 10px; color: #94a3b8; font-weight: 500; }
+    .info-val { font-size: 13px; color: #0f172a; font-weight: 500; }
+    .cmp-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .cmp-table th { text-align: left; padding: 6px 8px; background: #f8fafc; color: #64748b; font-weight: 600; font-size: 11px; }
+    .cmp-table td { padding: 6px 8px; border-bottom: 1px solid #f8fafc; color: #1e293b; }
+    .c-red { color: #ef4444; font-weight: 600; }
+    .c-green { color: #22c55e; font-weight: 600; }
 
-    /* Comparison table */
-    .comparison-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    .comparison-table th { text-align: left; padding: 8px 12px; background: #f8fafc; color: #64748b; font-weight: 600; border-bottom: 1px solid #e2e8f0; }
-    .comparison-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
-    .comparison-table .positive { color: #ef4444; font-weight: 600; }
-    .comparison-table .negative { color: #10b981; font-weight: 600; }
+    /* Detail timeline */
+    .d-timeline { display: flex; flex-direction: column; }
+    .dt-node { display: flex; gap: 10px; }
+    .dt-rail { display: flex; flex-direction: column; align-items: center; width: 20px; }
+    .dt-dot { width: 20px; height: 20px; border-radius: 50%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .dt-done .dt-dot { background: #22c55e; }
+    .dt-origin { background: #22c55e !important; }
+    .dt-dest { background: #ef4444 !important; }
+    .dt-line { flex: 1; width: 2px; background: #e2e8f0; min-height: 12px; }
+    .dt-done .dt-line { background: #86efac; }
+    .dt-body { flex: 1; padding-bottom: 14px; min-width: 0; }
+    .dt-main { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+    .dt-main strong { color: #0f172a; }
+    .dt-time { font-size: 10px; color: #94a3b8; }
+    .dt-sub { font-size: 11px; color: #64748b; margin-top: 2px; }
+    .dt-pause { color: #f59e0b; }
 
-    /* Timeline */
-    .timeline { padding-left: 8px; }
-    .timeline-item { display: flex; gap: 12px; padding-bottom: 16px; position: relative; }
-    .timeline-item:not(:last-child)::before { content: ''; position: absolute; left: 11px; top: 28px; bottom: 0; width: 2px; background: #e2e8f0; }
-    .timeline-item.completed:not(:last-child)::before { background: #10b981; }
-    .timeline-marker { width: 24px; height: 24px; border-radius: 50%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .timeline-item.completed .timeline-marker { background: #10b981; color: white; }
-    .timeline-marker.origin { background: #10b981; }
-    .timeline-marker.destination { background: #ef4444; }
-    .timeline-content { flex: 1; }
-    .timeline-header { display: flex; justify-content: space-between; align-items: center; }
-    .timeline-header strong { font-size: 14px; color: #1e293b; }
-    .timeline-time { font-size: 12px; color: #94a3b8; }
-    .timeline-detail { font-size: 12px; color: #64748b; margin-top: 2px; }
-    .timeline-detail.pause { color: #f59e0b; }
-    .delay.late { color: #ef4444; font-weight: 600; }
-    .delay.early { color: #10b981; font-weight: 600; }
+    .pause-cards { display: flex; flex-direction: column; gap: 4px; }
+    .p-card { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 7px; font-size: 12px; color: #78350f; }
+    .p-dur { font-weight: 700; margin-left: auto; color: #92400e; }
 
-    /* Pauses list */
-    .pauses-list { display: flex; flex-direction: column; gap: 8px; }
-    .pause-item { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: #f8fafc; border-radius: 8px; }
-    .pause-icon { color: #f59e0b; }
-    .pause-info { display: flex; gap: 16px; font-size: 13px; color: #475569; }
-    .pause-reason { font-weight: 600; color: #1e293b; }
-    .pause-duration { color: #3b82f6; font-weight: 600; }
-
-    @media (max-width: 768px) {
-      .stats-row { grid-template-columns: repeat(2, 1fr); }
-      .filters-row { flex-wrap: wrap; }
-      .form-grid { grid-template-columns: 1fr; }
-      .detail-grid { grid-template-columns: 1fr; }
-      .estimation-result { grid-template-columns: repeat(2, 1fr); }
-      .wp-row { flex-wrap: wrap; }
+    /* ════ RESPONSIVE ════ */
+    @media (max-width: 900px) {
+      .cv-left, .dv-left { width: 100%; min-width: 100%; border-right: none; }
+      .cv-right { display: none; }
+      .kpi-row { flex-wrap: wrap; }
+      .tour-table { overflow-x: auto; }
     }
   `]
 })
 export class ToursComponent implements OnInit, OnDestroy {
   @ViewChild('tourMapEl') tourMapEl!: ElementRef;
   @ViewChild('detailMapEl') detailMapEl!: ElementRef;
+
+  currentView: 'list' | 'create' | 'detail' = 'list';
 
   tours: any[] = [];
   vehicles: any[] = [];
@@ -561,26 +635,63 @@ export class ToursComponent implements OnInit, OnDestroy {
   filterVehicleId: number | null = null;
   filterDriverId: number | null = null;
 
-  showCreateModal = false;
-  showDetailModal = false;
   editingTour: any = null;
   selectedTour: any = null;
   estimation: any = null;
+  showCreateModal = false;
+  showDetailModal = false;
 
   tourForm = this.getEmptyForm();
+
+  searchResults: any[] = [];
+  activeSearchIdx = -1;
+  private searchSubject = new Subject<{ query: string; index: number }>();
+  private searchSub!: Subscription;
+  private searchCache = new Map<string, any[]>();
 
   private tourMap: any = null;
   private detailMap: any = null;
   private mapMarkers: any[] = [];
   private routeLayer: any = null;
+  private routeLines: any[] = [];
 
-  constructor(private apiService: ApiService) {}
+  constructor(
+    private apiService: ApiService,
+    private http: HttpClient,
+    private cdr: ChangeDetectorRef,
+    private zone: NgZone
+  ) {}
 
   ngOnInit() {
     this.loadData();
+    this.searchSub = this.searchSubject.pipe(
+      debounceTime(200),
+      switchMap(({ query, index }) => {
+        if (!query || query.length < 2) return of([]);
+        const cacheKey = query.toLowerCase().trim();
+        if (this.searchCache.has(cacheKey)) return of(this.searchCache.get(cacheKey)!);
+        return this.http.get<any[]>(
+          `/api/nominatim/search?q=${encodeURIComponent(query)}&format=json&limit=5&countrycodes=tn,dz,ly,ma`
+        ).pipe(
+          switchMap(results => {
+            this.searchCache.set(cacheKey, results);
+            return of(results);
+          }),
+          catchError(() => of([]))
+        );
+      })
+    ).subscribe(results => {
+      this.searchResults = results || [];
+      this.cdr.detectChanges();
+    });
   }
 
   ngOnDestroy() {
+    if (this.searchSub) this.searchSub.unsubscribe();
+    this.destroyMaps();
+  }
+
+  destroyMaps() {
     if (this.tourMap) { this.tourMap.remove(); this.tourMap = null; }
     if (this.detailMap) { this.detailMap.remove(); this.detailMap = null; }
   }
@@ -607,94 +718,190 @@ export class ToursComponent implements OnInit, OnDestroy {
     if (this.filterStatus) filters.status = this.filterStatus;
     if (this.filterVehicleId) filters.vehicleId = this.filterVehicleId;
     if (this.filterDriverId) filters.driverId = this.filterDriverId;
-
     this.apiService.getTours(filters).subscribe({
-      next: (res) => {
-        this.tours = res.items || [];
-        this.loading = false;
-      },
+      next: (res) => { this.tours = res.items || []; this.loading = false; this.cdr.detectChanges(); },
       error: () => { this.loading = false; }
     });
   }
 
   loadStats() {
     this.apiService.getTourStats().subscribe({
-      next: (s) => { this.stats = s; },
+      next: (s) => { this.stats = s; this.cdr.detectChanges(); },
       error: () => {}
     });
   }
 
+  // ═══════ NAVIGATION ═══════
+
+  openCreate() {
+    this.editingTour = null;
+    this.tourForm = this.getEmptyForm();
+    this.estimation = null;
+    this.currentView = 'create';
+    setTimeout(() => this.initTourMap(), 200);
+  }
+
+  closeCreate() {
+    this.currentView = 'list';
+    this.destroyMaps();
+  }
+
+  openDetail(tour: any) {
+    this.apiService.getTour(tour.id).subscribe({
+      next: (detail) => {
+        this.selectedTour = detail;
+        this.currentView = 'detail';
+        this.cdr.detectChanges();
+        setTimeout(() => this.initDetailMap(), 200);
+      }
+    });
+  }
+
+  closeDetail() {
+    this.currentView = 'list';
+    this.selectedTour = null;
+    this.destroyMaps();
+  }
+
   // ═══════ FORM ═══════
 
-  getEmptyForm() {
+  getEmptyForm(): any {
     return {
       name: '',
       description: '',
-      vehicleId: null as number | null,
-      driverId: null as number | null,
+      vehicleId: null,
+      driverId: null,
       scheduledStartTime: '',
       notes: '',
       waypoints: [
-        { name: '', address: '', latitude: 36.8065, longitude: 10.1815, plannedPauseMinutes: 0 },
-        { name: '', address: '', latitude: 36.8338, longitude: 10.5958, plannedPauseMinutes: 0 }
+        { searchText: '', resolvedName: '', address: '', latitude: null, longitude: null, plannedPauseMinutes: 0 },
+        { searchText: '', resolvedName: '', address: '', latitude: null, longitude: null, plannedPauseMinutes: 0 }
       ]
     };
   }
 
   addWaypoint() {
     const lastIdx = this.tourForm.waypoints.length - 1;
-    const last = this.tourForm.waypoints[lastIdx];
     this.tourForm.waypoints.splice(lastIdx, 0, {
-      name: '',
-      address: '',
-      latitude: (this.tourForm.waypoints[0].latitude + last.latitude) / 2,
-      longitude: (this.tourForm.waypoints[0].longitude + last.longitude) / 2,
-      plannedPauseMinutes: 15
+      searchText: '', resolvedName: '', address: '', latitude: null, longitude: null, plannedPauseMinutes: 0
     });
   }
 
   removeWaypoint(index: number) {
     if (this.tourForm.waypoints.length > 2) {
       this.tourForm.waypoints.splice(index, 1);
+      this.updateMapMarkers();
     }
+  }
+
+  clearWaypoint(index: number) {
+    const wp = this.tourForm.waypoints[index];
+    wp.latitude = null;
+    wp.longitude = null;
+    wp.address = '';
+    wp.resolvedName = '';
+    wp.searchText = '';
+    this.updateMapMarkers();
+    this.cdr.detectChanges();
+  }
+
+  // ═══════ ADDRESS SEARCH ═══════
+
+  onSearchChange(query: string, index: number) {
+    this.activeSearchIdx = index;
+    if (!query || query.length < 2) { this.searchResults = []; return; }
+    this.searchSubject.next({ query, index });
+  }
+
+  onSearchFocus(index: number) { this.activeSearchIdx = index; }
+
+  onSearchBlur() {
+    setTimeout(() => { this.activeSearchIdx = -1; this.searchResults = []; this.cdr.detectChanges(); }, 250);
+  }
+
+  pickResult(result: any, index: number) {
+    const wp = this.tourForm.waypoints[index];
+    wp.latitude = parseFloat(result.lat);
+    wp.longitude = parseFloat(result.lon);
+    wp.address = result.display_name;
+    wp.resolvedName = this.getShortName(result.display_name);
+    wp.searchText = wp.resolvedName;
+    this.searchResults = [];
+    this.activeSearchIdx = -1;
+    this.updateMapMarkers();
+    this.cdr.detectChanges();
+  }
+
+  getShortName(displayName: string): string {
+    if (!displayName) return '';
+    return displayName.split(',')[0]?.trim() || displayName;
+  }
+
+  canEstimate(): boolean {
+    return this.tourForm.waypoints.length >= 2 &&
+      this.tourForm.waypoints.every((wp: any) => wp.latitude && wp.longitude);
+  }
+
+  reverseGeocodeWaypoint(index: number, lat: number, lon: number) {
+    this.http.get<any>(`/api/nominatim/reverse?lat=${lat}&lon=${lon}&format=json`).pipe(
+      catchError(() => of(null))
+    ).subscribe(result => {
+      if (result && this.tourForm.waypoints[index]) {
+        const wp = this.tourForm.waypoints[index];
+        wp.address = result.display_name || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+        wp.resolvedName = this.getShortName(wp.address);
+        wp.searchText = wp.resolvedName;
+        this.cdr.detectChanges();
+      }
+    });
   }
 
   // ═══════ ESTIMATION ═══════
 
   estimateRoute() {
-    if (this.tourForm.waypoints.length < 2) return;
+    if (!this.canEstimate()) return;
     this.estimating = true;
-
-    const selectedVehicle = this.vehicles.find(v => v.id === this.tourForm.vehicleId);
+    const selectedVehicle = this.vehicles.find((v: any) => v.id === this.tourForm.vehicleId);
     this.apiService.estimateRoute({
-      waypoints: this.tourForm.waypoints,
+      waypoints: this.tourForm.waypoints.map((wp: any) => ({
+        latitude: wp.latitude, longitude: wp.longitude, name: wp.resolvedName, address: wp.address, plannedPauseMinutes: wp.plannedPauseMinutes
+      })),
       fuelType: selectedVehicle?.fuelType || 'diesel'
     }).subscribe({
       next: (est) => {
         this.estimation = est;
         this.estimating = false;
-        this.drawRouteOnMap(est.routePoints);
+        if (est.routePoints) this.drawRouteOnMap(est.routePoints);
+        this.cdr.detectChanges();
       },
-      error: () => {
-        this.estimating = false;
-        this.estimation = null;
-      }
+      error: () => { this.estimating = false; this.estimation = null; this.cdr.detectChanges(); }
     });
   }
 
-  // ═══════ CREATE / EDIT ═══════
+  // ═══════ SAVE ═══════
 
-  openCreateModal() {
-    this.editingTour = null;
-    this.tourForm = this.getEmptyForm();
-    this.estimation = null;
-    this.showCreateModal = true;
-    setTimeout(() => this.initTourMap(), 100);
-  }
-
-  closeCreateModal() {
-    this.showCreateModal = false;
-    if (this.tourMap) { this.tourMap.remove(); this.tourMap = null; }
+  saveTour() {
+    if (!this.tourForm.name || !this.tourForm.vehicleId || this.tourForm.waypoints.length < 2) return;
+    this.saving = true;
+    const payload = {
+      name: this.tourForm.name,
+      description: this.tourForm.description || null,
+      vehicleId: this.tourForm.vehicleId,
+      driverId: this.tourForm.driverId,
+      scheduledStartTime: this.tourForm.scheduledStartTime,
+      notes: this.tourForm.notes || null,
+      waypoints: this.tourForm.waypoints.map((wp: any) => ({
+        name: wp.resolvedName || wp.searchText, address: wp.address,
+        latitude: wp.latitude, longitude: wp.longitude, plannedPauseMinutes: wp.plannedPauseMinutes
+      }))
+    };
+    const obs = this.editingTour
+      ? this.apiService.updateTour(this.editingTour.id, payload)
+      : this.apiService.createTour(payload);
+    obs.subscribe({
+      next: () => { this.saving = false; this.closeCreate(); this.loadTours(); this.loadStats(); },
+      error: () => { this.saving = false; }
+    });
   }
 
   editTour() {
@@ -708,64 +915,14 @@ export class ToursComponent implements OnInit, OnDestroy {
       scheduledStartTime: this.toLocalDatetime(this.selectedTour.scheduledStartTime),
       notes: this.selectedTour.notes || '',
       waypoints: this.selectedTour.waypoints.map((w: any) => ({
-        name: w.name || '',
-        address: w.address || '',
-        latitude: w.latitude,
-        longitude: w.longitude,
-        plannedPauseMinutes: w.plannedPauseMinutes || 0
+        searchText: w.name || w.address || '', resolvedName: w.name || '', address: w.address || '',
+        latitude: w.latitude, longitude: w.longitude, plannedPauseMinutes: w.plannedPauseMinutes || 0
       }))
     };
     this.estimation = null;
-    this.showDetailModal = false;
-    this.showCreateModal = true;
-    setTimeout(() => this.initTourMap(), 100);
-  }
-
-  saveTour() {
-    if (!this.tourForm.name || !this.tourForm.vehicleId || this.tourForm.waypoints.length < 2) return;
-    this.saving = true;
-
-    const payload = {
-      name: this.tourForm.name,
-      description: this.tourForm.description || null,
-      vehicleId: this.tourForm.vehicleId,
-      driverId: this.tourForm.driverId,
-      scheduledStartTime: this.tourForm.scheduledStartTime,
-      notes: this.tourForm.notes || null,
-      waypoints: this.tourForm.waypoints
-    };
-
-    const obs = this.editingTour
-      ? this.apiService.updateTour(this.editingTour.id, payload)
-      : this.apiService.createTour(payload);
-
-    obs.subscribe({
-      next: () => {
-        this.closeCreateModal();
-        this.loadTours();
-        this.loadStats();
-        this.saving = false;
-      },
-      error: () => { this.saving = false; }
-    });
-  }
-
-  // ═══════ DETAIL ═══════
-
-  openDetailModal(tour: any) {
-    this.apiService.getTour(tour.id).subscribe({
-      next: (detail) => {
-        this.selectedTour = detail;
-        this.showDetailModal = true;
-        setTimeout(() => this.initDetailMap(), 100);
-      }
-    });
-  }
-
-  closeDetailModal() {
-    this.showDetailModal = false;
-    this.selectedTour = null;
-    if (this.detailMap) { this.detailMap.remove(); this.detailMap = null; }
+    this.currentView = 'create';
+    this.cdr.detectChanges();
+    setTimeout(() => this.initTourMap(), 200);
   }
 
   // ═══════ ACTIONS ═══════
@@ -773,29 +930,22 @@ export class ToursComponent implements OnInit, OnDestroy {
   startSelectedTour() {
     if (!this.selectedTour) return;
     this.apiService.startTour(this.selectedTour.id).subscribe({
-      next: () => { this.closeDetailModal(); this.loadTours(); this.loadStats(); }
+      next: () => { this.closeDetail(); this.loadTours(); this.loadStats(); }
     });
   }
 
   completeSelectedTour() {
     if (!this.selectedTour) return;
     this.apiService.completeTour(this.selectedTour.id).subscribe({
-      next: () => { this.closeDetailModal(); this.loadTours(); this.loadStats(); }
+      next: () => { this.closeDetail(); this.loadTours(); this.loadStats(); }
     });
   }
 
   cancelSelectedTour() {
     if (!this.selectedTour) return;
-    if (!confirm('Annuler cette tournée ?')) return;
+    if (!confirm('Annuler cette tournee ?')) return;
     this.apiService.cancelTour(this.selectedTour.id).subscribe({
-      next: () => { this.closeDetailModal(); this.loadTours(); this.loadStats(); }
-    });
-  }
-
-  deleteTour(tour: any) {
-    if (!confirm('Supprimer cette tournée ?')) return;
-    this.apiService.deleteTour(tour.id).subscribe({
-      next: () => { this.loadTours(); this.loadStats(); }
+      next: () => { this.closeDetail(); this.loadTours(); this.loadStats(); }
     });
   }
 
@@ -804,126 +954,132 @@ export class ToursComponent implements OnInit, OnDestroy {
   initTourMap() {
     if (this.tourMap) { this.tourMap.remove(); this.tourMap = null; }
     if (!this.tourMapEl?.nativeElement) return;
-
     try {
-      this.tourMap = L.map(this.tourMapEl.nativeElement).setView([36.8, 10.18], 7);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap'
-      }).addTo(this.tourMap);
-
+      this.tourMap = L.map(this.tourMapEl.nativeElement).setView([34.5, 9.5], 6);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(this.tourMap);
       this.tourMap.on('click', (e: any) => {
-        // Add clicked point as a waypoint
+        this.zone.run(() => {
+          const lat = e.latlng.lat;
+          const lng = e.latlng.lng;
+          const emptyIdx = this.tourForm.waypoints.findIndex((wp: any) => !wp.latitude);
+          if (emptyIdx >= 0) {
+            this.tourForm.waypoints[emptyIdx].latitude = lat;
+            this.tourForm.waypoints[emptyIdx].longitude = lng;
+            this.reverseGeocodeWaypoint(emptyIdx, lat, lng);
+          } else {
+            const lastIdx = this.tourForm.waypoints.length - 1;
+            this.tourForm.waypoints.splice(lastIdx, 0, {
+              searchText: '', resolvedName: '', address: '', latitude: lat, longitude: lng, plannedPauseMinutes: 0
+            });
+            this.reverseGeocodeWaypoint(lastIdx, lat, lng);
+          }
+          this.updateMapMarkers();
+          this.cdr.detectChanges();
+        });
       });
-
       this.updateMapMarkers();
-    } catch (e) {}
+    } catch (e) { console.error('Map init error', e); }
   }
 
   initDetailMap() {
     if (this.detailMap) { this.detailMap.remove(); this.detailMap = null; }
     if (!this.detailMapEl?.nativeElement || !this.selectedTour) return;
-
     try {
-      this.detailMap = L.map(this.detailMapEl.nativeElement).setView([36.8, 10.18], 7);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap'
-      }).addTo(this.detailMap);
-
+      this.detailMap = L.map(this.detailMapEl.nativeElement).setView([34.5, 9.5], 6);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(this.detailMap);
       const wps = this.selectedTour.waypoints || [];
       if (wps.length > 0) {
         const bounds: any[] = [];
-        wps.forEach((wp: any, i: number) => {
-          const color = wp.type === 'origin' ? '#10b981' : wp.type === 'destination' ? '#ef4444' : '#3b82f6';
-          const marker = L.circleMarker([wp.latitude, wp.longitude], {
-            radius: 8, color: color, fillColor: color, fillOpacity: 0.8, weight: 2
-          }).addTo(this.detailMap);
-          marker.bindPopup(`<b>${wp.name || wp.address || wp.type}</b>`);
+        wps.forEach((wp: any) => {
+          const color = wp.type === 'origin' ? '#22c55e' : wp.type === 'destination' ? '#ef4444' : '#3b82f6';
+          L.circleMarker([wp.latitude, wp.longitude], { radius: 7, color, fillColor: color, fillOpacity: 0.9, weight: 2 })
+            .addTo(this.detailMap).bindPopup(`<b>${wp.name || wp.address || wp.type}</b>`);
           bounds.push([wp.latitude, wp.longitude]);
         });
-
-        // Draw route line
         if (bounds.length >= 2) {
-          L.polyline(bounds, { color: '#3b82f6', weight: 3, dashArray: '8 4' }).addTo(this.detailMap);
-          this.detailMap.fitBounds(bounds, { padding: [30, 30] });
+          L.polyline(bounds, { color: '#3b82f6', weight: 3, dashArray: '6 4' }).addTo(this.detailMap);
+          this.detailMap.fitBounds(bounds, { padding: [40, 40] });
         }
       }
-    } catch (e) {}
+    } catch (e) { console.error('Detail map error', e); }
   }
 
   updateMapMarkers() {
     if (!this.tourMap) return;
     this.mapMarkers.forEach(m => m.remove());
     this.mapMarkers = [];
-
+    this.routeLines.forEach(l => l.remove());
+    this.routeLines = [];
     const bounds: any[] = [];
-    this.tourForm.waypoints.forEach((wp, i) => {
+    this.tourForm.waypoints.forEach((wp: any, i: number) => {
       if (wp.latitude && wp.longitude) {
         const isFirst = i === 0;
         const isLast = i === this.tourForm.waypoints.length - 1;
-        const color = isFirst ? '#10b981' : isLast ? '#ef4444' : '#3b82f6';
-        const marker = L.circleMarker([wp.latitude, wp.longitude], {
-          radius: 8, color: color, fillColor: color, fillOpacity: 0.8, weight: 2
-        }).addTo(this.tourMap);
-        marker.bindPopup(wp.name || wp.address || `Point ${i + 1}`);
+        const color = isFirst ? '#22c55e' : isLast ? '#ef4444' : '#3b82f6';
+        const marker = L.circleMarker([wp.latitude, wp.longitude], { radius: 8, color, fillColor: color, fillOpacity: 0.9, weight: 2 })
+          .addTo(this.tourMap).bindPopup(wp.resolvedName || wp.searchText || `Point ${i + 1}`);
         this.mapMarkers.push(marker);
         bounds.push([wp.latitude, wp.longitude]);
       }
     });
-
     if (bounds.length >= 2) {
-      this.tourMap.fitBounds(bounds, { padding: [30, 30] });
+      const line = L.polyline(bounds, { color: '#3b82f6', weight: 3, dashArray: '6 4', opacity: .7 }).addTo(this.tourMap);
+      this.routeLines.push(line);
+      this.tourMap.fitBounds(bounds, { padding: [40, 40] });
+    } else if (bounds.length === 1) {
+      this.tourMap.setView(bounds[0], 13);
     }
   }
 
   drawRouteOnMap(points: any[]) {
     if (!this.tourMap || !points || points.length < 2) return;
-    if (this.routeLayer) { this.tourMap.removeLayer(this.routeLayer); }
-
+    if (this.routeLayer) this.tourMap.removeLayer(this.routeLayer);
+    this.routeLines.forEach(l => l.remove());
+    this.routeLines = [];
     const latlngs = points.map((p: any) => [p.lat, p.lng]);
     this.routeLayer = L.polyline(latlngs, { color: '#3b82f6', weight: 4 }).addTo(this.tourMap);
-    this.tourMap.fitBounds(this.routeLayer.getBounds(), { padding: [30, 30] });
-    this.updateMapMarkers();
+    this.tourMap.fitBounds(this.routeLayer.getBounds(), { padding: [40, 40] });
+    // Re-add markers on top
+    this.mapMarkers.forEach(m => m.bringToFront());
   }
 
   // ═══════ HELPERS ═══════
 
-  getStatusLabel(status: string): string {
-    const labels: any = { planned: 'Planifiée', in_progress: 'En cours', completed: 'Terminée', cancelled: 'Annulée' };
-    return labels[status] || status;
+  getStatusLabel(s: string): string {
+    return ({ planned: 'Planifiee', in_progress: 'En cours', completed: 'Terminee', cancelled: 'Annulee' } as any)[s] || s;
   }
-
-  getWaypointTypeLabel(type: string): string {
-    const labels: any = { origin: 'Départ', waypoint: 'Arrêt', destination: 'Arrivée' };
-    return labels[type] || type;
+  getWaypointTypeLabel(t: string): string {
+    return ({ origin: 'Depart', waypoint: 'Arret', destination: 'Arrivee' } as any)[t] || t;
   }
-
-  getPauseLabel(reason: string): string {
-    const labels: any = { break: 'Pause', fuel: 'Carburant', delivery: 'Livraison', rest: 'Repos', other: 'Autre' };
-    return labels[reason] || reason;
+  getPauseLabel(r: string): string {
+    return ({ break: 'Pause', fuel: 'Carburant', delivery: 'Livraison', rest: 'Repos', other: 'Autre' } as any)[r] || r;
   }
-
-  formatDate(dateStr: string): string {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  formatDate(d: string): string {
+    if (!d) return '-';
+    return new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
-
-  formatTime(dateStr: string): string {
-    if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  formatDateShort(d: string): string {
+    if (!d) return '-';
+    return new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
   }
-
-  formatDuration(minutes: number): string {
-    if (!minutes) return '0 min';
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    return h > 0 ? `${h}h${m > 0 ? m.toString().padStart(2, '0') : ''}` : `${m} min`;
+  formatTime(d: string): string {
+    if (!d) return '-';
+    return new Date(d).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   }
-
-  toLocalDatetime(dateStr: string): string {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  formatDuration(m: number): string {
+    if (!m) return '0 min';
+    const h = Math.floor(m / 60);
+    const mm = m % 60;
+    return h > 0 ? `${h}h${mm > 0 ? mm.toString().padStart(2, '0') : ''}` : `${mm} min`;
+  }
+  truncate(s: string, len: number): string {
+    if (!s) return '';
+    return s.length > len ? s.substring(0, len) + '...' : s;
+  }
+  toLocalDatetime(d: string): string {
+    if (!d) return '';
+    const dt = new Date(d);
+    const p = (n: number) => n.toString().padStart(2, '0');
+    return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}T${p(dt.getHours())}:${p(dt.getMinutes())}`;
   }
 }

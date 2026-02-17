@@ -179,8 +179,35 @@ services:
           memory: 2G
     restart: unless-stopped
 
+  # Nominatim geocoding service (address search + reverse geocoding)
+  nominatim:
+    image: mediagis/nominatim:4.4
+    container_name: gisv2-nominatim
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 30
+      start_period: 300s
+    environment:
+      PBF_URL: https://download.geofabrik.de/africa/tunisia-latest.osm.pbf
+      REPLICATION_URL: https://download.geofabrik.de/africa/tunisia-updates/
+      NOMINATIM_PASSWORD: nominatim
+      IMPORT_STYLE: full
+    volumes:
+      - nominatim_data:/var/lib/postgresql/14/main
+    ports:
+      - "8088:8080"
+    shm_size: 1gb
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   rabbitmq_data:
   redis_data:
   valhalla_data:
+  nominatim_data:
