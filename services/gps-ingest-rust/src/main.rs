@@ -97,7 +97,7 @@ async fn main() -> Result<()> {
         .expect("DATABASE_URL must be set");
 
     let db_pool = PgPoolOptions::new()
-        .max_connections(10)
+        .max_connections(20)
         .connect(&database_url)
         .await?;
     info!("Connected to PostgreSQL successfully");

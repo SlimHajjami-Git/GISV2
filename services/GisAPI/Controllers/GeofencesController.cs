@@ -33,6 +33,7 @@ public class GeofencesController : ControllerBase
         var companyId = GetCompanyId();
 
         var query = _context.Geofences
+            .AsNoTracking()
             .Where(g => g.CompanyId == companyId);
 
         if (groupId.HasValue)
@@ -85,6 +86,7 @@ public class GeofencesController : ControllerBase
         var companyId = GetCompanyId();
 
         var geofence = await _context.Geofences
+            .AsNoTracking()
             .Where(g => g.Id == id && g.CompanyId == companyId)
             .Include(g => g.AssignedVehicles)
             .FirstOrDefaultAsync();

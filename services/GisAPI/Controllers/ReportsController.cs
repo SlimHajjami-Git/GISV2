@@ -38,6 +38,7 @@ public class ReportsController : ControllerBase
         var companyId = GetCompanyId();
 
         var reports = await _context.Reports
+            .AsNoTracking()
             .Where(r => r.CompanyId == companyId)
             .Include(r => r.CreatedByUser)
             .OrderByDescending(r => r.CreatedAt)
@@ -53,6 +54,7 @@ public class ReportsController : ControllerBase
         var companyId = GetCompanyId();
 
         var report = await _context.Reports
+            .AsNoTracking()
             .Where(r => r.Id == id && r.CompanyId == companyId)
             .Include(r => r.CreatedByUser)
             .FirstOrDefaultAsync();
@@ -142,6 +144,7 @@ public class ReportsController : ControllerBase
         var companyId = GetCompanyId();
 
         var schedules = await _context.ReportSchedules
+            .AsNoTracking()
             .Where(s => s.CompanyId == companyId)
             .Include(s => s.CreatedByUser)
             .OrderBy(s => s.Name)

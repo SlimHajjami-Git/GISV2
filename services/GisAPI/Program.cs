@@ -123,6 +123,14 @@ builder.Services.AddCors(options =>
 // In-memory cache for dashboard and reports
 builder.Services.AddMemoryCache();
 
+// Response compression for JSON payloads
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.MimeTypes = Microsoft.AspNetCore.ResponseCompression.ResponseCompressionDefaults.MimeTypes
+        .Concat(new[] { "application/json" });
+});
+
 // OpenAPI/Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -138,6 +146,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Response compression
+app.UseResponseCompression();
 
 // app.UseHttpsRedirection(); // Disabled for Docker HTTP
 

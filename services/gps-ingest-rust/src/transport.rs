@@ -150,7 +150,7 @@ async fn handle_tcp_connection(
     services: Arc<TelemetryServices>,
     redis_cache: Option<Arc<RedisCache>>,
 ) -> Result<()> {
-    let mut buffer = vec![0u8; 4096];
+    let mut buffer = vec![0u8; 8192];
     let peer = stream.peer_addr().ok().map(|addr| addr.to_string());
     loop {
         let read = stream.read(&mut buffer).await?;

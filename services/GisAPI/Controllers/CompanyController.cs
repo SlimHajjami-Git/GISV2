@@ -24,6 +24,7 @@ public class CompanyController : ControllerBase
         [FromQuery] string? status = null)
     {
         var query = _context.Societes
+            .AsNoTracking()
             .Include(c => c.SubscriptionType)
             .Include(c => c.Users)
             .Include(c => c.Vehicles)
@@ -78,6 +79,7 @@ public class CompanyController : ControllerBase
     public async Task<ActionResult<CompanyDto>> GetCompany(int id)
     {
         var company = await _context.Societes
+            .AsNoTracking()
             .Include(c => c.SubscriptionType)
             .Include(c => c.Users)
             .Include(c => c.Vehicles)

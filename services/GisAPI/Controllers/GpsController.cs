@@ -64,6 +64,7 @@ public class GpsController : ControllerBase
         {
             // Get vehicle info from DB to enrich Redis data
             var vehicleMap = await _context.Vehicles
+                .AsNoTracking()
                 .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue)
                 .Include(v => v.GpsDevice)
                 .ToDictionaryAsync(v => v.GpsDevice!.DeviceUid, v => v);

@@ -148,51 +148,61 @@ public class DashboardController : ControllerBase
         var thisMonth = DateTime.SpecifyKind(new DateTime(today.Year, today.Month, 1), DateTimeKind.Utc);
         var cutoffTime = DateTime.UtcNow.AddMinutes(-5);
 
-        // Vehicle stats
-        var vehicles = await _context.Vehicles
+        // Vehicle stats - server-side counts
+        var totalVehicles = await _context.Vehicles
+            .AsNoTracking()
             .Where(v => v.CompanyId == companyId)
-            .ToListAsync();
-
-        var totalVehicles = vehicles.Count;
-        var vehiclesWithGps = vehicles.Count(v => v.HasGps);
-
-        // Get online vehicles (those with recent GPS positions)
-        var vehicleIds = vehicles.Where(v => v.GpsDeviceId.HasValue).Select(v => v.GpsDeviceId!.Value).ToList();
-        var onlineDevices = await _context.GpsPositions
-            .Where(p => vehicleIds.Contains(p.DeviceId) && p.RecordedAt > cutoffTime)
-            .Select(p => p.DeviceId)
-            .Distinct()
             .CountAsync();
 
-        // Employee stats
-        var employees = await _context.Users
-            .Where(e => e.CompanyId == companyId)
-            .ToListAsync();
+        var vehiclesWithGps = await _context.Vehicles
+            .AsNoTracking()
+            .Where(v => v.CompanyId == companyId && v.HasGps)
+            .CountAsync();
 
-        var totalDrivers = employees.Count(e => e.Roles.Contains("driver") || e.UserType == "employee");
-        var activeDrivers = employees.Count(e => (e.Roles.Contains("driver") || e.UserType == "employee") && e.Status == "active");
+        // Get online vehicles (those with recent GPS positions)
+        var onlineDevices = await _context.Vehicles
+            .AsNoTracking()
+            .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue)
+            .Where(v => _context.GpsPositions
+                .Any(p => p.DeviceId == v.GpsDeviceId!.Value && p.RecordedAt > cutoffTime))
+            .CountAsync();
 
-        // Alert stats
+        // Employee stats - server-side counts
+        var totalDrivers = await _context.Users
+            .AsNoTracking()
+            .Where(e => e.CompanyId == companyId && (e.Roles.Contains("driver") || e.UserType == "employee"))
+            .CountAsync();
+
+        var activeDrivers = await _context.Users
+            .AsNoTracking()
+            .Where(e => e.CompanyId == companyId && (e.Roles.Contains("driver") || e.UserType == "employee") && e.Status == "active")
+            .CountAsync();
+
+        // Alert stats - server-side counts with subquery
         var unresolvedAlerts = await _context.GpsAlerts
+            .AsNoTracking()
             .Where(a => a.VehicleId.HasValue && 
-                        vehicles.Select(v => v.Id).Contains(a.VehicleId.Value) && 
+                        a.Vehicle!.CompanyId == companyId && 
                         !a.Resolved)
             .CountAsync();
 
         var alertsToday = await _context.GpsAlerts
+            .AsNoTracking()
             .Where(a => a.VehicleId.HasValue && 
-                        vehicles.Select(v => v.Id).Contains(a.VehicleId.Value) && 
+                        a.Vehicle!.CompanyId == companyId && 
                         a.Timestamp >= today)
             .CountAsync();
 
         // Maintenance stats
         var upcomingMaintenance = await _context.MaintenanceRecords
+            .AsNoTracking()
             .Where(m => m.CompanyId == companyId && 
                         m.Status == "scheduled" && 
                         m.Date <= today.AddDays(30))
             .CountAsync();
 
         var overdueMaintenance = await _context.MaintenanceRecords
+            .AsNoTracking()
             .Where(m => m.CompanyId == companyId && 
                         m.Status == "scheduled" && 
                         m.Date < today)
@@ -200,28 +210,34 @@ public class DashboardController : ControllerBase
 
         // Cost stats this month
         var costsThisMonth = await _context.VehicleCosts
+            .AsNoTracking()
             .Where(c => c.CompanyId == companyId && c.Date >= thisMonth)
             .SumAsync(c => c.Amount);
 
         var fuelCostsThisMonth = await _context.VehicleCosts
+            .AsNoTracking()
             .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= thisMonth)
             .SumAsync(c => c.Amount);
 
         // Trip stats today
         var tripsToday = await _context.Trips
+            .AsNoTracking()
             .Where(t => t.CompanyId == companyId && t.StartTime >= today)
             .CountAsync();
 
         var distanceToday = await _context.Trips
+            .AsNoTracking()
             .Where(t => t.CompanyId == companyId && t.StartTime >= today && t.Status == "completed")
             .SumAsync(t => t.DistanceKm);
 
         // Geofence stats
         var activeGeofences = await _context.Geofences
+            .AsNoTracking()
             .Where(g => g.CompanyId == companyId && g.IsActive)
             .CountAsync();
 
         var geofenceEventsToday = await _context.GeofenceEvents
+            .AsNoTracking()
             .Where(e => e.Geofence!.CompanyId == companyId && e.Timestamp >= today)
             .CountAsync();
 
@@ -271,14 +287,10 @@ public class DashboardController : ControllerBase
     public async Task<ActionResult> GetRecentActivity([FromQuery] int limit = 20)
     {
         var companyId = GetCompanyId();
-        var vehicleIds = await _context.Vehicles
-            .Where(v => v.CompanyId == companyId)
-            .Select(v => v.Id)
-            .ToListAsync();
-
-        // Get recent alerts
+        // Get recent alerts - use navigation property instead of in-memory ID list
         var recentAlerts = await _context.GpsAlerts
-            .Where(a => a.VehicleId.HasValue && vehicleIds.Contains(a.VehicleId.Value))
+            .AsNoTracking()
+            .Where(a => a.VehicleId.HasValue && a.Vehicle!.CompanyId == companyId)
             .OrderByDescending(a => a.Timestamp)
             .Take(limit)
             .Select(a => new
@@ -293,7 +305,8 @@ public class DashboardController : ControllerBase
 
         // Get recent geofence events
         var recentGeofenceEvents = await _context.GeofenceEvents
-            .Where(e => vehicleIds.Contains(e.VehicleId))
+            .AsNoTracking()
+            .Where(e => e.Vehicle!.CompanyId == companyId)
             .OrderByDescending(e => e.Timestamp)
             .Take(limit)
             .Select(e => new

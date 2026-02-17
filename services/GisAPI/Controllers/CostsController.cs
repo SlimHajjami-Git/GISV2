@@ -32,6 +32,7 @@ public class CostsController : ControllerBase
         var companyId = GetCompanyId();
 
         var query = _context.VehicleCosts
+            .AsNoTracking()
             .Where(c => c.CompanyId == companyId)
             .Include(c => c.Vehicle)
             .AsQueryable();
@@ -80,6 +81,7 @@ public class CostsController : ControllerBase
         var companyId = GetCompanyId();
 
         var cost = await _context.VehicleCosts
+            .AsNoTracking()
             .Where(c => c.Id == id && c.CompanyId == companyId)
             .Include(c => c.Vehicle)
             .FirstOrDefaultAsync();
@@ -104,6 +106,7 @@ public class CostsController : ControllerBase
             : DateTime.UtcNow;
 
         var costs = await _context.VehicleCosts
+            .AsNoTracking()
             .Where(c => c.CompanyId == companyId && c.Date >= startDateUtc && c.Date <= endDateUtc)
             .GroupBy(c => c.Type)
             .Select(g => new
@@ -115,6 +118,7 @@ public class CostsController : ControllerBase
             .ToListAsync();
 
         var totalFuel = await _context.VehicleCosts
+            .AsNoTracking()
             .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= startDateUtc && c.Date <= endDateUtc)
             .SumAsync(c => c.Liters ?? 0);
 

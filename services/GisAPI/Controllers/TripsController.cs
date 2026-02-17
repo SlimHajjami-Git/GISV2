@@ -31,6 +31,7 @@ public class TripsController : ControllerBase
         var companyId = GetCompanyId();
 
         var query = _context.Trips
+            .AsNoTracking()
             .Where(t => t.CompanyId == companyId)
             .Include(t => t.Vehicle)
             .Include(t => t.Driver)
@@ -62,6 +63,7 @@ public class TripsController : ControllerBase
         var companyId = GetCompanyId();
 
         var trip = await _context.Trips
+            .AsNoTracking()
             .Where(t => t.Id == id && t.CompanyId == companyId)
             .Include(t => t.Vehicle)
             .Include(t => t.Driver)
@@ -84,12 +86,14 @@ public class TripsController : ControllerBase
         var companyId = GetCompanyId();
 
         var vehicle = await _context.Vehicles
+            .AsNoTracking()
             .FirstOrDefaultAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
 
         if (vehicle == null)
             return NotFound();
 
         var query = _context.Trips
+            .AsNoTracking()
             .Where(t => t.VehicleId == vehicleId)
             .Include(t => t.Driver)
             .AsQueryable();
@@ -114,12 +118,14 @@ public class TripsController : ControllerBase
         var companyId = GetCompanyId();
 
         var trip = await _context.Trips
+            .AsNoTracking()
             .FirstOrDefaultAsync(t => t.Id == id && t.CompanyId == companyId);
 
         if (trip == null)
             return NotFound();
 
         var waypoints = await _context.TripWaypoints
+            .AsNoTracking()
             .Where(w => w.TripId == id)
             .OrderBy(w => w.SequenceNumber)
             .ToListAsync();
@@ -136,27 +142,43 @@ public class TripsController : ControllerBase
         var utcStart = DateTime.SpecifyKind((startDate ?? DateTime.UtcNow.AddMonths(-1)).Date, DateTimeKind.Utc);
         var utcEnd = DateTime.SpecifyKind((endDate ?? DateTime.UtcNow).Date.AddDays(1), DateTimeKind.Utc);
 
-        var trips = await _context.Trips
+        var baseQuery = _context.Trips
+            .AsNoTracking()
             .Where(t => t.CompanyId == companyId && 
                         t.StartTime >= utcStart && 
                         t.EndTime <= utcEnd &&
-                        t.Status == "completed")
-            .ToListAsync();
+                        t.Status == "completed");
 
-        var summary = new
+        var summary = await baseQuery
+            .GroupBy(t => 1)
+            .Select(g => new
+            {
+                TotalTrips = g.Count(),
+                TotalDistanceKm = g.Sum(t => t.DistanceKm),
+                TotalDurationMinutes = g.Sum(t => t.DurationMinutes),
+                TotalFuelConsumed = g.Sum(t => t.FuelConsumedLiters ?? 0),
+                AverageSpeedKph = g.Average(t => t.AverageSpeedKph ?? 0),
+                MaxSpeedKph = g.Max(t => t.MaxSpeedKph ?? 0),
+                TotalHarshBraking = g.Sum(t => t.HarshBrakingCount ?? 0),
+                TotalHarshAcceleration = g.Sum(t => t.HarshAccelerationCount ?? 0),
+                TotalOverspeeding = g.Sum(t => t.OverspeedingCount ?? 0)
+            })
+            .FirstOrDefaultAsync();
+
+        var result = new
         {
-            TotalTrips = trips.Count,
-            TotalDistanceKm = trips.Sum(t => t.DistanceKm),
-            TotalDurationMinutes = trips.Sum(t => t.DurationMinutes),
-            TotalFuelConsumed = trips.Sum(t => t.FuelConsumedLiters ?? 0),
-            AverageSpeedKph = trips.Count > 0 ? trips.Average(t => t.AverageSpeedKph ?? 0) : 0,
-            MaxSpeedKph = trips.Count > 0 ? trips.Max(t => t.MaxSpeedKph ?? 0) : 0,
-            TotalHarshBraking = trips.Sum(t => t.HarshBrakingCount ?? 0),
-            TotalHarshAcceleration = trips.Sum(t => t.HarshAccelerationCount ?? 0),
-            TotalOverspeeding = trips.Sum(t => t.OverspeedingCount ?? 0),
+            TotalTrips = summary?.TotalTrips ?? 0,
+            TotalDistanceKm = summary?.TotalDistanceKm ?? 0,
+            TotalDurationMinutes = summary?.TotalDurationMinutes ?? 0,
+            TotalFuelConsumed = summary?.TotalFuelConsumed ?? 0,
+            AverageSpeedKph = summary?.AverageSpeedKph ?? 0,
+            MaxSpeedKph = summary?.MaxSpeedKph ?? 0,
+            TotalHarshBraking = summary?.TotalHarshBraking ?? 0,
+            TotalHarshAcceleration = summary?.TotalHarshAcceleration ?? 0,
+            TotalOverspeeding = summary?.TotalOverspeeding ?? 0,
             Period = new { StartDate = utcStart, EndDate = utcEnd }
         };
 
-        return Ok(summary);
+        return Ok(result);
     }
 }

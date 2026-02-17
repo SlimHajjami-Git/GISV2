@@ -26,6 +26,7 @@ public class MaintenanceController : ControllerBase
         var companyId = GetCompanyId();
 
         var query = _context.MaintenanceRecords
+            .AsNoTracking()
             .Where(m => m.CompanyId == companyId)
             .Include(m => m.Vehicle)
             .Include(m => m.Parts)
@@ -47,6 +48,7 @@ public class MaintenanceController : ControllerBase
         var companyId = GetCompanyId();
 
         var record = await _context.MaintenanceRecords
+            .AsNoTracking()
             .Where(m => m.Id == id && m.CompanyId == companyId)
             .Include(m => m.Vehicle)
             .Include(m => m.Parts)
@@ -65,6 +67,7 @@ public class MaintenanceController : ControllerBase
         var nextMonth = DateTime.UtcNow.AddMonths(1);
 
         var records = await _context.MaintenanceRecords
+            .AsNoTracking()
             .Where(m => m.CompanyId == companyId && 
                         m.Status == "scheduled" && 
                         m.Date <= nextMonth)

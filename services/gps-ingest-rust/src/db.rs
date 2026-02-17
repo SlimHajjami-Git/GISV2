@@ -19,6 +19,12 @@ pub struct Database {
     /// Accumulates fractional km per device for GPS-based mileage (V1 frames)
     /// Flushes to DB when accumulated distance >= 1 km
     mileage_accumulator: Mutex<HashMap<i32, f64>>,
+    /// In-memory cache: device_uid -> (device_id, firmware_version)
+    /// Avoids DB UPSERT on every frame for known devices
+    device_cache: Mutex<HashMap<String, (i32, String)>>,
+    /// In-memory cache: device_id -> last known position
+    /// Avoids ORDER BY recorded_at DESC query on every frame
+    last_position_cache: Mutex<HashMap<i32, LastKnownPosition>>,
 }
 
 pub struct LastKnownPosition {
@@ -129,6 +135,11 @@ impl Database {
         */
 
         let position_id = self.insert_position(device_id, frame, event_key, has_fms).await?;
+
+        // Update last position cache for next frame's stopped-vehicle check
+        if position_id > 0 {
+            self.update_last_position_cache(device_id, frame);
+        }
         
         if position_id == 0 {
             tracing::warn!(
@@ -167,6 +178,20 @@ impl Database {
     }
 
     async fn fetch_last_position(&self, device_id: i32) -> Result<Option<LastKnownPosition>> {
+        // Check in-memory cache first
+        {
+            let cache = self.last_position_cache.lock().unwrap();
+            if let Some(cached) = cache.get(&device_id) {
+                return Ok(Some(LastKnownPosition {
+                    latitude: cached.latitude,
+                    longitude: cached.longitude,
+                    recorded_at: cached.recorded_at,
+                    ignition_on: cached.ignition_on,
+                }));
+            }
+        }
+
+        // Cache miss — hit DB
         let row = sqlx::query(
             r#"
             SELECT latitude, longitude, recorded_at, ignition_on
@@ -180,7 +205,7 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|r| {
+        let result = row.map(|r| {
             let recorded_at: DateTime<Utc> = r.get("recorded_at");
 
             LastKnownPosition {
@@ -189,7 +214,31 @@ impl Database {
                 recorded_at: recorded_at.naive_utc(),
                 ignition_on: r.get::<Option<bool>, _>("ignition_on").unwrap_or(false),
             }
-        }))
+        });
+
+        // Store in cache if found
+        if let Some(ref pos) = result {
+            let mut cache = self.last_position_cache.lock().unwrap();
+            cache.insert(device_id, LastKnownPosition {
+                latitude: pos.latitude,
+                longitude: pos.longitude,
+                recorded_at: pos.recorded_at,
+                ignition_on: pos.ignition_on,
+            });
+        }
+
+        Ok(result)
+    }
+
+    /// Update the last position cache after a successful insert
+    fn update_last_position_cache(&self, device_id: i32, frame: &HhFrame) {
+        let mut cache = self.last_position_cache.lock().unwrap();
+        cache.insert(device_id, LastKnownPosition {
+            latitude: frame.latitude,
+            longitude: frame.longitude,
+            recorded_at: frame.recorded_at,
+            ignition_on: frame.ignition_on,
+        });
     }
 
     async fn ingest_info_frame_impl(&self, protocol_type: &str, info: &HhInfoFrame) -> Result<String> {
@@ -776,6 +825,8 @@ impl Database {
             pool,
             gap_filler: GapFiller::new(osrm_base_url),
             mileage_accumulator: Mutex::new(HashMap::new()),
+            device_cache: Mutex::new(HashMap::new()),
+            last_position_cache: Mutex::new(HashMap::new()),
         }
     }
 
@@ -785,9 +836,16 @@ impl Database {
         protocol_type: &str,
         metadata: ProtocolMetadata,
     ) -> Result<(i32, String)> {
-        // Use gps_devices table with EF Core column naming (PascalCase)
-        // Default CompanyId = 1 (Belive) for testing
-        const DEFAULT_COMPANY_ID: i32 = 1; // Belive company
+        // Check in-memory cache first
+        {
+            let cache = self.device_cache.lock().unwrap();
+            if let Some(cached) = cache.get(device_uid) {
+                return Ok(cached.clone());
+            }
+        }
+
+        // Cache miss — hit DB
+        const DEFAULT_COMPANY_ID: i32 = 1;
         let model = metadata.model_name;
         let firmware = metadata.firmware_flavor;
 
@@ -821,6 +879,13 @@ impl Database {
 
         let id = row.get::<i32, _>("id");
         let fw: String = row.try_get("firmware_version").unwrap_or_default();
+
+        // Store in cache
+        {
+            let mut cache = self.device_cache.lock().unwrap();
+            cache.insert(device_uid.to_string(), (id, fw.clone()));
+        }
+
         Ok((id, fw))
     }
 
