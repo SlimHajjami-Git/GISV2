@@ -82,8 +82,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   private routeAnimationIndex: number = 0; // Current position in route animation
   
   // Progressive trace drawing
-  progressivePolylines: L.Polyline[] = []; // Colored segments for progressive drawing
-  traceDrawnUpToIndex = 0; // Track how much of the trace has been drawn
+  progressivePolylines: L.Polyline[] = []; // Legacy (kept for cleanup)
+  traceDrawnUpToIndex = 0;
+  private ghostPolyline: L.Polyline | null = null; // Full route preview (faded)
+  private progressPolyline: L.Polyline | null = null; // Growing colored trace
+  private progressCoords: L.LatLng[] = []; // Accumulated coords for progress line
   
   // Ignition-off anchor position: when ignition is off, all positions use this anchor
   private ignitionOffAnchor: { latitude: number; longitude: number } | null = null;
@@ -947,19 +950,45 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
     // Remove existing route elements
     this.clearRouteDisplay();
-    
-    // Reset progressive drawing index
     this.traceDrawnUpToIndex = 0;
+    this.progressCoords = [];
 
-    // Save current zoom level or use default - maintain zoom during playback
-    this.playbackZoomLevel = this.map.getZoom() || 15;
-    
-    // Center map on starting position WITHOUT changing zoom level
+    // Draw full ghost route (faded preview of entire path)
+    if (this.matchedRouteCoords.length >= 2) {
+      this.ghostPolyline = L.polyline(this.matchedRouteCoords, {
+        color: '#94a3b8',
+        weight: 3,
+        opacity: 0.25,
+        dashArray: '8 6'
+      }).addTo(this.map);
+      this.map.fitBounds(this.ghostPolyline.getBounds().pad(0.1));
+    } else {
+      const startPos = this.playbackPositions[0];
+      this.map.setView([startPos.latitude, startPos.longitude], 15);
+    }
+
+    // Initialize empty progress polyline (grows as vehicle moves)
+    this.progressPolyline = L.polyline([], {
+      color: '#3b82f6',
+      weight: 5,
+      opacity: 0.9,
+      lineJoin: 'round',
+      lineCap: 'round'
+    }).addTo(this.map);
+
+    // Add start marker
     const startPos = this.playbackPositions[0];
-    this.map.setView([startPos.latitude, startPos.longitude], this.playbackZoomLevel);
-    
-    // Don't draw full trace - it will be drawn progressively during playback
-    // Just show the vehicle icon at the starting position
+    const startLatLng = this.getSnappedLatLng(0);
+    L.circleMarker(startLatLng as L.LatLngExpression, {
+      radius: 8, fillColor: '#22c55e', color: '#fff', weight: 3, fillOpacity: 1
+    }).addTo(this.map).bindTooltip('Départ', { permanent: false });
+
+    // Add end marker
+    const endIdx = this.playbackPositions.length - 1;
+    const endLatLng = this.getSnappedLatLng(endIdx);
+    L.circleMarker(endLatLng as L.LatLngExpression, {
+      radius: 8, fillColor: '#ef4444', color: '#fff', weight: 3, fillOpacity: 1
+    }).addTo(this.map).bindTooltip('Arrivée', { permanent: false });
   }
 
   addPointMarkers() {
@@ -1094,7 +1123,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.map?.removeControl(this.routingControl);
       this.routingControl = null;
     }
-    // Clear progressive polylines
+    // Clear ghost and progress polylines
+    if (this.ghostPolyline) { this.ghostPolyline.remove(); this.ghostPolyline = null; }
+    if (this.progressPolyline) { this.progressPolyline.remove(); this.progressPolyline = null; }
+    this.progressCoords = [];
+    // Clear legacy progressive polylines
     this.progressivePolylines.forEach(polyline => polyline.remove());
     this.progressivePolylines = [];
     this.traceDrawnUpToIndex = 0;
@@ -1439,191 +1472,139 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.animateToNextPoint().catch(e => console.error('[Playback] start error:', e));
   }
 
-  // Smooth animation using requestAnimationFrame
+  // Smooth animation using requestAnimationFrame — uses pre-computed matchedRouteCoords (no network calls)
   private async animateToNextPoint() {
     if (!this.isPlaying || this.playbackIndex >= this.playbackPositions.length - 1) {
-      // Playback complete
       this.ngZone.run(() => {
         this.isPlaying = false;
         this.isAnimatingSegment = false;
-        console.log('Playback completed - trace remains visible until user ends playback');
         this.cdr.detectChanges();
       });
       return;
     }
 
     try {
-    const fromPos = this.playbackPositions[this.playbackIndex];
-    const toPos = this.playbackPositions[this.playbackIndex + 1];
-    const currentSpeed = fromPos.speedKph || fromPos.speed || 0;
-    const ignitionOn = fromPos.ignitionOn !== false; // Default to true if undefined
-    
-    // ===== IGNITION-OFF HANDLING =====
-    // When ignition is off, BATCH-SKIP all consecutive ignition-off positions at once
-    if (!ignitionOn) {
-      if (!this.ignitionOffAnchor) {
-        this.ignitionOffAnchor = {
-          latitude: fromPos.latitude,
-          longitude: fromPos.longitude
-        };
-        console.log('Ignition OFF - anchoring position at:', this.ignitionOffAnchor);
-      }
-      
-      // Batch-skip: scan ahead to find first position with ignition ON
-      let skipTo = this.playbackIndex + 1;
-      while (skipTo < this.playbackPositions.length - 1) {
-        if (this.playbackPositions[skipTo].ignitionOn !== false) break;
-        skipTo++;
-      }
-      
-      const skipped = skipTo - this.playbackIndex;
-      console.log(`Ignition OFF batch-skip: ${skipped} positions`);
-      
-      // Update marker at anchor position
-      this.updatePlaybackMarker();
-      
-      this.ngZone.run(() => {
-        this.playbackIndex = skipTo;
-        this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
-        this.cdr.detectChanges();
-        
-        // Check if we reached a position with ignition ON
-        if (skipTo < this.playbackPositions.length && this.playbackPositions[skipTo].ignitionOn !== false) {
-          console.log('Ignition ON - releasing anchor');
-          this.ignitionOffAnchor = null;
-        }
-        
-        setTimeout(() => this.animateToNextPoint().catch(e => console.error('[Playback] ignitionOff skip error at index', this.playbackIndex, e)), 200 / this.playbackSpeed);
-      });
-      return;
-    } else {
-      if (this.ignitionOffAnchor) {
-        this.ignitionOffAnchor = null;
-      }
-      
-      // ===== STOPPED VEHICLE HANDLING (ignition ON, speed < 3 km/h) =====
-      // BATCH-SKIP all consecutive stopped positions at once
-      const currentSpeed2 = fromPos.speedKph || fromPos.speed || 0;
-      
-      if (currentSpeed2 < 3) {
-        if (!this.stoppedAnchor) {
-          this.stoppedAnchor = {
-            latitude: fromPos.latitude,
-            longitude: fromPos.longitude
-          };
-        }
-        
-        // Batch-skip: scan ahead to find first position with speed >= 3
+      const fromPos = this.playbackPositions[this.playbackIndex];
+      const ignitionOn = fromPos.ignitionOn !== false;
+      const speed = fromPos.speedKph || fromPos.speed || 0;
+
+      // ===== BATCH-SKIP: ignition off or stopped =====
+      if (!ignitionOn || speed < 3) {
         let skipTo = this.playbackIndex + 1;
         while (skipTo < this.playbackPositions.length - 1) {
-          const s = this.playbackPositions[skipTo].speedKph || this.playbackPositions[skipTo].speed || 0;
-          if (s >= 3) break;
+          const p = this.playbackPositions[skipTo];
+          const pSpeed = p.speedKph || p.speed || 0;
+          const pIgn = p.ignitionOn !== false;
+          if (pIgn && pSpeed >= 3) break;
           skipTo++;
         }
-        
-        // Update marker at anchor position
         this.updatePlaybackMarker();
-        
         this.ngZone.run(() => {
           this.playbackIndex = skipTo;
           this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
           this.cdr.detectChanges();
-          this.stoppedAnchor = null;
-          setTimeout(() => this.animateToNextPoint().catch(e => console.error('[Playback] stopped skip error at index', this.playbackIndex, e)), 100 / this.playbackSpeed);
+          setTimeout(() => this.animateToNextPoint().catch(e => console.error('[Playback] skip error:', e)), 150 / this.playbackSpeed);
         });
         return;
-      } else {
-        if (this.stoppedAnchor) {
-          this.stoppedAnchor = null;
+      }
+
+      // ===== GET ROAD SEGMENT from pre-computed matchedRouteCoords =====
+      this.currentRouteCoords = this.getPrecomputedSegment(this.playbackIndex);
+      this.routeAnimationIndex = 0;
+
+      // Calculate segment distance
+      let totalDistance = 0;
+      for (let i = 1; i < this.currentRouteCoords.length; i++) {
+        const prev = this.currentRouteCoords[i - 1];
+        const curr = this.currentRouteCoords[i];
+        if (prev && curr && !isNaN(prev.lat) && !isNaN(curr.lat)) {
+          totalDistance += this.calculateDistance(prev.lat, prev.lng, curr.lat, curr.lng);
         }
       }
-    }
-    
-    // ===== NORMAL VEHICLE MOVEMENT =====
-    // Fetch Valhalla route for smooth road-following animation
-    try {
-      this.currentRouteCoords = await this.fetchValhallaRoute(fromPos, toPos);
-    } catch (routeErr) {
-      console.error('[Playback] fetchValhallaRoute FAILED at index', this.playbackIndex, routeErr);
-      this.currentRouteCoords = [
-        L.latLng(fromPos.latitude, fromPos.longitude),
-        L.latLng(toPos.latitude, toPos.longitude)
-      ];
-    }
-    this.routeAnimationIndex = 0;
-    
-    // Safety: ensure we have valid route coords
-    if (!this.currentRouteCoords || this.currentRouteCoords.length < 2) {
-      this.currentRouteCoords = [
-        L.latLng(fromPos.latitude, fromPos.longitude),
-        L.latLng(toPos.latitude, toPos.longitude)
-      ];
-    }
-    
-    // Calculate total route distance for animation duration
-    let totalDistance = 0;
-    for (let i = 1; i < this.currentRouteCoords.length; i++) {
-      const prev = this.currentRouteCoords[i - 1];
-      const curr = this.currentRouteCoords[i];
-      if (prev && curr && !isNaN(prev.lat) && !isNaN(curr.lat)) {
-        totalDistance += this.calculateDistance(prev.lat, prev.lng, curr.lat, curr.lng);
-      }
-    }
-    
-    // If distance is essentially zero (same snapped point), batch-skip all consecutive zero-distance segments
-    if (totalDistance < 1) {
-      // Scan ahead: skip all consecutive segments that would also be zero-distance (same boundary)
-      let skipTo = this.playbackIndex + 1;
-      if (this.segmentBoundaries && this.segmentBoundaries.length > 0) {
-        const currentBoundary = this.segmentBoundaries[this.playbackIndex];
-        while (skipTo < this.playbackPositions.length - 1) {
-          const nextBoundary = this.segmentBoundaries[skipTo];
-          const nextBoundary2 = this.segmentBoundaries[skipTo + 1];
-          if (nextBoundary !== undefined && nextBoundary2 !== undefined && nextBoundary === nextBoundary2) {
-            skipTo++;
-          } else {
-            break;
+
+      // Zero-distance: batch-skip
+      if (totalDistance < 1) {
+        let skipTo = this.playbackIndex + 1;
+        if (this.segmentBoundaries.length > 0) {
+          const curB = this.segmentBoundaries[this.playbackIndex];
+          while (skipTo < this.playbackPositions.length - 1) {
+            const nB = this.segmentBoundaries[skipTo];
+            const nB2 = this.segmentBoundaries[skipTo + 1];
+            if (nB !== undefined && nB2 !== undefined && nB === nB2) skipTo++;
+            else break;
           }
         }
+        this.ngZone.run(() => {
+          this.appendProgressTrace(this.playbackIndex, skipTo);
+          this.playbackIndex = skipTo;
+          this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+          this.updatePlaybackMarker();
+          this.cdr.detectChanges();
+          setTimeout(() => this.animateToNextPoint().catch(e => console.error('[Playback] zero-dist error:', e)), 30 / this.playbackSpeed);
+        });
+        return;
       }
-      
-      this.ngZone.run(() => {
-        const previousIndex = this.playbackIndex;
-        this.playbackIndex = skipTo;
-        this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
-        try { this.drawProgressiveSegment(previousIndex, this.playbackIndex); } catch(segErr) { console.error('[Playback] drawProgressiveSegment FAILED (zero-dist) at', previousIndex, '->', this.playbackIndex, segErr); }
-        try { this.updatePlaybackMarker(); } catch(mkErr) { console.error('[Playback] updatePlaybackMarker FAILED (zero-dist) at index', this.playbackIndex, mkErr); }
-        this.cdr.detectChanges();
-        setTimeout(() => this.animateToNextPoint().catch(e => console.error('[Playback] zero-distance skip error at index', this.playbackIndex, e)), 50 / this.playbackSpeed);
-      });
-      return;
-    }
-    
-    // Adaptive duration based on route distance
-    // Base: 300ms per 100m at speed 1x (faster for smoother feel)
-    const baseDuration = Math.max(300, Math.min(3000, (totalDistance / 100) * 300));
-    const duration = baseDuration / this.playbackSpeed;
-    
-    this.animationStartTime = performance.now();
-    this.segmentDuration = duration;
-    this.isAnimatingSegment = true;
 
-    // Start the animation loop
-    this.animateFrame();
-    
+      // ===== ANIMATE along pre-computed road segment =====
+      const baseDuration = Math.max(200, Math.min(2500, (totalDistance / 100) * 250));
+      this.segmentDuration = baseDuration / this.playbackSpeed;
+      this.animationStartTime = performance.now();
+      this.isAnimatingSegment = true;
+      this.animateFrame();
+
     } catch (err) {
-      // CRITICAL: Never let the animation chain break — advance to next point on any error
-      console.error('[Playback] CRITICAL animateToNextPoint error at index', this.playbackIndex, '- pos:', this.playbackPositions[this.playbackIndex], '- err:', err);
+      console.error('[Playback] animateToNextPoint error:', err);
       this.ngZone.run(() => {
-        const previousIndex = this.playbackIndex;
+        this.appendProgressTrace(this.playbackIndex, this.playbackIndex + 1);
         this.playbackIndex++;
         this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
-        try { this.drawProgressiveSegment(previousIndex, this.playbackIndex); } catch(segErr) { console.error('[Playback] drawProgressiveSegment recovery failed at', previousIndex, '->', this.playbackIndex, segErr); }
-        try { this.updatePlaybackMarker(); } catch(mkErr) { console.error('[Playback] updatePlaybackMarker recovery failed at index', this.playbackIndex, mkErr); }
+        this.updatePlaybackMarker();
         this.cdr.detectChanges();
-        setTimeout(() => this.animateToNextPoint().catch(e => console.error('[Playback] recovery chain error at index', this.playbackIndex, e)), 50 / this.playbackSpeed);
+        setTimeout(() => this.animateToNextPoint().catch(e => console.error('[Playback] recovery error:', e)), 30 / this.playbackSpeed);
       });
     }
+  }
+
+  // Get road segment between GPS point[index] and GPS point[index+1] from pre-computed data
+  private getPrecomputedSegment(index: number): L.LatLng[] {
+    if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0 && index < this.segmentBoundaries.length - 1) {
+      const startIdx = this.segmentBoundaries[index];
+      const endIdx = this.segmentBoundaries[index + 1];
+      if (startIdx !== undefined && endIdx !== undefined && endIdx > startIdx) {
+        const segment = this.matchedRouteCoords.slice(startIdx, endIdx + 1);
+        if (segment.length >= 2) return segment;
+      }
+    }
+    // Fallback: straight line between raw GPS points
+    const from = this.playbackPositions[index];
+    const to = this.playbackPositions[index + 1];
+    if (!from || !to) return [];
+    return [L.latLng(from.latitude, from.longitude), L.latLng(to.latitude, to.longitude)];
+  }
+
+  // Append road coords to the growing progress polyline
+  private appendProgressTrace(fromGpsIndex: number, toGpsIndex: number) {
+    if (!this.progressPolyline || !this.map) return;
+    if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0) {
+      const startRoad = this.segmentBoundaries[fromGpsIndex];
+      const endRoad = this.segmentBoundaries[Math.min(toGpsIndex, this.segmentBoundaries.length - 1)];
+      if (startRoad !== undefined && endRoad !== undefined && endRoad >= startRoad) {
+        for (let i = startRoad; i <= endRoad; i++) {
+          const coord = this.matchedRouteCoords[i];
+          if (coord && !isNaN(coord.lat) && !isNaN(coord.lng)) {
+            this.progressCoords.push(coord);
+          }
+        }
+        this.progressPolyline.setLatLngs(this.progressCoords);
+        return;
+      }
+    }
+    // Fallback
+    const from = this.playbackPositions[fromGpsIndex];
+    const to = this.playbackPositions[Math.min(toGpsIndex, this.playbackPositions.length - 1)];
+    if (from) this.progressCoords.push(L.latLng(from.latitude, from.longitude));
+    if (to) this.progressCoords.push(L.latLng(to.latitude, to.longitude));
+    this.progressPolyline.setLatLngs(this.progressCoords);
   }
 
   // Fetch Valhalla match for multiple GPS points (batch approach for better accuracy)
@@ -1872,87 +1853,69 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return L.latLng(pos.latitude, pos.longitude);
   }
 
-  // Animation frame loop for smooth interpolation along Valhalla route
+  // Animation frame loop for smooth interpolation along pre-computed road path
   private animateFrame() {
     if (!this.isPlaying) {
       this.isAnimatingSegment = false;
       return;
     }
     
-    // If route coords are empty, skip to next point instead of stopping
     if (!this.currentRouteCoords || this.currentRouteCoords.length === 0) {
       this.isAnimatingSegment = false;
       this.ngZone.run(() => {
         this.playbackIndex++;
         this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
         this.cdr.detectChanges();
-        this.animateToNextPoint().catch(e => console.error('[Playback] empty route skip error at index', this.playbackIndex, e));
+        this.animateToNextPoint().catch(e => console.error('[Playback] empty route skip:', e));
       });
       return;
     }
 
     const elapsed = performance.now() - this.animationStartTime;
     const progress = Math.min(1, elapsed / this.segmentDuration);
-    
-    // Easing function for smooth movement
     const easedProgress = this.easeInOutCubic(progress);
-    
-    // Calculate position along the route based on progress
     const position = this.getPositionAlongRoute(easedProgress);
     
-    // Skip if position is invalid
     if (!position) {
-      // Continue to next frame anyway
       this.animationFrameId = requestAnimationFrame(() => this.animateFrame());
       return;
     }
     
     const { lat, lng, heading } = position;
 
-    // Update marker position smoothly
+    // Update vehicle marker position
     if (this.playbackMarker) {
       this.playbackMarker.setLatLng([lat, lng]);
-      
-      // Update marker rotation based on heading
       const currentPos = this.playbackPositions[this.playbackIndex];
       const speed = currentPos?.speedKph || 0;
       const statusColor = this.getStatusColor(currentPos);
       const vehicleType = this.selectedVehicle?.type || 'car';
       const vehicleName = this.selectedVehicle?.plate || '';
-      const icon = this.createPlaybackVehicleIcon(statusColor, heading, speed, vehicleType, vehicleName);
-      this.playbackMarker.setIcon(icon);
+      this.playbackMarker.setIcon(this.createPlaybackVehicleIcon(statusColor, heading, speed, vehicleType, vehicleName));
+    }
+
+    // Grow progress polyline in real-time as vehicle moves
+    if (this.progressPolyline) {
+      this.progressPolyline.addLatLng([lat, lng]);
     }
 
     // Smooth camera follow
     if (this.map && this.smoothFollowCamera) {
-      this.map.panTo([lat, lng], {
-        animate: true,
-        duration: 0.15,
-        easeLinearity: 0.25
-      });
+      this.map.panTo([lat, lng], { animate: true, duration: 0.2, easeLinearity: 0.3 });
     }
 
     if (progress < 1) {
-      // Continue animation
       this.animationFrameId = requestAnimationFrame(() => this.animateFrame());
     } else {
-      // Segment complete - move to next point
+      // Segment complete — append exact road segment and advance
       this.ngZone.run(() => {
         const previousIndex = this.playbackIndex;
         this.playbackIndex++;
         this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
-        
-        // Draw the trace segment now that animation is complete
-        try { this.drawProgressiveSegment(previousIndex, this.playbackIndex); } catch(segErr) { console.error('[Playback] drawProgressiveSegment FAILED at', previousIndex, '->', this.playbackIndex, segErr); }
-        
-        // Update marker icon (for status color changes)
-        try { this.updatePlaybackMarker(); } catch(mkErr) { console.error('[Playback] updatePlaybackMarker FAILED at index', this.playbackIndex, mkErr); }
-        
+        this.updatePlaybackMarker();
         this.cdr.detectChanges();
-        
-        // Continue to next segment - MUST always be called
         this.isAnimatingSegment = false;
-        this.animateToNextPoint().catch(e => console.error('[Playback] next segment error at index', this.playbackIndex, e));
+        this.animateToNextPoint().catch(e => console.error('[Playback] next segment error:', e));
       });
     }
   }
