@@ -25,6 +25,7 @@ import { FleetManagementComponent } from './components/fleet-management.componen
 import { RepairsComponent } from './components/repairs.component';
 import { ExpensesComponent } from './components/expenses.component';
 import { CarburantComponent } from './components/carburant.component';
+import { ToursComponent } from './components/tours.component';
 import { adminRoutes } from './admin/admin.routes';
 import { AuthGuard } from './guards/auth.guard';
 import { FeatureGuard } from './guards/feature.guard';
@@ -101,6 +102,10 @@ export const routes: Routes = [
   // Fleet management module
   { path: 'fleet-management', component: FleetManagementComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'fleet_management' } },
   { path: 'gestion-flotte', component: FleetManagementComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'fleet_management' } },
+  
+  // Tours module
+  { path: 'tours', component: ToursComponent, canActivate: [AuthGuard] },
+  { path: 'tournees', component: ToursComponent, canActivate: [AuthGuard] },
   
   // Repairs module (part of maintenance)
   { path: 'repairs', component: RepairsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'maintenance' } },

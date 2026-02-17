@@ -746,6 +746,68 @@ export class ApiService {
     return this.http.get<any>(`${this.API_URL}/trips/summary`, { headers: this.getHeaders(), params });
   }
 
+  // ==================== TOURS ====================
+
+  getTours(filters?: { status?: string; vehicleId?: number; driverId?: number; from?: string; to?: string; page?: number; pageSize?: number }): Observable<any> {
+    let params = new HttpParams();
+    if (filters?.status) params = params.set('status', filters.status);
+    if (filters?.vehicleId) params = params.set('vehicleId', filters.vehicleId.toString());
+    if (filters?.driverId) params = params.set('driverId', filters.driverId.toString());
+    if (filters?.from) params = params.set('from', filters.from);
+    if (filters?.to) params = params.set('to', filters.to);
+    if (filters?.page) params = params.set('page', filters.page.toString());
+    if (filters?.pageSize) params = params.set('pageSize', filters.pageSize.toString());
+    return this.http.get<any>(`${this.API_URL}/tours`, { headers: this.getHeaders(), params });
+  }
+
+  getTour(id: number): Observable<any> {
+    return this.http.get<any>(`${this.API_URL}/tours/${id}`, { headers: this.getHeaders() });
+  }
+
+  createTour(tour: any): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/tours`, tour, { headers: this.getHeaders() });
+  }
+
+  updateTour(id: number, tour: any): Observable<any> {
+    return this.http.put<any>(`${this.API_URL}/tours/${id}`, tour, { headers: this.getHeaders() });
+  }
+
+  deleteTour(id: number): Observable<any> {
+    return this.http.delete<any>(`${this.API_URL}/tours/${id}`, { headers: this.getHeaders() });
+  }
+
+  startTour(id: number): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/tours/${id}/start`, {}, { headers: this.getHeaders() });
+  }
+
+  completeTour(id: number, data?: any): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/tours/${id}/complete`, data || {}, { headers: this.getHeaders() });
+  }
+
+  cancelTour(id: number): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/tours/${id}/cancel`, {}, { headers: this.getHeaders() });
+  }
+
+  completeWaypoint(tourId: number, waypointId: number): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/tours/${tourId}/waypoints/${waypointId}/complete`, {}, { headers: this.getHeaders() });
+  }
+
+  addTourPause(tourId: number, data: any): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/tours/${tourId}/pauses`, data, { headers: this.getHeaders() });
+  }
+
+  endTourPause(tourId: number, pauseId: number): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/tours/${tourId}/pauses/${pauseId}/end`, {}, { headers: this.getHeaders() });
+  }
+
+  estimateRoute(data: any): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/tours/estimate`, data, { headers: this.getHeaders() });
+  }
+
+  getTourStats(): Observable<any> {
+    return this.http.get<any>(`${this.API_URL}/tours/stats`, { headers: this.getHeaders() });
+  }
+
   // ==================== REPORTS ====================
 
   getReports(limit = 50): Observable<any[]> {

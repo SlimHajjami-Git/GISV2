@@ -60,6 +60,13 @@ import { ChatComponent } from './chat.component';
             </svg>
             <span>Geofences</span>
           </a>
+          <a [routerLink]="['/tournees']" routerLinkActive="active" class="nav-link">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 17H5a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm12-2h-4a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2z"/>
+              <polyline points="9 17 12 5 15 17"/>
+            </svg>
+            <span>Tournées</span>
+          </a>
           <a *ngIf="hasModule('maintenance')" [routerLink]="['/entretien-programmable']" routerLinkActive="active" class="nav-link">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>

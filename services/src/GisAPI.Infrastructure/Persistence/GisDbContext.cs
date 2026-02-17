@@ -108,6 +108,11 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<Repair> Repairs => Set<Repair>();
     public DbSet<RepairPart> RepairParts => Set<RepairPart>();
 
+    // Tours
+    public DbSet<Tour> Tours => Set<Tour>();
+    public DbSet<TourWaypoint> TourWaypoints => Set<TourWaypoint>();
+    public DbSet<TourPause> TourPauses => Set<TourPause>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -146,6 +151,7 @@ public class GisDbContext : DbContext, IGisDbContext
             modelBuilder.Entity<GpsAlert>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
             modelBuilder.Entity<VehicleMaintenanceSchedule>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
             modelBuilder.Entity<Driver>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
+            modelBuilder.Entity<Tour>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
         }
 
         // Configure composite keys
@@ -180,6 +186,9 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<SubscriptionType>().ToTable("subscription_types");
         modelBuilder.Entity<Societe>().ToTable("societes");
         modelBuilder.Entity<Role>().ToTable("roles");
+        modelBuilder.Entity<Tour>().ToTable("tours");
+        modelBuilder.Entity<TourWaypoint>().ToTable("tour_waypoints");
+        modelBuilder.Entity<TourPause>().ToTable("tour_pauses");
 
         // SubscriptionType configuration - all column mappings for PostgreSQL snake_case
         modelBuilder.Entity<SubscriptionType>().Property(s => s.Id).HasColumnName("id");
@@ -394,6 +403,12 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<FuelRecord>().Property(f => f.AverageConsumptionLPer100Km).HasPrecision(6, 2);
         modelBuilder.Entity<FuelRecord>().Property(f => f.RefuelAmount).HasPrecision(10, 2);
         modelBuilder.Entity<FuelRecord>().Property(f => f.RefuelCost).HasPrecision(10, 2);
+
+        // Tour decimal precision
+        modelBuilder.Entity<Tour>().Property(t => t.EstimatedDistanceKm).HasPrecision(10, 2);
+        modelBuilder.Entity<Tour>().Property(t => t.EstimatedFuelLiters).HasPrecision(10, 2);
+        modelBuilder.Entity<Tour>().Property(t => t.ActualDistanceKm).HasPrecision(10, 2);
+        modelBuilder.Entity<Tour>().Property(t => t.ActualFuelLiters).HasPrecision(10, 2);
 
         // GpsPosition decimal precision
         modelBuilder.Entity<GpsPosition>().Property(p => p.FuelRateLPer100Km).HasPrecision(6, 2);
