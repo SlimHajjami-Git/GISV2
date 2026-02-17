@@ -1,4 +1,6 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -867,7 +869,8 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
     }
   `]
 })
-export class AdminVehiclesComponent implements OnInit {
+export class AdminVehiclesComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   vehicles: AdminVehicle[] = [];
   filteredVehicles: AdminVehicle[] = [];
   companies: Client[] = [];
@@ -950,7 +953,7 @@ export class AdminVehiclesComponent implements OnInit {
 
   loadData() {
     console.log('Loading vehicles data...');
-    this.adminService.getVehicles().subscribe({
+    this.adminService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => {
         console.log('Vehicles loaded:', vehicles.length);
         this.vehicles = vehicles;
@@ -964,7 +967,7 @@ export class AdminVehiclesComponent implements OnInit {
       }
     });
 
-    this.adminService.getClients().subscribe({
+    this.adminService.getClients().pipe(takeUntil(this.destroy$)).subscribe({
       next: (clients) => {
         console.log('Loaded companies for vehicle assignment:', clients.length);
         this.companies = clients;
@@ -1042,7 +1045,7 @@ export class AdminVehiclesComponent implements OnInit {
 
   deleteVehicle() {
     if (this.vehicleToDelete) {
-      this.adminService.deleteVehicle(this.vehicleToDelete.id).subscribe(() => {
+      this.adminService.deleteVehicle(this.vehicleToDelete.id).pipe(takeUntil(this.destroy$)).subscribe(() => {
         this.loadData();
         this.closeDeleteModal();
       });
@@ -1079,7 +1082,7 @@ export class AdminVehiclesComponent implements OnInit {
     };
 
     if (this.showEditModal && this.selectedVehicle) {
-      this.adminService.updateVehicle(this.selectedVehicle.id, vehicleData).subscribe({
+      this.adminService.updateVehicle(this.selectedVehicle.id, vehicleData).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.loadData();
           this.closeModals();
@@ -1090,7 +1093,7 @@ export class AdminVehiclesComponent implements OnInit {
         }
       });
     } else {
-      this.adminService.createVehicle(vehicleData).subscribe({
+      this.adminService.createVehicle(vehicleData).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.loadData();
           this.closeModals();
@@ -1127,12 +1130,12 @@ export class AdminVehiclesComponent implements OnInit {
     };
 
     if (this.showEditModal && this.selectedVehicle) {
-      this.adminService.updateVehicle(this.selectedVehicle.id, vehicleData).subscribe(() => {
+      this.adminService.updateVehicle(this.selectedVehicle.id, vehicleData).pipe(takeUntil(this.destroy$)).subscribe(() => {
         this.loadData();
         this.closeModals();
       });
     } else {
-      this.adminService.createVehicle(vehicleData).subscribe(() => {
+      this.adminService.createVehicle(vehicleData).pipe(takeUntil(this.destroy$)).subscribe(() => {
         this.loadData();
         this.closeModals();
       });
@@ -1180,5 +1183,10 @@ export class AdminVehiclesComponent implements OnInit {
   formatDate(date: Date): string {
     if (!date) return 'N/A';
     return new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

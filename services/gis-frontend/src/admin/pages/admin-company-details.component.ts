@@ -1,4 +1,6 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
@@ -2100,7 +2102,8 @@ type CompanyRole = Role & { userCount?: number };
     }
   `]
 })
-export class AdminCompanyDetailsComponent implements OnInit {
+export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   companyId: number = 0;
   company: Client | null = null;
   vehicles: AdminVehicle[] = [];
@@ -2170,7 +2173,7 @@ export class AdminCompanyDetailsComponent implements OnInit {
   ) {}
 
   ngOnInit() {
-    this.route.params.subscribe(params => {
+    this.route.params.pipe(takeUntil(this.destroy$)).subscribe(params => {
       this.companyId = +params['id'];
       this.loadCompanyDetails();
     });
@@ -2179,7 +2182,7 @@ export class AdminCompanyDetailsComponent implements OnInit {
   loadCompanyDetails() {
     this.loading = true;
     
-    this.adminService.getClient(this.companyId).subscribe({
+    this.adminService.getClient(this.companyId).pipe(takeUntil(this.destroy$)).subscribe({
       next: (company) => {
         this.company = company || null;
         if (this.company) {
@@ -2200,7 +2203,7 @@ export class AdminCompanyDetailsComponent implements OnInit {
   }
 
   loadVehicles() {
-    this.adminService.getVehicles().subscribe({
+    this.adminService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => {
         this.vehicles = vehicles.filter(v => v.companyId === this.companyId);
         this.filterVehicles();
@@ -2210,7 +2213,7 @@ export class AdminCompanyDetailsComponent implements OnInit {
   }
 
   loadRoles() {
-    this.adminService.getCompanyRoles(this.companyId).subscribe({
+    this.adminService.getCompanyRoles(this.companyId).pipe(takeUntil(this.destroy$)).subscribe({
       next: (roles) => {
         this.roles = roles;
         this.filterRoles();
@@ -2224,7 +2227,7 @@ export class AdminCompanyDetailsComponent implements OnInit {
   }
 
   loadUsers() {
-    this.adminService.getCompanyUsers(this.companyId).subscribe({
+    this.adminService.getCompanyUsers(this.companyId).pipe(takeUntil(this.destroy$)).subscribe({
       next: (users) => {
         this.users = users;
         this.filterUsers();
@@ -2350,7 +2353,7 @@ export class AdminCompanyDetailsComponent implements OnInit {
     };
 
     if (this.selectedVehicle?.id) {
-      this.adminService.updateVehicle(this.selectedVehicle.id, vehicleData).subscribe({
+      this.adminService.updateVehicle(this.selectedVehicle.id, vehicleData).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.closeVehiclePopup();
           this.loadVehicles();
@@ -2361,7 +2364,7 @@ export class AdminCompanyDetailsComponent implements OnInit {
         }
       });
     } else {
-      this.adminService.createVehicle(vehicleData).subscribe({
+      this.adminService.createVehicle(vehicleData).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.closeVehiclePopup();
           this.loadVehicles();
@@ -2418,7 +2421,7 @@ export class AdminCompanyDetailsComponent implements OnInit {
     };
 
     if (this.editingRole) {
-      this.adminService.updateRole(this.editingRole.id, roleData).subscribe({
+      this.adminService.updateRole(this.editingRole.id, roleData).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.closeRoleModal();
           this.loadRoles();
@@ -2429,7 +2432,7 @@ export class AdminCompanyDetailsComponent implements OnInit {
         }
       });
     } else {
-      this.adminService.createRole(roleData).subscribe({
+      this.adminService.createRole(roleData).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.closeRoleModal();
           this.loadRoles();
@@ -2447,7 +2450,7 @@ export class AdminCompanyDetailsComponent implements OnInit {
       return;
     }
 
-    this.adminService.deleteRole(role.id).subscribe({
+    this.adminService.deleteRole(role.id).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => this.loadRoles(),
       error: (err) => {
         console.error('Error deleting role:', err);
@@ -2534,7 +2537,7 @@ export class AdminCompanyDetailsComponent implements OnInit {
         updateData.password = this.userForm.password;
       }
 
-      this.adminService.updateUser(this.editingUser.id, updateData).subscribe({
+      this.adminService.updateUser(this.editingUser.id, updateData).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.closeUserModal();
           this.loadUsers();
@@ -2557,7 +2560,7 @@ export class AdminCompanyDetailsComponent implements OnInit {
         assignedVehicleIds: this.userForm.assignedVehicleIds
       };
 
-      this.adminService.createUser(userData).subscribe({
+      this.adminService.createUser(userData).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.closeUserModal();
           this.loadUsers();
@@ -2572,7 +2575,7 @@ export class AdminCompanyDetailsComponent implements OnInit {
 
   toggleUserStatus(user: SystemUser) {
     if (user.status === 'active') {
-      this.adminService.suspendUser(user.id).subscribe({
+      this.adminService.suspendUser(user.id).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => this.loadUsers(),
         error: (err) => {
           console.error('Error suspending user:', err);
@@ -2580,7 +2583,7 @@ export class AdminCompanyDetailsComponent implements OnInit {
         }
       });
     } else {
-      this.adminService.activateUser(user.id).subscribe({
+      this.adminService.activateUser(user.id).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => this.loadUsers(),
         error: (err) => {
           console.error('Error activating user:', err);
@@ -2588,5 +2591,10 @@ export class AdminCompanyDetailsComponent implements OnInit {
         }
       });
     }
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

@@ -1,6 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog } from '../services/admin.service';
 
@@ -678,7 +680,8 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
     }
   `]
 })
-export class AdminDashboardComponent implements OnInit {
+export class AdminDashboardComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   stats: DashboardStats | null = null;
   featureUsage: FeatureUsage[] = [];
   serviceHealth: ServiceHealth[] = [];
@@ -700,24 +703,24 @@ export class AdminDashboardComponent implements OnInit {
   }
 
   loadDashboard() {
-    this.adminService.getDashboardStats().subscribe(stats => {
+    this.adminService.getDashboardStats().pipe(takeUntil(this.destroy$)).subscribe(stats => {
       this.stats = stats;
     });
 
-    this.adminService.getFeatureUsage().subscribe(features => {
+    this.adminService.getFeatureUsage().pipe(takeUntil(this.destroy$)).subscribe(features => {
       this.featureUsage = features;
       this.maxUsage = Math.max(...features.map(f => f.usageCount));
     });
 
     this.loadHealth();
 
-    this.adminService.getActivityLogs(10).subscribe(logs => {
+    this.adminService.getActivityLogs(10).pipe(takeUntil(this.destroy$)).subscribe(logs => {
       this.recentActivity = logs;
     });
   }
 
   loadHealth() {
-    this.adminService.getServiceHealth().subscribe(health => {
+    this.adminService.getServiceHealth().pipe(takeUntil(this.destroy$)).subscribe(health => {
       this.serviceHealth = health;
     });
   }
@@ -773,5 +776,10 @@ export class AdminDashboardComponent implements OnInit {
 
   navigateTo(path: string) {
     this.router.navigate([path]);
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

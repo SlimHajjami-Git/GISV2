@@ -1,7 +1,9 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 
 interface PartCategory {
@@ -603,7 +605,8 @@ interface VehiclePart {
     }
   `]
 })
-export class AdminPartsComponent implements OnInit {
+export class AdminPartsComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   categories: PartCategory[] = [];
   parts: VehiclePart[] = [];
   selectedCategory: PartCategory | null = null;
@@ -625,7 +628,7 @@ export class AdminPartsComponent implements OnInit {
   }
 
   loadCategories() {
-    this.http.get<PartCategory[]>('/api/parts/categories').subscribe({
+    this.http.get<PartCategory[]>('/api/parts/categories').pipe(takeUntil(this.destroy$)).subscribe({
       next: (categories) => {
         this.categories = categories;
         this.cdr.detectChanges();
@@ -640,7 +643,7 @@ export class AdminPartsComponent implements OnInit {
   }
 
   loadParts(categoryId: number) {
-    this.http.get<VehiclePart[]>(`/api/parts/categories/${categoryId}/parts`).subscribe({
+    this.http.get<VehiclePart[]>(`/api/parts/categories/${categoryId}/parts`).pipe(takeUntil(this.destroy$)).subscribe({
       next: (parts) => {
         this.parts = parts;
         this.cdr.detectChanges();
@@ -682,7 +685,7 @@ export class AdminPartsComponent implements OnInit {
     };
 
     if (this.editingCategory) {
-      this.http.put(`/api/parts/categories/${this.editingCategory.id}`, payload).subscribe({
+      this.http.put(`/api/parts/categories/${this.editingCategory.id}`, payload).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.loadCategories();
           this.closeCategoryModal();
@@ -690,7 +693,7 @@ export class AdminPartsComponent implements OnInit {
         error: (err) => console.error('Error updating category:', err)
       });
     } else {
-      this.http.post<PartCategory>('/api/parts/categories', payload).subscribe({
+      this.http.post<PartCategory>('/api/parts/categories', payload).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.loadCategories();
           this.closeCategoryModal();
@@ -703,7 +706,7 @@ export class AdminPartsComponent implements OnInit {
   deleteCategory(category: PartCategory, event: Event) {
     event.stopPropagation();
     if (confirm(`Supprimer la catégorie "${category.name}" et toutes ses pièces ?`)) {
-      this.http.delete(`/api/parts/categories/${category.id}`).subscribe({
+      this.http.delete(`/api/parts/categories/${category.id}`).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           if (this.selectedCategory?.id === category.id) {
             this.selectedCategory = null;
@@ -749,7 +752,7 @@ export class AdminPartsComponent implements OnInit {
     };
 
     if (this.editingPart) {
-      this.http.put(`/api/parts/parts/${this.editingPart.id}`, payload).subscribe({
+      this.http.put(`/api/parts/parts/${this.editingPart.id}`, payload).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.loadParts(this.selectedCategory!.id);
           this.loadCategories();
@@ -758,7 +761,7 @@ export class AdminPartsComponent implements OnInit {
         error: (err) => console.error('Error updating part:', err)
       });
     } else {
-      this.http.post<VehiclePart>('/api/parts/parts', payload).subscribe({
+      this.http.post<VehiclePart>('/api/parts/parts', payload).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.loadParts(this.selectedCategory!.id);
           this.loadCategories();
@@ -771,7 +774,7 @@ export class AdminPartsComponent implements OnInit {
 
   deletePart(part: VehiclePart) {
     if (confirm(`Supprimer la pièce "${part.name}" ?`)) {
-      this.http.delete(`/api/parts/parts/${part.id}`).subscribe({
+      this.http.delete(`/api/parts/parts/${part.id}`).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.loadParts(this.selectedCategory!.id);
           this.loadCategories();
@@ -779,5 +782,10 @@ export class AdminPartsComponent implements OnInit {
         error: (err) => console.error('Error deleting part:', err)
       });
     }
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

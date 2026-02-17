@@ -1,7 +1,9 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, SubscriptionType } from '../services/admin.service';
 
@@ -670,7 +672,8 @@ import { AdminService, SubscriptionType } from '../services/admin.service';
     }
   `]
 })
-export class AdminSubscriptionsComponent implements OnInit {
+export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   subscriptionTypes: SubscriptionType[] = [];
   showModal = false;
   showDeleteConfirm = false;
@@ -737,7 +740,7 @@ export class AdminSubscriptionsComponent implements OnInit {
   }
 
   loadData() {
-    this.adminService.getSubscriptionTypes().subscribe({
+    this.adminService.getSubscriptionTypes().pipe(takeUntil(this.destroy$)).subscribe({
       next: (types) => {
         this.subscriptionTypes = types;
       },
@@ -851,7 +854,7 @@ export class AdminSubscriptionsComponent implements OnInit {
   }
 
   toggleStatus(type: SubscriptionType) {
-    this.adminService.updateSubscriptionType(type.id, { isActive: !type.isActive }).subscribe({
+    this.adminService.updateSubscriptionType(type.id, { isActive: !type.isActive }).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         type.isActive = !type.isActive;
       },
@@ -933,7 +936,7 @@ export class AdminSubscriptionsComponent implements OnInit {
     };
 
     if (this.editingType) {
-      this.adminService.updateSubscriptionType(this.editingType.id, data).subscribe({
+      this.adminService.updateSubscriptionType(this.editingType.id, data).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.loadData();
           this.closeModal();
@@ -944,7 +947,7 @@ export class AdminSubscriptionsComponent implements OnInit {
         }
       });
     } else {
-      this.adminService.createSubscriptionType(data).subscribe({
+      this.adminService.createSubscriptionType(data).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.loadData();
           this.closeModal();
@@ -965,7 +968,7 @@ export class AdminSubscriptionsComponent implements OnInit {
   deleteType() {
     if (!this.typeToDelete) return;
     
-    this.adminService.deleteSubscriptionType(this.typeToDelete.id).subscribe({
+    this.adminService.deleteSubscriptionType(this.typeToDelete.id).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         this.loadData();
         this.showDeleteConfirm = false;
@@ -1027,5 +1030,10 @@ export class AdminSubscriptionsComponent implements OnInit {
         drivingBehavior: false
       } as Record<string, boolean>
     };
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

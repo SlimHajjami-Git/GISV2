@@ -1,7 +1,9 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, ActivityLog, Client } from '../services/admin.service';
 
@@ -549,7 +551,8 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
     }
   `]
 })
-export class AdminActivityComponent implements OnInit {
+export class AdminActivityComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   logs: ActivityLog[] = [];
   filteredLogs: ActivityLog[] = [];
   recentLogs: ActivityLog[] = [];
@@ -601,7 +604,7 @@ export class AdminActivityComponent implements OnInit {
     this.loadLogs();
     this.loadCompanies();
 
-    this.route.queryParams.subscribe(params => {
+    this.route.queryParams.pipe(takeUntil(this.destroy$)).subscribe(params => {
       if (params['userId']) {
         this.searchQuery = params['userId'];
         this.filterLogs();
@@ -610,7 +613,7 @@ export class AdminActivityComponent implements OnInit {
   }
 
   loadLogs() {
-    this.adminService.getActivityLogs(100).subscribe(logs => {
+    this.adminService.getActivityLogs(100).pipe(takeUntil(this.destroy$)).subscribe(logs => {
       this.logs = logs;
       this.recentLogs = logs.slice(0, 10);
       this.filterLogs();
@@ -618,7 +621,7 @@ export class AdminActivityComponent implements OnInit {
   }
 
   loadCompanies() {
-    this.adminService.getClients().subscribe(clients => {
+    this.adminService.getClients().pipe(takeUntil(this.destroy$)).subscribe(clients => {
       this.companies = clients;
     });
   }
@@ -676,5 +679,10 @@ export class AdminActivityComponent implements OnInit {
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours}h ago`;
     return `${Math.floor(hours / 24)}d ago`;
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

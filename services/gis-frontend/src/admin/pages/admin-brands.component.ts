@@ -1,7 +1,9 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { HttpClient } from '@angular/common/http';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService } from '../services/admin.service';
@@ -751,7 +753,8 @@ interface BrandDetail {
     }
   `]
 })
-export class AdminBrandsComponent implements OnInit {
+export class AdminBrandsComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   brands: Brand[] = [];
   filteredBrands: Brand[] = [];
   selectedBrand: BrandDetail | null = null;
@@ -784,7 +787,7 @@ export class AdminBrandsComponent implements OnInit {
 
   loadBrands() {
     this.loading = true;
-    this.http.get<Brand[]>('/api/brands').subscribe({
+    this.http.get<Brand[]>('/api/brands').pipe(takeUntil(this.destroy$)).subscribe({
       next: (brands) => {
         this.brands = brands;
         this.filterBrands();
@@ -810,7 +813,7 @@ export class AdminBrandsComponent implements OnInit {
   }
 
   selectBrand(brand: Brand) {
-    this.http.get<BrandDetail>(`/api/brands/${brand.id}`).subscribe({
+    this.http.get<BrandDetail>(`/api/brands/${brand.id}`).pipe(takeUntil(this.destroy$)).subscribe({
       next: (detail) => {
         this.selectedBrand = detail;
         this.cdr.detectChanges();
@@ -849,7 +852,7 @@ export class AdminBrandsComponent implements OnInit {
         name: this.brandForm.name,
         logoUrl: this.brandForm.logoUrl || null,
         isActive: true
-      }).subscribe({
+      }).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.closeBrandForm();
           this.loadBrands();
@@ -859,7 +862,7 @@ export class AdminBrandsComponent implements OnInit {
       this.http.post('/api/brands', {
         name: this.brandForm.name,
         logoUrl: this.brandForm.logoUrl || null
-      }).subscribe({
+      }).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.closeBrandForm();
           this.loadBrands();
@@ -870,7 +873,7 @@ export class AdminBrandsComponent implements OnInit {
 
   deleteBrand(brand: Brand) {
     if (confirm(`Supprimer la marque "${brand.name}" et tous ses modèles ?`)) {
-      this.http.delete(`/api/brands/${brand.id}`).subscribe({
+      this.http.delete(`/api/brands/${brand.id}`).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => this.loadBrands()
       });
     }
@@ -882,7 +885,7 @@ export class AdminBrandsComponent implements OnInit {
     this.http.post(`/api/brands/${this.selectedBrand.id}/models`, {
       name: this.newModelName,
       vehicleType: this.newModelType || null
-    }).subscribe({
+    }).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         this.newModelName = '';
         this.newModelType = '';
@@ -907,7 +910,7 @@ export class AdminBrandsComponent implements OnInit {
       name: this.modelForm.name,
       vehicleType: this.modelForm.vehicleType || null,
       isActive: true
-    }).subscribe({
+    }).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         this.closeModelEdit();
         if (this.selectedBrand) {
@@ -919,7 +922,7 @@ export class AdminBrandsComponent implements OnInit {
 
   deleteModel(model: VehicleModel) {
     if (confirm(`Supprimer le modèle "${model.name}" ?`)) {
-      this.http.delete(`/api/brands/models/${model.id}`).subscribe({
+      this.http.delete(`/api/brands/models/${model.id}`).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           if (this.selectedBrand) {
             this.selectBrand({ id: this.selectedBrand.id, name: this.selectedBrand.name, modelCount: 0 });
@@ -927,5 +930,10 @@ export class AdminBrandsComponent implements OnInit {
         }
       });
     }
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

@@ -1,7 +1,9 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, Estimate, EstimateItem, Client } from '../services/admin.service';
 
@@ -636,7 +638,8 @@ import { AdminService, Estimate, EstimateItem, Client } from '../services/admin.
     }
   `]
 })
-export class AdminEstimatesComponent implements OnInit {
+export class AdminEstimatesComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   estimates: Estimate[] = [];
   clients: Client[] = [];
   showCreateModal = false;
@@ -668,11 +671,11 @@ export class AdminEstimatesComponent implements OnInit {
   }
 
   loadData() {
-    this.adminService.getEstimates().subscribe(estimates => {
+    this.adminService.getEstimates().pipe(takeUntil(this.destroy$)).subscribe(estimates => {
       this.estimates = estimates;
     });
 
-    this.adminService.getClients().subscribe(clients => {
+    this.adminService.getClients().pipe(takeUntil(this.destroy$)).subscribe(clients => {
       this.clients = clients;
     });
   }
@@ -719,7 +722,7 @@ export class AdminEstimatesComponent implements OnInit {
     this.newEstimate.total = this.calculateTotal();
     this.newEstimate.validUntil = new Date(this.validUntilString);
 
-    this.adminService.createEstimate(this.newEstimate).subscribe(() => {
+    this.adminService.createEstimate(this.newEstimate).pipe(takeUntil(this.destroy$)).subscribe(() => {
       this.loadData();
       this.closeModal();
     });
@@ -777,5 +780,10 @@ export class AdminEstimatesComponent implements OnInit {
 
   formatDate(date: Date): string {
     return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

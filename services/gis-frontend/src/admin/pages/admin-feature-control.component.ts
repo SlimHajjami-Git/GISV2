@@ -1,7 +1,9 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, Client, MaintenanceMode } from '../services/admin.service';
 
@@ -608,7 +610,8 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
     }
   `]
 })
-export class AdminFeatureControlComponent implements OnInit {
+export class AdminFeatureControlComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   clients: Client[] = [];
   selectedClientId: number | null = null;
   selectedClient: Client | null = null;
@@ -638,11 +641,11 @@ export class AdminFeatureControlComponent implements OnInit {
   }
 
   loadData() {
-    this.adminService.getClients().subscribe(clients => {
+    this.adminService.getClients().pipe(takeUntil(this.destroy$)).subscribe(clients => {
       this.clients = clients;
     });
 
-    this.adminService.getMaintenanceMode().subscribe(mode => {
+    this.adminService.getMaintenanceMode().pipe(takeUntil(this.destroy$)).subscribe(mode => {
       this.maintenanceMode = mode;
       if (mode.scheduledEnd) {
         this.scheduledEndString = new Date(mode.scheduledEnd).toISOString().slice(0, 16);
@@ -683,7 +686,7 @@ export class AdminFeatureControlComponent implements OnInit {
     if (this.scheduledEndString) {
       this.maintenanceMode.scheduledEnd = new Date(this.scheduledEndString);
     }
-    this.adminService.setMaintenanceMode(this.maintenanceMode).subscribe(() => {
+    this.adminService.setMaintenanceMode(this.maintenanceMode).pipe(takeUntil(this.destroy$)).subscribe(() => {
       alert('Maintenance settings saved successfully');
     });
   }
@@ -698,5 +701,10 @@ export class AdminFeatureControlComponent implements OnInit {
 
   formatPageName(page: string): string {
     return page.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

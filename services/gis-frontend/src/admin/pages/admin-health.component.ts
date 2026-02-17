@@ -2,6 +2,8 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, ServiceHealth } from '../services/admin.service';
 
@@ -524,6 +526,7 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
   `]
 })
 export class AdminHealthComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   services: ServiceHealth[] = [];
   autoRefresh = true;
   refreshInterval: any;
@@ -565,13 +568,15 @@ export class AdminHealthComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
     }
   }
 
   loadHealth() {
-    this.adminService.getServiceHealth().subscribe(services => {
+    this.adminService.getServiceHealth().pipe(takeUntil(this.destroy$)).subscribe(services => {
       this.services = services;
       this.lastCheck = new Date().toLocaleTimeString();
     });

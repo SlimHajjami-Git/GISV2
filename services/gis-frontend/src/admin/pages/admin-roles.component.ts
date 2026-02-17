@@ -1,6 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, Role } from '../services/admin.service';
 
@@ -423,7 +425,8 @@ import { AdminService, Role } from '../services/admin.service';
     }
   `]
 })
-export class AdminRolesComponent implements OnInit {
+export class AdminRolesComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   roles: Role[] = [];
   showModal = false;
   showDeleteConfirm = false;
@@ -466,7 +469,7 @@ export class AdminRolesComponent implements OnInit {
   }
 
   loadRoles() {
-    this.adminService.getRoles().subscribe(roles => {
+    this.adminService.getRoles().pipe(takeUntil(this.destroy$)).subscribe(roles => {
       this.roles = roles;
     });
   }
@@ -538,7 +541,7 @@ export class AdminRolesComponent implements OnInit {
     };
 
     if (this.editingRole) {
-      this.adminService.updateRole(this.editingRole.id, roleData).subscribe({
+      this.adminService.updateRole(this.editingRole.id, roleData).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.loadRoles();
           this.closeModal();
@@ -546,7 +549,7 @@ export class AdminRolesComponent implements OnInit {
         error: (err) => console.error('Error updating role:', err)
       });
     } else {
-      this.adminService.createRole(roleData).subscribe({
+      this.adminService.createRole(roleData).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.loadRoles();
           this.closeModal();
@@ -564,7 +567,7 @@ export class AdminRolesComponent implements OnInit {
   deleteRole() {
     if (!this.roleToDelete) return;
     
-    this.adminService.deleteRole(this.roleToDelete.id).subscribe({
+    this.adminService.deleteRole(this.roleToDelete.id).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         this.loadRoles();
         this.showDeleteConfirm = false;
@@ -572,5 +575,10 @@ export class AdminRolesComponent implements OnInit {
       },
       error: (err) => console.error('Error deleting role:', err)
     });
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

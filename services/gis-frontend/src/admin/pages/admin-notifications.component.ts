@@ -1,7 +1,9 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 
 interface NotifUser {
@@ -376,7 +378,8 @@ interface SendResult {
     .history-time { font-size: 11px; color: #9ca3af; white-space: nowrap; }
   `]
 })
-export class AdminNotificationsComponent implements OnInit {
+export class AdminNotificationsComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   users: NotifUser[] = [];
   filteredUsers: NotifUser[] = [];
   selectedUser: NotifUser | null = null;
@@ -411,7 +414,7 @@ export class AdminNotificationsComponent implements OnInit {
   }
 
   loadUsers(): void {
-    this.http.get<NotifUser[]>('/api/admin/notifications/users').subscribe({
+    this.http.get<NotifUser[]>('/api/admin/notifications/users').pipe(takeUntil(this.destroy$)).subscribe({
       next: (users) => {
         this.users = users;
         this.filteredUsers = users.slice(0, 20);
@@ -450,7 +453,7 @@ export class AdminNotificationsComponent implements OnInit {
       priority: this.form.priority
     };
 
-    this.http.post<SendResult>('/api/admin/notifications/send', payload).subscribe({
+    this.http.post<SendResult>('/api/admin/notifications/send', payload).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {
         this.sending = false;
         this.sentHistory.unshift({
@@ -466,5 +469,10 @@ export class AdminNotificationsComponent implements OnInit {
         alert('Erreur: ' + (err.error?.message || 'Impossible d\'envoyer la notification'));
       }
     });
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

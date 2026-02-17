@@ -1,7 +1,9 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, Client, SubscriptionType } from '../services/admin.service';
 
@@ -1650,7 +1652,8 @@ import { AdminService, Client, SubscriptionType } from '../services/admin.servic
     }
   `]
 })
-export class AdminClientsComponent implements OnInit {
+export class AdminClientsComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   clients: Client[] = [];
   filteredClients: Client[] = [];
   subscriptionTypes: SubscriptionType[] = [];
@@ -1709,13 +1712,13 @@ export class AdminClientsComponent implements OnInit {
   }
 
   loadData() {
-    this.adminService.getClients().subscribe(clients => {
+    this.adminService.getClients().pipe(takeUntil(this.destroy$)).subscribe(clients => {
       this.clients = clients;
       this.filterClients();
       this.cdr.detectChanges();
     });
 
-    this.adminService.getSubscriptionTypes().subscribe(types => {
+    this.adminService.getSubscriptionTypes().pipe(takeUntil(this.destroy$)).subscribe(types => {
       this.subscriptionTypes = types.filter(t => t.isActive);
       this.cdr.detectChanges();
     });
@@ -1751,11 +1754,11 @@ export class AdminClientsComponent implements OnInit {
 
   toggleClientStatus(client: Client) {
     if (client.status === 'active') {
-      this.adminService.suspendClient(client.id).subscribe(() => {
+      this.adminService.suspendClient(client.id).pipe(takeUntil(this.destroy$)).subscribe(() => {
         client.status = 'suspended';
       });
     } else {
-      this.adminService.activateClient(client.id).subscribe(() => {
+      this.adminService.activateClient(client.id).pipe(takeUntil(this.destroy$)).subscribe(() => {
         client.status = 'active';
       });
     }
@@ -1769,7 +1772,7 @@ export class AdminClientsComponent implements OnInit {
     };
 
     if (this.showEditModal && this.selectedClient) {
-      this.adminService.updateClient(this.selectedClient.id, data).subscribe(() => {
+      this.adminService.updateClient(this.selectedClient.id, data).pipe(takeUntil(this.destroy$)).subscribe(() => {
         this.loadData();
         this.closeModals();
       });
@@ -1915,7 +1918,7 @@ export class AdminClientsComponent implements OnInit {
       adminPassword: this.wizardData.adminPassword
     };
 
-    this.adminService.createClient(data).subscribe({
+    this.adminService.createClient(data).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         this.isCreating = false;
         this.showWizard = false;
@@ -1980,5 +1983,10 @@ export class AdminClientsComponent implements OnInit {
 
   formatDate(date: Date): string {
     return new Date(date).toLocaleDateString('fr-FR', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

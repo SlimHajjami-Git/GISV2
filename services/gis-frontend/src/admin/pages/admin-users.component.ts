@@ -1,7 +1,9 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, SystemUser, Client } from '../services/admin.service';
 
@@ -795,7 +797,8 @@ import { AdminService, SystemUser, Client } from '../services/admin.service';
     }
   `]
 })
-export class AdminUsersComponent implements OnInit {
+export class AdminUsersComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   users: SystemUser[] = [];
   filteredUsers: SystemUser[] = [];
   companies: Client[] = [];
@@ -828,12 +831,12 @@ export class AdminUsersComponent implements OnInit {
   }
 
   loadData() {
-    this.adminService.getUsers().subscribe(users => {
+    this.adminService.getUsers().pipe(takeUntil(this.destroy$)).subscribe(users => {
       this.users = users;
       this.filterUsers();
     });
 
-    this.adminService.getClients().subscribe(clients => {
+    this.adminService.getClients().pipe(takeUntil(this.destroy$)).subscribe(clients => {
       this.companies = clients;
     });
   }
@@ -876,7 +879,7 @@ export class AdminUsersComponent implements OnInit {
 
   savePermissions() {
     if (this.selectedUser) {
-      this.adminService.updateUserPermissions(this.selectedUser.id, this.selectedPermissions).subscribe(() => {
+      this.adminService.updateUserPermissions(this.selectedUser.id, this.selectedPermissions).pipe(takeUntil(this.destroy$)).subscribe(() => {
         this.selectedUser!.permissions = [...this.selectedPermissions];
         this.closeModal();
       });
@@ -885,11 +888,11 @@ export class AdminUsersComponent implements OnInit {
 
   toggleUserStatus(user: SystemUser) {
     if (user.status === 'active') {
-      this.adminService.suspendUser(user.id).subscribe(() => {
+      this.adminService.suspendUser(user.id).pipe(takeUntil(this.destroy$)).subscribe(() => {
         user.status = 'suspended';
       });
     } else {
-      this.adminService.activateUser(user.id).subscribe(() => {
+      this.adminService.activateUser(user.id).pipe(takeUntil(this.destroy$)).subscribe(() => {
         user.status = 'active';
       });
     }
@@ -911,5 +914,10 @@ export class AdminUsersComponent implements OnInit {
   formatDate(date: Date | undefined): string {
     if (!date) return 'Never';
     return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }
