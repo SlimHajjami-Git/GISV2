@@ -37,13 +37,13 @@ import { ChatComponent } from './chat.component';
               <rect x="3" y="14" width="7" height="7" rx="1"/>
               <rect x="14" y="14" width="7" height="7" rx="1"/>
             </svg>
-            <span>Dashboard</span>
+            <span>Tableau de bord</span>
           </a>
           <a *ngIf="hasModule('monitoring')" [routerLink]="['/monitoring']" routerLinkActive="active" class="nav-link">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
             </svg>
-            <span>Monitoring</span>
+            <span>Suivi en direct</span>
           </a>
           <a *ngIf="hasModule('reports')" [routerLink]="['/reports']" routerLinkActive="active" class="nav-link">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -51,14 +51,14 @@ import { ChatComponent } from './chat.component';
               <polyline points="14 2 14 8 20 8"/>
               <line x1="16" y1="13" x2="8" y2="13"/>
             </svg>
-            <span>Reports</span>
+            <span>Rapports</span>
           </a>
           <a *ngIf="hasModule('geofences')" [routerLink]="['/geofences']" routerLinkActive="active" class="nav-link">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="10" r="3"/>
               <path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 7 8 11.7z"/>
             </svg>
-            <span>Geofences</span>
+            <span>Géozones</span>
           </a>
           <a [routerLink]="['/tournees']" routerLinkActive="active" class="nav-link">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

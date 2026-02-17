@@ -404,24 +404,24 @@
             </div>
             <span class="vehicle-title">{{ selectedVehicle.plate || selectedVehicle.name }}</span>
             <div class="header-actions">
-              <button class="header-btn" title="List">
+              <button class="header-btn" title="Liste">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
                   <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
                 </svg>
               </button>
-              <button class="header-btn" title="Refresh">
+              <button class="header-btn" title="Actualiser">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
                   <path d="M21 3v5h-5"/>
                 </svg>
               </button>
-              <button class="header-btn" title="Playback" (click)="activeTab = 'playback'">
+              <button class="header-btn" title="Historique" (click)="activeTab = 'playback'">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polygon points="5 3 19 12 5 21 5 3"/>
                 </svg>
               </button>
-              <button class="header-btn close-btn" (click)="selectedVehicle = null" title="Close">
+              <button class="header-btn close-btn" (click)="selectedVehicle = null" title="Fermer">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
@@ -566,7 +566,7 @@
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
             <circle cx="12" cy="12" r="6"/>
           </svg>
-          {{ connectionStatus }}
+          {{ connectionStatus === 'Connected' ? 'Connecté' : 'Déconnecté' }}
         </span>
         <span class="timestamp">{{ getCurrentTime() }}</span>
       </div>

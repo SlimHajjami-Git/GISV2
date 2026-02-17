@@ -30,8 +30,8 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
           <!-- Motion State Card -->
           <div class="card">
             <div class="card-header">
-              <span class="card-title">Motion state <span class="help">ⓘ</span></span>
-              <span class="online-badge">ONLINE DATA</span>
+              <span class="card-title">État des véhicules <span class="help">ⓘ</span></span>
+              <span class="online-badge">TEMPS RÉEL</span>
             </div>
             <div class="card-body motion-content">
               <div class="pie-wrapper">
@@ -43,14 +43,14 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
                 <div class="pie-center">{{ totalMotion }}</div>
               </div>
               <div class="motion-legend">
-                <div class="legend-row"><span class="dot red"></span><span class="label">Stationary</span><span class="value">{{ motionData.stationary }}</span></div>
-                <div class="legend-row"><span class="dot orange"></span><span class="label">Stationary with ignition on</span><span class="value">{{ motionData.ignitionOn }}</span></div>
-                <div class="legend-row"><span class="dot green"></span><span class="label">Moving</span><span class="value">{{ motionData.moving }}</span></div>
-                <div class="legend-row"><span class="dot lime"></span><span class="label">Moving with ignition on</span><span class="value">{{ motionData.movingIgnition }}</span></div>
-                <div class="legend-row"><span class="dot blue"></span><span class="label">LBS detected data</span><span class="value">{{ motionData.lbs }}</span></div>
-                <div class="legend-row"><span class="dot navy"></span><span class="label">Wi-Fi detected data</span><span class="value">{{ motionData.wifi }}</span></div>
-                <div class="legend-row"><span class="dot gray"></span><span class="label">No actual state</span><span class="value">{{ motionData.noState }}</span></div>
-                <div class="legend-row"><span class="dot lightgray"></span><span class="label">No coordinates</span><span class="value">{{ motionData.noCoords }}</span></div>
+                <div class="legend-row"><span class="dot red"></span><span class="label">À l'arrêt</span><span class="value">{{ motionData.stationary }}</span></div>
+                <div class="legend-row"><span class="dot orange"></span><span class="label">Arrêt moteur allumé</span><span class="value">{{ motionData.ignitionOn }}</span></div>
+                <div class="legend-row"><span class="dot green"></span><span class="label">En mouvement</span><span class="value">{{ motionData.moving }}</span></div>
+                <div class="legend-row"><span class="dot lime"></span><span class="label">En marche moteur allumé</span><span class="value">{{ motionData.movingIgnition }}</span></div>
+                <div class="legend-row"><span class="dot blue"></span><span class="label">Données LBS</span><span class="value">{{ motionData.lbs }}</span></div>
+                <div class="legend-row"><span class="dot navy"></span><span class="label">Données Wi-Fi</span><span class="value">{{ motionData.wifi }}</span></div>
+                <div class="legend-row"><span class="dot gray"></span><span class="label">État inconnu</span><span class="value">{{ motionData.noState }}</span></div>
+                <div class="legend-row"><span class="dot lightgray"></span><span class="label">Sans coordonnées</span><span class="value">{{ motionData.noCoords }}</span></div>
               </div>
             </div>
           </div>
@@ -58,10 +58,10 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
           <!-- Consumed by FLS Chart -->
           <div class="card chart-card">
             <div class="card-header">
-              <span class="card-title">Consumed by FLS <span class="help">ⓘ</span></span>
+              <span class="card-title">Consommation carburant <span class="help">ⓘ</span></span>
               <div class="chart-legend-header">
                 <span class="legend-square green"></span>
-                <span>Fuel truck</span>
+                <span>Véhicules</span>
                 <span class="legend-total">118161</span>
               </div>
             </div>
@@ -104,8 +104,8 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
           <!-- Geofences Card -->
           <div class="card">
             <div class="card-header">
-              <span class="card-title">Geofences with units</span>
-              <span class="online-badge">ONLINE DATA</span>
+              <span class="card-title">Géozones avec véhicules</span>
+              <span class="online-badge">TEMPS RÉEL</span>
             </div>
             <div class="card-body">
               <div class="geofence-list">
@@ -121,8 +121,8 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
           <!-- Device Health Card -->
           <div class="card">
             <div class="card-header">
-              <span class="card-title">Device health check status</span>
-              <span class="online-badge">ONLINE DATA</span>
+              <span class="card-title">État de santé des appareils</span>
+              <span class="online-badge">TEMPS RÉEL</span>
             </div>
             <div class="card-body health-content">
               <div class="health-pie-wrapper">
@@ -134,9 +134,9 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
                 <div class="health-center">{{ totalHealth }}</div>
               </div>
               <div class="health-legend">
-                <div class="health-row"><span class="dot green"></span><span class="label">Healthy</span><span class="value">{{ healthData.healthy }}</span></div>
-                <div class="health-row"><span class="dot yellow"></span><span class="label">Need attention</span><span class="value">{{ healthData.attention }}</span></div>
-                <div class="health-row"><span class="dot red"></span><span class="label">Unhealthy</span><span class="value">{{ healthData.unhealthy }}</span></div>
+                <div class="health-row"><span class="dot green"></span><span class="label">En bon état</span><span class="value">{{ healthData.healthy }}</span></div>
+                <div class="health-row"><span class="dot yellow"></span><span class="label">Attention requise</span><span class="value">{{ healthData.attention }}</span></div>
+                <div class="health-row"><span class="dot red"></span><span class="label">Défaillant</span><span class="value">{{ healthData.unhealthy }}</span></div>
               </div>
             </div>
           </div>
@@ -144,7 +144,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
           <!-- Top Units by Mileage -->
           <div class="card mileage-card">
             <div class="card-header">
-              <span class="card-title">Top units by mileage <span class="help">ⓘ</span></span>
+              <span class="card-title">Véhicules par kilométrage <span class="help">ⓘ</span></span>
             </div>
             <div class="card-body">
               <div class="mileage-scale">

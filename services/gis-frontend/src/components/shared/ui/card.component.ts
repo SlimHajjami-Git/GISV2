@@ -12,7 +12,7 @@ import { CommonModule } from '@angular/common';
           <span class="card-title">{{ title }}</span>
           <span class="help-icon" *ngIf="showHelp">ⓘ</span>
         </div>
-        <span class="online-badge" *ngIf="showOnlineBadge">ONLINE DATA</span>
+        <span class="online-badge" *ngIf="showOnlineBadge">TEMPS RÉEL</span>
         <ng-content select="[card-actions]"></ng-content>
       </div>
       <div class="card-body">
