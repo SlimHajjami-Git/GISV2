@@ -195,8 +195,12 @@ import { ChatComponent } from './chat.component';
                         <svg *ngIf="notif.type === 'vehicle_stop'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
                         </svg>
+                        <!-- Tour events -->
+                        <svg *ngIf="notif.type === 'tour_started' || notif.type === 'tour_waypoint' || notif.type === 'tour_completed'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M9 17H5a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm12-2h-4a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2z"/><polyline points="9 17 12 5 15 17"/>
+                        </svg>
                         <!-- Default -->
-                        <svg *ngIf="!['speed_alert','driving_behavior','geofence','geofence_event','admin_action','maintenance_due','vehicle_stop'].includes(notif.type)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg *ngIf="!['speed_alert','driving_behavior','geofence','geofence_event','admin_action','maintenance_due','vehicle_stop','tour_started','tour_waypoint','tour_completed'].includes(notif.type)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                         </svg>
                       </div>
@@ -590,6 +594,7 @@ import { ChatComponent } from './chat.component';
     .notif-icon.stopped { background: #f1f5f9; color: #64748b; }
     .notif-icon.maintenance { background: #fef2f2; color: #dc2626; }
     .notif-icon.admin-action { background: #ecfdf5; color: #059669; }
+    .notif-icon.tour { background: #ecfdf5; color: #10b981; }
     .notif-icon.other { background: #e0e7ff; color: #4f46e5; }
 
     .notif-content {
@@ -1076,6 +1081,9 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
       geofence: 'geofence',
       maintenance_due: 'maintenance',
       admin_action: 'admin-action',
+      tour_started: 'tour',
+      tour_waypoint: 'tour',
+      tour_completed: 'tour',
       user_created: 'other',
       system: 'other'
     };

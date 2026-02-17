@@ -65,6 +65,7 @@ public class TourMonitoringService : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<IGisDbContext>();
         var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<GpsHub>>();
+        var notifService = scope.ServiceProvider.GetRequiredService<INotificationService>();
 
         var now = DateTime.UtcNow;
         var windowStart = now.AddMinutes(-SCHEDULE_WINDOW_MINUTES);
@@ -81,7 +82,7 @@ public class TourMonitoringService : BackgroundService
 
         foreach (var tour in plannedTours)
         {
-            await CheckAutoStart(tour, context, hubContext, ct);
+            await CheckAutoStart(tour, context, hubContext, notifService, ct);
         }
 
         // 2. Check IN_PROGRESS tours for waypoint completion and auto-complete
@@ -93,14 +94,14 @@ public class TourMonitoringService : BackgroundService
 
         foreach (var tour in activeTours)
         {
-            await CheckWaypointProgress(tour, context, hubContext, ct);
+            await CheckWaypointProgress(tour, context, hubContext, notifService, ct);
         }
     }
 
     /// <summary>
     /// Auto-start: if vehicle is near origin and moving, start the tour
     /// </summary>
-    private async Task CheckAutoStart(Tour tour, IGisDbContext context, IHubContext<GpsHub> hubContext, CancellationToken ct)
+    private async Task CheckAutoStart(Tour tour, IGisDbContext context, IHubContext<GpsHub> hubContext, INotificationService notifService, CancellationToken ct)
     {
         var position = await GetVehiclePosition(tour);
         if (position == null) return;
@@ -128,7 +129,7 @@ public class TourMonitoringService : BackgroundService
 
             await context.SaveChangesAsync(ct);
 
-            // Notify via SignalR
+            // Notify via SignalR (real-time)
             await hubContext.Clients.Group($"company_{tour.CompanyId}")
                 .SendAsync("TourStatusChanged", new
                 {
@@ -139,6 +140,13 @@ public class TourMonitoringService : BackgroundService
                     timestamp = DateTime.UtcNow
                 }, ct);
 
+            // Persist notification for all company users
+            await SendNotificationToCompanyUsers(context, notifService, tour.CompanyId,
+                "tour_started",
+                $"Tournee demarree: {tour.Name}",
+                $"Le vehicule a quitte le point de depart. Tournee '{tour.Name}' en cours.",
+                "normal", "tour", tour.Id, $"/tournees", ct);
+
             _logger.LogInformation("Tour {TourId} auto-started successfully", tour.Id);
         }
     }
@@ -146,7 +154,7 @@ public class TourMonitoringService : BackgroundService
     /// <summary>
     /// Check if vehicle has reached any uncompleted waypoints or the destination
     /// </summary>
-    private async Task CheckWaypointProgress(Tour tour, IGisDbContext context, IHubContext<GpsHub> hubContext, CancellationToken ct)
+    private async Task CheckWaypointProgress(Tour tour, IGisDbContext context, IHubContext<GpsHub> hubContext, INotificationService notifService, CancellationToken ct)
     {
         var position = await GetVehiclePosition(tour);
         if (position == null) return;
@@ -174,7 +182,7 @@ public class TourMonitoringService : BackgroundService
                 wp.ActualArrivalTime = DateTime.UtcNow;
                 changed = true;
 
-                // Notify waypoint completion
+                // Notify waypoint completion (real-time)
                 await hubContext.Clients.Group($"company_{tour.CompanyId}")
                     .SendAsync("TourWaypointCompleted", new
                     {
@@ -186,10 +194,18 @@ public class TourMonitoringService : BackgroundService
                         timestamp = DateTime.UtcNow
                     }, ct);
 
+                // Persist notification
+                var wpLabel = wp.Name ?? wp.Address ?? GetWaypointTypeLabel(wp.Type);
+                await SendNotificationToCompanyUsers(context, notifService, tour.CompanyId,
+                    "tour_waypoint",
+                    $"Point atteint: {wpLabel}",
+                    $"Tournee '{tour.Name}' - le vehicule est arrive a '{wpLabel}'.",
+                    "normal", "tour", tour.Id, $"/tournees", ct);
+
                 // If destination reached, complete the tour
                 if (wp.Type == "destination")
                 {
-                    await CompleteTourAutomatically(tour, position, context, hubContext, ct);
+                    await CompleteTourAutomatically(tour, position, context, hubContext, notifService, ct);
                     return;
                 }
             }
@@ -208,7 +224,7 @@ public class TourMonitoringService : BackgroundService
     /// Auto-complete the tour when destination is reached
     /// </summary>
     private async Task CompleteTourAutomatically(Tour tour, VehiclePositionCache position,
-        IGisDbContext context, IHubContext<GpsHub> hubContext, CancellationToken ct)
+        IGisDbContext context, IHubContext<GpsHub> hubContext, INotificationService notifService, CancellationToken ct)
     {
         tour.Status = "completed";
         tour.ActualEndTime = DateTime.UtcNow;
@@ -243,6 +259,13 @@ public class TourMonitoringService : BackgroundService
                 actualDistanceKm = tour.ActualDistanceKm,
                 timestamp = DateTime.UtcNow
             }, ct);
+
+        // Persist notification
+        await SendNotificationToCompanyUsers(context, notifService, tour.CompanyId,
+            "tour_completed",
+            $"Tournee terminee: {tour.Name}",
+            $"La tournee '{tour.Name}' est terminee. Duree: {tour.ActualDurationMinutes} min, Distance: {tour.ActualDistanceKm} km.",
+            "normal", "tour", tour.Id, $"/tournees", ct);
 
         _logger.LogInformation(
             "Tour {TourId} auto-completed. Duration={Duration}min, Distance={Distance}km",
@@ -390,4 +413,43 @@ public class TourMonitoringService : BackgroundService
     }
 
     private static double ToRad(double deg) => deg * Math.PI / 180;
+
+    // ═══════ HELPERS ═══════
+
+    private static string GetWaypointTypeLabel(string type) => type switch
+    {
+        "origin" => "Depart",
+        "destination" => "Destination",
+        _ => "Arret"
+    };
+
+    /// <summary>
+    /// Send a persisted notification to all users of the company
+    /// </summary>
+    private async Task SendNotificationToCompanyUsers(
+        IGisDbContext context, INotificationService notifService,
+        int companyId, string type, string title, string message,
+        string priority, string? refType, int? refId, string? actionUrl,
+        CancellationToken ct)
+    {
+        try
+        {
+            var userIds = await context.Users
+                .AsNoTracking()
+                .Where(u => u.CompanyId == companyId)
+                .Select(u => u.Id)
+                .ToListAsync(ct);
+
+            foreach (var userId in userIds)
+            {
+                await notifService.CreateAndSendAsync(
+                    companyId, userId, type, title, message,
+                    priority, refType, refId, actionUrl, null, ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send tour notifications for company {CompanyId}", companyId);
+        }
+    }
 }

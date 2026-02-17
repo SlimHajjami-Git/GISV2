@@ -151,17 +151,18 @@ declare let L: any;
             <div class="field-row">
               <div class="field">
                 <label>Vehicule *</label>
-                <select [(ngModel)]="tourForm.vehicleId">
+                <select [(ngModel)]="tourForm.vehicleId" (ngModelChange)="onVehicleChange($event)">
                   <option [ngValue]="null">Choisir...</option>
                   <option *ngFor="let v of vehicles" [ngValue]="v.id">{{v.name}} ({{v.plate}})</option>
                 </select>
               </div>
               <div class="field">
                 <label>Chauffeur</label>
-                <select [(ngModel)]="tourForm.driverId">
-                  <option [ngValue]="null">Optionnel</option>
-                  <option *ngFor="let d of drivers" [ngValue]="d.id">{{d.firstName}} {{d.lastName}}</option>
-                </select>
+                <div class="driver-display" *ngIf="tourForm.vehicleId">
+                  <span *ngIf="getVehicleDriver()">{{getVehicleDriver()}}</span>
+                  <span class="driver-none" *ngIf="!getVehicleDriver()">Aucun chauffeur assigne</span>
+                </div>
+                <div class="driver-display driver-none" *ngIf="!tourForm.vehicleId">Selectionnez un vehicule</div>
               </div>
             </div>
             <div class="field-row">
@@ -170,9 +171,38 @@ declare let L: any;
                 <input type="datetime-local" [(ngModel)]="tourForm.scheduledStartTime">
               </div>
               <div class="field">
-                <label>Notes</label>
-                <input type="text" [(ngModel)]="tourForm.description" placeholder="Optionnel">
+                <label>Recurrence</label>
+                <select [(ngModel)]="tourForm.recurrence" (ngModelChange)="onRecurrenceChange($event)">
+                  <option value="none">Aucune (unique)</option>
+                  <option value="weekly">Hebdomadaire</option>
+                  <option value="custom">Personnalisee</option>
+                </select>
               </div>
+            </div>
+            <div class="recurrence-config" *ngIf="tourForm.recurrence === 'weekly'">
+              <label class="rc-label">Jours de la semaine</label>
+              <div class="day-chips">
+                <button *ngFor="let d of weekDays" class="day-chip" [class.day-active]="tourForm.recurrenceDays.includes(d.value)" (click)="toggleDay(d.value)" type="button">{{d.label}}</button>
+              </div>
+            </div>
+            <div class="recurrence-config" *ngIf="tourForm.recurrence === 'custom'">
+              <div class="field-row">
+                <div class="field">
+                  <label>Repeter chaque</label>
+                  <div class="custom-interval">
+                    <input type="number" [(ngModel)]="tourForm.customInterval" min="1" max="365" class="interval-input">
+                    <select [(ngModel)]="tourForm.customUnit">
+                      <option value="days">jour(s)</option>
+                      <option value="weeks">semaine(s)</option>
+                      <option value="months">mois</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="field">
+              <label>Notes</label>
+              <input type="text" [(ngModel)]="tourForm.description" placeholder="Optionnel">
             </div>
           </div>
 
@@ -542,6 +572,18 @@ declare let L: any;
     .field input:focus, .field select:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 2px rgba(59,130,246,.12); }
     .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
+    .driver-display { padding: 8px 11px; border: 1px solid #e2e8f0; border-radius: 7px; font-size: 13px; color: #0f172a; background: #f8fafc; min-height: 18px; }
+    .driver-none { color: #94a3b8; font-style: italic; }
+
+    .recurrence-config { padding: 10px 0 4px; }
+    .rc-label { font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 6px; display: block; }
+    .day-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .day-chip { padding: 6px 12px; border-radius: 20px; border: 1.5px solid #e2e8f0; background: #fff; font-size: 12px; font-weight: 600; color: #64748b; cursor: pointer; transition: all .15s; }
+    .day-chip:hover { border-color: #93c5fd; color: #3b82f6; }
+    .day-active { background: #3b82f6 !important; color: white !important; border-color: #3b82f6 !important; }
+    .custom-interval { display: flex; gap: 8px; align-items: center; }
+    .interval-input { width: 70px !important; text-align: center; }
+
     /* Waypoint timeline */
     .wp-timeline { display: flex; flex-direction: column; }
     .wp-node { display: flex; gap: 12px; }
@@ -858,6 +900,11 @@ export class ToursComponent implements OnInit, OnDestroy {
 
   // ═══════ FORM ═══════
 
+  weekDays = [
+    { value: 'mon', label: 'Lun' }, { value: 'tue', label: 'Mar' }, { value: 'wed', label: 'Mer' },
+    { value: 'thu', label: 'Jeu' }, { value: 'fri', label: 'Ven' }, { value: 'sat', label: 'Sam' }, { value: 'sun', label: 'Dim' }
+  ];
+
   getEmptyForm(): any {
     return {
       name: '',
@@ -865,12 +912,36 @@ export class ToursComponent implements OnInit, OnDestroy {
       vehicleId: null,
       driverId: null,
       scheduledStartTime: '',
+      recurrence: 'none',
+      recurrenceDays: [] as string[],
+      customInterval: 1,
+      customUnit: 'weeks',
       notes: '',
       waypoints: [
         { searchText: '', resolvedName: '', address: '', latitude: null, longitude: null, plannedPauseMinutes: 0 },
         { searchText: '', resolvedName: '', address: '', latitude: null, longitude: null, plannedPauseMinutes: 0 }
       ]
     };
+  }
+
+  onVehicleChange(vehicleId: number) {
+    const v = this.vehicles.find((veh: any) => veh.id === vehicleId);
+    this.tourForm.driverId = v?.assignedDriverId || null;
+  }
+
+  getVehicleDriver(): string | null {
+    const v = this.vehicles.find((veh: any) => veh.id === this.tourForm.vehicleId);
+    return v?.assignedDriverName || v?.driverName || null;
+  }
+
+  onRecurrenceChange(val: string) {
+    if (val === 'weekly') { this.tourForm.recurrenceDays = []; }
+  }
+
+  toggleDay(day: string) {
+    const idx = this.tourForm.recurrenceDays.indexOf(day);
+    if (idx >= 0) this.tourForm.recurrenceDays.splice(idx, 1);
+    else this.tourForm.recurrenceDays.push(day);
   }
 
   addWaypoint() {
@@ -976,12 +1047,19 @@ export class ToursComponent implements OnInit, OnDestroy {
   saveTour() {
     if (!this.tourForm.name || !this.tourForm.vehicleId || this.tourForm.waypoints.length < 2) return;
     this.saving = true;
+    let recurrence = this.tourForm.recurrence || 'none';
+    if (recurrence === 'weekly' && this.tourForm.recurrenceDays.length > 0) {
+      recurrence = 'weekly:' + this.tourForm.recurrenceDays.join(',');
+    } else if (recurrence === 'custom') {
+      recurrence = 'custom:' + this.tourForm.customInterval + ':' + this.tourForm.customUnit;
+    }
     const payload = {
       name: this.tourForm.name,
       description: this.tourForm.description || null,
       vehicleId: this.tourForm.vehicleId,
       driverId: this.tourForm.driverId,
       scheduledStartTime: this.tourForm.scheduledStartTime,
+      recurrence: recurrence,
       notes: this.tourForm.notes || null,
       waypoints: this.tourForm.waypoints.map((wp: any) => ({
         name: wp.resolvedName || wp.searchText, address: wp.address,
@@ -1000,12 +1078,21 @@ export class ToursComponent implements OnInit, OnDestroy {
   editTour() {
     if (!this.selectedTour) return;
     this.editingTour = this.selectedTour;
+    const rec = this.selectedTour.recurrence || 'none';
+    let recType = 'none', recDays: string[] = [], customInt = 1, customUnit = 'weeks';
+    if (rec.startsWith('weekly:')) { recType = 'weekly'; recDays = rec.split(':')[1]?.split(',') || []; }
+    else if (rec.startsWith('custom:')) { recType = 'custom'; const parts = rec.split(':'); customInt = parseInt(parts[1]) || 1; customUnit = parts[2] || 'weeks'; }
+    else if (rec === 'weekly') { recType = 'weekly'; }
     this.tourForm = {
       name: this.selectedTour.name,
       description: this.selectedTour.description || '',
       vehicleId: this.selectedTour.vehicleId,
       driverId: this.selectedTour.driverId,
       scheduledStartTime: this.toLocalDatetime(this.selectedTour.scheduledStartTime),
+      recurrence: recType,
+      recurrenceDays: recDays,
+      customInterval: customInt,
+      customUnit: customUnit,
       notes: this.selectedTour.notes || '',
       waypoints: this.selectedTour.waypoints.map((w: any) => ({
         searchText: w.name || w.address || '', resolvedName: w.name || '', address: w.address || '',
