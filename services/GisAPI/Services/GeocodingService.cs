@@ -44,7 +44,7 @@ public class GeocodingService : IGeocodingService
 
         try
         {
-            var url = $"{_nominatimUrl}/reverse?lat={latitude}&lon={longitude}&format=json&zoom=18";
+            var url = $"{_nominatimUrl}/reverse?lat={latitude}&lon={longitude}&format=json&zoom=18&accept-language=fr";
             var response = await _httpClient.GetAsync(url);
             
             if (!response.IsSuccessStatusCode)

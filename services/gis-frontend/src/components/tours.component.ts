@@ -759,7 +759,7 @@ export class ToursComponent implements OnInit, OnDestroy {
         const cacheKey = query.toLowerCase().trim();
         if (this.searchCache.has(cacheKey)) return of(this.searchCache.get(cacheKey)!);
         return this.http.get<any[]>(
-          `/api/nominatim/search?q=${encodeURIComponent(query)}&format=json&limit=5&countrycodes=tn,dz,ly,ma`
+          `/api/nominatim/search?q=${encodeURIComponent(query)}&format=json&limit=5&countrycodes=tn,dz,ly,ma&accept-language=fr`
         ).pipe(
           switchMap(results => {
             this.searchCache.set(cacheKey, results);
@@ -1007,7 +1007,7 @@ export class ToursComponent implements OnInit, OnDestroy {
   }
 
   reverseGeocodeWaypoint(index: number, lat: number, lon: number) {
-    this.http.get<any>(`/api/nominatim/reverse?lat=${lat}&lon=${lon}&format=json`).pipe(
+    this.http.get<any>(`/api/nominatim/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=fr`).pipe(
       catchError(() => of(null))
     ).subscribe(result => {
       if (result && this.tourForm.waypoints[index]) {

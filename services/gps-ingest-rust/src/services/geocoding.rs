@@ -68,7 +68,7 @@ impl GeocodingService {
 
         // Call Nominatim
         let url = format!(
-            "{}/reverse?lat={}&lon={}&format=json&zoom=18",
+            "{}/reverse?lat={}&lon={}&format=json&zoom=18&accept-language=fr",
             self.base_url, lat, lon
         );
 
