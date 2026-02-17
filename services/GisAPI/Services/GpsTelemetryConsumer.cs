@@ -13,6 +13,7 @@ namespace GisAPI.Services;
 /// </summary>
 public class GpsTelemetryConsumer : BackgroundService
 {
+    private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
     private readonly ILogger<GpsTelemetryConsumer> _logger;
     private readonly IServiceProvider _serviceProvider;
     private readonly IConfiguration _configuration;
@@ -163,10 +164,7 @@ public class GpsTelemetryConsumer : BackgroundService
     {
         try
         {
-            var telemetry = JsonSerializer.Deserialize<TelemetryMessage>(message, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            var telemetry = JsonSerializer.Deserialize<TelemetryMessage>(message, _jsonOptions);
 
             if (telemetry == null)
             {

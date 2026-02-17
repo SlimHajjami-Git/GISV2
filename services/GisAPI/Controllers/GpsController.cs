@@ -5,6 +5,7 @@ using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common;
 using GisAPI.Services;
 using GisAPI.Application.Features.Gps.Commands.BroadcastPosition;
 using MediatR;
@@ -93,44 +94,42 @@ public class GpsController : ControllerBase
             return Ok(result);
         }
 
-        // Fallback to database
-        var dbPositions = await _context.Vehicles
+        // Fallback to database - single query with join instead of N+1 correlated subqueries
+        var vehicles = await _context.Vehicles
+            .AsNoTracking()
             .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue)
             .Include(v => v.GpsDevice)
-            .Select(v => new RealtimePositionDto
+            .ToListAsync();
+
+        var deviceIds = vehicles.Where(v => v.GpsDeviceId.HasValue).Select(v => v.GpsDeviceId!.Value).ToList();
+
+        // Single query: get latest position per device using GroupBy
+        var latestPositions = await _context.GpsPositions
+            .AsNoTracking()
+            .Where(p => deviceIds.Contains(p.DeviceId))
+            .GroupBy(p => p.DeviceId)
+            .Select(g => g.OrderByDescending(p => p.RecordedAt).First())
+            .ToListAsync();
+
+        var positionMap = latestPositions.ToDictionary(p => p.DeviceId);
+
+        var dbPositions = vehicles.Select(v =>
+        {
+            positionMap.TryGetValue(v.GpsDeviceId!.Value, out var pos);
+            return new RealtimePositionDto
             {
                 VehicleId = v.Id,
                 VehicleName = v.Name,
                 Plate = v.Plate,
-                DeviceUid = v.GpsDevice != null ? v.GpsDevice.DeviceUid : "",
-                Latitude = _context.GpsPositions
-                    .Where(p => p.DeviceId == v.GpsDeviceId)
-                    .OrderByDescending(p => p.RecordedAt)
-                    .Select(p => p.Latitude)
-                    .FirstOrDefault(),
-                Longitude = _context.GpsPositions
-                    .Where(p => p.DeviceId == v.GpsDeviceId)
-                    .OrderByDescending(p => p.RecordedAt)
-                    .Select(p => p.Longitude)
-                    .FirstOrDefault(),
-                SpeedKph = _context.GpsPositions
-                    .Where(p => p.DeviceId == v.GpsDeviceId)
-                    .OrderByDescending(p => p.RecordedAt)
-                    .Select(p => p.SpeedKph ?? 0)
-                    .FirstOrDefault(),
-                IgnitionOn = _context.GpsPositions
-                    .Where(p => p.DeviceId == v.GpsDeviceId)
-                    .OrderByDescending(p => p.RecordedAt)
-                    .Select(p => p.IgnitionOn ?? false)
-                    .FirstOrDefault(),
-                RecordedAt = _context.GpsPositions
-                    .Where(p => p.DeviceId == v.GpsDeviceId)
-                    .OrderByDescending(p => p.RecordedAt)
-                    .Select(p => p.RecordedAt)
-                    .FirstOrDefault(),
+                DeviceUid = v.GpsDevice?.DeviceUid ?? "",
+                Latitude = pos?.Latitude ?? 0,
+                Longitude = pos?.Longitude ?? 0,
+                SpeedKph = pos?.SpeedKph ?? 0,
+                IgnitionOn = pos?.IgnitionOn ?? false,
+                RecordedAt = pos?.RecordedAt ?? default,
                 Source = "database"
-            })
-            .ToListAsync();
+            };
+        }).ToList();
 
         return Ok(dbPositions);
     }
@@ -146,6 +145,7 @@ public class GpsController : ControllerBase
         var companyId = GetCompanyId();
 
         var positions = await _context.Vehicles
+            .AsNoTracking()
             .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue)
             .Include(v => v.GpsDevice)
             .Include(v => v.AssignedDriver)
@@ -191,6 +191,7 @@ public class GpsController : ControllerBase
         var companyId = GetCompanyId();
 
         var vehicle = await _context.Vehicles
+            .AsNoTracking()
             .Where(v => v.Id == vehicleId && v.CompanyId == companyId)
             .Include(v => v.GpsDevice)
             .Include(v => v.AssignedDriver)
@@ -203,6 +204,7 @@ public class GpsController : ControllerBase
             return Ok(new { message = "Vehicle has no GPS device assigned" });
 
         var lastPosition = await _context.GpsPositions
+            .AsNoTracking()
             .Where(p => p.DeviceId == vehicle.GpsDeviceId)
             .OrderByDescending(p => p.RecordedAt)
             .FirstOrDefaultAsync();
@@ -252,6 +254,7 @@ public class GpsController : ControllerBase
         var companyId = GetCompanyId();
 
         var vehicle = await _context.Vehicles
+            .AsNoTracking()
             .FirstOrDefaultAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
 
         if (vehicle == null)
@@ -268,6 +271,7 @@ public class GpsController : ControllerBase
         var toUtc = EnsureUtc(to.Value);
 
         var rawPositions = await _context.GpsPositions
+            .AsNoTracking()
             .Where(p => p.DeviceId == vehicle.GpsDeviceId &&
                         p.RecordedAt >= fromUtc &&
                         p.RecordedAt <= toUtc)
@@ -321,20 +325,8 @@ public class GpsController : ControllerBase
         return Ok(filtered);
     }
     
-    /// <summary>
-    /// Calculate distance between two coordinates in meters (Haversine formula)
-    /// </summary>
     private static double CalculateDistance(double lat1, double lon1, double lat2, double lon2)
-    {
-        const double R = 6371000; // Earth radius in meters
-        var dLat = (lat2 - lat1) * Math.PI / 180;
-        var dLon = (lon2 - lon1) * Math.PI / 180;
-        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
-                Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180) *
-                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
-        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-        return R * c;
-    }
+        => GeoMath.HaversineDistance(lat1, lon1, lat2, lon2);
 
     /// <summary>
     /// Get position history for a device by IMEI

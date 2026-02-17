@@ -3,6 +3,7 @@ using GisAPI.Hubs;
 using GisAPI.Domain.Entities;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Application.Common;
 using GisAPI.Application.Common.Interfaces;
 
 namespace GisAPI.Services;
@@ -375,44 +376,13 @@ public class TourMonitoringService : BackgroundService
         return null;
     }
 
-    // ═══════ GEO MATH ═══════
-
-    /// <summary>
-    /// Haversine distance between two points in meters
-    /// </summary>
+    // Geo math delegated to GeoMath shared utility
     private static double HaversineDistance(double lat1, double lon1, double lat2, double lon2)
-    {
-        const double R = 6371000; // Earth radius in meters
-        var dLat = ToRad(lat2 - lat1);
-        var dLon = ToRad(lon2 - lon1);
-        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
-                Math.Cos(ToRad(lat1)) * Math.Cos(ToRad(lat2)) *
-                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
-        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-        return R * c;
-    }
+        => GeoMath.HaversineDistance(lat1, lon1, lat2, lon2);
 
-    /// <summary>
-    /// Distance from point to line segment (for route deviation detection)
-    /// </summary>
     private static double DistanceFromSegment(double pLat, double pLon,
         double aLat, double aLon, double bLat, double bLon)
-    {
-        var ap = new[] { pLat - aLat, pLon - aLon };
-        var ab = new[] { bLat - aLat, bLon - aLon };
-        var abLen2 = ab[0] * ab[0] + ab[1] * ab[1];
-
-        if (abLen2 == 0)
-            return HaversineDistance(pLat, pLon, aLat, aLon);
-
-        var t = Math.Max(0, Math.Min(1, (ap[0] * ab[0] + ap[1] * ab[1]) / abLen2));
-        var closestLat = aLat + t * ab[0];
-        var closestLon = aLon + t * ab[1];
-
-        return HaversineDistance(pLat, pLon, closestLat, closestLon);
-    }
-
-    private static double ToRad(double deg) => deg * Math.PI / 180;
+        => GeoMath.DistanceFromSegment(pLat, pLon, aLat, aLon, bLat, bLon);
 
     // ═══════ HELPERS ═══════
 

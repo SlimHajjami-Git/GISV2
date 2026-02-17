@@ -33,6 +33,7 @@ public class RedisCacheService : IRedisCacheService, IDisposable
     private readonly ConnectionMultiplexer? _redis;
     private readonly IDatabase? _db;
     private readonly bool _isConnected;
+    private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     public RedisCacheService(IConfiguration configuration, ILogger<RedisCacheService> logger)
     {
@@ -71,10 +72,7 @@ public class RedisCacheService : IRedisCacheService, IDisposable
             
             if (value.IsNullOrEmpty) return null;
 
-            return JsonSerializer.Deserialize<VehiclePositionCache>(value!, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            return JsonSerializer.Deserialize<VehiclePositionCache>(value!, _jsonOptions);
         }
         catch (Exception ex)
         {
@@ -92,20 +90,28 @@ public class RedisCacheService : IRedisCacheService, IDisposable
 
         try
         {
-            var server = _redis.GetServer(_redis.GetEndPoints().First());
-            var keys = server.Keys(pattern: "vehicle:position:*").ToArray();
+            // Use company device index (populated by Rust ingest) instead of KEYS pattern scan
+            var devicesKey = $"company:{companyId}:devices";
+            var deviceUids = await _db.SetMembersAsync(devicesKey);
 
-            foreach (var key in keys)
+            if (deviceUids.Length == 0)
+                return positions;
+
+            // MGET: single round-trip to fetch all positions
+            var positionKeys = deviceUids
+                .Where(uid => !uid.IsNullOrEmpty)
+                .Select(uid => (RedisKey)$"vehicle:position:{uid}")
+                .ToArray();
+
+            var values = await _db.StringGetAsync(positionKeys);
+
+            foreach (var value in values)
             {
-                var value = await _db.StringGetAsync(key);
                 if (value.IsNullOrEmpty) continue;
 
-                var position = JsonSerializer.Deserialize<VehiclePositionCache>(value!, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+                var position = JsonSerializer.Deserialize<VehiclePositionCache>(value!, _jsonOptions);
 
-                if (position != null && position.CompanyId == companyId)
+                if (position != null)
                 {
                     positions.Add(position);
                 }
@@ -134,10 +140,7 @@ public class RedisCacheService : IRedisCacheService, IDisposable
 
                 try
                 {
-                    var position = JsonSerializer.Deserialize<VehiclePositionCache>(message!, new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    });
+                    var position = JsonSerializer.Deserialize<VehiclePositionCache>(message!, _jsonOptions);
 
                     if (position != null)
                     {

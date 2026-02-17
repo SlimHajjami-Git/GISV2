@@ -1,7 +1,8 @@
-import { Component, OnInit, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
+import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { Vehicle, Company, MaintenanceRecord, VehicleCost } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -922,7 +923,8 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     }
   `]
 })
-export class DashboardComponent implements OnInit {
+export class DashboardComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   vehicles: Vehicle[] = [];
   company: Company | null = null;
 
@@ -1028,7 +1030,7 @@ export class DashboardComponent implements OnInit {
   }
 
   loadVehicles() {
-    this.apiService.getVehicles().subscribe({
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => {
         this.ngZone.run(() => {
           this.vehicles = vehicles.map(v => ({
@@ -1055,7 +1057,7 @@ export class DashboardComponent implements OnInit {
   }
 
   loadMaintenanceData() {
-    this.apiService.getMaintenanceRecords().subscribe({
+    this.apiService.getMaintenanceRecords().pipe(takeUntil(this.destroy$)).subscribe({
       next: (records) => {
         this.ngZone.run(() => {
           this.maintenanceRecords = records.map(m => ({
@@ -1096,7 +1098,7 @@ export class DashboardComponent implements OnInit {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     
-    this.apiService.getCosts({ startDate: startOfMonth }).subscribe({
+    this.apiService.getCosts({ startDate: startOfMonth }).pipe(takeUntil(this.destroy$)).subscribe({
       next: (costs) => {
         this.ngZone.run(() => {
           this.vehicleCosts = costs.map(c => ({
@@ -1215,6 +1217,11 @@ export class DashboardComponent implements OnInit {
   onDateRangeChange(range: { from: string; to: string }) {
     this.fromDate = range.from;
     this.toDate = range.to;
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   applyFilter() {

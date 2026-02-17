@@ -12,6 +12,7 @@ namespace GisAPI.Services;
 /// </summary>
 public class RedisPubSubConsumer : BackgroundService
 {
+    private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
     private readonly ILogger<RedisPubSubConsumer> _logger;
     private readonly IServiceProvider _serviceProvider;
     private readonly IConfiguration _configuration;
@@ -111,10 +112,7 @@ public class RedisPubSubConsumer : BackgroundService
     {
         try
         {
-            var position = JsonSerializer.Deserialize<RedisPositionMessage>(message, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            var position = JsonSerializer.Deserialize<RedisPositionMessage>(message, _jsonOptions);
 
             if (position == null)
             {

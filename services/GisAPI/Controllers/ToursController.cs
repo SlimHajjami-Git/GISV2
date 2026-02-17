@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
+using GisAPI.Application.Common;
 using GisAPI.Services;
 
 namespace GisAPI.Controllers;
@@ -41,6 +42,7 @@ public class ToursController : ControllerBase
     {
         var companyId = GetCompanyId();
         var query = _context.Tours
+            .AsNoTracking()
             .Where(t => t.CompanyId == companyId)
             .Include(t => t.Vehicle)
             .Include(t => t.Driver)
@@ -604,15 +606,7 @@ public class ToursController : ControllerBase
     }
 
     private static double HaversineDistance(double lat1, double lon1, double lat2, double lon2)
-    {
-        const double R = 6371000;
-        var dLat = (lat2 - lat1) * Math.PI / 180;
-        var dLon = (lon2 - lon1) * Math.PI / 180;
-        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
-                Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180) *
-                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
-        return R * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-    }
+        => GeoMath.HaversineDistance(lat1, lon1, lat2, lon2);
 
     // ────────────────── DTO MAPPING ──────────────────
 

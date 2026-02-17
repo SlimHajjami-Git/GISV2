@@ -13,6 +13,15 @@ public interface IValhallaService
 
 public class ValhallaService : IValhallaService
 {
+    private static readonly JsonSerializerOptions _serializeOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+    private static readonly JsonSerializerOptions _deserializeOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
     private readonly HttpClient _httpClient;
     private readonly string _baseUrl;
     private readonly ILogger<ValhallaService> _logger;
@@ -83,11 +92,7 @@ public class ValhallaService : IValhallaService
                 }
             };
 
-            var json = JsonSerializer.Serialize(request, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-            });
+            var json = JsonSerializer.Serialize(request, _serializeOptions);
 
             var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
             var response = await _httpClient.PostAsync($"{_baseUrl}/trace_route", content);
@@ -100,10 +105,7 @@ public class ValhallaService : IValhallaService
             }
 
             var responseJson = await response.Content.ReadAsStringAsync();
-            var valhallaResponse = JsonSerializer.Deserialize<ValhallaTraceResponse>(responseJson, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-            });
+            var valhallaResponse = JsonSerializer.Deserialize<ValhallaTraceResponse>(responseJson, _deserializeOptions);
 
             if (valhallaResponse == null)
             {
@@ -300,10 +302,7 @@ public class ValhallaService : IValhallaService
             }
 
             var responseJson = await response.Content.ReadAsStringAsync();
-            var valhallaResponse = JsonSerializer.Deserialize<ValhallaTraceResponse>(responseJson, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-            });
+            var valhallaResponse = JsonSerializer.Deserialize<ValhallaTraceResponse>(responseJson, _deserializeOptions);
 
             if (valhallaResponse?.Trip == null) return null;
 

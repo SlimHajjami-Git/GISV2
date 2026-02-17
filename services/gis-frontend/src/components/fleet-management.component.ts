@@ -1,7 +1,8 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
+import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 
 interface Department {
@@ -1352,7 +1353,8 @@ interface PartPricing {
     }
   `]
 })
-export class FleetManagementComponent implements OnInit {
+export class FleetManagementComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   activeTab = 'departments';
   loading = false;
   
@@ -1432,7 +1434,7 @@ export class FleetManagementComponent implements OnInit {
   }
 
   loadDepartments() {
-    this.http.get<any>('/api/fleet/departments').subscribe({
+    this.http.get<any>('/api/fleet/departments').pipe(takeUntil(this.destroy$)).subscribe({
       next: (data) => {
         this.departments = data || [];
         this.loading = false;
@@ -1447,7 +1449,7 @@ export class FleetManagementComponent implements OnInit {
   }
 
   loadFuelTypes() {
-    this.http.get<any>('/api/fleet/fuel-types').subscribe({
+    this.http.get<any>('/api/fleet/fuel-types').pipe(takeUntil(this.destroy$)).subscribe({
       next: (data) => {
         this.fuelTypes = data || [];
         this.loading = false;
@@ -1727,5 +1729,10 @@ export class FleetManagementComponent implements OnInit {
 
   getPartPrice(partId: number): PartPricing | undefined {
     return this.partPricing.find(p => p.partId === partId);
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }
