@@ -87,6 +87,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   private ghostPolyline: L.Polyline | null = null; // Full route preview (faded)
   private progressPolyline: L.Polyline | null = null; // Growing colored trace
   private progressCoords: L.LatLng[] = []; // Accumulated coords for progress line
+  private _iconFrameCount: number = 0;
+  private _traceFrameCount: number = 0;
   
   // Ignition-off anchor position: when ignition is off, all positions use this anchor
   private ignitionOffAnchor: { latitude: number; longitude: number } | null = null;
@@ -1307,144 +1309,23 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  // Create an enhanced vehicle icon for playback with status color and direction
+  // Create a clean directional arrow icon for playback
   createPlaybackVehicleIcon(color: string, heading: number, speed: number, vehicleType?: string, vehicleName?: string): L.DivIcon {
-    // Determine if vehicle is moving for animation
-    const isMoving = speed > 5;
-    const pulseClass = isMoving ? 'pulse-animation' : '';
-    
-    // Get SVG icon based on vehicle type
-    const vehicleSvg = this.getVehicleTypeSvg(vehicleType || 'car', color, heading);
-    
-    // Truncate vehicle name for display
-    const displayName = vehicleName ? (vehicleName.length > 15 ? vehicleName.substring(0, 12) + '...' : vehicleName) : '';
-
+    const isMoving = speed > 3;
+    // Clean arrow: solid colored triangle pointing up, rotated by heading
     return L.divIcon({
       html: `
-        <div class="playback-vehicle-icon ${pulseClass}" style="position: relative; display: flex; flex-direction: column; align-items: center;">
-          ${vehicleSvg}
-          ${displayName ? `<div class="vehicle-name-label" style="
-            font-size: 10px;
-            font-weight: 600;
-            color: #333;
-            background: rgba(255,255,255,0.9);
-            padding: 2px 6px;
-            border-radius: 3px;
-            white-space: nowrap;
-            margin-top: 2px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-            border: 1px solid ${color};
-          ">${displayName}</div>` : ''}
+        <div style="transform: rotate(${heading}deg); transition: transform 0.3s ease;">
+          <svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35));">
+            <polygon points="14,2 24,24 14,19 4,24" fill="${color}" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
+            ${isMoving ? '' : '<circle cx="14" cy="15" r="3" fill="#fff" opacity="0.6"/>'}
+          </svg>
         </div>
       `,
-      className: 'custom-vehicle-marker',
-      iconSize: [50, 60],
-      iconAnchor: [25, 25]
+      className: 'pb-arrow-marker',
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
     });
-  }
-
-  // Get SVG icon based on vehicle type
-  getVehicleTypeSvg(type: string, color: string, heading: number): string {
-    const normalizedType = (type || 'car').toLowerCase();
-    
-    // Truck icon - like in the reference image (red truck)
-    if (normalizedType.includes('truck') || normalizedType.includes('camion') || normalizedType.includes('poids')) {
-      return `
-        <svg width="36" height="36" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" style="transform: rotate(${heading}deg); filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));">
-          <!-- Truck body -->
-          <rect x="4" y="8" width="28" height="16" rx="2" fill="${color}" stroke="white" stroke-width="1.5"/>
-          <!-- Cab -->
-          <rect x="22" y="4" width="10" height="12" rx="1" fill="${color}" stroke="white" stroke-width="1.5"/>
-          <!-- Windshield -->
-          <rect x="24" y="6" width="6" height="5" rx="1" fill="rgba(200,230,255,0.8)"/>
-          <!-- Cargo area lines -->
-          <line x1="8" y1="10" x2="8" y2="22" stroke="white" stroke-width="1" opacity="0.6"/>
-          <line x1="14" y1="10" x2="14" y2="22" stroke="white" stroke-width="1" opacity="0.6"/>
-          <!-- Wheels -->
-          <circle cx="10" cy="26" r="3" fill="#333" stroke="white" stroke-width="1"/>
-          <circle cx="26" cy="26" r="3" fill="#333" stroke="white" stroke-width="1"/>
-          <!-- Direction indicator -->
-          <polygon points="18,2 21,6 15,6" fill="white"/>
-        </svg>
-      `;
-    }
-    
-    // Van/Fourgon icon
-    if (normalizedType.includes('van') || normalizedType.includes('fourgon') || normalizedType.includes('utilitaire')) {
-      return `
-        <svg width="36" height="36" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" style="transform: rotate(${heading}deg); filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));">
-          <!-- Van body -->
-          <path d="M6,10 L6,24 L30,24 L30,10 L22,10 L20,6 L10,6 L6,10 Z" fill="${color}" stroke="white" stroke-width="1.5"/>
-          <!-- Windshield -->
-          <path d="M20,8 L22,12 L30,12 L30,8 Z" fill="rgba(200,230,255,0.8)"/>
-          <!-- Side windows -->
-          <rect x="8" y="11" width="5" height="4" rx="1" fill="rgba(200,230,255,0.6)"/>
-          <rect x="15" y="11" width="5" height="4" rx="1" fill="rgba(200,230,255,0.6)"/>
-          <!-- Wheels -->
-          <circle cx="11" cy="26" r="3" fill="#333" stroke="white" stroke-width="1"/>
-          <circle cx="25" cy="26" r="3" fill="#333" stroke="white" stroke-width="1"/>
-          <!-- Direction indicator -->
-          <polygon points="18,2 21,6 15,6" fill="white"/>
-        </svg>
-      `;
-    }
-    
-    // Bus icon
-    if (normalizedType.includes('bus') || normalizedType.includes('autobus')) {
-      return `
-        <svg width="36" height="36" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" style="transform: rotate(${heading}deg); filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));">
-          <!-- Bus body -->
-          <rect x="4" y="6" width="28" height="20" rx="3" fill="${color}" stroke="white" stroke-width="1.5"/>
-          <!-- Windows row -->
-          <rect x="7" y="9" width="4" height="6" rx="1" fill="rgba(200,230,255,0.8)"/>
-          <rect x="13" y="9" width="4" height="6" rx="1" fill="rgba(200,230,255,0.8)"/>
-          <rect x="19" y="9" width="4" height="6" rx="1" fill="rgba(200,230,255,0.8)"/>
-          <rect x="25" y="9" width="4" height="6" rx="1" fill="rgba(200,230,255,0.8)"/>
-          <!-- Wheels -->
-          <circle cx="10" cy="28" r="3" fill="#333" stroke="white" stroke-width="1"/>
-          <circle cx="26" cy="28" r="3" fill="#333" stroke="white" stroke-width="1"/>
-          <!-- Direction indicator -->
-          <polygon points="18,2 21,5 15,5" fill="white"/>
-        </svg>
-      `;
-    }
-    
-    // Motorcycle icon
-    if (normalizedType.includes('moto') || normalizedType.includes('scooter') || normalizedType.includes('bike')) {
-      return `
-        <svg width="36" height="36" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" style="transform: rotate(${heading}deg); filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));">
-          <!-- Body -->
-          <ellipse cx="18" cy="18" rx="8" ry="5" fill="${color}" stroke="white" stroke-width="1.5"/>
-          <!-- Handlebar -->
-          <line x1="14" y1="10" x2="22" y2="10" stroke="${color}" stroke-width="3" stroke-linecap="round"/>
-          <!-- Wheels -->
-          <circle cx="18" cy="26" r="4" fill="#333" stroke="white" stroke-width="1"/>
-          <circle cx="18" cy="8" r="2" fill="#333" stroke="white" stroke-width="1"/>
-          <!-- Direction indicator -->
-          <polygon points="18,2 20,5 16,5" fill="white"/>
-        </svg>
-      `;
-    }
-    
-    // Default: Car icon
-    return `
-      <svg width="36" height="36" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" style="transform: rotate(${heading}deg); filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));">
-        <!-- Car body -->
-        <path d="M8,14 L8,24 L28,24 L28,14 L24,14 L22,8 L14,8 L12,14 Z" fill="${color}" stroke="white" stroke-width="1.5"/>
-        <!-- Windshield -->
-        <path d="M14,10 L22,10 L23,13 L13,13 Z" fill="rgba(200,230,255,0.8)"/>
-        <!-- Rear window -->
-        <path d="M13,15 L23,15 L23,18 L13,18 Z" fill="rgba(200,230,255,0.6)"/>
-        <!-- Headlights -->
-        <circle cx="12" cy="11" r="1.5" fill="white"/>
-        <circle cx="24" cy="11" r="1.5" fill="white"/>
-        <!-- Wheels -->
-        <circle cx="12" cy="26" r="3" fill="#333" stroke="white" stroke-width="1"/>
-        <circle cx="24" cy="26" r="3" fill="#333" stroke="white" stroke-width="1"/>
-        <!-- Direction indicator -->
-        <polygon points="18,4 21,8 15,8" fill="white"/>
-      </svg>
-    `;
   }
 
   togglePlayback() {
@@ -1883,25 +1764,32 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     
     const { lat, lng, heading } = position;
 
-    // Update vehicle marker position
+    // Update vehicle marker position (always smooth)
     if (this.playbackMarker) {
       this.playbackMarker.setLatLng([lat, lng]);
-      const currentPos = this.playbackPositions[this.playbackIndex];
-      const speed = currentPos?.speedKph || 0;
-      const statusColor = this.getStatusColor(currentPos);
-      const vehicleType = this.selectedVehicle?.type || 'car';
-      const vehicleName = this.selectedVehicle?.plate || '';
-      this.playbackMarker.setIcon(this.createPlaybackVehicleIcon(statusColor, heading, speed, vehicleType, vehicleName));
+      // Only recreate icon every 6th frame to avoid DOM thrashing
+      this._iconFrameCount++;
+      if (this._iconFrameCount >= 6) {
+        this._iconFrameCount = 0;
+        const currentPos = this.playbackPositions[this.playbackIndex];
+        const spd = currentPos?.speedKph || 0;
+        const col = this.getStatusColor(currentPos);
+        this.playbackMarker.setIcon(this.createPlaybackVehicleIcon(col, heading, spd));
+      }
     }
 
-    // Grow progress polyline in real-time as vehicle moves
+    // Grow progress polyline (throttled: every 4th frame)
     if (this.progressPolyline) {
-      this.progressPolyline.addLatLng([lat, lng]);
+      this._traceFrameCount++;
+      if (this._traceFrameCount >= 4) {
+        this._traceFrameCount = 0;
+        this.progressPolyline.addLatLng([lat, lng]);
+      }
     }
 
-    // Smooth camera follow
-    if (this.map && this.smoothFollowCamera) {
-      this.map.panTo([lat, lng], { animate: true, duration: 0.2, easeLinearity: 0.3 });
+    // Smooth camera follow (throttled with icon updates)
+    if (this.map && this.smoothFollowCamera && this._iconFrameCount === 0) {
+      this.map.panTo([lat, lng], { animate: true, duration: 0.3, easeLinearity: 0.25 });
     }
 
     if (progress < 1) {
