@@ -1,7 +1,8 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ApiService } from '../services/api.service';
 import { trigger, transition, style, animate } from '@angular/animations';
@@ -1751,7 +1752,8 @@ interface AccidentClaim {
     .photo-viewer-close:hover { background: rgba(255,255,255,0.4); }
   `]
 })
-export class AccidentClaimsComponent implements OnInit {
+export class AccidentClaimsComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   claims: AccidentClaim[] = [];
   filteredClaims: AccidentClaim[] = [];
   selectedClaim: AccidentClaim | null = null;
@@ -2166,5 +2168,10 @@ export class AccidentClaimsComponent implements OnInit {
 
   openPhotoFullscreen(photo: any) {
     this.fullscreenPhoto = photo;
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

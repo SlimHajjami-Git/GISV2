@@ -1,6 +1,7 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subject } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { DocumentRenewalPopupComponent } from './shared/document-renewal-popup.component';
 import { ApiService } from '../services/api.service';
@@ -644,7 +645,8 @@ export interface VehicleDocument {
     }
   `]
 })
-export class DocumentsComponent implements OnInit {
+export class DocumentsComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   allDocuments: VehicleDocument[] = [];
   filteredDocuments: VehicleDocument[] = [];
 
@@ -874,5 +876,10 @@ export class DocumentsComponent implements OnInit {
   exportToExcel(): void {
     // TODO: Implement Excel export
     console.log('Export to Excel');
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

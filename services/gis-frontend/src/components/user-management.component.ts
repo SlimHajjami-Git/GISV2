@@ -1,7 +1,8 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ToastService } from '../services/toast.service';
@@ -1482,7 +1483,8 @@ interface VehicleOption {
     }
   `]
 })
-export class UserManagementComponent implements OnInit {
+export class UserManagementComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   // Data
   users: User[] = [];
   filteredUsers: User[] = [];
@@ -2214,5 +2216,10 @@ export class UserManagementComponent implements OnInit {
       perms.canFleetManagement
     ].filter(Boolean).length;
     return `${count} module${count > 1 ? 's' : ''}`;
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

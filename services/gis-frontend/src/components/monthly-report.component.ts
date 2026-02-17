@@ -1,7 +1,8 @@
-import { Component, OnInit, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subject } from 'rxjs';
 import { ApiService, MonthlyFleetReport, ChartData, MultiSeriesChartData, Kpi, FleetAlert } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ButtonComponent, CardComponent } from './shared/ui';
@@ -16,7 +17,8 @@ Chart.register(...registerables);
   templateUrl: './monthly-report.component.html',
   styleUrls: ['./monthly-report.component.css']
 })
-export class MonthlyReportComponent implements OnInit, AfterViewInit {
+export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit {
+  private destroy$ = new Subject<void>();
   Math = Math; // Expose Math to template
   
   @ViewChild('fleetCompositionChart') fleetCompositionChartRef?: ElementRef<HTMLCanvasElement>;
@@ -352,5 +354,10 @@ export class MonthlyReportComponent implements OnInit, AfterViewInit {
 
   goBack() {
     this.router.navigate(['/reports']);
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

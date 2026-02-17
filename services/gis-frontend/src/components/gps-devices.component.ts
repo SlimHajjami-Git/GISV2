@@ -1,7 +1,8 @@
-import { Component, OnInit, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
+import { Subject } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -516,7 +517,8 @@ interface GPSDeviceView {
     }
   `]
 })
-export class GPSDevicesComponent implements OnInit {
+export class GPSDevicesComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   devices: GPSDeviceView[] = [];
   allDevices: GPSDeviceView[] = [];
   allVehicles: Vehicle[] = [];
@@ -626,5 +628,10 @@ export class GPSDevicesComponent implements OnInit {
 
   goToVehicle(vehicleId: string) {
     this.router.navigate(['/vehicles'], { queryParams: { id: vehicleId } });
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

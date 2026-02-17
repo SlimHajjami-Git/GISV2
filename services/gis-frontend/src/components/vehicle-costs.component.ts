@@ -1,7 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subject } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { VehicleCost, Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -784,7 +785,8 @@ import { AppLayoutComponent } from './shared/app-layout.component';
     }
   `]
 })
-export class VehicleCostsComponent implements OnInit {
+export class VehicleCostsComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   costs: VehicleCost[] = [];
   allCosts: VehicleCost[] = [];
   vehicles: Vehicle[] = [];
@@ -1007,5 +1009,10 @@ export class VehicleCostsComponent implements OnInit {
         error: (err) => console.error('Error deleting cost:', err)
       });
     }
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

@@ -1,6 +1,7 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subject } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ApiService } from '../services/api.service';
 import { trigger, transition, style, animate } from '@angular/animations';
@@ -623,7 +624,8 @@ interface Vehicle {
     }
   `]
 })
-export class RepairsComponent implements OnInit {
+export class RepairsComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   repairs: Repair[] = [];
   filteredRepairs: Repair[] = [];
   vehicles: Vehicle[] = [];
@@ -917,5 +919,10 @@ export class RepairsComponent implements OnInit {
     } else {
       this.cancelDelete();
     }
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

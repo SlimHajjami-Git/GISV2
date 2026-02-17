@@ -1,7 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subject } from 'rxjs';
 import { ApiService, DailyActivityReport, ActivitySegment } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 
@@ -799,7 +800,8 @@ import { AppLayoutComponent } from './shared/app-layout.component';
     }
   `]
 })
-export class DailyReportComponent implements OnInit {
+export class DailyReportComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   reports: DailyActivityReport[] = [];
   vehicles: any[] = [];
   loading = false;
@@ -883,5 +885,10 @@ export class DailyReportComponent implements OnInit {
       hour: '2-digit',
       minute: '2-digit'
     });
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

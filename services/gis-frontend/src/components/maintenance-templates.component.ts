@@ -1,6 +1,7 @@
-import { Component, OnInit, NgZone, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subject } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ApiService } from '../services/api.service';
 import { trigger, transition, style, animate } from '@angular/animations';
@@ -677,7 +678,8 @@ interface FlatRow {
     @media (max-width:768px) { .field-row { grid-template-columns:1fr; } .stats-bar { flex-wrap:wrap; gap:8px; } }
   `]
 })
-export class MaintenanceTemplatesComponent implements OnInit {
+export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   templates: MaintenanceTemplate[] = [];
   filteredTemplates: MaintenanceTemplate[] = [];
   selected: MaintenanceTemplate | null = null;
@@ -999,4 +1001,9 @@ export class MaintenanceTemplatesComponent implements OnInit {
   getActiveTemplates() { return this.templates.filter(t => t.isActive).length; }
   getCriticalTemplates() { return 0; }
   getAllTemplatesForDropdown() { return this.templates.filter(t => t.isActive); }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
 }

@@ -1,6 +1,7 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ApiService, FuelTypeDto, VehicleWithPositionDto, FuelEntryDto, FuelPriceFullDto } from '../services/api.service';
 declare const XLSX: any;
@@ -480,7 +481,8 @@ interface ColumnMapping {
     @media (max-width: 768px) { .form-grid { grid-template-columns: 1fr; } .mapping-grid { grid-template-columns: 1fr 1fr; } .stats-bar { flex-wrap: wrap; } }
   `]
 })
-export class CarburantComponent implements OnInit {
+export class CarburantComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   activeTab = 'manual';
   
   // Manual entry
@@ -699,5 +701,10 @@ export class CarburantComponent implements OnInit {
     if (entry.id && confirm('Supprimer cette entrée ?')) {
       this.apiService.deleteFuelEntry(entry.id).subscribe({ next: () => this.loadHistory(), error: (err) => console.error(err) });
     }
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

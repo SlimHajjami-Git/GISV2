@@ -1,6 +1,7 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subject } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { GaragePopupComponent } from './shared/garage-popup.component';
 import { ApiService } from '../services/api.service';
@@ -766,7 +767,8 @@ export const SUPPLIER_TYPES: Record<string, { label: string; icon: string }> = {
     }
   `]
 })
-export class SuppliersComponent implements OnInit {
+export class SuppliersComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   // Données
   allGarages: Garage[] = [];
   filteredGarages: Garage[] = [];
@@ -979,5 +981,10 @@ export class SuppliersComponent implements OnInit {
 
   viewGarageDetails(garage: Garage): void {
     this.openEditPopup(garage);
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

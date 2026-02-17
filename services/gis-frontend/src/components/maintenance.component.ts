@@ -1,7 +1,8 @@
-import { Component, OnInit, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subject } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { MaintenanceRecord, Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -481,7 +482,8 @@ import { MaintenancePopupComponent } from './shared/maintenance-popup.component'
     }
   `]
 })
-export class MaintenanceComponent implements OnInit {
+export class MaintenanceComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   records: MaintenanceRecord[] = [];
   allRecords: MaintenanceRecord[] = [];
   vehicles: Vehicle[] = [];
@@ -648,5 +650,10 @@ export class MaintenanceComponent implements OnInit {
         error: (err) => console.error('Error deleting record:', err)
       });
     }
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

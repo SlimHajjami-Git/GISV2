@@ -1,7 +1,8 @@
-import { Component, OnInit, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
+import { Subject } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { MockDataService } from '../services/mock-data.service';
 import { Employee, Company, Vehicle, DriverScore } from '../models/types';
@@ -16,7 +17,8 @@ import { DriverScoreDetailComponent } from './shared/driver-score-detail.compone
   templateUrl: './employees.component.html',
   styleUrls: ['./employees.component.css']
 })
-export class EmployeesComponent implements OnInit {
+export class EmployeesComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   drivers: any[] = [];
   allDrivers: any[] = [];
   allVehicles: Vehicle[] = [];
@@ -216,5 +218,10 @@ export class EmployeesComponent implements OnInit {
       const days = this.getDaysUntilPermitExpiry(d);
       return days <= 30;
     }).length;
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

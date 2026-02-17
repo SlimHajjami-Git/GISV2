@@ -1,8 +1,9 @@
-import { Component, OnInit, ViewChild, ElementRef, NgZone, ChangeDetectorRef, ApplicationRef, HostListener } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, ElementRef, NgZone, ChangeDetectorRef, ApplicationRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto } from '../services/api.service';
+import { Subject } from 'rxjs';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
@@ -17,7 +18,8 @@ Chart.register(...registerables);
   templateUrl: './reports.component.html',
   styleUrls: ['./reports.component.css']
 })
-export class ReportsComponent implements OnInit {
+export class ReportsComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   @ViewChild('chartCanvas') chartCanvas?: ElementRef<HTMLCanvasElement>;
   @ViewChild('secondaryChartCanvas') secondaryChartCanvas?: ElementRef<HTMLCanvasElement>;
   @ViewChild('kmBarChart') kmBarChartRef?: ElementRef<HTMLCanvasElement>;
@@ -5259,5 +5261,10 @@ export class ReportsComponent implements OnInit {
       'cancelled': '❌ Annulée'
     };
     return statuses[status] || status || '⏳ En attente';
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

@@ -1,8 +1,9 @@
-import { Component, OnInit, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone, ChangeDetectorRef, ApplicationRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { trigger, transition, style, animate, state } from '@angular/animations';
+import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { GeocodingService } from '../services/geocoding.service';
 import { Vehicle, Company } from '../models/types';
@@ -1828,7 +1829,8 @@ interface VehicleTrip {
     }
   `]
 })
-export class VehiclesComponent implements OnInit {
+export class VehiclesComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
   vehicles: VehicleExtended[] = [];
   allVehicles: VehicleExtended[] = [];
   filteredVehicles: VehicleExtended[] = [];
@@ -2313,5 +2315,10 @@ export class VehiclesComponent implements OnInit {
     if (days < 0) return `Visite expirée`;
     if (days === 0) return `Visite expire aujourd'hui`;
     return `Visite: ${days}j`;
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }
