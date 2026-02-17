@@ -25,7 +25,7 @@ import { ChatComponent } from './chat.component';
               <path d="M8 16L14 22L24 10" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </div>
-          <span class="brand-text">Calipso</span>
+          <span class="brand-text">Calypso</span>
         </div>
 
         <!-- Navigation Links -->
@@ -1020,7 +1020,7 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
 
   onHelpClick() {
     this.showUserMenu = false;
-    window.open('https://docs.calipso.ma', '_blank');
+    window.open('https://docs.calypso.ma', '_blank');
   }
 
   toggleNotifications(event: Event) {

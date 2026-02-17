@@ -617,7 +617,7 @@ export class AdminSettingsComponent implements OnInit {
   ];
 
   settings = {
-    platformName: 'CalypsoGIS',
+    platformName: 'Calypso',
     supportEmail: 'support@Calypso.tn',
     defaultLanguage: 'fr',
     defaultTimezone: 'Africa/Tunis',

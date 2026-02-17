@@ -18,9 +18,9 @@ import { AdminService } from '../services/admin.service';
       <div class="login-card">
         <div class="login-header">
           <div class="logo">
-            <span class="logo-icon">B</span>
+            <span class="logo-icon">C</span>
             <div class="logo-text">
-              <span class="brand">CalypsoGIS</span>
+              <span class="brand">Calypso</span>
               <span class="subtitle">Admin Portal</span>
             </div>
           </div>
@@ -105,7 +105,7 @@ import { AdminService } from '../services/admin.service';
             </svg>
             <span>Secured Access - Admin Only</span>
           </div>
-          <p class="copyright">2024 CalypsoGIS. All rights reserved.</p>
+          <p class="copyright">2024 Calypso. All rights reserved.</p>
         </div>
       </div>
 

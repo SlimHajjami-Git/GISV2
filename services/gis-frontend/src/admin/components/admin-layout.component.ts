@@ -19,7 +19,7 @@ interface NavItem {
       <aside class="sidebar" [class.collapsed]="sidebarCollapsed">
         <div class="sidebar-header">
           <div class="logo" *ngIf="!sidebarCollapsed">
-            <span class="logo-icon">B</span>
+            <span class="logo-icon">C</span>
             <span class="logo-text">Calypso<span class="highlight">Admin</span></span>
           </div>
           <button class="collapse-btn" (click)="toggleSidebar()">
