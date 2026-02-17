@@ -14,12 +14,14 @@ public class ToursController : ControllerBase
 {
     private readonly GisDbContext _context;
     private readonly IValhallaService _valhallaService;
+    private readonly IRedisCacheService _redisCache;
     private readonly ILogger<ToursController> _logger;
 
-    public ToursController(GisDbContext context, IValhallaService valhallaService, ILogger<ToursController> logger)
+    public ToursController(GisDbContext context, IValhallaService valhallaService, IRedisCacheService redisCache, ILogger<ToursController> logger)
     {
         _context = context;
         _valhallaService = valhallaService;
+        _redisCache = redisCache;
         _logger = logger;
     }
 
@@ -536,6 +538,80 @@ public class ToursController : ControllerBase
                 .Select(t => t.ActualDurationMinutes!.Value - t.EstimatedDurationMinutes)
                 .DefaultIfEmpty(0).Average()
         });
+    }
+
+    // ────────────────── LIVE TRACKING ──────────────────
+
+    [HttpGet("{id}/tracking")]
+    public async Task<ActionResult> GetTourTracking(int id)
+    {
+        var companyId = GetCompanyId();
+        var tour = await _context.Tours
+            .Include(t => t.Vehicle).ThenInclude(v => v!.GpsDevice)
+            .Include(t => t.Waypoints.OrderBy(w => w.SequenceOrder))
+            .FirstOrDefaultAsync(t => t.Id == id && t.CompanyId == companyId);
+
+        if (tour == null) return NotFound();
+
+        VehiclePositionCache? position = null;
+        if (tour.Vehicle?.GpsDevice != null)
+        {
+            position = await _redisCache.GetPositionAsync(tour.Vehicle.GpsDevice.DeviceUid);
+        }
+
+        var nextWaypoint = tour.Waypoints
+            .OrderBy(w => w.SequenceOrder)
+            .FirstOrDefault(w => !w.IsCompleted);
+
+        double? distanceToNext = null;
+        if (position != null && nextWaypoint != null)
+        {
+            distanceToNext = HaversineDistance(
+                position.Latitude, position.Longitude,
+                nextWaypoint.Latitude, nextWaypoint.Longitude);
+        }
+
+        var completedCount = tour.Waypoints.Count(w => w.IsCompleted);
+
+        return Ok(new
+        {
+            tourId = tour.Id,
+            tourStatus = tour.Status,
+            vehicle = position != null ? new
+            {
+                latitude = position.Latitude,
+                longitude = position.Longitude,
+                speedKph = position.SpeedKph,
+                headingDeg = position.HeadingDeg,
+                ignitionOn = position.IgnitionOn,
+                recordedAt = position.RecordedAt
+            } : null,
+            progress = new
+            {
+                completedWaypoints = completedCount,
+                totalWaypoints = tour.Waypoints.Count,
+                percentComplete = tour.Waypoints.Count > 0
+                    ? Math.Round((double)completedCount / tour.Waypoints.Count * 100, 0) : 0,
+                nextWaypointName = nextWaypoint?.Name ?? nextWaypoint?.Type,
+                distanceToNextMeters = distanceToNext.HasValue ? Math.Round(distanceToNext.Value) : (double?)null
+            },
+            waypoints = tour.Waypoints.OrderBy(w => w.SequenceOrder).Select(w => new
+            {
+                w.Id, w.Name, w.Type, w.Latitude, w.Longitude,
+                w.IsCompleted, w.ActualArrivalTime
+            })
+        });
+    }
+
+    private static double HaversineDistance(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double R = 6371000;
+        var dLat = (lat2 - lat1) * Math.PI / 180;
+        var dLon = (lon2 - lon1) * Math.PI / 180;
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180) *
+                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+        return R * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
     }
 
     // ────────────────── DTO MAPPING ──────────────────

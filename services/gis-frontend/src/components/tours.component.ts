@@ -301,6 +301,29 @@ declare let L: any;
         </div>
 
         <div class="cv-left-scroll">
+          <!-- Live tracking bar -->
+          <div class="tracking-bar" *ngIf="selectedTour.status === 'in_progress' && trackingData">
+            <div class="track-header">
+              <span class="track-live-dot"></span>
+              <strong>Suivi en direct</strong>
+              <span class="track-speed" *ngIf="trackingData.vehicle">{{trackingData.vehicle.speedKph | number:'1.0-0'}} km/h</span>
+            </div>
+            <div class="track-progress">
+              <div class="track-progress-bar" [style.width.%]="trackingData.progress?.percentComplete || 0"></div>
+            </div>
+            <div class="track-info">
+              <span>{{trackingData.progress?.completedWaypoints}}/{{trackingData.progress?.totalWaypoints}} points</span>
+              <span *ngIf="trackingData.progress?.nextWaypointName">Prochain: <strong>{{trackingData.progress.nextWaypointName}}</strong></span>
+              <span *ngIf="trackingData.progress?.distanceToNextMeters">{{trackingData.progress.distanceToNextMeters >= 1000 ? ((trackingData.progress.distanceToNextMeters / 1000 | number:'1.1-1') + ' km') : (trackingData.progress.distanceToNextMeters + ' m')}}</span>
+            </div>
+          </div>
+          <div class="tracking-bar track-offline" *ngIf="selectedTour.status === 'in_progress' && !trackingData?.vehicle">
+            <div class="track-header">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.56 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>
+              <span>Position GPS indisponible</span>
+            </div>
+          </div>
+
           <!-- Info section -->
           <div class="detail-section">
             <h4>Informations</h4>
@@ -607,6 +630,25 @@ declare let L: any;
     .p-card { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 7px; font-size: 12px; color: #78350f; }
     .p-dur { font-weight: 700; margin-left: auto; color: #92400e; }
 
+    /* ════ VEHICLE LIVE ICON (map) ════ */
+    :host ::ng-deep .vehicle-live-icon { background: none !important; border: none !important; }
+    :host ::ng-deep .vlive-dot { width: 16px; height: 16px; background: #2563eb; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 8px rgba(37,99,235,.5); position: relative; }
+    :host ::ng-deep .vlive-pulse { position: absolute; inset: -6px; border-radius: 50%; border: 2px solid #3b82f6; animation: vpulse 2s infinite; }
+    @keyframes vpulse { 0% { transform: scale(.8); opacity: 1; } 100% { transform: scale(2); opacity: 0; } }
+
+    /* ════ TRACKING BAR ════ */
+    .tracking-bar { padding: 12px 18px; background: linear-gradient(135deg, #eff6ff, #f0fdf4); border-bottom: 1px solid #dbeafe; }
+    .track-offline { background: #f8fafc; border-bottom: 1px solid #f1f5f9; }
+    .track-offline .track-header { color: #94a3b8; gap: 6px; }
+    .track-header { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #1e293b; margin-bottom: 8px; }
+    .track-header strong { font-weight: 700; }
+    .track-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: pulse 2s infinite; }
+    .track-speed { margin-left: auto; font-size: 14px; font-weight: 800; color: #2563eb; }
+    .track-progress { height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden; margin-bottom: 6px; }
+    .track-progress-bar { height: 100%; background: linear-gradient(90deg, #3b82f6, #22c55e); border-radius: 2px; transition: width .5s ease; }
+    .track-info { display: flex; justify-content: space-between; font-size: 10px; color: #64748b; }
+    .track-info strong { color: #1e293b; }
+
     /* ════ RESPONSIVE ════ */
     @media (max-width: 900px) {
       .cv-left, .dv-left { width: 100%; min-width: 100%; border-right: none; }
@@ -640,6 +682,9 @@ export class ToursComponent implements OnInit, OnDestroy {
   estimation: any = null;
   showCreateModal = false;
   showDetailModal = false;
+  trackingData: any = null;
+  private trackingInterval: any = null;
+  private vehicleMarker: any = null;
 
   tourForm = this.getEmptyForm();
 
@@ -654,6 +699,7 @@ export class ToursComponent implements OnInit, OnDestroy {
   private mapMarkers: any[] = [];
   private routeLayer: any = null;
   private routeLines: any[] = [];
+  private detailRouteLines: any[] = [];
 
   constructor(
     private apiService: ApiService,
@@ -688,12 +734,19 @@ export class ToursComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     if (this.searchSub) this.searchSub.unsubscribe();
+    this.stopTracking();
     this.destroyMaps();
   }
 
   destroyMaps() {
     if (this.tourMap) { this.tourMap.remove(); this.tourMap = null; }
     if (this.detailMap) { this.detailMap.remove(); this.detailMap = null; }
+  }
+
+  stopTracking() {
+    if (this.trackingInterval) { clearInterval(this.trackingInterval); this.trackingInterval = null; }
+    this.trackingData = null;
+    this.vehicleMarker = null;
   }
 
   loadData() {
@@ -753,14 +806,54 @@ export class ToursComponent implements OnInit, OnDestroy {
         this.currentView = 'detail';
         this.cdr.detectChanges();
         setTimeout(() => this.initDetailMap(), 200);
+        if (detail.status === 'in_progress') {
+          this.startTracking(detail.id);
+        }
       }
     });
   }
 
   closeDetail() {
+    this.stopTracking();
     this.currentView = 'list';
     this.selectedTour = null;
     this.destroyMaps();
+  }
+
+  startTracking(tourId: number) {
+    this.stopTracking();
+    this.fetchTracking(tourId);
+    this.trackingInterval = setInterval(() => this.fetchTracking(tourId), 10000);
+  }
+
+  fetchTracking(tourId: number) {
+    this.apiService.getTourTracking(tourId).subscribe({
+      next: (data) => {
+        this.trackingData = data;
+        this.updateVehicleMarker(data);
+        this.cdr.detectChanges();
+      },
+      error: () => {}
+    });
+  }
+
+  updateVehicleMarker(data: any) {
+    if (!this.detailMap || !data?.vehicle) return;
+    const { latitude, longitude, headingDeg } = data.vehicle;
+    if (this.vehicleMarker) {
+      this.vehicleMarker.setLatLng([latitude, longitude]);
+    } else {
+      const vehicleIcon = L.divIcon({
+        className: 'vehicle-live-icon',
+        html: '<div class="vlive-dot"><div class="vlive-pulse"></div></div>',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      });
+      this.vehicleMarker = L.marker([latitude, longitude], { icon: vehicleIcon, zIndexOffset: 1000 })
+        .addTo(this.detailMap)
+        .bindPopup(`<b>Position actuelle</b><br>${data.vehicle.speedKph?.toFixed(0) || 0} km/h`);
+    }
+    this.vehicleMarker.setPopupContent(`<b>Position actuelle</b><br>${data.vehicle.speedKph?.toFixed(0) || 0} km/h`);
   }
 
   // ═══════ FORM ═══════

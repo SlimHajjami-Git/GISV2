@@ -808,6 +808,10 @@ export class ApiService {
     return this.http.get<any>(`${this.API_URL}/tours/stats`, { headers: this.getHeaders() });
   }
 
+  getTourTracking(id: number): Observable<any> {
+    return this.http.get<any>(`${this.API_URL}/tours/${id}/tracking`, { headers: this.getHeaders() });
+  }
+
   // ==================== REPORTS ====================
 
   getReports(limit = 50): Observable<any[]> {

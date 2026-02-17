@@ -30,6 +30,9 @@ builder.Services.AddHostedService<GisAPI.Services.GpsTelemetryConsumer>();
 // Redis PubSub Consumer (Redis -> SignalR) - LOWER LATENCY than RabbitMQ
 builder.Services.AddHostedService<GisAPI.Services.RedisPubSubConsumer>();
 
+// Tour Monitoring Service (auto-start, waypoint validation, auto-complete)
+builder.Services.AddHostedService<GisAPI.Services.TourMonitoringService>();
+
 // Geocoding Service with cache
 builder.Services.AddSingleton<GisAPI.Domain.Interfaces.IGeocodingService, GisAPI.Services.GeocodingService>();
 
