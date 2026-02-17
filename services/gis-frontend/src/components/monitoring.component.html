@@ -334,124 +334,75 @@
     </div>
   </div>
   <!-- ═══════ FULLSCREEN PLAYBACK OVERLAY ═══════ -->
-  <div class="pb-overlay" *ngIf="isPlaybackLoaded" [@.disabled]="true">
-    <!-- Header -->
+  <div class="pb-overlay" *ngIf="isPlaybackLoaded">
+    <!-- Slim Header -->
     <div class="pb-header">
       <button class="pb-back" (click)="endPlayback()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-        Retour au suivi
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
       </button>
-      <div class="pb-vehicle-badge">
-        <svg width="16" height="16" viewBox="0 0 24 14" fill="currentColor"><path d="M18.92 2.01C18.72 1.42 18.16 1 17.5 1h-11c-.66 0-1.21.42-1.42 1.01L3 8v6c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1V8l-2.08-5.99zM6.5 11c-.83 0-1.5-.67-1.5-1.5S5.67 8 6.5 8 8 8.67 8 9.5 7.33 11 6.5 11zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 7l1.5-4.5h11L19 7H5z"/></svg>
-        <span>{{ selectedVehicle?.plate || selectedVehicle?.name }}</span>
-      </div>
-      <div class="pb-date-badge">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        {{ formatPlaybackDate(playbackFromDate) }} → {{ formatPlaybackDate(playbackToDate) }}
-      </div>
-    </div>
-
-    <!-- Map -->
-    <div class="pb-map-container">
-      <div id="playback-map" class="pb-map"></div>
-
-      <!-- Floating Live Info Panel (top-left) -->
-      <div class="pb-live-info">
-        <div class="pb-info-header">
-          <span class="pb-info-status" [ngClass]="getPlaybackStatusClass()">{{ getPlaybackStatusLabel() }}</span>
-          <span class="pb-info-point">{{ playbackIndex + 1 }} / {{ playbackPositions.length }}</span>
-        </div>
-        <div class="pb-info-row">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-          <span class="pb-info-address">{{ playbackCurrentAddress }}</span>
-        </div>
-        <div class="pb-info-row">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <span>{{ getPlaybackCurrentTime() }}</span>
-        </div>
-        <div class="pb-info-grid">
-          <div class="pb-info-metric">
-            <span class="pb-metric-value" [style.color]="getPlaybackSpeedColor()">{{ getPlaybackCurrentSpeed() }}</span>
-            <span class="pb-metric-label">km/h</span>
-          </div>
-          <div class="pb-info-metric">
-            <span class="pb-metric-value" [style.color]="getPlaybackIgnitionColor()">{{ getPlaybackIgnitionLabel() }}</span>
-            <span class="pb-metric-label">Moteur</span>
-          </div>
-          <div class="pb-info-metric">
-            <span class="pb-metric-value" style="color: #f59e0b;">{{ getPlaybackFuel() }}</span>
-            <span class="pb-metric-label">Carburant</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Route Stats (top-right) -->
-      <div class="pb-stats">
-        <div class="pb-stat-item">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
-          <div>
-            <span class="pb-stat-value">{{ playbackPositions.length }}</span>
-            <span class="pb-stat-label">Points GPS</span>
-          </div>
-        </div>
-        <div class="pb-stat-item">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <div>
-            <span class="pb-stat-value">{{ getPlaybackTotalDuration() }}</span>
-            <span class="pb-stat-label">Durée</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Map style switcher -->
-      <div class="pb-layers">
-        <button (click)="changeMapStyle('streets')" [class.active]="mapStyle === 'streets'" title="Plan">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
-        </button>
-        <button (click)="changeMapStyle('satellite')" [class.active]="mapStyle === 'satellite'" title="Satellite">
+      <span class="pb-title">{{ selectedVehicle?.plate || selectedVehicle?.name }}</span>
+      <span class="pb-sep">·</span>
+      <span class="pb-date">{{ formatPlaybackDate(playbackFromDate) }} → {{ formatPlaybackDate(playbackToDate) }}</span>
+      <span class="pb-sep">·</span>
+      <span class="pb-pts">{{ playbackPositions.length }} pts · {{ getPlaybackTotalDuration() }}</span>
+      <div class="pb-header-right">
+        <button class="pb-layer-btn" (click)="changeMapStyle(mapStyle === 'satellite' ? 'streets' : 'satellite')" [title]="mapStyle === 'satellite' ? 'Plan' : 'Satellite'">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
         </button>
       </div>
     </div>
 
-    <!-- Bottom Control Bar -->
-    <div class="pb-controls">
-      <div class="pb-controls-inner">
-        <!-- Transport buttons -->
+    <!-- Full Map (no floating panels) -->
+    <div class="pb-map-container">
+      <div id="playback-map" class="pb-map"></div>
+    </div>
+
+    <!-- Compact Bottom Bar -->
+    <div class="pb-bar">
+      <!-- Live info strip -->
+      <div class="pb-info-strip">
+        <span class="pb-info-addr" title="{{ playbackCurrentAddress }}">{{ playbackCurrentAddress }}</span>
+        <span class="pb-info-time">{{ getPlaybackCurrentTime() }}</span>
+      </div>
+      <!-- Controls row -->
+      <div class="pb-bar-row">
+        <!-- Live metrics -->
+        <div class="pb-metrics">
+          <div class="pb-metric">
+            <span class="pb-mv" [style.color]="getPlaybackSpeedColor()">{{ getPlaybackCurrentSpeed() }}</span>
+            <span class="pb-ml">km/h</span>
+          </div>
+          <div class="pb-metric">
+            <span class="pb-mv" [style.color]="getPlaybackIgnitionColor()">{{ getPlaybackIgnitionLabel() }}</span>
+            <span class="pb-ml">Moteur</span>
+          </div>
+          <div class="pb-metric">
+            <span class="pb-mv" style="color:#f59e0b">{{ getPlaybackFuel() }}</span>
+            <span class="pb-ml">Carburant</span>
+          </div>
+        </div>
+
+        <!-- Transport -->
         <div class="pb-transport">
-          <button class="pb-ctrl-btn" (click)="resetPlayback()" title="Début">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+          <button (click)="resetPlayback()" title="Début"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg></button>
+          <button (click)="previousPoint()" title="Précédent"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
+          <button class="pb-play" (click)="togglePlayback()">
+            <svg *ngIf="!isPlaying" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <svg *ngIf="isPlaying" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
           </button>
-          <button class="pb-ctrl-btn" (click)="previousPoint()" title="Précédent">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-          </button>
-          <button class="pb-play-btn" (click)="togglePlayback()">
-            <svg *ngIf="!isPlaying" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            <svg *ngIf="isPlaying" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-          </button>
-          <button class="pb-ctrl-btn" (click)="nextPoint()" title="Suivant">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-          <button class="pb-ctrl-btn" (click)="skipToEnd()" title="Fin">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
-          </button>
+          <button (click)="nextPoint()" title="Suivant"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
+          <button (click)="skipToEnd()" title="Fin"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg></button>
         </div>
 
-        <!-- Progress slider -->
-        <div class="pb-progress-wrap">
+        <!-- Timeline -->
+        <div class="pb-timeline">
           <input type="range" class="pb-slider" [min]="0" [max]="100" [ngModel]="playbackProgress" (ngModelChange)="onPlaybackProgressChange($event)">
+          <span class="pb-counter">{{ playbackIndex + 1 }}/{{ playbackPositions.length }}</span>
         </div>
 
-        <!-- Speed selector -->
+        <!-- Speed -->
         <div class="pb-speed">
           <button *ngFor="let s of playbackSpeeds" [class.active]="playbackSpeed === s" (click)="onPlaybackSpeedChange(s)">{{ s }}x</button>
-        </div>
-
-        <!-- Legend -->
-        <div class="pb-legend">
-          <span class="pb-leg"><span class="pb-leg-dot" style="background:#22c55e"></span>En marche</span>
-          <span class="pb-leg"><span class="pb-leg-dot" style="background:#f97316"></span>Ralenti</span>
-          <span class="pb-leg"><span class="pb-leg-dot" style="background:#ef4444"></span>Arrêt</span>
         </div>
       </div>
     </div>
