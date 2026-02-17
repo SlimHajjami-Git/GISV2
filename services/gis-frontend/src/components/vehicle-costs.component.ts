@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { Subject } from 'rxjs';
+import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { VehicleCost, Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';

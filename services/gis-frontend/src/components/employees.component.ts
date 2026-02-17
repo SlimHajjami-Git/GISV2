@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, NgZone, ChangeDetectorRef, ApplicationRef
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
-import { Subject } from 'rxjs';
+import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { MockDataService } from '../services/mock-data.service';
 import { Employee, Company, Vehicle, DriverScore } from '../models/types';
@@ -53,7 +53,7 @@ export class EmployeesComponent implements OnInit, OnDestroy {
   }
 
   loadData() {
-    this.apiService.getDrivers().subscribe({
+    this.apiService.getDrivers().pipe(takeUntil(this.destroy$)).subscribe({
       next: (drivers) => {
         this.ngZone.run(() => {
           this.allDrivers = drivers;
@@ -64,7 +64,7 @@ export class EmployeesComponent implements OnInit, OnDestroy {
       error: (err) => console.error('Error loading drivers:', err)
     });
 
-    this.apiService.getVehicles().subscribe({
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => {
         this.ngZone.run(() => {
           this.allVehicles = vehicles;
@@ -112,7 +112,7 @@ export class EmployeesComponent implements OnInit, OnDestroy {
   saveDriver(driverData: any) {
     this.errorMessage = '';
     if (this.selectedDriver?.id) {
-      this.apiService.updateDriver(this.selectedDriver.id, driverData).subscribe({
+      this.apiService.updateDriver(this.selectedDriver.id, driverData).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.closePopup();
           this.loadData();
@@ -125,7 +125,7 @@ export class EmployeesComponent implements OnInit, OnDestroy {
         }
       });
     } else {
-      this.apiService.createDriver(driverData).subscribe({
+      this.apiService.createDriver(driverData).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.closePopup();
           this.loadData();
@@ -142,7 +142,7 @@ export class EmployeesComponent implements OnInit, OnDestroy {
 
   deleteDriver(driver: any) {
     if (confirm(`Supprimer le chauffeur ${driver.firstName} ${driver.lastName} ?`)) {
-      this.apiService.deleteDriver(driver.id).subscribe({
+      this.apiService.deleteDriver(driver.id).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => this.loadData(),
         error: (err: any) => console.error('Error deleting driver:', err)
       });

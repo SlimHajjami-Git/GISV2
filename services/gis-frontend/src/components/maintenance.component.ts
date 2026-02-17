@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, NgZone, ChangeDetectorRef, ApplicationRef
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { Subject } from 'rxjs';
+import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { MaintenanceRecord, Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -514,7 +514,7 @@ export class MaintenanceComponent implements OnInit, OnDestroy {
   }
 
   loadData() {
-    this.apiService.getMaintenanceRecords().subscribe({
+    this.apiService.getMaintenanceRecords().pipe(takeUntil(this.destroy$)).subscribe({
       next: (records) => {
         this.ngZone.run(() => {
           this.allRecords = records;
@@ -526,7 +526,7 @@ export class MaintenanceComponent implements OnInit, OnDestroy {
       error: (err) => console.error('Error loading maintenance:', err)
     });
 
-    this.apiService.getVehicles().subscribe({
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => {
         this.ngZone.run(() => {
           this.vehicles = vehicles;
@@ -628,13 +628,13 @@ export class MaintenanceComponent implements OnInit, OnDestroy {
   saveRecord(data: Partial<MaintenanceRecord>) {
     if (this.selectedRecord?.id) {
       // Update existing record
-      this.apiService.updateMaintenanceRecord(parseInt(this.selectedRecord.id), data).subscribe({
+      this.apiService.updateMaintenanceRecord(parseInt(this.selectedRecord.id), data).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => this.loadData(),
         error: (err) => console.error('Error updating record:', err)
       });
     } else {
       // Create new record
-      this.apiService.createMaintenanceRecord(data).subscribe({
+      this.apiService.createMaintenanceRecord(data).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => this.loadData(),
         error: (err) => console.error('Error creating record:', err)
       });
@@ -645,7 +645,7 @@ export class MaintenanceComponent implements OnInit, OnDestroy {
 
   deleteRecord(record: MaintenanceRecord) {
     if (confirm('Êtes-vous sûr de vouloir supprimer cet enregistrement ?')) {
-      this.apiService.deleteMaintenanceRecord(parseInt(record.id)).subscribe({
+      this.apiService.deleteMaintenanceRecord(parseInt(record.id)).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => this.loadData(),
         error: (err) => console.error('Error deleting record:', err)
       });

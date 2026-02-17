@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Subject } from 'rxjs';
+import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ApiService } from '../services/api.service';
 import { trigger, transition, style, animate } from '@angular/animations';
@@ -668,7 +668,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
   }
 
   loadVehicles() {
-    this.apiService.getVehicles().subscribe({
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => {
         this.vehicles = vehicles.map(v => ({
           id: v.id,
@@ -688,7 +688,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
   }
 
   loadRepairs() {
-    this.apiService.getRepairs({ pageSize: 100 }).subscribe({
+    this.apiService.getRepairs({ pageSize: 100 }).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {
         this.repairs = result.items.map(r => ({
           id: r.id,
@@ -906,7 +906,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
 
   deleteRepair() {
     if (this.repairToDelete && this.repairToDelete.id) {
-      this.apiService.deleteRepair(this.repairToDelete.id).subscribe({
+      this.apiService.deleteRepair(this.repairToDelete.id).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.loadRepairs();
           this.cancelDelete();

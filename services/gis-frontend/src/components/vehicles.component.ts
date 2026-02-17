@@ -1895,7 +1895,7 @@ export class VehiclesComponent implements OnInit, OnDestroy {
   }
 
   loadVehicles() {
-    this.apiService.getVehicles().subscribe({
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => {
         this.ngZone.run(() => {
           this.allVehicles = vehicles.map(v => ({
@@ -2013,7 +2013,7 @@ export class VehiclesComponent implements OnInit, OnDestroy {
 
   loadVehicleData(vehicle: Vehicle) {
     // Load vehicle details from API
-    this.apiService.getVehicle(parseInt(vehicle.id)).subscribe({
+    this.apiService.getVehicle(parseInt(vehicle.id)).pipe(takeUntil(this.destroy$)).subscribe({
       next: (details) => {
         if (details) {
           // Update selectedDetailVehicle with API data
@@ -2037,7 +2037,7 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     // Load vehicle trips from API
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - 1);
-    this.apiService.getVehicleTrips(parseInt(vehicle.id), startDate, new Date()).subscribe({
+    this.apiService.getVehicleTrips(parseInt(vehicle.id), startDate, new Date()).pipe(takeUntil(this.destroy$)).subscribe({
       next: (trips) => {
         this.vehicleTrips = trips.map((t: any) => ({
           id: t.id?.toString() || '',
@@ -2055,7 +2055,7 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     });
 
     // Load costs/expenses from API
-    this.apiService.getCosts({ vehicleId: parseInt(vehicle.id) }).subscribe({
+    this.apiService.getCosts({ vehicleId: parseInt(vehicle.id) }).pipe(takeUntil(this.destroy$)).subscribe({
       next: (costs) => {
         this.vehicleExpenses = costs.map((c: any) => ({
           id: c.id?.toString() || '',
@@ -2076,14 +2076,14 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     
     // Get current location if GPS enabled
     if (vehicle.hasGPS) {
-      this.apiService.getVehicleHistory(parseInt(vehicle.id), new Date(Date.now() - 86400000), new Date(), 1).subscribe({
+      this.apiService.getVehicleHistory(parseInt(vehicle.id), new Date(Date.now() - 86400000), new Date(), 1).pipe(takeUntil(this.destroy$)).subscribe({
         next: (positions) => {
           if (positions.length > 0) {
             const pos = positions[0];
             if (pos.address) {
               this.currentLocation = pos.address;
             } else {
-              this.geocodingService.reverseGeocode(pos.latitude, pos.longitude).subscribe({
+              this.geocodingService.reverseGeocode(pos.latitude, pos.longitude).pipe(takeUntil(this.destroy$)).subscribe({
                 next: (address) => {
                   this.currentLocation = address || `${pos.latitude.toFixed(5)}, ${pos.longitude.toFixed(5)}`;
                   this.cdr.detectChanges();
@@ -2100,7 +2100,7 @@ export class VehiclesComponent implements OnInit, OnDestroy {
       const monthStart = new Date();
       monthStart.setDate(1);
       monthStart.setHours(0, 0, 0, 0);
-      this.apiService.getVehicleGpsStats(parseInt(vehicle.id), monthStart, new Date()).subscribe({
+      this.apiService.getVehicleGpsStats(parseInt(vehicle.id), monthStart, new Date()).pipe(takeUntil(this.destroy$)).subscribe({
         next: (stats) => {
           if (this.selectedDetailVehicle) {
             this.selectedDetailVehicle.totalTrips = stats.tripCount || 0;
@@ -2118,7 +2118,7 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     this.syncingMileage = true;
     const vehicleId = parseInt(this.selectedDetailVehicle.id);
     
-    this.apiService.syncVehicleMileage(vehicleId).subscribe({
+    this.apiService.syncVehicleMileage(vehicleId).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result: any) => {
         this.syncingMileage = false;
         if (result.updated && this.selectedDetailVehicle) {

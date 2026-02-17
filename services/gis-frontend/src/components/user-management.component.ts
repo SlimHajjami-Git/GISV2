@@ -1658,7 +1658,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
   }
 
   loadSubscriptionPermissions() {
-    this.apiService.getCurrentSubscription().subscribe({
+    this.apiService.getCurrentSubscription().pipe(takeUntil(this.destroy$)).subscribe({
       next: (data) => {
         console.log('Subscription data received:', data);
         const sub = data.subscriptionType || data.SubscriptionType;
@@ -1740,7 +1740,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
   }
 
   loadRoles() {
-    this.apiService.getRoles(false).subscribe({
+    this.apiService.getRoles(false).pipe(takeUntil(this.destroy$)).subscribe({
       next: (roles) => {
         this.roles = roles;
         this.cdr.detectChanges();
@@ -1753,7 +1753,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
   }
 
   loadUsers() {
-    this.apiService.getUsers().subscribe({
+    this.apiService.getUsers().pipe(takeUntil(this.destroy$)).subscribe({
       next: (users) => {
         this.users = users;
         this.filterUsers();
@@ -1986,7 +1986,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
 
   deleteUser(user: User) {
     if (confirm(`Êtes-vous sûr de vouloir supprimer ${user.name} ?`)) {
-      this.apiService.deleteUser(user.id).subscribe({
+      this.apiService.deleteUser(user.id).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.toast.success('Succès', 'Utilisateur supprimé');
           this.loadUsers();
@@ -2002,7 +2002,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
   // ============ VEHICLE ASSIGNMENT HELPERS ============
 
   loadAvailableVehicles() {
-    this.apiService.getVehicles().subscribe({
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles: any[]) => {
         this.availableVehicles = vehicles.map((v: any) => ({
           id: v.id,
@@ -2165,7 +2165,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
       return;
     }
     if (confirm(`Êtes-vous sûr de vouloir supprimer le rôle "${role.name}" ?`)) {
-      this.apiService.deleteRole(role.id).subscribe({
+      this.apiService.deleteRole(role.id).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.toast.success('Succès', 'Rôle supprimé');
           this.loadRoles();
