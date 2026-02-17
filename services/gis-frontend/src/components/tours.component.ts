@@ -158,11 +158,12 @@ declare let L: any;
               </div>
               <div class="field">
                 <label>Chauffeur</label>
-                <div class="driver-display" *ngIf="tourForm.vehicleId">
-                  <span *ngIf="getVehicleDriver()">{{getVehicleDriver()}}</span>
-                  <span class="driver-none" *ngIf="!getVehicleDriver()">Aucun chauffeur assigne</span>
+                <div class="driver-chip" [class.driver-assigned]="tourForm.vehicleId && getVehicleDriver()" [class.driver-empty]="!tourForm.vehicleId || !getVehicleDriver()">
+                  <svg class="driver-chip-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  <span class="driver-chip-text" *ngIf="tourForm.vehicleId && getVehicleDriver()">{{getVehicleDriver()}}</span>
+                  <span class="driver-chip-text" *ngIf="tourForm.vehicleId && !getVehicleDriver()">Aucun chauffeur</span>
+                  <span class="driver-chip-text" *ngIf="!tourForm.vehicleId">—</span>
                 </div>
-                <div class="driver-display driver-none" *ngIf="!tourForm.vehicleId">Selectionnez un vehicule</div>
               </div>
             </div>
             <div class="field-row">
@@ -572,8 +573,12 @@ declare let L: any;
     .field input:focus, .field select:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 2px rgba(59,130,246,.12); }
     .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-    .driver-display { padding: 8px 11px; border: 1px solid #e2e8f0; border-radius: 7px; font-size: 13px; color: #0f172a; background: #f8fafc; min-height: 18px; }
-    .driver-none { color: #94a3b8; font-style: italic; }
+    .driver-chip { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 7px; font-size: 13px; min-height: 18px; transition: all .2s; }
+    .driver-assigned { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+    .driver-assigned .driver-chip-icon { color: #22c55e; }
+    .driver-empty { background: #f8fafc; border: 1px dashed #cbd5e1; color: #94a3b8; }
+    .driver-empty .driver-chip-icon { color: #cbd5e1; }
+    .driver-chip-text { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     .recurrence-config { padding: 10px 0 4px; }
     .rc-label { font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 6px; display: block; }

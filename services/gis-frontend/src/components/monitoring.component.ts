@@ -45,6 +45,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   playbackFromDate = '';
   playbackToDate = '';
   isPlaybackLoaded = false;
+  private monitoringMap: L.Map | null = null; // Saved reference to monitoring map during playback
+  private playbackOverlayMap: L.Map | null = null; // Dedicated playback map
+  playbackCurrentAddress = 'Chargement...'; // Live address in playback overlay
+  private playbackAddressCache = new Map<string, string>(); // Cache for playback addresses
+  private playbackAddressThrottle = 0; // Throttle counter for address updates
   isPlaying = false;
   playbackProgress = 0;
   playbackSpeed = 1;
@@ -167,6 +172,16 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     if (this.signalRSubscription) {
       this.signalRSubscription.unsubscribe();
+    }
+    // Clean up overlay map if active
+    if (this.playbackOverlayMap) {
+      this.playbackOverlayMap.remove();
+      this.playbackOverlayMap = null;
+    }
+    // Restore monitoring map ref before removing
+    if (this.monitoringMap) {
+      this.map = this.monitoringMap;
+      this.monitoringMap = null;
     }
     if (this.map) {
       this.map.remove();
@@ -716,6 +731,13 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   changeMapStyle(style: 'streets' | 'satellite' | 'terrain') {
     this.mapStyle = style;
     this.showLayersMenu = false;
+
+    // During playback overlay: just swap tiles, don't destroy map
+    if (this.playbackOverlayMap && this.map === this.playbackOverlayMap) {
+      this.applyTileLayer(this.playbackOverlayMap);
+      return;
+    }
+
     if (this.map) {
       this.map.remove();
       this.map = null;
@@ -877,36 +899,39 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           return;
         }
 
-        this.isPlaybackLoaded = true;
         this.playbackIndex = 0;
         this.playbackProgress = 0;
 
-        // Switch to satellite map for better playback visualization (like Wialon)
-        if (this.mapStyle !== 'satellite') {
-          this.previousMapStyle = this.mapStyle; // Store current style to restore later
-          this.changeMapStyle('satellite');
-        }
+        // Save monitoring map and show overlay
+        this.monitoringMap = this.map;
+        this.isPlaybackLoaded = true;
+        this.playbackCurrentAddress = 'Chargement...';
+        this.cdr.detectChanges();
 
-        // Hide the live marker of the selected vehicle during playback
-        this.hideLiveMarker(vehicleId.toString());
+        // Initialize overlay map after DOM renders
+        setTimeout(() => {
+          this.initPlaybackOverlayMap();
 
-        // Process route: batch road correction via Valhalla (10 points at a time)
-        this.processPlaybackRoute().then(() => {
-          this.playbackLoading = false;
-          this.drawPlaybackRoute();
-          this.updatePlaybackMarker();
-          this.cdr.detectChanges();
-          console.log(`[Playback] Loaded for vehicle ${vehicleId}: ${this.playbackPositions.length} GPS points -> ${this.matchedRouteCoords.length} road points`);
-        }).catch((err: Error) => {
-          console.error('[Playback] Batch road correction FAILED, using raw GPS:', err);
-          this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
-          this.segmentBoundaries = [];
-          this.matchedRouteIndex = 0;
-          this.playbackLoading = false;
-          this.drawPlaybackRoute();
-          this.updatePlaybackMarker();
-          this.cdr.detectChanges();
-        });
+          // Process route: batch road correction via Valhalla
+          this.processPlaybackRoute().then(() => {
+            this.playbackLoading = false;
+            this.drawPlaybackRoute();
+            this.updatePlaybackMarker();
+            this.updatePlaybackAddress();
+            this.cdr.detectChanges();
+            console.log(`[Playback] Loaded for vehicle ${vehicleId}: ${this.playbackPositions.length} GPS points -> ${this.matchedRouteCoords.length} road points`);
+          }).catch((err: Error) => {
+            console.error('[Playback] Batch road correction FAILED, using raw GPS:', err);
+            this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
+            this.segmentBoundaries = [];
+            this.matchedRouteIndex = 0;
+            this.playbackLoading = false;
+            this.drawPlaybackRoute();
+            this.updatePlaybackMarker();
+            this.updatePlaybackAddress();
+            this.cdr.detectChanges();
+          });
+        }, 100);
       },
       error: (err) => {
         console.error('Error loading playback data:', err);
@@ -1213,149 +1238,40 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }).addTo(this.map);
     }
 
-    // Update popup with detailed position info
-    const time = new Date(position.recordedAt).toLocaleString('fr-FR');
+    // Build popup with detailed position info including cached address
+    const time = new Date(position.recordedAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const statusLabel = this.getPlaybackStatusLabel();
     const ignitionStatus = position.ignitionOn ? 'Allumé' : 'Éteint';
-    
     const ignitionColor = position.ignitionOn ? '#10b981' : '#ef4444';
-    const ignitionBg = position.ignitionOn ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+    const fuelDisplay = position.fuelRaw != null ? `${position.fuelRaw}%` : 'N/A';
+    const fuelColor = position.fuelRaw != null ? '#f59e0b' : '#94a3b8';
+    const addrKey = `${position.latitude.toFixed(4)},${position.longitude.toFixed(4)}`;
+    const cachedAddr = this.playbackAddressCache.get(addrKey) || '';
     
     this.playbackMarker.bindPopup(`
-      <div style="
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        min-width: 260px;
-        padding: 0;
-        margin: -14px -20px;
-      ">
-        <!-- Header -->
-        <div style="
-          background: linear-gradient(135deg, ${statusColor} 0%, ${statusColor}dd 100%);
-          padding: 12px 16px;
-          border-radius: 8px 8px 0 0;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-        ">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">
-              <polygon points="5 3 19 12 5 21 5 3"/>
-            </svg>
-            <span style="font-weight: 600; font-size: 13px; color: #fff;">${statusLabel}</span>
-          </div>
-          <div style="
-            background: rgba(255,255,255,0.2);
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-            color: #fff;
-          ">${time.split(' ')[1] || time}</div>
+      <div style="font-family:'Inter',-apple-system,sans-serif;min-width:240px;padding:0;margin:-14px -20px;">
+        <div style="background:linear-gradient(135deg,${statusColor},${statusColor}dd);padding:10px 14px;border-radius:8px 8px 0 0;display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-weight:600;font-size:12px;color:#fff;">${statusLabel}</span>
+          <span style="background:rgba(255,255,255,0.2);padding:3px 8px;border-radius:10px;font-size:10px;font-weight:600;color:#fff;">${time}</span>
         </div>
-        
-        <!-- Speed display -->
-        <div style="
-          background: #fff;
-          padding: 16px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 16px;
-          border-bottom: 1px solid #e5e7eb;
-        ">
-          <div style="text-align: center;">
-            <div style="font-size: 32px; font-weight: 700; color: #1e293b; line-height: 1;">${speed.toFixed(0)}</div>
-            <div style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">km/h</div>
-          </div>
-          <div style="width: 1px; height: 40px; background: #e5e7eb;"></div>
-          <div style="text-align: center;">
-            <div style="font-size: 24px; font-weight: 600; color: #1e293b; line-height: 1;">${heading}°</div>
-            <div style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Direction</div>
-          </div>
+        ${cachedAddr ? `<div style="padding:8px 14px;background:#fff;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6366f1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📍 ${cachedAddr}</div>` : ''}
+        <div style="background:#fff;padding:12px 14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center;">
+          <div><div style="font-size:22px;font-weight:700;color:#1e293b;">${speed.toFixed(0)}</div><div style="font-size:9px;color:#94a3b8;text-transform:uppercase;">km/h</div></div>
+          <div><div style="font-size:14px;font-weight:700;color:${ignitionColor};">${ignitionStatus}</div><div style="font-size:9px;color:#94a3b8;text-transform:uppercase;">Moteur</div></div>
+          <div><div style="font-size:14px;font-weight:700;color:${fuelColor};">${fuelDisplay}</div><div style="font-size:9px;color:#94a3b8;text-transform:uppercase;">Carburant</div></div>
         </div>
-        
-        <!-- Info grid -->
-        <div style="padding: 12px 16px; background: #f8fafc;">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-            <!-- Ignition -->
-            <div style="
-              background: ${ignitionBg};
-              padding: 10px 12px;
-              border-radius: 8px;
-              display: flex;
-              align-items: center;
-              gap: 8px;
-            ">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${ignitionColor}" stroke-width="2">
-                <path d="M15 7h3a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-3"/>
-                <path d="M9 17H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-              <div>
-                <div style="font-size: 10px; color: #64748b;">Moteur</div>
-                <div style="font-size: 12px; font-weight: 600; color: ${ignitionColor};">${ignitionStatus}</div>
-              </div>
-            </div>
-            
-            <!-- Fuel -->
-            ${position.fuelRaw ? `
-            <div style="
-              background: rgba(245, 158, 11, 0.1);
-              padding: 10px 12px;
-              border-radius: 8px;
-              display: flex;
-              align-items: center;
-              gap: 8px;
-            ">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
-                <path d="M3 22V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/>
-                <path d="M15 11h3.5a2 2 0 0 1 2 2v3a1.5 1.5 0 0 0 3 0v-7l-3-3"/>
-                <path d="M5 10h8"/>
-              </svg>
-              <div>
-                <div style="font-size: 10px; color: #64748b;">Carburant</div>
-                <div style="font-size: 12px; font-weight: 600; color: #f59e0b;">${position.fuelRaw}%</div>
-              </div>
-            </div>
-            ` : `
-            <div style="
-              background: rgba(100, 116, 139, 0.1);
-              padding: 10px 12px;
-              border-radius: 8px;
-              display: flex;
-              align-items: center;
-              gap: 8px;
-            ">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="8" x2="12" y2="12"/>
-                <line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              <div>
-                <div style="font-size: 10px; color: #64748b;">Carburant</div>
-                <div style="font-size: 12px; font-weight: 600; color: #64748b;">N/A</div>
-              </div>
-            </div>
-            `}
-          </div>
-          
-          <!-- Coordinates -->
-          <div style="
-            margin-top: 8px;
-            padding: 8px 10px;
-            background: #fff;
-            border-radius: 6px;
-            border: 1px solid #e2e8f0;
-            font-size: 11px;
-            color: #64748b;
-            font-family: 'SF Mono', Monaco, monospace;
-            text-align: center;
-          ">
-            📍 ${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)}
-          </div>
+        <div style="padding:6px 14px 8px;background:#f8fafc;font-size:10px;color:#94a3b8;font-family:monospace;text-align:center;border-radius:0 0 8px 8px;">
+          ${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)} · ${heading}°
         </div>
       </div>
     `);
+
+    // Throttled address update for the live info panel (every 5th marker update)
+    this.playbackAddressThrottle++;
+    if (this.playbackAddressThrottle >= 5) {
+      this.playbackAddressThrottle = 0;
+      this.updatePlaybackAddress();
+    }
   }
 
   // Create an enhanced vehicle icon for playback with status color and direction
@@ -2465,7 +2381,127 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  // End playback - called when user clicks "Terminer" button
+  // ═══════ PLAYBACK OVERLAY MAP ═══════
+
+  initPlaybackOverlayMap() {
+    const mapEl = document.getElementById('playback-map');
+    if (!mapEl) { console.error('[Playback] playback-map element not found'); return; }
+
+    const startPos = this.playbackPositions[0];
+    const center: L.LatLngExpression = startPos ? [startPos.latitude, startPos.longitude] : [36.8, 10.18];
+
+    this.playbackOverlayMap = L.map(mapEl, {
+      center,
+      zoom: 15,
+      zoomControl: false,
+      attributionControl: false
+    });
+
+    // Apply current map style
+    this.applyTileLayer(this.playbackOverlayMap);
+
+    // Swap this.map to overlay map so all existing playback methods work
+    this.map = this.playbackOverlayMap;
+  }
+
+  private applyTileLayer(targetMap: L.Map) {
+    // Remove existing tile layers
+    targetMap.eachLayer((layer: L.Layer) => {
+      if (layer instanceof L.TileLayer) { targetMap.removeLayer(layer); }
+    });
+
+    let tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    if (this.mapStyle === 'satellite') {
+      tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    } else if (this.mapStyle === 'terrain') {
+      tileUrl = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
+    }
+    L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(targetMap);
+  }
+
+  // ═══════ PLAYBACK LIVE INFO HELPERS ═══════
+
+  updatePlaybackAddress() {
+    if (this.playbackPositions.length === 0) return;
+    const pos = this.playbackPositions[this.playbackIndex];
+    if (!pos) return;
+
+    const cacheKey = `${pos.latitude.toFixed(4)},${pos.longitude.toFixed(4)}`;
+    if (this.playbackAddressCache.has(cacheKey)) {
+      this.playbackCurrentAddress = this.playbackAddressCache.get(cacheKey)!;
+      return;
+    }
+
+    this.geocodingService.reverseGeocode(pos.latitude, pos.longitude).subscribe({
+      next: (address) => {
+        this.playbackAddressCache.set(cacheKey, address);
+        // Only update if still on same position
+        const currentPos = this.playbackPositions[this.playbackIndex];
+        if (currentPos && `${currentPos.latitude.toFixed(4)},${currentPos.longitude.toFixed(4)}` === cacheKey) {
+          this.playbackCurrentAddress = address;
+          this.cdr.detectChanges();
+        }
+      }
+    });
+  }
+
+  getPlaybackCurrentTime(): string {
+    const pos = this.playbackPositions[this.playbackIndex];
+    if (!pos) return '';
+    return new Date(pos.recordedAt).toLocaleString('fr-FR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+  }
+
+  getPlaybackCurrentSpeed(): string {
+    const pos = this.playbackPositions[this.playbackIndex];
+    return pos ? Math.round(pos.speedKph || 0).toString() : '0';
+  }
+
+  getPlaybackSpeedColor(): string {
+    const pos = this.playbackPositions[this.playbackIndex];
+    const speed = pos?.speedKph || 0;
+    if (speed > 80) return '#ef4444';
+    if (speed > 50) return '#f59e0b';
+    if (speed > 5) return '#22c55e';
+    return '#64748b';
+  }
+
+  getPlaybackIgnitionLabel(): string {
+    const pos = this.playbackPositions[this.playbackIndex];
+    return pos?.ignitionOn ? 'ON' : 'OFF';
+  }
+
+  getPlaybackIgnitionColor(): string {
+    const pos = this.playbackPositions[this.playbackIndex];
+    return pos?.ignitionOn ? '#22c55e' : '#ef4444';
+  }
+
+  getPlaybackFuel(): string {
+    const pos = this.playbackPositions[this.playbackIndex];
+    return pos?.fuelRaw != null ? `${pos.fuelRaw}%` : 'N/A';
+  }
+
+  formatPlaybackDate(dateStr: string): string {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  getPlaybackTotalDuration(): string {
+    if (this.playbackPositions.length < 2) return '0min';
+    const first = new Date(this.playbackPositions[0].recordedAt).getTime();
+    const last = new Date(this.playbackPositions[this.playbackPositions.length - 1].recordedAt).getTime();
+    const diffMin = Math.round((last - first) / 60000);
+    if (diffMin < 60) return `${diffMin}min`;
+    const h = Math.floor(diffMin / 60);
+    const m = diffMin % 60;
+    return `${h}h${m > 0 ? m + 'min' : ''}`;
+  }
+
+  // End playback - called when user clicks "Retour au suivi" button
   endPlayback() {
     console.log('Ending playback - restoring live view');
     
@@ -2482,13 +2518,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   clearPlayback() {
     this.stopPlaybackAnimation();
-    this.isPlaybackLoaded = false;
     this.isPlaying = false;
-    this.playbackPositions = [];
     this.playbackRawCount = 0;
-    this.playbackIndex = 0;
-    this.playbackProgress = 0;
-    this.playbackVehicleId = null; // Reset vehicle tracking
+    this.playbackVehicleId = null;
     this.filteredBirdFlights = 0;
     
     // Reset smooth animation state
@@ -2504,22 +2536,30 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.matchedRouteCoords = [];
     this.matchedRouteIndex = 0;
 
-    // Restore the live marker that was hidden during playback
-    this.restoreLiveMarker();
-
-    // Restore the original map style (before playback switched to satellite)
-    if (this.previousMapStyle && this.mapStyle !== this.previousMapStyle) {
-      this.changeMapStyle(this.previousMapStyle);
-      this.previousMapStyle = null;
-    }
-
-    // Clear route display (polyline and routing control)
+    // Clear route display on overlay map before destroying it
     this.clearRouteDisplay();
     
     if (this.playbackMarker) {
       this.playbackMarker.remove();
       this.playbackMarker = null;
     }
+
+    // Destroy overlay map and restore monitoring map
+    if (this.playbackOverlayMap) {
+      this.playbackOverlayMap.remove();
+      this.playbackOverlayMap = null;
+    }
+    if (this.monitoringMap) {
+      this.map = this.monitoringMap;
+      this.monitoringMap = null;
+    }
+
+    // Now hide overlay and reset state
+    this.isPlaybackLoaded = false;
+    this.playbackPositions = [];
+    this.playbackIndex = 0;
+    this.playbackProgress = 0;
+    this.playbackCurrentAddress = '';
     
     // Force UI update after clearing
     this.cdr.detectChanges();
