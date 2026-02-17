@@ -548,7 +548,7 @@ export class GPSDevicesComponent implements OnInit, OnDestroy {
   }
 
   loadData() {
-    this.apiService.getVehicles().subscribe({
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => {
         this.ngZone.run(() => {
           this.allVehicles = vehicles;

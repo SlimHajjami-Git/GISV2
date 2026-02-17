@@ -667,7 +667,7 @@ export class DocumentsComponent implements OnInit, OnDestroy {
 
   loadDocuments(): void {
     // Load vehicles and build document list from expiry dates
-    this.apiService.getVehicles().subscribe({
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => {
         this.allDocuments = [];
         const today = new Date();

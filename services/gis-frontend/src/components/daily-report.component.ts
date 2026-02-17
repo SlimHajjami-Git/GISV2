@@ -829,7 +829,7 @@ export class DailyReportComponent implements OnInit, OnDestroy {
   }
 
   loadVehicles() {
-    this.apiService.getVehicles().subscribe({
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => this.vehicles = vehicles,
       error: (err) => console.error('Error loading vehicles:', err)
     });
@@ -845,7 +845,7 @@ export class DailyReportComponent implements OnInit, OnDestroy {
         parseInt(this.selectedVehicleId),
         date,
         this.minStopDuration
-      ).subscribe({
+      ).pipe(takeUntil(this.destroy$)).subscribe({
         next: (report) => {
           this.reports = [report];
           this.loading = false;
@@ -856,7 +856,7 @@ export class DailyReportComponent implements OnInit, OnDestroy {
         }
       });
     } else {
-      this.apiService.getDailyReports(date, vehicleIds, this.minStopDuration).subscribe({
+      this.apiService.getDailyReports(date, vehicleIds, this.minStopDuration).pipe(takeUntil(this.destroy$)).subscribe({
         next: (reports) => {
           this.reports = reports;
           this.loading = false;

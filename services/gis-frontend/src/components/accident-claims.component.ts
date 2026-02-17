@@ -1799,7 +1799,7 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
   }
 
   loadVehiclesAndDrivers() {
-    this.apiService.getVehicles().subscribe({
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles: any[]) => {
         this.vehicles = vehicles.map(v => ({
           id: v.id?.toString() || '',
@@ -1809,7 +1809,7 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
         this.cdr.detectChanges();
       }
     });
-    this.apiService.getUsers().subscribe({
+    this.apiService.getUsers().pipe(takeUntil(this.destroy$)).subscribe({
       next: (users: any[]) => {
         this.drivers = users.map(u => ({
           id: u.id?.toString() || '',
@@ -1822,7 +1822,7 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
 
   loadClaims() {
     this.loading = true;
-    this.apiService.getAccidentClaims({ pageSize: 100 }).subscribe({
+    this.apiService.getAccidentClaims({ pageSize: 100 }).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {
         this.claims = result.items.map((c: any) => ({
           id: c.id?.toString() || '',
@@ -1926,7 +1926,7 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
     // Load photos from API
     const claimId = parseInt(claim.id);
     if (claimId) {
-      this.apiService.getAccidentClaimDocuments(claimId).subscribe({
+      this.apiService.getAccidentClaimDocuments(claimId).pipe(takeUntil(this.destroy$)).subscribe({
         next: (docs) => {
           this.claimPhotos = docs.filter(d => d.documentType === 'photo' || d.mimeType?.startsWith('image/'));
           this.cdr.detectChanges();
@@ -2001,7 +2001,7 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
     // Load existing photos for editing
     const claimId = parseInt(claim.id);
     if (claimId) {
-      this.apiService.getAccidentClaimDocuments(claimId).subscribe({
+      this.apiService.getAccidentClaimDocuments(claimId).pipe(takeUntil(this.destroy$)).subscribe({
         next: (docs) => {
           this.existingPhotos = docs.filter(d => d.documentType === 'photo' || d.mimeType?.startsWith('image/'));
           this.cdr.detectChanges();
@@ -2073,7 +2073,7 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
 
     if (this.editingClaim) {
       const claimId = parseInt(this.editingClaim.id);
-      this.apiService.updateAccidentClaim(claimId, request).subscribe({
+      this.apiService.updateAccidentClaim(claimId, request).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.uploadPendingPhotos(claimId);
           this.loadClaims();
@@ -2082,7 +2082,7 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
         error: (err) => console.error('Update error:', err)
       });
     } else {
-      this.apiService.createAccidentClaim(request).subscribe({
+      this.apiService.createAccidentClaim(request).pipe(takeUntil(this.destroy$)).subscribe({
         next: (claimId) => {
           this.uploadPendingPhotos(claimId);
           this.loadClaims();
@@ -2144,7 +2144,7 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
   removeExistingPhoto(photo: any, index: number) {
     const claimId = parseInt(this.editingClaim?.id || '0');
     if (claimId && photo.id) {
-      this.apiService.deleteAccidentClaimDocument(claimId, photo.id).subscribe();
+      this.apiService.deleteAccidentClaimDocument(claimId, photo.id).pipe(takeUntil(this.destroy$)).subscribe();
     }
     this.existingPhotos.splice(index, 1);
   }
@@ -2152,7 +2152,7 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
   uploadPendingPhotos(claimId: number) {
     if (this.pendingPhotos.length === 0) return;
     const files = this.pendingPhotos.map(p => p.file);
-    this.apiService.uploadAccidentClaimDocuments(claimId, files, 'photo').subscribe({
+    this.apiService.uploadAccidentClaimDocuments(claimId, files, 'photo').pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         this.pendingPhotos = [];
         this.cdr.detectChanges();

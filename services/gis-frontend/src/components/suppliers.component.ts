@@ -798,7 +798,7 @@ export class SuppliersComponent implements OnInit, OnDestroy {
   loadGarages(): void {
     this.loading = true;
     // Use getSuppliers to get ALL suppliers (not just garages)
-    this.apiService.getSuppliers({ pageSize: 100 }).subscribe({
+    this.apiService.getSuppliers({ pageSize: 100 }).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {
         this.allGarages = result.items
           .filter(s => s && s.id !== undefined)
@@ -916,7 +916,7 @@ export class SuppliersComponent implements OnInit, OnDestroy {
         isActive: garage.isActive,
         rating: garage.rating,
         services: garage.services
-      }).subscribe({
+      }).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.loadGarages();
           this.closePopup();
@@ -938,7 +938,7 @@ export class SuppliersComponent implements OnInit, OnDestroy {
         isActive: garage.isActive,
         rating: garage.rating,
         services: garage.services
-      }).subscribe({
+      }).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.loadGarages();
           this.closePopup();
@@ -960,7 +960,7 @@ export class SuppliersComponent implements OnInit, OnDestroy {
 
   deleteGarage(): void {
     if (this.garageToDelete) {
-      this.apiService.deleteSupplier(parseInt(this.garageToDelete.id!)).subscribe({
+      this.apiService.deleteSupplier(parseInt(this.garageToDelete.id!)).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.loadGarages();
           this.cancelDelete();

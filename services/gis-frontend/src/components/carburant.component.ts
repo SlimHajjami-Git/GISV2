@@ -532,14 +532,14 @@ export class CarburantComponent implements OnInit, OnDestroy {
   }
 
   loadFuelTypes() {
-    this.apiService.getFuelTypes().subscribe({
+    this.apiService.getFuelTypes().pipe(takeUntil(this.destroy$)).subscribe({
       next: (types) => { this.fuelTypes = types; if (types.length > 0) this.defaultFuelTypeId = types[0].id; },
       error: (err) => console.error(err)
     });
   }
 
   loadCurrentPrices() {
-    this.apiService.getCurrentActiveFuelPrices().subscribe({
+    this.apiService.getCurrentActiveFuelPrices().pipe(takeUntil(this.destroy$)).subscribe({
       next: (prices) => { this.fuelPrices = prices; },
       error: (err) => console.error(err)
     });
@@ -555,7 +555,7 @@ export class CarburantComponent implements OnInit, OnDestroy {
   }
 
   loadVehicles() {
-    this.apiService.getVehicles().subscribe({
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (r: any) => this.vehicles = r.items || r,
       error: (err) => console.error(err)
     });
@@ -566,7 +566,7 @@ export class CarburantComponent implements OnInit, OnDestroy {
     if (this.filterFuelType) options.fuelTypeId = this.filterFuelType;
     if (this.filterStartDate) options.startDate = this.filterStartDate;
     if (this.filterEndDate) options.endDate = this.filterEndDate;
-    this.apiService.getFuelEntries(options).subscribe({
+    this.apiService.getFuelEntries(options).pipe(takeUntil(this.destroy$)).subscribe({
       next: (r) => { this.fuelHistory = r.items; this.cdr.detectChanges(); },
       error: (err) => { console.error(err); this.cdr.detectChanges(); }
     });
@@ -600,7 +600,7 @@ export class CarburantComponent implements OnInit, OnDestroy {
       volume: this.manualEntry.volume,
       pricePerLiter: this.manualEntry.pricePerLiter,
       invoiceDate: this.manualEntry.invoiceDate
-    }).subscribe({
+    }).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => { this.isSaving = false; this.resetManualEntry(); this.loadHistory(); },
       error: (err) => { console.error(err); this.isSaving = false; }
     });
@@ -699,7 +699,7 @@ export class CarburantComponent implements OnInit, OnDestroy {
 
   deleteEntry(entry: FuelEntryDto) {
     if (entry.id && confirm('Supprimer cette entrée ?')) {
-      this.apiService.deleteFuelEntry(entry.id).subscribe({ next: () => this.loadHistory(), error: (err) => console.error(err) });
+      this.apiService.deleteFuelEntry(entry.id).pipe(takeUntil(this.destroy$)).subscribe({ next: () => this.loadHistory(), error: (err) => console.error(err) });
     }
   }
 

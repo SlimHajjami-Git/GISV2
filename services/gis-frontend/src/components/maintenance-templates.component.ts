@@ -732,7 +732,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
 
   loadTemplates() {
     this.loading = true;
-    this.apiService.getMaintenanceTemplates({ pageSize: 100 }).subscribe({
+    this.apiService.getMaintenanceTemplates({ pageSize: 100 }).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {
         this.ngZone.run(() => {
           this.templates = result.items.map(t => ({ id: t.id?.toString() || '', name: t.name, description: t.description || '', intervalKm: t.intervalKm ?? null, intervalMonths: t.intervalMonths ?? null, estimatedCost: t.estimatedCost || 0, priority: (t.priority as any) || 'medium', category: t.category || 'Autre', isActive: t.isActive }));
@@ -747,7 +747,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   }
 
   loadVehicles() {
-    this.apiService.getVehicleMaintenanceSchedule({ pageSize: 100 }).subscribe({
+    this.apiService.getVehicleMaintenanceSchedule({ pageSize: 100 }).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {
         this.ngZone.run(() => {
           this.vehicleSchedules = result.items.map(v => ({
@@ -839,14 +839,14 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     if (!this.isFormValid()) return;
     const d = { name: this.form.name, description: this.form.description || '', category: this.form.category, priority: this.form.priority, intervalKm: this.form.intervalKm || undefined, intervalMonths: this.form.intervalMonths || undefined, estimatedCost: this.form.estimatedCost || 0, isActive: this.form.isActive };
     if (this.editing) {
-      this.apiService.updateMaintenanceTemplate(parseInt(this.editing.id), d).subscribe({ next: () => { this.loadTemplates(); this.closeForm(); }, error: (err) => console.error(err) });
+      this.apiService.updateMaintenanceTemplate(parseInt(this.editing.id), d).pipe(takeUntil(this.destroy$)).subscribe({ next: () => { this.loadTemplates(); this.closeForm(); }, error: (err) => console.error(err) });
     } else {
-      this.apiService.createMaintenanceTemplate(d).subscribe({ next: () => { this.loadTemplates(); this.closeForm(); }, error: (err) => console.error(err) });
+      this.apiService.createMaintenanceTemplate(d).pipe(takeUntil(this.destroy$)).subscribe({ next: () => { this.loadTemplates(); this.closeForm(); }, error: (err) => console.error(err) });
     }
   }
   deleteTemplate(t: MaintenanceTemplate) { 
     if (confirm('Supprimer ce modele?')) { 
-      this.apiService.deleteMaintenanceTemplate(parseInt(t.id)).subscribe({ next: () => { this.loadTemplates(); this.closeDetail(); }, error: (err) => console.error(err) });
+      this.apiService.deleteMaintenanceTemplate(parseInt(t.id)).pipe(takeUntil(this.destroy$)).subscribe({ next: () => { this.loadTemplates(); this.closeDetail(); }, error: (err) => console.error(err) });
     } 
   }
 
@@ -865,7 +865,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   removeFromRow(row: FlatRow) {
     if (!confirm('Retirer cet entretien ?')) return;
     if (row.scheduleId) {
-      this.apiService.removeMaintenanceSchedule(row.scheduleId).subscribe({ next: () => this.loadVehicles(), error: (err) => console.error(err) });
+      this.apiService.removeMaintenanceSchedule(row.scheduleId).pipe(takeUntil(this.destroy$)).subscribe({ next: () => this.loadVehicles(), error: (err) => console.error(err) });
     }
   }
 
@@ -912,7 +912,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
 
     for (const line of existingLines) {
       this.lastPaidPrices.set(line.templateId!, line.price!);
-      this.apiService.markMaintenanceDone({ vehicleId, templateId: parseInt(line.templateId!), date: this.markData.date, mileage: this.markData.mileage, cost: line.price!, notes: this.markData.notes || undefined }).subscribe({ next: onDone, error: onDone });
+      this.apiService.markMaintenanceDone({ vehicleId, templateId: parseInt(line.templateId!), date: this.markData.date, mileage: this.markData.mileage, cost: line.price!, notes: this.markData.notes || undefined }).pipe(takeUntil(this.destroy$)).subscribe({ next: onDone, error: onDone });
     }
 
     for (const line of newTplLines) {
@@ -920,11 +920,11 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
         name: line.newTemplateName, description: '', category: line.newTemplateCategory || 'Autre',
         priority: 'medium', intervalKm: line.newTemplateIntervalKm || undefined, intervalMonths: line.newTemplateIntervalMonths || undefined,
         estimatedCost: line.price!, isActive: true
-      }).subscribe({
+      }).pipe(takeUntil(this.destroy$)).subscribe({
         next: (tplId: number) => {
-          this.apiService.assignMaintenanceTemplate(vehicleId, tplId).subscribe({
+          this.apiService.assignMaintenanceTemplate(vehicleId, tplId).pipe(takeUntil(this.destroy$)).subscribe({
             next: () => {
-              this.apiService.markMaintenanceDone({ vehicleId, templateId: tplId, date: this.markData.date, mileage: this.markData.mileage, cost: line.price!, notes: this.markData.notes || undefined }).subscribe({ next: onDone, error: onDone });
+              this.apiService.markMaintenanceDone({ vehicleId, templateId: tplId, date: this.markData.date, mileage: this.markData.mileage, cost: line.price!, notes: this.markData.notes || undefined }).pipe(takeUntil(this.destroy$)).subscribe({ next: onDone, error: onDone });
             },
             error: onDone
           });
@@ -941,7 +941,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     this.historyLogs = [];
     this.historyLoading = true;
     this.isHistoryOpen = true;
-    this.apiService.getMaintenanceLogs(parseInt(row.vehicleId), parseInt(row.templateId)).subscribe({
+    this.apiService.getMaintenanceLogs(parseInt(row.vehicleId), parseInt(row.templateId)).pipe(takeUntil(this.destroy$)).subscribe({
       next: (logs) => { this.ngZone.run(() => { this.historyLogs = logs; this.historyLoading = false; this.cdr.detectChanges(); }); },
       error: (err) => { console.error(err); this.historyLoading = false; }
     });
@@ -949,7 +949,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   closeHistory() { this.isHistoryOpen = false; this.historyLogs = []; }
 
   loadAllVehicles() {
-    this.apiService.getVehicles().subscribe({
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => { this.ngZone.run(() => { this.allVehicles = vehicles.map((v: any) => ({ id: v.id?.toString() || '', name: v.name || `${v.brand || ''} ${v.model || ''}`.trim(), plate: v.plate || '', mileage: v.mileage || 0 })); this.cdr.detectChanges(); }); },
       error: (err) => console.error(err)
     });
@@ -977,7 +977,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     const vid = parseInt(this.addToVehicleData.vehicleId);
     let done = 0; const total = this.addToVehicleData.selectedTemplateIds.length;
     for (const tid of this.addToVehicleData.selectedTemplateIds) {
-      this.apiService.assignMaintenanceTemplate(vid, parseInt(tid)).subscribe({
+      this.apiService.assignMaintenanceTemplate(vid, parseInt(tid)).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => { done++; if (done === total) { this.loadVehicles(); this.closeAddToVehicle(); } },
         error: () => { done++; if (done === total) { this.loadVehicles(); this.closeAddToVehicle(); } }
       });
@@ -986,7 +986,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
 
   removeMaintenanceFromVehicle(v: VehicleMaintenanceStatus, m: MaintenanceItem) {
     if (!confirm('Retirer?')) return;
-    if (m.scheduleId) { this.apiService.removeMaintenanceSchedule(m.scheduleId).subscribe({ next: () => this.loadVehicles(), error: (err) => console.error(err) }); }
+    if (m.scheduleId) { this.apiService.removeMaintenanceSchedule(m.scheduleId).pipe(takeUntil(this.destroy$)).subscribe({ next: () => this.loadVehicles(), error: (err) => console.error(err) }); }
     else { v.maintenanceItems = v.maintenanceItems.filter(x => x.templateId !== m.templateId); this.rebuildRows(); }
   }
 

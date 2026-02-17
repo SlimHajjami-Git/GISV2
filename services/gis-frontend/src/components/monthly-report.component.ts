@@ -97,7 +97,7 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
     this.loading = true;
     this.error = null;
 
-    this.apiService.getMonthlyFleetReport(this.selectedYear, this.selectedMonth).subscribe({
+    this.apiService.getMonthlyFleetReport(this.selectedYear, this.selectedMonth).pipe(takeUntil(this.destroy$)).subscribe({
       next: (data) => {
         this.report = data;
         this.loading = false;

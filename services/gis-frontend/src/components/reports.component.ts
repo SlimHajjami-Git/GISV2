@@ -355,11 +355,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   loadData() {
-    this.apiService.getVehicles().subscribe({
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => this.vehicles = vehicles,
       error: (err) => console.error('Error loading vehicles:', err)
     });
-    this.apiService.getDrivers().subscribe({
+    this.apiService.getDrivers().pipe(takeUntil(this.destroy$)).subscribe({
       next: (drivers) => this.drivers = drivers,
       error: (err) => console.error('Error loading drivers:', err)
     });
@@ -710,7 +710,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
 
     this.vehicles.forEach(vehicle => {
-      this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 5000).subscribe({
+      this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 5000).pipe(takeUntil(this.destroy$)).subscribe({
         next: (positions) => {
           const positionsWithVehicle = positions.map(p => ({
             ...p,
@@ -1024,7 +1024,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   executeStopsReport(vehicleId: number, startDate?: Date, endDate?: Date) {
     console.log('executeStopsReport called with:', { vehicleId, startDate, endDate });
-    this.apiService.getVehicleStops(vehicleId, startDate, endDate).subscribe({
+    this.apiService.getVehicleStops(vehicleId, startDate, endDate).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {
         this.ngZone.run(() => {
           this.processStopsFromApi(result);
@@ -1071,7 +1071,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
 
     this.vehicles.forEach(vehicle => {
-      this.apiService.getVehicleStops(vehicle.id, startDate, endDate).subscribe({
+      this.apiService.getVehicleStops(vehicle.id, startDate, endDate).pipe(takeUntil(this.destroy$)).subscribe({
         next: (result) => {
           // Add vehicle info to each stop
           const stopsWithVehicle = result.items.map(stop => ({
@@ -1205,7 +1205,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const selectedVehicleId = this.selectedVehicleId ? parseInt(this.selectedVehicleId) : null;
     
     // Fetch vehicles — filter by selected vehicle if one is chosen
-    this.apiService.getVehicles().subscribe({
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => {
         let targetVehicles = vehicles;
         if (selectedVehicleId) {
@@ -1234,7 +1234,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             ? this.speedLimit 
             : (vehicle.speedLimit || 120);
           
-          this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 10000).subscribe({
+          this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 10000).pipe(takeUntil(this.destroy$)).subscribe({
             next: (positions) => {
               const infractions = positions
                 .filter((p: any) => (p.speedKph || 0) > vehicleSpeedLimit)
@@ -1387,7 +1387,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   enrichSpeedInfractionAddresses() {
     this.tableData.forEach((row: any, index: number) => {
       if (row.address?.includes(',') && row.latitude && row.longitude) {
-        this.geocodingService.reverseGeocode(row.latitude, row.longitude).subscribe({
+        this.geocodingService.reverseGeocode(row.latitude, row.longitude).pipe(takeUntil(this.destroy$)).subscribe({
           next: (address) => {
             if (address) {
               this.ngZone.run(() => {
@@ -1408,7 +1408,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const selectedVehicleId = this.selectedVehicleId ? parseInt(this.selectedVehicleId) : null;
     
     // Fetch vehicles — filter by selected vehicle if one is chosen
-    this.apiService.getVehicles().subscribe({
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => {
         let targetVehicles = vehicles;
         if (selectedVehicleId) {
@@ -1432,7 +1432,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         }
         
         targetVehicles.forEach(vehicle => {
-          this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 10000).subscribe({
+          this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 10000).pipe(takeUntil(this.destroy$)).subscribe({
             next: (positions) => {
               const incidents = this.detectDrivingIncidents(positions, vehicle);
               allIncidents.push(...incidents);
@@ -1693,7 +1693,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   enrichDrivingBehaviorAddresses() {
     this.tableData.forEach((row: any, index: number) => {
       if (row.address?.includes(',') && row.latitude && row.longitude) {
-        this.geocodingService.reverseGeocode(row.latitude, row.longitude).subscribe({
+        this.geocodingService.reverseGeocode(row.latitude, row.longitude).pipe(takeUntil(this.destroy$)).subscribe({
           next: (address) => {
             if (address) {
               this.ngZone.run(() => {
@@ -1715,7 +1715,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return yesterday;
     })();
     
-    this.apiService.getDailyReport(vehicleId, reportDate).subscribe({
+    this.apiService.getDailyReport(vehicleId, reportDate).pipe(takeUntil(this.destroy$)).subscribe({
       next: (report) => {
         this.ngZone.run(() => {
           this.dailyReport = report;
@@ -1984,7 +1984,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   enrichDailyReportAddresses() {
     this.tableData.forEach((row: any, index: number) => {
       if (row.address?.includes('°') && row.latitude && row.longitude) {
-        this.geocodingService.reverseGeocode(row.latitude, row.longitude).subscribe({
+        this.geocodingService.reverseGeocode(row.latitude, row.longitude).pipe(takeUntil(this.destroy$)).subscribe({
           next: (addr) => {
             if (addr) {
               this.ngZone.run(() => {
@@ -2035,7 +2035,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // Default: last 30 days
     const end = endDate || new Date();
     
-    this.apiService.getMileageReport(vehicleId, start, end).subscribe({
+    this.apiService.getMileageReport(vehicleId, start, end).pipe(takeUntil(this.destroy$)).subscribe({
       next: (report) => {
         this.ngZone.run(() => {
           this.mileageReport = report;
@@ -2227,7 +2227,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         end = endDate || new Date();
     }
     
-    this.apiService.getMileagePeriodReport(vehicleId, this.selectedMileagePeriodType, start, end).subscribe({
+    this.apiService.getMileagePeriodReport(vehicleId, this.selectedMileagePeriodType, start, end).pipe(takeUntil(this.destroy$)).subscribe({
       next: (report) => {
         this.ngZone.run(() => {
           this.mileagePeriodReport = report;
@@ -2296,7 +2296,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
 
     this.vehicles.forEach(vehicle => {
-      this.apiService.getMileagePeriodReport(vehicle.id, this.selectedMileagePeriodType, start, end).subscribe({
+      this.apiService.getMileagePeriodReport(vehicle.id, this.selectedMileagePeriodType, start, end).pipe(takeUntil(this.destroy$)).subscribe({
         next: (report) => {
           if (report.hasData) {
             allResults.push({
@@ -2576,7 +2576,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   // ==================== MONTHLY FLEET REPORT ====================
 
   executeMonthlyReport() {
-    this.apiService.getMonthlyFleetReport(this.selectedMonthlyYear, this.selectedMonthlyMonth).subscribe({
+    this.apiService.getMonthlyFleetReport(this.selectedMonthlyYear, this.selectedMonthlyMonth).pipe(takeUntil(this.destroy$)).subscribe({
       next: (report) => {
         this.ngZone.run(() => {
           this.monthlyReport = report;
@@ -2960,7 +2960,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.apiService.getVehicleHistory(vehicleId, startDate, endDate).subscribe({
+    this.apiService.getVehicleHistory(vehicleId, startDate, endDate).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {
         this.ngZone.run(() => {
           this.processVehicleData(result);
@@ -3177,7 +3177,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Enrich with addresses
     this.tableData.forEach((row: any, index: number) => {
       if (row.address?.includes(',') && row.latitude && row.longitude) {
-        this.geocodingService.reverseGeocode(row.latitude, row.longitude).subscribe({
+        this.geocodingService.reverseGeocode(row.latitude, row.longitude).pipe(takeUntil(this.destroy$)).subscribe({
           next: (addr) => {
             if (addr) {
               this.ngZone.run(() => {
@@ -3218,7 +3218,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   enrichSpeedAddresses() {
     this.tableData.slice(0, 20).forEach((row: any, index: number) => {
       if (row.location?.includes(',') && row.latitude && row.longitude) {
-        this.geocodingService.reverseGeocode(row.latitude, row.longitude).subscribe({
+        this.geocodingService.reverseGeocode(row.latitude, row.longitude).pipe(takeUntil(this.destroy$)).subscribe({
           next: (address) => {
             if (address) {
               this.ngZone.run(() => {
@@ -3349,7 +3349,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Fetch addresses for stops that don't have one
     this.tableData.forEach((row: any, index: number) => {
       if (row.address === 'Chargement...' && row.latitude && row.longitude) {
-        this.geocodingService.reverseGeocode(row.latitude, row.longitude).subscribe({
+        this.geocodingService.reverseGeocode(row.latitude, row.longitude).pipe(takeUntil(this.destroy$)).subscribe({
           next: (address) => {
             this.ngZone.run(() => {
               this.tableData[index] = { ...this.tableData[index], address: address || `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}` };
@@ -3724,7 +3724,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.tableData.forEach((row: any, index: number) => {
       if (row.isTrip) {
         if (row.startAddress?.includes('°')) {
-          this.geocodingService.reverseGeocode(row.startLat, row.startLng).subscribe({
+          this.geocodingService.reverseGeocode(row.startLat, row.startLng).pipe(takeUntil(this.destroy$)).subscribe({
             next: (addr) => {
               if (addr) {
                 this.ngZone.run(() => {
@@ -3736,7 +3736,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           });
         }
         if (row.endAddress?.includes('°')) {
-          this.geocodingService.reverseGeocode(row.endLat, row.endLng).subscribe({
+          this.geocodingService.reverseGeocode(row.endLat, row.endLng).pipe(takeUntil(this.destroy$)).subscribe({
             next: (addr) => {
               if (addr) {
                 this.ngZone.run(() => {
@@ -3748,7 +3748,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           });
         }
       } else if (row.isStop && row.address?.includes('°')) {
-        this.geocodingService.reverseGeocode(row.latitude, row.longitude).subscribe({
+        this.geocodingService.reverseGeocode(row.latitude, row.longitude).pipe(takeUntil(this.destroy$)).subscribe({
           next: (addr) => {
             if (addr) {
               this.ngZone.run(() => {

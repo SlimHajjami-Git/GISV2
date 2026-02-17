@@ -818,7 +818,7 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
   }
 
   loadData() {
-    this.apiService.getCosts().subscribe({
+    this.apiService.getCosts().pipe(takeUntil(this.destroy$)).subscribe({
       next: (costs) => {
         this.allCosts = costs;
         this.costs = [...this.allCosts];
@@ -827,7 +827,7 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
       error: (err) => console.error('Error loading costs:', err)
     });
 
-    this.apiService.getVehicles().subscribe({
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => this.vehicles = vehicles,
       error: (err) => console.error('Error loading vehicles:', err)
     });
@@ -983,9 +983,9 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
 
     if (this.editingCost) {
       // For editing, we don't have an update method, so we delete and recreate
-      this.apiService.deleteCost(parseInt(this.editingCost.id)).subscribe({
+      this.apiService.deleteCost(parseInt(this.editingCost.id)).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
-          this.apiService.createCost(costData).subscribe({
+          this.apiService.createCost(costData).pipe(takeUntil(this.destroy$)).subscribe({
             next: () => this.loadData(),
             error: (err) => console.error('Error creating cost:', err)
           });
@@ -993,7 +993,7 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
         error: (err) => console.error('Error deleting cost:', err)
       });
     } else {
-      this.apiService.createCost(costData).subscribe({
+      this.apiService.createCost(costData).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => this.loadData(),
         error: (err) => console.error('Error creating cost:', err)
       });
@@ -1004,7 +1004,7 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
 
   deleteCost(cost: VehicleCost) {
     if (confirm('Êtes-vous sûr de vouloir supprimer cette dépense ?')) {
-      this.apiService.deleteCost(parseInt(cost.id)).subscribe({
+      this.apiService.deleteCost(parseInt(cost.id)).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => this.loadData(),
         error: (err) => console.error('Error deleting cost:', err)
       });
