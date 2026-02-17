@@ -991,6 +991,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     L.circleMarker(endLatLng as L.LatLngExpression, {
       radius: 8, fillColor: '#ef4444', color: '#fff', weight: 3, fillOpacity: 1
     }).addTo(this.map).bindTooltip('Arrivée', { permanent: false });
+
+    // Add clickable GPS point markers on the map
+    this.addPointMarkers();
   }
 
   addPointMarkers() {
