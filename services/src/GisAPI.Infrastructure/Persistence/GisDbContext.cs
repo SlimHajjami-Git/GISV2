@@ -416,6 +416,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<Tour>().Property(t => t.ActualFuelLiters).HasPrecision(10, 2);
 
         // ChatMessage configuration
+        modelBuilder.Entity<ChatMessage>().Property(m => m.Id).HasColumnName("id");
         modelBuilder.Entity<ChatMessage>().Property(m => m.SenderId).HasColumnName("sender_id");
         modelBuilder.Entity<ChatMessage>().Property(m => m.ReceiverId).HasColumnName("receiver_id");
         modelBuilder.Entity<ChatMessage>().Property(m => m.Content).HasColumnName("content");
