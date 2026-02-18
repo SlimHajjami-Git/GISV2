@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using GisAPI.Application.Common;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Infrastructure.Persistence;
 
 namespace GisAPI.Services;
 
@@ -64,7 +65,7 @@ public class TourMonitoringService : BackgroundService
     private async Task MonitorTours(CancellationToken ct)
     {
         using var scope = _serviceProvider.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<IGisDbContext>();
+        var context = scope.ServiceProvider.GetRequiredService<GisDbContext>();
         var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<GpsHub>>();
         var notifService = scope.ServiceProvider.GetRequiredService<INotificationService>();
 
@@ -74,6 +75,7 @@ public class TourMonitoringService : BackgroundService
 
         // 1. Check PLANNED tours within time window for auto-start
         var plannedTours = await context.Tours
+            .IgnoreQueryFilters()
             .Include(t => t.Waypoints.OrderBy(w => w.SequenceOrder))
             .Include(t => t.Vehicle).ThenInclude(v => v!.GpsDevice)
             .Where(t => t.Status == "planned"
@@ -95,6 +97,7 @@ public class TourMonitoringService : BackgroundService
 
         // 2. Check IN_PROGRESS tours for waypoint completion and auto-complete
         var activeTours = await context.Tours
+            .IgnoreQueryFilters()
             .Include(t => t.Waypoints.OrderBy(w => w.SequenceOrder))
             .Include(t => t.Vehicle).ThenInclude(v => v!.GpsDevice)
             .Where(t => t.Status == "in_progress")
@@ -107,90 +110,64 @@ public class TourMonitoringService : BackgroundService
     }
 
     /// <summary>
-    /// Auto-start: if vehicle is near origin and moving, start the tour
+    /// Auto-start: when scheduled time has passed, start the tour automatically.
+    /// Pure time-based — no GPS/position/speed requirements for starting.
     /// </summary>
-    private async Task CheckAutoStart(Tour tour, IGisDbContext context, IHubContext<GpsHub> hubContext, INotificationService notifService, CancellationToken ct)
+    private async Task CheckAutoStart(Tour tour, GisDbContext context, IHubContext<GpsHub> hubContext, INotificationService notifService, CancellationToken ct)
     {
-        var position = await GetVehiclePosition(tour);
-        if (position == null)
-        {
-            _logger.LogDebug(
-                "Tour {TourId} '{TourName}': no GPS position available (device={DeviceUid}, scheduled={Scheduled:HH:mm} UTC)",
-                tour.Id, tour.Name, tour.Vehicle?.GpsDevice?.DeviceUid ?? "none", tour.ScheduledStartTime);
-            return;
-        }
-
-        var origin = tour.Waypoints.FirstOrDefault(w => w.Type == "origin");
-        if (origin == null) return;
-
-        var distanceToOrigin = HaversineDistance(
-            position.Latitude, position.Longitude,
-            origin.Latitude, origin.Longitude);
-
-        _logger.LogDebug(
-            "Tour {TourId} '{TourName}': vehicle at {Dist:F0}m from origin, speed={Speed:F1} km/h, pos=({Lat:F6},{Lon:F6}), posAge={Age:F0}s",
-            tour.Id, tour.Name, distanceToOrigin, position.SpeedKph,
-            position.Latitude, position.Longitude,
-            (DateTime.UtcNow - position.RecordedAt).TotalSeconds);
-
         var now = DateTime.UtcNow;
-        var scheduledTimePassed = now >= tour.ScheduledStartTime;
-        var nearOrigin = distanceToOrigin <= DEPARTURE_RADIUS_METERS;
-        var isMoving = position.SpeedKph >= MIN_SPEED_FOR_DEPARTURE_KPH;
 
-        // Auto-start conditions:
-        // 1. Vehicle near origin AND moving (departure detection before scheduled time)
-        // 2. Scheduled time has passed AND vehicle near origin (even if parked)
-        var shouldStart = nearOrigin && (isMoving || scheduledTimePassed);
-
-        if (!shouldStart)
-        {
-            _logger.LogDebug(
-                "Tour {TourId} '{TourName}': NOT starting (nearOrigin={Near}, isMoving={Moving}, scheduledPassed={Passed})",
-                tour.Id, tour.Name, nearOrigin, isMoving, scheduledTimePassed);
-            return;
-        }
-
+        if (now < tour.ScheduledStartTime)
         {
             _logger.LogInformation(
-                "Auto-starting tour {TourId} '{TourName}': vehicle at {Distance:F0}m from origin, speed={Speed:F1} km/h, scheduledPassed={Passed}",
-                tour.Id, tour.Name, distanceToOrigin, position.SpeedKph, scheduledTimePassed);
-
-            tour.Status = "in_progress";
-            tour.ActualStartTime = DateTime.UtcNow;
-
-            // Mark origin as completed
-            origin.IsCompleted = true;
-            origin.ActualArrivalTime = DateTime.UtcNow;
-
-            await context.SaveChangesAsync(ct);
-
-            // Notify via SignalR (real-time)
-            await hubContext.Clients.Group($"company_{tour.CompanyId}")
-                .SendAsync("TourStatusChanged", new
-                {
-                    tourId = tour.Id,
-                    status = "in_progress",
-                    tourName = tour.Name,
-                    message = $"Tournee '{tour.Name}' demarree automatiquement",
-                    timestamp = DateTime.UtcNow
-                }, ct);
-
-            // Persist notification for all company users
-            await SendNotificationToCompanyUsers(context, notifService, tour.CompanyId,
-                "tour_started",
-                $"Tournee demarree: {tour.Name}",
-                $"Le vehicule a quitte le point de depart. Tournee '{tour.Name}' en cours.",
-                "normal", "tour", tour.Id, $"/tournees", ct);
-
-            _logger.LogInformation("Tour {TourId} auto-started successfully", tour.Id);
+                "Tour {TourId} '{TourName}': waiting for scheduled time ({Scheduled:HH:mm} UTC, now={Now:HH:mm} UTC)",
+                tour.Id, tour.Name, tour.ScheduledStartTime, now);
+            return;
         }
+
+        // Scheduled time has passed → auto-start
+        _logger.LogInformation(
+            "Auto-starting tour {TourId} '{TourName}': scheduled={Scheduled:HH:mm} UTC, now={Now:HH:mm} UTC",
+            tour.Id, tour.Name, tour.ScheduledStartTime, now);
+
+        tour.Status = "in_progress";
+        tour.ActualStartTime = now;
+
+        // Mark origin waypoint as completed
+        var origin = tour.Waypoints.FirstOrDefault(w => w.Type == "origin");
+        if (origin != null)
+        {
+            origin.IsCompleted = true;
+            origin.ActualArrivalTime = now;
+        }
+
+        await context.SaveChangesAsync(ct);
+
+        // Notify via SignalR (real-time)
+        await hubContext.Clients.Group($"company_{tour.CompanyId}")
+            .SendAsync("TourStatusChanged", new
+            {
+                tourId = tour.Id,
+                status = "in_progress",
+                tourName = tour.Name,
+                message = $"Tournee '{tour.Name}' demarree automatiquement",
+                timestamp = now
+            }, ct);
+
+        // Persist notification
+        await SendNotificationToCompanyUsers(context, notifService, tour.CompanyId,
+            "tour_started",
+            $"Tournee demarree: {tour.Name}",
+            $"Tournee '{tour.Name}' demarree a l'heure prevue.",
+            "normal", "tour", tour.Id, $"/tournees", ct);
+
+        _logger.LogInformation("Tour {TourId} auto-started successfully", tour.Id);
     }
 
     /// <summary>
     /// Check if vehicle has reached any uncompleted waypoints or the destination
     /// </summary>
-    private async Task CheckWaypointProgress(Tour tour, IGisDbContext context, IHubContext<GpsHub> hubContext, INotificationService notifService, CancellationToken ct)
+    private async Task CheckWaypointProgress(Tour tour, GisDbContext context, IHubContext<GpsHub> hubContext, INotificationService notifService, CancellationToken ct)
     {
         var position = await GetVehiclePosition(tour);
         if (position == null) return;
@@ -260,7 +237,7 @@ public class TourMonitoringService : BackgroundService
     /// Auto-complete the tour when destination is reached
     /// </summary>
     private async Task CompleteTourAutomatically(Tour tour, VehiclePositionCache position,
-        IGisDbContext context, IHubContext<GpsHub> hubContext, INotificationService notifService, CancellationToken ct)
+        GisDbContext context, IHubContext<GpsHub> hubContext, INotificationService notifService, CancellationToken ct)
     {
         tour.Status = "completed";
         tour.ActualEndTime = DateTime.UtcNow;
@@ -311,7 +288,7 @@ public class TourMonitoringService : BackgroundService
     /// <summary>
     /// Calculate actual distance from GPS position history between start and end
     /// </summary>
-    private async Task CalculateActualMetrics(Tour tour, IGisDbContext context, CancellationToken ct)
+    private async Task CalculateActualMetrics(Tour tour, GisDbContext context, CancellationToken ct)
     {
         if (!tour.ActualStartTime.HasValue || tour.Vehicle?.GpsDeviceId == null) return;
 
@@ -321,6 +298,7 @@ public class TourMonitoringService : BackgroundService
 
         // Get GPS positions during the tour
         var positions = await context.GpsPositions
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(p => p.DeviceId == deviceId
                 && p.RecordedAt >= startTime
@@ -432,7 +410,7 @@ public class TourMonitoringService : BackgroundService
     /// Send a persisted notification to all users of the company
     /// </summary>
     private async Task SendNotificationToCompanyUsers(
-        IGisDbContext context, INotificationService notifService,
+        GisDbContext context, INotificationService notifService,
         int companyId, string type, string title, string message,
         string priority, string? refType, int? refId, string? actionUrl,
         CancellationToken ct)
@@ -440,6 +418,7 @@ public class TourMonitoringService : BackgroundService
         try
         {
             var userIds = await context.Users
+                .IgnoreQueryFilters()
                 .AsNoTracking()
                 .Where(u => u.CompanyId == companyId)
                 .Select(u => u.Id)
