@@ -25,6 +25,25 @@ interface ChatMessage {
   isMine: boolean;
 }
 
+interface AiVehicle {
+  id: number;
+  name: string;
+  plate: string;
+  brand: string;
+  model: string;
+  type: string;
+  mileage: number;
+  status: string;
+}
+
+interface AiMessage {
+  id: string;
+  role: string;
+  content: string;
+  timestamp: Date;
+  tokensUsed?: number;
+}
+
 @Component({
   selector: 'app-chat',
   standalone: true,
@@ -42,9 +61,23 @@ interface ChatMessage {
     </button>
 
     <!-- Chat Panel -->
-    <div class="chat-panel" *ngIf="isOpen" [class.show-conversation]="activeUser">
-      <!-- User List -->
-      <div class="chat-sidebar">
+    <div class="chat-panel" *ngIf="isOpen" [class.show-conversation]="activeUser || aiActiveVehicle">
+
+      <!-- TAB BAR -->
+      <div class="tab-bar" *ngIf="!activeUser && !aiActiveVehicle">
+        <button class="tab-btn" [class.active]="activeTab === 'chat'" (click)="activeTab = 'chat'">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Messages
+          <span class="tab-badge" *ngIf="totalUnread > 0">{{ totalUnread }}</span>
+        </button>
+        <button class="tab-btn" [class.active]="activeTab === 'ai'" (click)="switchToAi()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 3 3v1a3 3 0 0 1-3 3h-1v1a4 4 0 0 1-8 0v-1H7a3 3 0 0 1-3-3v-1a3 3 0 0 1 3-3h1V6a4 4 0 0 1 4-4z"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/></svg>
+          Diagnostic IA
+        </button>
+      </div>
+
+      <!-- ═══ MESSAGES TAB ═══ -->
+      <div class="chat-sidebar" *ngIf="activeTab === 'chat' && !activeUser">
         <div class="chat-header">
           <h3>Messages</h3>
           <div class="online-indicator">
@@ -68,12 +101,47 @@ interface ChatMessage {
             <span class="unread-count" *ngIf="user.unreadCount > 0">{{ user.unreadCount }}</span>
           </div>
           <div class="empty-users" *ngIf="filteredUsers.length === 0">
-            <p>Aucun utilisateur trouvé</p>
+            <p>Aucun utilisateur trouve</p>
           </div>
         </div>
       </div>
 
-      <!-- Conversation -->
+      <!-- ═══ AI TAB - Vehicle Selector ═══ -->
+      <div class="chat-sidebar" *ngIf="activeTab === 'ai' && !aiActiveVehicle">
+        <div class="chat-header ai-header">
+          <h3>Diagnostic IA</h3>
+          <div class="online-indicator">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 3 3v1a3 3 0 0 1-3 3h-1v1a4 4 0 0 1-8 0v-1H7a3 3 0 0 1-3-3v-1a3 3 0 0 1 3-3h1V6a4 4 0 0 1 4-4z"/></svg>
+            Llama 3
+          </div>
+        </div>
+        <div class="ai-intro">
+          <p>Selectionnez un vehicule pour demarrer un diagnostic intelligent.</p>
+        </div>
+        <div class="chat-search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="text" placeholder="Rechercher un vehicule..." [(ngModel)]="aiVehicleSearch" (input)="filterAiVehicles()">
+        </div>
+        <div class="user-list">
+          <div class="user-item" *ngFor="let v of aiFilteredVehicles" (click)="openAiChat(v)">
+            <div class="vehicle-avatar" [class]="'vtype-' + v.type">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+            </div>
+            <div class="user-info-sm">
+              <span class="user-name-sm">{{ v.name }}</span>
+              <span class="user-status-sm">{{ v.brand }} {{ v.model }} · {{ v.plate }} · {{ v.mileage | number }} km</span>
+            </div>
+          </div>
+          <div class="empty-users" *ngIf="aiFilteredVehicles.length === 0 && !aiLoadingVehicles">
+            <p>Aucun vehicule trouve</p>
+          </div>
+          <div class="empty-users" *ngIf="aiLoadingVehicles">
+            <p>Chargement...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ CHAT CONVERSATION (existing) ═══ -->
       <div class="chat-conversation" *ngIf="activeUser">
         <div class="conv-header">
           <button class="back-btn" (click)="activeUser = null">
@@ -103,12 +171,74 @@ interface ChatMessage {
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
-            <p>Démarrez la conversation</p>
+            <p>Demarrez la conversation</p>
           </div>
         </div>
         <div class="message-input">
-          <input type="text" placeholder="Écrire un message..." [(ngModel)]="newMessage" (keydown.enter)="sendMessage()">
+          <input type="text" placeholder="Ecrire un message..." [(ngModel)]="newMessage" (keydown.enter)="sendMessage()">
           <button class="send-btn" (click)="sendMessage()" [disabled]="!newMessage.trim()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- ═══ AI CONVERSATION ═══ -->
+      <div class="chat-conversation" *ngIf="aiActiveVehicle">
+        <div class="conv-header ai-conv-header">
+          <button class="back-btn" (click)="aiActiveVehicle = null">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div class="conv-user">
+            <div class="ai-avatar">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 3 3v1a3 3 0 0 1-3 3h-1v1a4 4 0 0 1-8 0v-1H7a3 3 0 0 1-3-3v-1a3 3 0 0 1 3-3h1V6a4 4 0 0 1 4-4z"/></svg>
+            </div>
+            <div class="conv-user-info">
+              <span class="conv-user-name">{{ aiActiveVehicle.name }}</span>
+              <span class="conv-user-status ai-status">{{ aiActiveVehicle.brand }} {{ aiActiveVehicle.model }} · {{ aiActiveVehicle.mileage | number }} km</span>
+            </div>
+          </div>
+          <button class="clear-btn" (click)="clearAiHistory()" title="Effacer l'historique">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>
+        <div class="messages-area" #aiMessagesArea>
+          <!-- Welcome message -->
+          <div class="ai-welcome" *ngIf="aiMessages.length === 0 && !aiLoading">
+            <div class="ai-welcome-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.5"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 3 3v1a3 3 0 0 1-3 3h-1v1a4 4 0 0 1-8 0v-1H7a3 3 0 0 1-3-3v-1a3 3 0 0 1 3-3h1V6a4 4 0 0 1 4-4z"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/></svg>
+            </div>
+            <p class="ai-welcome-title">Diagnostic IA - {{ aiActiveVehicle.name }}</p>
+            <p class="ai-welcome-sub">Posez vos questions sur ce vehicule. J'ai acces a son historique complet.</p>
+            <div class="ai-suggestions">
+              <button class="ai-suggestion" (click)="sendAiSuggestion('Fais un diagnostic complet de ce vehicule')">Diagnostic complet</button>
+              <button class="ai-suggestion" (click)="sendAiSuggestion('Quels sont les prochains entretiens a prevoir ?')">Entretiens a prevoir</button>
+              <button class="ai-suggestion" (click)="sendAiSuggestion('Analyse la consommation de carburant')">Consommation carburant</button>
+              <button class="ai-suggestion" (click)="sendAiSuggestion('Y a-t-il des problemes potentiels a anticiper ?')">Problemes potentiels</button>
+            </div>
+          </div>
+          <!-- AI Messages -->
+          <div class="message" *ngFor="let msg of aiMessages" [class.mine]="msg.role === 'user'" [class.other]="msg.role === 'assistant'">
+            <div class="msg-bubble" [class.ai-bubble]="msg.role === 'assistant'">
+              <div class="ai-content" [innerHTML]="formatAiContent(msg.content)"></div>
+              <span class="msg-time">{{ formatTime(msg.timestamp) }}</span>
+            </div>
+          </div>
+          <!-- Typing indicator -->
+          <div class="message other" *ngIf="aiLoading">
+            <div class="msg-bubble ai-bubble">
+              <div class="typing-indicator">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+          </div>
+          <!-- Error -->
+          <div class="ai-error" *ngIf="aiError">
+            <p>{{ aiError }}</p>
+          </div>
+        </div>
+        <div class="message-input">
+          <input type="text" placeholder="Posez une question sur ce vehicule..." [(ngModel)]="aiNewMessage" (keydown.enter)="sendAiMessage()" [disabled]="aiLoading">
+          <button class="send-btn ai-send" (click)="sendAiMessage()" [disabled]="!aiNewMessage.trim() || aiLoading">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </div>
@@ -139,33 +269,56 @@ interface ChatMessage {
     /* Chat Panel */
     .chat-panel {
       position: fixed; bottom: 88px; right: 24px; z-index: 998;
-      width: 380px; height: 520px;
+      width: 400px; height: 560px;
       background: #fff; border-radius: 16px;
       box-shadow: 0 8px 40px rgba(0,0,0,0.15);
-      display: flex; overflow: hidden;
+      display: flex; flex-direction: column; overflow: hidden;
       animation: panelIn 0.2s ease;
     }
     @keyframes panelIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
 
-    .chat-sidebar { width: 100%; display: flex; flex-direction: column; }
+    .chat-sidebar { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
     .chat-panel.show-conversation .chat-sidebar { display: none; }
-    .chat-conversation { width: 100%; display: flex; flex-direction: column; }
+    .chat-panel.show-conversation .tab-bar { display: none; }
+    .chat-conversation { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Tab Bar */
+    .tab-bar {
+      display: flex; border-bottom: 1px solid #e2e8f0; background: #f8fafc; flex-shrink: 0;
+    }
+    .tab-btn {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 10px; border: none; background: transparent; cursor: pointer;
+      font-size: 12px; font-weight: 600; color: #64748b; transition: all 0.15s;
+      border-bottom: 2px solid transparent;
+    }
+    .tab-btn.active { color: #6366f1; border-bottom-color: #6366f1; background: #fff; }
+    .tab-btn:hover { background: #f1f5f9; }
+    .tab-badge {
+      min-width: 16px; height: 16px; border-radius: 8px;
+      background: #ef4444; color: #fff; font-size: 9px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; padding: 0 4px;
+    }
 
     /* Header */
     .chat-header {
-      padding: 16px 18px; display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 18px; display: flex; justify-content: space-between; align-items: center;
       border-bottom: 1px solid #e2e8f0;
       background: linear-gradient(135deg, #6366f1, #4f46e5); color: #fff;
-      border-radius: 16px 16px 0 0;
     }
+    .chat-header.ai-header { background: linear-gradient(135deg, #8b5cf6, #6d28d9); }
     .chat-header h3 { margin: 0; font-size: 15px; font-weight: 700; }
     .online-indicator { display: flex; align-items: center; gap: 5px; font-size: 11px; opacity: 0.9; }
     .online-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; }
 
+    /* AI Intro */
+    .ai-intro { padding: 10px 16px; background: #faf5ff; border-bottom: 1px solid #f3e8ff; }
+    .ai-intro p { margin: 0; font-size: 11px; color: #7c3aed; line-height: 1.4; }
+
     /* Search */
     .chat-search {
       display: flex; align-items: center; gap: 8px; padding: 10px 14px;
-      border-bottom: 1px solid #f1f5f9;
+      border-bottom: 1px solid #f1f5f9; flex-shrink: 0;
     }
     .chat-search svg { color: #94a3b8; flex-shrink: 0; }
     .chat-search input {
@@ -196,9 +349,14 @@ interface ChatMessage {
       width: 10px; height: 10px; border-radius: 50%;
       background: #22c55e; border: 2px solid #fff;
     }
+    .vehicle-avatar {
+      width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0;
+      background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+      display: flex; align-items: center; justify-content: center; color: #fff;
+    }
     .user-info-sm { flex: 1; display: flex; flex-direction: column; min-width: 0; }
     .user-name-sm { font-size: 13px; font-weight: 600; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .user-status-sm { font-size: 10px; color: #94a3b8; }
+    .user-status-sm { font-size: 10px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .unread-count {
       min-width: 18px; height: 18px; border-radius: 9px;
       background: #6366f1; color: #fff; font-size: 10px; font-weight: 700;
@@ -210,19 +368,32 @@ interface ChatMessage {
     /* Conversation Header */
     .conv-header {
       display: flex; align-items: center; gap: 8px; padding: 10px 14px;
-      border-bottom: 1px solid #e2e8f0; background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0; background: #f8fafc; flex-shrink: 0;
     }
+    .ai-conv-header { background: #faf5ff; border-bottom-color: #f3e8ff; }
     .back-btn {
       width: 30px; height: 30px; border-radius: 6px; border: none;
       background: transparent; color: #64748b; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
     }
     .back-btn:hover { background: #e2e8f0; }
-    .conv-user { display: flex; align-items: center; gap: 10px; }
-    .conv-user-info { display: flex; flex-direction: column; }
-    .conv-user-name { font-size: 13px; font-weight: 600; color: #0f172a; }
+    .clear-btn {
+      margin-left: auto; width: 30px; height: 30px; border-radius: 6px; border: none;
+      background: transparent; color: #94a3b8; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .clear-btn:hover { background: #fee2e2; color: #ef4444; }
+    .conv-user { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+    .conv-user-info { display: flex; flex-direction: column; min-width: 0; }
+    .conv-user-name { font-size: 13px; font-weight: 600; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .conv-user-status { font-size: 10px; color: #94a3b8; }
     .conv-user-status.online { color: #22c55e; }
+    .ai-status { color: #7c3aed; }
+    .ai-avatar {
+      width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+      background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+      display: flex; align-items: center; justify-content: center; color: #fff;
+    }
 
     /* Messages */
     .messages-area { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
@@ -231,7 +402,7 @@ interface ChatMessage {
       padding: 4px 12px; background: #f1f5f9; border-radius: 10px;
       align-self: center; margin: 4px 0;
     }
-    .message { display: flex; max-width: 80%; }
+    .message { display: flex; max-width: 85%; }
     .message.mine { align-self: flex-end; }
     .message.other { align-self: flex-start; }
     .msg-bubble {
@@ -245,6 +416,13 @@ interface ChatMessage {
       background: #f1f5f9; color: #0f172a;
       border-bottom-left-radius: 4px;
     }
+    .msg-bubble.ai-bubble {
+      background: linear-gradient(135deg, #faf5ff, #f3e8ff); color: #1e1b4b;
+      border: 1px solid #e9d5ff; border-bottom-left-radius: 4px;
+    }
+    .ai-content { font-size: 13px; line-height: 1.5; word-break: break-word; }
+    .ai-content p { margin: 0 0 6px 0; }
+    .ai-content p:last-child { margin-bottom: 0; }
     .msg-bubble p { margin: 0; font-size: 13px; line-height: 1.4; word-break: break-word; }
     .msg-time { font-size: 9px; opacity: 0.7; display: block; text-align: right; margin-top: 3px; }
     .no-messages {
@@ -253,16 +431,51 @@ interface ChatMessage {
     }
     .no-messages p { font-size: 12px; color: #94a3b8; margin: 0; }
 
+    /* AI Welcome */
+    .ai-welcome {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 8px; padding: 20px;
+    }
+    .ai-welcome-icon {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: linear-gradient(135deg, #ede9fe, #ddd6fe);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .ai-welcome-title { font-size: 14px; font-weight: 700; color: #1e1b4b; margin: 4px 0 0; }
+    .ai-welcome-sub { font-size: 11px; color: #64748b; margin: 0; text-align: center; line-height: 1.4; }
+    .ai-suggestions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 8px; }
+    .ai-suggestion {
+      padding: 6px 12px; border-radius: 16px; border: 1px solid #e9d5ff;
+      background: #faf5ff; color: #7c3aed; font-size: 11px; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .ai-suggestion:hover { background: #ede9fe; border-color: #c4b5fd; }
+
+    /* Typing Indicator */
+    .typing-indicator { display: flex; gap: 4px; padding: 4px 0; }
+    .typing-indicator span {
+      width: 6px; height: 6px; border-radius: 50%; background: #8b5cf6;
+      animation: typingBounce 1.4s infinite both;
+    }
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typingBounce { 0%,80%,100% { transform: scale(0.6); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
+
+    /* AI Error */
+    .ai-error { padding: 8px 12px; background: #fef2f2; border-radius: 8px; border: 1px solid #fecaca; align-self: center; }
+    .ai-error p { margin: 0; font-size: 11px; color: #dc2626; }
+
     /* Message Input */
     .message-input {
       display: flex; align-items: center; gap: 8px; padding: 10px 14px;
-      border-top: 1px solid #e2e8f0; background: #f8fafc;
+      border-top: 1px solid #e2e8f0; background: #f8fafc; flex-shrink: 0;
     }
     .message-input input {
       flex: 1; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 20px;
       font-size: 12px; outline: none; background: #fff;
     }
     .message-input input:focus { border-color: #6366f1; }
+    .message-input input:disabled { background: #f1f5f9; color: #94a3b8; }
     .send-btn {
       width: 34px; height: 34px; border-radius: 50%; border: none;
       background: #6366f1; color: #fff; cursor: pointer;
@@ -271,6 +484,9 @@ interface ChatMessage {
     }
     .send-btn:hover { background: #4f46e5; }
     .send-btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+    .send-btn.ai-send { background: #8b5cf6; }
+    .send-btn.ai-send:hover { background: #7c3aed; }
+    .send-btn.ai-send:disabled { background: #cbd5e1; }
 
     @media (max-width: 480px) {
       .chat-panel { width: calc(100vw - 32px); right: 16px; bottom: 80px; height: 60vh; }
@@ -279,8 +495,10 @@ interface ChatMessage {
 })
 export class ChatComponent implements OnInit, OnDestroy {
   @ViewChild('messagesArea') messagesArea?: ElementRef;
+  @ViewChild('aiMessagesArea') aiMessagesArea?: ElementRef;
 
   isOpen = false;
+  activeTab: 'chat' | 'ai' = 'chat';
   activeUser: ChatUser | null = null;
   users: ChatUser[] = [];
   filteredUsers: ChatUser[] = [];
@@ -289,6 +507,17 @@ export class ChatComponent implements OnInit, OnDestroy {
   searchQuery = '';
   totalUnread = 0;
   loadingMessages = false;
+
+  // AI Chat state
+  aiVehicles: AiVehicle[] = [];
+  aiFilteredVehicles: AiVehicle[] = [];
+  aiActiveVehicle: AiVehicle | null = null;
+  aiMessages: AiMessage[] = [];
+  aiNewMessage = '';
+  aiVehicleSearch = '';
+  aiLoading = false;
+  aiLoadingVehicles = false;
+  aiError = '';
 
   private currentUserId = 0;
   private refreshInterval: any;
@@ -303,7 +532,6 @@ export class ChatComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit() {
-    // Get current user ID from stored user
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
       try { this.currentUserId = JSON.parse(storedUser).id || 0; } catch {}
@@ -313,7 +541,6 @@ export class ChatComponent implements OnInit, OnDestroy {
     this.loadUnreadCount();
     this.setupSignalR();
 
-    // Refresh user list every 30 seconds
     this.refreshInterval = setInterval(() => {
       if (this.isOpen) this.loadUsers();
     }, 30000);
@@ -425,6 +652,7 @@ export class ChatComponent implements OnInit, OnDestroy {
     this.isOpen = !this.isOpen;
     if (this.isOpen) {
       this.activeUser = null;
+      this.aiActiveVehicle = null;
       this.loadUsers();
     }
   }
@@ -438,6 +666,136 @@ export class ChatComponent implements OnInit, OnDestroy {
         u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
       );
     }
+  }
+
+  // ═══════ AI CHAT METHODS ═══════
+
+  switchToAi() {
+    this.activeTab = 'ai';
+    if (this.aiVehicles.length === 0) {
+      this.loadAiVehicles();
+    }
+  }
+
+  private loadAiVehicles() {
+    this.aiLoadingVehicles = true;
+    this.apiService.getAiChatVehicles().subscribe({
+      next: (vehicles: any[]) => {
+        this.ngZone.run(() => {
+          this.aiVehicles = vehicles.map(v => ({
+            id: v.id, name: v.name, plate: v.plate || '', brand: v.brand || '',
+            model: v.model || '', type: v.type || '', mileage: v.mileage || 0, status: v.status || ''
+          }));
+          this.aiFilteredVehicles = [...this.aiVehicles];
+          this.aiLoadingVehicles = false;
+          this.cdr.detectChanges();
+        });
+      },
+      error: () => { this.aiLoadingVehicles = false; this.cdr.detectChanges(); }
+    });
+  }
+
+  filterAiVehicles() {
+    if (!this.aiVehicleSearch) {
+      this.aiFilteredVehicles = [...this.aiVehicles];
+    } else {
+      const q = this.aiVehicleSearch.toLowerCase();
+      this.aiFilteredVehicles = this.aiVehicles.filter(v =>
+        v.name.toLowerCase().includes(q) || v.plate.toLowerCase().includes(q) ||
+        v.brand.toLowerCase().includes(q) || v.model.toLowerCase().includes(q)
+      );
+    }
+  }
+
+  openAiChat(vehicle: AiVehicle) {
+    this.aiActiveVehicle = vehicle;
+    this.aiMessages = [];
+    this.aiError = '';
+    this.cdr.detectChanges();
+
+    this.apiService.getAiChatHistory(vehicle.id).subscribe({
+      next: (msgs: any[]) => {
+        this.ngZone.run(() => {
+          this.aiMessages = msgs.map(m => ({
+            id: m.id?.toString() || Date.now().toString(),
+            role: m.role, content: m.content,
+            timestamp: new Date(m.timestamp), tokensUsed: m.tokensUsed
+          }));
+          this.cdr.detectChanges();
+          this.scrollAiToBottom();
+        });
+      },
+      error: () => {}
+    });
+  }
+
+  sendAiSuggestion(text: string) {
+    this.aiNewMessage = text;
+    this.sendAiMessage();
+  }
+
+  sendAiMessage() {
+    if (!this.aiNewMessage.trim() || !this.aiActiveVehicle || this.aiLoading) return;
+    const content = this.aiNewMessage.trim();
+    this.aiNewMessage = '';
+    this.aiError = '';
+
+    this.aiMessages.push({
+      id: 'user_' + Date.now(), role: 'user', content, timestamp: new Date()
+    });
+    this.aiLoading = true;
+    this.cdr.detectChanges();
+    this.scrollAiToBottom();
+
+    this.apiService.sendAiChatMessage(this.aiActiveVehicle.id, content).subscribe({
+      next: (res: any) => {
+        this.ngZone.run(() => {
+          this.aiMessages.push({
+            id: res.messageId?.toString() || Date.now().toString(),
+            role: 'assistant', content: res.message,
+            timestamp: new Date(), tokensUsed: res.tokensUsed
+          });
+          this.aiLoading = false;
+          this.cdr.detectChanges();
+          this.scrollAiToBottom();
+        });
+      },
+      error: (err: any) => {
+        this.ngZone.run(() => {
+          this.aiLoading = false;
+          this.aiError = err.error?.message || 'Erreur lors de la communication avec l\'IA';
+          this.cdr.detectChanges();
+          this.scrollAiToBottom();
+        });
+      }
+    });
+  }
+
+  clearAiHistory() {
+    if (!this.aiActiveVehicle) return;
+    this.apiService.clearAiChatHistory(this.aiActiveVehicle.id).subscribe({
+      next: () => {
+        this.aiMessages = [];
+        this.aiError = '';
+        this.cdr.detectChanges();
+      },
+      error: () => {}
+    });
+  }
+
+  formatAiContent(content: string): string {
+    return content
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>')
+      .replace(/- /g, '&bull; ');
+  }
+
+  private scrollAiToBottom() {
+    setTimeout(() => {
+      if (this.aiMessagesArea?.nativeElement) {
+        this.aiMessagesArea.nativeElement.scrollTop = this.aiMessagesArea.nativeElement.scrollHeight;
+      }
+    }, 50);
   }
 
   openConversation(user: ChatUser) {

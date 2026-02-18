@@ -124,6 +124,7 @@ public class GisDbContext : DbContext, IGisDbContext
 
     // Chat
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<AiChatMessage> AiChatMessages => Set<AiChatMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -165,6 +166,7 @@ public class GisDbContext : DbContext, IGisDbContext
             modelBuilder.Entity<Driver>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
             modelBuilder.Entity<Tour>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
             modelBuilder.Entity<ChatMessage>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
+            modelBuilder.Entity<AiChatMessage>().HasQueryFilter(e => e.CompanyId == _tenantService.CompanyId);
         }
 
         // Configure composite keys
@@ -203,6 +205,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<TourWaypoint>().ToTable("tour_waypoints");
         modelBuilder.Entity<TourPause>().ToTable("tour_pauses");
         modelBuilder.Entity<ChatMessage>().ToTable("chat_messages");
+        modelBuilder.Entity<AiChatMessage>().ToTable("ai_chat_messages");
 
         // SubscriptionType configuration - all column mappings for PostgreSQL snake_case
         modelBuilder.Entity<SubscriptionType>().Property(s => s.Id).HasColumnName("id");
@@ -450,6 +453,31 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<ChatMessage>()
             .HasIndex(m => new { m.ReceiverId, m.IsRead })
             .HasDatabaseName("ix_chat_messages_receiver_unread");
+
+        // AiChatMessage configuration
+        modelBuilder.Entity<AiChatMessage>().Property(m => m.Id).HasColumnName("id");
+        modelBuilder.Entity<AiChatMessage>().Property(m => m.UserId).HasColumnName("user_id");
+        modelBuilder.Entity<AiChatMessage>().Property(m => m.VehicleId).HasColumnName("vehicle_id");
+        modelBuilder.Entity<AiChatMessage>().Property(m => m.Role).HasColumnName("role").HasMaxLength(20);
+        modelBuilder.Entity<AiChatMessage>().Property(m => m.Content).HasColumnName("content");
+        modelBuilder.Entity<AiChatMessage>().Property(m => m.SessionId).HasColumnName("session_id").HasMaxLength(100);
+        modelBuilder.Entity<AiChatMessage>().Property(m => m.TokensUsed).HasColumnName("tokens_used");
+        modelBuilder.Entity<AiChatMessage>().Property(m => m.CompanyId).HasColumnName("company_id");
+        modelBuilder.Entity<AiChatMessage>().Property(m => m.CreatedAt).HasColumnName("created_at");
+        modelBuilder.Entity<AiChatMessage>().Property(m => m.UpdatedAt).HasColumnName("updated_at");
+        modelBuilder.Entity<AiChatMessage>()
+            .HasOne(m => m.User)
+            .WithMany()
+            .HasForeignKey(m => m.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<AiChatMessage>()
+            .HasOne(m => m.Vehicle)
+            .WithMany()
+            .HasForeignKey(m => m.VehicleId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<AiChatMessage>()
+            .HasIndex(m => new { m.UserId, m.VehicleId, m.CreatedAt })
+            .HasDatabaseName("ix_ai_chat_messages_user_vehicle_time");
 
         // GpsPosition decimal precision
         modelBuilder.Entity<GpsPosition>().Property(p => p.FuelRateLPer100Km).HasPrecision(6, 2);

@@ -23,6 +23,7 @@ builder.Services.AddSignalR()
     });
 builder.Services.AddSingleton<IGpsHubService, GpsHubService>();
 builder.Services.AddScoped<INotificationService, GisAPI.Services.NotificationService>();
+builder.Services.AddSingleton<ILlmService, GisAPI.Services.GroqLlmService>();
 
 // GPS Telemetry Consumer (RabbitMQ -> SignalR)
 builder.Services.AddHostedService<GisAPI.Services.GpsTelemetryConsumer>();

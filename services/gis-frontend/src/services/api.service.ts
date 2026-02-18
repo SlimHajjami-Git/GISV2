@@ -1560,6 +1560,24 @@ export class ApiService {
   getChatUnreadCount(): Observable<{ count: number }> {
     return this.http.get<{ count: number }>(`${this.API_URL}/chat/unread-count`, { headers: this.getHeaders() });
   }
+
+  // ==================== AI DIAGNOSTIC CHAT ====================
+
+  getAiChatVehicles(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.API_URL}/ai-chat/vehicles`, { headers: this.getHeaders() });
+  }
+
+  sendAiChatMessage(vehicleId: number, message: string): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/ai-chat/send`, { vehicleId, message }, { headers: this.getHeaders() });
+  }
+
+  getAiChatHistory(vehicleId: number, limit = 50): Observable<any[]> {
+    return this.http.get<any[]>(`${this.API_URL}/ai-chat/history/${vehicleId}?limit=${limit}`, { headers: this.getHeaders() });
+  }
+
+  clearAiChatHistory(vehicleId: number): Observable<any> {
+    return this.http.delete<any>(`${this.API_URL}/ai-chat/history/${vehicleId}`, { headers: this.getHeaders() });
+  }
 }
 
 // ==================== FUEL RECORDS INTERFACES ====================

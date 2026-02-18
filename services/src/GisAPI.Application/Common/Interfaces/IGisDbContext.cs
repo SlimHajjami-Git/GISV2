@@ -66,6 +66,7 @@ public interface IGisDbContext
 
     // Chat
     DbSet<ChatMessage> ChatMessages { get; }
+    DbSet<AiChatMessage> AiChatMessages { get; }
 
     // Auth
     DbSet<RefreshToken> RefreshTokens { get; }
