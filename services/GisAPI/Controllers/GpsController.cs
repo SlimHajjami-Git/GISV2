@@ -238,19 +238,20 @@ public class GpsController : ControllerBase
 
     /// <summary>
     /// Get position history for a vehicle (for playback/route display)
+    /// Optimized: uses SQL-level sampling for large date ranges to avoid transferring 10K+ points.
     /// </summary>
     /// <param name="vehicleId">Vehicle ID</param>
     /// <param name="from">Start date (default: 24h ago)</param>
     /// <param name="to">End date (default: now)</param>
-    /// <param name="limit">Max positions to return (default: 10000)</param>
+    /// <param name="maxPoints">Target max positions (default: 3000). Server will downsample if raw count exceeds this.</param>
     /// <param name="filterDrift">Filter GPS drift when vehicle is stationary (speed &lt; 3 km/h, distance &lt; 15m)</param>
     [HttpGet("vehicles/{vehicleId}/history")]
-    public async Task<ActionResult<List<PositionDto>>> GetVehicleHistory(
+    public async Task<ActionResult> GetVehicleHistory(
         int vehicleId,
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
-        [FromQuery] int limit = 10000,
-        [FromQuery] bool filterDrift = false)
+        [FromQuery] int maxPoints = 3000,
+        [FromQuery] bool filterDrift = true)
     {
         var companyId = GetCompanyId();
 
@@ -267,63 +268,136 @@ public class GpsController : ControllerBase
         from ??= DateTime.UtcNow.AddHours(-24);
         to ??= DateTime.UtcNow;
 
-        // Ensure UTC kind for Npgsql timestamptz compatibility
         var fromUtc = EnsureUtc(from.Value);
         var toUtc = EnsureUtc(to.Value);
+        maxPoints = Math.Clamp(maxPoints, 100, 15000);
 
-        var rawPositions = await _context.GpsPositions
+        // Step 1: Get total count for this range (fast - uses index)
+        var totalCount = await _context.GpsPositions
             .AsNoTracking()
             .Where(p => p.DeviceId == vehicle.GpsDeviceId &&
                         p.RecordedAt >= fromUtc &&
                         p.RecordedAt <= toUtc)
-            .OrderBy(p => p.RecordedAt)
-            .Take(limit)
-            .Select(p => new PositionDto
-            {
-                Id = p.Id,
-                Latitude = p.Latitude,
-                Longitude = p.Longitude,
-                SpeedKph = p.SpeedKph,
-                CourseDeg = p.CourseDeg,
-                IgnitionOn = p.IgnitionOn,
-                RecordedAt = p.RecordedAt,
-                Address = p.Address,
-                FuelRaw = p.FuelRaw,
-                OdometerKm = p.OdometerKm,
-                IsRealTime = p.IsRealTime,
-                TemperatureC = p.TemperatureC,
-                CreatedAt = p.CreatedAt
-            })
-            .ToListAsync();
+            .CountAsync();
 
-        if (!filterDrift || rawPositions.Count < 2)
-            return Ok(rawPositions);
+        if (totalCount == 0)
+            return Ok(new { positions = new List<PositionDto>(), totalCount = 0, sampled = false });
 
-        // Filter GPS drift: remove consecutive points within 15m when speed < 3 km/h
-        var filtered = new List<PositionDto> { rawPositions[0] };
-        
-        for (int i = 1; i < rawPositions.Count; i++)
+        List<PositionDto> positions;
+
+        if (totalCount <= maxPoints)
         {
-            var prev = filtered[^1]; // Last kept position
-            var curr = rawPositions[i];
-            
-            var prevSpeed = prev.SpeedKph ?? 0;
-            var currSpeed = curr.SpeedKph ?? 0;
-            
-            // If both points are stationary (speed < 3), check distance
-            if (prevSpeed < 3 && currSpeed < 3)
-            {
-                var distance = CalculateDistance(prev.Latitude, prev.Longitude, curr.Latitude, curr.Longitude);
-                
-                // Skip if within 15m (GPS drift)
-                if (distance < 15)
-                    continue;
-            }
-            
-            filtered.Add(curr);
+            // Small dataset - fetch all, no sampling needed
+            positions = await _context.GpsPositions
+                .AsNoTracking()
+                .Where(p => p.DeviceId == vehicle.GpsDeviceId &&
+                            p.RecordedAt >= fromUtc &&
+                            p.RecordedAt <= toUtc)
+                .OrderBy(p => p.RecordedAt)
+                .Select(p => new PositionDto
+                {
+                    Id = p.Id,
+                    Latitude = p.Latitude,
+                    Longitude = p.Longitude,
+                    SpeedKph = p.SpeedKph,
+                    CourseDeg = p.CourseDeg,
+                    IgnitionOn = p.IgnitionOn,
+                    RecordedAt = p.RecordedAt,
+                    Address = p.Address,
+                    FuelRaw = p.FuelRaw,
+                    OdometerKm = p.OdometerKm,
+                    IsRealTime = p.IsRealTime,
+                    TemperatureC = p.TemperatureC,
+                    CreatedAt = p.CreatedAt
+                })
+                .ToListAsync();
+        }
+        else
+        {
+            // Large dataset - use SQL-level sampling with ROW_NUMBER() modulo
+            // Keeps every Nth point + always keeps first, last, and speed-change points
+            var sampleRate = Math.Max(1, totalCount / maxPoints);
+
+            positions = await _context.GpsPositions
+                .FromSqlRaw(@"
+                    WITH numbered AS (
+                        SELECT *, 
+                               ROW_NUMBER() OVER (ORDER BY recorded_at ASC) AS rn,
+                               COUNT(*) OVER () AS total,
+                               COALESCE(speed_kph, 0) AS spd,
+                               COALESCE(LAG(speed_kph) OVER (ORDER BY recorded_at ASC), 0) AS prev_spd
+                        FROM gps_positions
+                        WHERE device_id = {0}
+                          AND recorded_at >= {1}
+                          AND recorded_at <= {2}
+                    )
+                    SELECT id, device_id, latitude, longitude, speed_kph, course_deg,
+                           ignition_on, recorded_at, address, fuel_raw, odometer_km,
+                           is_real_time, temperature_c, created_at, event_key,
+                           mems_x, mems_y, mems_z, rpm, send_flag, protocol_version,
+                           fuel_rate_l_per_100km, is_interpolated
+                    FROM numbered
+                    WHERE rn = 1                           -- always keep first
+                       OR rn = total                       -- always keep last
+                       OR rn % {3} = 0                     -- every Nth point
+                       OR (spd > 3 AND prev_spd <= 3)      -- vehicle started moving
+                       OR (spd <= 3 AND prev_spd > 3)      -- vehicle stopped
+                       OR ABS(spd - prev_spd) > 20         -- significant speed change
+                    ORDER BY recorded_at ASC
+                ", vehicle.GpsDeviceId!, fromUtc, toUtc, sampleRate)
+                .AsNoTracking()
+                .Select(p => new PositionDto
+                {
+                    Id = p.Id,
+                    Latitude = p.Latitude,
+                    Longitude = p.Longitude,
+                    SpeedKph = p.SpeedKph,
+                    CourseDeg = p.CourseDeg,
+                    IgnitionOn = p.IgnitionOn,
+                    RecordedAt = p.RecordedAt,
+                    Address = p.Address,
+                    FuelRaw = p.FuelRaw,
+                    OdometerKm = p.OdometerKm,
+                    IsRealTime = p.IsRealTime,
+                    TemperatureC = p.TemperatureC,
+                    CreatedAt = p.CreatedAt
+                })
+                .ToListAsync();
         }
 
-        return Ok(filtered);
+        // Filter GPS drift if requested
+        if (filterDrift && positions.Count >= 2)
+        {
+            var filtered = new List<PositionDto>(positions.Count) { positions[0] };
+            
+            for (int i = 1; i < positions.Count; i++)
+            {
+                var prev = filtered[^1];
+                var curr = positions[i];
+                
+                var prevSpeed = prev.SpeedKph ?? 0;
+                var currSpeed = curr.SpeedKph ?? 0;
+                
+                if (prevSpeed < 3 && currSpeed < 3)
+                {
+                    var distance = CalculateDistance(prev.Latitude, prev.Longitude, curr.Latitude, curr.Longitude);
+                    if (distance < 15)
+                        continue;
+                }
+                
+                filtered.Add(curr);
+            }
+            positions = filtered;
+        }
+
+        return Ok(new
+        {
+            positions,
+            totalCount,
+            returnedCount = positions.Count,
+            sampled = totalCount > maxPoints,
+            sampleRate = totalCount > maxPoints ? Math.Max(1, totalCount / maxPoints) : 1
+        });
     }
     
     private static double CalculateDistance(double lat1, double lon1, double lat2, double lon2)
@@ -331,17 +405,20 @@ public class GpsController : ControllerBase
 
     /// <summary>
     /// Get position history for a device by IMEI
+    /// Optimized: same SQL-level sampling as vehicle history endpoint.
     /// </summary>
     [HttpGet("devices/{deviceUid}/history")]
-    public async Task<ActionResult<List<PositionDto>>> GetDeviceHistory(
+    public async Task<ActionResult> GetDeviceHistory(
         string deviceUid,
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
-        [FromQuery] int limit = 10000)
+        [FromQuery] int maxPoints = 3000,
+        [FromQuery] bool filterDrift = true)
     {
         var companyId = GetCompanyId();
 
         var device = await _context.GpsDevices
+            .AsNoTracking()
             .FirstOrDefaultAsync(d => d.DeviceUid == deviceUid && d.CompanyId == companyId);
 
         if (device == null)
@@ -350,35 +427,124 @@ public class GpsController : ControllerBase
         from ??= DateTime.UtcNow.AddHours(-24);
         to ??= DateTime.UtcNow;
 
-        // Ensure UTC kind for Npgsql timestamptz compatibility
         var fromUtc = EnsureUtc(from.Value);
         var toUtc = EnsureUtc(to.Value);
+        maxPoints = Math.Clamp(maxPoints, 100, 15000);
 
-        var positions = await _context.GpsPositions
+        var totalCount = await _context.GpsPositions
+            .AsNoTracking()
             .Where(p => p.DeviceId == device.Id &&
                         p.RecordedAt >= fromUtc &&
                         p.RecordedAt <= toUtc)
-            .OrderBy(p => p.RecordedAt)
-            .Take(limit)
-            .Select(p => new PositionDto
-            {
-                Id = p.Id,
-                Latitude = p.Latitude,
-                Longitude = p.Longitude,
-                SpeedKph = p.SpeedKph,
-                CourseDeg = p.CourseDeg,
-                IgnitionOn = p.IgnitionOn,
-                RecordedAt = p.RecordedAt,
-                Address = p.Address,
-                FuelRaw = p.FuelRaw,
-                OdometerKm = p.OdometerKm,
-                IsRealTime = p.IsRealTime,
-                TemperatureC = p.TemperatureC,
-                CreatedAt = p.CreatedAt
-            })
-            .ToListAsync();
+            .CountAsync();
 
-        return Ok(positions);
+        if (totalCount == 0)
+            return Ok(new { positions = new List<PositionDto>(), totalCount = 0, sampled = false });
+
+        List<PositionDto> positions;
+
+        if (totalCount <= maxPoints)
+        {
+            positions = await _context.GpsPositions
+                .AsNoTracking()
+                .Where(p => p.DeviceId == device.Id &&
+                            p.RecordedAt >= fromUtc &&
+                            p.RecordedAt <= toUtc)
+                .OrderBy(p => p.RecordedAt)
+                .Select(p => new PositionDto
+                {
+                    Id = p.Id,
+                    Latitude = p.Latitude,
+                    Longitude = p.Longitude,
+                    SpeedKph = p.SpeedKph,
+                    CourseDeg = p.CourseDeg,
+                    IgnitionOn = p.IgnitionOn,
+                    RecordedAt = p.RecordedAt,
+                    Address = p.Address,
+                    FuelRaw = p.FuelRaw,
+                    OdometerKm = p.OdometerKm,
+                    IsRealTime = p.IsRealTime,
+                    TemperatureC = p.TemperatureC,
+                    CreatedAt = p.CreatedAt
+                })
+                .ToListAsync();
+        }
+        else
+        {
+            var sampleRate = Math.Max(1, totalCount / maxPoints);
+
+            positions = await _context.GpsPositions
+                .FromSqlRaw(@"
+                    WITH numbered AS (
+                        SELECT *, 
+                               ROW_NUMBER() OVER (ORDER BY recorded_at ASC) AS rn,
+                               COUNT(*) OVER () AS total,
+                               COALESCE(speed_kph, 0) AS spd,
+                               COALESCE(LAG(speed_kph) OVER (ORDER BY recorded_at ASC), 0) AS prev_spd
+                        FROM gps_positions
+                        WHERE device_id = {0}
+                          AND recorded_at >= {1}
+                          AND recorded_at <= {2}
+                    )
+                    SELECT id, device_id, latitude, longitude, speed_kph, course_deg,
+                           ignition_on, recorded_at, address, fuel_raw, odometer_km,
+                           is_real_time, temperature_c, created_at, event_key,
+                           mems_x, mems_y, mems_z, rpm, send_flag, protocol_version,
+                           fuel_rate_l_per_100km, is_interpolated
+                    FROM numbered
+                    WHERE rn = 1
+                       OR rn = total
+                       OR rn % {3} = 0
+                       OR (spd > 3 AND prev_spd <= 3)
+                       OR (spd <= 3 AND prev_spd > 3)
+                       OR ABS(spd - prev_spd) > 20
+                    ORDER BY recorded_at ASC
+                ", device.Id, fromUtc, toUtc, sampleRate)
+                .AsNoTracking()
+                .Select(p => new PositionDto
+                {
+                    Id = p.Id,
+                    Latitude = p.Latitude,
+                    Longitude = p.Longitude,
+                    SpeedKph = p.SpeedKph,
+                    CourseDeg = p.CourseDeg,
+                    IgnitionOn = p.IgnitionOn,
+                    RecordedAt = p.RecordedAt,
+                    Address = p.Address,
+                    FuelRaw = p.FuelRaw,
+                    OdometerKm = p.OdometerKm,
+                    IsRealTime = p.IsRealTime,
+                    TemperatureC = p.TemperatureC,
+                    CreatedAt = p.CreatedAt
+                })
+                .ToListAsync();
+        }
+
+        if (filterDrift && positions.Count >= 2)
+        {
+            var filtered = new List<PositionDto>(positions.Count) { positions[0] };
+            for (int i = 1; i < positions.Count; i++)
+            {
+                var prev = filtered[^1];
+                var curr = positions[i];
+                if ((prev.SpeedKph ?? 0) < 3 && (curr.SpeedKph ?? 0) < 3)
+                {
+                    if (CalculateDistance(prev.Latitude, prev.Longitude, curr.Latitude, curr.Longitude) < 15)
+                        continue;
+                }
+                filtered.Add(curr);
+            }
+            positions = filtered;
+        }
+
+        return Ok(new
+        {
+            positions,
+            totalCount,
+            returnedCount = positions.Count,
+            sampled = totalCount > maxPoints,
+            sampleRate = totalCount > maxPoints ? Math.Max(1, totalCount / maxPoints) : 1
+        });
     }
 
     // ==================== GEOCODING ====================

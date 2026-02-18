@@ -175,13 +175,13 @@ public class RedisPubSubConsumer : BackgroundService
 
 public class RedisPositionMessage
 {
-    [System.Text.Json.Serialization.JsonPropertyName("device_uid")]
+    [System.Text.Json.Serialization.JsonPropertyName("deviceUid")]
     public string DeviceUid { get; set; } = string.Empty;
     
-    [System.Text.Json.Serialization.JsonPropertyName("vehicle_id")]
+    [System.Text.Json.Serialization.JsonPropertyName("vehicleId")]
     public int? VehicleId { get; set; }
     
-    [System.Text.Json.Serialization.JsonPropertyName("company_id")]
+    [System.Text.Json.Serialization.JsonPropertyName("companyId")]
     public int CompanyId { get; set; }
     
     [System.Text.Json.Serialization.JsonPropertyName("latitude")]
@@ -190,18 +190,18 @@ public class RedisPositionMessage
     [System.Text.Json.Serialization.JsonPropertyName("longitude")]
     public double Longitude { get; set; }
     
-    [System.Text.Json.Serialization.JsonPropertyName("speed_kph")]
+    [System.Text.Json.Serialization.JsonPropertyName("speedKph")]
     public double SpeedKph { get; set; }
     
-    [System.Text.Json.Serialization.JsonPropertyName("heading_deg")]
+    [System.Text.Json.Serialization.JsonPropertyName("headingDeg")]
     public double HeadingDeg { get; set; }
     
-    [System.Text.Json.Serialization.JsonPropertyName("ignition_on")]
+    [System.Text.Json.Serialization.JsonPropertyName("ignitionOn")]
     public bool IgnitionOn { get; set; }
     
-    [System.Text.Json.Serialization.JsonPropertyName("recorded_at")]
+    [System.Text.Json.Serialization.JsonPropertyName("recordedAt")]
     public string RecordedAt { get; set; } = string.Empty;
     
-    [System.Text.Json.Serialization.JsonPropertyName("cached_at")]
+    [System.Text.Json.Serialization.JsonPropertyName("cachedAt")]
     public string CachedAt { get; set; } = string.Empty;
 }

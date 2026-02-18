@@ -193,9 +193,9 @@ export class MonitoringApiService implements OnDestroy {
     vehicleId: number,
     from?: Date,
     to?: Date,
-    limit = 10000
+    maxPoints = 3000
   ): Observable<PositionHistoryItem[]> {
-    let params = new HttpParams().set('limit', limit.toString());
+    let params = new HttpParams().set('maxPoints', maxPoints.toString());
 
     if (from) {
       params = params.set('from', from.toISOString());
@@ -206,12 +206,12 @@ export class MonitoringApiService implements OnDestroy {
 
     this.loadingSubject.next(true);
 
-    return this.http.get<PositionHistoryItem[]>(
+    return this.http.get<any>(
       `${this.baseUrl}/gps/vehicles/${vehicleId}/history`,
       { headers: this.getAuthHeaders(), params }
     ).pipe(
       tap(() => this.loadingSubject.next(false)),
-      map(positions => this.filterInvalidPositions(positions)),
+      map(resp => this.filterInvalidPositions(Array.isArray(resp) ? resp : resp?.positions ?? [])),
       catchError(error => {
         this.loadingSubject.next(false);
         return this.handleError(error);
@@ -224,9 +224,9 @@ export class MonitoringApiService implements OnDestroy {
     deviceUid: string,
     from?: Date,
     to?: Date,
-    limit = 10000
+    maxPoints = 3000
   ): Observable<PositionHistoryItem[]> {
-    let params = new HttpParams().set('limit', limit.toString());
+    let params = new HttpParams().set('maxPoints', maxPoints.toString());
 
     if (from) {
       params = params.set('from', from.toISOString());
@@ -235,11 +235,11 @@ export class MonitoringApiService implements OnDestroy {
       params = params.set('to', to.toISOString());
     }
 
-    return this.http.get<PositionHistoryItem[]>(
+    return this.http.get<any>(
       `${this.baseUrl}/gps/devices/${deviceUid}/history`,
       { headers: this.getAuthHeaders(), params }
     ).pipe(
-      map(positions => this.filterInvalidPositions(positions)),
+      map(resp => this.filterInvalidPositions(Array.isArray(resp) ? resp : resp?.positions ?? [])),
       catchError(error => this.handleError(error)),
       takeUntil(this.destroy$)
     );

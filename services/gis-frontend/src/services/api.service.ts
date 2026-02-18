@@ -577,20 +577,24 @@ export class ApiService {
     return this.http.get<any>(`${this.getMonitoringApiUrl()}/gps/vehicles/${vehicleId}/position`, { headers: this.getHeaders() });
   }
 
-  getVehicleHistory(vehicleId: number, from?: Date, to?: Date, limit = 10000): Observable<PositionDto[]> {
+  getVehicleHistory(vehicleId: number, from?: Date, to?: Date, maxPoints = 3000): Observable<PositionDto[]> {
     let params = new HttpParams();
     if (from) params = params.set('from', this.toLocalIso(from));
     if (to) params = params.set('to', this.toLocalIso(to));
-    params = params.set('limit', limit.toString());
-    return this.http.get<PositionDto[]>(`${this.getMonitoringApiUrl()}/gps/vehicles/${vehicleId}/history`, { headers: this.getHeaders(), params });
+    params = params.set('maxPoints', maxPoints.toString());
+    return this.http.get<any>(`${this.getMonitoringApiUrl()}/gps/vehicles/${vehicleId}/history`, { headers: this.getHeaders(), params }).pipe(
+      map(resp => Array.isArray(resp) ? resp : resp?.positions ?? [])
+    );
   }
 
-  getDeviceHistory(deviceUid: string, from?: Date, to?: Date, limit = 10000): Observable<PositionDto[]> {
+  getDeviceHistory(deviceUid: string, from?: Date, to?: Date, maxPoints = 3000): Observable<PositionDto[]> {
     let params = new HttpParams();
     if (from) params = params.set('from', this.toLocalIso(from));
     if (to) params = params.set('to', this.toLocalIso(to));
-    params = params.set('limit', limit.toString());
-    return this.http.get<any[]>(`${this.getMonitoringApiUrl()}/gps/devices/${deviceUid}/history`, { headers: this.getHeaders(), params });
+    params = params.set('maxPoints', maxPoints.toString());
+    return this.http.get<any>(`${this.getMonitoringApiUrl()}/gps/devices/${deviceUid}/history`, { headers: this.getHeaders(), params }).pipe(
+      map(resp => Array.isArray(resp) ? resp : resp?.positions ?? [])
+    );
   }
 
   private toLocalIso(date: Date): string {
