@@ -438,7 +438,7 @@ public class AiChatController : ControllerBase
         var trips30d = await _context.Trips
             .AsNoTracking()
             .Where(t => t.VehicleId == vehicle.Id && t.StartTime >= thirtyDaysAgo && t.Status == "completed")
-            .ToListAsync(ct: default);
+            .ToListAsync();
 
         if (trips30d.Count > 0)
         {
