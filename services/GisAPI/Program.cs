@@ -108,13 +108,14 @@ builder.Services.AddAuthorization(options =>
         policy.RequireClaim("permission", Permissions.Admin));
 });
 
-// Controllers with camelCase JSON serialization
+// Controllers with camelCase JSON serialization + UTC DateTime converter
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
         options.JsonSerializerOptions.DictionaryKeyPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
         options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+        options.JsonSerializerOptions.Converters.Add(new GisAPI.Middleware.UtcDateTimeConverter());
     });
 
 // CORS - Allow all for debugging
