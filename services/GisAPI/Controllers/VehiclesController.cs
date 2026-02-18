@@ -91,7 +91,9 @@ public class VehiclesController : ControllerBase
                     cachedPositions.Count, companyId);
                 
                 // Create lookup by device UID
-                var cacheByDevice = cachedPositions.ToDictionary(p => p.DeviceUid, p => p);
+                var cacheByDevice = cachedPositions
+                    .GroupBy(p => p.DeviceUid)
+                    .ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.CachedAt).First());
                 
                 // Update vehicles with cached positions (more recent data)
                 foreach (var vehicle in vehicles.Where(v => v.DeviceUid != null))
