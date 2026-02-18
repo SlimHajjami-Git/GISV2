@@ -1964,10 +1964,11 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
   }
 
   triggerPhotoUpload(event: Event) {
-    event.preventDefault();
     event.stopPropagation();
     const input = (event.currentTarget as HTMLElement).querySelector('input[type="file"]') as HTMLInputElement;
-    if (input) input.click();
+    if (input) {
+      setTimeout(() => input.click(), 0);
+    }
   }
 
   openAddForm() {

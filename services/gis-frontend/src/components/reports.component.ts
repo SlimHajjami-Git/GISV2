@@ -154,10 +154,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   vehicles: any[] = [];
   drivers: any[] = [];
+  departments: any[] = [];
   selectedTemplate: any = null;
   selectedTemplateId = '';
   selectedVehicleId = '';
   selectedDriverId = '';
+  selectedDepartmentId = '';
   selectedVehicleIds: string[] = [];
 
   // Mileage Period Report options
@@ -363,6 +365,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       next: (drivers) => this.drivers = drivers,
       error: (err) => console.error('Error loading drivers:', err)
     });
+    this.apiService.getDepartments().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (departments) => this.departments = departments,
+      error: (err) => console.error('Error loading departments:', err)
+    });
   }
 
   onDriverFilterChange() {
@@ -372,6 +378,18 @@ export class ReportsComponent implements OnInit, OnDestroy {
         this.selectedVehicleId = String(driver.assignedVehicleId);
       }
     }
+  }
+
+  onDepartmentFilterChange() {
+    if (this.selectedDepartmentId) {
+      this.selectedVehicleId = '';
+      this.selectedDriverId = '';
+    }
+  }
+
+  getFilteredVehicles(): any[] {
+    if (!this.selectedDepartmentId) return this.vehicles;
+    return this.vehicles.filter(v => String(v.departmentId) === String(this.selectedDepartmentId));
   }
 
   initializeDates() {
@@ -515,6 +533,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.selectedTemplateId = '';
     this.selectedTemplate = null;
     this.selectedVehicleId = '';
+    this.selectedDriverId = '';
+    this.selectedDepartmentId = '';
     this.selectedStandardPeriod = 'today';
     this.selectedCostPeriod = 'month';
     this.customStartDate = '';

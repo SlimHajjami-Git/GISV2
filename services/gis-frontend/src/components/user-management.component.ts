@@ -1826,7 +1826,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         email: '',
         phone: '',
         password: '',
-        roleId: this.roles.length > 0 ? this.roles[0].id : 0,
+        roleId: this.roles.find(r => !r.isCompanyAdmin)?.id || (this.roles.length > 0 ? this.roles[0].id : 0),
         status: 'active',
         assignedVehicleIds: [],
         canMonitoring: true,

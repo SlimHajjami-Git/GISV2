@@ -206,7 +206,7 @@ public class AccidentClaimsController : ControllerBase
     [RequestSizeLimit(50_000_000)] // 50MB max
     public async Task<ActionResult> UploadDocuments(int id, [FromForm] List<IFormFile> files, [FromForm] string? documentType)
     {
-        var claim = await _context.AccidentClaims.FindAsync(id);
+        var claim = await _context.AccidentClaims.FirstOrDefaultAsync(c => c.Id == id);
         if (claim == null) return NotFound();
 
         var uploadsDir = Path.Combine(_env.ContentRootPath, "uploads", "claims", id.ToString());
@@ -254,6 +254,9 @@ public class AccidentClaimsController : ControllerBase
     [HttpGet("{id}/documents")]
     public async Task<ActionResult> GetDocuments(int id)
     {
+        var claim = await _context.AccidentClaims.FirstOrDefaultAsync(c => c.Id == id);
+        if (claim == null) return NotFound();
+
         var docs = await _context.AccidentClaimDocuments
             .Where(d => d.ClaimId == id)
             .OrderByDescending(d => d.UploadedAt)
@@ -268,6 +271,9 @@ public class AccidentClaimsController : ControllerBase
     [HttpDelete("{claimId}/documents/{documentId}")]
     public async Task<ActionResult> DeleteDocument(int claimId, int documentId)
     {
+        var claim = await _context.AccidentClaims.FirstOrDefaultAsync(c => c.Id == claimId);
+        if (claim == null) return NotFound();
+
         var doc = await _context.AccidentClaimDocuments
             .FirstOrDefaultAsync(d => d.Id == documentId && d.ClaimId == claimId);
         if (doc == null) return NotFound();

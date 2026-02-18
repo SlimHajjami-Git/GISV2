@@ -2,7 +2,9 @@ import { Component, OnInit, AfterViewInit, OnDestroy, ChangeDetectorRef } from '
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
+import { SignalRService } from '../services/signalr.service';
 import { Geofence, GeofenceEvent, GeofencePoint, Vehicle, Company, GeofenceGroup } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import * as L from 'leaflet';
@@ -1322,9 +1324,12 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
   private markers: L.CircleMarker[] = [];
   private defaultCenter: L.LatLngExpression = [36.8065, 10.1815]; // Tunis, Tunisie
 
+  private destroy$ = new Subject<void>();
+
   constructor(
     private router: Router,
     private apiService: ApiService,
+    private signalRService: SignalRService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -1335,6 +1340,24 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     this.loadData();
+
+    // Subscribe to real-time geofence events via SignalR
+    this.signalRService.geofenceEvent$.pipe(takeUntil(this.destroy$)).subscribe(event => {
+      const newEvent: GeofenceEvent = {
+        id: `rt-${Date.now()}`,
+        geofenceId: event.geofenceId.toString(),
+        vehicleId: event.vehicleId.toString(),
+        vehicleName: event.vehicleName || '',
+        type: event.eventType,
+        timestamp: new Date(event.timestamp),
+        location: { lat: event.latitude, lng: event.longitude },
+        latitude: event.latitude,
+        longitude: event.longitude,
+        speed: event.speed
+      };
+      this.events = [newEvent, ...this.events].slice(0, 50);
+      this.cdr.detectChanges();
+    });
   }
 
   loadData() {
@@ -1389,6 +1412,8 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
     this.destroyMaps();
   }
 

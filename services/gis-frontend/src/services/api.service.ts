@@ -319,6 +319,15 @@ export class ApiService {
     return this.getLatestPositions();
   }
 
+  // ==================== DEPARTMENTS ====================
+
+  getDepartments(): Observable<any[]> {
+    if (this.isMockUser()) {
+      return of([]);
+    }
+    return this.http.get<any[]>(`${this.API_URL}/fleet-management/departments`, { headers: this.getHeaders() });
+  }
+
   // ==================== DRIVERS ====================
 
   getDrivers(): Observable<any[]> {

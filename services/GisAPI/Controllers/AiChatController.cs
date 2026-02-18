@@ -476,6 +476,27 @@ public class AiChatController : ControllerBase
             };
         }
 
+        // GPS-based fuel records (last 30 days) from fuel_records table
+        ctx.FuelRecords = await _context.FuelRecords
+            .AsNoTracking()
+            .Where(fr => fr.VehicleId == vehicle.Id && fr.RecordedAt >= thirtyDaysAgo)
+            .OrderByDescending(fr => fr.RecordedAt)
+            .Take(20)
+            .Select(fr => new FuelRecordSummary
+            {
+                Date = fr.RecordedAt,
+                FuelPercent = fr.FuelPercent,
+                FuelLiters = fr.FuelLiters,
+                ConsumptionRate = fr.ConsumptionRateLPer100Km,
+                AvgConsumption = fr.AverageConsumptionLPer100Km,
+                OdometerKm = fr.OdometerKm,
+                EventType = fr.EventType,
+                IsAnomaly = fr.IsAnomaly,
+                AnomalyReason = fr.AnomalyReason,
+                RefuelAmount = fr.RefuelAmount
+            })
+            .ToListAsync();
+
         // Recent alerts (last 10)
         ctx.RecentAlerts = await _context.GpsAlerts
             .AsNoTracking()
@@ -546,11 +567,36 @@ public class AiChatController : ControllerBase
         if (ctx.FuelEntries.Count > 0)
         {
             sb.AppendLine();
-            sb.AppendLine("═══ CONSOMMATION CARBURANT (30 derniers jours) ═══");
+            sb.AppendLine("═══ PLEINS CARBURANT (30 derniers jours) ═══");
             foreach (var f in ctx.FuelEntries)
             {
                 sb.AppendLine($"- {f.Date:dd/MM/yyyy} | {f.Liters:N1}L | {f.CostPerLiter:N3} TND/L | {f.TotalCost:N0} TND | {f.Mileage} km");
             }
+        }
+
+        if (ctx.FuelRecords.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("═══ CONSOMMATION GPS EN TEMPS RÉEL (30 derniers jours) ═══");
+            var refuels = ctx.FuelRecords.Where(r => r.EventType == "refuel").ToList();
+            var anomalies = ctx.FuelRecords.Where(r => r.IsAnomaly).ToList();
+            var readings = ctx.FuelRecords.Where(r => r.ConsumptionRate.HasValue && r.ConsumptionRate > 0).ToList();
+            if (readings.Count > 0)
+            {
+                var avgConsumption = readings.Average(r => (double)(r.ConsumptionRate ?? 0));
+                sb.AppendLine($"Consommation moyenne GPS: {avgConsumption:F1} L/100km");
+            }
+            if (refuels.Count > 0)
+                sb.AppendLine($"Pleins détectés par capteur: {refuels.Count} | Total: {refuels.Sum(r => r.RefuelAmount ?? 0):F1}L");
+            if (anomalies.Count > 0)
+            {
+                sb.AppendLine($"Anomalies détectées: {anomalies.Count}");
+                foreach (var a in anomalies.Take(5))
+                    sb.AppendLine($"  - {a.Date:dd/MM HH:mm} | {a.AnomalyReason}");
+            }
+            var latest = ctx.FuelRecords.FirstOrDefault();
+            if (latest != null)
+                sb.AppendLine($"Dernier niveau: {latest.FuelPercent}% | {latest.FuelLiters?.ToString("F1") ?? "N/A"}L | Odom: {latest.OdometerKm?.ToString("N0") ?? "N/A"} km");
         }
 
         if (ctx.ScheduledMaintenance.Count > 0)
@@ -616,6 +662,7 @@ public class VehicleDiagnosticContext
     public List<RepairSummary> RecentRepairs { get; set; } = new();
     public List<CostSummary> RecentCosts { get; set; } = new();
     public List<FuelEntrySummary> FuelEntries { get; set; } = new();
+    public List<FuelRecordSummary> FuelRecords { get; set; } = new();
     public List<ScheduledMaintenanceSummary> ScheduledMaintenance { get; set; } = new();
     public List<AlertSummary> RecentAlerts { get; set; } = new();
     public DrivingStatsSummary? DrivingStats { get; set; }
@@ -679,6 +726,20 @@ public class ScheduledMaintenanceSummary
     public int? NextDueKm { get; set; }
     public DateTime? NextDueDate { get; set; }
     public int? LastPerformedKm { get; set; }
+}
+
+public class FuelRecordSummary
+{
+    public DateTime Date { get; set; }
+    public short FuelPercent { get; set; }
+    public decimal? FuelLiters { get; set; }
+    public decimal? ConsumptionRate { get; set; }
+    public decimal? AvgConsumption { get; set; }
+    public long? OdometerKm { get; set; }
+    public string EventType { get; set; } = "";
+    public bool IsAnomaly { get; set; }
+    public string? AnomalyReason { get; set; }
+    public decimal? RefuelAmount { get; set; }
 }
 
 public class AlertSummary

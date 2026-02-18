@@ -52,12 +52,23 @@
           </div>
         </div>
 
+        <!-- Department Filter -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && departments.length > 0">
+          <label class="field-label">Département</label>
+          <select class="field-select" [(ngModel)]="selectedDepartmentId" (change)="onDepartmentFilterChange()">
+            <option value="">Tous les départements</option>
+            @for (dept of departments; track dept.id) {
+              <option [value]="dept.id">{{ dept.name }}</option>
+            }
+          </select>
+        </div>
+
         <!-- Vehicle Selector (hidden for monthly reports) -->
         <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly'">
           <label class="field-label">Véhicule</label>
           <select class="field-select" [(ngModel)]="selectedVehicleId">
             <option value="">Tous les véhicules</option>
-            @for (vehicle of vehicles; track vehicle.id) {
+            @for (vehicle of getFilteredVehicles(); track vehicle.id) {
               <option [value]="vehicle.id">{{ vehicle.brand }} {{ vehicle.model }}</option>
             }
           </select>

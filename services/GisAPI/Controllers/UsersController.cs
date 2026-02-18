@@ -90,7 +90,20 @@ public class UsersController : ControllerBase
             request.Phone,
             request.RoleId,
             request.Status,
-            request.AssignedVehicleIds
+            request.AssignedVehicleIds,
+            CanMonitoring: request.CanMonitoring,
+            CanVehicles: request.CanVehicles,
+            CanDrivers: request.CanDrivers,
+            CanReports: request.CanReports,
+            CanGeofences: request.CanGeofences,
+            CanMaintenance: request.CanMaintenance,
+            CanCosts: request.CanCosts,
+            CanDocuments: request.CanDocuments,
+            CanAccidents: request.CanAccidents,
+            CanUsers: request.CanUsers,
+            CanSettings: request.CanSettings,
+            CanSuppliers: request.CanSuppliers,
+            CanFleetManagement: request.CanFleetManagement
         );
 
         await _mediator.Send(command);
