@@ -64,6 +64,9 @@ public interface IGisDbContext
     DbSet<TourWaypoint> TourWaypoints { get; }
     DbSet<TourPause> TourPauses { get; }
 
+    // Trips
+    DbSet<Trip> Trips { get; }
+
     // Chat
     DbSet<ChatMessage> ChatMessages { get; }
     DbSet<AiChatMessage> AiChatMessages { get; }
