@@ -15,7 +15,7 @@ public class GroqLlmService : ILlmService
     public GroqLlmService(IConfiguration configuration, ILogger<GroqLlmService> logger)
     {
         _logger = logger;
-        _model = configuration["Groq:Model"] ?? "llama3-8b-8192";
+        _model = configuration["Groq:Model"] ?? "llama-3.3-70b-versatile";
 
         _httpClient = new HttpClient
         {

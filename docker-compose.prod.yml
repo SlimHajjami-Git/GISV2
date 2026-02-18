@@ -78,7 +78,7 @@ services:
       Valhalla__Url: http://valhalla:8002
       Groq__ApiKey: ${GROQ_API_KEY}
       Groq__ApiUrl: https://api.groq.com/openai/v1/chat/completions
-      Groq__Model: llama3-8b-8192
+      Groq__Model: llama-3.3-70b-versatile
     restart: unless-stopped
 
   gps-ingest:
