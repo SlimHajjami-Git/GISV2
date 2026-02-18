@@ -133,12 +133,28 @@ public class TourMonitoringService : BackgroundService
             position.Latitude, position.Longitude,
             (DateTime.UtcNow - position.RecordedAt).TotalSeconds);
 
-        // Vehicle must have been near origin AND now be moving
-        if (distanceToOrigin <= DEPARTURE_RADIUS_METERS && position.SpeedKph >= MIN_SPEED_FOR_DEPARTURE_KPH)
+        var now = DateTime.UtcNow;
+        var scheduledTimePassed = now >= tour.ScheduledStartTime;
+        var nearOrigin = distanceToOrigin <= DEPARTURE_RADIUS_METERS;
+        var isMoving = position.SpeedKph >= MIN_SPEED_FOR_DEPARTURE_KPH;
+
+        // Auto-start conditions:
+        // 1. Vehicle near origin AND moving (departure detection before scheduled time)
+        // 2. Scheduled time has passed AND vehicle near origin (even if parked)
+        var shouldStart = nearOrigin && (isMoving || scheduledTimePassed);
+
+        if (!shouldStart)
+        {
+            _logger.LogDebug(
+                "Tour {TourId} '{TourName}': NOT starting (nearOrigin={Near}, isMoving={Moving}, scheduledPassed={Passed})",
+                tour.Id, tour.Name, nearOrigin, isMoving, scheduledTimePassed);
+            return;
+        }
+
         {
             _logger.LogInformation(
-                "Auto-starting tour {TourId} '{TourName}': vehicle at {Distance:F0}m from origin, speed={Speed:F1} km/h",
-                tour.Id, tour.Name, distanceToOrigin, position.SpeedKph);
+                "Auto-starting tour {TourId} '{TourName}': vehicle at {Distance:F0}m from origin, speed={Speed:F1} km/h, scheduledPassed={Passed}",
+                tour.Id, tour.Name, distanceToOrigin, position.SpeedKph, scheduledTimePassed);
 
             tour.Status = "in_progress";
             tour.ActualStartTime = DateTime.UtcNow;

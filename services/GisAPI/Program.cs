@@ -9,6 +9,9 @@ using GisAPI.Middleware;
 using GisAPI.Hubs;
 using GisAPI.Domain.Constants;
 
+// Force Npgsql to return DateTime with Kind=Utc (fixes timezone serialization)
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add Application & Infrastructure layers (CQRS, MediatR, EF Core, Multi-tenant, RabbitMQ)
