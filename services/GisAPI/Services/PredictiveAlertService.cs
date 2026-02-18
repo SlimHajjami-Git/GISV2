@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,6 +19,8 @@ public class PredictiveAlertService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
+        // Wait for the app to fully start before running checks
+        await Task.Delay(TimeSpan.FromMinutes(2), ct);
         _logger.LogInformation("PredictiveAlertService started");
 
         while (!ct.IsCancellationRequested)
@@ -38,7 +41,7 @@ public class PredictiveAlertService : BackgroundService
     private async Task RunPredictiveChecks(CancellationToken ct)
     {
         using var scope = _serviceProvider.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<IGisDbContext>();
+        var context = scope.ServiceProvider.GetRequiredService<GisDbContext>();
         var notifService = scope.ServiceProvider.GetRequiredService<INotificationService>();
 
         var companies = await context.Societes
@@ -49,6 +52,7 @@ public class PredictiveAlertService : BackgroundService
         foreach (var companyId in companies)
         {
             var vehicles = await context.Vehicles
+                .IgnoreQueryFilters()
                 .AsNoTracking()
                 .Where(v => v.CompanyId == companyId)
                 .ToListAsync(ct);
@@ -64,7 +68,7 @@ public class PredictiveAlertService : BackgroundService
         _logger.LogInformation("PredictiveAlertService completed check for {Count} companies", companies.Count);
     }
 
-    private async Task CheckDocumentExpiry(IGisDbContext context, INotificationService notifService,
+    private async Task CheckDocumentExpiry(GisDbContext context, INotificationService notifService,
         Vehicle vehicle, int companyId, CancellationToken ct)
     {
         var now = DateTime.UtcNow;
@@ -119,10 +123,11 @@ public class PredictiveAlertService : BackgroundService
         }
     }
 
-    private async Task CheckMaintenanceDue(IGisDbContext context, INotificationService notifService,
+    private async Task CheckMaintenanceDue(GisDbContext context, INotificationService notifService,
         Vehicle vehicle, int companyId, CancellationToken ct)
     {
         var schedules = await context.VehicleMaintenanceSchedules
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .Include(s => s.Template)
             .Where(s => s.VehicleId == vehicle.Id && (s.Status == "due" || s.Status == "overdue" || s.Status == "critical"))
@@ -177,7 +182,7 @@ public class PredictiveAlertService : BackgroundService
         }
     }
 
-    private async Task CheckFuelAnomaly(IGisDbContext context, INotificationService notifService,
+    private async Task CheckFuelAnomaly(GisDbContext context, INotificationService notifService,
         Vehicle vehicle, int companyId, CancellationToken ct)
     {
         var now = DateTime.UtcNow;
@@ -185,11 +190,13 @@ public class PredictiveAlertService : BackgroundService
         var prev7Days = now.AddDays(-14);
 
         var recentEntries = await context.FuelEntries
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(f => f.VehicleId == vehicle.Id && f.InvoiceDate >= last7Days)
             .ToListAsync(ct);
 
         var previousEntries = await context.FuelEntries
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(f => f.VehicleId == vehicle.Id && f.InvoiceDate >= prev7Days && f.InvoiceDate < last7Days)
             .ToListAsync(ct);
@@ -219,11 +226,12 @@ public class PredictiveAlertService : BackgroundService
         }
     }
 
-    private async Task<bool> HasRecentNotification(IGisDbContext context, int companyId,
+    private async Task<bool> HasRecentNotification(GisDbContext context, int companyId,
         string type, int vehicleId, string keyword, CancellationToken ct)
     {
         var cutoff = DateTime.UtcNow.AddHours(-CHECK_INTERVAL_HOURS);
         return await context.Notifications
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .AnyAsync(n => n.CompanyId == companyId
                 && n.Type == type
@@ -231,11 +239,12 @@ public class PredictiveAlertService : BackgroundService
                 && n.CreatedAt >= cutoff, ct);
     }
 
-    private async Task SendToCompanyAdmins(IGisDbContext context, INotificationService notifService,
+    private async Task SendToCompanyAdmins(GisDbContext context, INotificationService notifService,
         int companyId, string type, string title, string message,
         string priority, string referenceType, int referenceId, string actionUrl, CancellationToken ct)
     {
         var adminUsers = await context.Users
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .Include(u => u.Role)
             .Where(u => u.CompanyId == companyId && u.Status == "active"
