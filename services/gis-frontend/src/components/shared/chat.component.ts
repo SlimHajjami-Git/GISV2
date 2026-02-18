@@ -90,7 +90,7 @@ interface AiMessage {
           <input type="text" placeholder="Rechercher..." [(ngModel)]="searchQuery" (input)="filterUsers()">
         </div>
         <div class="user-list">
-          <div class="user-item" *ngFor="let user of filteredUsers" (click)="openConversation(user)" [class.active]="activeUser?.id === user.id" [class.unread]="user.unreadCount > 0">
+          <div class="user-item" *ngFor="let user of filteredUsers" (click)="openConversation(user)" [class.unread]="user.unreadCount > 0">
             <div class="user-avatar-sm" [class.online]="user.isOnline">
               {{ getInitials(user.name) }}
             </div>
