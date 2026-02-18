@@ -131,6 +131,7 @@ interface AiMessage {
               <span class="user-name-sm">{{ v.name }}</span>
               <span class="user-status-sm">{{ v.brand }} {{ v.model }} · {{ v.plate }} · {{ v.mileage | number }} km</span>
             </div>
+            <span class="health-badge" *ngIf="healthScores[v.id]" [class]="'hs-' + healthScores[v.id].level">{{ healthScores[v.id].score }}</span>
           </div>
           <div class="empty-users" *ngIf="aiFilteredVehicles.length === 0 && !aiLoadingVehicles">
             <p>Aucun vehicule trouve</p>
@@ -197,6 +198,9 @@ interface AiMessage {
               <span class="conv-user-status ai-status">{{ aiActiveVehicle.brand }} {{ aiActiveVehicle.model }} · {{ aiActiveVehicle.mileage | number }} km</span>
             </div>
           </div>
+          <button class="report-btn" (click)="generateReport()" [disabled]="aiReportLoading" title="Generer rapport diagnostic">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </button>
           <button class="clear-btn" (click)="clearAiHistory()" title="Effacer l'historique">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
           </button>
@@ -484,6 +488,27 @@ interface AiMessage {
     }
     .send-btn:hover { background: #4f46e5; }
     .send-btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+    /* Health Score Badge */
+    .health-badge {
+      min-width: 28px; height: 20px; border-radius: 10px;
+      font-size: 10px; font-weight: 700; display: flex; align-items: center;
+      justify-content: center; padding: 0 5px; flex-shrink: 0;
+    }
+    .hs-excellent { background: #dcfce7; color: #166534; }
+    .hs-good { background: #dbeafe; color: #1e40af; }
+    .hs-fair { background: #fef9c3; color: #854d0e; }
+    .hs-poor { background: #fed7aa; color: #9a3412; }
+    .hs-critical { background: #fecaca; color: #991b1b; }
+
+    /* Report Button */
+    .report-btn {
+      width: 30px; height: 30px; border-radius: 6px; border: none;
+      background: transparent; color: #8b5cf6; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .report-btn:hover { background: #ede9fe; }
+    .report-btn:disabled { color: #cbd5e1; cursor: not-allowed; }
+
     .send-btn.ai-send { background: #8b5cf6; }
     .send-btn.ai-send:hover { background: #7c3aed; }
     .send-btn.ai-send:disabled { background: #cbd5e1; }
@@ -517,7 +542,9 @@ export class ChatComponent implements OnInit, OnDestroy {
   aiVehicleSearch = '';
   aiLoading = false;
   aiLoadingVehicles = false;
+  aiReportLoading = false;
   aiError = '';
+  healthScores: Record<number, { score: number; level: string }> = {};
 
   private currentUserId = 0;
   private refreshInterval: any;
@@ -689,9 +716,24 @@ export class ChatComponent implements OnInit, OnDestroy {
           this.aiFilteredVehicles = [...this.aiVehicles];
           this.aiLoadingVehicles = false;
           this.cdr.detectChanges();
+          this.loadHealthScores();
         });
       },
       error: () => { this.aiLoadingVehicles = false; this.cdr.detectChanges(); }
+    });
+  }
+
+  private loadHealthScores() {
+    this.apiService.getAllHealthScores().subscribe({
+      next: (scores: any[]) => {
+        this.ngZone.run(() => {
+          scores.forEach(s => {
+            this.healthScores[s.vehicleId] = { score: s.score, level: s.level };
+          });
+          this.cdr.detectChanges();
+        });
+      },
+      error: () => {}
     });
   }
 
@@ -780,6 +822,42 @@ export class ChatComponent implements OnInit, OnDestroy {
         this.cdr.detectChanges();
       },
       error: () => {}
+    });
+  }
+
+  generateReport() {
+    if (!this.aiActiveVehicle || this.aiReportLoading) return;
+    this.aiReportLoading = true;
+    this.aiError = '';
+    this.aiMessages.push({
+      id: 'user_report_' + Date.now(), role: 'user',
+      content: 'Genere un rapport diagnostic complet pour ce vehicule.', timestamp: new Date()
+    });
+    this.aiLoading = true;
+    this.cdr.detectChanges();
+    this.scrollAiToBottom();
+
+    this.apiService.generateAiReport(this.aiActiveVehicle.id).subscribe({
+      next: (res: any) => {
+        this.ngZone.run(() => {
+          this.aiMessages.push({
+            id: 'report_' + Date.now(), role: 'assistant',
+            content: res.report, timestamp: new Date(), tokensUsed: res.tokensUsed
+          });
+          this.aiLoading = false;
+          this.aiReportLoading = false;
+          this.cdr.detectChanges();
+          this.scrollAiToBottom();
+        });
+      },
+      error: (err: any) => {
+        this.ngZone.run(() => {
+          this.aiLoading = false;
+          this.aiReportLoading = false;
+          this.aiError = err.error?.message || 'Erreur lors de la generation du rapport';
+          this.cdr.detectChanges();
+        });
+      }
     });
   }
 

@@ -5,6 +5,7 @@ using System.Security.Claims;
 using System.Text;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
+using GisAPI.Services;
 
 namespace GisAPI.Controllers;
 
@@ -15,12 +16,15 @@ public class AiChatController : ControllerBase
 {
     private readonly IGisDbContext _context;
     private readonly ILlmService _llmService;
+    private readonly IVehicleHealthScoreService _healthService;
     private readonly ILogger<AiChatController> _logger;
 
-    public AiChatController(IGisDbContext context, ILlmService llmService, ILogger<AiChatController> logger)
+    public AiChatController(IGisDbContext context, ILlmService llmService,
+        IVehicleHealthScoreService healthService, ILogger<AiChatController> logger)
     {
         _context = context;
         _llmService = llmService;
+        _healthService = healthService;
         _logger = logger;
     }
 
@@ -187,6 +191,149 @@ public class AiChatController : ControllerBase
         return Ok(vehicles);
     }
 
+    // ═══════ HEALTH SCORE ENDPOINTS ═══════
+
+    /// <summary>
+    /// Get health score for a specific vehicle
+    /// </summary>
+    [HttpGet("health-score/{vehicleId}")]
+    public async Task<IActionResult> GetHealthScore(int vehicleId)
+    {
+        var companyId = GetCompanyId();
+        var result = await _healthService.CalculateScoreAsync(vehicleId, companyId);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Get health scores for all vehicles in the company
+    /// </summary>
+    [HttpGet("health-scores")]
+    public async Task<IActionResult> GetAllHealthScores()
+    {
+        var companyId = GetCompanyId();
+        var results = await _healthService.CalculateAllScoresAsync(companyId);
+        return Ok(results);
+    }
+
+    /// <summary>
+    /// Compare multiple vehicles using AI analysis
+    /// </summary>
+    [HttpPost("compare")]
+    public async Task<IActionResult> CompareVehicles([FromBody] CompareVehiclesRequest request)
+    {
+        var userId = GetUserId();
+        var companyId = GetCompanyId();
+
+        if (request.VehicleIds == null || request.VehicleIds.Count < 2 || request.VehicleIds.Count > 5)
+            return BadRequest(new { message = "Sélectionnez entre 2 et 5 véhicules" });
+
+        var vehicles = await _context.Vehicles
+            .AsNoTracking()
+            .Include(v => v.GpsDevice)
+            .Where(v => request.VehicleIds.Contains(v.Id) && v.CompanyId == companyId)
+            .ToListAsync();
+
+        if (vehicles.Count < 2)
+            return BadRequest(new { message = "Véhicules introuvables" });
+
+        var sb = new StringBuilder();
+        sb.AppendLine("Tu es un expert en gestion de flotte. Compare les véhicules suivants de manière détaillée.");
+        sb.AppendLine("Fournis un tableau comparatif et une recommandation claire sur quel véhicule garder/renouveler.");
+        sb.AppendLine();
+
+        foreach (var vehicle in vehicles)
+        {
+            var ctx = await BuildVehicleContext(vehicle, companyId);
+            sb.AppendLine($"═══ VÉHICULE: {ctx.Name} ═══");
+            sb.AppendLine($"Marque/Modèle: {ctx.Brand} {ctx.Model} | Type: {ctx.Type} | Année: {ctx.Year}");
+            sb.AppendLine($"Kilométrage: {ctx.Mileage:N0} km | Carburant: {ctx.FuelType} | Statut: {ctx.Status}");
+
+            var healthScore = await _healthService.CalculateScoreAsync(vehicle.Id, companyId);
+            sb.AppendLine($"Score santé: {healthScore.Score}/100 ({healthScore.Level})");
+
+            if (ctx.RecentMaintenance.Count > 0)
+                sb.AppendLine($"Entretiens récents: {ctx.RecentMaintenance.Count} | Coût total: {ctx.RecentMaintenance.Sum(m => m.TotalCost):N0} TND");
+            if (ctx.RecentRepairs.Count > 0)
+                sb.AppendLine($"Réparations récentes: {ctx.RecentRepairs.Count} | Coût total: {ctx.RecentRepairs.Sum(r => r.TotalCost):N0} TND");
+            if (ctx.FuelEntries.Count > 0)
+                sb.AppendLine($"Consommation moyenne: {ctx.FuelEntries.Average(f => f.Liters):F1} L/plein");
+            sb.AppendLine();
+        }
+
+        var messages = new List<LlmMessage>
+        {
+            new("user", request.Question ?? "Compare ces véhicules et donne une recommandation détaillée.")
+        };
+
+        try
+        {
+            var llmResponse = await _llmService.ChatAsync(sb.ToString(), messages);
+            return Ok(new { message = llmResponse.Content, tokensUsed = llmResponse.TokensUsed });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AI compare error");
+            return StatusCode(503, new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Generate an AI diagnostic report for a vehicle
+    /// </summary>
+    [HttpGet("report/{vehicleId}")]
+    public async Task<IActionResult> GenerateReport(int vehicleId)
+    {
+        var companyId = GetCompanyId();
+
+        var vehicle = await _context.Vehicles
+            .AsNoTracking()
+            .Include(v => v.GpsDevice)
+            .FirstOrDefaultAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
+
+        if (vehicle == null)
+            return NotFound(new { message = "Véhicule introuvable" });
+
+        var vehicleContext = await BuildVehicleContext(vehicle, companyId);
+        var healthScore = await _healthService.CalculateScoreAsync(vehicleId, companyId);
+
+        var systemPrompt = BuildSystemPrompt(vehicleContext);
+        systemPrompt += $"\n\nScore de santé actuel: {healthScore.Score}/100 ({healthScore.Level})";
+        if (healthScore.Warnings.Count > 0)
+            systemPrompt += "\nAvertissements: " + string.Join("; ", healthScore.Warnings);
+
+        var messages = new List<LlmMessage>
+        {
+            new("user", @"Génère un rapport diagnostic complet et structuré pour ce véhicule. Inclus:
+1. **Résumé exécutif** (état général en 2-3 lignes)
+2. **Score de santé détaillé** (explique chaque facteur)
+3. **Historique entretiens et réparations** (analyse des tendances)
+4. **Analyse consommation carburant** (si données disponibles)
+5. **Problèmes identifiés** (classés par urgence: critique, important, à surveiller)
+6. **Prédictions** (futurs problèmes probables basés sur la marque/modèle et le kilométrage)
+7. **Recommandations** (actions à entreprendre, priorisées avec estimation de coût si possible)
+8. **Conclusion** (garder/renouveler/surveiller)")
+        };
+
+        try
+        {
+            var llmResponse = await _llmService.ChatAsync(systemPrompt, messages);
+            return Ok(new
+            {
+                vehicleId,
+                vehicleName = vehicle.Name,
+                healthScore = healthScore,
+                report = llmResponse.Content,
+                tokensUsed = llmResponse.TokensUsed,
+                generatedAt = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AI report error for vehicle {VehicleId}", vehicleId);
+            return StatusCode(503, new { message = ex.Message });
+        }
+    }
+
     // ═══════ VEHICLE CONTEXT BUILDER ═══════
 
     private async Task<VehicleDiagnosticContext> BuildVehicleContext(Vehicle vehicle, int companyId)
@@ -287,6 +434,48 @@ public class AiChatController : ControllerBase
             })
             .ToListAsync();
 
+        // GPS Driving stats (last 30 days)
+        var trips30d = await _context.Trips
+            .AsNoTracking()
+            .Where(t => t.VehicleId == vehicle.Id && t.StartTime >= thirtyDaysAgo && t.Status == "completed")
+            .ToListAsync(ct: default);
+
+        if (trips30d.Count > 0)
+        {
+            var totalDist = trips30d.Sum(t => t.DistanceKm);
+            var totalDur = trips30d.Sum(t => t.DurationMinutes);
+            var totalIdle = trips30d.Sum(t => t.IdleTimeMinutes ?? 0);
+            var harshBrake = trips30d.Sum(t => t.HarshBrakingCount ?? 0);
+            var harshAccel = trips30d.Sum(t => t.HarshAccelerationCount ?? 0);
+            var overspeed = trips30d.Sum(t => t.OverspeedingCount ?? 0);
+            var maxSpeed = trips30d.Max(t => t.MaxSpeedKph ?? 0);
+            var avgSpeed = trips30d.Where(t => t.AverageSpeedKph > 0).Select(t => t.AverageSpeedKph ?? 0).DefaultIfEmpty(0).Average();
+            var daysSpan = Math.Max(1, (DateTime.UtcNow - trips30d.Min(t => t.StartTime)).TotalDays);
+
+            // Driving score: start at 100, deduct for bad behavior
+            var drivingScore = 100;
+            drivingScore -= Math.Min(30, harshBrake * 3);
+            drivingScore -= Math.Min(20, harshAccel * 2);
+            drivingScore -= Math.Min(30, overspeed * 5);
+            drivingScore -= Math.Min(10, (int)(totalIdle / Math.Max(1, totalDur) * 20));
+            drivingScore = Math.Max(0, drivingScore);
+
+            ctx.DrivingStats = new DrivingStatsSummary
+            {
+                TripCount30Days = trips30d.Count,
+                TotalDistanceKm = totalDist,
+                AvgDistancePerDayKm = Math.Round(totalDist / (decimal)daysSpan, 1),
+                TotalDrivingMinutes = totalDur,
+                TotalIdleMinutes = totalIdle,
+                AvgSpeedKph = Math.Round(avgSpeed, 1),
+                MaxSpeedKph = Math.Round(maxSpeed, 1),
+                HarshBrakingTotal = harshBrake,
+                HarshAccelerationTotal = harshAccel,
+                OverspeedingTotal = overspeed,
+                DrivingScore = drivingScore
+            };
+        }
+
         // Recent alerts (last 10)
         ctx.RecentAlerts = await _context.GpsAlerts
             .AsNoTracking()
@@ -386,6 +575,18 @@ public class AiChatController : ControllerBase
             }
         }
 
+        if (ctx.DrivingStats != null)
+        {
+            var ds = ctx.DrivingStats;
+            sb.AppendLine();
+            sb.AppendLine("═══ STATISTIQUES DE CONDUITE (30 jours) ═══");
+            sb.AppendLine($"Trajets: {ds.TripCount30Days} | Distance totale: {ds.TotalDistanceKm:N0} km | Moyenne: {ds.AvgDistancePerDayKm:N1} km/jour");
+            sb.AppendLine($"Temps conduite: {ds.TotalDrivingMinutes} min | Ralenti: {ds.TotalIdleMinutes} min");
+            sb.AppendLine($"Vitesse moy: {ds.AvgSpeedKph:N1} km/h | Max: {ds.MaxSpeedKph:N1} km/h");
+            sb.AppendLine($"Freinages brusques: {ds.HarshBrakingTotal} | Accélérations brusques: {ds.HarshAccelerationTotal} | Excès vitesse: {ds.OverspeedingTotal}");
+            sb.AppendLine($"Score de conduite: {ds.DrivingScore}/100");
+        }
+
         sb.AppendLine();
         sb.AppendLine("Utilise ces données pour fournir un diagnostic intelligent et des prédictions sur les futurs problèmes potentiels de ce véhicule.");
 
@@ -396,6 +597,7 @@ public class AiChatController : ControllerBase
 // ═══════ REQUEST / CONTEXT DTOs ═══════
 
 public record AiChatRequest(int VehicleId, string Message);
+public record CompareVehiclesRequest(List<int> VehicleIds, string? Question);
 
 public class VehicleDiagnosticContext
 {
@@ -416,6 +618,22 @@ public class VehicleDiagnosticContext
     public List<FuelEntrySummary> FuelEntries { get; set; } = new();
     public List<ScheduledMaintenanceSummary> ScheduledMaintenance { get; set; } = new();
     public List<AlertSummary> RecentAlerts { get; set; } = new();
+    public DrivingStatsSummary? DrivingStats { get; set; }
+}
+
+public class DrivingStatsSummary
+{
+    public int TripCount30Days { get; set; }
+    public decimal TotalDistanceKm { get; set; }
+    public decimal AvgDistancePerDayKm { get; set; }
+    public int TotalDrivingMinutes { get; set; }
+    public int TotalIdleMinutes { get; set; }
+    public decimal AvgSpeedKph { get; set; }
+    public decimal MaxSpeedKph { get; set; }
+    public int HarshBrakingTotal { get; set; }
+    public int HarshAccelerationTotal { get; set; }
+    public int OverspeedingTotal { get; set; }
+    public int DrivingScore { get; set; }
 }
 
 public class MaintenanceSummary

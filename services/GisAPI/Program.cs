@@ -24,6 +24,7 @@ builder.Services.AddSignalR()
 builder.Services.AddSingleton<IGpsHubService, GpsHubService>();
 builder.Services.AddScoped<INotificationService, GisAPI.Services.NotificationService>();
 builder.Services.AddSingleton<ILlmService, GisAPI.Services.GroqLlmService>();
+builder.Services.AddSingleton<GisAPI.Services.IVehicleHealthScoreService, GisAPI.Services.VehicleHealthScoreService>();
 
 // GPS Telemetry Consumer (RabbitMQ -> SignalR)
 builder.Services.AddHostedService<GisAPI.Services.GpsTelemetryConsumer>();
@@ -33,6 +34,9 @@ builder.Services.AddHostedService<GisAPI.Services.RedisPubSubConsumer>();
 
 // Tour Monitoring Service (auto-start, waypoint validation, auto-complete)
 builder.Services.AddHostedService<GisAPI.Services.TourMonitoringService>();
+
+// Predictive Alert Service (document expiry, maintenance due, fuel anomaly)
+builder.Services.AddHostedService<GisAPI.Services.PredictiveAlertService>();
 
 // Geocoding Service with cache
 builder.Services.AddSingleton<GisAPI.Domain.Interfaces.IGeocodingService, GisAPI.Services.GeocodingService>();
