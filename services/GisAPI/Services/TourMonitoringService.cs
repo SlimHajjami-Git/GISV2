@@ -27,7 +27,7 @@ public class TourMonitoringService : BackgroundService
     private const double WAYPOINT_RADIUS_METERS = 300;
     private const double DEPARTURE_RADIUS_METERS = 400;
     private const double DESTINATION_RADIUS_METERS = 300;
-    private const int SCHEDULE_WINDOW_MINUTES = 30;
+    private const int SCHEDULE_WINDOW_MINUTES = 60;
     private const double MIN_SPEED_FOR_DEPARTURE_KPH = 5;
     private const double DEVIATION_THRESHOLD_METERS = 2000;
 
@@ -81,6 +81,13 @@ public class TourMonitoringService : BackgroundService
                 && t.ScheduledStartTime <= windowEnd)
             .ToListAsync(ct);
 
+        if (plannedTours.Count > 0)
+        {
+            _logger.LogInformation(
+                "Tour Monitor: {Count} planned tour(s) in window [{Start:HH:mm} - {End:HH:mm}] UTC (now={Now:HH:mm:ss} UTC)",
+                plannedTours.Count, windowStart, windowEnd, now);
+        }
+
         foreach (var tour in plannedTours)
         {
             await CheckAutoStart(tour, context, hubContext, notifService, ct);
@@ -105,7 +112,13 @@ public class TourMonitoringService : BackgroundService
     private async Task CheckAutoStart(Tour tour, IGisDbContext context, IHubContext<GpsHub> hubContext, INotificationService notifService, CancellationToken ct)
     {
         var position = await GetVehiclePosition(tour);
-        if (position == null) return;
+        if (position == null)
+        {
+            _logger.LogDebug(
+                "Tour {TourId} '{TourName}': no GPS position available (device={DeviceUid}, scheduled={Scheduled:HH:mm} UTC)",
+                tour.Id, tour.Name, tour.Vehicle?.GpsDevice?.DeviceUid ?? "none", tour.ScheduledStartTime);
+            return;
+        }
 
         var origin = tour.Waypoints.FirstOrDefault(w => w.Type == "origin");
         if (origin == null) return;
@@ -113,6 +126,12 @@ public class TourMonitoringService : BackgroundService
         var distanceToOrigin = HaversineDistance(
             position.Latitude, position.Longitude,
             origin.Latitude, origin.Longitude);
+
+        _logger.LogDebug(
+            "Tour {TourId} '{TourName}': vehicle at {Dist:F0}m from origin, speed={Speed:F1} km/h, pos=({Lat:F6},{Lon:F6}), posAge={Age:F0}s",
+            tour.Id, tour.Name, distanceToOrigin, position.SpeedKph,
+            position.Latitude, position.Longitude,
+            (DateTime.UtcNow - position.RecordedAt).TotalSeconds);
 
         // Vehicle must have been near origin AND now be moving
         if (distanceToOrigin <= DEPARTURE_RADIUS_METERS && position.SpeedKph >= MIN_SPEED_FOR_DEPARTURE_KPH)

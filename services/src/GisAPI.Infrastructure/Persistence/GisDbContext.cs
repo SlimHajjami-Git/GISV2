@@ -2,6 +2,7 @@ using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Common;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
+using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Infrastructure.Persistence;
@@ -9,6 +10,7 @@ namespace GisAPI.Infrastructure.Persistence;
 public class GisDbContext : DbContext, IGisDbContext
 {
     private readonly ICurrentTenantService? _tenantService;
+    private readonly IPublisher? _publisher;
 
     public GisDbContext(DbContextOptions<GisDbContext> options) : base(options) { }
 
@@ -16,6 +18,13 @@ public class GisDbContext : DbContext, IGisDbContext
         : base(options)
     {
         _tenantService = tenantService;
+    }
+
+    public GisDbContext(DbContextOptions<GisDbContext> options, ICurrentTenantService tenantService, IPublisher publisher) 
+        : base(options)
+    {
+        _tenantService = tenantService;
+        _publisher = publisher;
     }
 
     // Core
@@ -493,7 +502,33 @@ public class GisDbContext : DbContext, IGisDbContext
             }
         }
 
-        return await base.SaveChangesAsync(ct);
+        var result = await base.SaveChangesAsync(ct);
+
+        // Dispatch domain events after successful save
+        await DispatchDomainEventsAsync(ct);
+
+        return result;
+    }
+
+    private async Task DispatchDomainEventsAsync(CancellationToken ct)
+    {
+        if (_publisher == null) return;
+
+        var entities = ChangeTracker.Entries<Entity>()
+            .Where(e => e.Entity.DomainEvents.Any())
+            .Select(e => e.Entity)
+            .ToList();
+
+        var domainEvents = entities
+            .SelectMany(e => e.DomainEvents)
+            .ToList();
+
+        // Clear events before publishing to avoid infinite loops
+        foreach (var entity in entities)
+            entity.ClearDomainEvents();
+
+        foreach (var domainEvent in domainEvents)
+            await _publisher.Publish(domainEvent, ct);
     }
 }
 

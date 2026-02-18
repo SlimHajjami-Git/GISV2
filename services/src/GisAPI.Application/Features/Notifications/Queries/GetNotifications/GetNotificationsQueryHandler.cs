@@ -22,6 +22,7 @@ public class GetNotificationsQueryHandler : IRequestHandler<GetNotificationsQuer
             ?? throw new GisAPI.Domain.Exceptions.DomainException("Utilisateur non identifié");
 
         var query = _context.Notifications
+            .AsNoTracking()
             .Where(n => n.UserId == userId)
             .AsQueryable();
 
@@ -33,6 +34,7 @@ public class GetNotificationsQueryHandler : IRequestHandler<GetNotificationsQuer
 
         var totalCount = await query.CountAsync(ct);
         var unreadCount = await _context.Notifications
+            .AsNoTracking()
             .Where(n => n.UserId == userId && !n.IsRead)
             .CountAsync(ct);
 

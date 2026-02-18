@@ -1063,7 +1063,7 @@ export class ToursComponent implements OnInit, OnDestroy {
       description: this.tourForm.description || null,
       vehicleId: this.tourForm.vehicleId,
       driverId: this.tourForm.driverId,
-      scheduledStartTime: this.tourForm.scheduledStartTime,
+      scheduledStartTime: new Date(this.tourForm.scheduledStartTime).toISOString(),
       recurrence: recurrence,
       notes: this.tourForm.notes || null,
       waypoints: this.tourForm.waypoints.map((wp: any) => ({

@@ -22,6 +22,7 @@ public class GetUnreadCountQueryHandler : IRequestHandler<GetUnreadCountQuery, U
             ?? throw new GisAPI.Domain.Exceptions.DomainException("Utilisateur non identifié");
 
         var count = await _context.Notifications
+            .AsNoTracking()
             .Where(n => n.UserId == userId && !n.IsRead)
             .CountAsync(ct);
 
