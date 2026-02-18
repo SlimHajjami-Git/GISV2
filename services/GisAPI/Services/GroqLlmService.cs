@@ -23,13 +23,22 @@ public class GroqLlmService : ILlmService
             Timeout = TimeSpan.FromSeconds(60)
         };
 
-        var apiKey = configuration["Groq:ApiKey"]
-            ?? throw new InvalidOperationException("Groq:ApiKey is not configured");
-        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        var apiKey = configuration["Groq:ApiKey"];
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Groq:ApiKey is not configured. AI chat will not work until the key is set via env var Groq__ApiKey.");
+        }
+        else
+        {
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        }
     }
 
     public async Task<LlmResponse> ChatAsync(string systemPrompt, List<LlmMessage> messages, CancellationToken ct = default)
     {
+        if (_httpClient.DefaultRequestHeaders.Authorization == null)
+            throw new Exception("Clé API Groq non configurée. Définissez la variable d'environnement Groq__ApiKey.");
+
         var requestMessages = new List<object>
         {
             new { role = "system", content = systemPrompt }
