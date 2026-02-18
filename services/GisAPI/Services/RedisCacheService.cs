@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using StackExchange.Redis;
 
 namespace GisAPI.Services;
@@ -12,18 +13,31 @@ public interface IRedisCacheService
 
 public class VehiclePositionCache
 {
+    [JsonPropertyName("deviceUid")]
     public string DeviceUid { get; set; } = string.Empty;
+    [JsonPropertyName("vehicleId")]
     public int? VehicleId { get; set; }
+    [JsonPropertyName("companyId")]
     public int CompanyId { get; set; }
+    [JsonPropertyName("latitude")]
     public double Latitude { get; set; }
+    [JsonPropertyName("longitude")]
     public double Longitude { get; set; }
+    [JsonPropertyName("speedKph")]
     public double SpeedKph { get; set; }
+    [JsonPropertyName("headingDeg")]
     public double HeadingDeg { get; set; }
+    [JsonPropertyName("ignitionOn")]
     public bool IgnitionOn { get; set; }
+    [JsonPropertyName("isValid")]
     public bool IsValid { get; set; }
+    [JsonPropertyName("fuelRaw")]
     public int FuelRaw { get; set; }
+    [JsonPropertyName("powerVoltage")]
     public int PowerVoltage { get; set; }
+    [JsonPropertyName("recordedAt")]
     public DateTime RecordedAt { get; set; }
+    [JsonPropertyName("cachedAt")]
     public DateTime CachedAt { get; set; }
 }
 

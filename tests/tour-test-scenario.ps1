@@ -65,26 +65,17 @@ function Set-VehiclePosition {
     )
 
     $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-    $posJson = @{
-        DeviceUid    = $DEVICE_UID
-        VehicleId    = $VEHICLE_ID
-        CompanyId    = $COMPANY_ID
-        Latitude     = $Lat
-        Longitude    = $Lon
-        SpeedKph     = $Speed
-        HeadingDeg   = $Heading
-        IgnitionOn   = $Ignition
-        IsValid      = $true
-        FuelRaw      = 500
-        PowerVoltage = 12400
-        RecordedAt   = $now
-        CachedAt     = $now
-    } | ConvertTo-Json -Compress
+    $igStr = if ($Ignition) { "true" } else { "false" }
+    $posJson = '{"deviceUid":"' + $DEVICE_UID + '","vehicleId":' + $VEHICLE_ID + ',"companyId":' + $COMPANY_ID + ',"latitude":' + $Lat + ',"longitude":' + $Lon + ',"speedKph":' + $Speed + ',"headingDeg":' + $Heading + ',"ignitionOn":' + $igStr + ',"isValid":true,"fuelRaw":500,"powerVoltage":12400,"recordedAt":"' + $now + '","cachedAt":"' + $now + '"}'
 
-    # Escape for redis-cli
-    $escaped = $posJson.Replace('"', '\"')
-    
-    docker compose exec -T redis redis-cli SET "vehicle:position:$DEVICE_UID" "$escaped" EX 300 2>&1 | Out-Null
+    # Write JSON to temp file, docker cp into Redis container, then SET via cat | redis-cli -x
+    # This avoids PowerShell -> docker exec quote stripping issues
+    $tmpFile = [System.IO.Path]::GetTempFileName()
+    [System.IO.File]::WriteAllText($tmpFile, $posJson)
+    docker cp $tmpFile gisv2-redis-1:/tmp/pos.json 2>&1 | Out-Null
+    Remove-Item $tmpFile -ErrorAction SilentlyContinue
+    docker compose exec -T redis sh -c "cat /tmp/pos.json | redis-cli -x SET vehicle:position:$DEVICE_UID" 2>&1 | Out-Null
+    docker compose exec -T redis redis-cli EXPIRE "vehicle:position:$DEVICE_UID" 300 2>&1 | Out-Null
     # Also add to company device set
     docker compose exec -T redis redis-cli SADD "company:${COMPANY_ID}:devices" "$DEVICE_UID" 2>&1 | Out-Null
     

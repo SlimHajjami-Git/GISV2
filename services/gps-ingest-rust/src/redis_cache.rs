@@ -52,19 +52,19 @@ impl RedisCache {
             .with_context(|| "Failed to get Redis connection from pool")?;
 
         let position_data = json!({
-            "device_uid": device_uid,
-            "vehicle_id": vehicle_id,
-            "company_id": company_id,
+            "deviceUid": device_uid,
+            "vehicleId": vehicle_id,
+            "companyId": company_id,
             "latitude": frame.latitude,
             "longitude": frame.longitude,
-            "speed_kph": frame.speed_kph,
-            "heading_deg": frame.heading_deg,
-            "ignition_on": frame.ignition_on,
-            "is_valid": frame.is_valid,
-            "fuel_raw": frame.fuel_raw,
-            "power_voltage": frame.power_voltage,
-            "recorded_at": frame.recorded_at.and_utc().to_rfc3339(),
-            "cached_at": chrono::Utc::now().to_rfc3339(),
+            "speedKph": frame.speed_kph,
+            "headingDeg": frame.heading_deg,
+            "ignitionOn": frame.ignition_on,
+            "isValid": frame.is_valid,
+            "fuelRaw": frame.fuel_raw,
+            "powerVoltage": frame.power_voltage,
+            "recordedAt": frame.recorded_at.and_utc().to_rfc3339(),
+            "cachedAt": chrono::Utc::now().to_rfc3339(),
         });
 
         let position_json = serde_json::to_string(&position_data)?;
