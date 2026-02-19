@@ -1096,65 +1096,21 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
-  // Add a single point marker progressively during playback animation
+  // Add a tiny dot at the current position during playback animation
   addSinglePointMarker(index: number) {
     if (!this.map || index < 0 || index >= this.playbackPositions.length) return;
     
-    const position = this.playbackPositions[index];
-    const marker = L.circleMarker([position.latitude, position.longitude], {
-      radius: 5,
-      fillColor: '#3b82f6',
-      color: '#ffffff',
-      weight: 2,
-      opacity: 1,
-      fillOpacity: 0.8
+    const latLng = this.getSnappedLatLng(index);
+    const marker = L.circleMarker(latLng as L.LatLngExpression, {
+      radius: 3,
+      fillColor: '#6366f1',
+      color: '#6366f1',
+      weight: 1,
+      opacity: 0.9,
+      fillOpacity: 0.9,
+      interactive: false
     }).addTo(this.map);
 
-    const time = new Date(position.recordedAt).toLocaleString('fr-FR', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', second: '2-digit'
-    });
-
-    const speed = position.speedKph || 0;
-    const speedColor = speed > 80 ? '#ef4444' : speed > 50 ? '#f59e0b' : '#10b981';
-
-    const popupContent = `
-      <div style="font-family:'Inter',-apple-system,sans-serif;min-width:200px;padding:0;margin:-14px -20px;">
-        <div style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);padding:10px 14px;border-radius:8px 8px 0 0;display:flex;align-items:center;justify-content:space-between;">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <div style="width:24px;height:24px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;">${index + 1}</div>
-            <span style="font-weight:500;font-size:12px;color:#fff;">Point de trace</span>
-          </div>
-          <span style="font-size:11px;color:rgba(255,255,255,0.8);">${time.split(' ')[1] || ''}</span>
-        </div>
-        <div style="background:#fff;padding:12px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #e5e7eb;">
-          <div style="width:44px;height:44px;background:${speedColor}15;border-radius:10px;display:flex;align-items:center;justify-content:center;border:2px solid ${speedColor};">
-            <span style="font-size:16px;font-weight:700;color:${speedColor};">${speed.toFixed(0)}</span>
-          </div>
-          <div>
-            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Vitesse</div>
-            <div style="font-size:14px;font-weight:600;color:#1e293b;">${speed.toFixed(1)} km/h</div>
-          </div>
-        </div>
-        <div style="padding:10px 14px;background:#f8fafc;border-radius:0 0 8px 8px;">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;">
-            <div style="background:#fff;padding:8px 10px;border-radius:6px;border:1px solid #e2e8f0;">
-              <div style="color:#64748b;margin-bottom:2px;">⛽ Carburant</div>
-              <div style="font-weight:600;color:#1e293b;">${position.fuelRaw || 0}%</div>
-            </div>
-            <div style="background:#fff;padding:8px 10px;border-radius:6px;border:1px solid #e2e8f0;">
-              <div style="color:#64748b;margin-bottom:2px;">🌡️ Température</div>
-              <div style="font-weight:600;color:#1e293b;">${position.temperatureC != null ? position.temperatureC + '°C' : 'N/A'}</div>
-            </div>
-          </div>
-          <div style="margin-top:8px;padding:6px 10px;background:#fff;border-radius:4px;border:1px solid #e2e8f0;font-size:10px;color:#64748b;font-family:monospace;text-align:center;">
-            ${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)}
-          </div>
-        </div>
-      </div>
-    `;
-
-    marker.bindPopup(popupContent);
     this.pointMarkers.push(marker);
   }
 
@@ -1418,6 +1374,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     try {
       const fromPos = this.playbackPositions[this.playbackIndex];
       const toPos = this.playbackPositions[this.playbackIndex + 1];
+
+      // Drop a small dot at the current position
+      this.addSinglePointMarker(this.playbackIndex);
 
       // Calculate time-based duration: 1 real second = 1 GPS minute
       const fromTime = new Date(fromPos.recordedAt).getTime();
