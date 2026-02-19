@@ -1419,9 +1419,6 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       const fromPos = this.playbackPositions[this.playbackIndex];
       const toPos = this.playbackPositions[this.playbackIndex + 1];
 
-      // Add progressive point marker for current position
-      this.addSinglePointMarker(this.playbackIndex);
-
       // Calculate time-based duration: 1 real second = 1 GPS minute
       const fromTime = new Date(fromPos.recordedAt).getTime();
       const toTime = new Date(toPos.recordedAt).getTime();
@@ -2185,13 +2182,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.stopPlaybackAnimation();
     this.isPlaying = false;
     
-    // Draw all remaining segments and add all point markers
+    // Draw all remaining segments
     for (let i = this.traceDrawnUpToIndex; i < this.playbackPositions.length - 1; i++) {
-      this.addSinglePointMarker(i);
       this.drawProgressiveSegment(i, i + 1);
     }
-    // Add last point marker
-    this.addSinglePointMarker(this.playbackPositions.length - 1);
     
     this.playbackIndex = this.playbackPositions.length - 1;
     this.playbackProgress = 100;
