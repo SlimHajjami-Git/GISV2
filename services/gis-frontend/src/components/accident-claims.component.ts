@@ -625,8 +625,8 @@ interface AccidentClaim {
             <!-- Photos -->
             <div class="form-section">
               <h3 class="form-section-title">📷 Photos</h3>
-              <div class="upload-zone" (click)="triggerPhotoUpload($event)">
-                <input type="file" #photoInput multiple accept="image/*" (change)="onPhotosSelected($event)" style="display:none">
+              <input type="file" #photoFileInput multiple accept="image/*" (change)="onPhotosSelected($event)" style="display:none">
+              <div class="upload-zone" (click)="photoFileInput.click()">
                 <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                   <polyline points="17 8 12 3 7 8"/>
@@ -635,7 +635,7 @@ interface AccidentClaim {
                 <p>Cliquez ou glissez vos photos ici</p>
                 <span>JPG, PNG, WEBP — max 10 Mo</span>
               </div>
-              <div class="photos-grid" *ngIf="pendingPhotos.length > 0 || existingPhotos.length > 0">
+              <div class="photos-grid" *ngIf="pendingPhotos.length > 0 || existingPhotos.length > 0" (click)="$event.stopPropagation()">
                 <div class="photo-thumb" *ngFor="let photo of existingPhotos; let i = index">
                   <img [src]="getPhotoUrl(photo.fileUrl)" [alt]="photo.fileName">
                   <button type="button" class="remove-photo-btn" (click)="removeExistingPhoto(photo, i); $event.stopPropagation()">×</button>
