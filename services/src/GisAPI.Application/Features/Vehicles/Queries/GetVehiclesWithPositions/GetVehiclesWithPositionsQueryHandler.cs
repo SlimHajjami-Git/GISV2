@@ -72,47 +72,52 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             .Select(v => v.GpsDevice!.Id)
             .ToList();
 
-        // OPTIMIZED: Correlated subquery to get latest position per device
-        // EF Core translates this to: WHERE id = (SELECT id FROM gps_positions WHERE device_id = p.device_id ORDER BY recorded_at DESC LIMIT 1)
-        var latestPositions = await _context.GpsPositions
-            .AsNoTracking()
-            .Where(p => deviceIds.Contains(p.DeviceId))
-            .Where(p => p.Id == _context.GpsPositions
-                .Where(p2 => p2.DeviceId == p.DeviceId)
-                .OrderByDescending(p2 => p2.RecordedAt)
-                .Select(p2 => p2.Id)
-                .FirstOrDefault())
-            .Select(p => new LatestPositionData
-            {
-                DeviceId = p.DeviceId,
-                Id = p.Id,
-                Latitude = p.Latitude,
-                Longitude = p.Longitude,
-                SpeedKph = p.SpeedKph,
-                CourseDeg = p.CourseDeg,
-                IgnitionOn = p.IgnitionOn,
-                RecordedAt = p.RecordedAt,
-                FuelRaw = p.FuelRaw,
-                TemperatureC = p.TemperatureC,
-                Address = p.Address,
-                OdometerKm = p.OdometerKm
-            })
-            .ToDictionaryAsync(p => p.DeviceId, ct);
+        // Fetch latest position per device (simple queries — guaranteed SQL translation)
+        var latestPositions = new Dictionary<int, LatestPositionData>();
+        foreach (var deviceId in deviceIds)
+        {
+            var pos = await _context.GpsPositions
+                .AsNoTracking()
+                .Where(p => p.DeviceId == deviceId)
+                .OrderByDescending(p => p.RecordedAt)
+                .Select(p => new LatestPositionData
+                {
+                    DeviceId = p.DeviceId,
+                    Id = p.Id,
+                    Latitude = p.Latitude,
+                    Longitude = p.Longitude,
+                    SpeedKph = p.SpeedKph,
+                    CourseDeg = p.CourseDeg,
+                    IgnitionOn = p.IgnitionOn,
+                    RecordedAt = p.RecordedAt,
+                    FuelRaw = p.FuelRaw,
+                    TemperatureC = p.TemperatureC,
+                    Address = p.Address,
+                    OdometerKm = p.OdometerKm
+                })
+                .FirstOrDefaultAsync(ct);
+            if (pos != null) latestPositions[deviceId] = pos;
+        }
 
-        // Get today's stats for each device (last 24 hours)
+        // Get today's stats per device (last 24 hours)
         var since = DateTime.UtcNow.AddHours(-24);
-        var deviceStats = await _context.GpsPositions
-            .AsNoTracking()
-            .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= since)
-            .GroupBy(p => p.DeviceId)
-            .Select(g => new {
-                DeviceId = g.Key,
-                MaxSpeed = g.Max(p => p.SpeedKph ?? 0),
-                MovingCount = g.Count(p => p.SpeedKph > 5),
-                StoppedCount = g.Count(p => p.SpeedKph <= 5),
-                TotalCount = g.Count()
-            })
-            .ToDictionaryAsync(x => x.DeviceId, ct);
+        var deviceStats = new Dictionary<int, (double MaxSpeed, int MovingCount, int StoppedCount, int TotalCount)>();
+        foreach (var deviceId in deviceIds)
+        {
+            var stats = await _context.GpsPositions
+                .AsNoTracking()
+                .Where(p => p.DeviceId == deviceId && p.RecordedAt >= since)
+                .GroupBy(p => 1)
+                .Select(g => new {
+                    MaxSpeed = g.Max(p => p.SpeedKph ?? 0),
+                    MovingCount = g.Count(p => p.SpeedKph > 5),
+                    StoppedCount = g.Count(p => p.SpeedKph <= 5),
+                    TotalCount = g.Count()
+                })
+                .FirstOrDefaultAsync(ct);
+            if (stats != null)
+                deviceStats[deviceId] = (stats.MaxSpeed, stats.MovingCount, stats.StoppedCount, stats.TotalCount);
+        }
 
         var result = vehicles.Select(v =>
         {
@@ -143,7 +148,7 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             var isMoving = ignitionOn && rawSpeed > 5;
 
             // Round max speed to whole number
-            var maxSpeed = Math.Round(stats?.MaxSpeed ?? 0.0);
+            var maxSpeed = Math.Round(stats.MaxSpeed);
 
             // Filter invalid temperature values (-32768 is uninitialized/error value)
             var temperature = position?.TemperatureC;
@@ -173,8 +178,8 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             }
 
             // Estimate moving/stopped time based on position counts (approx 1 min per position)
-            var movingMinutes = stats?.MovingCount ?? 0;
-            var stoppedMinutes = stats?.StoppedCount ?? 0;
+            var movingMinutes = stats.MovingCount;
+            var stoppedMinutes = stats.StoppedCount;
 
             return new VehicleWithPositionDto(
                 v.Id,
