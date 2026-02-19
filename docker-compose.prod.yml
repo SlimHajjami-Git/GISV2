@@ -79,6 +79,8 @@ services:
       Groq__ApiKey: ${GROQ_API_KEY}
       Groq__ApiUrl: https://api.groq.com/openai/v1/chat/completions
       Groq__Model: llama-3.3-70b-versatile
+    volumes:
+      - gis_uploads:/app/uploads
     restart: unless-stopped
 
   gps-ingest:
@@ -214,3 +216,4 @@ volumes:
   redis_data:
   valhalla_data:
   nominatim_data:
+  gis_uploads:
