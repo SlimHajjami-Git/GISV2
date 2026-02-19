@@ -1,0 +1,238 @@
+================================================================================
+                    PROFESSIONAL EXPERIENCE - CV
+================================================================================
+
+
+SENIOR FULL-STACK DEVELOPER — GPS Fleet Management System (GISV2)
+==================================================================
+
+Stack: Rust, .NET 8, Angular 17, PostgreSQL/PostGIS, Redis, RabbitMQ, Docker
+Role : Lead Developer / Technical Architect
+
+
+PROJECT OVERVIEW
+----------------
+Design and development of a multi-tenant SaaS platform for real-time
+vehicle fleet management. The system handles live GPS tracking,
+geofencing, activity reports, preventive maintenance, cost management
+and accident claims, serving multiple transportation companies.
+
+
+RESPONSIBILITIES & ACHIEVEMENTS
+--------------------------------
+
+>> Architecture & Technical Leadership
+
+  - Defined the overall distributed system architecture:
+    high-performance GPS ingestion service (Rust) + business API (.NET 8)
+    + real-time frontend (Angular 17)
+  - Implemented Clean Architecture with CQRS pattern (MediatR)
+    for strict separation of concerns
+  - Designed the multi-tenant system with data isolation per company
+    (EF Core query filters, JWT claims, RBAC with JSONB permissions)
+  - Authored ADRs (Architecture Decision Records) to document
+    technical choices and their rationale
+  - Code reviews, team mentoring, coding standards definition
+
+
+>> GPS Ingestion Service — Rust (High Performance)
+
+  - Built from scratch an asynchronous TCP service in Rust (Tokio)
+    capable of handling thousands of simultaneous connections
+  - Implemented two proprietary GPS protocols:
+      * HH Protocol: binary frame parsing (position, speed, heading, ignition)
+      * AAP/ACI Protocol (V1, V2, V3): advanced MEMS data
+        (accelerometer), FMS data (fuel, RPM, temperature, odometer)
+  - Real-time driving event detection:
+    harsh braking, acceleration, sharp turns, speeding
+  - Redis integration (real-time position cache, pub/sub) and
+    RabbitMQ (asynchronous event publishing)
+  - Optimized persistence in PostgreSQL/PostGIS with batch inserts
+    and time-series indexing
+  - Docker-compatible graceful shutdown, structured logging (tracing),
+    connection pooling, idiomatic error handling (Result, thiserror)
+
+
+>> Backend API — .NET 8 (Clean Architecture / CQRS)
+
+  - Developed 41 REST controllers covering: JWT authentication,
+    vehicle management, geofencing, maintenance, reports, dashboard KPIs,
+    system administration
+  - Implemented SignalR hub for real-time GPS position broadcasting
+    to clients (groups by company, vehicle, geofence)
+  - Granular JSONB permission system with role management
+    and subscription plans (vehicle, user, and module limits)
+  - MediatR Pipeline Behaviors: validation (FluentValidation),
+    structured logging (Serilog), transaction management
+  - RabbitMQ integration: consuming GPS events for
+    geofence evaluation, trip calculation, real-time alerts
+  - Full vehicle lifecycle management: documents, costs
+    (fuel, insurance, maintenance), accident claims, preventive
+    maintenance (km/month intervals)
+  - EF Core optimization: AsNoTracking, Select projections,
+    compiled queries, pagination, batch operations
+
+
+>> Frontend — Angular 17 (Standalone Components)
+
+  - Developed 40+ standalone components:
+      * Real-time Leaflet map with live vehicle tracking
+      * GPS playback with controls (play/pause, speed, timeline slider)
+      * Geofence drawing (polygons/circles) on map
+      * Comprehensive reports (trips, fuel, speed, mileage)
+      * Scheduled maintenance management
+      * System administration panel (15 pages)
+  - SignalR WebSocket integration for real-time updates
+  - Guard system (AuthGuard, FeatureGuard, SystemAdminGuard)
+    with permissions synchronized with backend
+  - OSRM road snapping and Nominatim reverse geocoding
+
+
+>> Database & Performance
+
+  - Modeled 36 domain entities with multi-tenant hierarchy
+    (Entity -> AuditableEntity -> TenantEntity)
+  - PostgreSQL 16 + PostGIS: geospatial queries (ST_Contains,
+    ST_Distance) for real-time geofencing
+  - GPS position partitioning by date, composite indexes
+    (device_id, recorded_at), BRIN indexes
+  - JSONB for permissions, geofence coordinates, company settings
+  - Redis: position cache with TTL, pub/sub for notifications
+  - Report optimization: materialized views, window functions
+    (LAG for fuel anomaly detection)
+
+
+>> DevOps & Infrastructure
+
+  - Full Dockerization of 8 services: .NET API, Rust service,
+    PostgreSQL/PostGIS, Redis, RabbitMQ, Angular/Nginx, OSRM, Nominatim
+  - Docker Compose with healthchecks, conditional depends_on,
+    persistent volumes, multi-environment configuration (dev/prod)
+  - Multi-stage Docker builds: Rust (cargo-chef, debian-slim ~50MB),
+    .NET (sdk -> aspnet runtime ~200MB), Angular (node -> nginx:alpine)
+  - CI/CD pipeline: lint, build, test, security scan, Docker build,
+    automated deployment
+  - Git Flow with conventional commits, mandatory code reviews,
+    branching strategy (feature/develop/main)
+
+
+>> Messaging & Integration
+
+  - RabbitMQ: exchanges, durable queues, publisher confirms, ACK,
+    dead letter queues, monitoring
+  - Event-driven communication between services (fire-and-forget,
+    eventual consistency)
+  - Versioned JSON message format between Rust and .NET
+  - Backpressure via bounded channels and prefetch_count
+
+
+KEY FIGURES
+-----------
+  - 41 REST API controllers
+  - 36 domain entities
+  - 40+ Angular standalone components
+  - 2 proprietary GPS protocols decoded (HH, AAP/ACI V1-V3)
+  - 8 orchestrated Docker services
+  - Multi-tenant: complete data isolation per company
+  - Real-time: GPS latency < 5 seconds (device to screen)
+
+
+================================================================================
+SHORT VERSION (for 1-page CV)
+================================================================================
+
+Senior Full-Stack Developer — GPS Fleet Management SaaS Platform
+
+Designed and built a distributed real-time fleet management system.
+High-performance GPS ingestion service in Rust (Tokio, async TCP,
+proprietary binary protocol decoding HH and AAP/ACI V1-V3,
+driving event detection, Redis, RabbitMQ).
+.NET 8 backend (Clean Architecture, CQRS/MediatR, multi-tenant,
+real-time SignalR, 41 controllers, EF Core, JWT, JSONB RBAC).
+Angular 17 frontend (40+ standalone components, Leaflet, GPS playback,
+geofencing, reports). PostgreSQL/PostGIS, Docker (8 services),
+CI/CD, OSRM, Nominatim.
+
+
+================================================================================
+LINKEDIN VERSION (3-4 lines)
+================================================================================
+
+Lead Developer on a real-time GPS fleet management SaaS platform.
+Distributed architecture: high-performance Rust ingestion service
+(async TCP, binary protocols, Tokio) + .NET 8 API (Clean Architecture,
+CQRS, SignalR, multi-tenant) + Angular 17 frontend (Leaflet, 40+ components).
+Stack: PostgreSQL/PostGIS, Redis, RabbitMQ, Docker, OSRM.
+
+
+================================================================================
+KEYWORDS / TECHNICAL SKILLS (ATS-optimized)
+================================================================================
+
+--- Languages ---
+Rust · C# · TypeScript · JavaScript · SQL · HTML/CSS
+
+--- Backend ---
+.NET 8 · ASP.NET Core · Entity Framework Core · Clean Architecture
+CQRS · MediatR · SignalR · REST API · JWT · OAuth2
+FluentValidation · Serilog · Swagger/OpenAPI
+Dependency Injection · Middleware · Background Services
+Multi-Tenancy · RBAC · JSONB Permissions
+
+--- Rust ---
+Tokio · async/await · TCP · Serde · Clap · tracing
+tokio-postgres · lapin (RabbitMQ) · redis-rs
+Ownership · Borrowing · Lifetimes · Traits · Enums (ADT)
+Pattern Matching · Error Handling (Result, thiserror, anyhow)
+Zero-Cost Abstractions · Send/Sync · Arc/Mutex
+Binary Protocol Parsing · Zero-Copy · Connection Pooling
+Graceful Shutdown · Structured Logging
+
+--- Frontend ---
+Angular 17 · Standalone Components · TypeScript · RxJS
+Leaflet · Reactive Forms · HttpClient · Interceptors
+Guards (Auth, Feature, Admin) · Lazy Loading · OnPush
+SignalR Client · WebSocket · Responsive Design
+
+--- Database ---
+PostgreSQL 16 · PostGIS · JSONB · Partitioning
+Window Functions · CTE · Materialized Views
+BRIN Index · GiST Index · GIN Index · EXPLAIN ANALYZE
+SQL Optimization · Batch Operations · Full-Text Search
+
+--- Cache & Messaging ---
+Redis · Pub/Sub · TTL · Cache-Aside
+RabbitMQ · AMQP · Exchanges · Queues · Dead Letter Queue
+Publisher Confirms · ACK · Prefetch · Event-Driven Architecture
+
+--- DevOps & Infrastructure ---
+Docker · Docker Compose · Multi-Stage Builds
+CI/CD · GitHub Actions · Git Flow · Conventional Commits
+Nginx · Reverse Proxy · TLS/SSL · Health Checks
+OSRM · Nominatim · OpenStreetMap
+
+--- Architecture & Patterns ---
+Clean Architecture · CQRS · Repository Pattern
+Unit of Work · Specification Pattern · Decorator
+Domain-Driven Design (DDD) · Event-Driven · Microservices
+SOLID · DRY · YAGNI · Twelve-Factor App
+
+--- Methodologies ---
+Agile/Scrum · Kanban · Sprint Planning · Code Review
+TDD · Pair Programming · ADR · Post-Mortem
+DORA Metrics · SLO/SLA · Technical Debt Management
+
+--- Monitoring & Observability ---
+Prometheus · Grafana · Structured Logging
+OpenTelemetry · Distributed Tracing · Health Checks
+Performance Profiling · Load Testing
+
+--- Security ---
+JWT Authentication · RBAC · Multi-Tenant Isolation
+Input Validation · Rate Limiting · CORS
+HTTPS/TLS · Secret Management · OWASP
+Audit Logging · GDPR Compliance
+
+--- Tools ---
+Visual Studio · VS Code · Git · Docker Desktop
+Postman · pgAdmin · Redis CLI · RabbitMQ Management

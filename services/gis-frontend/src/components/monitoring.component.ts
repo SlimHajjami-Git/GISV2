@@ -955,19 +955,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.traceDrawnUpToIndex = 0;
     this.progressCoords = [];
 
-    // Draw full ghost route (faded preview of entire path)
-    if (this.matchedRouteCoords.length >= 2) {
-      this.ghostPolyline = L.polyline(this.matchedRouteCoords, {
-        color: '#94a3b8',
-        weight: 3,
-        opacity: 0.25,
-        dashArray: '8 6'
-      }).addTo(this.map);
-      this.map.fitBounds(this.ghostPolyline.getBounds().pad(0.1));
-    } else {
-      const startPos = this.playbackPositions[0];
-      this.map.setView([startPos.latitude, startPos.longitude], 15);
-    }
+    // Center map on start position (no ghost route preview)
+    const firstPos = this.playbackPositions[0];
+    const firstLatLng = this.getSnappedLatLng(0);
+    const firstLatLngArr = Array.isArray(firstLatLng) ? firstLatLng : [firstPos.latitude, firstPos.longitude];
+    this.map.setView(firstLatLngArr as L.LatLngExpression, 15);
 
     // Initialize empty progress polyline (grows as vehicle moves)
     this.progressPolyline = L.polyline([], {
@@ -985,15 +977,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       radius: 8, fillColor: '#22c55e', color: '#fff', weight: 3, fillOpacity: 1
     }).addTo(this.map).bindTooltip('Départ', { permanent: false });
 
-    // Add end marker
-    const endIdx = this.playbackPositions.length - 1;
-    const endLatLng = this.getSnappedLatLng(endIdx);
-    L.circleMarker(endLatLng as L.LatLngExpression, {
-      radius: 8, fillColor: '#ef4444', color: '#fff', weight: 3, fillOpacity: 1
-    }).addTo(this.map).bindTooltip('Arrivée', { permanent: false });
-
-    // Add clickable GPS point markers on the map
-    this.addPointMarkers();
+    // Point markers and end marker will be added progressively during animation
   }
 
   addPointMarkers() {
@@ -1117,6 +1101,68 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       marker.bindPopup(popupContent);
       this.pointMarkers.push(marker);
     });
+  }
+
+  // Add a single point marker progressively during playback animation
+  addSinglePointMarker(index: number) {
+    if (!this.map || index < 0 || index >= this.playbackPositions.length) return;
+    
+    const position = this.playbackPositions[index];
+    const marker = L.circleMarker([position.latitude, position.longitude], {
+      radius: 5,
+      fillColor: '#3b82f6',
+      color: '#ffffff',
+      weight: 2,
+      opacity: 1,
+      fillOpacity: 0.8
+    }).addTo(this.map);
+
+    const time = new Date(position.recordedAt).toLocaleString('fr-FR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+
+    const speed = position.speedKph || 0;
+    const speedColor = speed > 80 ? '#ef4444' : speed > 50 ? '#f59e0b' : '#10b981';
+
+    const popupContent = `
+      <div style="font-family:'Inter',-apple-system,sans-serif;min-width:200px;padding:0;margin:-14px -20px;">
+        <div style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);padding:10px 14px;border-radius:8px 8px 0 0;display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:24px;height:24px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;">${index + 1}</div>
+            <span style="font-weight:500;font-size:12px;color:#fff;">Point de trace</span>
+          </div>
+          <span style="font-size:11px;color:rgba(255,255,255,0.8);">${time.split(' ')[1] || ''}</span>
+        </div>
+        <div style="background:#fff;padding:12px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #e5e7eb;">
+          <div style="width:44px;height:44px;background:${speedColor}15;border-radius:10px;display:flex;align-items:center;justify-content:center;border:2px solid ${speedColor};">
+            <span style="font-size:16px;font-weight:700;color:${speedColor};">${speed.toFixed(0)}</span>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Vitesse</div>
+            <div style="font-size:14px;font-weight:600;color:#1e293b;">${speed.toFixed(1)} km/h</div>
+          </div>
+        </div>
+        <div style="padding:10px 14px;background:#f8fafc;border-radius:0 0 8px 8px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;">
+            <div style="background:#fff;padding:8px 10px;border-radius:6px;border:1px solid #e2e8f0;">
+              <div style="color:#64748b;margin-bottom:2px;">⛽ Carburant</div>
+              <div style="font-weight:600;color:#1e293b;">${position.fuelRaw || 0}%</div>
+            </div>
+            <div style="background:#fff;padding:8px 10px;border-radius:6px;border:1px solid #e2e8f0;">
+              <div style="color:#64748b;margin-bottom:2px;">🌡️ Température</div>
+              <div style="font-weight:600;color:#1e293b;">${position.temperatureC != null ? position.temperatureC + '°C' : 'N/A'}</div>
+            </div>
+          </div>
+          <div style="margin-top:8px;padding:6px 10px;background:#fff;border-radius:4px;border:1px solid #e2e8f0;font-size:10px;color:#64748b;font-family:monospace;text-align:center;">
+            ${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)}
+          </div>
+        </div>
+      </div>
+    `;
+
+    marker.bindPopup(popupContent);
+    this.pointMarkers.push(marker);
   }
 
   clearRouteDisplay() {
@@ -1357,11 +1403,20 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   // Smooth animation using requestAnimationFrame — uses pre-computed matchedRouteCoords (no network calls)
+  // Time-based: 1 second real time = 1 minute GPS time (adjusted by playbackSpeed)
   private async animateToNextPoint() {
     if (!this.isPlaying || this.playbackIndex >= this.playbackPositions.length - 1) {
       this.ngZone.run(() => {
         this.isPlaying = false;
         this.isAnimatingSegment = false;
+        // Add end marker when playback finishes
+        if (this.map && this.playbackPositions.length > 1) {
+          const endIdx = this.playbackPositions.length - 1;
+          const endLatLng = this.getSnappedLatLng(endIdx);
+          L.circleMarker(endLatLng as L.LatLngExpression, {
+            radius: 8, fillColor: '#ef4444', color: '#fff', weight: 3, fillOpacity: 1
+          }).addTo(this.map).bindTooltip('Arrivée', { permanent: false });
+        }
         this.cdr.detectChanges();
       });
       return;
@@ -1369,28 +1424,19 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
     try {
       const fromPos = this.playbackPositions[this.playbackIndex];
-      const ignitionOn = fromPos.ignitionOn !== false;
-      const speed = fromPos.speedKph || fromPos.speed || 0;
+      const toPos = this.playbackPositions[this.playbackIndex + 1];
 
-      // ===== BATCH-SKIP: ignition off or stopped =====
-      if (!ignitionOn || speed < 3) {
-        let skipTo = this.playbackIndex + 1;
-        while (skipTo < this.playbackPositions.length - 1) {
-          const p = this.playbackPositions[skipTo];
-          const pSpeed = p.speedKph || p.speed || 0;
-          const pIgn = p.ignitionOn !== false;
-          if (pIgn && pSpeed >= 3) break;
-          skipTo++;
-        }
-        this.updatePlaybackMarker();
-        this.ngZone.run(() => {
-          this.playbackIndex = skipTo;
-          this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
-          this.cdr.detectChanges();
-          setTimeout(() => this.animateToNextPoint().catch(e => console.error('[Playback] skip error:', e)), 150 / this.playbackSpeed);
-        });
-        return;
-      }
+      // Add progressive point marker for current position
+      this.addSinglePointMarker(this.playbackIndex);
+
+      // Calculate time-based duration: 1 real second = 1 GPS minute
+      const fromTime = new Date(fromPos.recordedAt).getTime();
+      const toTime = new Date(toPos.recordedAt).getTime();
+      const gpsTimeDiffMs = Math.abs(toTime - fromTime);
+      const gpsTimeDiffMinutes = gpsTimeDiffMs / 60000;
+      // 1 minute GPS = 1 second real time, capped to avoid very long waits
+      const baseDurationMs = Math.max(50, Math.min(5000, gpsTimeDiffMinutes * 1000));
+      const durationMs = baseDurationMs / this.playbackSpeed;
 
       // ===== GET ROAD SEGMENT from pre-computed matchedRouteCoords =====
       this.currentRouteCoords = this.getPrecomputedSegment(this.playbackIndex);
@@ -1406,32 +1452,24 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         }
       }
 
-      // Zero-distance: batch-skip
+      // Vehicle is stationary (no distance) — wait proportionally then advance
       if (totalDistance < 1) {
-        let skipTo = this.playbackIndex + 1;
-        if (this.segmentBoundaries.length > 0) {
-          const curB = this.segmentBoundaries[this.playbackIndex];
-          while (skipTo < this.playbackPositions.length - 1) {
-            const nB = this.segmentBoundaries[skipTo];
-            const nB2 = this.segmentBoundaries[skipTo + 1];
-            if (nB !== undefined && nB2 !== undefined && nB === nB2) skipTo++;
-            else break;
-          }
-        }
+        this.updatePlaybackMarker();
         this.ngZone.run(() => {
-          this.appendProgressTrace(this.playbackIndex, skipTo);
-          this.playbackIndex = skipTo;
-          this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
-          this.updatePlaybackMarker();
-          this.cdr.detectChanges();
-          setTimeout(() => this.animateToNextPoint().catch(e => console.error('[Playback] zero-dist error:', e)), 30 / this.playbackSpeed);
+          setTimeout(() => {
+            this.appendProgressTrace(this.playbackIndex, this.playbackIndex + 1);
+            this.playbackIndex++;
+            this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+            this.updatePlaybackMarker();
+            this.cdr.detectChanges();
+            this.animateToNextPoint().catch(e => console.error('[Playback] stationary error:', e));
+          }, durationMs);
         });
         return;
       }
 
       // ===== ANIMATE along pre-computed road segment =====
-      const baseDuration = Math.max(200, Math.min(2500, (totalDistance / 100) * 250));
-      this.segmentDuration = baseDuration / this.playbackSpeed;
+      this.segmentDuration = durationMs;
       this.animationStartTime = performance.now();
       this.isAnimatingSegment = true;
       this.animateFrame();
@@ -2163,14 +2201,26 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.stopPlaybackAnimation();
     this.isPlaying = false;
     
-    // Draw all remaining segments
+    // Draw all remaining segments and add all point markers
     for (let i = this.traceDrawnUpToIndex; i < this.playbackPositions.length - 1; i++) {
+      this.addSinglePointMarker(i);
       this.drawProgressiveSegment(i, i + 1);
     }
+    // Add last point marker
+    this.addSinglePointMarker(this.playbackPositions.length - 1);
     
     this.playbackIndex = this.playbackPositions.length - 1;
     this.playbackProgress = 100;
     this.updatePlaybackMarker();
+
+    // Add end marker
+    if (this.map && this.playbackPositions.length > 1) {
+      const endIdx = this.playbackPositions.length - 1;
+      const endLatLng = this.getSnappedLatLng(endIdx);
+      L.circleMarker(endLatLng as L.LatLngExpression, {
+        radius: 8, fillColor: '#ef4444', color: '#fff', weight: 3, fillOpacity: 1
+      }).addTo(this.map).bindTooltip('Arrivée', { permanent: false });
+    }
 
     // Center on end position (snapped) - maintain current zoom level
     if (this.map && this.playbackPositions.length > 0) {
