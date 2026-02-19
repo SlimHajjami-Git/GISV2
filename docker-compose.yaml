@@ -130,6 +130,8 @@ services:
       Valhalla__Url: "http://valhalla:8002"
     ports:
       - "5000:5000"
+    volumes:
+      - gis-uploads:/app/uploads
     restart: unless-stopped
 
   frontend:
@@ -209,3 +211,4 @@ volumes:
   nominatim-data:
   redis-data:
   valhalla-data:
+  gis-uploads:

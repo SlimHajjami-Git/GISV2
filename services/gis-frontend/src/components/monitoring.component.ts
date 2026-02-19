@@ -961,14 +961,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const firstLatLngArr = Array.isArray(firstLatLng) ? firstLatLng : [firstPos.latitude, firstPos.longitude];
     this.map.setView(firstLatLngArr as L.LatLngExpression, 15);
 
-    // Initialize empty progress polyline (grows as vehicle moves)
-    this.progressPolyline = L.polyline([], {
-      color: '#3b82f6',
-      weight: 5,
-      opacity: 0.9,
-      lineJoin: 'round',
-      lineCap: 'round'
-    }).addTo(this.map);
+    // No polyline — only point markers shown progressively
 
     // Add start marker
     const startPos = this.playbackPositions[0];
@@ -1816,15 +1809,6 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         const spd = currentPos?.speedKph || 0;
         const col = this.getStatusColor(currentPos);
         this.playbackMarker.setIcon(this.createPlaybackVehicleIcon(col, heading, spd));
-      }
-    }
-
-    // Grow progress polyline (throttled: every 4th frame)
-    if (this.progressPolyline) {
-      this._traceFrameCount++;
-      if (this._traceFrameCount >= 4) {
-        this._traceFrameCount = 0;
-        this.progressPolyline.addLatLng([lat, lng]);
       }
     }
 

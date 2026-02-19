@@ -30,7 +30,7 @@ import { ChatComponent } from './chat.component';
 
         <!-- Navigation Links -->
         <div class="nav-links">
-          <a *ngIf="hasModule('dashboard')" [routerLink]="['/dashboard']" routerLinkActive="active" class="nav-link">
+          <a *ngIf="hasModule('dashboard')" [routerLink]="['/dashboard']" routerLinkActive="active" class="nav-link" title="Tableau de bord">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="3" width="7" height="7" rx="1"/>
               <rect x="14" y="3" width="7" height="7" rx="1"/>
@@ -39,13 +39,13 @@ import { ChatComponent } from './chat.component';
             </svg>
             <span>Tableau de bord</span>
           </a>
-          <a *ngIf="hasModule('monitoring')" [routerLink]="['/monitoring']" routerLinkActive="active" class="nav-link">
+          <a *ngIf="hasModule('monitoring')" [routerLink]="['/monitoring']" routerLinkActive="active" class="nav-link" title="Suivi en direct">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
             </svg>
             <span>Suivi en direct</span>
           </a>
-          <a *ngIf="hasModule('reports')" [routerLink]="['/reports']" routerLinkActive="active" class="nav-link">
+          <a *ngIf="hasModule('reports')" [routerLink]="['/reports']" routerLinkActive="active" class="nav-link" title="Rapports">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
               <polyline points="14 2 14 8 20 8"/>
@@ -53,28 +53,28 @@ import { ChatComponent } from './chat.component';
             </svg>
             <span>Rapports</span>
           </a>
-          <a *ngIf="hasModule('geofences')" [routerLink]="['/geofences']" routerLinkActive="active" class="nav-link">
+          <a *ngIf="hasModule('geofences')" [routerLink]="['/geofences']" routerLinkActive="active" class="nav-link" title="Géozones">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="10" r="3"/>
               <path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 7 8 11.7z"/>
             </svg>
             <span>Géozones</span>
           </a>
-          <a [routerLink]="['/tournees']" routerLinkActive="active" class="nav-link">
+          <a [routerLink]="['/tournees']" routerLinkActive="active" class="nav-link" title="Tournées">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M9 17H5a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm12-2h-4a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2z"/>
               <polyline points="9 17 12 5 15 17"/>
             </svg>
             <span>Tournées</span>
           </a>
-          <a *ngIf="hasModule('maintenance')" [routerLink]="['/entretien-programmable']" routerLinkActive="active" class="nav-link">
+          <a *ngIf="hasModule('maintenance')" [routerLink]="['/entretien-programmable']" routerLinkActive="active" class="nav-link" title="Entretien">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
               <polyline points="12 6 12 12 16 14"/>
             </svg>
             <span>Entretien</span>
           </a>
-          <a *ngIf="hasModule('suppliers')" [routerLink]="['/suppliers']" routerLinkActive="active" class="nav-link">
+          <a *ngIf="hasModule('suppliers')" [routerLink]="['/suppliers']" routerLinkActive="active" class="nav-link" title="Fournisseurs">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M3 21h18"/>
               <path d="M9 8h1"/>
@@ -87,19 +87,19 @@ import { ChatComponent } from './chat.component';
             </svg>
             <span>Fournisseurs</span>
           </a>
-          <a *ngIf="hasModule('maintenance')" [routerLink]="['/reparations']" routerLinkActive="active" class="nav-link">
+          <a *ngIf="hasModule('maintenance')" [routerLink]="['/reparations']" routerLinkActive="active" class="nav-link" title="Réparations">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
             </svg>
             <span>Reparations</span>
           </a>
-          <a *ngIf="hasModule('costs')" [routerLink]="['/depenses']" routerLinkActive="active" class="nav-link">
+          <a *ngIf="hasModule('costs')" [routerLink]="['/depenses']" routerLinkActive="active" class="nav-link" title="Dépenses">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
             </svg>
             <span>Dépenses</span>
           </a>
-          <a *ngIf="hasModule('costs')" [routerLink]="['/carburant']" routerLinkActive="active" class="nav-link">
+          <a *ngIf="hasModule('costs')" [routerLink]="['/carburant']" routerLinkActive="active" class="nav-link" title="Carburant">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M3 22V8l9-6 9 6v14"/>
               <path d="M12 22V12"/>
@@ -108,7 +108,7 @@ import { ChatComponent } from './chat.component';
             </svg>
             <span>Carburant</span>
           </a>
-          <a *ngIf="hasModule('employees')" [routerLink]="['/drivers']" routerLinkActive="active" class="nav-link">
+          <a *ngIf="hasModule('employees')" [routerLink]="['/drivers']" routerLinkActive="active" class="nav-link" title="Chauffeurs">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
               <circle cx="9" cy="7" r="4"/>
@@ -117,7 +117,7 @@ import { ChatComponent } from './chat.component';
             </svg>
             <span>Chauffeurs</span>
           </a>
-          <a *ngIf="hasModule('documents')" [routerLink]="['/documents']" routerLinkActive="active" class="nav-link">
+          <a *ngIf="hasModule('documents')" [routerLink]="['/documents']" routerLinkActive="active" class="nav-link" title="Échéances">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
               <polyline points="14 2 14 8 20 8"/>
@@ -126,7 +126,7 @@ import { ChatComponent } from './chat.component';
             </svg>
             <span>Échéances</span>
           </a>
-          <a *ngIf="hasModule('accidents')" [routerLink]="['/sinistres']" routerLinkActive="active" class="nav-link">
+          <a *ngIf="hasModule('accidents')" [routerLink]="['/sinistres']" routerLinkActive="active" class="nav-link" title="Sinistres">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
               <line x1="12" y1="8" x2="12" y2="12"/>
@@ -853,47 +853,20 @@ import { ChatComponent } from './chat.component';
     }
 
     /* ===== RESPONSIVE ===== */
-    /* Large laptops */
+    /* Laptops: icon-only mode — too many nav items for text */
     @media (max-width: 1600px) {
-      .nav-link {
-        padding: 8px 8px;
-        gap: 4px;
-      }
-      .nav-link span {
-        font-size: 12px;
-      }
-    }
-
-    /* Medium laptops */
-    @media (max-width: 1400px) {
-      .nav-links {
-        overflow-x: auto;
-        scrollbar-width: none;
-        -ms-overflow-style: none;
-        max-width: calc(100vw - 400px);
-      }
-      .nav-links::-webkit-scrollbar {
-        display: none;
-      }
-      .nav-link {
-        padding: 8px 6px;
-        flex-shrink: 0;
-      }
-      .nav-link span {
-        font-size: 11px;
-      }
-    }
-
-    /* Small laptops */
-    @media (max-width: 1200px) {
       .nav-link span {
         display: none;
       }
       .nav-link {
         padding: 8px 10px;
       }
-      .nav-links {
-        max-width: calc(100vw - 300px);
+    }
+
+    /* Smaller laptops */
+    @media (max-width: 1200px) {
+      .nav-link {
+        padding: 8px 8px;
       }
     }
 

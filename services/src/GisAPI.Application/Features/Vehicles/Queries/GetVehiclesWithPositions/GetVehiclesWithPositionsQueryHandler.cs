@@ -72,26 +72,30 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             .Select(v => v.GpsDevice!.Id)
             .ToList();
 
-        // OPTIMIZED: Single query to get latest position per device (eliminates N+1 problem)
-        // Uses a subquery to find the max RecordedAt per device, then joins back
+        // OPTIMIZED: Correlated subquery to get latest position per device
+        // EF Core translates this to: WHERE id = (SELECT id FROM gps_positions WHERE device_id = p.device_id ORDER BY recorded_at DESC LIMIT 1)
         var latestPositions = await _context.GpsPositions
             .AsNoTracking()
             .Where(p => deviceIds.Contains(p.DeviceId))
-            .GroupBy(p => p.DeviceId)
-            .Select(g => new LatestPositionData
+            .Where(p => p.Id == _context.GpsPositions
+                .Where(p2 => p2.DeviceId == p.DeviceId)
+                .OrderByDescending(p2 => p2.RecordedAt)
+                .Select(p2 => p2.Id)
+                .FirstOrDefault())
+            .Select(p => new LatestPositionData
             {
-                DeviceId = g.Key,
-                Id = g.OrderByDescending(p => p.RecordedAt).First().Id,
-                Latitude = g.OrderByDescending(p => p.RecordedAt).First().Latitude,
-                Longitude = g.OrderByDescending(p => p.RecordedAt).First().Longitude,
-                SpeedKph = g.OrderByDescending(p => p.RecordedAt).First().SpeedKph,
-                CourseDeg = g.OrderByDescending(p => p.RecordedAt).First().CourseDeg,
-                IgnitionOn = g.OrderByDescending(p => p.RecordedAt).First().IgnitionOn,
-                RecordedAt = g.OrderByDescending(p => p.RecordedAt).First().RecordedAt,
-                FuelRaw = g.OrderByDescending(p => p.RecordedAt).First().FuelRaw,
-                TemperatureC = g.OrderByDescending(p => p.RecordedAt).First().TemperatureC,
-                Address = g.OrderByDescending(p => p.RecordedAt).First().Address,
-                OdometerKm = g.OrderByDescending(p => p.RecordedAt).First().OdometerKm
+                DeviceId = p.DeviceId,
+                Id = p.Id,
+                Latitude = p.Latitude,
+                Longitude = p.Longitude,
+                SpeedKph = p.SpeedKph,
+                CourseDeg = p.CourseDeg,
+                IgnitionOn = p.IgnitionOn,
+                RecordedAt = p.RecordedAt,
+                FuelRaw = p.FuelRaw,
+                TemperatureC = p.TemperatureC,
+                Address = p.Address,
+                OdometerKm = p.OdometerKm
             })
             .ToDictionaryAsync(p => p.DeviceId, ct);
 
