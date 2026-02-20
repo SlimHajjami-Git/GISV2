@@ -394,13 +394,6 @@ import { ChatComponent } from './chat.component';
       align-items: center;
       gap: 2px;
       flex: 1;
-      overflow-x: auto;
-      overflow-y: hidden;
-      scrollbar-width: none;
-      -ms-overflow-style: none;
-    }
-    .nav-links::-webkit-scrollbar {
-      display: none;
     }
 
     .nav-link {
