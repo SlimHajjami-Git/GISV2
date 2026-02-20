@@ -203,6 +203,10 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<Role>().ToTable("roles");
         modelBuilder.Entity<Tour>().ToTable("tours");
         modelBuilder.Entity<TourWaypoint>().ToTable("tour_waypoints");
+        modelBuilder.Entity<TourWaypoint>().Property(w => w.GeofenceId).HasColumnName("geofence_id");
+        modelBuilder.Entity<TourWaypoint>().Property(w => w.EstimatedLegMinutes).HasColumnName("estimated_leg_minutes");
+        modelBuilder.Entity<TourWaypoint>().Property(w => w.DeadlineMarginMinutes).HasColumnName("deadline_margin_minutes");
+        modelBuilder.Entity<TourWaypoint>().Property(w => w.WaypointStatus).HasColumnName("waypoint_status");
         modelBuilder.Entity<TourPause>().ToTable("tour_pauses");
         modelBuilder.Entity<ChatMessage>().ToTable("chat_messages");
         modelBuilder.Entity<AiChatMessage>().ToTable("ai_chat_messages");
