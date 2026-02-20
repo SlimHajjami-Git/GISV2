@@ -1096,20 +1096,29 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
-  // Add a tiny dot at the current position during playback animation
+  // Add a small dot at the current position during playback animation
   addSinglePointMarker(index: number) {
     if (!this.map || index < 0 || index >= this.playbackPositions.length) return;
     
+    const position = this.playbackPositions[index];
     const latLng = this.getSnappedLatLng(index);
+    const speed = position.speedKph || 0;
+    const time = new Date(position.recordedAt).toLocaleString('fr-FR', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+
     const marker = L.circleMarker(latLng as L.LatLngExpression, {
-      radius: 3,
+      radius: 4,
       fillColor: '#6366f1',
-      color: '#6366f1',
-      weight: 1,
-      opacity: 0.9,
-      fillOpacity: 0.9,
-      interactive: false
+      color: '#ffffff',
+      weight: 1.5,
+      opacity: 1,
+      fillOpacity: 0.9
     }).addTo(this.map);
+
+    marker.bindTooltip(`#${index + 1} — ${time} — ${speed.toFixed(0)} km/h`, {
+      direction: 'top', offset: [0, -6]
+    });
 
     this.pointMarkers.push(marker);
   }
@@ -1228,6 +1237,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Get snapped road position for a given playback index (uses segmentBoundaries)
   private getSnappedLatLng(index: number): L.LatLngExpression {
+    // Primary: use segment boundaries mapping
     if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0 && index < this.segmentBoundaries.length) {
       const roadIdx = this.segmentBoundaries[index];
       if (roadIdx !== undefined && roadIdx < this.matchedRouteCoords.length) {
@@ -1237,8 +1247,26 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         }
       }
     }
+    // Fallback: find nearest point on matchedRouteCoords
     const pos = this.playbackPositions[index];
     if (!pos) return [0, 0];
+    if (this.matchedRouteCoords.length > 0) {
+      let bestDist = Infinity;
+      let bestCoord = this.matchedRouteCoords[0];
+      for (let i = 0; i < this.matchedRouteCoords.length; i++) {
+        const c = this.matchedRouteCoords[i];
+        const dLat = c.lat - pos.latitude;
+        const dLng = c.lng - pos.longitude;
+        const dist = dLat * dLat + dLng * dLng;
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestCoord = c;
+        }
+      }
+      if (bestCoord && !isNaN(bestCoord.lat) && !isNaN(bestCoord.lng)) {
+        return [bestCoord.lat, bestCoord.lng];
+      }
+    }
     return [pos.latitude, pos.longitude];
   }
 
