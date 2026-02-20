@@ -518,15 +518,27 @@ public class AiChatController : ControllerBase
     private static string BuildSystemPrompt(VehicleDiagnosticContext ctx)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Tu es un expert en diagnostic automobile et gestion de flotte. Tu assistes les gestionnaires de flotte en analysant les données de leurs véhicules.");
-        sb.AppendLine("Réponds toujours en français. Sois précis, concis et actionnable dans tes recommandations.");
-        sb.AppendLine("Quand tu identifies un problème potentiel, classe-le par urgence (critique, important, à surveiller).");
+
+        // ═══ SYSTEM INSTRUCTIONS ═══
+        sb.AppendLine("Tu es un expert en diagnostic automobile et gestion de flotte véhicules.");
+        sb.AppendLine("RÈGLES STRICTES:");
+        sb.AppendLine("1. Base ton analyse UNIQUEMENT sur les données fournies ci-dessous. Ne fabrique JAMAIS de chiffres.");
+        sb.AppendLine("2. Si une section de données est vide ou absente, dis clairement 'Aucune donnée disponible' pour cette section.");
+        sb.AppendLine("3. Si les données semblent incohérentes (ex: 0L consommé mais des pleins enregistrés), signale-le comme problème de capteur ou de saisie, ne tente pas de les réconcilier.");
+        sb.AppendLine("4. Classe chaque problème par urgence: 🔴 Critique, 🟠 Important, 🟡 À surveiller.");
+        sb.AppendLine("5. Réponds toujours en français, de manière structurée avec des titres et listes.");
+        sb.AppendLine("6. Il y a DEUX sources de données carburant distinctes:");
+        sb.AppendLine("   - 'Pleins manuels': saisis par le gestionnaire (factures de station-service)");
+        sb.AppendLine("   - 'Capteur GPS': données temps réel du capteur de carburant embarqué (peut être absent ou mal calibré)");
+        sb.AppendLine("7. Ne confonds jamais ces deux sources. Analyse-les séparément puis compare si les deux existent.");
         sb.AppendLine();
-        sb.AppendLine("═══ VÉHICULE EN CONTEXTE ═══");
+
+        // ═══ VEHICLE IDENTITY ═══
+        sb.AppendLine("═══ VÉHICULE ═══");
         sb.AppendLine($"Nom: {ctx.Name}");
         sb.AppendLine($"Marque/Modèle: {ctx.Brand ?? "N/A"} {ctx.Model ?? "N/A"}");
         sb.AppendLine($"Type: {ctx.Type} | Année: {ctx.Year?.ToString() ?? "N/A"}");
-        sb.AppendLine($"Carburant: {ctx.FuelType ?? "N/A"} | Kilométrage: {ctx.Mileage} km");
+        sb.AppendLine($"Carburant: {ctx.FuelType ?? "N/A"} | Kilométrage actuel: {ctx.Mileage:N0} km");
         sb.AppendLine($"Immatriculation: {ctx.Plate ?? "N/A"} | Statut: {ctx.Status}");
 
         if (ctx.InsuranceExpiry.HasValue)
@@ -534,14 +546,125 @@ public class AiChatController : ControllerBase
         if (ctx.TechnicalInspectionExpiry.HasValue)
             sb.AppendLine($"Expiration contrôle technique: {ctx.TechnicalInspectionExpiry.Value:dd/MM/yyyy}");
 
+        // ═══ DRIVING STATS (30 days) ═══
+        if (ctx.DrivingStats != null)
+        {
+            var ds = ctx.DrivingStats;
+            sb.AppendLine();
+            sb.AppendLine("═══ ACTIVITÉ DE CONDUITE (30 derniers jours) ═══");
+            sb.AppendLine($"Nombre de trajets: {ds.TripCount30Days}");
+            sb.AppendLine($"Distance totale parcourue: {ds.TotalDistanceKm:N0} km");
+            sb.AppendLine($"Distance moyenne par jour: {ds.AvgDistancePerDayKm:N1} km/jour");
+            sb.AppendLine($"Temps de conduite total: {ds.TotalDrivingMinutes} min ({ds.TotalDrivingMinutes / 60}h{ds.TotalDrivingMinutes % 60:D2})");
+            sb.AppendLine($"Temps au ralenti: {ds.TotalIdleMinutes} min ({(ds.TotalDrivingMinutes > 0 ? (ds.TotalIdleMinutes * 100 / ds.TotalDrivingMinutes) : 0)}% du temps)");
+            sb.AppendLine($"Vitesse moyenne: {ds.AvgSpeedKph:N1} km/h | Vitesse max: {ds.MaxSpeedKph:N1} km/h");
+            sb.AppendLine($"Freinages brusques: {ds.HarshBrakingTotal} | Accélérations brusques: {ds.HarshAccelerationTotal} | Excès de vitesse: {ds.OverspeedingTotal}");
+            sb.AppendLine($"Score de conduite: {ds.DrivingScore}/100");
+        }
+        else
+        {
+            sb.AppendLine();
+            sb.AppendLine("═══ ACTIVITÉ DE CONDUITE (30 derniers jours) ═══");
+            sb.AppendLine("Aucun trajet enregistré sur les 30 derniers jours.");
+        }
+
+        // ═══ FUEL - MANUAL ENTRIES ═══
+        sb.AppendLine();
+        sb.AppendLine("═══ PLEINS CARBURANT MANUELS (factures, 30 derniers jours) ═══");
+        if (ctx.FuelEntries.Count > 0)
+        {
+            var totalLiters = ctx.FuelEntries.Sum(f => f.Liters);
+            var totalCost = ctx.FuelEntries.Sum(f => f.TotalCost);
+            sb.AppendLine($"Nombre de pleins saisis: {ctx.FuelEntries.Count}");
+            sb.AppendLine($"Total litres ravitaillés: {totalLiters:N1} L");
+            sb.AppendLine($"Coût total carburant: {totalCost:N2} TND");
+            if (totalLiters > 0)
+                sb.AppendLine($"Prix moyen par litre: {(totalCost / totalLiters):N3} TND/L");
+            if (ctx.DrivingStats != null && ctx.DrivingStats.TotalDistanceKm > 0 && totalLiters > 0)
+            {
+                var consumptionPer100 = (double)totalLiters / (double)ctx.DrivingStats.TotalDistanceKm * 100;
+                var costPerKm = (double)totalCost / (double)ctx.DrivingStats.TotalDistanceKm;
+                sb.AppendLine($"Consommation calculée: {consumptionPer100:F1} L/100km (basé sur {ctx.DrivingStats.TotalDistanceKm:N0} km parcourus)");
+                sb.AppendLine($"Coût au kilomètre: {costPerKm:F3} TND/km");
+            }
+            sb.AppendLine("Détail des pleins:");
+            foreach (var f in ctx.FuelEntries)
+            {
+                sb.AppendLine($"  - {f.Date:dd/MM/yyyy} | {f.Liters:N1}L | {f.CostPerLiter:N3} TND/L | {f.TotalCost:N2} TND | Odom: {f.Mileage} km");
+            }
+        }
+        else
+        {
+            sb.AppendLine("Aucun plein de carburant saisi manuellement sur cette période.");
+        }
+
+        // ═══ FUEL - GPS SENSOR RECORDS ═══
+        sb.AppendLine();
+        sb.AppendLine("═══ DONNÉES CAPTEUR CARBURANT GPS (automatique, 30 derniers jours) ═══");
+        if (ctx.FuelRecords.Count > 0)
+        {
+            var refuels = ctx.FuelRecords.Where(r => r.EventType == "refuel").ToList();
+            var anomalies = ctx.FuelRecords.Where(r => r.IsAnomaly).ToList();
+            var normalReadings = ctx.FuelRecords.Where(r => r.EventType == "normal" || r.EventType == "reading").ToList();
+            var readings = ctx.FuelRecords.Where(r => r.ConsumptionRate.HasValue && r.ConsumptionRate > 0).ToList();
+            var latest = ctx.FuelRecords.FirstOrDefault();
+
+            sb.AppendLine($"Nombre total d'enregistrements capteur: {ctx.FuelRecords.Count}");
+
+            if (latest != null)
+                sb.AppendLine($"Dernier relevé capteur: {latest.Date:dd/MM/yyyy HH:mm} | Niveau: {latest.FuelPercent}% | {(latest.FuelLiters.HasValue ? $"{latest.FuelLiters:F1}L" : "litres non calculés")} | Odom: {(latest.OdometerKm.HasValue ? $"{latest.OdometerKm:N0} km" : "N/A")}");
+
+            if (readings.Count > 0)
+            {
+                var avgConsumption = readings.Average(r => (double)(r.ConsumptionRate ?? 0));
+                var avgAvgConsumption = readings.Where(r => r.AvgConsumption.HasValue && r.AvgConsumption > 0).Select(r => (double)(r.AvgConsumption ?? 0)).DefaultIfEmpty(0).Average();
+                sb.AppendLine($"Consommation instantanée moyenne (capteur): {avgConsumption:F1} L/100km ({readings.Count} mesures)");
+                if (avgAvgConsumption > 0)
+                    sb.AppendLine($"Consommation lissée moyenne (capteur): {avgAvgConsumption:F1} L/100km");
+            }
+            else
+            {
+                sb.AppendLine("Aucune mesure de consommation valide du capteur (le capteur est peut-être absent ou non calibré).");
+            }
+
+            if (refuels.Count > 0)
+            {
+                var totalRefuelAmount = refuels.Sum(r => r.RefuelAmount ?? 0);
+                sb.AppendLine($"Pleins détectés automatiquement par capteur: {refuels.Count}");
+                if (totalRefuelAmount > 0)
+                    sb.AppendLine($"  Volume total ravitaillé (capteur): {totalRefuelAmount:F1} L");
+                foreach (var r in refuels)
+                    sb.AppendLine($"  - {r.Date:dd/MM/yyyy HH:mm} | Niveau: {r.FuelPercent}% | Ravitaillé: {(r.RefuelAmount.HasValue ? $"{r.RefuelAmount:F1}L" : "non mesuré")}");
+            }
+            else
+            {
+                sb.AppendLine("Aucun plein de carburant détecté automatiquement par le capteur.");
+            }
+
+            if (anomalies.Count > 0)
+            {
+                sb.AppendLine($"Anomalies carburant détectées: {anomalies.Count}");
+                sb.AppendLine("  (Une anomalie peut être: chute soudaine de niveau = vol potentiel, consommation anormalement élevée, capteur défaillant)");
+                foreach (var a in anomalies.Take(5))
+                    sb.AppendLine($"  - {a.Date:dd/MM/yyyy HH:mm} | Type: {a.EventType} | Raison: {a.AnomalyReason ?? "non spécifiée"} | Niveau: {a.FuelPercent}%");
+            }
+            else
+            {
+                sb.AppendLine("Aucune anomalie carburant détectée.");
+            }
+        }
+        else
+        {
+            sb.AppendLine("Aucune donnée capteur carburant disponible. Le véhicule n'a peut-être pas de capteur de carburant ou il est hors service.");
+        }
+
+        // ═══ MAINTENANCE ═══
         if (ctx.RecentMaintenance.Count > 0)
         {
             sb.AppendLine();
             sb.AppendLine("═══ ENTRETIENS RÉCENTS ═══");
             foreach (var m in ctx.RecentMaintenance)
-            {
-                sb.AppendLine($"- {m.Date:dd/MM/yyyy} | {m.Type} | {m.Description ?? "N/A"} | {m.MileageAtService} km | {m.TotalCost:N0} TND | {m.Status}");
-            }
+                sb.AppendLine($"- {m.Date:dd/MM/yyyy} | {m.Type} | {m.Description ?? "N/A"} | {m.MileageAtService} km | {m.TotalCost:N0} TND | Statut: {m.Status}");
         }
 
         if (ctx.RecentRepairs.Count > 0)
@@ -549,92 +672,44 @@ public class AiChatController : ControllerBase
             sb.AppendLine();
             sb.AppendLine("═══ RÉPARATIONS RÉCENTES ═══");
             foreach (var r in ctx.RecentRepairs)
-            {
-                sb.AppendLine($"- {r.Date:dd/MM/yyyy} | {r.Description ?? "N/A"} | {r.MileageAtRepair} km | {r.TotalCost:N0} TND | {r.Status}");
-            }
-        }
-
-        if (ctx.RecentCosts.Count > 0)
-        {
-            sb.AppendLine();
-            sb.AppendLine("═══ COÛTS RÉCENTS ═══");
-            foreach (var c in ctx.RecentCosts)
-            {
-                sb.AppendLine($"- {c.Date:dd/MM/yyyy} | {c.Type} | {c.Description ?? "N/A"} | {c.Amount:N0} TND");
-            }
-        }
-
-        if (ctx.FuelEntries.Count > 0)
-        {
-            sb.AppendLine();
-            sb.AppendLine("═══ PLEINS CARBURANT (30 derniers jours) ═══");
-            foreach (var f in ctx.FuelEntries)
-            {
-                sb.AppendLine($"- {f.Date:dd/MM/yyyy} | {f.Liters:N1}L | {f.CostPerLiter:N3} TND/L | {f.TotalCost:N0} TND | {f.Mileage} km");
-            }
-        }
-
-        if (ctx.FuelRecords.Count > 0)
-        {
-            sb.AppendLine();
-            sb.AppendLine("═══ CONSOMMATION GPS EN TEMPS RÉEL (30 derniers jours) ═══");
-            var refuels = ctx.FuelRecords.Where(r => r.EventType == "refuel").ToList();
-            var anomalies = ctx.FuelRecords.Where(r => r.IsAnomaly).ToList();
-            var readings = ctx.FuelRecords.Where(r => r.ConsumptionRate.HasValue && r.ConsumptionRate > 0).ToList();
-            if (readings.Count > 0)
-            {
-                var avgConsumption = readings.Average(r => (double)(r.ConsumptionRate ?? 0));
-                sb.AppendLine($"Consommation moyenne GPS: {avgConsumption:F1} L/100km");
-            }
-            if (refuels.Count > 0)
-                sb.AppendLine($"Pleins détectés par capteur: {refuels.Count} | Total: {refuels.Sum(r => r.RefuelAmount ?? 0):F1}L");
-            if (anomalies.Count > 0)
-            {
-                sb.AppendLine($"Anomalies détectées: {anomalies.Count}");
-                foreach (var a in anomalies.Take(5))
-                    sb.AppendLine($"  - {a.Date:dd/MM HH:mm} | {a.AnomalyReason}");
-            }
-            var latest = ctx.FuelRecords.FirstOrDefault();
-            if (latest != null)
-                sb.AppendLine($"Dernier niveau: {latest.FuelPercent}% | {latest.FuelLiters?.ToString("F1") ?? "N/A"}L | Odom: {latest.OdometerKm?.ToString("N0") ?? "N/A"} km");
+                sb.AppendLine($"- {r.Date:dd/MM/yyyy} | {r.Description ?? "N/A"} | {r.MileageAtRepair} km | {r.TotalCost:N0} TND | Statut: {r.Status}");
         }
 
         if (ctx.ScheduledMaintenance.Count > 0)
         {
             sb.AppendLine();
-            sb.AppendLine("═══ ENTRETIENS PROGRAMMÉS ═══");
+            sb.AppendLine("═══ ENTRETIENS PROGRAMMÉS (à venir) ═══");
             foreach (var s in ctx.ScheduledMaintenance)
             {
-                var dueInfo = s.NextDueKm.HasValue ? $"à {s.NextDueKm} km" : "";
+                var dueInfo = s.NextDueKm.HasValue ? $"à {s.NextDueKm:N0} km" : "";
                 if (s.NextDueDate.HasValue) dueInfo += $" le {s.NextDueDate.Value:dd/MM/yyyy}";
                 sb.AppendLine($"- {s.TemplateName} | Statut: {s.Status} | Prochain: {dueInfo}");
             }
         }
 
+        // ═══ COSTS ═══
+        if (ctx.RecentCosts.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("═══ COÛTS RÉCENTS ═══");
+            var totalCosts = ctx.RecentCosts.Sum(c => c.Amount);
+            sb.AppendLine($"Total des coûts listés: {totalCosts:N0} TND");
+            foreach (var c in ctx.RecentCosts)
+                sb.AppendLine($"- {c.Date:dd/MM/yyyy} | {c.Type} | {c.Description ?? "N/A"} | {c.Amount:N0} TND");
+        }
+
+        // ═══ ALERTS ═══
         if (ctx.RecentAlerts.Count > 0)
         {
             sb.AppendLine();
             sb.AppendLine("═══ ALERTES RÉCENTES ═══");
             foreach (var a in ctx.RecentAlerts)
-            {
-                sb.AppendLine($"- {a.Date:dd/MM/yyyy HH:mm} | {a.Type} | {a.Severity} | {a.Message}");
-            }
-        }
-
-        if (ctx.DrivingStats != null)
-        {
-            var ds = ctx.DrivingStats;
-            sb.AppendLine();
-            sb.AppendLine("═══ STATISTIQUES DE CONDUITE (30 jours) ═══");
-            sb.AppendLine($"Trajets: {ds.TripCount30Days} | Distance totale: {ds.TotalDistanceKm:N0} km | Moyenne: {ds.AvgDistancePerDayKm:N1} km/jour");
-            sb.AppendLine($"Temps conduite: {ds.TotalDrivingMinutes} min | Ralenti: {ds.TotalIdleMinutes} min");
-            sb.AppendLine($"Vitesse moy: {ds.AvgSpeedKph:N1} km/h | Max: {ds.MaxSpeedKph:N1} km/h");
-            sb.AppendLine($"Freinages brusques: {ds.HarshBrakingTotal} | Accélérations brusques: {ds.HarshAccelerationTotal} | Excès vitesse: {ds.OverspeedingTotal}");
-            sb.AppendLine($"Score de conduite: {ds.DrivingScore}/100");
+                sb.AppendLine($"- {a.Date:dd/MM/yyyy HH:mm} | {a.Type} | Sévérité: {a.Severity} | {a.Message}");
         }
 
         sb.AppendLine();
-        sb.AppendLine("Utilise ces données pour fournir un diagnostic intelligent et des prédictions sur les futurs problèmes potentiels de ce véhicule.");
+        sb.AppendLine("═══ INSTRUCTIONS FINALES ═══");
+        sb.AppendLine("Analyse ces données de manière logique et cohérente. Si des données manquent ou sont à zéro, dis-le clairement au lieu d'inventer des conclusions. Propose des recommandations concrètes et actionnables basées uniquement sur les faits ci-dessus.");
 
         return sb.ToString();
     }

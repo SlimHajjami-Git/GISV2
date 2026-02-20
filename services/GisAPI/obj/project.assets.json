@@ -2986,6 +2986,9 @@
       "GisAPI.Domain/1.0.0": {
         "type": "project",
         "framework": ".NETCoreApp,Version=v9.0",
+        "dependencies": {
+          "MediatR.Contracts": "2.0.1"
+        },
         "compile": {
           "bin/placeholder/GisAPI.Domain.dll": {}
         },
@@ -3000,6 +3003,7 @@
           "BCrypt.Net-Next": "4.0.3",
           "GisAPI.Application": "1.0.0",
           "GisAPI.Domain": "1.0.0",
+          "MediatR": "12.2.0",
           "Microsoft.EntityFrameworkCore": "9.0.1",
           "Microsoft.Extensions.Configuration.Abstractions": "9.0.1",
           "Microsoft.Extensions.Hosting.Abstractions": "9.0.1",
