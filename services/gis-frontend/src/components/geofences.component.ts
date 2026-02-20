@@ -1899,18 +1899,20 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.editingGeofence) {
       this.apiService.updateGeofence(parseInt(this.editingGeofence.id), geofenceData).subscribe({
         next: () => {
+          this.closePopup();
           this.refreshData();
           this.renderGeofencesOnMap();
-          this.closePopup();
+          this.cdr.detectChanges();
         },
         error: (err) => console.error('Error updating geofence:', err)
       });
     } else {
       this.apiService.createGeofence(geofenceData).subscribe({
         next: () => {
+          this.closePopup();
           this.refreshData();
           this.renderGeofencesOnMap();
-          this.closePopup();
+          this.cdr.detectChanges();
         },
         error: (err) => console.error('Error creating geofence:', err)
       });

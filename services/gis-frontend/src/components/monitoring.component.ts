@@ -481,30 +481,27 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     }
 
-    const iconSvg = getVehicleIcon(vehicleType);
     const heading = (vehicle as any).lastPosition?.courseDeg || 0;
     const plate = vehicle.plate || (vehicle as any).registration_number || '';
-    const showArrow = isMoving && heading > 0;
 
+    // Pin-style marker: gradient top circle + plate band + color triangle
     const iconHtml = `
-      <div style="display: flex; flex-direction: column; align-items: center;">
-        <div style="position: relative; width: 40px; height: 40px;">
-          ${showArrow ? `<div style="position: absolute; inset: 0; transform: rotate(${heading}deg); pointer-events: none; z-index: 1;">
-            <div style="position: absolute; top: -8px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 10px solid ${color}; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));"></div>
-          </div>` : ''}
-          <div class="vehicle-marker vehicle-marker--${statusClass}" style="background-color: ${color};">
-            <div class="marker-icon">${iconSvg}</div>
-          </div>
+      <div style="display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35));">
+        <div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#38bdf8,#6366f1);display:flex;align-items:center;justify-content:center;border:2.5px solid #fff;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 17h14v-5l-2-5H7L5 12z"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/>
+          </svg>
         </div>
-        ${plate ? `<div style="font-size: 9px; font-weight: 700; color: #1e293b; background: rgba(255,255,255,0.95); padding: 1px 5px; border-radius: 3px; white-space: nowrap; margin-top: 1px; box-shadow: 0 1px 3px rgba(0,0,0,0.25); border: 1px solid ${color}; line-height: 1.3; text-align: center; max-width: 90px; overflow: hidden; text-overflow: ellipsis;">${plate}</div>` : ''}
+        ${plate ? `<div style="font-size:8.5px;font-weight:700;color:#334155;background:#f1f5f9;padding:1px 6px;border-radius:2px;white-space:nowrap;margin-top:-3px;line-height:1.4;text-align:center;max-width:80px;overflow:hidden;text-overflow:ellipsis;border:1px solid #e2e8f0;">${plate}</div>` : ''}
+        <div style="width:0;height:0;border-left:10px solid transparent;border-right:10px solid transparent;border-top:14px solid ${color};margin-top:-1px;"></div>
       </div>
     `;
 
     return L.divIcon({
       html: iconHtml,
       className: 'custom-vehicle-marker',
-      iconSize: [92, 66],
-      iconAnchor: [46, 26]
+      iconSize: [80, 72],
+      iconAnchor: [40, 72]
     });
   }
 
@@ -961,7 +958,14 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const firstLatLngArr = Array.isArray(firstLatLng) ? firstLatLng : [firstPos.latitude, firstPos.longitude];
     this.map.setView(firstLatLngArr as L.LatLngExpression, 15);
 
-    // No polyline — only point markers shown progressively
+    // Create progress polyline that grows as the vehicle moves
+    if (this.progressPolyline) { this.progressPolyline.remove(); }
+    this.progressPolyline = L.polyline([], {
+      color: '#6366f1',
+      weight: 3,
+      opacity: 0.8,
+      dashArray: undefined
+    }).addTo(this.map);
 
     // Add start marker
     const startPos = this.playbackPositions[0];
@@ -1801,12 +1805,26 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.map.panTo([lat, lng], { animate: true, duration: 0.3, easeLinearity: 0.25 });
     }
 
+    // Update progress polyline in real-time during animation
+    if (this.progressPolyline && this.currentRouteCoords && this.currentRouteCoords.length > 0) {
+      const routeIdx = Math.min(Math.floor(easedProgress * (this.currentRouteCoords.length - 1)), this.currentRouteCoords.length - 1);
+      const currentTraceCoords = [...this.progressCoords];
+      for (let i = 0; i <= routeIdx; i++) {
+        const c = this.currentRouteCoords[i];
+        if (c && !isNaN(c.lat) && !isNaN(c.lng)) {
+          currentTraceCoords.push(c);
+        }
+      }
+      currentTraceCoords.push(L.latLng(lat, lng));
+      this.progressPolyline.setLatLngs(currentTraceCoords);
+    }
+
     if (progress < 1) {
       this.animationFrameId = requestAnimationFrame(() => this.animateFrame());
     } else {
       // Segment complete — append exact road segment and advance
+      this.appendProgressTrace(this.playbackIndex, this.playbackIndex + 1);
       this.ngZone.run(() => {
-        const previousIndex = this.playbackIndex;
         this.playbackIndex++;
         this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
         this.updatePlaybackMarker();

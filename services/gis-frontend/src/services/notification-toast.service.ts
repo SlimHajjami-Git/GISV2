@@ -61,22 +61,28 @@ export class NotificationToastService {
 
   private showGeofenceToast(event: GeofenceEvent): void {
     const vehicleName = event.vehicleName || `Véhicule #${event.vehicleId}`;
+    const zoneName = event.geofenceName || `Zone #${event.geofenceId}`;
+    const dateStr = event.timestamp
+      ? new Date(event.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : '';
+    const dateSuffix = dateStr ? ` le ${dateStr}` : '';
+
     if (event.eventType === 'entry') {
       this.toast.info(
-        `Entrée géofence`,
-        `${vehicleName} est entré dans une zone géofencée`,
+        `Géofence — ${vehicleName}`,
+        `${vehicleName} est entré dans la zone "${zoneName}"${dateSuffix}`,
         6000
       );
     } else if (event.eventType === 'exit') {
       this.toast.warning(
-        `Sortie géofence`,
-        `${vehicleName} a quitté une zone géofencée`,
+        `Géofence — ${vehicleName}`,
+        `${vehicleName} a quitté la zone "${zoneName}"${dateSuffix}`,
         6000
       );
     } else if (event.eventType === 'speed_violation') {
       this.toast.error(
-        `Excès de vitesse en zone`,
-        `${vehicleName} — ${event.speed ?? 0} km/h dans une zone limitée`,
+        `Géofence — ${vehicleName}`,
+        `${vehicleName} — ${event.speed ?? 0} km/h dans la zone "${zoneName}"${dateSuffix}`,
         8000
       );
     }

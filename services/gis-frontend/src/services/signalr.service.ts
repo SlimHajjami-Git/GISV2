@@ -30,6 +30,7 @@ export interface GpsAlert {
 
 export interface GeofenceEvent {
   geofenceId: number;
+  geofenceName?: string;
   vehicleId: number;
   vehicleName: string;
   eventType: 'entry' | 'exit' | 'speed_violation';
