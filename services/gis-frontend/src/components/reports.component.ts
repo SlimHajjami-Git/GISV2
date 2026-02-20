@@ -1957,20 +1957,24 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const driveEvents = events.filter(e => e.type === 'drive');
     const stopEvents = events.filter(e => e.type === 'stop');
 
+    // Primary chart: driving vs stopped time (donut)
+    const totalDriveSeconds = driveEvents.reduce((s: number, e: any) => s + (e.durationSeconds || 0), 0);
+    const totalStopSeconds = stopEvents.reduce((s: number, e: any) => s + (e.durationSeconds || 0), 0);
+    const totalSec = totalDriveSeconds + totalStopSeconds;
+    const pctDrive = totalSec > 0 ? Math.round(totalDriveSeconds / totalSec * 100) : 0;
+    const pctStop = totalSec > 0 ? 100 - pctDrive : 0;
+
     this.chartData = [
-      ...driveEvents.map(e => ({
-        label: e.typeLabel,
-        value: Math.round((e.durationSeconds || 0) / 60),
-        type: 'drive',
-        color: '#3B82F6'
-      })),
-      ...stopEvents.map(e => ({
-        label: e.typeLabel,
-        value: Math.round((e.durationSeconds || 0) / 60),
-        type: 'stop',
-        color: '#8B5CF6'
-      }))
+      { label: `Conduite ${pctDrive}%`, value: Math.round(totalDriveSeconds / 60), color: '#3B82F6' },
+      { label: `Arrêts ${pctStop}%`, value: Math.round(totalStopSeconds / 60), color: '#8B5CF6' }
     ];
+
+    // Secondary chart: per-trip distance bar chart
+    this.secondaryChartData = driveEvents.map((e: any) => ({
+      label: e.typeLabel,
+      value: e.distanceKm || 0,
+      color: '#3B82F6'
+    }));
 
     // Statistics
     const stats: Record<string, string> = {
@@ -3453,23 +3457,45 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const totalTypeASeconds = typeA.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
     const totalTypeCSeconds = typeC.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
 
+    const totalSeconds = totalTypeASeconds + totalTypeCSeconds;
+    const pctA = totalSeconds > 0 ? Math.round(totalTypeASeconds / totalSeconds * 100) : 0;
+    const pctC = totalSeconds > 0 ? 100 - pctA : 0;
+
     this.chartData = [
-      { label: '🅿️ Arrêts (A)', value: Math.round(totalTypeASeconds / 60), count: typeA.length, color: '#3B82F6' },
-      { label: '🚦 Circulation (C)', value: Math.round(totalTypeCSeconds / 60), count: typeC.length, color: '#F59E0B' }
+      { label: `Arrêts (A) ${pctA}%`, value: Math.round(totalTypeASeconds / 60), count: typeA.length, color: '#3B82F6' },
+      { label: `Circulation (C) ${pctC}%`, value: Math.round(totalTypeCSeconds / 60), count: typeC.length, color: '#F59E0B' }
     ];
+
+    // Secondary chart: duration range breakdown (matching Calypso bar chart)
+    const durationRanges = [
+      { label: '0-5 min', min: 0, max: 300, color: '#3B82F6' },
+      { label: '5-15 min', min: 300, max: 900, color: '#6366F1' },
+      { label: '15-30 min', min: 900, max: 1800, color: '#8B5CF6' },
+      { label: '30-60 min', min: 1800, max: 3600, color: '#F59E0B' },
+      { label: '>60 min', min: 3600, max: Infinity, color: '#EF4444' }
+    ];
+    this.secondaryChartData = durationRanges.map(r => ({
+      label: r.label,
+      value: this.tableData.filter((s: any) => s.durationSeconds >= r.min && s.durationSeconds < r.max).length,
+      color: r.color
+    }));
 
     // Statistics
     const totalDurationSeconds = stops.reduce((sum, s) => sum + s.durationSeconds, 0);
     const avgDurationSeconds = stops.length > 0 ? totalDurationSeconds / stops.length : 0;
+    const maxDurationSeconds = stops.length > 0 ? Math.max(...stops.map(s => s.durationSeconds)) : 0;
+    const minDurationSeconds = stops.length > 0 ? Math.min(...stops.map(s => s.durationSeconds)) : 0;
     const longStops = this.tableData.filter((s: any) => s.isLongStop).length;
 
     this.statisticsData = {
       'Total arrêts': stops.length.toString(),
-      '🅿️ Arrêts (A)': `${typeA.length} (${formatDuration(totalTypeASeconds)})`,
-      '🚦 Circulation (C)': `${typeC.length} (${formatDuration(totalTypeCSeconds)})`,
-      'Durée totale': formatDuration(totalDurationSeconds),
-      'Durée moyenne': formatDuration(avgDurationSeconds),
-      'Arrêts prolongés (>30min)': longStops.toString()
+      'Durée moy. arrêt': formatDuration(avgDurationSeconds),
+      'Max. arrêt': formatDuration(maxDurationSeconds),
+      'Min. arrêt': formatDuration(minDurationSeconds),
+      'Temps total circulation': formatDuration(totalTypeCSeconds),
+      'Temps total arrêt': formatDuration(totalTypeASeconds),
+      '🅿️ Arrêts (A)': typeA.length.toString(),
+      '🚦 Ralenti (C)': typeC.length.toString()
     };
   }
 
@@ -4090,44 +4116,25 @@ export class ReportsComponent implements OnInit, OnDestroy {
         }
       };
     } else if (type === 'daily') {
-      // Horizontal bar chart: drive vs stop durations
-      const driveData = this.chartData.filter(d => d.type === 'drive');
-      const stopData = this.chartData.filter(d => d.type === 'stop');
-      const allLabels = this.chartData.map((d, i) => `#${i + 1}`);
+      // Donut chart: driving vs stopped time (Calypso style)
       config = {
-        type: 'bar',
+        type: 'doughnut',
         data: {
-          labels: allLabels,
-          datasets: [
-            {
-              label: '🚗 Conduite (min)',
-              data: this.chartData.map(d => d.type === 'drive' ? d.value : 0),
-              backgroundColor: '#3B82F6CC',
-              borderColor: '#3B82F6',
-              borderWidth: 1,
-              borderRadius: 4
-            },
-            {
-              label: '🅿️ Arrêt (min)',
-              data: this.chartData.map(d => d.type === 'stop' ? d.value : 0),
-              backgroundColor: '#8B5CF6CC',
-              borderColor: '#8B5CF6',
-              borderWidth: 1,
-              borderRadius: 4
-            }
-          ]
+          labels: this.chartData.map(d => d.label),
+          datasets: [{
+            data: this.chartData.map(d => d.value),
+            backgroundColor: this.chartData.map(d => d.color || '#3B82F6'),
+            borderWidth: 3,
+            borderColor: '#1e293b',
+            hoverOffset: 10
+          }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          indexAxis: 'y',
           plugins: {
-            legend: { position: 'top', labels: { usePointStyle: true, font: { size: 11 } } },
-            title: { display: true, text: '📅 Activité journalière (durée en minutes)', font: { size: 14, weight: 'bold' } }
-          },
-          scales: {
-            x: { stacked: false, beginAtZero: true, title: { display: true, text: 'Durée (min)' } },
-            y: { stacked: false, grid: { display: false } }
+            legend: { position: 'bottom' as const, labels: { usePointStyle: true, padding: 12, font: { size: 11 } } },
+            title: { display: true, text: 'Répartition conduite / arrêts', font: { size: 14, weight: 'bold' } }
           }
         }
       };
@@ -4294,16 +4301,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
         }
       });
     } else if (type === 'stops' && this.secondaryChartData?.length) {
-      // Stops by vehicle horizontal bar chart
+      // Duration range bar chart (Calypso style)
       this.secondaryChart = new Chart(ctx, {
         type: 'bar',
         data: {
           labels: this.secondaryChartData.map(d => d.label),
           datasets: [{
-            label: 'Arrêts',
+            label: 'Nombre d\'arrêts',
             data: this.secondaryChartData.map(d => d.value),
-            backgroundColor: this.secondaryChartData.map((d, i) => this.chartColors[i % this.chartColors.length] + 'CC'),
-            borderColor: this.secondaryChartData.map((d, i) => this.chartColors[i % this.chartColors.length]),
+            backgroundColor: this.secondaryChartData.map((d: any) => d.color || '#3B82F6'),
+            borderColor: this.secondaryChartData.map((d: any) => d.color || '#3B82F6'),
             borderWidth: 1,
             borderRadius: 6
           }]
@@ -4311,10 +4318,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          indexAxis: 'y' as const,
           plugins: {
             legend: { display: false },
-            title: { display: true, text: '🚗 Arrêts par véhicule', font: { size: 12, weight: 'bold' } }
+            title: { display: true, text: 'Répartition par durée d\'arrêt', font: { size: 12, weight: 'bold' } }
           },
           scales: {
             x: { beginAtZero: true, title: { display: true, text: 'Nombre d\'arrêts' } }
@@ -4495,45 +4501,34 @@ export class ReportsComponent implements OnInit, OnDestroy {
           }
         }
       });
-    } else if (type === 'daily' && this.chartData?.length) {
-      // Daily report secondary: Pie chart for drive vs stop time ratio
-      const totalDrive = this.chartData.filter(d => d.type === 'drive').reduce((s, d) => s + d.value, 0);
-      const totalStop = this.chartData.filter(d => d.type === 'stop').reduce((s, d) => s + d.value, 0);
-      if (totalDrive + totalStop > 0) {
-        this.secondaryChart = new Chart(ctx, {
-          type: 'doughnut',
-          data: {
-            labels: ['🚗 Conduite', '🅿️ Arrêt'],
-            datasets: [{
-              data: [totalDrive, totalStop],
-              backgroundColor: ['#3B82F6CC', '#8B5CF6CC'],
-              borderWidth: 3,
-              borderColor: '#1e293b',
-              hoverOffset: 8
-            }]
+    } else if (type === 'daily' && this.secondaryChartData?.length) {
+      // Daily report secondary: per-trip distance bar chart
+      this.secondaryChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: this.secondaryChartData.map(d => d.label),
+          datasets: [{
+            label: 'Distance (km)',
+            data: this.secondaryChartData.map(d => d.value),
+            backgroundColor: '#3B82F6CC',
+            borderColor: '#3B82F6',
+            borderWidth: 1,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: 'Distance par trajet (km)', font: { size: 12, weight: 'bold' } }
           },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { position: 'bottom' as const, labels: { usePointStyle: true, padding: 10, font: { size: 11 } } },
-              title: { display: true, text: '⏱️ Répartition conduite / arrêt', font: { size: 12, weight: 'bold' } },
-              tooltip: {
-                callbacks: {
-                  label: (context: any) => {
-                    const val = context.raw;
-                    const total = totalDrive + totalStop;
-                    const pct = total > 0 ? ((val / total) * 100).toFixed(1) : '0';
-                    const hours = Math.floor(val / 60);
-                    const mins = val % 60;
-                    return `${hours}h ${mins}m (${pct}%)`;
-                  }
-                }
-              }
-            }
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: 'km' } },
+            x: { grid: { display: false } }
           }
-        });
-      }
+        }
+      });
     } else if (type === 'mileage' && this.chartData?.length) {
       // Mileage secondary: Cumulative distance line
       let cumulative = 0;
