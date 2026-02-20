@@ -1901,8 +1901,6 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
         next: () => {
           this.closePopup();
           this.refreshData();
-          this.renderGeofencesOnMap();
-          this.cdr.detectChanges();
         },
         error: (err) => console.error('Error updating geofence:', err)
       });
@@ -1911,8 +1909,6 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
         next: () => {
           this.closePopup();
           this.refreshData();
-          this.renderGeofencesOnMap();
-          this.cdr.detectChanges();
         },
         error: (err) => console.error('Error creating geofence:', err)
       });
@@ -1922,9 +1918,11 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
   refreshData() {
     this.apiService.getGeofences().subscribe({
       next: (geofences) => {
-        this.allGeofences = geofences;
+        this.allGeofences = geofences || [];
         this.geofences = [...this.allGeofences];
         this.filterGeofences();
+        this.renderGeofencesOnMap();
+        this.cdr.detectChanges();
       },
       error: (err) => console.error('Error refreshing geofences:', err)
     });
