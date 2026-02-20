@@ -113,6 +113,8 @@ public class ToursController : ControllerBase
         int estimatedDurationMinutes = 0;
         string? routePolyline = null;
         List<double[]>? decodedRoute = null;
+        List<double> legTimesSeconds = new();
+        List<double> legDistancesKm = new();
 
         try
         {
@@ -123,6 +125,8 @@ public class ToursController : ControllerBase
                 estimatedDurationMinutes = (int)Math.Ceiling(routeResult.TotalTimeSeconds / 60.0);
                 routePolyline = routeResult.EncodedPolyline;
                 decodedRoute = routeResult.DecodedPolyline;
+                legTimesSeconds = routeResult.LegTimesSeconds;
+                legDistancesKm = routeResult.LegDistancesKm;
             }
         }
         catch (Exception ex)
@@ -163,28 +167,26 @@ public class ToursController : ControllerBase
         _context.Tours.Add(tour);
         await _context.SaveChangesAsync();
 
-        // Add waypoints with estimated arrival times
-        var cumulativeMinutes = 0.0;
+        // Add waypoints with per-leg estimated arrival times from Valhalla
+        var cumulativeSeconds = 0.0;
+        var cumulativePauseMinutes = 0;
         for (int i = 0; i < request.Waypoints.Count; i++)
         {
             var wp = request.Waypoints[i];
             var waypointType = i == 0 ? "origin" : (i == request.Waypoints.Count - 1 ? "destination" : "waypoint");
 
-            // Estimate arrival time per waypoint proportionally
-            DateTime? estimatedArrival = null;
-            if (i == 0)
+            // Per-leg time from Valhalla (leg[i-1] = time from waypoint[i-1] to waypoint[i])
+            int legMinutes = 0;
+            if (i > 0 && i - 1 < legTimesSeconds.Count)
             {
-                estimatedArrival = scheduledStart;
+                legMinutes = (int)Math.Ceiling(legTimesSeconds[i - 1] / 60.0);
+                cumulativeSeconds += legTimesSeconds[i - 1];
+                cumulativePauseMinutes += request.Waypoints[i - 1].PlannedPauseMinutes;
             }
-            else if (estimatedDurationMinutes > 0 && decodedRoute != null)
-            {
-                // Simple proportional distribution based on sequence
-                var fraction = (double)i / (request.Waypoints.Count - 1);
-                cumulativeMinutes = fraction * estimatedDurationMinutes;
-                // Add cumulative pauses from previous waypoints
-                var pausesSoFar = request.Waypoints.Take(i).Sum(w => w.PlannedPauseMinutes);
-                estimatedArrival = scheduledStart.AddMinutes(cumulativeMinutes + pausesSoFar);
-            }
+
+            DateTime? estimatedArrival = i == 0
+                ? scheduledStart
+                : scheduledStart.AddSeconds(cumulativeSeconds).AddMinutes(cumulativePauseMinutes);
 
             var waypoint = new TourWaypoint
             {
@@ -195,8 +197,12 @@ public class ToursController : ControllerBase
                 Latitude = wp.Latitude,
                 Longitude = wp.Longitude,
                 Type = waypointType,
+                GeofenceId = wp.GeofenceId,
+                EstimatedLegMinutes = legMinutes,
+                DeadlineMarginMinutes = wp.DeadlineMarginMinutes > 0 ? wp.DeadlineMarginMinutes : 60,
                 EstimatedArrivalTime = estimatedArrival,
-                PlannedPauseMinutes = wp.PlannedPauseMinutes
+                PlannedPauseMinutes = wp.PlannedPauseMinutes,
+                WaypointStatus = "pending"
             };
             _context.TourWaypoints.Add(waypoint);
         }
@@ -679,13 +685,19 @@ public class ToursController : ControllerBase
             w.Latitude,
             w.Longitude,
             w.Type,
+            w.GeofenceId,
+            w.EstimatedLegMinutes,
+            w.DeadlineMarginMinutes,
             w.EstimatedArrivalTime,
             w.ActualArrivalTime,
             w.PlannedPauseMinutes,
             w.ActualPauseMinutes,
             w.IsCompleted,
+            w.WaypointStatus,
             arrivalDelay = w.ActualArrivalTime.HasValue && w.EstimatedArrivalTime.HasValue
-                ? (int)(w.ActualArrivalTime.Value - w.EstimatedArrivalTime.Value).TotalMinutes : (int?)null
+                ? (int)(w.ActualArrivalTime.Value - w.EstimatedArrivalTime.Value).TotalMinutes : (int?)null,
+            deadline = w.EstimatedArrivalTime.HasValue
+                ? w.EstimatedArrivalTime.Value.AddMinutes(w.DeadlineMarginMinutes) : (DateTime?)null
         }),
         pauses = t.Pauses?.OrderBy(p => p.StartTime).Select(p => new
         {
@@ -735,6 +747,10 @@ public class TourWaypointRequest
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public int PlannedPauseMinutes { get; set; }
+    // Optional: link to a geofence zone for automatic entry detection
+    public int? GeofenceId { get; set; }
+    // Deadline margin in minutes (default 60). Vehicle must arrive within estimated time + margin.
+    public int DeadlineMarginMinutes { get; set; } = 60;
 }
 
 public class CompleteTourRequest

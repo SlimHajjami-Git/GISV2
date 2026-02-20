@@ -261,6 +261,16 @@ declare let L: any;
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                       </button>
                     </div>
+                    <div class="wp-geofence-row" *ngIf="!first">
+                      <select [(ngModel)]="wp.geofenceId" class="wp-geofence-select">
+                        <option [ngValue]="null">— Zone géofence (optionnel) —</option>
+                        <option *ngFor="let gf of geofences" [ngValue]="gf.id">{{gf.name}}</option>
+                      </select>
+                      <label class="wp-margin-lbl" title="Marge de retard (minutes)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        <input type="number" [(ngModel)]="wp.deadlineMarginMinutes" min="5" max="480" class="margin-input"> min marge
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -630,6 +640,12 @@ declare let L: any;
     .wp-clear:hover { opacity: 1; background: #eff6ff; }
     .wp-remove { background: none; border: none; cursor: pointer; color: #ef4444; padding: 2px; border-radius: 4px; display: flex; opacity: .6; }
     .wp-remove:hover { opacity: 1; background: #fef2f2; }
+    .wp-geofence-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; width: 100%; }
+    .wp-geofence-select { flex: 1; padding: 4px 6px; border: 1px solid #e2e8f0; border-radius: 5px; font-size: 11px; color: #475569; background: #f8fafc; }
+    .wp-geofence-select:focus { outline: none; border-color: #93c5fd; }
+    .wp-margin-lbl { display: flex; align-items: center; gap: 3px; font-size: 10px; color: #f59e0b; white-space: nowrap; }
+    .margin-input { width: 40px; padding: 2px 4px; border: 1px solid #fde68a; border-radius: 4px; font-size: 11px; text-align: center; background: #fffbeb; }
+    .margin-input:focus { outline: none; border-color: #f59e0b; }
 
     .map-tip { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #3b82f6; padding: 8px 18px; background: #eff6ff; margin: 0; border-top: 1px solid #dbeafe; }
 
@@ -714,6 +730,7 @@ export class ToursComponent implements OnInit, OnDestroy {
   tours: any[] = [];
   vehicles: any[] = [];
   drivers: any[] = [];
+  geofences: any[] = [];
   stats = { total: 0, planned: 0, inProgress: 0, completed: 0, cancelled: 0 };
 
   loading = false;
@@ -800,11 +817,13 @@ export class ToursComponent implements OnInit, OnDestroy {
     this.loading = true;
     forkJoin({
       vehicles: this.apiService.getVehicles(),
-      drivers: this.apiService.getDrivers()
+      drivers: this.apiService.getDrivers(),
+      geofences: this.apiService.getGeofences()
     }).subscribe({
       next: (data) => {
         this.vehicles = data.vehicles || [];
         this.drivers = data.drivers || [];
+        this.geofences = data.geofences || [];
         this.loadTours();
         this.loadStats();
       },
@@ -923,8 +942,8 @@ export class ToursComponent implements OnInit, OnDestroy {
       customUnit: 'weeks',
       notes: '',
       waypoints: [
-        { searchText: '', resolvedName: '', address: '', latitude: null, longitude: null, plannedPauseMinutes: 0 },
-        { searchText: '', resolvedName: '', address: '', latitude: null, longitude: null, plannedPauseMinutes: 0 }
+        { searchText: '', resolvedName: '', address: '', latitude: null, longitude: null, plannedPauseMinutes: 0, geofenceId: null, deadlineMarginMinutes: 60 },
+        { searchText: '', resolvedName: '', address: '', latitude: null, longitude: null, plannedPauseMinutes: 0, geofenceId: null, deadlineMarginMinutes: 60 }
       ]
     };
   }
@@ -952,7 +971,7 @@ export class ToursComponent implements OnInit, OnDestroy {
   addWaypoint() {
     const lastIdx = this.tourForm.waypoints.length - 1;
     this.tourForm.waypoints.splice(lastIdx, 0, {
-      searchText: '', resolvedName: '', address: '', latitude: null, longitude: null, plannedPauseMinutes: 0
+      searchText: '', resolvedName: '', address: '', latitude: null, longitude: null, plannedPauseMinutes: 0, geofenceId: null, deadlineMarginMinutes: 60
     });
   }
 
@@ -1068,7 +1087,8 @@ export class ToursComponent implements OnInit, OnDestroy {
       notes: this.tourForm.notes || null,
       waypoints: this.tourForm.waypoints.map((wp: any) => ({
         name: wp.resolvedName || wp.searchText, address: wp.address,
-        latitude: wp.latitude, longitude: wp.longitude, plannedPauseMinutes: wp.plannedPauseMinutes
+        latitude: wp.latitude, longitude: wp.longitude, plannedPauseMinutes: wp.plannedPauseMinutes,
+        geofenceId: wp.geofenceId || null, deadlineMarginMinutes: wp.deadlineMarginMinutes || 60
       }))
     };
     const obs = this.editingTour
@@ -1101,7 +1121,8 @@ export class ToursComponent implements OnInit, OnDestroy {
       notes: this.selectedTour.notes || '',
       waypoints: this.selectedTour.waypoints.map((w: any) => ({
         searchText: w.name || w.address || '', resolvedName: w.name || '', address: w.address || '',
-        latitude: w.latitude, longitude: w.longitude, plannedPauseMinutes: w.plannedPauseMinutes || 0
+        latitude: w.latitude, longitude: w.longitude, plannedPauseMinutes: w.plannedPauseMinutes || 0,
+        geofenceId: w.geofenceId || null, deadlineMarginMinutes: w.deadlineMarginMinutes || 60
       }))
     };
     this.estimation = null;

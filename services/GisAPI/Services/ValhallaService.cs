@@ -326,12 +326,26 @@ public class ValhallaService : IValhallaService
             _logger.LogInformation("Valhalla /route success: {WaypointCount} waypoints -> {RoadPointCount} road points", 
                 waypoints.Count, allPoints.Count);
 
+            // Extract per-leg times and distances
+            var legTimes = new List<double>();
+            var legDistances = new List<double>();
+            if (valhallaResponse.Trip.Legs != null)
+            {
+                foreach (var leg in valhallaResponse.Trip.Legs)
+                {
+                    legTimes.Add(leg.Summary?.Time ?? 0);
+                    legDistances.Add(leg.Summary?.Length ?? 0);
+                }
+            }
+
             return new ValhallaRouteResult
             {
                 Points = new List<SnappedPoint>(),
                 TotalDistanceKm = valhallaResponse.Trip.Summary?.Length ?? 0,
                 TotalTimeSeconds = valhallaResponse.Trip.Summary?.Time ?? 0,
-                DecodedPolyline = allPoints.Count > 0 ? allPoints : null
+                DecodedPolyline = allPoints.Count > 0 ? allPoints : null,
+                LegTimesSeconds = legTimes,
+                LegDistancesKm = legDistances
             };
         }
         catch (Exception ex)
@@ -521,4 +535,7 @@ public class ValhallaRouteResult
     public double TotalTimeSeconds { get; set; }
     public string? EncodedPolyline { get; set; }
     public List<double[]>? DecodedPolyline { get; set; }
+    // Per-leg times in seconds (legs[0] = waypoint0→waypoint1, legs[1] = waypoint1→waypoint2, etc.)
+    public List<double> LegTimesSeconds { get; set; } = new();
+    public List<double> LegDistancesKm { get; set; } = new();
 }

@@ -60,6 +60,17 @@ public class TourWaypoint : Entity
     // Type: origin, waypoint, destination
     public string Type { get; set; } = "waypoint";
 
+    // Optional: link to a geofence zone for automatic entry/exit detection
+    public int? GeofenceId { get; set; }
+    public Geofence? Geofence { get; set; }
+
+    // Estimated travel time from previous waypoint (minutes), calculated per-leg by Valhalla
+    public int EstimatedLegMinutes { get; set; }
+
+    // Deadline margin in minutes (default 60). If vehicle doesn't arrive within
+    // EstimatedArrivalTime + DeadlineMarginMinutes, status becomes "temps_depasse"
+    public int DeadlineMarginMinutes { get; set; } = 60;
+
     public DateTime? EstimatedArrivalTime { get; set; }
     public DateTime? ActualArrivalTime { get; set; }
 
@@ -68,6 +79,9 @@ public class TourWaypoint : Entity
     public int? ActualPauseMinutes { get; set; }
 
     public bool IsCompleted { get; set; }
+
+    // Status: pending, completed, temps_depasse, skipped
+    public string WaypointStatus { get; set; } = "pending";
 }
 
 public class TourPause : Entity

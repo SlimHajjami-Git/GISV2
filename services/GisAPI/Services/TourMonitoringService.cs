@@ -165,37 +165,73 @@ public class TourMonitoringService : BackgroundService
     }
 
     /// <summary>
-    /// Check if vehicle has reached any uncompleted waypoints or the destination
+    /// Check if vehicle has reached any uncompleted waypoints or the destination.
+    /// Uses geofence events when waypoint is linked to a geofence, otherwise radius check.
+    /// Also checks deadlines: if estimated arrival + margin is exceeded, marks as "temps_depasse".
     /// </summary>
     private async Task CheckWaypointProgress(Tour tour, GisDbContext context, IHubContext<GpsHub> hubContext, INotificationService notifService, CancellationToken ct)
     {
         var position = await GetVehiclePosition(tour);
-        if (position == null) return;
-
         var waypoints = tour.Waypoints.OrderBy(w => w.SequenceOrder).ToList();
+        var now = DateTime.UtcNow;
         var changed = false;
 
         foreach (var wp in waypoints)
         {
-            if (wp.IsCompleted) continue;
+            if (wp.IsCompleted || wp.WaypointStatus == "completed" || wp.WaypointStatus == "skipped") continue;
 
-            var distance = HaversineDistance(
-                position.Latitude, position.Longitude,
-                wp.Latitude, wp.Longitude);
+            bool arrived = false;
 
-            var radius = wp.Type == "destination" ? DESTINATION_RADIUS_METERS : WAYPOINT_RADIUS_METERS;
-
-            if (distance <= radius)
+            // Method 1: Geofence-based detection (if waypoint is linked to a geofence)
+            if (wp.GeofenceId.HasValue)
             {
-                _logger.LogInformation(
-                    "Tour {TourId}: vehicle reached waypoint '{WpName}' ({WpType}) at {Distance:F0}m",
-                    tour.Id, wp.Name ?? wp.Type, wp.Type, distance);
+                // Check if there's a recent geofence entry event for this vehicle in this zone
+                var recentEntry = await context.GeofenceEvents
+                    .IgnoreQueryFilters()
+                    .AsNoTracking()
+                    .Where(e => e.GeofenceId == wp.GeofenceId.Value
+                        && e.VehicleId == tour.VehicleId
+                        && e.Type == "entry"
+                        && e.Timestamp >= (tour.ActualStartTime ?? tour.ScheduledStartTime))
+                    .OrderByDescending(e => e.Timestamp)
+                    .FirstOrDefaultAsync(ct);
 
+                if (recentEntry != null)
+                {
+                    arrived = true;
+                    wp.ActualArrivalTime = recentEntry.Timestamp;
+                    _logger.LogInformation(
+                        "Tour {TourId}: vehicle entered geofence zone for waypoint '{WpName}' at {Time:HH:mm}",
+                        tour.Id, wp.Name ?? wp.Type, recentEntry.Timestamp);
+                }
+            }
+
+            // Method 2: Radius-based detection (fallback, or if no geofence linked)
+            if (!arrived && position != null && !wp.GeofenceId.HasValue)
+            {
+                var distance = HaversineDistance(
+                    position.Latitude, position.Longitude,
+                    wp.Latitude, wp.Longitude);
+
+                var radius = wp.Type == "destination" ? DESTINATION_RADIUS_METERS : WAYPOINT_RADIUS_METERS;
+
+                if (distance <= radius)
+                {
+                    arrived = true;
+                    wp.ActualArrivalTime = now;
+                    _logger.LogInformation(
+                        "Tour {TourId}: vehicle reached waypoint '{WpName}' ({WpType}) at {Distance:F0}m",
+                        tour.Id, wp.Name ?? wp.Type, wp.Type, distance);
+                }
+            }
+
+            // Waypoint reached → mark as completed
+            if (arrived)
+            {
                 wp.IsCompleted = true;
-                wp.ActualArrivalTime = DateTime.UtcNow;
+                wp.WaypointStatus = "completed";
                 changed = true;
 
-                // Notify waypoint completion (real-time)
                 await hubContext.Clients.Group($"company_{tour.CompanyId}")
                     .SendAsync("TourWaypointCompleted", new
                     {
@@ -203,11 +239,11 @@ public class TourMonitoringService : BackgroundService
                         waypointId = wp.Id,
                         waypointName = wp.Name ?? wp.Type,
                         waypointType = wp.Type,
+                        waypointStatus = "completed",
                         actualArrivalTime = wp.ActualArrivalTime,
-                        timestamp = DateTime.UtcNow
+                        timestamp = now
                     }, ct);
 
-                // Persist notification
                 var wpLabel = wp.Name ?? wp.Address ?? GetWaypointTypeLabel(wp.Type);
                 await SendNotificationToCompanyUsers(context, notifService, tour.CompanyId,
                     "tour_waypoint",
@@ -215,17 +251,56 @@ public class TourMonitoringService : BackgroundService
                     $"Tournee '{tour.Name}' - le vehicule est arrive a '{wpLabel}'.",
                     "normal", "tour", tour.Id, $"/tournees", ct);
 
-                // If destination reached, complete the tour
                 if (wp.Type == "destination")
                 {
-                    await CompleteTourAutomatically(tour, position, context, hubContext, notifService, ct);
+                    await CompleteTourAutomatically(tour, position!, context, hubContext, notifService, ct);
                     return;
+                }
+
+                continue;
+            }
+
+            // Deadline check: EstimatedArrivalTime + DeadlineMarginMinutes exceeded?
+            if (wp.WaypointStatus == "pending" && wp.EstimatedArrivalTime.HasValue)
+            {
+                var deadline = wp.EstimatedArrivalTime.Value.AddMinutes(wp.DeadlineMarginMinutes);
+                if (now > deadline)
+                {
+                    wp.WaypointStatus = "temps_depasse";
+                    changed = true;
+
+                    _logger.LogWarning(
+                        "Tour {TourId}: waypoint '{WpName}' deadline exceeded (deadline={Deadline:HH:mm}, now={Now:HH:mm})",
+                        tour.Id, wp.Name ?? wp.Type, deadline, now);
+
+                    await hubContext.Clients.Group($"company_{tour.CompanyId}")
+                        .SendAsync("TourWaypointOverdue", new
+                        {
+                            tourId = tour.Id,
+                            waypointId = wp.Id,
+                            waypointName = wp.Name ?? wp.Type,
+                            waypointStatus = "temps_depasse",
+                            deadline,
+                            estimatedArrival = wp.EstimatedArrivalTime,
+                            marginMinutes = wp.DeadlineMarginMinutes,
+                            timestamp = now
+                        }, ct);
+
+                    var wpLabel = wp.Name ?? wp.Address ?? GetWaypointTypeLabel(wp.Type);
+                    await SendNotificationToCompanyUsers(context, notifService, tour.CompanyId,
+                        "tour_overdue",
+                        $"Temps depasse: {wpLabel}",
+                        $"Tournee '{tour.Name}' — le vehicule n'est pas arrive a '{wpLabel}' dans le delai imparti (prevu {wp.EstimatedArrivalTime.Value:HH:mm} + {wp.DeadlineMarginMinutes}min de marge).",
+                        "high", "tour", tour.Id, $"/tournees", ct);
                 }
             }
         }
 
         // Check for route deviation
-        await CheckRouteDeviation(tour, position, waypoints, hubContext, ct);
+        if (position != null)
+        {
+            await CheckRouteDeviation(tour, position, waypoints, hubContext, ct);
+        }
 
         if (changed)
         {
