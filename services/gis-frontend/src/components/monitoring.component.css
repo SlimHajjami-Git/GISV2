@@ -2220,3 +2220,77 @@
   background: #f8fafc;
   flex: 1;
 }
+
+/* Remote Commands */
+.remote-commands-section {
+  padding: 8px 12px;
+  border-top: 1px solid #f1f5f9;
+}
+.remote-commands-section .section-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 6px;
+}
+.remote-commands-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.remote-cmd-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.remote-cmd-btn.stop {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+.remote-cmd-btn.stop:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #f87171;
+}
+.remote-cmd-btn.resume {
+  background: #f0fdf4;
+  color: #16a34a;
+  border: 1px solid #bbf7d0;
+}
+.remote-cmd-btn.resume:hover:not(:disabled) {
+  background: #dcfce7;
+  border-color: #4ade80;
+}
+.remote-cmd-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.remote-cmd-btn svg {
+  flex-shrink: 0;
+}
+.remote-cmd-status {
+  margin-top: 5px;
+  font-size: 10px;
+  text-align: center;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.remote-cmd-status .success {
+  color: #16a34a;
+  background: #f0fdf4;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+.remote-cmd-status .error {
+  color: #dc2626;
+  background: #fef2f2;
+  padding: 3px 8px;
+  border-radius: 4px;
+}

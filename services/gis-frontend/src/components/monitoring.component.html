@@ -207,6 +207,32 @@
                   </div>
                 </div>
 
+                <!-- Remote Vehicle Commands -->
+                <div class="remote-commands-section" *ngIf="vehicle.gpsDeviceId || vehicle.hasGPS">
+                  <div class="section-header">
+                    <span>Commandes à distance:</span>
+                  </div>
+                  <div class="remote-commands-grid">
+                    <button class="remote-cmd-btn stop" (click)="sendRemoteCommand(vehicle, 'stop'); $event.stopPropagation()" [disabled]="remoteCommandLoading" title="Couper le moteur à distance">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <rect x="8" y="8" width="8" height="8" rx="1"/>
+                      </svg>
+                      {{ remoteCommandLoading ? 'Envoi...' : 'Arrêt moteur' }}
+                    </button>
+                    <button class="remote-cmd-btn resume" (click)="sendRemoteCommand(vehicle, 'resume'); $event.stopPropagation()" [disabled]="remoteCommandLoading" title="Rétablir le moteur à distance">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polygon points="10 8 16 12 10 16 10 8"/>
+                      </svg>
+                      {{ remoteCommandLoading ? 'Envoi...' : 'Reprise moteur' }}
+                    </button>
+                  </div>
+                  <div class="remote-cmd-status" *ngIf="remoteCommandMessage">
+                    <span [class.success]="remoteCommandSuccess" [class.error]="!remoteCommandSuccess">{{ remoteCommandMessage }}</span>
+                  </div>
+                </div>
+
                 <!-- Playback date picker -->
                 <div class="playback-section inline-playback">
                   <div class="date-range">

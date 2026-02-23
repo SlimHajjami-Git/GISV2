@@ -52,8 +52,27 @@
           </div>
         </div>
 
+        <!-- Filter Type Checkboxes -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly'">
+          <label class="field-label">Filtrer par</label>
+          <div class="filter-checkboxes">
+            <label class="filter-check-item">
+              <input type="checkbox" [(ngModel)]="filterByVehicle" (change)="onFilterTypeChange()">
+              <span>Véhicule</span>
+            </label>
+            <label class="filter-check-item">
+              <input type="checkbox" [(ngModel)]="filterByDriver" (change)="onFilterTypeChange()">
+              <span>Chauffeur</span>
+            </label>
+            <label class="filter-check-item" *ngIf="departments.length > 0">
+              <input type="checkbox" [(ngModel)]="filterByDepartment" (change)="onFilterTypeChange()">
+              <span>Département</span>
+            </label>
+          </div>
+        </div>
+
         <!-- Department Filter -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && departments.length > 0">
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && filterByDepartment && departments.length > 0">
           <label class="field-label">Département</label>
           <select class="field-select" [(ngModel)]="selectedDepartmentId" (change)="onDepartmentFilterChange()">
             <option value="">Tous les départements</option>
@@ -64,7 +83,7 @@
         </div>
 
         <!-- Vehicle Selector (hidden for monthly reports) -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly'">
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && filterByVehicle">
           <label class="field-label">Véhicule</label>
           <select class="field-select" [(ngModel)]="selectedVehicleId">
             <option value="">Tous les véhicules</option>
@@ -75,7 +94,7 @@
         </div>
 
         <!-- Driver Filter -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && drivers.length > 0">
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && filterByDriver && drivers.length > 0">
           <label class="field-label">Chauffeur</label>
           <select class="field-select" [(ngModel)]="selectedDriverId" (change)="onDriverFilterChange()">
             <option value="">Tous les chauffeurs</option>

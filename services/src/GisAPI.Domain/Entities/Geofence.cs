@@ -15,6 +15,7 @@ public class Geofence : TenantEntity
     public double? Radius { get; set; }
     public bool AlertOnEntry { get; set; } = true;
     public bool AlertOnExit { get; set; } = true;
+    public bool AutoStopOnEntry { get; set; } = false;
     public int? AlertSpeedLimit { get; set; }
     public int NotificationCooldownMinutes { get; set; } = 5;
     public int? MaxStayDurationMinutes { get; set; }

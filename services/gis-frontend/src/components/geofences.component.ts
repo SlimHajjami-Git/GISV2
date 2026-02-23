@@ -375,6 +375,16 @@ import * as L from 'leaflet';
                       <span>Vérifier la durée d'arrêt</span>
                     </div>
                   </label>
+                  <label class="alert-check" [class.active]="geofenceForm.autoStopOnEntry">
+                    <input type="checkbox" [(ngModel)]="geofenceForm.autoStopOnEntry" name="autoStopOnEntry">
+                    <div class="alert-check-icon autostop">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg>
+                    </div>
+                    <div class="alert-check-info">
+                      <strong>Arrêt automatique</strong>
+                      <span>Couper le moteur à l'entrée de la zone</span>
+                    </div>
+                  </label>
                 </div>
 
                 <!-- Speed limit input (shown when speed control enabled) -->
@@ -396,7 +406,7 @@ import * as L from 'leaflet';
                 </div>
 
                 <div class="cooldown-row">
-                  <label>Cooldown notifications:</label>
+                  <label>Répéter toutes les:</label>
                   <input type="number" [(ngModel)]="geofenceForm.notificationCooldownMinutes" name="cooldown" min="0" step="1" placeholder="min"> min
                 </div>
               </div>
@@ -1308,6 +1318,7 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     alertSpeed: null,
     alertMinStopEnabled: false,
     minStopMinutes: null,
+    autoStopOnEntry: false,
     notificationCooldownMinutes: 5,
     activeStartTime: null as string | null,
     activeEndTime: null as string | null,
@@ -1723,6 +1734,7 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       alertSpeed: geofence.alertSpeed || null,
       alertMinStopEnabled: !!(geofence as any).minStopMinutes,
       minStopMinutes: (geofence as any).minStopMinutes || null,
+      autoStopOnEntry: (geofence as any).autoStopOnEntry || false,
       notificationCooldownMinutes: (geofence as any).notificationCooldownMinutes || 5,
       activeStartTime: (geofence as any).activeStartTime || null,
       activeEndTime: (geofence as any).activeEndTime || null,
@@ -1760,6 +1772,7 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       alertSpeed: null,
       alertMinStopEnabled: false,
       minStopMinutes: null,
+      autoStopOnEntry: false,
       notificationCooldownMinutes: 5,
       activeStartTime: null,
       activeEndTime: null,
@@ -1880,7 +1893,12 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       alertOnExit: this.geofenceForm.alertOnExit,
       alertSpeedLimit: this.geofenceForm.alertSpeedEnabled ? (this.geofenceForm.alertSpeed || null) : null,
       minStopMinutes: this.geofenceForm.alertMinStopEnabled ? (this.geofenceForm.minStopMinutes || null) : null,
+      autoStopOnEntry: this.geofenceForm.autoStopOnEntry || false,
       notificationCooldownMinutes: this.geofenceForm.notificationCooldownMinutes || 5,
+      activeStartTime: this.geofenceForm.activeStartTime || null,
+      activeEndTime: this.geofenceForm.activeEndTime || null,
+      activeDays: this.geofenceForm.activeDays?.length > 0 ? this.geofenceForm.activeDays : null,
+      groupId: this.geofenceForm.groupId || null,
       assignedVehicleIds: this.geofenceForm.assignedVehicleIds || []
     };
 

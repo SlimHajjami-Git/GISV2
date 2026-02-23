@@ -61,6 +61,7 @@ public class GeofencesController : ControllerBase
                 Radius = g.Radius,
                 AlertOnEntry = g.AlertOnEntry,
                 AlertOnExit = g.AlertOnExit,
+                AutoStopOnEntry = g.AutoStopOnEntry,
                 AlertSpeedLimit = g.AlertSpeedLimit,
                 NotificationCooldownMinutes = g.NotificationCooldownMinutes,
                 MaxStayDurationMinutes = g.MaxStayDurationMinutes,
@@ -142,7 +143,14 @@ public class GeofencesController : ControllerBase
         geofence.Radius = updated.Radius;
         geofence.AlertOnEntry = updated.AlertOnEntry;
         geofence.AlertOnExit = updated.AlertOnExit;
+        geofence.AutoStopOnEntry = updated.AutoStopOnEntry;
         geofence.AlertSpeedLimit = updated.AlertSpeedLimit;
+        geofence.NotificationCooldownMinutes = updated.NotificationCooldownMinutes;
+        geofence.MaxStayDurationMinutes = updated.MaxStayDurationMinutes;
+        geofence.ActiveStartTime = updated.ActiveStartTime;
+        geofence.ActiveEndTime = updated.ActiveEndTime;
+        geofence.ActiveDays = updated.ActiveDays;
+        geofence.GroupId = updated.GroupId;
         geofence.IsActive = updated.IsActive;
         geofence.UpdatedAt = DateTime.UtcNow;
 
@@ -431,6 +439,7 @@ public class GeofenceDto
     public double? Radius { get; set; }
     public bool AlertOnEntry { get; set; }
     public bool AlertOnExit { get; set; }
+    public bool AutoStopOnEntry { get; set; }
     public int? AlertSpeedLimit { get; set; }
     public int NotificationCooldownMinutes { get; set; }
     public int? MaxStayDurationMinutes { get; set; }

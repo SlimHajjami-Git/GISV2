@@ -120,7 +120,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("AccidentClaims");
+                    b.ToTable("AccidentClaims", (string)null);
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.AccidentClaimDocument", b =>
@@ -159,7 +159,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ClaimId");
 
-                    b.ToTable("AccidentClaimDocuments");
+                    b.ToTable("AccidentClaimDocuments", (string)null);
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.AccidentClaimThirdParty", b =>
@@ -198,7 +198,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ClaimId");
 
-                    b.ToTable("AccidentClaimThirdParties");
+                    b.ToTable("AccidentClaimThirdParties", (string)null);
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.AuditLog", b =>
@@ -1050,6 +1050,10 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Property<bool>("AlertOnExit")
                         .HasColumnType("boolean")
                         .HasColumnName("alert_on_exit");
+
+                    b.Property<bool>("AutoStopOnEntry")
+                        .HasColumnType("boolean")
+                        .HasColumnName("auto_stop_on_entry");
 
                     b.Property<int?>("AlertSpeedLimit")
                         .HasColumnType("integer")
@@ -2958,7 +2962,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("repairs");
+                    b.ToTable("repairs", (string)null);
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.RepairPart", b =>
@@ -3006,7 +3010,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("RepairId");
 
-                    b.ToTable("repair_parts");
+                    b.ToTable("repair_parts", (string)null);
                 });
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Report", b =>
@@ -5516,7 +5520,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                             b1.HasKey("SocieteId");
 
-                            b1.ToTable("societes");
+                            b1.ToTable("societes", (string)null);
 
                             b1.ToJson("settings");
 
@@ -5646,7 +5650,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                             b1.HasKey("UserSettingsId");
 
-                            b1.ToTable("user_settings");
+                            b1.ToTable("user_settings", (string)null);
 
                             b1.ToJson("display");
 
@@ -5693,7 +5697,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                             b1.HasKey("UserSettingsId");
 
-                            b1.ToTable("user_settings");
+                            b1.ToTable("user_settings", (string)null);
 
                             b1.ToJson("notifications");
 

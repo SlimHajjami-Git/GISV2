@@ -162,6 +162,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
   selectedDepartmentId = '';
   selectedVehicleIds: string[] = [];
 
+  // Filter type checkboxes
+  filterByVehicle = true;
+  filterByDriver = true;
+  filterByDepartment = false;
+
   // Mileage Period Report options
   mileagePeriodTypes = [
     { value: 'hour', label: 'Par heure (24h)' },
@@ -378,6 +383,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
         this.selectedVehicleId = String(driver.assignedVehicleId);
       }
     }
+  }
+
+  onFilterTypeChange() {
+    // Clear filters for unchecked types
+    if (!this.filterByVehicle) this.selectedVehicleId = '';
+    if (!this.filterByDriver) this.selectedDriverId = '';
+    if (!this.filterByDepartment) this.selectedDepartmentId = '';
   }
 
   onDepartmentFilterChange() {
