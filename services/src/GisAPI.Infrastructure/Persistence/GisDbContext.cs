@@ -135,40 +135,37 @@ public class GisDbContext : DbContext, IGisDbContext
 
         // Global query filter for multi-tenancy
         // All entities implementing ITenantEntity will be filtered by CompanyId
-        // NOTE: Always register filters (no if guard) — OnModelCreating runs once and the model is cached.
-        // The expression references _tenantService via the DbContext instance field, so EF Core
-        // evaluates it per-request. When _tenantService is null or CompanyId is null (e.g. migrations),
-        // the filter passes through all rows.
-        modelBuilder.Entity<Vehicle>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<User>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<GpsDevice>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<Geofence>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<MaintenanceRecord>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<VehicleCost>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<Trip>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<DrivingEvent>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<DailyStatistics>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<DriverAssignment>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<DriverScore>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<PointOfInterest>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<Contract>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<Reservation>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<Supplier>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<PartInventory>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<PartTransaction>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<Report>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<ReportSchedule>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<Notification>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<VehicleStop>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<FuelRecord>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<AccidentClaim>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<MaintenanceTemplate>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<GpsAlert>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<VehicleMaintenanceSchedule>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<Driver>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<Tour>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<ChatMessage>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<AiChatMessage>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || e.CompanyId == _tenantService.CompanyId);
+        // Bypass conditions (no filtering): migrations (_tenantService null), unauthenticated (CompanyId null), system admins
+        modelBuilder.Entity<Vehicle>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<User>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<GpsDevice>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<Geofence>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<MaintenanceRecord>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<VehicleCost>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<Trip>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<DrivingEvent>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<DailyStatistics>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<DriverAssignment>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<DriverScore>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<PointOfInterest>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<Contract>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<Reservation>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<Supplier>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<PartInventory>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<PartTransaction>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<Report>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<ReportSchedule>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<Notification>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<VehicleStop>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<FuelRecord>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<AccidentClaim>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<MaintenanceTemplate>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<GpsAlert>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<VehicleMaintenanceSchedule>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<Driver>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<Tour>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<ChatMessage>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<AiChatMessage>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
 
         // Configure composite keys
         modelBuilder.Entity<GeofenceVehicle>().HasKey(gv => new { gv.GeofenceId, gv.VehicleId });

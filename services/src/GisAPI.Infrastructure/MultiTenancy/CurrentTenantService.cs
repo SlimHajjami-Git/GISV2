@@ -16,6 +16,7 @@ public class CurrentTenantService : ICurrentTenantService
     public string[] UserRoles => _userRoles;
     public string[] UserPermissions => _permissions;
     public bool IsAuthenticated => _userId.HasValue;
+    public bool IsSystemAdmin => _userRoles.Contains("system_admin") || _userRoles.Contains("platform_admin");
 
     public void SetTenant(int companyId, int userId, string email, string[] roles, string[] permissions)
     {
