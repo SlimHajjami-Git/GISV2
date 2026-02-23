@@ -48,6 +48,12 @@ public class JwtService : IJwtService
             {
                 claims.Add(new Claim(ClaimTypes.Role, "company_admin"));
             }
+            
+            // Add system_admin role if applicable — bypasses tenant filters
+            if (user.Role.IsSystemRole)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, "system_admin"));
+            }
         }
 
         var token = new JwtSecurityToken(
