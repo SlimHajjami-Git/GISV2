@@ -325,7 +325,7 @@ export class ApiService {
     if (this.isMockUser()) {
       return of([]);
     }
-    return this.http.get<any[]>(`${this.API_URL}/fleet-management/departments`, { headers: this.getHeaders() });
+    return this.http.get<any[]>(`${this.API_URL}/fleet/departments`, { headers: this.getHeaders() });
   }
 
   // ==================== DRIVERS ====================
