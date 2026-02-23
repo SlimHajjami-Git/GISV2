@@ -208,6 +208,7 @@ using (var scope = app.Services.CreateScope())
     }
     
     await SeedBeliveCompany(context);
+    await SeedSubscriptionPlansAndTestCompany(context);
     await SeedFuelTypesAndPricing(context);
 }
 
@@ -563,5 +564,518 @@ static async Task SeedFuelTypesAndPricing(GisAPI.Infrastructure.Persistence.GisD
     catch (Exception ex)
     {
         Console.WriteLine($"[Seed] Warning: Could not seed fuel types/pricing: {ex.Message}");
+    }
+}
+
+// =============================================================================
+// Seed: 3 Subscription Plans + Test Company + Admin + User + Access Verification
+// =============================================================================
+static async Task SeedSubscriptionPlansAndTestCompany(GisAPI.Infrastructure.Persistence.GisDbContext context)
+{
+    try
+    {
+        Console.WriteLine("\n[Seed] ========== SUBSCRIPTION PLANS & TEST COMPANY ==========");
+
+        // ──────────────────────────────────────────────────────────
+        // STEP 1: Create 3 Subscription Types (Basique, Standard, Premium)
+        // ──────────────────────────────────────────────────────────
+        var planBasique = await context.SubscriptionTypes.FirstOrDefaultAsync(s => s.Code == "plan-basique");
+        if (planBasique == null)
+        {
+            planBasique = new GisAPI.Domain.Entities.SubscriptionType
+            {
+                Name = "Plan Basique",
+                Code = "plan-basique",
+                Description = "Gestion de parc sans GPS - Véhicules et maintenance uniquement",
+                TargetCompanyType = "all",
+                MonthlyPrice = 29.00m,
+                QuarterlyPrice = 79.00m,
+                YearlyPrice = 299.00m,
+                MaxVehicles = 15,
+                MaxUsers = 3,
+                MaxGpsDevices = 0,
+                MaxGeofences = 0,
+                // Features OFF
+                GpsTracking = false,
+                GpsInstallation = false,
+                ApiAccess = false,
+                AdvancedReports = false,
+                RealTimeAlerts = false,
+                HistoryPlayback = false,
+                FuelAnalysis = false,
+                DrivingBehavior = false,
+                HistoryRetentionDays = 0,
+                SortOrder = 1,
+                IsActive = true,
+                // Modules: only base fleet management
+                ModuleDashboard = true,
+                ModuleMonitoring = false,
+                ModuleVehicles = true,
+                ModuleEmployees = true,
+                ModuleGeofences = false,
+                ModuleMaintenance = true,
+                ModuleCosts = true,
+                ModuleReports = false,
+                ModuleSettings = true,
+                ModuleUsers = true,
+                ModuleSuppliers = true,
+                ModuleDocuments = true,
+                ModuleAccidents = true,
+                ModuleFleetManagement = false,
+                // Reports: minimal
+                ReportTrips = false,
+                ReportFuel = false,
+                ReportSpeed = false,
+                ReportStops = false,
+                ReportMileage = true,
+                ReportCosts = true,
+                ReportMaintenance = true,
+                ReportDaily = false,
+                ReportMonthly = false,
+                ReportMileagePeriod = false,
+                ReportSpeedInfraction = false,
+                ReportDrivingBehavior = false
+            };
+            context.SubscriptionTypes.Add(planBasique);
+            await context.SaveChangesAsync();
+            Console.WriteLine($"[Seed] ✅ Created subscription: {planBasique.Name} (Id: {planBasique.Id}) - No GPS, fleet management only");
+        }
+        else
+        {
+            Console.WriteLine($"[Seed] Plan Basique already exists (Id: {planBasique.Id})");
+        }
+
+        var planStandard = await context.SubscriptionTypes.FirstOrDefaultAsync(s => s.Code == "plan-standard");
+        if (planStandard == null)
+        {
+            planStandard = new GisAPI.Domain.Entities.SubscriptionType
+            {
+                Name = "Plan Standard",
+                Code = "plan-standard",
+                Description = "Gestion de parc avec GPS - Suivi temps réel, rapports de base",
+                TargetCompanyType = "all",
+                MonthlyPrice = 79.00m,
+                QuarterlyPrice = 219.00m,
+                YearlyPrice = 799.00m,
+                MaxVehicles = 50,
+                MaxUsers = 10,
+                MaxGpsDevices = 50,
+                MaxGeofences = 20,
+                // Features: GPS enabled, basic reports
+                GpsTracking = true,
+                GpsInstallation = false,
+                ApiAccess = false,
+                AdvancedReports = false,
+                RealTimeAlerts = true,
+                HistoryPlayback = true,
+                FuelAnalysis = false,
+                DrivingBehavior = false,
+                HistoryRetentionDays = 90,
+                SortOrder = 2,
+                IsActive = true,
+                // Modules: most enabled except advanced
+                ModuleDashboard = true,
+                ModuleMonitoring = true,
+                ModuleVehicles = true,
+                ModuleEmployees = true,
+                ModuleGeofences = true,
+                ModuleMaintenance = true,
+                ModuleCosts = true,
+                ModuleReports = true,
+                ModuleSettings = true,
+                ModuleUsers = true,
+                ModuleSuppliers = true,
+                ModuleDocuments = true,
+                ModuleAccidents = true,
+                ModuleFleetManagement = false,
+                // Reports: base only (no fuel, monthly, driving behavior)
+                ReportTrips = true,
+                ReportFuel = false,
+                ReportSpeed = true,
+                ReportStops = true,
+                ReportMileage = true,
+                ReportCosts = true,
+                ReportMaintenance = true,
+                ReportDaily = true,
+                ReportMonthly = false,
+                ReportMileagePeriod = false,
+                ReportSpeedInfraction = true,
+                ReportDrivingBehavior = false
+            };
+            context.SubscriptionTypes.Add(planStandard);
+            await context.SaveChangesAsync();
+            Console.WriteLine($"[Seed] ✅ Created subscription: {planStandard.Name} (Id: {planStandard.Id}) - GPS + base reports");
+        }
+        else
+        {
+            Console.WriteLine($"[Seed] Plan Standard already exists (Id: {planStandard.Id})");
+        }
+
+        var planPremium = await context.SubscriptionTypes.FirstOrDefaultAsync(s => s.Code == "plan-premium");
+        if (planPremium == null)
+        {
+            planPremium = new GisAPI.Domain.Entities.SubscriptionType
+            {
+                Name = "Plan Premium",
+                Code = "plan-premium",
+                Description = "Tout inclus - GPS, installation, API, rapports avancés, analyse carburant, comportement",
+                TargetCompanyType = "all",
+                MonthlyPrice = 199.00m,
+                QuarterlyPrice = 549.00m,
+                YearlyPrice = 1999.00m,
+                MaxVehicles = 200,
+                MaxUsers = 50,
+                MaxGpsDevices = 200,
+                MaxGeofences = 100,
+                // ALL features enabled
+                GpsTracking = true,
+                GpsInstallation = true,
+                ApiAccess = true,
+                AdvancedReports = true,
+                RealTimeAlerts = true,
+                HistoryPlayback = true,
+                FuelAnalysis = true,
+                DrivingBehavior = true,
+                HistoryRetentionDays = 365,
+                SortOrder = 3,
+                IsActive = true,
+                // ALL modules enabled
+                ModuleDashboard = true,
+                ModuleMonitoring = true,
+                ModuleVehicles = true,
+                ModuleEmployees = true,
+                ModuleGeofences = true,
+                ModuleMaintenance = true,
+                ModuleCosts = true,
+                ModuleReports = true,
+                ModuleSettings = true,
+                ModuleUsers = true,
+                ModuleSuppliers = true,
+                ModuleDocuments = true,
+                ModuleAccidents = true,
+                ModuleFleetManagement = true,
+                // ALL reports enabled
+                ReportTrips = true,
+                ReportFuel = true,
+                ReportSpeed = true,
+                ReportStops = true,
+                ReportMileage = true,
+                ReportCosts = true,
+                ReportMaintenance = true,
+                ReportDaily = true,
+                ReportMonthly = true,
+                ReportMileagePeriod = true,
+                ReportSpeedInfraction = true,
+                ReportDrivingBehavior = true
+            };
+            context.SubscriptionTypes.Add(planPremium);
+            await context.SaveChangesAsync();
+            Console.WriteLine($"[Seed] ✅ Created subscription: {planPremium.Name} (Id: {planPremium.Id}) - ALL features");
+        }
+        else
+        {
+            Console.WriteLine($"[Seed] Plan Premium already exists (Id: {planPremium.Id})");
+        }
+
+        // ──────────────────────────────────────────────────────────
+        // STEP 2: Create Test Company "TransportTest" with Plan Standard
+        // ──────────────────────────────────────────────────────────
+        var testCompany = await context.Societes
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(c => c.Name == "TransportTest");
+
+        if (testCompany != null)
+        {
+            Console.WriteLine($"[Seed] Company 'TransportTest' already exists (Id: {testCompany.Id})");
+        }
+        else
+        {
+            testCompany = new GisAPI.Domain.Entities.Societe
+            {
+                Name = "TransportTest",
+                Type = "transport",
+                Description = "Société de test avec abonnement Standard",
+                Address = "45 Rue de la Liberté",
+                City = "Tunis",
+                Country = "TN",
+                Phone = "+216 71 234 567",
+                Email = "contact@transporttest.tn",
+                TaxId = "TN123456789",
+                SubscriptionTypeId = planStandard.Id,
+                IsActive = true,
+                SubscriptionStartedAt = DateTime.UtcNow,
+                SubscriptionExpiresAt = DateTime.UtcNow.AddYears(1),
+                BillingCycle = "yearly",
+                SubscriptionStatus = "active",
+                NextPaymentAmount = planStandard.YearlyPrice,
+                Settings = new GisAPI.Domain.Entities.SocieteSettings
+                {
+                    Currency = "DT",
+                    Timezone = "Africa/Tunis",
+                    Language = "fr"
+                }
+            };
+            context.Societes.Add(testCompany);
+            await context.SaveChangesAsync();
+            Console.WriteLine($"[Seed] ✅ Created company: {testCompany.Name} (Id: {testCompany.Id}) -> Subscription: {planStandard.Name}");
+        }
+
+        // ──────────────────────────────────────────────────────────
+        // STEP 3: Create Admin Role + Admin User for TransportTest
+        // ──────────────────────────────────────────────────────────
+        var adminRole = await context.Roles
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(r => r.SocieteId == testCompany.Id && r.IsCompanyAdmin);
+
+        if (adminRole == null)
+        {
+            adminRole = new GisAPI.Domain.Entities.Role
+            {
+                Name = "Administrateur",
+                Description = "Administrateur de la société TransportTest",
+                SocieteId = testCompany.Id,
+                IsCompanyAdmin = true,
+                IsSystemRole = false,
+                Permissions = new Dictionary<string, object>
+                {
+                    { "dashboard", true }, { "monitoring", true }, { "vehicles", true },
+                    { "employees", true }, { "maintenance", true }, { "costs", true },
+                    { "reports", true }, { "geofences", true }, { "settings", true },
+                    { "users", true }, { "suppliers", true }, { "documents", true },
+                    { "accidents", true }, { "fleet_management", true }
+                }
+            };
+            context.Roles.Add(adminRole);
+            await context.SaveChangesAsync();
+            Console.WriteLine($"[Seed] ✅ Created admin role: {adminRole.Name} (Id: {adminRole.Id}) for company {testCompany.Name}");
+        }
+
+        var adminUser = await context.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Email == "admin@transporttest.tn");
+
+        if (adminUser == null)
+        {
+            adminUser = new GisAPI.Domain.Entities.User
+            {
+                FirstName = "Admin",
+                LastName = "TransportTest",
+                Email = "admin@transporttest.tn",
+                Phone = "+216 71 234 567",
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@2026"),
+                Status = "active",
+                CompanyId = testCompany.Id,
+                RoleId = adminRole.Id,
+                AccessLevel = "admin",
+                CanMonitoring = true,
+                CanVehicles = true,
+                CanDrivers = true,
+                CanReports = true,
+                CanGeofences = true,
+                CanMaintenance = true,
+                CanCosts = true,
+                CanDocuments = true,
+                CanAccidents = true,
+                CanUsers = true,
+                CanSettings = true,
+                CanSuppliers = true,
+                CanFleetManagement = true
+            };
+            context.Users.Add(adminUser);
+            await context.SaveChangesAsync();
+            Console.WriteLine($"[Seed] ✅ Created admin user: {adminUser.Email} (Id: {adminUser.Id}) - Password: Admin@2026");
+        }
+        else
+        {
+            Console.WriteLine($"[Seed] Admin user {adminUser.Email} already exists (Id: {adminUser.Id})");
+        }
+
+        // ──────────────────────────────────────────────────────────
+        // STEP 4: Create Employee Role + Standard User (restricted permissions)
+        // ──────────────────────────────────────────────────────────
+        var employeeRole = await context.Roles
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(r => r.SocieteId == testCompany.Id && r.Name == "Opérateur");
+
+        if (employeeRole == null)
+        {
+            employeeRole = new GisAPI.Domain.Entities.Role
+            {
+                Name = "Opérateur",
+                Description = "Utilisateur standard - monitoring et véhicules uniquement",
+                SocieteId = testCompany.Id,
+                IsCompanyAdmin = false,
+                IsSystemRole = false,
+                Permissions = new Dictionary<string, object>
+                {
+                    { "dashboard", true }, { "monitoring", true }, { "vehicles", true },
+                    { "employees", false }, { "maintenance", false }, { "costs", false },
+                    { "reports", false }, { "geofences", false }, { "settings", false },
+                    { "users", false }, { "suppliers", false }, { "documents", false },
+                    { "accidents", false }, { "fleet_management", false }
+                }
+            };
+            context.Roles.Add(employeeRole);
+            await context.SaveChangesAsync();
+            Console.WriteLine($"[Seed] ✅ Created employee role: {employeeRole.Name} (Id: {employeeRole.Id}) for company {testCompany.Name}");
+        }
+
+        var standardUser = await context.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Email == "operateur@transporttest.tn");
+
+        if (standardUser == null)
+        {
+            standardUser = new GisAPI.Domain.Entities.User
+            {
+                FirstName = "Mohamed",
+                LastName = "Ben Ali",
+                Email = "operateur@transporttest.tn",
+                Phone = "+216 71 345 678",
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("User@2026"),
+                Status = "active",
+                CompanyId = testCompany.Id,
+                RoleId = employeeRole.Id,
+                AccessLevel = "user",
+                CanMonitoring = true,
+                CanVehicles = true,
+                CanDrivers = false,
+                CanReports = false,
+                CanGeofences = false,
+                CanMaintenance = false,
+                CanCosts = false,
+                CanDocuments = false,
+                CanAccidents = false,
+                CanUsers = false,
+                CanSettings = false,
+                CanSuppliers = false,
+                CanFleetManagement = false
+            };
+            context.Users.Add(standardUser);
+            await context.SaveChangesAsync();
+            Console.WriteLine($"[Seed] ✅ Created standard user: {standardUser.Email} (Id: {standardUser.Id}) - Password: User@2026");
+        }
+        else
+        {
+            Console.WriteLine($"[Seed] Standard user {standardUser.Email} already exists (Id: {standardUser.Id})");
+        }
+
+        // ──────────────────────────────────────────────────────────
+        // STEP 5: Verify Access Rights Conformity
+        // ──────────────────────────────────────────────────────────
+        Console.WriteLine("\n[Seed] ========== ACCESS RIGHTS VERIFICATION ==========");
+        Console.WriteLine($"[Verify] Company: {testCompany.Name}");
+        Console.WriteLine($"[Verify] Subscription: {planStandard.Name} (Code: {planStandard.Code})");
+        Console.WriteLine($"[Verify] Limits: MaxVehicles={planStandard.MaxVehicles}, MaxUsers={planStandard.MaxUsers}, MaxGpsDevices={planStandard.MaxGpsDevices}, MaxGeofences={planStandard.MaxGeofences}");
+
+        // Count current usage
+        var currentUsers = await context.Users.IgnoreQueryFilters().CountAsync(u => u.CompanyId == testCompany.Id);
+        var currentVehicles = await context.Vehicles.IgnoreQueryFilters().CountAsync(v => v.CompanyId == testCompany.Id);
+        Console.WriteLine($"[Verify] Current usage: Users={currentUsers}/{planStandard.MaxUsers}, Vehicles={currentVehicles}/{planStandard.MaxVehicles}");
+
+        var limitsOk = currentUsers <= planStandard.MaxUsers && currentVehicles <= planStandard.MaxVehicles;
+        Console.WriteLine($"[Verify] Limits check: {(limitsOk ? "✅ OK" : "❌ EXCEEDED")}");
+
+        // Verify subscription module features
+        Console.WriteLine("\n[Verify] --- Subscription Module Access (Plan Standard) ---");
+        var moduleChecks = new Dictionary<string, bool>
+        {
+            { "Dashboard", planStandard.ModuleDashboard },
+            { "Monitoring", planStandard.ModuleMonitoring },
+            { "Vehicles", planStandard.ModuleVehicles },
+            { "Employees", planStandard.ModuleEmployees },
+            { "Geofences", planStandard.ModuleGeofences },
+            { "Maintenance", planStandard.ModuleMaintenance },
+            { "Costs", planStandard.ModuleCosts },
+            { "Reports", planStandard.ModuleReports },
+            { "Settings", planStandard.ModuleSettings },
+            { "Users", planStandard.ModuleUsers },
+            { "Suppliers", planStandard.ModuleSuppliers },
+            { "Documents", planStandard.ModuleDocuments },
+            { "Accidents", planStandard.ModuleAccidents },
+            { "Fleet Management", planStandard.ModuleFleetManagement }
+        };
+
+        foreach (var (module, enabled) in moduleChecks)
+        {
+            Console.WriteLine($"[Verify]   {module}: {(enabled ? "✅ Enabled" : "🚫 Disabled")}");
+        }
+
+        // Verify subscription features
+        Console.WriteLine("\n[Verify] --- Subscription Features (Plan Standard) ---");
+        var featureChecks = new Dictionary<string, bool>
+        {
+            { "GPS Tracking", planStandard.GpsTracking },
+            { "GPS Installation", planStandard.GpsInstallation },
+            { "API Access", planStandard.ApiAccess },
+            { "Advanced Reports", planStandard.AdvancedReports },
+            { "Real-Time Alerts", planStandard.RealTimeAlerts },
+            { "History Playback", planStandard.HistoryPlayback },
+            { "Fuel Analysis", planStandard.FuelAnalysis },
+            { "Driving Behavior", planStandard.DrivingBehavior }
+        };
+
+        foreach (var (feature, enabled) in featureChecks)
+        {
+            Console.WriteLine($"[Verify]   {feature}: {(enabled ? "✅ Enabled" : "🚫 Disabled")}");
+        }
+
+        // Verify Admin permissions vs subscription
+        Console.WriteLine("\n[Verify] --- Admin User Access (admin@transporttest.tn) ---");
+        Console.WriteLine($"[Verify]   Role: {adminRole.Name} (IsCompanyAdmin: {adminRole.IsCompanyAdmin})");
+        Console.WriteLine($"[Verify]   AccessLevel: admin -> Bypass user-level checks ✅");
+        Console.WriteLine($"[Verify]   BUT still limited by subscription modules:");
+        Console.WriteLine($"[Verify]     - Monitoring: subscription={planStandard.ModuleMonitoring} -> {(planStandard.ModuleMonitoring ? "✅ ACCESS" : "🚫 BLOCKED")}");
+        Console.WriteLine($"[Verify]     - Fleet Management: subscription={planStandard.ModuleFleetManagement} -> {(planStandard.ModuleFleetManagement ? "✅ ACCESS" : "🚫 BLOCKED by subscription")}");
+        Console.WriteLine($"[Verify]     - Fuel Analysis: subscription={planStandard.FuelAnalysis} -> {(planStandard.FuelAnalysis ? "✅ ACCESS" : "🚫 BLOCKED by subscription")}");
+
+        // Verify Standard user permissions vs subscription
+        Console.WriteLine("\n[Verify] --- Standard User Access (operateur@transporttest.tn) ---");
+        Console.WriteLine($"[Verify]   Role: {employeeRole.Name} (IsCompanyAdmin: {employeeRole.IsCompanyAdmin})");
+        Console.WriteLine($"[Verify]   AccessLevel: user -> Must check per-user permissions");
+
+        var userModuleChecks = new Dictionary<string, (bool subscriptionAllows, bool userHas)>
+        {
+            { "Dashboard", (planStandard.ModuleDashboard, true) }, // always accessible
+            { "Monitoring", (planStandard.ModuleMonitoring, standardUser.CanMonitoring) },
+            { "Vehicles", (planStandard.ModuleVehicles, standardUser.CanVehicles) },
+            { "Employees", (planStandard.ModuleEmployees, standardUser.CanDrivers) },
+            { "Reports", (planStandard.ModuleReports, standardUser.CanReports) },
+            { "Geofences", (planStandard.ModuleGeofences, standardUser.CanGeofences) },
+            { "Maintenance", (planStandard.ModuleMaintenance, standardUser.CanMaintenance) },
+            { "Costs", (planStandard.ModuleCosts, standardUser.CanCosts) },
+            { "Settings", (planStandard.ModuleSettings, standardUser.CanSettings) },
+            { "Users", (planStandard.ModuleUsers, standardUser.CanUsers) },
+            { "Fleet Management", (planStandard.ModuleFleetManagement, standardUser.CanFleetManagement) }
+        };
+
+        var allConform = true;
+        foreach (var (module, (subAllows, userHas)) in userModuleChecks)
+        {
+            var finalAccess = subAllows && userHas;
+            var status = !subAllows ? "🚫 BLOCKED (subscription)" : (userHas ? "✅ ACCESS" : "🔒 DENIED (user perm)");
+            var conform = !userHas || subAllows; // conform = user doesn't have perm OR subscription allows it
+            if (!conform) allConform = false;
+            Console.WriteLine($"[Verify]   {module}: sub={subAllows}, user={userHas} -> {status} {(conform ? "" : "⚠️ NON-CONFORM")}");
+        }
+
+        Console.WriteLine($"\n[Verify] ========== CONFORMITY RESULT: {(allConform ? "✅ ALL ACCESS RIGHTS CONFORM TO SUBSCRIPTION" : "❌ SOME RIGHTS EXCEED SUBSCRIPTION")} ==========");
+
+        // Summary
+        Console.WriteLine("\n[Seed] ========== SEED SUMMARY ==========");
+        Console.WriteLine("[Seed] Subscription Plans:");
+        Console.WriteLine($"[Seed]   1. {planBasique.Name} (Id:{planBasique.Id}) - {planBasique.YearlyPrice} DT/an - No GPS, {planBasique.MaxVehicles} vehicles");
+        Console.WriteLine($"[Seed]   2. {planStandard.Name} (Id:{planStandard.Id}) - {planStandard.YearlyPrice} DT/an - GPS+Monitoring, {planStandard.MaxVehicles} vehicles");
+        Console.WriteLine($"[Seed]   3. {planPremium.Name} (Id:{planPremium.Id}) - {planPremium.YearlyPrice} DT/an - ALL features, {planPremium.MaxVehicles} vehicles");
+        Console.WriteLine($"[Seed] Company: {testCompany.Name} (Id:{testCompany.Id}) -> {planStandard.Name}");
+        Console.WriteLine($"[Seed] Admin: admin@transporttest.tn / Admin@2026 (all permissions, limited by subscription)");
+        Console.WriteLine($"[Seed] User:  operateur@transporttest.tn / User@2026 (monitoring + vehicles only)");
+        Console.WriteLine("[Seed] ✅ Subscription plans & test company seeded successfully!\n");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Seed] Warning: Could not seed subscription plans & test company: {ex.Message}");
+        if (ex.InnerException != null)
+            Console.WriteLine($"[Seed]   Inner: {ex.InnerException.Message}");
     }
 }
