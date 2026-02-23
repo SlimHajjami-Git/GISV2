@@ -88,7 +88,7 @@
           <select class="field-select" [(ngModel)]="selectedVehicleId">
             <option value="">Tous les véhicules</option>
             @for (vehicle of getFilteredVehicles(); track vehicle.id) {
-              <option [value]="vehicle.id">{{ vehicle.brand }} {{ vehicle.model }}</option>
+              <option [value]="vehicle.id">{{ vehicle.name || (vehicle.brand + ' ' + vehicle.model) }} {{ vehicle.plate ? '(' + vehicle.plate + ')' : '' }}</option>
             }
           </select>
         </div>

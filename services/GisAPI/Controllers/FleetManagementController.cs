@@ -14,7 +14,7 @@ using GisAPI.Application.Features.FleetManagement.SpeedLimits.Queries;
 namespace GisAPI.Controllers;
 
 [ApiController]
-[Route("api/fleet-management")]
+[Route("api/fleet")]
 [Authorize]
 public class FleetManagementController : ControllerBase
 {
