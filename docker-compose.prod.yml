@@ -75,6 +75,8 @@ services:
       RabbitMQ__Queue: gps.telemetry.dotnet
       RabbitMQ__RoutingKey: hh
       Redis__ConnectionString: redis:6379,abortConnect=false
+      Cors__AllowedOrigins__0: ${CORS_ORIGIN_1:-http://frontend:80}
+      Cors__AllowedOrigins__1: ${CORS_ORIGIN_2:-http://localhost:80}
       Valhalla__Url: http://valhalla:8002
       Groq__ApiKey: ${GROQ_API_KEY}
       Groq__ApiUrl: https://api.groq.com/openai/v1/chat/completions
