@@ -73,74 +73,52 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             .Select(v => v.GpsDevice!.Id)
             .ToList();
 
-        // BATCH query: fetch latest position per device in ONE query (replaces N+1)
-        // Uses GroupBy + Max to find latest recorded_at per device, then fetches those positions
+        // Fetch latest position per device
         var latestPositions = new Dictionary<int, LatestPositionData>();
-        if (deviceIds.Count > 0)
+        foreach (var deviceId in deviceIds)
         {
-            // Step 1: Get latest recorded_at per device (single query)
-            var latestTimes = await _context.GpsPositions
+            var pos = await _context.GpsPositions
                 .AsNoTracking()
-                .Where(p => deviceIds.Contains(p.DeviceId))
-                .GroupBy(p => p.DeviceId)
-                .Select(g => new { DeviceId = g.Key, LatestAt = g.Max(p => p.RecordedAt) })
-                .ToListAsync(ct);
-
-            // Step 2: Fetch those specific positions (single query)
-            if (latestTimes.Count > 0)
-            {
-                // Build filter: match (deviceId, recordedAt) pairs
-                var latestTimeDict = latestTimes.ToDictionary(x => x.DeviceId, x => x.LatestAt);
-                var positions = await _context.GpsPositions
-                    .AsNoTracking()
-                    .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= latestTimes.Min(lt => lt.LatestAt))
-                    .Select(p => new LatestPositionData
-                    {
-                        DeviceId = p.DeviceId,
-                        Id = p.Id,
-                        Latitude = p.Latitude,
-                        Longitude = p.Longitude,
-                        SpeedKph = p.SpeedKph,
-                        CourseDeg = p.CourseDeg,
-                        IgnitionOn = p.IgnitionOn,
-                        RecordedAt = p.RecordedAt,
-                        FuelRaw = p.FuelRaw,
-                        TemperatureC = p.TemperatureC,
-                        PowerVoltage = p.PowerVoltage,
-                        Address = p.Address,
-                        OdometerKm = p.OdometerKm
-                    })
-                    .ToListAsync(ct);
-
-                // Pick the latest per device in memory
-                foreach (var group in positions.GroupBy(p => p.DeviceId))
+                .Where(p => p.DeviceId == deviceId)
+                .OrderByDescending(p => p.RecordedAt)
+                .Select(p => new LatestPositionData
                 {
-                    var latest = group.OrderByDescending(p => p.RecordedAt).First();
-                    latestPositions[latest.DeviceId] = latest;
-                }
-            }
+                    DeviceId = p.DeviceId,
+                    Id = p.Id,
+                    Latitude = p.Latitude,
+                    Longitude = p.Longitude,
+                    SpeedKph = p.SpeedKph,
+                    CourseDeg = p.CourseDeg,
+                    IgnitionOn = p.IgnitionOn,
+                    RecordedAt = p.RecordedAt,
+                    FuelRaw = p.FuelRaw,
+                    TemperatureC = p.TemperatureC,
+                    PowerVoltage = p.PowerVoltage,
+                    Address = p.Address,
+                    OdometerKm = p.OdometerKm
+                })
+                .FirstOrDefaultAsync(ct);
+            if (pos != null) latestPositions[deviceId] = pos;
         }
 
-        // BATCH query: get 24h stats for ALL devices in ONE query (replaces N+1)
+        // Get today's stats per device (last 24 hours)
         var since = DateTime.UtcNow.AddHours(-24);
         var deviceStats = new Dictionary<int, (double MaxSpeed, int MovingCount, int StoppedCount, int TotalCount)>();
-        if (deviceIds.Count > 0)
+        foreach (var deviceId in deviceIds)
         {
-            var allStats = await _context.GpsPositions
+            var stats = await _context.GpsPositions
                 .AsNoTracking()
-                .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= since)
-                .GroupBy(p => p.DeviceId)
+                .Where(p => p.DeviceId == deviceId && p.RecordedAt >= since)
+                .GroupBy(p => 1)
                 .Select(g => new {
-                    DeviceId = g.Key,
                     MaxSpeed = g.Max(p => p.SpeedKph ?? 0),
                     MovingCount = g.Count(p => p.SpeedKph > 5),
                     StoppedCount = g.Count(p => p.SpeedKph <= 5),
                     TotalCount = g.Count()
                 })
-                .ToListAsync(ct);
-
-            foreach (var s in allStats)
-                deviceStats[s.DeviceId] = (s.MaxSpeed, s.MovingCount, s.StoppedCount, s.TotalCount);
+                .FirstOrDefaultAsync(ct);
+            if (stats != null)
+                deviceStats[deviceId] = (stats.MaxSpeed, stats.MovingCount, stats.StoppedCount, stats.TotalCount);
         }
 
         var result = vehicles.Select(v =>
