@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api.service';
+import { AuthService } from '../../services/auth.service';
 import { ThemeService } from '../../services/theme.service';
 import { PermissionService, ModuleKey } from '../../services/permission.service';
 import { NotificationService, Notification } from '../../services/notification.service';
@@ -254,7 +255,7 @@ import { ChatComponent } from './chat.component';
                 <div class="user-avatar-large">{{ getUserInitials() }}</div>
                 <div class="user-info">
                   <span class="user-fullname">{{ getUserName() }}</span>
-                  <span class="user-email">admin&#64;{{ getUserName().toLowerCase().replace(' ', '') }}.com</span>
+                  <span class="user-email">{{ getUserEmail() }}</span>
                 </div>
               </div>
               <div class="user-dropdown-divider"></div>
@@ -1032,6 +1033,7 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   constructor(
     private router: Router,
     private apiService: ApiService,
+    private authService: AuthService,
     private themeService: ThemeService,
     private permissionService: PermissionService,
     private notificationService: NotificationService,
@@ -1213,14 +1215,23 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   }
 
   getUserName(): string {
-    const user = this.apiService.getCurrentUserSync();
-    return user ? user.name : 'User';
+    const authUser = this.authService.getCurrentUserSync();
+    if (authUser?.name) return authUser.name;
+    const apiUser = this.apiService.getCurrentUserSync();
+    return apiUser ? apiUser.name : 'User';
+  }
+
+  getUserEmail(): string {
+    const authUser = this.authService.getCurrentUserSync();
+    if (authUser?.email) return authUser.email;
+    const apiUser = this.apiService.getCurrentUserSync();
+    return apiUser ? apiUser.email : '';
   }
 
   getUserInitials(): string {
-    const user = this.apiService.getCurrentUserSync();
-    if (!user) return 'U';
-    return user.name.substring(0, 2).toUpperCase();
+    const name = this.getUserName();
+    if (!name || name === 'User') return 'U';
+    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
   }
 
   logout() {
