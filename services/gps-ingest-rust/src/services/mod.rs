@@ -8,4 +8,5 @@ pub mod trip_detector;
 pub mod driving_events;
 pub mod daily_statistics;
 pub mod gap_filler;
+pub mod speed_filter;
 pub mod valhalla;

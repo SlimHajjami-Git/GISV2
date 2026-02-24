@@ -21,6 +21,7 @@ use crate::{
         geocoding::GeocodingService,
         gps_stabilizer::GpsStabilizer,
         gps_validator::GpsValidator,
+        speed_filter::SpeedFilter,
         stop_detector::StopDetector,
         trip_detector::TripDetector,
     },
@@ -39,6 +40,7 @@ pub struct TelemetryServices {
     pub gps_validator: GpsValidator,
     pub trip_detector: TripDetector,
     pub driving_events_detector: DrivingEventsDetector,
+    pub speed_filter: SpeedFilter,
 }
 
 pub async fn run_listeners(
@@ -75,8 +77,9 @@ pub async fn run_listeners(
         gps_validator: GpsValidator::new(),
         trip_detector: TripDetector::new(),
         driving_events_detector: DrivingEventsDetector::new(),
+        speed_filter: SpeedFilter::new(),
     });
-    info!("Telemetry services initialized (StopDetector, FuelTracker, Geocoding, GeofenceDetector, GpsStabilizer, GpsValidator, TripDetector, DrivingEventsDetector)");
+    info!("Telemetry services initialized (StopDetector, FuelTracker, Geocoding, GeofenceDetector, GpsStabilizer, GpsValidator, TripDetector, DrivingEventsDetector, SpeedFilter)");
 
     let mut handles = Vec::new();
     for listener in &config.listeners {
@@ -595,6 +598,19 @@ async fn process_single_frame(
                 // Auto-detect FMS capability from frame version (V3 = FMS data present)
                 let is_fms_frame = matches!(frame.version, crate::telemetry::model::FrameVersion::V3);
 
+                // Speed spike filter: detect and correct physically impossible speed changes
+                if let Some(device_id) = device_id_opt {
+                    if frame.ignition_on && frame.speed_kph > 0.0 {
+                        let result = services.speed_filter.filter(device_id, frame.speed_kph, frame.recorded_at).await;
+                        if result.was_filtered {
+                            frame.speed_kph = result.corrected_speed;
+                        }
+                    } else {
+                        // When ignition off or speed 0, reset filter state with 0
+                        let _ = services.speed_filter.filter(device_id, 0.0, frame.recorded_at).await;
+                    }
+                }
+
                 // PARALLEL EXECUTION: DB write + Redis cache + RabbitMQ publish
                 // These operations are independent and can run concurrently
                 let db_future = database.ingest_hh_frame(&resolved_uid, protocol, &frame, &event_key);
@@ -1049,6 +1065,7 @@ mod tests {
             gps_validator: GpsValidator::new(),
             trip_detector: TripDetector::new(),
             driving_events_detector: DrivingEventsDetector::new(),
+            speed_filter: SpeedFilter::new(),
         });
         let peer = "127.0.0.1:1234";
 
@@ -1108,6 +1125,7 @@ mod tests {
             gps_validator: GpsValidator::new(),
             trip_detector: TripDetector::new(),
             driving_events_detector: DrivingEventsDetector::new(),
+            speed_filter: SpeedFilter::new(),
         });
         let peer = "10.0.0.5:5555";
 
