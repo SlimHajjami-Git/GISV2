@@ -431,6 +431,25 @@ async fn process_single_frame(
                     }
                 }
 
+                // Anti-drift stabilization: when vehicle is stopped, anchor position
+                // to prevent GPS drift (e.g. vehicle appearing in a lake)
+                if let Some(device_id) = device_id_opt {
+                    let stabilized = services.gps_stabilizer.stabilize(device_id, &frame).await;
+                    if stabilized.was_stabilized {
+                        info!(
+                            device_id,
+                            drift_m = ?stabilized.drift_distance_meters,
+                            original_lat = frame.latitude,
+                            original_lon = frame.longitude,
+                            anchored_lat = stabilized.latitude,
+                            anchored_lon = stabilized.longitude,
+                            "Anti-drift: position stabilized (vehicle stopped)"
+                        );
+                        frame.latitude = stabilized.latitude;
+                        frame.longitude = stabilized.longitude;
+                    }
+                }
+
                 // Geocode the position (async, non-blocking)
                 if frame.is_valid {
                     frame.address = services.geocoding.reverse_geocode(frame.latitude, frame.longitude).await;
