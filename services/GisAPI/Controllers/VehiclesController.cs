@@ -118,7 +118,7 @@ public class VehiclesController : ControllerBase
                                         cached.IgnitionOn,
                                         cached.RecordedAt,
                                         cached.FuelRaw != 0 ? cached.FuelRaw : dbPos?.FuelRaw,
-                                        cached.TemperatureC ?? dbPos?.TemperatureC,
+                                        (short?)(cached.TemperatureC ?? dbPos?.TemperatureC),
                                         cached.BatteryPercent ?? dbPos?.BatteryLevel,
                                         dbPos?.Address,
                                         cached.OdometerKm ?? dbPos?.OdometerKm
