@@ -130,18 +130,18 @@ export class PermissionService {
       }
     }
     
-    // Step 2: Check per-user module permissions (takes priority if explicitly set)
+    // Step 2: Company admins have full access
+    if (user.isCompanyAdmin) {
+      return true;
+    }
+    
+    // Step 3: Check per-user module permissions
     const up = user.userPermissions;
     if (up) {
       const permKey = this.userPermissionMapping[module];
       if (permKey === 'always') return true; // dashboard always accessible
       if (permKey && (up as any)[permKey] === true) return true;
       if (permKey && (up as any)[permKey] === false) return false;
-    }
-
-    // Step 3: Company admins with no explicit restrictions → full access
-    if (user.isCompanyAdmin) {
-      return true;
     }
 
     // Step 4: Admin access level = all modules

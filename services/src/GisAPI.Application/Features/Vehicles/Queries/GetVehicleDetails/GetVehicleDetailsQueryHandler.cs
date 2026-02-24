@@ -20,7 +20,7 @@ public class GetVehicleDetailsQueryHandler : IRequestHandler<GetVehicleDetailsQu
     {
         var companyId = _tenantService.CompanyId ?? 0;
         var userId = _tenantService.UserId ?? 0;
-        var isSystemAdmin = _tenantService.UserRoles.Any(r => r == "super_admin" || r == "system_admin");
+        var isAdmin = _tenantService.UserRoles.Any(r => r == "company_admin" || r == "admin" || r == "super_admin" || r == "system_admin");
 
         var vehicle = await _context.Vehicles
             .AsNoTracking()
@@ -35,23 +35,13 @@ public class GetVehicleDetailsQueryHandler : IRequestHandler<GetVehicleDetailsQu
         if (vehicle == null)
             return null;
 
-        // Check vehicle access: if user has explicit assignments, restrict to those
-        if (!isSystemAdmin && userId > 0)
+        // Non-admin users can only access their assigned vehicles
+        if (!isAdmin && userId > 0)
         {
-            var assignedVehicleIds = await _context.UserVehicles
-                .Where(uv => uv.UserId == userId)
-                .Select(uv => uv.VehicleId)
-                .ToListAsync(ct);
-
-            if (assignedVehicleIds.Any() && !assignedVehicleIds.Contains(request.VehicleId))
+            var hasAccess = await _context.UserVehicles
+                .AnyAsync(uv => uv.UserId == userId && uv.VehicleId == request.VehicleId, ct);
+            if (!hasAccess)
                 return null;
-
-            if (!assignedVehicleIds.Any())
-            {
-                var isAdmin = _tenantService.UserRoles.Any(r => r == "company_admin" || r == "admin");
-                if (!isAdmin)
-                    return null;
-            }
         }
 
         var now = DateTime.UtcNow;

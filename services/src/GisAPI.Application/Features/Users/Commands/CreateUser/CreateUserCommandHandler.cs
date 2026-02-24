@@ -51,10 +51,32 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
         if (await _context.Users.AnyAsync(u => u.Email == request.Email, ct))
             throw new ConflictException("Cet email est déjà utilisé");
 
-        // Validate role exists and belongs to company
-        var role = await _context.Roles
-            .FirstOrDefaultAsync(r => r.Id == request.RoleId && r.SocieteId == companyId, ct)
-            ?? throw new DomainException("Rôle invalide");
+        // Auto-select role based on permissions:
+        // All permissions checked → Administrateur (company_admin)
+        // Any permission unchecked → non-admin role (Chef de parc / Opérateur)
+        var allPermissionsGranted = request.CanMonitoring && request.CanVehicles && request.CanDrivers
+            && request.CanReports && request.CanGeofences && request.CanMaintenance
+            && request.CanCosts && request.CanDocuments && request.CanAccidents
+            && request.CanUsers && request.CanSettings && request.CanSuppliers
+            && request.CanFleetManagement;
+
+        Role role;
+        if (allPermissionsGranted)
+        {
+            // Assign company admin role
+            role = await _context.Roles
+                .FirstOrDefaultAsync(r => r.SocieteId == companyId && r.IsCompanyAdmin, ct)
+                ?? throw new DomainException("Aucun rôle administrateur trouvé");
+        }
+        else
+        {
+            // Assign a non-admin role (prefer the one sent by frontend, else find first non-admin)
+            role = await _context.Roles
+                .FirstOrDefaultAsync(r => r.Id == request.RoleId && r.SocieteId == companyId && !r.IsCompanyAdmin, ct)
+                ?? await _context.Roles
+                    .FirstOrDefaultAsync(r => r.SocieteId == companyId && !r.IsCompanyAdmin, ct)
+                ?? throw new DomainException("Aucun rôle non-administrateur trouvé. Créez un rôle (ex: Chef de parc) d'abord.");
+        }
 
         // Validate vehicle assignments
         if (request.AssignedVehicleIds is { Length: > 0 })
@@ -72,7 +94,7 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
             Email = request.Email,
             Phone = request.Phone,
             PasswordHash = _passwordHasher.HashPassword(request.Password),
-            RoleId = request.RoleId,
+            RoleId = role.Id,
             CompanyId = companyId,
             Status = "active",
             EmployeeRole = request.EmployeeRole,

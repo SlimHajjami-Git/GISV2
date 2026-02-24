@@ -21,7 +21,7 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
     {
         var companyId = _tenantService.CompanyId ?? 0;
         var userId = _tenantService.UserId ?? 0;
-        var isSystemAdmin = _tenantService.UserRoles.Any(r => r == "super_admin" || r == "system_admin");
+        var isAdmin = _tenantService.UserRoles.Any(r => r == "company_admin" || r == "admin" || r == "super_admin" || r == "system_admin");
 
         var query = _context.Vehicles
             .AsNoTracking()
@@ -31,8 +31,8 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
             .Include(v => v.GpsDevice)
             .AsQueryable();
 
-        // Filter by assigned vehicles if user has explicit assignments
-        if (!isSystemAdmin && userId > 0)
+        // Non-admin users only see their assigned vehicles
+        if (!isAdmin && userId > 0)
         {
             var assignedVehicleIds = await _context.UserVehicles
                 .Where(uv => uv.UserId == userId)
@@ -45,9 +45,8 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
             }
             else
             {
-                var isAdmin = _tenantService.UserRoles.Any(r => r == "company_admin" || r == "admin");
-                if (!isAdmin)
-                    query = query.Where(v => false);
+                // No vehicles assigned = see nothing
+                query = query.Where(v => false);
             }
         }
 
