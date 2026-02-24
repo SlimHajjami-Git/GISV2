@@ -260,8 +260,8 @@ impl AapDecoder {
         let speed_raw_val = u32::from_str_radix(speed_raw, 16)?;
         let speed_kph = ((speed_raw_val / 10) as f64) * 1.609;
 
-        // Decode heading
-        let heading_deg = u32::from_str_radix(heading_raw, 16)? as f64;
+        // Decode heading (ACI spec: raw value × 8 = degrees, clamped to 0-360)
+        let heading_deg = ((u32::from_str_radix(heading_raw, 16)? as f64) * 8.0) % 360.0;
 
         // Decode power
         let power_val = u8::from_str_radix(power_raw, 16)?;
