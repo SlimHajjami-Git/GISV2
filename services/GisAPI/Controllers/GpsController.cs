@@ -257,6 +257,7 @@ public class GpsController : ControllerBase
 
         var vehicle = await _context.Vehicles
             .AsNoTracking()
+            .Include(v => v.GpsDevice)
             .FirstOrDefaultAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
 
         if (vehicle == null)
@@ -363,6 +364,27 @@ public class GpsController : ControllerBase
                     CreatedAt = p.CreatedAt
                 })
                 .ToListAsync();
+        }
+
+        // Convert fuel_raw → percentage based on fuel_sensor_mode (same logic as monitoring)
+        var fuelMode = vehicle.GpsDevice?.FuelSensorMode ?? "raw_255";
+        var tankCapacity = vehicle.FuelTankCapacity ?? 60;
+        foreach (var pos in positions)
+        {
+            if (pos.FuelRaw.HasValue && pos.FuelRaw.Value > 0)
+            {
+                var raw = pos.FuelRaw.Value;
+                pos.FuelRaw = fuelMode switch
+                {
+                    "percent" => raw,
+                    "raw_255" => (int)Math.Round(raw / 255.0 * 100.0),
+                    "liters" => tankCapacity > 0 ? (int)Math.Round(raw * 100.0 / tankCapacity) : raw,
+                    "half_liter" => tankCapacity > 0 ? (int)Math.Round(raw * 0.5 * 100.0 / tankCapacity) : (int)Math.Round(raw * 0.5),
+                    _ => raw
+                };
+                if (pos.FuelRaw > 100) pos.FuelRaw = 100;
+                if (pos.FuelRaw < 0) pos.FuelRaw = 0;
+            }
         }
 
         // Filter GPS drift if requested
@@ -518,6 +540,29 @@ public class GpsController : ControllerBase
                     CreatedAt = p.CreatedAt
                 })
                 .ToListAsync();
+        }
+
+        // Convert fuel_raw → percentage based on fuel_sensor_mode (same logic as monitoring)
+        var deviceFuelMode = device.FuelSensorMode ?? "raw_255";
+        var deviceVehicle = await _context.Vehicles.AsNoTracking()
+            .FirstOrDefaultAsync(v => v.GpsDeviceId == device.Id);
+        var deviceTankCapacity = deviceVehicle?.FuelTankCapacity ?? 60;
+        foreach (var pos in positions)
+        {
+            if (pos.FuelRaw.HasValue && pos.FuelRaw.Value > 0)
+            {
+                var raw = pos.FuelRaw.Value;
+                pos.FuelRaw = deviceFuelMode switch
+                {
+                    "percent" => raw,
+                    "raw_255" => (int)Math.Round(raw / 255.0 * 100.0),
+                    "liters" => deviceTankCapacity > 0 ? (int)Math.Round(raw * 100.0 / deviceTankCapacity) : raw,
+                    "half_liter" => deviceTankCapacity > 0 ? (int)Math.Round(raw * 0.5 * 100.0 / deviceTankCapacity) : (int)Math.Round(raw * 0.5),
+                    _ => raw
+                };
+                if (pos.FuelRaw > 100) pos.FuelRaw = 100;
+                if (pos.FuelRaw < 0) pos.FuelRaw = 0;
+            }
         }
 
         if (filterDrift && positions.Count >= 2)
