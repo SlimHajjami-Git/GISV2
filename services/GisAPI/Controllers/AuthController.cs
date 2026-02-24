@@ -43,13 +43,13 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("seed")]
-    public async Task<ActionResult> SeedDatabase([FromQuery] string? secret = null)
+    public async Task<ActionResult> SeedDatabase()
     {
-        // Simple security check - require a secret or only allow in Development
+        // Only allow seeding in Development — NEVER in Production
         var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-        if (environment != "Development" && secret != "CalypsoSeed2026")
+        if (environment != "Development")
         {
-            return Unauthorized(new { message = "Seeding only allowed in Development or with correct secret" });
+            return NotFound();
         }
 
         try
@@ -61,7 +61,7 @@ public class AuthController : ControllerBase
                 existingUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Calypso@2026+");
                 existingUser.Status = "active";
                 await _context.SaveChangesAsync();
-                return Ok(new { message = "User admin@belive.ma updated", password = "Calypso@2026+" });
+                return Ok(new { message = "User admin@belive.ma updated" });
             }
 
             // Create subscription type
@@ -139,13 +139,12 @@ public class AuthController : ControllerBase
             return Ok(new { 
                 message = "Database seeded successfully",
                 email = "admin@belive.ma",
-                password = "Calypso@2026+",
                 companyId = company.Id
             });
         }
         catch (Exception ex)
         {
-            return BadRequest(new { message = "Seeding failed", error = ex.Message });
+            return BadRequest(new { message = "Seeding failed" });
         }
     }
 }

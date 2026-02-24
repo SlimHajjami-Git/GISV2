@@ -168,7 +168,7 @@ public class VehiclesController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get vehicles with positions");
-            return StatusCode(500, new { error = ex.Message, stackTrace = ex.StackTrace });
+            return StatusCode(500, new { error = "An internal error occurred. Please try again later." });
         }
     }
 

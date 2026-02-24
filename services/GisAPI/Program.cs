@@ -62,8 +62,14 @@ builder.Services.AddSingleton<GisAPI.Services.IGpsInterpolationService, GisAPI.S
 // HttpClient for health checks (GPS ingest, RabbitMQ, Frontend)
 builder.Services.AddHttpClient();
 
-// JWT Authentication
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "DefaultSecretKeyForDevelopment123!";
+// JWT Authentication — require a real key in production
+var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrEmpty(jwtKey))
+{
+    if (!builder.Environment.IsDevelopment())
+        throw new InvalidOperationException("Jwt:Key must be configured in production. Set it in appsettings or environment variables.");
+    jwtKey = "DefaultSecretKeyForDevelopment123!";
+}
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -118,14 +124,27 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.Converters.Add(new GisAPI.Middleware.UtcDateTimeConverter());
     });
 
-// CORS - Allow all for debugging
+// CORS - Restrict origins in production, allow all in development
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? new[] { "http://localhost:4200", "http://localhost:4201", "http://frontend:80" };
+
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyHeader()
-              .AllowAnyMethod();
+        if (builder.Environment.IsDevelopment())
+        {
+            policy.AllowAnyOrigin()
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        }
+        else
+        {
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()
+                  .AllowCredentials();
+        }
     });
 });
 
