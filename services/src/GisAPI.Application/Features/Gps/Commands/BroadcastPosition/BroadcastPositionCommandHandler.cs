@@ -17,6 +17,8 @@ public record DeviceCacheEntry(
     int? VehicleId,
     string? VehicleName,
     string? Plate,
+    string FuelSensorMode,
+    int FuelTankCapacity,
     DateTime CachedAt
 );
 
@@ -108,12 +110,32 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             cached = new DeviceCacheEntry(
                 device.Id, device.DeviceUid, device.CompanyId,
                 device.Vehicle?.Id, device.Vehicle?.Name, device.Vehicle?.Plate,
+                device.FuelSensorMode ?? "raw_255",
+                device.Vehicle?.FuelTankCapacity ?? 60,
                 DateTime.UtcNow);
             _deviceCache[request.DeviceUid] = cached;
         }
 
         // Round speed to whole number, set to 0 if ignition off
         var displaySpeed = ignitionOn ? Math.Round(speed) : 0;
+
+        // Convert fuelRaw → percent based on fuel_sensor_mode (same logic as monitoring query)
+        int? fuelLevel = null;
+        if (request.FuelRaw.HasValue && request.FuelRaw.Value > 0)
+        {
+            var raw = request.FuelRaw.Value;
+            var tank = cached.FuelTankCapacity;
+            fuelLevel = cached.FuelSensorMode switch
+            {
+                "percent" => raw,
+                "raw_255" => (int)Math.Round(raw / 255.0 * 100.0),
+                "liters" => tank > 0 ? (int)Math.Round(raw * 100.0 / tank) : raw,
+                "half_liter" => tank > 0 ? (int)Math.Round(raw * 0.5 * 100.0 / tank) : (int)Math.Round(raw * 0.5),
+                _ => raw
+            };
+            if (fuelLevel > 100) fuelLevel = 100;
+            if (fuelLevel < 0) fuelLevel = 0;
+        }
 
         // Prepare position update DTO
         var positionUpdate = new VehiclePositionUpdateDto
@@ -129,7 +151,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             CourseDeg = request.CourseDeg ?? 0,
             IgnitionOn = ignitionOn,
             IsMoving = ignitionOn && speed >= SPEED_THRESHOLD,
-            FuelRaw = request.FuelRaw,
+            FuelRaw = fuelLevel,
             BatteryVoltage = request.BatteryVoltage,
             BatteryPercent = request.BatteryPercent,
             TemperatureC = request.TemperatureC,

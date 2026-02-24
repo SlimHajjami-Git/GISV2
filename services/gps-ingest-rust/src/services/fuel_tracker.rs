@@ -104,14 +104,15 @@ impl FuelTracker {
         debug!(device_id, fuel_percent, odometer_km, "Fuel state restored from DB");
     }
 
-    /// Process a frame and detect fuel events
-    /// Returns Some(FuelEvent) if a significant event occurred
+    /// Process a frame and detect fuel events.
+    /// `fuel_percent` must be pre-converted to 0-100% by the caller (based on fuel_sensor_mode).
+    /// Returns Some(FuelEvent) if a significant event occurred.
     pub async fn process_frame(
         &self,
         device_id: i32,
         frame: &HhFrame,
+        fuel_percent: i16,
     ) -> Option<FuelEvent> {
-        let fuel_percent = frame.fuel_raw as i16;
         let now = DateTime::<Utc>::from_naive_utc_and_offset(frame.recorded_at, Utc);
 
         // Skip invalid fuel readings
@@ -319,12 +320,12 @@ mod tests {
 
         // Initial reading
         let frame1 = make_frame(30, 10000, true, "2025-01-01 10:00:00");
-        let result = tracker.process_frame(1, &frame1).await;
+        let result = tracker.process_frame(1, &frame1, 30).await;
         assert!(result.is_none()); // First reading
 
         // Refuel detected
         let frame2 = make_frame(80, 10000, false, "2025-01-01 10:30:00");
-        let result = tracker.process_frame(1, &frame2).await;
+        let result = tracker.process_frame(1, &frame2, 80).await;
         assert!(result.is_some());
         let event = result.unwrap();
         assert_eq!(event.event_type, FuelEventType::Refuel);
@@ -337,11 +338,11 @@ mod tests {
 
         // Initial reading
         let frame1 = make_frame(80, 10000, false, "2025-01-01 10:00:00");
-        tracker.process_frame(1, &frame1).await;
+        tracker.process_frame(1, &frame1, 80).await;
 
         // Sudden drop without movement
         let frame2 = make_frame(50, 10002, false, "2025-01-01 12:00:00");
-        let result = tracker.process_frame(1, &frame2).await;
+        let result = tracker.process_frame(1, &frame2, 50).await;
         assert!(result.is_some());
         let event = result.unwrap();
         assert_eq!(event.event_type, FuelEventType::TheftAlert);
@@ -354,11 +355,11 @@ mod tests {
 
         // Initial reading
         let frame1 = make_frame(25, 10000, true, "2025-01-01 10:00:00");
-        tracker.process_frame(1, &frame1).await;
+        tracker.process_frame(1, &frame1, 25).await;
 
         // Low fuel
         let frame2 = make_frame(15, 10050, true, "2025-01-01 11:00:00");
-        let result = tracker.process_frame(1, &frame2).await;
+        let result = tracker.process_frame(1, &frame2, 15).await;
         assert!(result.is_some());
         let event = result.unwrap();
         assert_eq!(event.event_type, FuelEventType::LowFuel);

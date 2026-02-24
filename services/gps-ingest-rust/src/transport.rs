@@ -646,14 +646,31 @@ async fn process_single_frame(
                     // Process fuel tracking - ONLY for V3 frames which contain FMS data
                     // V1 frames don't have FMS, fuel_raw is base value (often garbage)
                     if is_fms_frame && frame.fuel_raw > 0 {
-                        // Restore fuel state from DB on first encounter (survives service restarts)
-                        if !services.fuel_tracker.has_state(device_id).await {
-                            if let Ok(Some((last_pct, last_odo, last_ts))) = database.get_last_fuel_record(device_id).await {
-                                services.fuel_tracker.seed_state(device_id, last_pct, last_odo, last_ts).await;
-                            }
-                        }
+                        // On first encounter for this device, let fuel_tracker calibrate
+                        // from the current (correctly converted) frame rather than seeding
+                        // from DB which may contain legacy unconverted values.
+                        // The fuel_tracker treats the first frame as a baseline (no event emitted).
 
-                        if let Some(fuel_event) = services.fuel_tracker.process_frame(device_id, &frame).await {
+                        // Convert fuel_raw → percent based on fuel_sensor_mode
+                        let fuel_percent: i16 = match database.get_fuel_config(device_id).await {
+                            Ok((mode, tank_cap)) => {
+                                let raw = frame.fuel_raw as i16;
+                                let tank = tank_cap.unwrap_or(60) as i16; // Default 60L
+                                match mode.as_str() {
+                                    "percent" => raw,                                                    // Already 0-100%
+                                    "raw_255" => ((raw as f64 / 255.0) * 100.0).round() as i16,         // 0-255 → 0-100%
+                                    "liters" => if tank > 0 { ((raw as f64 / tank as f64) * 100.0).round() as i16 } else { raw },
+                                    "half_liter" => if tank > 0 { ((raw as f64 * 0.5 / tank as f64) * 100.0).round() as i16 } else { (raw as f64 * 0.5).round() as i16 },
+                                    _ => raw,
+                                }.clamp(0, 100)
+                            },
+                            Err(err) => {
+                                warn!(?err, device_id, "Failed to get fuel config, using raw value");
+                                (frame.fuel_raw as i16).clamp(0, 100)
+                            }
+                        };
+
+                        if let Some(fuel_event) = services.fuel_tracker.process_frame(device_id, &frame, fuel_percent).await {
                             if let Err(err) = database.insert_fuel_record(&fuel_event, vehicle_id, company_id).await {
                                 warn!(?err, device_id, "Failed to insert fuel record");
                             } else {
