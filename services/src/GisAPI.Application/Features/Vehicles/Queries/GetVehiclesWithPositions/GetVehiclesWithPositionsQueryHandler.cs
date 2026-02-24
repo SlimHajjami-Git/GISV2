@@ -42,7 +42,7 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
     {
         var companyId = _tenantService.CompanyId ?? 0;
         var userId = _tenantService.UserId ?? 0;
-        var isAdmin = _tenantService.UserRoles.Any(r => r == "company_admin" || r == "admin" || r == "super_admin" || r == "system_admin");
+        var isSystemAdmin = _tenantService.UserRoles.Any(r => r == "super_admin" || r == "system_admin");
 
         // Get vehicles with GPS devices
         var vehicleQuery = _context.Vehicles
@@ -51,8 +51,9 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             .Include(v => v.GpsDevice)
             .AsQueryable();
 
-        // Non-admin users only see their assigned vehicles
-        if (!isAdmin && userId > 0)
+        // Filter by assigned vehicles if user has explicit assignments
+        // System admins always see all vehicles; company admins see all UNLESS they have explicit assignments
+        if (!isSystemAdmin && userId > 0)
         {
             var assignedVehicleIds = await _context.UserVehicles
                 .Where(uv => uv.UserId == userId)
@@ -60,9 +61,17 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                 .ToListAsync(ct);
 
             if (assignedVehicleIds.Any())
+            {
+                // User has explicit vehicle assignments → restrict to those
                 vehicleQuery = vehicleQuery.Where(v => assignedVehicleIds.Contains(v.Id));
+            }
             else
-                vehicleQuery = vehicleQuery.Where(v => false);
+            {
+                // No assignments: admins see all, non-admins see none
+                var isAdmin = _tenantService.UserRoles.Any(r => r == "company_admin" || r == "admin");
+                if (!isAdmin)
+                    vehicleQuery = vehicleQuery.Where(v => false);
+            }
         }
 
         var vehicles = await vehicleQuery.ToListAsync(ct);
