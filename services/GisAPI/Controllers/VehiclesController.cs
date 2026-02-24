@@ -118,10 +118,10 @@ public class VehiclesController : ControllerBase
                                         cached.IgnitionOn,
                                         cached.RecordedAt,
                                         cached.FuelRaw != 0 ? cached.FuelRaw : dbPos?.FuelRaw,
-                                        dbPos?.TemperatureC,
+                                        cached.TemperatureC ?? dbPos?.TemperatureC,
                                         dbPos?.BatteryLevel,
                                         dbPos?.Address,
-                                        dbPos?.OdometerKm
+                                        cached.OdometerKm ?? dbPos?.OdometerKm
                                     );
                                     
                                     // Create updated vehicle with cached position

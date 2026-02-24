@@ -35,6 +35,18 @@ public class VehiclePositionCache
     public int FuelRaw { get; set; }
     [JsonPropertyName("powerVoltage")]
     public int PowerVoltage { get; set; }
+    [JsonPropertyName("temperatureC")]
+    public int? TemperatureC { get; set; }
+    [JsonPropertyName("odometerKm")]
+    public long? OdometerKm { get; set; }
+    [JsonPropertyName("rpm")]
+    public int? Rpm { get; set; }
+    [JsonPropertyName("memsX")]
+    public int? MemsX { get; set; }
+    [JsonPropertyName("memsY")]
+    public int? MemsY { get; set; }
+    [JsonPropertyName("memsZ")]
+    public int? MemsZ { get; set; }
     [JsonPropertyName("recordedAt")]
     public DateTime RecordedAt { get; set; }
     [JsonPropertyName("cachedAt")]

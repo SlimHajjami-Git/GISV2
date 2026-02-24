@@ -51,6 +51,16 @@ impl RedisCache {
         let mut conn = self.pool.get().await
             .with_context(|| "Failed to get Redis connection from pool")?;
 
+        // Temperature: FMS temp takes priority (V3), fallback to base temp - 40
+        let temperature_c: Option<i16> = if let Some(fms_temp) = frame.fms_temperature_c {
+            if fms_temp != 0 && fms_temp > -50 && fms_temp < 200 { Some(fms_temp) } else { None }
+        } else if frame.temperature_raw > 0 {
+            let temp = (frame.temperature_raw as i16).saturating_sub(40);
+            if temp > -50 && temp < 200 { Some(temp) } else { None }
+        } else {
+            None
+        };
+
         let position_data = json!({
             "deviceUid": device_uid,
             "vehicleId": vehicle_id,
@@ -63,6 +73,12 @@ impl RedisCache {
             "isValid": frame.is_valid,
             "fuelRaw": frame.fuel_raw,
             "powerVoltage": frame.power_voltage,
+            "temperatureC": temperature_c,
+            "odometerKm": frame.odometer_km,
+            "rpm": frame.rpm,
+            "memsX": frame.mems_x,
+            "memsY": frame.mems_y,
+            "memsZ": frame.mems_z,
             "recordedAt": frame.recorded_at.and_utc().to_rfc3339(),
             "cachedAt": chrono::Utc::now().to_rfc3339(),
         });
