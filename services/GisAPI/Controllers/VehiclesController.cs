@@ -128,10 +128,21 @@ public class VehiclesController : ControllerBase
                                     var idx = vehicles.IndexOf(vehicle);
                                     if (vehicle.Stats != null)
                                     {
+                                        // Update fuel level from Redis cache if available
+                                        var cachedFuel = updatedPosition.FuelRaw;
+                                        int? updatedFuelLevel = vehicle.Stats.FuelLevel;
+                                        if (cachedFuel.HasValue && cachedFuel.Value > 0)
+                                        {
+                                            updatedFuelLevel = cachedFuel.Value; // Already raw %, will be refined by sensor mode if needed
+                                        }
+
                                         vehicles[idx] = vehicle with { 
                                             LastPosition = updatedPosition,
                                             Stats = vehicle.Stats with {
                                                 CurrentSpeed = cached.IgnitionOn ? Math.Round(cached.SpeedKph) : 0,
+                                                FuelLevel = updatedFuelLevel,
+                                                Temperature = (short?)(cached.TemperatureC ?? vehicle.Stats.Temperature),
+                                                BatteryLevel = cached.BatteryPercent ?? vehicle.Stats.BatteryLevel,
                                                 IsMoving = cached.IgnitionOn && cached.SpeedKph > 5,
                                                 IsStopped = !cached.IgnitionOn || cached.SpeedKph <= 5
                                             }

@@ -51,10 +51,25 @@ impl RedisCache {
         let mut conn = self.pool.get().await
             .with_context(|| "Failed to get Redis connection from pool")?;
 
+        // Preserve last known good values from previous cache entry
+        // When GPS sends frames without fuel/temp data (=0), we keep the previous good values
+        let device_key = format!("vehicle:position:{}", device_uid);
+        let prev_cache: Option<serde_json::Value> = conn.get::<_, Option<String>>(&device_key).await
+            .ok()
+            .flatten()
+            .and_then(|s| serde_json::from_str(&s).ok());
+
+        // Fuel: preserve last known non-zero value
+        let fuel_raw = if frame.fuel_raw > 0 {
+            frame.fuel_raw
+        } else {
+            prev_cache.as_ref()
+                .and_then(|c| c["fuelRaw"].as_u64())
+                .map(|v| v as u8)
+                .unwrap_or(0)
+        };
+
         // Battery voltage conversion using 47-ohm resistance divider (rule of 3)
-        // Raw power_voltage (0-127) from GPS ADC → actual vehicle voltage
-        // Factor ≈ 0.3V per unit (calibrated from production: raw 41-43 → 12.3-12.9V)
-        // power_source_rescue flag indicates backup battery (raw >= 128, already stripped)
         const VOLTAGE_FACTOR: f64 = 0.3;
         const BATTERY_MIN_V: f64 = 11.0; // 12V system: 0%
         const BATTERY_MAX_V: f64 = 12.8; // 12V system: 100%
@@ -68,14 +83,17 @@ impl RedisCache {
             ((battery_voltage - BATTERY_MIN_V) / (BATTERY_MAX_V - BATTERY_MIN_V) * 100.0) as i32
         };
 
-        // Temperature: FMS temp takes priority (V3), fallback to base temp - 40
+        // Temperature: FMS temp takes priority (V3), fallback to base temp - 40, then previous cache
         let temperature_c: Option<i16> = if let Some(fms_temp) = frame.fms_temperature_c {
             if fms_temp != 0 && fms_temp > -50 && fms_temp < 200 { Some(fms_temp) } else { None }
         } else if frame.temperature_raw > 0 {
             let temp = (frame.temperature_raw as i16).saturating_sub(40);
             if temp > -50 && temp < 200 { Some(temp) } else { None }
         } else {
-            None
+            // Preserve previous temperature
+            prev_cache.as_ref()
+                .and_then(|c| c["temperatureC"].as_i64())
+                .map(|v| v as i16)
         };
 
         let position_data = json!({
@@ -88,7 +106,7 @@ impl RedisCache {
             "headingDeg": frame.heading_deg,
             "ignitionOn": frame.ignition_on,
             "isValid": frame.is_valid,
-            "fuelRaw": frame.fuel_raw,
+            "fuelRaw": fuel_raw,
             "powerVoltage": frame.power_voltage,
             "batteryVoltage": (battery_voltage * 10.0).round() / 10.0,
             "batteryPercent": battery_percent,
