@@ -346,6 +346,10 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
 
     private static double CalculateTotalDistance(List<GpsPosition> positions)
     {
+        const double MaxSegmentKm = 10.0;     // Max distance between 2 consecutive points
+        const double MaxImpliedKph = 250.0;    // Max implied speed (distance/time)
+        const double MinSegmentKm = 0.005;     // Ignore micro-movements (< 5m)
+
         double totalDistance = 0;
         for (int i = 1; i < positions.Count; i++)
         {
@@ -355,9 +359,24 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
             // Only count distance if there's movement
             if ((curr.SpeedKph ?? 0) > 0 || (prev.SpeedKph ?? 0) > 0)
             {
-                totalDistance += HaversineDistance(
+                var segmentKm = HaversineDistance(
                     prev.Latitude, prev.Longitude,
                     curr.Latitude, curr.Longitude);
+
+                // Filter aberrant segments (GPS jumps, corrupted historical data)
+                if (segmentKm < MinSegmentKm || segmentKm > MaxSegmentKm)
+                    continue;
+
+                // Check implied speed: distance / time must be realistic
+                var elapsedHours = (curr.RecordedAt - prev.RecordedAt).TotalHours;
+                if (elapsedHours > 0)
+                {
+                    var impliedKph = segmentKm / elapsedHours;
+                    if (impliedKph > MaxImpliedKph)
+                        continue;
+                }
+
+                totalDistance += segmentKm;
             }
         }
         return totalDistance;
