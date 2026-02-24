@@ -143,7 +143,11 @@ public class RedisPubSubConsumer : BackgroundService
                 CourseDeg: position.HeadingDeg,
                 IgnitionOn: position.IgnitionOn,
                 RecordedAt: recordedAt,
-                AlertType: null
+                AlertType: null,
+                FuelRaw: position.FuelRaw,
+                BatteryVoltage: position.BatteryVoltage,
+                BatteryPercent: position.BatteryPercent,
+                TemperatureC: position.TemperatureC
             );
 
             var result = await mediator.Send(command);
@@ -204,4 +208,16 @@ public class RedisPositionMessage
     
     [System.Text.Json.Serialization.JsonPropertyName("cachedAt")]
     public string CachedAt { get; set; } = string.Empty;
+    
+    [System.Text.Json.Serialization.JsonPropertyName("fuelRaw")]
+    public int? FuelRaw { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("batteryVoltage")]
+    public double? BatteryVoltage { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("batteryPercent")]
+    public int? BatteryPercent { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("temperatureC")]
+    public int? TemperatureC { get; set; }
 }

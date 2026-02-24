@@ -70,10 +70,10 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
         var ignitionOn = request.IgnitionOn ?? false;
         var speed = request.SpeedKph ?? 0;
 
-        // Dedup: skip if same device+recordedAt was broadcast within 2 seconds
+        // Dedup: skip if same device+recordedAt was already broadcast (Redis+RMQ both fire)
         var dedupKey = $"{request.DeviceUid}:{request.RecordedAt:O}";
         var now = DateTime.UtcNow;
-        if (_lastBroadcast.TryGetValue(dedupKey, out var lastTime) && (now - lastTime) < _dedupWindow)
+        if (_lastBroadcast.TryGetValue(dedupKey, out _))
         {
             return new BroadcastPositionResult(false, null, "Duplicate (already broadcast)");
         }
@@ -129,6 +129,10 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             CourseDeg = request.CourseDeg ?? 0,
             IgnitionOn = ignitionOn,
             IsMoving = ignitionOn && speed >= SPEED_THRESHOLD,
+            FuelRaw = request.FuelRaw,
+            BatteryVoltage = request.BatteryVoltage,
+            BatteryPercent = request.BatteryPercent,
+            TemperatureC = request.TemperatureC,
             RecordedAt = request.RecordedAt,
             Timestamp = now
         };
@@ -448,6 +452,10 @@ public class VehiclePositionUpdateDto
     public double CourseDeg { get; set; }
     public bool IgnitionOn { get; set; }
     public bool IsMoving { get; set; }
+    public int? FuelRaw { get; set; }
+    public double? BatteryVoltage { get; set; }
+    public int? BatteryPercent { get; set; }
+    public int? TemperatureC { get; set; }
     public DateTime RecordedAt { get; set; }
     public DateTime Timestamp { get; set; }
 }

@@ -14,6 +14,10 @@ export interface PositionUpdate {
   courseDeg: number;
   ignitionOn: boolean;
   isMoving: boolean;
+  fuelRaw?: number;
+  batteryVoltage?: number;
+  batteryPercent?: number;
+  temperatureC?: number;
   recordedAt: string;
   timestamp: string;
 }

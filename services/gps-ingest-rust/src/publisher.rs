@@ -7,17 +7,66 @@ use amqprs::{
 };
 use anyhow::{Context, Result};
 use serde_json::json;
+use tokio::sync::Mutex;
+use tracing::{info, warn};
 
 use crate::{
     ports::TelemetryEventPublisher,
     telemetry::model::HhFrame,
 };
 
-pub struct TelemetryPublisher {
-    _connection: Connection,
-    channel: Channel,
+struct RmqConfig {
+    host: String,
+    port: u16,
+    username: String,
+    password: String,
     exchange: String,
     routing_key: String,
+}
+
+pub struct TelemetryPublisher {
+    config: RmqConfig,
+    state: Mutex<Option<(Connection, Channel)>>,
+}
+
+impl TelemetryPublisher {
+    async fn create_connection(config: &RmqConfig) -> Result<(Connection, Channel)> {
+        let conn = Connection::open(
+            &OpenConnectionArguments::new(&config.host, config.port, &config.username, &config.password),
+        )
+        .await
+        .with_context(|| "failed to connect to RabbitMQ")?;
+
+        let ch = conn
+            .open_channel(None)
+            .await
+            .with_context(|| "failed to open RabbitMQ channel")?;
+
+        ch.exchange_declare(
+            ExchangeDeclareArguments::new(&config.exchange, "topic")
+                .durable(true)
+                .finish(),
+        )
+        .await
+        .with_context(|| "failed to declare exchange")?;
+
+        info!("RabbitMQ publisher connected to {}:{}", config.host, config.port);
+        Ok((conn, ch))
+    }
+
+    async fn ensure_connected(&self) -> Result<()> {
+        let mut guard = self.state.lock().await;
+        if guard.is_none() {
+            let (conn, ch) = Self::create_connection(&self.config).await?;
+            *guard = Some((conn, ch));
+        }
+        Ok(())
+    }
+
+    async fn invalidate(&self) {
+        let mut guard = self.state.lock().await;
+        *guard = None;
+    }
 }
 
 #[async_trait::async_trait]
@@ -39,12 +88,38 @@ impl TelemetryEventPublisher for TelemetryPublisher {
         });
 
         let body = serde_json::to_vec(&payload)?;
-        let args = BasicPublishArguments::new(&self.exchange, &self.routing_key);
-        self.channel
-            .basic_publish(BasicProperties::default(), body, args)
-            .await
-            .with_context(|| "failed to publish telemetry event")?;
-        Ok(())
+
+        // Retry up to 3 times with reconnection on failure
+        for attempt in 1u32..=3 {
+            self.ensure_connected().await?;
+
+            let result = {
+                let guard = self.state.lock().await;
+                if let Some((_, ch)) = guard.as_ref() {
+                    let mut props = BasicProperties::default();
+                    props.with_delivery_mode(2); // persistent
+                    let args = BasicPublishArguments::new(&self.config.exchange, &self.config.routing_key);
+                    ch.basic_publish(props, body.clone(), args).await
+                } else {
+                    Err(amqprs::error::Error::ChannelUseError("no channel".to_string()))
+                }
+            };
+
+            match result {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    warn!("RabbitMQ publish failed (attempt {}/3): {}", attempt, e);
+                    self.invalidate().await;
+                    if attempt < 3 {
+                        tokio::time::sleep(std::time::Duration::from_secs(attempt as u64)).await;
+                    } else {
+                        return Err(anyhow::anyhow!("RabbitMQ publish failed after 3 attempts: {}", e));
+                    }
+                }
+            }
+        }
+
+        unreachable!()
     }
 }
 
@@ -55,38 +130,24 @@ impl TelemetryPublisher {
             _ => return Ok(None),
         };
 
-        let port = env::var("RABBITMQ_PORT")
-            .ok()
-            .and_then(|p| p.parse::<u16>().ok())
-            .unwrap_or(5672);
-        let username = env::var("RABBITMQ_USERNAME").unwrap_or_else(|_| "guest".to_string());
-        let password = env::var("RABBITMQ_PASSWORD").unwrap_or_else(|_| "guest".to_string());
-        let exchange = env::var("RABBITMQ_EXCHANGE").unwrap_or_else(|_| "telemetry.raw".to_string());
-        let routing_key = env::var("RABBITMQ_ROUTING_KEY").unwrap_or_else(|_| "hh".to_string());
+        let config = RmqConfig {
+            host,
+            port: env::var("RABBITMQ_PORT")
+                .ok()
+                .and_then(|p| p.parse::<u16>().ok())
+                .unwrap_or(5672),
+            username: env::var("RABBITMQ_USERNAME").unwrap_or_else(|_| "guest".to_string()),
+            password: env::var("RABBITMQ_PASSWORD").unwrap_or_else(|_| "guest".to_string()),
+            exchange: env::var("RABBITMQ_EXCHANGE").unwrap_or_else(|_| "telemetry.raw".to_string()),
+            routing_key: env::var("RABBITMQ_ROUTING_KEY").unwrap_or_else(|_| "hh".to_string()),
+        };
 
-        let connection = Connection::open(&OpenConnectionArguments::new(&host, port, &username, &password))
-            .await
-            .with_context(|| "failed to connect to RabbitMQ")?;
-        let channel = connection
-            .open_channel(None)
-            .await
-            .with_context(|| "failed to open RabbitMQ channel")?;
-
-        channel
-            .exchange_declare(
-                ExchangeDeclareArguments::new(&exchange, "topic")
-                    .durable(true)
-                    .finish(),
-            )
-            .await
-            .with_context(|| "failed to declare exchange")?;
+        // Initial connection attempt
+        let (conn, ch) = Self::create_connection(&config).await?;
 
         Ok(Some(Self {
-            _connection: connection,
-            channel,
-            exchange,
-            routing_key,
+            config,
+            state: Mutex::new(Some((conn, ch))),
         }))
     }
-
 }

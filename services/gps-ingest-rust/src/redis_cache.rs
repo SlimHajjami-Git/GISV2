@@ -52,12 +52,17 @@ impl RedisCache {
             .with_context(|| "Failed to get Redis connection from pool")?;
 
         // Preserve last known good values from previous cache entry
-        // When GPS sends frames without fuel/temp data (=0), we keep the previous good values
+        // Use GETDEL-like pattern: read previous in same pipeline as write (below)
         let device_key = format!("vehicle:position:{}", device_uid);
-        let prev_cache: Option<serde_json::Value> = conn.get::<_, Option<String>>(&device_key).await
-            .ok()
-            .flatten()
-            .and_then(|s| serde_json::from_str(&s).ok());
+        let prev_cache: Option<serde_json::Value> = if frame.fuel_raw == 0 || frame.temperature_raw == 0 {
+            // Only read previous cache when we actually need fallback values
+            conn.get::<_, Option<String>>(&device_key).await
+                .ok()
+                .flatten()
+                .and_then(|s| serde_json::from_str(&s).ok())
+        } else {
+            None // No need to read previous — current frame has all data
+        };
 
         // Fuel: preserve last known non-zero value
         let fuel_raw = if frame.fuel_raw > 0 {
@@ -123,8 +128,7 @@ impl RedisCache {
 
         let position_json = serde_json::to_string(&position_data)?;
 
-        // Store position by device
-        let device_key = format!("vehicle:position:{}", device_uid);
+        // Store position by device (reuse device_key from above)
         conn.set_ex::<_, _, ()>(&device_key, &position_json, POSITION_TTL_SECONDS).await?;
 
         // Add to company's active vehicles set

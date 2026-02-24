@@ -15,7 +15,11 @@ public record BroadcastPositionCommand(
     double? CourseDeg,
     bool? IgnitionOn,
     DateTime RecordedAt,
-    string? AlertType = null
+    string? AlertType = null,
+    int? FuelRaw = null,
+    double? BatteryVoltage = null,
+    int? BatteryPercent = null,
+    int? TemperatureC = null
 ) : ICommand<BroadcastPositionResult>;
 
 public record BroadcastPositionResult(

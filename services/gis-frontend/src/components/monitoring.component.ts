@@ -120,7 +120,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   refreshInterval: any;
   stalenessInterval: any;
   signalRSubscription: Subscription | null = null;
+  connectionStateSubscription: Subscription | null = null;
   connectionStatus = 'Disconnected';
+  private loadDataController: AbortController | null = null;
 
   // Dedup: track last processed recordedAt per vehicle to skip duplicate SignalR messages
   private lastProcessedPosition = new Map<string, string>();
@@ -183,6 +185,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.signalRSubscription) {
       this.signalRSubscription.unsubscribe();
     }
+    if (this.connectionStateSubscription) {
+      this.connectionStateSubscription.unsubscribe();
+    }
+    if (this.loadDataController) {
+      this.loadDataController.abort();
+    }
     // Clean up overlay map if active
     if (this.playbackOverlayMap) {
       this.playbackOverlayMap.remove();
@@ -199,8 +207,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   async initSignalR() {
-    // Subscribe to connection state
-    this.signalRService.connectionState$.subscribe(state => {
+    // Subscribe to connection state (stored for cleanup to prevent memory leak)
+    this.connectionStateSubscription = this.signalRService.connectionState$.subscribe(state => {
       this.connectionStatus = state;
       console.log('SignalR connection state:', state);
     });
@@ -245,13 +253,17 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         vehicle.ignitionOn = update.ignitionOn;
         (vehicle as any).lastCommunication = update.timestamp;
 
-        // Keep stats object in sync with live data
+        // Keep stats object in sync with live data (including fuel/temp/battery)
         if (vehicle.stats) {
           vehicle.stats = {
             ...vehicle.stats,
             currentSpeed: update.speedKph || 0,
             isMoving: update.isMoving,
-            isStopped: !update.isMoving
+            isStopped: !update.isMoving,
+            ...(update.fuelRaw != null ? { fuelLevel: update.fuelRaw } : {}),
+            ...(update.batteryPercent != null ? { batteryLevel: update.batteryPercent } : {}),
+            ...(update.batteryVoltage != null ? { batteryVoltage: update.batteryVoltage } : {}),
+            ...(update.temperatureC != null ? { temperature: update.temperatureC } : {})
           };
         }
 
