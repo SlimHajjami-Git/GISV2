@@ -1913,13 +1913,12 @@ export class UserManagementComponent implements OnInit, OnDestroy {
   }
 
   saveUser() {
-    if (!this.userForm.firstName || !this.userForm.email || !this.userForm.roleId) {
-      this.toast.error('Erreur', 'Veuillez remplir tous les champs requis');
+    if (!this.userForm.firstName || !this.userForm.lastName || !this.userForm.email || !this.userForm.roleId) {
+      this.toast.error('Erreur', 'Veuillez remplir tous les champs requis (Prénom, Nom, Email, Rôle)');
       return;
     }
-
-    if (!this.editingUser && !this.userForm.password) {
-      this.toast.error('Erreur', 'Le mot de passe est requis pour un nouvel utilisateur');
+    if (!this.editingUser && (!this.userForm.password || this.userForm.password.length < 6)) {
+      this.toast.error('Erreur', 'Le mot de passe doit contenir au moins 6 caractères');
       return;
     }
 
