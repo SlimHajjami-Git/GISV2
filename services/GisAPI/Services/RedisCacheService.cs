@@ -35,6 +35,12 @@ public class VehiclePositionCache
     public int FuelRaw { get; set; }
     [JsonPropertyName("powerVoltage")]
     public int PowerVoltage { get; set; }
+    [JsonPropertyName("batteryVoltage")]
+    public double? BatteryVoltage { get; set; }
+    [JsonPropertyName("batteryPercent")]
+    public int? BatteryPercent { get; set; }
+    [JsonPropertyName("powerSourceRescue")]
+    public bool PowerSourceRescue { get; set; }
     [JsonPropertyName("temperatureC")]
     public int? TemperatureC { get; set; }
     [JsonPropertyName("odometerKm")]
