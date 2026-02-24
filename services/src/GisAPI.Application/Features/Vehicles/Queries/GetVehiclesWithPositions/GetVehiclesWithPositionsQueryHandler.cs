@@ -23,6 +23,7 @@ internal class LatestPositionData
     public DateTime RecordedAt { get; set; }
     public int? FuelRaw { get; set; }
     public short? TemperatureC { get; set; }
+    public int? PowerVoltage { get; set; }
     public string? Address { get; set; }
     public long? OdometerKm { get; set; }
 }
@@ -92,6 +93,7 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                     RecordedAt = p.RecordedAt,
                     FuelRaw = p.FuelRaw,
                     TemperatureC = p.TemperatureC,
+                    PowerVoltage = p.PowerVoltage,
                     Address = p.Address,
                     OdometerKm = p.OdometerKm
                 })
@@ -126,7 +128,19 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             deviceStats.TryGetValue(deviceId, out var stats);
             var lastComm = v.GpsDevice?.LastCommunication;
             var isOnline = lastComm.HasValue && (DateTime.UtcNow - lastComm.Value).TotalMinutes < 30;
-            var batteryLevel = v.GpsDevice?.BatteryLevel;
+            // Calculate battery level from latest position's PowerVoltage (same formula as Rust ingest)
+            // Fallback to GpsDevice.BatteryLevel if PowerVoltage is not available
+            int? batteryLevel = v.GpsDevice?.BatteryLevel;
+            if (batteryLevel == null && position?.PowerVoltage != null && position.PowerVoltage > 0)
+            {
+                const double voltageFactor = 0.3;
+                const double batteryMinV = 11.0;
+                const double batteryMaxV = 12.8;
+                var voltage = position.PowerVoltage.Value * voltageFactor;
+                if (voltage <= batteryMinV) batteryLevel = 0;
+                else if (voltage >= batteryMaxV) batteryLevel = 100;
+                else batteryLevel = (int)Math.Round((voltage - batteryMinV) / (batteryMaxV - batteryMinV) * 100.0);
+            }
 
             // If ignition is off, speed is 0
             var ignitionOn = position?.IgnitionOn ?? false;
