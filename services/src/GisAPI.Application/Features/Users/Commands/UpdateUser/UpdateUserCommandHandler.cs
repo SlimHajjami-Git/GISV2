@@ -29,13 +29,32 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
             .FirstOrDefaultAsync(u => u.Id == request.Id && u.CompanyId == companyId, ct)
             ?? throw new NotFoundException("Utilisateur", request.Id);
 
-        // Validate role if provided
-        if (request.RoleId.HasValue)
+        // Auto-select role based on permissions (same logic as CreateUser)
+        var allPerms = (request.CanMonitoring ?? user.CanMonitoring)
+            && (request.CanVehicles ?? user.CanVehicles) && (request.CanDrivers ?? user.CanDrivers)
+            && (request.CanReports ?? user.CanReports) && (request.CanGeofences ?? user.CanGeofences)
+            && (request.CanMaintenance ?? user.CanMaintenance) && (request.CanCosts ?? user.CanCosts)
+            && (request.CanDocuments ?? user.CanDocuments) && (request.CanAccidents ?? user.CanAccidents)
+            && (request.CanUsers ?? user.CanUsers) && (request.CanSettings ?? user.CanSettings)
+            && (request.CanSuppliers ?? user.CanSuppliers) && (request.CanFleetManagement ?? user.CanFleetManagement);
+
+        if (allPerms)
         {
-            var role = await _context.Roles
-                .FirstOrDefaultAsync(r => r.Id == request.RoleId.Value && r.SocieteId == companyId, ct)
-                ?? throw new DomainException("Rôle invalide");
-            user.RoleId = request.RoleId.Value;
+            var adminRole = await _context.Roles
+                .FirstOrDefaultAsync(r => r.SocieteId == companyId && r.IsCompanyAdmin, ct);
+            if (adminRole != null) user.RoleId = adminRole.Id;
+        }
+        else
+        {
+            var nonAdminRole = await _context.Roles
+                .FirstOrDefaultAsync(r => r.SocieteId == companyId && !r.IsCompanyAdmin, ct);
+            if (nonAdminRole == null)
+            {
+                nonAdminRole = new Role { Name = "Opérateur", SocieteId = companyId, IsCompanyAdmin = false, IsSystemRole = false };
+                _context.Roles.Add(nonAdminRole);
+                await _context.SaveChangesAsync(ct);
+            }
+            user.RoleId = nonAdminRole.Id;
         }
 
         user.FirstName = request.FirstName;

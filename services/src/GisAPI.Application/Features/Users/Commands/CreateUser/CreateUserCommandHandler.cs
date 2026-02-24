@@ -70,12 +70,19 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
         }
         else
         {
-            // Assign a non-admin role (prefer the one sent by frontend, else find first non-admin)
+            // Assign a non-admin role (prefer the one sent by frontend, else find first non-admin, else auto-create)
             role = await _context.Roles
                 .FirstOrDefaultAsync(r => r.Id == request.RoleId && r.SocieteId == companyId && !r.IsCompanyAdmin, ct)
                 ?? await _context.Roles
-                    .FirstOrDefaultAsync(r => r.SocieteId == companyId && !r.IsCompanyAdmin, ct)
-                ?? throw new DomainException("Aucun rôle non-administrateur trouvé. Créez un rôle (ex: Chef de parc) d'abord.");
+                    .FirstOrDefaultAsync(r => r.SocieteId == companyId && !r.IsCompanyAdmin, ct);
+
+            if (role == null)
+            {
+                // Auto-create a non-admin role for this company
+                role = new Role { Name = "Opérateur", SocieteId = companyId, IsCompanyAdmin = false, IsSystemRole = false };
+                _context.Roles.Add(role);
+                await _context.SaveChangesAsync(ct);
+            }
         }
 
         // Validate vehicle assignments
