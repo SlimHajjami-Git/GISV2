@@ -75,6 +75,17 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResp
             Permissions = defaultPermissions
         };
         _context.Roles.Add(adminRole);
+
+        // Always create a default non-admin role so restricted users can be created later
+        var operatorRole = new Role
+        {
+            Name = "Opérateur",
+            Description = "Utilisateur avec accès limité",
+            SocieteId = societe.Id,
+            IsCompanyAdmin = false,
+            IsSystemRole = false
+        };
+        _context.Roles.Add(operatorRole);
         await _context.SaveChangesAsync(ct);
 
         // Create the admin user
