@@ -1418,7 +1418,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   enrichSpeedInfractionAddresses() {
     this.tableData.forEach((row: any, index: number) => {
-      if (row.address?.includes(',') && row.latitude && row.longitude) {
+      const isCoordinateOnly = row.address && !/[a-zA-Z]/.test(row.address);
+      if (isCoordinateOnly && row.latitude && row.longitude) {
         this.geocodingService.reverseGeocode(row.latitude, row.longitude).pipe(takeUntil(this.destroy$)).subscribe({
           next: (address) => {
             if (address) {
@@ -1724,7 +1725,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   enrichDrivingBehaviorAddresses() {
     this.tableData.forEach((row: any, index: number) => {
-      if (row.address?.includes(',') && row.latitude && row.longitude) {
+      const isCoordinateOnly = row.address && !/[a-zA-Z]/.test(row.address);
+      if (isCoordinateOnly && row.latitude && row.longitude) {
         this.geocodingService.reverseGeocode(row.latitude, row.longitude).pipe(takeUntil(this.destroy$)).subscribe({
           next: (address) => {
             if (address) {
@@ -3210,9 +3212,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       };
     });
 
-    // Enrich with addresses
+    // Enrich with addresses (only for coordinate-only entries, not real addresses)
     this.tableData.forEach((row: any, index: number) => {
-      if (row.address?.includes(',') && row.latitude && row.longitude) {
+      const isCoordinateOnly = row.address && !/[a-zA-Z]/.test(row.address);
+      if (isCoordinateOnly && row.latitude && row.longitude) {
         this.geocodingService.reverseGeocode(row.latitude, row.longitude).pipe(takeUntil(this.destroy$)).subscribe({
           next: (addr) => {
             if (addr) {
