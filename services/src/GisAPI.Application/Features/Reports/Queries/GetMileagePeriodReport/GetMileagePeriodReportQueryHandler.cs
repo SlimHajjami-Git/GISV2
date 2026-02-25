@@ -10,6 +10,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
 {
     private readonly IGisDbContext _context;
     private static readonly CultureInfo FrenchCulture = new("fr-FR");
+    private static readonly TimeSpan LocalOffset = TimeSpan.FromHours(1); // Tunisia = UTC+1
 
     public GetMileagePeriodReportQueryHandler(IGisDbContext context)
     {
@@ -95,9 +96,9 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
     {
         var report = CreateBaseReport(vehicle, request);
 
-        // Group by hour of day
+        // Group by hour of day (adjusted to local time: UTC+1 for Tunisia)
         var hourlyGroups = positions
-            .GroupBy(p => p.RecordedAt.Hour)
+            .GroupBy(p => (p.RecordedAt + LocalOffset).Hour)
             .OrderBy(g => g.Key)
             .ToList();
 
@@ -168,9 +169,9 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
     {
         var report = CreateBaseReport(vehicle, request);
 
-        // Group by date
+        // Group by date (adjusted to local time: UTC+1 for Tunisia)
         var dailyGroups = positions
-            .GroupBy(p => p.RecordedAt.Date)
+            .GroupBy(p => (p.RecordedAt + LocalOffset).Date)
             .OrderBy(g => g.Key)
             .ToList();
 
@@ -246,9 +247,9 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
     {
         var report = CreateBaseReport(vehicle, request);
 
-        // Group by month
+        // Group by month (adjusted to local time: UTC+1 for Tunisia)
         var monthlyGroups = positions
-            .GroupBy(p => new { p.RecordedAt.Year, p.RecordedAt.Month })
+            .GroupBy(p => new { (p.RecordedAt + LocalOffset).Year, (p.RecordedAt + LocalOffset).Month })
             .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
             .ToList();
 
@@ -272,7 +273,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
                 
                 // Count days with activity
                 var daysWithActivity = monthPositions
-                    .GroupBy(p => p.RecordedAt.Date)
+                    .GroupBy(p => (p.RecordedAt + LocalOffset).Date)
                     .Count(g => CalculateTotalDistance(g.ToList()) > 0);
 
                 monthlyBreakdown.Add(new MonthlyMileagePeriodDto

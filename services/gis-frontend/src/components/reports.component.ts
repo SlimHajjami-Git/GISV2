@@ -655,7 +655,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     // Handle mileage report separately
     if (this.selectedTemplate.type === 'mileage') {
-      this.executeMileageReport(vehicleId!, startDate, endDate);
+      if (vehicleId) {
+        this.executeMileageReport(vehicleId, startDate, endDate);
+      } else {
+        this.executeMileageReportAllVehicles(startDate, endDate);
+      }
       return;
     }
 
@@ -1154,11 +1158,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Filter out short "Circulation" stops (ignition ON, < 10 min) — traffic lights, brief pauses
-    // Only keep real stops: ignition OFF (parked) or long ignition-ON pauses (> 10 min)
+    // Filter: keep only real stops (ignition OFF) and extended idle (ignition ON, >= 30 min)
+    // Short "Circulation" entries (traffic lights, brief pauses) are excluded
     const meaningfulStops = stops.filter((stop: any) => {
       if (stop.ignitionOff) return true; // Always keep real parked stops
-      return stop.durationSeconds >= 600; // Keep circulation stops only if >= 10 min
+      return stop.durationSeconds >= 1800; // Keep idle only if >= 30 min ("Ralenti prolongé")
     });
 
     // Sort by start time descending (most recent first)
@@ -1185,7 +1189,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
         endTime: stop.endTime ? this.formatDateTime(stop.endTime) : '-',
         duration: formatDuration(stop.durationSeconds),
         durationSeconds: stop.durationSeconds,
-        address: stop.address || `${stop.latitude.toFixed(5)}, ${stop.longitude.toFixed(5)}`,
+        address: stop.address || 'Chargement...',
+        latitude: stop.latitude,
+        longitude: stop.longitude,
         typeCode: stopTypeCode,
         typeLabel: stopTypeLabel,
         ignitionOff: stop.ignitionOff,
@@ -1194,27 +1200,34 @@ export class ReportsComponent implements OnInit, OnDestroy {
       };
     });
 
+    // Fetch addresses for stops without one
+    this.enrichStopsWithAddresses();
+
     // Chart data - by type
     const typeA = this.tableData.filter((s: any) => s.typeCode === 'A');
     const typeC = this.tableData.filter((s: any) => s.typeCode === 'C');
     const totalTypeASeconds = typeA.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
     const totalTypeCSeconds = typeC.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
 
+    const totalSeconds = totalTypeASeconds + totalTypeCSeconds;
+    const pctA = totalSeconds > 0 ? Math.round(totalTypeASeconds / totalSeconds * 100) : 0;
+    const pctC = totalSeconds > 0 ? 100 - pctA : 0;
+
     this.chartData = [
-      { label: '🅿️ Arrêts (A)', value: Math.round(totalTypeASeconds / 60), count: typeA.length, color: '#3B82F6' },
-      { label: '🚦 Circulation (C)', value: Math.round(totalTypeCSeconds / 60), count: typeC.length, color: '#F59E0B' }
+      { label: `Arrêts ${pctA}%`, value: Math.round(totalTypeASeconds / 60), count: typeA.length, color: '#3B82F6' },
+      { label: `Ralenti prolongé ${pctC}%`, value: Math.round(totalTypeCSeconds / 60), count: typeC.length, color: '#F59E0B' }
     ];
 
     // Statistics
-    const totalDurationSeconds = stops.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
-    const vehiclesWithStops = new Set(stops.map((s: any) => s.vehicleId || s.vehicleName)).size;
+    const filteredDurationSeconds = meaningfulStops.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
+    const vehiclesWithStops = new Set(meaningfulStops.map((s: any) => s.vehicleId || s.vehicleName)).size;
 
     this.statisticsData = {
       'Véhicules': vehiclesWithStops.toString(),
-      'Total arrêts': stops.length.toString(),
-      '🅿️ Arrêts (A)': `${typeA.length} (${formatDuration(totalTypeASeconds)})`,
-      '🚦 Circulation (C)': `${typeC.length} (${formatDuration(totalTypeCSeconds)})`,
-      'Durée totale': formatDuration(totalDurationSeconds)
+      'Total arrêts': meaningfulStops.length.toString(),
+      '🅿️ Arrêts': `${typeA.length} (${formatDuration(totalTypeASeconds)})`,
+      '🚦 Ralenti prolongé': `${typeC.length} (${formatDuration(totalTypeCSeconds)})`,
+      'Durée totale': formatDuration(filteredDurationSeconds)
     };
 
     // Secondary chart: Stops by vehicle
@@ -1449,12 +1462,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
         }
 
         const allIncidents: any[] = [];
+        let maxSpeedKph = 0;
+        let maxRpm = 0;
         let completedRequests = 0;
         const totalVehicles = targetVehicles.length;
         
         if (totalVehicles === 0) {
           this.ngZone.run(() => {
-            this.processDrivingBehaviorReport([]);
+            this.processDrivingBehaviorReport([], 0, 0);
             this.reportGenerated = true;
             this.loading = false;
             this.activeTab = 'table';
@@ -1469,11 +1484,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
             next: (positions) => {
               const incidents = this.detectDrivingIncidents(positions, vehicle);
               allIncidents.push(...incidents);
+              // Track max speed and RPM across all positions
+              positions.forEach((p: any) => {
+                if ((p.speedKph || 0) > maxSpeedKph) maxSpeedKph = p.speedKph || 0;
+                if ((p.rpm || 0) > maxRpm) maxRpm = p.rpm || 0;
+              });
               completedRequests++;
               
               if (completedRequests === totalVehicles) {
                 this.ngZone.run(() => {
-                  this.processDrivingBehaviorReport(allIncidents);
+                  this.processDrivingBehaviorReport(allIncidents, maxSpeedKph, maxRpm);
                   this.reportGenerated = true;
                   this.loading = false;
                   this.activeTab = 'table';
@@ -1488,7 +1508,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
               completedRequests++;
               if (completedRequests === totalVehicles) {
                 this.ngZone.run(() => {
-                  this.processDrivingBehaviorReport(allIncidents);
+                  this.processDrivingBehaviorReport(allIncidents, maxSpeedKph, maxRpm);
                   this.reportGenerated = true;
                   this.loading = false;
                   this.activeTab = 'table';
@@ -1631,7 +1651,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return Array.from(deduped.values());
   }
 
-  processDrivingBehaviorReport(incidents: any[]) {
+  processDrivingBehaviorReport(incidents: any[], maxSpeedKph: number = 0, maxRpm: number = 0) {
     // Sort by time descending
     incidents.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
     
@@ -1715,6 +1735,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     
     this.statisticsData = {
       '🚨 Total incidents': incidents.length.toString(),
+      '🏁 Vitesse max': maxSpeedKph > 0 ? `${Math.round(maxSpeedKph)} km/h` : 'N/A',
+      '🔧 RPM max': maxRpm > 0 ? `${Math.round(maxRpm)} tr/min` : 'N/A',
       '🔴 Graves': `${bySeverity.high} (${highPct}%)`,
       '🟡 Modérés': `${bySeverity.medium} (${mediumPct}%)`,
       '🟢 Légers': `${bySeverity.low} (${lowPct}%)`,
@@ -2200,6 +2222,89 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
   }
 
+  executeMileageReportAllVehicles(startDate?: Date, endDate?: Date) {
+    const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const end = endDate || new Date();
+
+    this.apiService.getMileageReports(start, end).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (reports) => {
+        this.ngZone.run(() => {
+          this.processMileageReportAllVehicles(reports, start, end);
+          this.reportGenerated = true;
+          this.loading = false;
+          this.activeTab = 'table';
+          this.currentPage = 1;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+          setTimeout(() => this.createMileageChart(), 100);
+        });
+      },
+      error: (err) => {
+        this.ngZone.run(() => {
+          console.error('Error loading mileage reports:', err);
+          this.tableData = [];
+          this.chartData = [];
+          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport kilométrique' };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+        });
+      }
+    });
+  }
+
+  processMileageReportAllVehicles(reports: any[], start: Date, end: Date) {
+    const validReports = reports.filter((r: any) => r.hasData && r.summary);
+
+    if (validReports.length === 0) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = {
+        'Période': `${start.toLocaleDateString('fr-FR')} - ${end.toLocaleDateString('fr-FR')}`,
+        'Information': 'Aucune donnée kilométrique pour cette période'
+      };
+      return;
+    }
+
+    // Sort by total distance descending
+    validReports.sort((a: any, b: any) => b.summary.totalDistanceKm - a.summary.totalDistanceKm);
+
+    this.tableData = validReports.map((r: any) => ({
+      vehicleName: r.vehicleName || r.plate,
+      plate: r.plate || '-',
+      driver: r.driverName || '-',
+      distance: `${r.summary.totalDistanceKm.toFixed(1)} km`,
+      distanceValue: r.summary.totalDistanceKm,
+      tripCount: r.summary.totalTripCount,
+      drivingTime: r.summary.totalDrivingFormatted || this.formatMinutes(r.summary.totalDrivingMinutes || 0),
+      avgSpeed: `${r.summary.avgSpeedKph.toFixed(1)} km/h`,
+      maxSpeed: `${r.summary.maxSpeedKph.toFixed(1)} km/h`,
+      avgDaily: `${r.summary.averageDailyKm.toFixed(1)} km/j`,
+      activeDays: `${r.summary.daysWithActivity}/${r.summary.totalDays}`
+    }));
+
+    // Chart: top 10 vehicles by distance
+    this.chartData = validReports.slice(0, 10).map((r: any) => ({
+      label: r.vehicleName || r.plate,
+      value: r.summary.totalDistanceKm
+    }));
+
+    // Aggregate statistics
+    const totalDist = validReports.reduce((sum: number, r: any) => sum + r.summary.totalDistanceKm, 0);
+    const totalTrips = validReports.reduce((sum: number, r: any) => sum + r.summary.totalTripCount, 0);
+    const maxDist = Math.max(...validReports.map((r: any) => r.summary.totalDistanceKm));
+    const maxVehicle = validReports.find((r: any) => r.summary.totalDistanceKm === maxDist);
+
+    this.statisticsData = {
+      'Période': `${start.toLocaleDateString('fr-FR')} - ${end.toLocaleDateString('fr-FR')}`,
+      'Véhicules': validReports.length.toString(),
+      'Distance totale flotte': `${totalDist.toFixed(1)} km`,
+      'Nombre total de trajets': totalTrips.toString(),
+      'Moyenne par véhicule': `${(totalDist / validReports.length).toFixed(1)} km`,
+      'Véhicule le plus actif': maxVehicle ? `${maxVehicle.vehicleName} (${maxDist.toFixed(1)} km)` : '-'
+    };
+  }
+
   formatMinutes(minutes: number): string {
     if (minutes < 60) return `${minutes}m`;
     const hours = Math.floor(minutes / 60);
@@ -2444,9 +2549,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   processMileagePeriodReport(report: MileagePeriodReport) {
-    console.log('Processing mileage period report:', report);
-    console.log('Report hasData:', report.hasData);
-    console.log('Report periodType:', report.periodType);
     
     if (!report.hasData) {
       this.tableData = [];
@@ -2462,53 +2564,55 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     // Normalize periodType to lowercase for comparison
     const periodType = (report.periodType || '').toString().toLowerCase() as MileagePeriodType;
-    console.log('Normalized periodType:', periodType);
 
     // Process based on period type
     switch (periodType) {
       case 'hour':
-        console.log('Processing hourly data:', report.hourlyBreakdown?.length, 'items');
-        this.tableData = (report.hourlyBreakdown || []).map((h: HourlyMileagePeriod) => ({
-          period: h.hourLabel,
-          distance: `${h.distanceKm.toFixed(1)} km`,
-          distanceValue: h.distanceKm,
-          tripCount: h.tripCount,
-          drivingTime: this.formatMinutes(h.drivingMinutes),
-          avgSpeed: `${h.avgSpeedKph.toFixed(1)} km/h`,
-          maxSpeed: `${h.maxSpeedKph.toFixed(1)} km/h`
-        }));
+        // Filter out hours with 0 km (no activity)
+        this.tableData = (report.hourlyBreakdown || [])
+          .filter((h: HourlyMileagePeriod) => h.distanceKm > 0)
+          .map((h: HourlyMileagePeriod) => ({
+            period: h.hourLabel,
+            distance: `${h.distanceKm.toFixed(1)} km`,
+            distanceValue: h.distanceKm,
+            tripCount: h.tripCount,
+            drivingTime: this.formatMinutes(h.drivingMinutes),
+            avgSpeed: `${h.avgSpeedKph.toFixed(1)} km/h`,
+            maxSpeed: `${h.maxSpeedKph.toFixed(1)} km/h`
+          }));
         break;
       case 'day':
-        console.log('Processing daily data:', report.dailyBreakdown?.length, 'items');
-        this.tableData = (report.dailyBreakdown || []).reverse().map((d: DailyMileagePeriod) => ({
-          period: d.dateLabel,
-          dayOfWeek: d.dayOfWeek,
-          distance: `${d.distanceKm.toFixed(1)} km`,
-          distanceValue: d.distanceKm,
-          tripCount: d.tripCount,
-          drivingTime: this.formatMinutes(d.drivingMinutes),
-          avgSpeed: `${d.avgSpeedKph.toFixed(1)} km/h`,
-          maxSpeed: `${d.maxSpeedKph.toFixed(1)} km/h`
-        }));
+        // Filter out days with 0 km
+        this.tableData = (report.dailyBreakdown || []).reverse()
+          .filter((d: DailyMileagePeriod) => d.distanceKm > 0)
+          .map((d: DailyMileagePeriod) => ({
+            period: d.dateLabel,
+            dayOfWeek: d.dayOfWeek,
+            distance: `${d.distanceKm.toFixed(1)} km`,
+            distanceValue: d.distanceKm,
+            tripCount: d.tripCount,
+            drivingTime: this.formatMinutes(d.drivingMinutes),
+            avgSpeed: `${d.avgSpeedKph.toFixed(1)} km/h`,
+            maxSpeed: `${d.maxSpeedKph.toFixed(1)} km/h`
+          }));
         break;
       case 'month':
-        console.log('Processing monthly data:', report.monthlyBreakdown?.length, 'items');
-        this.tableData = (report.monthlyBreakdown || []).reverse().map((m: MonthlyMileagePeriod) => ({
-          period: m.monthLabel,
-          distance: `${m.distanceKm.toFixed(1)} km`,
-          distanceValue: m.distanceKm,
-          avgDaily: `${m.averageDailyKm.toFixed(1)} km/jour`,
-          tripCount: m.tripCount,
-          drivingTime: this.formatMinutes(m.drivingMinutes),
-          activeDays: `${m.daysWithActivity}/${m.totalDays}`
-        }));
+        // Filter out months with 0 km
+        this.tableData = (report.monthlyBreakdown || []).reverse()
+          .filter((m: MonthlyMileagePeriod) => m.distanceKm > 0)
+          .map((m: MonthlyMileagePeriod) => ({
+            period: m.monthLabel,
+            distance: `${m.distanceKm.toFixed(1)} km`,
+            distanceValue: m.distanceKm,
+            avgDaily: `${m.averageDailyKm.toFixed(1)} km/jour`,
+            joursCirculation: `${m.daysWithActivity}`,
+            tripCount: m.tripCount,
+            drivingTime: this.formatMinutes(m.drivingMinutes)
+          }));
         break;
       default:
-        console.warn('Unknown periodType:', periodType);
         this.tableData = [];
     }
-
-    console.log('tableData after processing:', this.tableData.length, 'items');
 
     // Chart data from report
     this.chartData = report.chartData.map(d => ({
@@ -3505,19 +3609,19 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return `${Math.round(minutes)}min`;
     };
 
-    // Process stops into table data with type classification
-    // A = Arrêt (ignition_off = true) - Vehicle is parked
-    // C = Circulation (ignition_on = true, speed = 0) - Idling in traffic
-    this.tableData = stops.map((stop: VehicleStopDto) => {
+    // Filter: keep only real stops (ignition OFF) and extended idle (ignition ON, >= 30 min)
+    // Short "Circulation" entries (traffic lights, brief pauses) are excluded
+    const meaningfulStops = stops.filter((stop: VehicleStopDto) => {
+      if (stop.ignitionOff) return true; // Always keep real parked stops
+      return stop.durationSeconds >= 1800; // Keep idle only if >= 30 min ("Ralenti prolongé")
+    });
+
+    this.tableData = meaningfulStops.map((stop: VehicleStopDto) => {
       const durationMinutes = stop.durationSeconds / 60;
-      // Determine stop type: A = Arrêt (ignition off), C = Circulation (idling)
       const stopTypeCode = stop.ignitionOff ? 'A' : 'C';
       const stopTypeLabel = stop.ignitionOff 
         ? '🅿️ Arrêt' 
-        : '🚦 Circulation';
-      const stopTypeDescription = stop.ignitionOff
-        ? 'Moteur éteint'
-        : 'Moteur allumé, véhicule à l\'arrêt';
+        : '🚦 Ralenti prolongé';
 
       return {
         time: this.formatDateTime(stop.startTime),
@@ -3529,7 +3633,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
         longitude: stop.longitude,
         typeCode: stopTypeCode,
         typeLabel: stopTypeLabel,
-        typeDescription: stopTypeDescription,
         ignitionOff: stop.ignitionOff,
         isLongStop: durationMinutes > 30,
         geofenceName: stop.geofenceName,
@@ -3555,8 +3658,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const pctC = totalSeconds > 0 ? 100 - pctA : 0;
 
     this.chartData = [
-      { label: `Arrêts (A) ${pctA}%`, value: Math.round(totalTypeASeconds / 60), count: typeA.length, color: '#3B82F6' },
-      { label: `Circulation (C) ${pctC}%`, value: Math.round(totalTypeCSeconds / 60), count: typeC.length, color: '#F59E0B' }
+      { label: `Arrêts ${pctA}%`, value: Math.round(totalTypeASeconds / 60), count: typeA.length, color: '#3B82F6' },
+      { label: `Ralenti prolongé ${pctC}%`, value: Math.round(totalTypeCSeconds / 60), count: typeC.length, color: '#F59E0B' }
     ];
 
     // Secondary chart: duration range breakdown (matching Calypso bar chart)
@@ -3573,22 +3676,21 @@ export class ReportsComponent implements OnInit, OnDestroy {
       color: r.color
     }));
 
-    // Statistics
-    const totalDurationSeconds = stops.reduce((sum, s) => sum + s.durationSeconds, 0);
-    const avgDurationSeconds = stops.length > 0 ? totalDurationSeconds / stops.length : 0;
-    const maxDurationSeconds = stops.length > 0 ? Math.max(...stops.map(s => s.durationSeconds)) : 0;
-    const minDurationSeconds = stops.length > 0 ? Math.min(...stops.map(s => s.durationSeconds)) : 0;
-    const longStops = this.tableData.filter((s: any) => s.isLongStop).length;
+    // Statistics — based on filtered meaningful stops
+    const filteredDurationSeconds = meaningfulStops.reduce((sum, s) => sum + s.durationSeconds, 0);
+    const avgDurationSeconds = meaningfulStops.length > 0 ? filteredDurationSeconds / meaningfulStops.length : 0;
+    const maxDurationSeconds = meaningfulStops.length > 0 ? Math.max(...meaningfulStops.map(s => s.durationSeconds)) : 0;
+    const minDurationSeconds = meaningfulStops.length > 0 ? Math.min(...meaningfulStops.map(s => s.durationSeconds)) : 0;
 
     this.statisticsData = {
-      'Total arrêts': stops.length.toString(),
-      'Durée moy. arrêt': formatDuration(avgDurationSeconds),
+      'Total arrêts': meaningfulStops.length.toString(),
+      'Durée moy.': formatDuration(avgDurationSeconds),
       'Max. arrêt': formatDuration(maxDurationSeconds),
       'Min. arrêt': formatDuration(minDurationSeconds),
-      'Temps total circulation': formatDuration(totalTypeCSeconds),
       'Temps total arrêt': formatDuration(totalTypeASeconds),
-      '🅿️ Arrêts (A)': typeA.length.toString(),
-      '🚦 Ralenti (C)': typeC.length.toString()
+      'Temps total ralenti': formatDuration(totalTypeCSeconds),
+      '🅿️ Arrêts': typeA.length.toString(),
+      '🚦 Ralenti prolongé': typeC.length.toString()
     };
   }
 
