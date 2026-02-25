@@ -751,6 +751,8 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   gap: 12px;
   padding: 12px;
   min-height: 220px;
+  overflow: visible;
+  flex-shrink: 0;
 }
 
 .chart-area {
