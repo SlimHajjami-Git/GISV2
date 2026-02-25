@@ -3636,8 +3636,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
         const stopDurationMs = new Date(seg.end.recordedAt).getTime() - new Date(seg.start.recordedAt).getTime();
         const stopDurationMin = stopDurationMs / 60000;
         
-        if (prevSeg.type === 'trip' && nextSeg.type === 'trip' && stopDurationMin < MIN_STOP_BREAK_MINUTES) {
-          // Absorb stop + next trip into previous trip
+        // Check if ignition was turned OFF during this stop
+        // If engine was OFF, this is a real trip break — never merge
+        const hasIgnitionOff = seg.positions.some((p: any) => p.ignitionOn === false);
+        
+        if (prevSeg.type === 'trip' && nextSeg.type === 'trip' && stopDurationMin < MIN_STOP_BREAK_MINUTES && !hasIgnitionOff) {
+          // Only merge if ignition stayed ON (traffic light, brief slow-down)
           prevSeg.end = nextSeg.end;
           prevSeg.positions = [...prevSeg.positions, ...seg.positions, ...nextSeg.positions];
           prevSeg.distanceKm += seg.distanceKm + nextSeg.distanceKm;

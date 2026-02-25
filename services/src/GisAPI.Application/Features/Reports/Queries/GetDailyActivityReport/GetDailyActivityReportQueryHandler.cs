@@ -263,6 +263,9 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
                     var stopAddress = await _geocodingService.ReverseGeocodeAsync(
                         stopStart.Latitude, stopStart.Longitude);
 
+                    // Check if ignition was turned OFF during this stop
+                    var hasIgnitionOff = stopPositions.Any(p => p.IgnitionOn == false);
+
                     activities.Add(new ActivitySegmentDto
                     {
                         Type = "stop",
@@ -271,6 +274,7 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
                         EndTime = stopEnd.RecordedAt,
                         DurationSeconds = stopDuration,
                         DurationFormatted = FormatDuration(stopDuration),
+                        HasIgnitionOff = hasIgnitionOff,
                         StartLocation = new LocationDto
                         {
                             Latitude = stopStart.Latitude,
@@ -301,9 +305,20 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
                     var prev = merged[^1];
                     // Gap between end of previous drive and start of this drive
                     var gapSeconds = prev.EndTime.HasValue ? (int)(seg.StartTime - prev.EndTime.Value).TotalSeconds : 0;
-                    if (gapSeconds < MIN_REAL_STOP_SECONDS)
+                    
+                    // Check if ignition went OFF during the gap between drives
+                    var gapHasIgnitionOff = false;
+                    if (prev.EndTime.HasValue)
                     {
-                        // Same trip: merge into previous drive
+                        gapHasIgnitionOff = activePositions.Any(p =>
+                            p.RecordedAt >= prev.EndTime.Value &&
+                            p.RecordedAt <= seg.StartTime &&
+                            p.IgnitionOn == false);
+                    }
+                    
+                    if (gapSeconds < MIN_REAL_STOP_SECONDS && !gapHasIgnitionOff)
+                    {
+                        // Same trip: merge into previous drive (only if engine stayed ON)
                         prev.EndTime = seg.EndTime;
                         prev.EndLocation = seg.EndLocation;
                         prev.DurationSeconds = prev.EndTime.HasValue ? (int)(prev.EndTime.Value - prev.StartTime).TotalSeconds : prev.DurationSeconds + seg.DurationSeconds;
@@ -324,7 +339,8 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
             else if (seg.Type == "stop")
             {
                 // Short stop between two drives → absorb into previous drive (traffic light)
-                if (seg.DurationSeconds < MIN_REAL_STOP_SECONDS && merged.Count > 0 && m + 1 < activities.Count)
+                // But NEVER absorb if ignition was OFF (real engine stop)
+                if (seg.DurationSeconds < MIN_REAL_STOP_SECONDS && !seg.HasIgnitionOff && merged.Count > 0 && m + 1 < activities.Count)
                 {
                     var prevSeg = merged[^1];
                     var nextSeg = activities[m + 1];

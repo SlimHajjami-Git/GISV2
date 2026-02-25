@@ -61,6 +61,8 @@ public class ActivitySegmentDto
     public double? DistanceKm { get; set; }
     public double? AvgSpeedKph { get; set; }
     public double? MaxSpeedKph { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasIgnitionOff { get; set; }
 }
 
 public class LocationDto
