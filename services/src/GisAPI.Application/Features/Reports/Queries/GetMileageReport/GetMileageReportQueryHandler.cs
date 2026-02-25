@@ -9,6 +9,7 @@ namespace GisAPI.Application.Features.Reports.Queries.GetMileageReport;
 public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuery, MileageReportDto>
 {
     private readonly IGisDbContext _context;
+    private static readonly TimeSpan LocalOffset = TimeSpan.FromHours(1); // Tunisia = UTC+1
 
     public GetMileageReportQueryHandler(IGisDbContext context)
     {
@@ -124,9 +125,9 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
         // Calculate total distance from GPS positions
         report.TotalDistanceKm = CalculateTotalDistance(positions);
 
-        // Group positions by day for daily breakdown
+        // Group positions by day for daily breakdown (adjusted to local time: UTC+1 for Tunisia)
         var dailyGroups = positions
-            .GroupBy(p => p.RecordedAt.Date)
+            .GroupBy(p => (p.RecordedAt + LocalOffset).Date)
             .OrderBy(g => g.Key)
             .ToList();
 
@@ -217,12 +218,14 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
         var totalDays = (endDate - startDate).Days + 1;
         var daysWithActivity = dailyBreakdown.Count(d => d.DistanceKm > 0);
         var totalDrivingMinutes = dailyBreakdown.Sum(d => d.DrivingMinutes);
-        var allSpeeds = positions.Where(p => p.SpeedKph > 0).Select(p => p.SpeedKph ?? 0).ToList();
-
         var maxDaily = dailyBreakdown.Any() ? dailyBreakdown.Max(d => d.DistanceKm) : 0;
         var minDaily = dailyBreakdown.Where(d => d.DistanceKm > 0).DefaultIfEmpty().Min(d => d?.DistanceKm ?? 0);
         var maxDailyDate = dailyBreakdown.FirstOrDefault(d => d.DistanceKm == maxDaily)?.Date;
         var minDailyDate = dailyBreakdown.Where(d => d.DistanceKm > 0).FirstOrDefault(d => d.DistanceKm == minDaily)?.Date;
+
+        // Avg speed = distance / driving time (consistent with mileage period report)
+        var summaryMaxSpeed = positions.Where(p => p.SpeedKph > 0).Select(p => p.SpeedKph ?? 0).DefaultIfEmpty().Max();
+        var summaryAvgSpeed = totalDrivingMinutes > 0 ? report.TotalDistanceKm / (totalDrivingMinutes / 60.0) : 0;
 
         report.Summary = new MileageSummaryDto
         {
@@ -235,8 +238,8 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
             TotalTripCount = dailyBreakdown.Sum(d => d.TripCount),
             TotalDrivingMinutes = totalDrivingMinutes,
             TotalDrivingFormatted = FormatDuration(totalDrivingMinutes * 60),
-            MaxSpeedKph = allSpeeds.Any() ? Math.Round(allSpeeds.Max(), 1) : 0,
-            AvgSpeedKph = allSpeeds.Any() ? Math.Round(allSpeeds.Average(), 1) : 0,
+            MaxSpeedKph = Math.Round(summaryMaxSpeed, 1),
+            AvgSpeedKph = Math.Round(summaryAvgSpeed, 1),
             DaysWithActivity = daysWithActivity,
             TotalDays = totalDays,
             ActivityPercentage = totalDays > 0 ? Math.Round((double)daysWithActivity / totalDays * 100, 1) : 0
