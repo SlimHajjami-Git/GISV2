@@ -3261,16 +3261,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
         let eventType = 'Lecture';
         let isAnomaly = false;
-        if (fuelDelta > 5) {
+        if (fuelDelta >= 10) {
           eventType = '⛽ Remplissage';
         } else if (fuelDelta < -15) {
           eventType = '⚠️ Chute importante';
           isAnomaly = true;
         } else if (fuelDelta < -5) {
           eventType = '📉 Consommation';
-        } else if (fuelDelta > 0 && !isFirst) {
+        } else if (fuelDelta >= 5 && !isFirst) {
           eventType = '📈 Augmentation';
         }
+        // fuelDelta +1 to +4% = sensor noise → stays as "Lecture"
 
         const location = pos.address || `${pos.latitude.toFixed(4)}°, ${pos.longitude.toFixed(4)}°`;
 
