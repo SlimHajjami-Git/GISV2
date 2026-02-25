@@ -54,7 +54,7 @@ impl RedisCache {
         // Preserve last known good values from previous cache entry
         // Use GETDEL-like pattern: read previous in same pipeline as write (below)
         let device_key = format!("vehicle:position:{}", device_uid);
-        let prev_cache: Option<serde_json::Value> = if frame.fuel_raw == 0 || frame.fms_temperature_c.is_none() {
+        let prev_cache: Option<serde_json::Value> = if frame.fuel_raw == 0 {
             // Only read previous cache when we actually need fallback values
             conn.get::<_, Option<String>>(&device_key).await
                 .ok()
@@ -91,14 +91,9 @@ impl RedisCache {
         // Temperature: ONLY use FMS temperature from CAN bus (V3 frames, J1939 raw - 40)
         // The base frame temperature_raw is "80+Analogic1 or digital temp" (raw analog value),
         // NOT a J1939 temperature — applying -40 to it gives wrong readings.
-        let temperature_c: Option<i16> = if let Some(fms_temp) = frame.fms_temperature_c {
-            if fms_temp != 0 && fms_temp > -50 && fms_temp < 200 { Some(fms_temp) } else { None }
-        } else {
-            // No FMS temp available — preserve previous cache value
-            prev_cache.as_ref()
-                .and_then(|c| c["temperatureC"].as_i64())
-                .map(|v| v as i16)
-        };
+        // Do NOT preserve previous cache value: devices without FMS temp would keep stale data forever.
+        let temperature_c: Option<i16> = frame.fms_temperature_c
+            .filter(|&t| t != 0 && t > -50 && t < 200);
 
         let position_data = json!({
             "deviceUid": device_uid,
