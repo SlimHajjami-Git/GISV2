@@ -841,16 +841,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
       
       vehiclePositions.forEach((pos, i) => {
         const isIgnitionOn = pos.ignitionOn === true;
-        const isMoving = (pos.speedKph || 0) > 2; // Must be moving to count as trip
-        const isTripPosition = isIgnitionOn && isMoving;
+        const hasMovement = (pos.speedKph || 0) > 2;
         
-        if (isTripPosition && !currentTrip) {
+        if (isIgnitionOn && hasMovement && !currentTrip) {
+          // Start trip: ignition ON + movement
           currentTrip = { start: pos, end: pos, positions: [pos], vehicleName, vehicleId, hasMovement: true };
-        } else if (isTripPosition && currentTrip) {
+        } else if (isIgnitionOn && currentTrip) {
+          // Continue trip: ignition still ON (even if speed=0, e.g. traffic light)
           currentTrip.end = pos;
           currentTrip.positions.push(pos);
-        } else if (!isTripPosition && currentTrip) {
-          // Only save if there was actual movement
+        } else if (!isIgnitionOn && currentTrip) {
+          // End trip: ignition turned OFF
           if (currentTrip.hasMovement && currentTrip.positions.length > 1) {
             tripNumber++;
             currentTrip.tripNumber = tripNumber;
@@ -3785,12 +3786,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     for (let i = 0; i < positions.length; i++) {
       const pos = positions[i];
       const isIgnitionOn = pos.ignitionOn === true;
-      const isMoving = (pos.speedKph || 0) > 2;
-      const isTripPosition = isIgnitionOn && isMoving; // Must be moving to count as trip
+      const hasMovement = (pos.speedKph || 0) > 2;
+      // Trip = ignition ON (speed > 2 to START, but ignition OFF to END)
 
       if (!currentSegment) {
         currentSegment = {
-          type: isTripPosition ? 'trip' : 'stop',
+          type: (isIgnitionOn && hasMovement) ? 'trip' : 'stop',
           start: pos,
           end: pos,
           positions: [pos],
@@ -3800,7 +3801,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       }
 
       const prev = positions[i - 1];
-      const wasMoving = (prev.speedKph || 0) > 2 && prev.ignitionOn === true;
+      const prevIgnitionOn = prev.ignitionOn === true;
 
       // Calculate distance
       const dist = this.haversineDistance(prev.latitude, prev.longitude, pos.latitude, pos.longitude);
@@ -3808,8 +3809,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
         currentSegment.distanceKm += dist;
       }
 
-      // Detect transition: stopped moving = end of trip
-      if (wasMoving && !isTripPosition) {
+      // Detect transition: ignition turned OFF = end of trip
+      if (prevIgnitionOn && !isIgnitionOn) {
         currentSegment.end = prev;
         segments.push(currentSegment);
         currentSegment = {
@@ -3820,8 +3821,20 @@ export class ReportsComponent implements OnInit, OnDestroy {
           distanceKm: 0
         };
       }
-      // Detect transition: started moving = start of new trip
-      else if (!wasMoving && isTripPosition) {
+      // Detect transition: ignition turned ON + movement = start of new trip
+      else if (!prevIgnitionOn && isIgnitionOn && hasMovement) {
+        currentSegment.end = prev;
+        segments.push(currentSegment);
+        currentSegment = {
+          type: 'trip',
+          start: pos,
+          end: pos,
+          positions: [pos],
+          distanceKm: 0
+        };
+      }
+      // Ignition ON + first movement after idle = start trip
+      else if (currentSegment.type === 'stop' && isIgnitionOn && hasMovement) {
         currentSegment.end = prev;
         segments.push(currentSegment);
         currentSegment = {
@@ -3844,35 +3857,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
 
     // === MERGE PHASE ===
-    // 1. Merge trip-shortStop-trip into one continuous trip
-    //    (handles traffic lights, brief pauses < 3 min)
-    // 2. Merge consecutive stops into one stop
-    const MIN_STOP_BREAK_MINUTES = 3; // Stop must be >= 3 min to split a trip
+    // Since trips now continue through speed=0 with ignition ON,
+    // we only need to merge consecutive stops into one stop
     let merged: typeof segments = [];
     
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
-      
-      // Check if this is a short stop between two trips → absorb into previous trip
-      if (seg.type === 'stop' && merged.length > 0 && i + 1 < segments.length) {
-        const prevSeg = merged[merged.length - 1];
-        const nextSeg = segments[i + 1];
-        const stopDurationMs = new Date(seg.end.recordedAt).getTime() - new Date(seg.start.recordedAt).getTime();
-        const stopDurationMin = stopDurationMs / 60000;
-        
-        // Check if ignition was turned OFF during this stop
-        // If engine was OFF, this is a real trip break — never merge
-        const hasIgnitionOff = seg.positions.some((p: any) => p.ignitionOn === false);
-        
-        if (prevSeg.type === 'trip' && nextSeg.type === 'trip' && stopDurationMin < MIN_STOP_BREAK_MINUTES && !hasIgnitionOff) {
-          // Only merge if ignition stayed ON (traffic light, brief slow-down)
-          prevSeg.end = nextSeg.end;
-          prevSeg.positions = [...prevSeg.positions, ...seg.positions, ...nextSeg.positions];
-          prevSeg.distanceKm += seg.distanceKm + nextSeg.distanceKm;
-          i++; // Skip next trip (already merged)
-          continue;
-        }
-      }
       
       // Merge consecutive stops
       if (seg.type === 'stop' && merged.length > 0 && merged[merged.length - 1].type === 'stop') {
