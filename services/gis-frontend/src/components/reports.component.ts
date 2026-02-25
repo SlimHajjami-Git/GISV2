@@ -221,6 +221,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
     highRpm: true
   };
   
+  // Driving behavior metric cards
+  drivingBehaviorCards: { rpmMax: number; vitesseMax: number; scoreConduite: number; consommation: number | null } = {
+    rpmMax: 0, vitesseMax: 0, scoreConduite: 100, consommation: null
+  };
+
   // Incident type definitions with colors
   incidentTypes = [
     { key: 'harshAcceleration', label: 'Accélérations brusques', color: '#FF6B6B', icon: '⚡' },
@@ -1654,6 +1659,21 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Sort by time descending
     incidents.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
     
+    // Compute driving behavior metric cards
+    // Score: start at 100, deduct per incident severity
+    let score = 100;
+    incidents.forEach(inc => {
+      if (inc.severity === 'high') score -= 5;
+      else if (inc.severity === 'medium') score -= 3;
+      else score -= 1;
+    });
+    this.drivingBehaviorCards = {
+      rpmMax: Math.round(maxRpm),
+      vitesseMax: Math.round(maxSpeedKph),
+      scoreConduite: Math.max(0, Math.min(100, score)),
+      consommation: null
+    };
+
     if (incidents.length === 0) {
       this.tableData = [];
       this.chartData = [];
@@ -3256,6 +3276,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
         }
 
         const fuelDelta = lastFuelLevel >= 0 ? fuel - lastFuelLevel : 0;
+
+        // Skip sensor noise: small positive changes (+1 to +4%) are not real
+        if (fuelDelta > 0 && fuelDelta < 5 && !isFirst) {
+          return; // Don't display, don't update lastFuelLevel
+        }
+
         // km between this fuel change and the previous fuel change
         const kmDelta = (lastChangeOdometer > 0 && odometer > 0) ? odometer - lastChangeOdometer : 0;
 
@@ -3271,7 +3297,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
         } else if (fuelDelta >= 5 && !isFirst) {
           eventType = '📈 Augmentation';
         }
-        // fuelDelta +1 to +4% = sensor noise → stays as "Lecture"
 
         const location = pos.address || `${pos.latitude.toFixed(4)}°, ${pos.longitude.toFixed(4)}°`;
 

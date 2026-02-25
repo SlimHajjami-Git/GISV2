@@ -541,7 +541,30 @@
                 <div class="chart-area">
                   <canvas #chartCanvas></canvas>
                 </div>
-                @if (secondaryChartData && secondaryChartData.length > 0) {
+                @if (selectedTemplate?.type === 'driving-behavior') {
+                  <div class="behavior-cards-grid">
+                    <div class="behavior-card rpm-card">
+                      <div class="behavior-card-icon">🔧</div>
+                      <div class="behavior-card-label">RPM MAX.</div>
+                      <div class="behavior-card-value">{{ drivingBehaviorCards.rpmMax > 0 ? drivingBehaviorCards.rpmMax.toLocaleString('fr-FR') : '-' }}</div>
+                      <div class="behavior-card-unit">tr/min</div>
+                    </div>
+                    <div class="behavior-card speed-card">
+                      <div class="behavior-card-icon">🏁</div>
+                      <div class="behavior-card-label">VITESSE MAX.</div>
+                      <div class="behavior-card-value">{{ drivingBehaviorCards.vitesseMax > 0 ? drivingBehaviorCards.vitesseMax : '-' }}</div>
+                      <div class="behavior-card-unit">km/h</div>
+                    </div>
+                    <div class="behavior-card score-card">
+                      <div class="behavior-card-icon score-circle">{{ drivingBehaviorCards.scoreConduite }}</div>
+                      <div class="behavior-card-label">SCORE CONDUCTEUR</div>
+                      <div class="behavior-card-value">{{ drivingBehaviorCards.scoreConduite }} / 100</div>
+                      <div class="behavior-card-unit" [style.color]="drivingBehaviorCards.scoreConduite >= 80 ? '#22C55E' : drivingBehaviorCards.scoreConduite >= 50 ? '#F59E0B' : '#EF4444'">
+                        {{ drivingBehaviorCards.scoreConduite >= 80 ? '✅ Bon' : drivingBehaviorCards.scoreConduite >= 50 ? '⚠️ Moyen' : '❌ Mauvais' }}
+                      </div>
+                    </div>
+                  </div>
+                } @else if (secondaryChartData && secondaryChartData.length > 0) {
                   <div class="chart-area secondary-chart">
                     <canvas #secondaryChartCanvas></canvas>
                   </div>
