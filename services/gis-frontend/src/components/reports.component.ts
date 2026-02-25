@@ -3608,13 +3608,38 @@ export class ReportsComponent implements OnInit, OnDestroy {
     };
 
     // Filter: keep only real stops (ignition OFF) and extended idle (ignition ON, >= 30 min)
-    // Short "Circulation" entries (traffic lights, brief pauses) are excluded
     const meaningfulStops = stops.filter((stop: VehicleStopDto) => {
-      if (stop.ignitionOff) return true; // Always keep real parked stops
-      return stop.durationSeconds >= 1800; // Keep idle only if >= 30 min ("Ralenti prolongé")
+      if (stop.ignitionOff) return true;
+      return stop.durationSeconds >= 1800; // "Ralenti prolongé"
     });
 
-    this.tableData = meaningfulStops.map((stop: VehicleStopDto) => {
+    // Sort chronologically then merge overlapping stops
+    meaningfulStops.sort((a: VehicleStopDto, b: VehicleStopDto) => 
+      new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    );
+
+    const merged: VehicleStopDto[] = [];
+    for (const stop of meaningfulStops) {
+      if (merged.length === 0) { merged.push({ ...stop }); continue; }
+      const prev = merged[merged.length - 1];
+      const prevEnd = new Date(prev.endTime || prev.startTime).getTime();
+      const currStart = new Date(stop.startTime).getTime();
+      // Overlap or gap < 2 min → merge
+      if (currStart <= prevEnd + 120000) {
+        const currEnd = new Date(stop.endTime || stop.startTime).getTime();
+        const newEnd = Math.max(prevEnd, currEnd);
+        prev.endTime = new Date(newEnd).toISOString();
+        prev.durationSeconds = Math.round((newEnd - new Date(prev.startTime).getTime()) / 1000);
+        // Prefer ignitionOff (real stop) over idle
+        if (stop.ignitionOff) prev.ignitionOff = true;
+        // Keep address if prev has none
+        if (!prev.address && stop.address) prev.address = stop.address;
+      } else {
+        merged.push({ ...stop });
+      }
+    }
+
+    this.tableData = merged.map((stop: VehicleStopDto) => {
       const durationMinutes = stop.durationSeconds / 60;
       const stopTypeCode = stop.ignitionOff ? 'A' : 'C';
       const stopTypeLabel = stop.ignitionOff 
@@ -3626,7 +3651,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         endTime: stop.endTime ? this.formatDateTime(stop.endTime) : '-',
         duration: formatDuration(stop.durationSeconds),
         durationSeconds: stop.durationSeconds,
-        address: stop.address || `${stop.latitude.toFixed(5)}, ${stop.longitude.toFixed(5)}`,
+        address: stop.address || 'Chargement...',
         latitude: stop.latitude,
         longitude: stop.longitude,
         typeCode: stopTypeCode,
@@ -3640,7 +3665,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       };
     });
 
-    // Fetch addresses for stops without one
+    // Reverse to show most recent first
+    this.tableData.reverse();
+
+    // Fetch real addresses for stops without one
     this.enrichStopsWithAddresses();
 
     // Chart data - Gantt-style timeline showing stops
@@ -3674,14 +3702,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
       color: r.color
     }));
 
-    // Statistics — based on filtered meaningful stops
-    const filteredDurationSeconds = meaningfulStops.reduce((sum, s) => sum + s.durationSeconds, 0);
-    const avgDurationSeconds = meaningfulStops.length > 0 ? filteredDurationSeconds / meaningfulStops.length : 0;
-    const maxDurationSeconds = meaningfulStops.length > 0 ? Math.max(...meaningfulStops.map(s => s.durationSeconds)) : 0;
-    const minDurationSeconds = meaningfulStops.length > 0 ? Math.min(...meaningfulStops.map(s => s.durationSeconds)) : 0;
+    // Statistics — based on merged stops
+    const mergedDurations = this.tableData.map((s: any) => s.durationSeconds);
+    const filteredDurationSeconds = mergedDurations.reduce((sum: number, d: number) => sum + d, 0);
+    const avgDurationSeconds = mergedDurations.length > 0 ? filteredDurationSeconds / mergedDurations.length : 0;
+    const maxDurationSeconds = mergedDurations.length > 0 ? Math.max(...mergedDurations) : 0;
+    const minDurationSeconds = mergedDurations.length > 0 ? Math.min(...mergedDurations) : 0;
 
     this.statisticsData = {
-      'Total arrêts': meaningfulStops.length.toString(),
+      'Total arrêts': this.tableData.length.toString(),
       'Durée moy.': formatDuration(avgDurationSeconds),
       'Max. arrêt': formatDuration(maxDurationSeconds),
       'Min. arrêt': formatDuration(minDurationSeconds),
