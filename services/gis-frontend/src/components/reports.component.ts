@@ -905,7 +905,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
         }
       }
       
-      const avgSpeed = durationMin > 0 && distanceKm > 0 ? distanceKm / (durationMin / 60) : 0;
       const maxSpeed = Math.max(...trip.positions.map((p: any) => p.speedKph || 0));
 
       return {
@@ -919,7 +918,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
         durationMin,
         distance: `${distanceKm.toFixed(1)} km`,
         distanceKm,
-        avgSpeed: `${avgSpeed.toFixed(0)} km/h`,
         maxSpeed: `${maxSpeed.toFixed(0)} km/h`,
         startAddress: trip.start.address || `${trip.start.latitude.toFixed(4)}°`,
         endAddress: trip.end.address || `${trip.end.latitude.toFixed(4)}°`
@@ -3872,96 +3870,85 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return `${Math.round(minutes)}min`;
     };
 
-    // Reverse to show most recent first
-    meaningfulSegments.reverse();
+    // Only keep trips (remove all stops)
+    const tripsOnly = meaningfulSegments.filter(s => s.type === 'trip');
 
-    // Build table data with alternating trips and stops
-    const totalTrips = meaningfulSegments.filter(s => s.type === 'trip').length;
+    if (!tripsOnly.length) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = { 'Information': 'Aucun trajet significatif détecté' };
+      return;
+    }
+
+    // Reverse to show most recent first
+    tripsOnly.reverse();
+
+    // Build table data with trips only
+    const totalTrips = tripsOnly.length;
     let tripNumber = totalTrips + 1;
-    this.tableData = meaningfulSegments.map((seg, index) => {
+    this.tableData = tripsOnly.map((seg) => {
       const startTime = new Date(seg.start.recordedAt);
       const endTime = new Date(seg.end.recordedAt);
       const durationMin = (endTime.getTime() - startTime.getTime()) / 60000;
 
-      if (seg.type === 'trip') {
-        tripNumber--;
-        let distanceKm = seg.distanceKm;
-        
-        // Try odometer first
-        if (seg.start.odometerKm && seg.end.odometerKm && seg.end.odometerKm >= seg.start.odometerKm) {
-          distanceKm = seg.end.odometerKm - seg.start.odometerKm;
-        }
-        
-        // If still 0, estimate from average speed
-        if (distanceKm < 0.1 && durationMin > 1) {
-          const speeds = seg.positions.map((p: any) => p.speedKph || 0).filter((s: number) => s > 0);
-          if (speeds.length > 0) {
-            const avgSpeedFromPositions = speeds.reduce((a: number, b: number) => a + b, 0) / speeds.length;
-            distanceKm = avgSpeedFromPositions * (durationMin / 60);
-          }
-        }
-        
-        const avgSpeed = durationMin > 0 && distanceKm > 0 ? distanceKm / (durationMin / 60) : 0;
-        const maxSpeed = Math.max(...seg.positions.map(p => p.speedKph || 0));
-
-        return {
-          isTrip: true,
-          tripNumber,
-          startTime: this.formatDateTime(seg.start.recordedAt),
-          endTime: this.formatDateTime(seg.end.recordedAt),
-          duration: formatDuration(durationMin),
-          durationMin,
-          distance: `${distanceKm.toFixed(1)} km`,
-          distanceKm,
-          avgSpeed: `${avgSpeed.toFixed(0)} km/h`,
-          maxSpeed: `${maxSpeed.toFixed(0)} km/h`,
-          startAddress: seg.start.address || `${seg.start.latitude.toFixed(4)}°, ${seg.start.longitude.toFixed(4)}°`,
-          endAddress: seg.end.address || `${seg.end.latitude.toFixed(4)}°, ${seg.end.longitude.toFixed(4)}°`,
-          startLat: seg.start.latitude,
-          startLng: seg.start.longitude,
-          endLat: seg.end.latitude,
-          endLng: seg.end.longitude
-        };
-      } else {
-        return {
-          isTrip: false,
-          isStop: true,
-          startTime: this.formatDateTime(seg.start.recordedAt),
-          endTime: this.formatDateTime(seg.end.recordedAt),
-          duration: formatDuration(durationMin),
-          durationMin,
-          address: seg.start.address || `${seg.start.latitude.toFixed(4)}°, ${seg.start.longitude.toFixed(4)}°`,
-          latitude: seg.start.latitude,
-          longitude: seg.start.longitude
-        };
+      tripNumber--;
+      let distanceKm = seg.distanceKm;
+      
+      // Try odometer first
+      if (seg.start.odometerKm && seg.end.odometerKm && seg.end.odometerKm >= seg.start.odometerKm) {
+        distanceKm = seg.end.odometerKm - seg.start.odometerKm;
       }
+      
+      // If still 0, estimate from average speed
+      if (distanceKm < 0.1 && durationMin > 1) {
+        const speeds = seg.positions.map((p: any) => p.speedKph || 0).filter((s: number) => s > 0);
+        if (speeds.length > 0) {
+          const avgSpeedFromPositions = speeds.reduce((a: number, b: number) => a + b, 0) / speeds.length;
+          distanceKm = avgSpeedFromPositions * (durationMin / 60);
+        }
+      }
+      
+      const maxSpeed = Math.max(...seg.positions.map(p => p.speedKph || 0));
+
+      return {
+        isTrip: true,
+        tripNumber,
+        startTime: this.formatDateTime(seg.start.recordedAt),
+        endTime: this.formatDateTime(seg.end.recordedAt),
+        duration: formatDuration(durationMin),
+        durationMin,
+        distance: `${distanceKm.toFixed(1)} km`,
+        distanceKm,
+        maxSpeed: `${maxSpeed.toFixed(0)} km/h`,
+        startAddress: seg.start.address || `${seg.start.latitude.toFixed(4)}°, ${seg.start.longitude.toFixed(4)}°`,
+        endAddress: seg.end.address || `${seg.end.latitude.toFixed(4)}°, ${seg.end.longitude.toFixed(4)}°`,
+        startLat: seg.start.latitude,
+        startLng: seg.start.longitude,
+        endLat: seg.end.latitude,
+        endLng: seg.end.longitude
+      };
     });
 
     // Enrich addresses
     this.enrichTripAddresses();
 
-    // Chart data - Timeline chart showing trips and stops
-    const trips = this.tableData.filter((d: any) => d.isTrip);
-    const stops = this.tableData.filter((d: any) => d.isStop);
-    
-    this.chartData = trips.map((t: any) => ({
+    // Chart data - trips only
+    this.chartData = this.tableData.map((t: any) => ({
       label: `Trajet ${t.tripNumber}`,
       value: t.distanceKm,
       duration: t.durationMin
     }));
 
     // Statistics
-    const totalDistance = trips.reduce((sum: number, t: any) => sum + t.distanceKm, 0);
-    const totalDrivingMin = trips.reduce((sum: number, t: any) => sum + t.durationMin, 0);
-    const totalStopMin = stops.reduce((sum: number, s: any) => sum + s.durationMin, 0);
-    const avgSpeed = totalDrivingMin > 0 ? totalDistance / (totalDrivingMin / 60) : 0;
+    const totalDistance = this.tableData.reduce((sum: number, t: any) => sum + t.distanceKm, 0);
+    const totalDrivingMin = this.tableData.reduce((sum: number, t: any) => sum + t.durationMin, 0);
+    const maxSpeedAll = Math.max(...this.tableData.map((t: any) => parseFloat(t.maxSpeed) || 0));
 
     this.statisticsData = {
-      'Nombre de trajets': trips.length.toString(),
+      'Nombre de trajets': this.tableData.length.toString(),
       'Distance totale': `${totalDistance.toFixed(1)} km`,
       'Temps de conduite': formatDuration(totalDrivingMin),
-      'Temps d\'arrêt': formatDuration(totalStopMin),
-      'Vitesse moyenne': `${avgSpeed.toFixed(0)} km/h`
+      'Vitesse max': `${maxSpeedAll.toFixed(0)} km/h`
     };
   }
 
@@ -4032,10 +4019,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     let config: ChartConfiguration;
 
     if (type === 'trips') {
-      // Combined bar + line chart: Distance bars + Average speed line
+      // Bar chart: Distance per trip
       const distances = this.chartData.map(d => d.value);
       const durations = this.chartData.map(d => d.duration || 0);
-      const avgSpeeds = this.chartData.map((d, i) => durations[i] > 0 ? parseFloat((distances[i] / (durations[i] / 60)).toFixed(1)) : 0);
       
       config = {
         type: 'bar',
@@ -4049,20 +4035,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
               backgroundColor: this.chartColors.map(c => c + 'CC'),
               borderColor: this.chartColors,
               borderWidth: 1,
-              borderRadius: 6,
-              yAxisID: 'y'
-            },
-            {
-              type: 'line',
-              label: 'Vitesse moy. (km/h)',
-              data: avgSpeeds,
-              borderColor: '#F59E0B',
-              backgroundColor: 'rgba(245, 158, 11, 0.2)',
-              borderWidth: 3,
-              pointRadius: 5,
-              pointBackgroundColor: '#F59E0B',
-              tension: 0.3,
-              yAxisID: 'y1'
+              borderRadius: 6
             }
           ]
         },
@@ -4072,7 +4045,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           interaction: { mode: 'index', intersect: false },
           plugins: {
             legend: { position: 'top', labels: { usePointStyle: true, font: { size: 11 } } },
-            title: { display: true, text: '📊 Distance et Vitesse moyenne par trajet', font: { size: 14, weight: 'bold' } },
+            title: { display: true, text: '📊 Distance par trajet', font: { size: 14, weight: 'bold' } },
             tooltip: {
               callbacks: {
                 afterBody: (context: any) => {
@@ -4087,8 +4060,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             }
           },
           scales: {
-            y: { type: 'linear', position: 'left', title: { display: true, text: 'Distance (km)' }, beginAtZero: true },
-            y1: { type: 'linear', position: 'right', title: { display: true, text: 'Vitesse (km/h)' }, grid: { drawOnChartArea: false }, beginAtZero: true }
+            y: { type: 'linear', position: 'left', title: { display: true, text: 'Distance (km)' }, beginAtZero: true }
           }
         }
       };
