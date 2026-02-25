@@ -3613,33 +3613,47 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return stop.durationSeconds >= 1800; // "Ralenti prolongé"
     });
 
-    // Sort chronologically then merge overlapping stops
+    // Sort chronologically then merge overlapping stops OF SAME TYPE ONLY
     meaningfulStops.sort((a: VehicleStopDto, b: VehicleStopDto) => 
       new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
     );
 
+    // Step 1: Merge only same ignition type (Arrêt+Arrêt or Idle+Idle)
     const merged: VehicleStopDto[] = [];
     for (const stop of meaningfulStops) {
       if (merged.length === 0) { merged.push({ ...stop }); continue; }
       const prev = merged[merged.length - 1];
       const prevEnd = new Date(prev.endTime || prev.startTime).getTime();
       const currStart = new Date(stop.startTime).getTime();
-      // Overlap or gap < 2 min → merge
-      if (currStart <= prevEnd + 120000) {
+      const sameType = prev.ignitionOff === stop.ignitionOff;
+      // Only merge same type with overlap or gap < 2 min
+      if (sameType && currStart <= prevEnd + 120000) {
         const currEnd = new Date(stop.endTime || stop.startTime).getTime();
         const newEnd = Math.max(prevEnd, currEnd);
         prev.endTime = new Date(newEnd).toISOString();
         prev.durationSeconds = Math.round((newEnd - new Date(prev.startTime).getTime()) / 1000);
-        // Prefer ignitionOff (real stop) over idle
-        if (stop.ignitionOff) prev.ignitionOff = true;
-        // Keep address if prev has none
         if (!prev.address && stop.address) prev.address = stop.address;
       } else {
         merged.push({ ...stop });
       }
     }
 
-    this.tableData = merged.map((stop: VehicleStopDto) => {
+    // Step 2: Remove entries fully contained within a longer entry
+    const deduped = merged.filter((stop, i) => {
+      const sStart = new Date(stop.startTime).getTime();
+      const sEnd = new Date(stop.endTime || stop.startTime).getTime();
+      for (let j = 0; j < merged.length; j++) {
+        if (i === j) continue;
+        const oStart = new Date(merged[j].startTime).getTime();
+        const oEnd = new Date(merged[j].endTime || merged[j].startTime).getTime();
+        if (sStart >= oStart && sEnd <= oEnd && stop.durationSeconds < merged[j].durationSeconds) {
+          return false; // This stop is fully inside a longer one → remove
+        }
+      }
+      return true;
+    });
+
+    this.tableData = deduped.map((stop: VehicleStopDto) => {
       const durationMinutes = stop.durationSeconds / 60;
       const stopTypeCode = stop.ignitionOff ? 'A' : 'C';
       const stopTypeLabel = stop.ignitionOff 
