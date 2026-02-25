@@ -1058,6 +1058,28 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   white-space: nowrap;
 }
 
+.data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.data-table th.sortable:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.data-table th .sort-icon {
+  font-size: 9px;
+  color: #94a3b8;
+  margin-left: 3px;
+  vertical-align: middle;
+}
+
+.data-table th.sortable:hover .sort-icon {
+  color: #475569;
+}
+
 .data-table td {
   padding: 8px 12px;
   color: #1e293b;

@@ -258,6 +258,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
     consumption: true
   };
 
+  // Sorting
+  sortColumn: string = '';
+  sortDirection: 'asc' | 'desc' = 'asc';
+
   // Pagination
   currentPage = 1;
   pageSize = 50;
@@ -603,7 +607,47 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.currentPage = 1;
   }
 
+  sortBy(column: string) {
+    if (this.sortColumn === column) {
+      this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+      this.sortColumn = column;
+      this.sortDirection = 'asc';
+    }
+    const dir = this.sortDirection === 'asc' ? 1 : -1;
+    this.tableData.sort((a: any, b: any) => {
+      let valA = a[column];
+      let valB = b[column];
+      // Handle null/undefined
+      if (valA == null && valB == null) return 0;
+      if (valA == null) return 1;
+      if (valB == null) return -1;
+      // Numeric sort for known numeric fields
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return (valA - valB) * dir;
+      }
+      // Try parsing as number (for formatted strings with numeric sortKey)
+      const numA = parseFloat(valA);
+      const numB = parseFloat(valB);
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return (numA - numB) * dir;
+      }
+      // String sort
+      return String(valA).localeCompare(String(valB), 'fr') * dir;
+    });
+    this.currentPage = 1;
+  }
+
+  getSortIcon(column: string): string {
+    if (this.sortColumn !== column) return '↕';
+    return this.sortDirection === 'asc' ? '▲' : '▼';
+  }
+
   executeReport() {
+    // Reset sort state for new report
+    this.sortColumn = '';
+    this.sortDirection = 'asc';
+
     console.log('executeReport called', { 
       selectedTemplate: this.selectedTemplate, 
       selectedVehicleId: this.selectedVehicleId,

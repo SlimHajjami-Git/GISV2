@@ -608,109 +608,109 @@
                   <thead>
                     <tr>
                       @if (selectedTemplate?.type === 'fuel') {
-                        <th>Date/Heure</th>
-                        <th>Niveau</th>
-                        <th>Variation</th>
-                        <th>Type</th>
-                        <th>Position</th>
-                        <th>Km parcourus</th>
-                        <th>Odomètre</th>
+                        <th class="sortable" (click)="sortBy('time')">Date/Heure <span class="sort-icon">{{ getSortIcon('time') }}</span></th>
+                        <th class="sortable" (click)="sortBy('fuelPercent')">Niveau <span class="sort-icon">{{ getSortIcon('fuelPercent') }}</span></th>
+                        <th class="sortable" (click)="sortBy('fuelDelta')">Variation <span class="sort-icon">{{ getSortIcon('fuelDelta') }}</span></th>
+                        <th class="sortable" (click)="sortBy('eventType')">Type <span class="sort-icon">{{ getSortIcon('eventType') }}</span></th>
+                        <th class="sortable" (click)="sortBy('location')">Position <span class="sort-icon">{{ getSortIcon('location') }}</span></th>
+                        <th class="sortable" (click)="sortBy('mileage')">Km parcourus <span class="sort-icon">{{ getSortIcon('mileage') }}</span></th>
+                        <th class="sortable" (click)="sortBy('odometer')">Odomètre <span class="sort-icon">{{ getSortIcon('odometer') }}</span></th>
                       } @else if (selectedTemplate?.type === 'daily') {
-                        <th class="th-narrow">#</th>
-                        <th>Horaire</th>
-                        <th>Événement</th>
-                        <th>Durée</th>
-                        <th>Distance</th>
-                        <th>Vitesse</th>
-                        <th>Lieu</th>
+                        <th class="th-narrow sortable" (click)="sortBy('eventNumber')"># <span class="sort-icon">{{ getSortIcon('eventNumber') }}</span></th>
+                        <th class="sortable" (click)="sortBy('time')">Horaire <span class="sort-icon">{{ getSortIcon('time') }}</span></th>
+                        <th class="sortable" (click)="sortBy('typeLabel')">Événement <span class="sort-icon">{{ getSortIcon('typeLabel') }}</span></th>
+                        <th class="sortable" (click)="sortBy('durationSeconds')">Durée <span class="sort-icon">{{ getSortIcon('durationSeconds') }}</span></th>
+                        <th class="sortable" (click)="sortBy('distanceValue')">Distance <span class="sort-icon">{{ getSortIcon('distanceValue') }}</span></th>
+                        <th class="sortable" (click)="sortBy('speedValue')">Vitesse <span class="sort-icon">{{ getSortIcon('speedValue') }}</span></th>
+                        <th class="sortable" (click)="sortBy('address')">Lieu <span class="sort-icon">{{ getSortIcon('address') }}</span></th>
                       } @else if (selectedTemplate?.type === 'mileage') {
-                        <th>Date</th>
-                        <th>Distance</th>
-                        <th>Trajets</th>
-                        <th>Temps conduite</th>
-                        <th>Vitesse moy.</th>
-                        <th>Vitesse max</th>
-                        <th>Odomètre</th>
+                        <th class="sortable" (click)="sortBy('date')">Date <span class="sort-icon">{{ getSortIcon('date') }}</span></th>
+                        <th class="sortable" (click)="sortBy('distanceValue')">Distance <span class="sort-icon">{{ getSortIcon('distanceValue') }}</span></th>
+                        <th class="sortable" (click)="sortBy('tripCount')">Trajets <span class="sort-icon">{{ getSortIcon('tripCount') }}</span></th>
+                        <th class="sortable" (click)="sortBy('drivingTimeSeconds')">Temps conduite <span class="sort-icon">{{ getSortIcon('drivingTimeSeconds') }}</span></th>
+                        <th class="sortable" (click)="sortBy('avgSpeedValue')">Vitesse moy. <span class="sort-icon">{{ getSortIcon('avgSpeedValue') }}</span></th>
+                        <th class="sortable" (click)="sortBy('maxSpeedValue')">Vitesse max <span class="sort-icon">{{ getSortIcon('maxSpeedValue') }}</span></th>
+                        <th class="sortable" (click)="sortBy('odometerValue')">Odomètre <span class="sort-icon">{{ getSortIcon('odometerValue') }}</span></th>
                       } @else if (selectedTemplate?.type === 'mileage-period') {
-                        <th>Période</th>
+                        <th class="sortable" (click)="sortBy('period')">Période <span class="sort-icon">{{ getSortIcon('period') }}</span></th>
                         @if (selectedMileagePeriodType === 'day') {
-                          <th>Jour</th>
+                          <th class="sortable" (click)="sortBy('dayOfWeek')">Jour <span class="sort-icon">{{ getSortIcon('dayOfWeek') }}</span></th>
                         }
-                        <th>Distance</th>
+                        <th class="sortable" (click)="sortBy('distanceValue')">Distance <span class="sort-icon">{{ getSortIcon('distanceValue') }}</span></th>
                         @if (selectedMileagePeriodType === 'month') {
-                          <th>Moy. jour</th>
-                          <th>Jours actifs</th>
+                          <th class="sortable" (click)="sortBy('avgDaily')">Moy. jour <span class="sort-icon">{{ getSortIcon('avgDaily') }}</span></th>
+                          <th class="sortable" (click)="sortBy('activeDays')">Jours actifs <span class="sort-icon">{{ getSortIcon('activeDays') }}</span></th>
                         }
-                        <th>Trajets</th>
-                        <th>Temps conduite</th>
+                        <th class="sortable" (click)="sortBy('tripCount')">Trajets <span class="sort-icon">{{ getSortIcon('tripCount') }}</span></th>
+                        <th class="sortable" (click)="sortBy('drivingTimeSeconds')">Temps conduite <span class="sort-icon">{{ getSortIcon('drivingTimeSeconds') }}</span></th>
                         @if (selectedMileagePeriodType !== 'month') {
-                          <th>Vitesse moy.</th>
-                          <th>Vitesse max</th>
+                          <th class="sortable" (click)="sortBy('avgSpeedValue')">Vitesse moy. <span class="sort-icon">{{ getSortIcon('avgSpeedValue') }}</span></th>
+                          <th class="sortable" (click)="sortBy('maxSpeedValue')">Vitesse max <span class="sort-icon">{{ getSortIcon('maxSpeedValue') }}</span></th>
                         }
                       } @else if (selectedTemplate?.type === 'trips') {
                         @if (!selectedVehicleId) {
-                          <th>Véhicule</th>
+                          <th class="sortable" (click)="sortBy('vehicleName')">Véhicule <span class="sort-icon">{{ getSortIcon('vehicleName') }}</span></th>
                         }
-                        <th class="th-narrow">Type</th>
-                        <th>Début</th>
-                        <th>Fin</th>
-                        <th>Durée</th>
-                        <th>Distance</th>
-                        <th>Vit. moy</th>
-                        <th>Vit. max</th>
-                        <th>Lieu</th>
+                        <th class="th-narrow sortable" (click)="sortBy('isTrip')">Type <span class="sort-icon">{{ getSortIcon('isTrip') }}</span></th>
+                        <th class="sortable" (click)="sortBy('startTime')">Début <span class="sort-icon">{{ getSortIcon('startTime') }}</span></th>
+                        <th class="sortable" (click)="sortBy('endTime')">Fin <span class="sort-icon">{{ getSortIcon('endTime') }}</span></th>
+                        <th class="sortable" (click)="sortBy('durationSeconds')">Durée <span class="sort-icon">{{ getSortIcon('durationSeconds') }}</span></th>
+                        <th class="sortable" (click)="sortBy('distanceValue')">Distance <span class="sort-icon">{{ getSortIcon('distanceValue') }}</span></th>
+                        <th class="sortable" (click)="sortBy('avgSpeedValue')">Vit. moy <span class="sort-icon">{{ getSortIcon('avgSpeedValue') }}</span></th>
+                        <th class="sortable" (click)="sortBy('maxSpeedValue')">Vit. max <span class="sort-icon">{{ getSortIcon('maxSpeedValue') }}</span></th>
+                        <th class="sortable" (click)="sortBy('startAddress')">Lieu <span class="sort-icon">{{ getSortIcon('startAddress') }}</span></th>
                       } @else if (selectedTemplate?.type === 'stops') {
                         @if (!selectedVehicleId) {
-                          <th>Véhicule</th>
+                          <th class="sortable" (click)="sortBy('vehicleName')">Véhicule <span class="sort-icon">{{ getSortIcon('vehicleName') }}</span></th>
                         }
-                        <th class="th-narrow">Type</th>
-                        <th>Début</th>
-                        <th>Fin</th>
-                        <th>Durée</th>
-                        <th>Adresse</th>
-                        <th>Zone</th>
+                        <th class="th-narrow sortable" (click)="sortBy('typeCode')">Type <span class="sort-icon">{{ getSortIcon('typeCode') }}</span></th>
+                        <th class="sortable" (click)="sortBy('time')">Début <span class="sort-icon">{{ getSortIcon('time') }}</span></th>
+                        <th class="sortable" (click)="sortBy('endTime')">Fin <span class="sort-icon">{{ getSortIcon('endTime') }}</span></th>
+                        <th class="sortable" (click)="sortBy('durationSeconds')">Durée <span class="sort-icon">{{ getSortIcon('durationSeconds') }}</span></th>
+                        <th class="sortable" (click)="sortBy('address')">Adresse <span class="sort-icon">{{ getSortIcon('address') }}</span></th>
+                        <th class="sortable" (click)="sortBy('geofenceName')">Zone <span class="sort-icon">{{ getSortIcon('geofenceName') }}</span></th>
                       } @else if (selectedTemplate?.type === 'speed') {
-                        <th>Véhicule</th>
-                        <th>Date/Heure</th>
-                        <th>Vitesse</th>
-                        <th>Limite véhicule</th>
-                        <th>Excès</th>
-                        <th>Adresse</th>
+                        <th class="sortable" (click)="sortBy('vehicleName')">Véhicule <span class="sort-icon">{{ getSortIcon('vehicleName') }}</span></th>
+                        <th class="sortable" (click)="sortBy('time')">Date/Heure <span class="sort-icon">{{ getSortIcon('time') }}</span></th>
+                        <th class="sortable" (click)="sortBy('speedValue')">Vitesse <span class="sort-icon">{{ getSortIcon('speedValue') }}</span></th>
+                        <th class="sortable" (click)="sortBy('vehicleLimit')">Limite véhicule <span class="sort-icon">{{ getSortIcon('vehicleLimit') }}</span></th>
+                        <th class="sortable" (click)="sortBy('excessValue')">Excès <span class="sort-icon">{{ getSortIcon('excessValue') }}</span></th>
+                        <th class="sortable" (click)="sortBy('address')">Adresse <span class="sort-icon">{{ getSortIcon('address') }}</span></th>
                       } @else if (selectedTemplate?.type === 'speed-infraction') {
-                        <th>Véhicule</th>
-                        <th>Date/Heure</th>
-                        <th>Adresse</th>
-                        <th>Vitesse</th>
-                        <th>Limite</th>
-                        <th>Excès</th>
+                        <th class="sortable" (click)="sortBy('vehicle')">Véhicule <span class="sort-icon">{{ getSortIcon('vehicle') }}</span></th>
+                        <th class="sortable" (click)="sortBy('time')">Date/Heure <span class="sort-icon">{{ getSortIcon('time') }}</span></th>
+                        <th class="sortable" (click)="sortBy('address')">Adresse <span class="sort-icon">{{ getSortIcon('address') }}</span></th>
+                        <th class="sortable" (click)="sortBy('speedValue')">Vitesse <span class="sort-icon">{{ getSortIcon('speedValue') }}</span></th>
+                        <th class="sortable" (click)="sortBy('limitValue')">Limite <span class="sort-icon">{{ getSortIcon('limitValue') }}</span></th>
+                        <th class="sortable" (click)="sortBy('excessValue')">Excès <span class="sort-icon">{{ getSortIcon('excessValue') }}</span></th>
                       } @else if (selectedTemplate?.type === 'driving-behavior') {
-                        <th>Véhicule</th>
-                        <th>Date/Heure</th>
-                        <th>Type d'incident</th>
-                        <th>Adresse</th>
-                        <th>Valeur</th>
-                        <th>Sévérité</th>
+                        <th class="sortable" (click)="sortBy('vehicle')">Véhicule <span class="sort-icon">{{ getSortIcon('vehicle') }}</span></th>
+                        <th class="sortable" (click)="sortBy('time')">Date/Heure <span class="sort-icon">{{ getSortIcon('time') }}</span></th>
+                        <th class="sortable" (click)="sortBy('incidentType')">Type d'incident <span class="sort-icon">{{ getSortIcon('incidentType') }}</span></th>
+                        <th class="sortable" (click)="sortBy('address')">Adresse <span class="sort-icon">{{ getSortIcon('address') }}</span></th>
+                        <th class="sortable" (click)="sortBy('value')">Valeur <span class="sort-icon">{{ getSortIcon('value') }}</span></th>
+                        <th class="sortable" (click)="sortBy('severity')">Sévérité <span class="sort-icon">{{ getSortIcon('severity') }}</span></th>
                       } @else if (selectedTemplate?.type === 'costs') {
-                        <th>Véhicule</th>
-                        <th>Date</th>
-                        <th>Référence</th>
-                        <th>Description</th>
-                        <th>Fournisseur</th>
-                        <th>Main d'oeuvre</th>
-                        <th>Pièces</th>
-                        <th>Total</th>
-                        <th>Statut</th>
+                        <th class="sortable" (click)="sortBy('vehicleName')">Véhicule <span class="sort-icon">{{ getSortIcon('vehicleName') }}</span></th>
+                        <th class="sortable" (click)="sortBy('date')">Date <span class="sort-icon">{{ getSortIcon('date') }}</span></th>
+                        <th class="sortable" (click)="sortBy('reference')">Référence <span class="sort-icon">{{ getSortIcon('reference') }}</span></th>
+                        <th class="sortable" (click)="sortBy('description')">Description <span class="sort-icon">{{ getSortIcon('description') }}</span></th>
+                        <th class="sortable" (click)="sortBy('supplierName')">Fournisseur <span class="sort-icon">{{ getSortIcon('supplierName') }}</span></th>
+                        <th class="sortable" (click)="sortBy('laborCost')">Main d'oeuvre <span class="sort-icon">{{ getSortIcon('laborCost') }}</span></th>
+                        <th class="sortable" (click)="sortBy('partsCost')">Pièces <span class="sort-icon">{{ getSortIcon('partsCost') }}</span></th>
+                        <th class="sortable" (click)="sortBy('totalCost')">Total <span class="sort-icon">{{ getSortIcon('totalCost') }}</span></th>
+                        <th class="sortable" (click)="sortBy('status')">Statut <span class="sort-icon">{{ getSortIcon('status') }}</span></th>
                       } @else if (selectedTemplate?.type === 'maintenance') {
-                        <th>Véhicule</th>
-                        <th>Date</th>
-                        <th>Type</th>
-                        <th>Description</th>
-                        <th>Statut</th>
-                        <th>Coût</th>
-                        <th>Kilométrage</th>
+                        <th class="sortable" (click)="sortBy('vehicleName')">Véhicule <span class="sort-icon">{{ getSortIcon('vehicleName') }}</span></th>
+                        <th class="sortable" (click)="sortBy('date')">Date <span class="sort-icon">{{ getSortIcon('date') }}</span></th>
+                        <th class="sortable" (click)="sortBy('type')">Type <span class="sort-icon">{{ getSortIcon('type') }}</span></th>
+                        <th class="sortable" (click)="sortBy('description')">Description <span class="sort-icon">{{ getSortIcon('description') }}</span></th>
+                        <th class="sortable" (click)="sortBy('status')">Statut <span class="sort-icon">{{ getSortIcon('status') }}</span></th>
+                        <th class="sortable" (click)="sortBy('cost')">Coût <span class="sort-icon">{{ getSortIcon('cost') }}</span></th>
+                        <th class="sortable" (click)="sortBy('mileageValue')">Kilométrage <span class="sort-icon">{{ getSortIcon('mileageValue') }}</span></th>
                       } @else {
-                        <th>Date/Heure</th>
-                        <th>Valeur</th>
+                        <th class="sortable" (click)="sortBy('time')">Date/Heure <span class="sort-icon">{{ getSortIcon('time') }}</span></th>
+                        <th class="sortable" (click)="sortBy('value')">Valeur <span class="sort-icon">{{ getSortIcon('value') }}</span></th>
                         <th>Détails</th>
                         <th>Kilométrage</th>
                       }
