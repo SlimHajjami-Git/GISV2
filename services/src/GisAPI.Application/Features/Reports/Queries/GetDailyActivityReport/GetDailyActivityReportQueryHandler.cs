@@ -394,7 +394,24 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
             }
             cleaned.Add(seg);
         }
-        merged = cleaned;
+
+        // Second pass: merge consecutive stops that resulted from micro-drive removal
+        var finalMerged = new List<ActivitySegmentDto>();
+        foreach (var seg in cleaned)
+        {
+            if (seg.Type == "stop" && finalMerged.Count > 0 && finalMerged[^1].Type == "stop")
+            {
+                var prevStop = finalMerged[^1];
+                prevStop.EndTime = seg.EndTime;
+                prevStop.DurationSeconds = prevStop.EndTime.HasValue
+                    ? (int)(prevStop.EndTime.Value - prevStop.StartTime).TotalSeconds
+                    : prevStop.DurationSeconds + seg.DurationSeconds;
+                prevStop.DurationFormatted = FormatDuration(prevStop.DurationSeconds);
+                continue;
+            }
+            finalMerged.Add(seg);
+        }
+        merged = finalMerged;
 
         // Re-number sequences
         for (int m = 0; m < merged.Count; m++)

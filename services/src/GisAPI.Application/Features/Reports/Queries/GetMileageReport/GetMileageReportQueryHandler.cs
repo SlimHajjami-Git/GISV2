@@ -292,7 +292,8 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
 
         foreach (var pos in positions)
         {
-            var isMoving = (pos.SpeedKph ?? 0) > 3.0 || (pos.IgnitionOn ?? false);
+            // A trip requires actual movement, not just ignition on
+            var isMoving = (pos.SpeedKph ?? 0) > 3.0;
             
             if (isMoving && !wasMoving)
             {
@@ -314,8 +315,9 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
             var prev = positions[i - 1];
             var curr = positions[i];
 
-            // Count time as driving if speed > 0 or ignition on
-            if ((prev.SpeedKph ?? 0) > 0 || (prev.IgnitionOn ?? false))
+            // Count time as driving ONLY when vehicle is actually moving (speed > 2 km/h)
+            // Ignition on without movement = idling, not driving
+            if ((prev.SpeedKph ?? 0) > 2)
             {
                 var seconds = (int)(curr.RecordedAt - prev.RecordedAt).TotalSeconds;
                 if (seconds > 0 && seconds < 600) // Max 10 minutes gap to consider continuous

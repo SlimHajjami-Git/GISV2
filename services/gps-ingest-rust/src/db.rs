@@ -907,24 +907,11 @@ impl Database {
             crate::telemetry::model::FrameVersion::Unknown(v) => v as i16,
         };
 
-        // Temperature: FMS temperature takes priority over base temp (same as GISV1 lines 740-744)
-        // Only use FMS temperature for V3 frames — V1 frames send garbage (e.g. -32768)
-        let temperature_c: Option<i16> = if has_fms {
-            if let Some(fms_temp) = frame.fms_temperature_c {
-                // FMS temperature from CAN bus - more reliable (valid range: -50 to 200°C)
-                if fms_temp != 0 && fms_temp > -50 && fms_temp < 200 { Some(fms_temp) } else { None }
-            } else if frame.temperature_raw > 0 {
-                Some((frame.temperature_raw as i16).saturating_sub(40))
-            } else {
-                None
-            }
-        } else if frame.temperature_raw > 0 {
-            // Non-FMS: only use base frame temperature (raw - 40 = Celsius)
-            let temp = (frame.temperature_raw as i16).saturating_sub(40);
-            if temp > -50 && temp < 200 { Some(temp) } else { None }
-        } else {
-            None
-        };
+        // Temperature: ONLY use FMS temperature from CAN bus (V3 frames, J1939 raw - 40)
+        // The base frame temperature_raw is "80+Analogic1 or digital temp" (raw analog value),
+        // NOT a J1939 temperature — applying -40 to it gives wrong readings (e.g. 112°C).
+        let temperature_c: Option<i16> = frame.fms_temperature_c
+            .filter(|&t| t != 0 && t > -50 && t < 200);
         
         // FMS fields: only store for V3 frames (has_fms) — V1 frames don't have FMS data
         let fuel_raw: Option<i32> = if has_fms && frame.fuel_raw > 0 { Some(i32::from(frame.fuel_raw)) } else { None };

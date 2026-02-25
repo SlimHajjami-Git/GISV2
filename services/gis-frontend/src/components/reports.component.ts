@@ -1829,7 +1829,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       if (lastEndTime && activity.startTime) {
         const gapMs = new Date(activity.startTime).getTime() - new Date(lastEndTime).getTime();
         const gapSeconds = Math.floor(gapMs / 1000);
-        if (gapSeconds > 120) { // Gap > 2 minutes → insert implicit stop
+        if (gapSeconds > 300) { // Gap > 5 minutes → insert implicit stop (matches backend MIN_REAL_STOP_SECONDS)
           stopNumber++;
           eventNumber++;
           const gapFormatted = gapSeconds >= 3600
@@ -1959,17 +1959,47 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const timeB = b._sortTime || this.parseEventTime(b.time);
       return timeA - timeB;
     });
-    // Re-number after sort
-    events.forEach((e: any, idx: number) => e.eventNumber = idx + 1);
 
-    this.tableData = events;
+    // Merge consecutive stops after sorting (implicit stops may be adjacent to backend stops)
+    const mergedEvents: any[] = [];
+    for (const evt of events) {
+      if (evt.type === 'stop' && mergedEvents.length > 0 && mergedEvents[mergedEvents.length - 1].type === 'stop') {
+        const prev = mergedEvents[mergedEvents.length - 1];
+        // Extend previous stop to cover this one
+        const prevEnd = prev._sortTime + (prev.durationSeconds || 0) * 1000;
+        const currEnd = evt._sortTime + (evt.durationSeconds || 0) * 1000;
+        const mergedEnd = Math.max(prevEnd, currEnd);
+        prev.durationSeconds = Math.round((mergedEnd - prev._sortTime) / 1000);
+        const totalSecs = prev.durationSeconds;
+        prev.duration = totalSecs >= 3600
+          ? `${Math.floor(totalSecs / 3600)}h ${Math.floor((totalSecs % 3600) / 60)}m`
+          : `${Math.floor(totalSecs / 60)}m`;
+        // Update time range display
+        const endDate = new Date(prev._sortTime + totalSecs * 1000);
+        const startStr = prev.time.split(' → ')[0];
+        prev.time = `${startStr} → ${this.formatDateTime(endDate.toISOString())}`;
+        continue;
+      }
+      mergedEvents.push(evt);
+    }
+
+    // Re-number after merge
+    mergedEvents.forEach((e: any, idx: number) => e.eventNumber = idx + 1);
+    // Re-number stop/drive labels
+    let dn = 0, sn = 0;
+    mergedEvents.forEach((e: any) => {
+      if (e.type === 'drive') { dn++; e.typeLabel = `Trajet ${dn}`; }
+      if (e.type === 'stop') { sn++; e.typeLabel = `Arrêt ${sn}`; }
+    });
+
+    this.tableData = mergedEvents;
 
     // Enrich addresses
     this.enrichDailyReportAddresses();
 
     // Chart data - Timeline bar chart showing activity durations
-    const driveEvents = events.filter(e => e.type === 'drive');
-    const stopEvents = events.filter(e => e.type === 'stop');
+    const driveEvents = mergedEvents.filter(e => e.type === 'drive');
+    const stopEvents = mergedEvents.filter(e => e.type === 'stop');
 
     // Primary chart: driving vs stopped time (donut)
     const totalDriveSeconds = driveEvents.reduce((s: number, e: any) => s + (e.durationSeconds || 0), 0);
@@ -3054,6 +3084,54 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   processFuelReport(positions: any[]) {
+    // === SPIKE FILTER: Remove isolated bad fuel readings ===
+    // Pattern: fuel at F1, then drops to F2 (spike), then returns near F1
+    // If a reading drops/rises >10% and the NEXT reading returns within 5% of the previous level,
+    // it's a sensor glitch → remove the spike reading
+    const filtered = [...positions];
+    const spikeIndices = new Set<number>();
+    
+    for (let i = 1; i < filtered.length - 1; i++) {
+      const prevFuel = filtered[i - 1].fuelRaw ?? -1;
+      const currFuel = filtered[i].fuelRaw ?? -1;
+      const nextFuel = filtered[i + 1].fuelRaw ?? -1;
+      
+      if (prevFuel < 0 || currFuel < 0 || nextFuel < 0) continue;
+      
+      const dropFromPrev = Math.abs(currFuel - prevFuel);
+      const recoveryToNext = Math.abs(nextFuel - prevFuel);
+      
+      // Spike: big change (>10%) from previous, and next reading returns close to previous (<5% diff)
+      if (dropFromPrev > 10 && recoveryToNext <= 5) {
+        spikeIndices.add(i);
+      }
+    }
+    
+    // Also handle consecutive spikes (e.g., 40 → 20 → 15 → 40)
+    for (let i = 1; i < filtered.length - 2; i++) {
+      if (spikeIndices.has(i)) continue;
+      const prevFuel = filtered[i - 1].fuelRaw ?? -1;
+      const currFuel = filtered[i].fuelRaw ?? -1;
+      const nextFuel = filtered[i + 1].fuelRaw ?? -1;
+      const afterNextFuel = filtered[i + 2].fuelRaw ?? -1;
+      
+      if (prevFuel < 0 || currFuel < 0 || nextFuel < 0 || afterNextFuel < 0) continue;
+      
+      const dropFromPrev = Math.abs(currFuel - prevFuel);
+      const recoveryToAfterNext = Math.abs(afterNextFuel - prevFuel);
+      
+      if (dropFromPrev > 10 && recoveryToAfterNext <= 5) {
+        spikeIndices.add(i);
+        spikeIndices.add(i + 1);
+      }
+    }
+    
+    const cleanPositions = filtered.filter((_, idx) => !spikeIndices.has(idx));
+    
+    if (spikeIndices.size > 0) {
+      console.log(`Fuel report: filtered ${spikeIndices.size} spike reading(s) from ${positions.length} positions`);
+    }
+
     // Only show rows where fuel level CHANGES (no duplicate consecutive readings)
     // Track mileage between fuel level changes (not between individual readings)
     const fuelChanges: any[] = [];
@@ -3061,11 +3139,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
     let lastChangeOdometer = 0; // Odometer at last FUEL CHANGE (not intermediate readings)
 
     // First pass: identify positions where fuel level changes
-    positions.forEach((pos: any, index: number) => {
+    cleanPositions.forEach((pos: any, index: number) => {
       const fuel = pos.fuelRaw ?? 0;
       const odometer = pos.odometerKm || 0;
       const isFirst = index === 0;
-      const isLast = index === positions.length - 1;
+      const isLast = index === cleanPositions.length - 1;
 
       // Only process if fuel level changed, or first/last entry
       if (isFirst || fuel !== lastFuelLevel || isLast) {
@@ -3122,17 +3200,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Fetch addresses asynchronously for positions without address
     this.enrichWithAddresses();
 
-    // Chart data - all positions for smooth fuel level graph
-    this.chartData = positions.map((pos: any) => ({
+    // Chart data - use cleaned positions for smooth fuel level graph (no spikes)
+    this.chartData = cleanPositions.map((pos: any) => ({
       label: new Date(pos.recordedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
       value: pos.fuelRaw || 0
     }));
 
-    // Statistics
-    const fuelValues = positions.map((p: any) => p.fuelRaw ?? 0).filter((f: number) => f > 0);
+    // Statistics - use cleaned positions to avoid spike pollution
+    const fuelValues = cleanPositions.map((p: any) => p.fuelRaw ?? 0).filter((f: number) => f > 0);
     const avgFuel = fuelValues.length > 0 ? fuelValues.reduce((a: number, b: number) => a + b, 0) / fuelValues.length : 0;
-    const firstOdo = positions.find((p: any) => p.odometerKm > 0)?.odometerKm || 0;
-    const lastOdo = [...positions].reverse().find((p: any) => p.odometerKm > 0)?.odometerKm || 0;
+    const firstOdo = cleanPositions.find((p: any) => p.odometerKm > 0)?.odometerKm || 0;
+    const lastOdo = [...cleanPositions].reverse().find((p: any) => p.odometerKm > 0)?.odometerKm || 0;
     const totalKm = (firstOdo > 0 && lastOdo > 0) ? lastOdo - firstOdo : 0;
     const fuelStart = fuelValues.length > 0 ? fuelValues[0] : 0;
     const fuelEnd = fuelValues.length > 0 ? fuelValues[fuelValues.length - 1] : 0;

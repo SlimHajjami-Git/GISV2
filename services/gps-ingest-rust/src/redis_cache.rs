@@ -54,7 +54,7 @@ impl RedisCache {
         // Preserve last known good values from previous cache entry
         // Use GETDEL-like pattern: read previous in same pipeline as write (below)
         let device_key = format!("vehicle:position:{}", device_uid);
-        let prev_cache: Option<serde_json::Value> = if frame.fuel_raw == 0 || frame.temperature_raw == 0 {
+        let prev_cache: Option<serde_json::Value> = if frame.fuel_raw == 0 || frame.fms_temperature_c.is_none() {
             // Only read previous cache when we actually need fallback values
             conn.get::<_, Option<String>>(&device_key).await
                 .ok()
@@ -88,14 +88,13 @@ impl RedisCache {
             ((battery_voltage - BATTERY_MIN_V) / (BATTERY_MAX_V - BATTERY_MIN_V) * 100.0) as i32
         };
 
-        // Temperature: FMS temp takes priority (V3), fallback to base temp - 40, then previous cache
+        // Temperature: ONLY use FMS temperature from CAN bus (V3 frames, J1939 raw - 40)
+        // The base frame temperature_raw is "80+Analogic1 or digital temp" (raw analog value),
+        // NOT a J1939 temperature — applying -40 to it gives wrong readings.
         let temperature_c: Option<i16> = if let Some(fms_temp) = frame.fms_temperature_c {
             if fms_temp != 0 && fms_temp > -50 && fms_temp < 200 { Some(fms_temp) } else { None }
-        } else if frame.temperature_raw > 0 {
-            let temp = (frame.temperature_raw as i16).saturating_sub(40);
-            if temp > -50 && temp < 200 { Some(temp) } else { None }
         } else {
-            // Preserve previous temperature
+            // No FMS temp available — preserve previous cache value
             prev_cache.as_ref()
                 .and_then(|c| c["temperatureC"].as_i64())
                 .map(|v| v as i16)
