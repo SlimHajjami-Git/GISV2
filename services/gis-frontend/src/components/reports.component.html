@@ -1,4 +1,12 @@
+@if (!embedded) {
 <app-layout>
+  <ng-container *ngTemplateOutlet="reportsContent"></ng-container>
+</app-layout>
+} @else {
+  <ng-container *ngTemplateOutlet="reportsContent"></ng-container>
+}
+
+<ng-template #reportsContent>
   <div class="reports-page">
     <div class="reports-layout">
       <!-- SIDEBAR GAUCHE -->
@@ -873,4 +881,4 @@
       </main>
     </div>
   </div>
-</app-layout>
+</ng-template>

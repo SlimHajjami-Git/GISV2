@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, AfterViewInit, ChangeDetectorRef, NgZone, ApplicationRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, AfterViewInit, ChangeDetectorRef, NgZone, ApplicationRef, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -20,6 +20,7 @@ import 'leaflet-routing-machine';
   styleUrls: ['./monitoring.component.css']
 })
 export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
+  @Input() embedded = false;
   map: L.Map | null = null;
   mapReady = false;
   vehicleMarkers = new Map<string, L.Marker>();

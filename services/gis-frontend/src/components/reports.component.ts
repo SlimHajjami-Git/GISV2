@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ViewChild, ElementRef, NgZone, ChangeDetectorRef, ApplicationRef, HostListener } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, ElementRef, NgZone, ChangeDetectorRef, ApplicationRef, HostListener, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -19,6 +19,7 @@ Chart.register(...registerables);
   styleUrls: ['./reports.component.css']
 })
 export class ReportsComponent implements OnInit, OnDestroy {
+  @Input() embedded = false;
   private destroy$ = new Subject<void>();
   @ViewChild('chartCanvas') chartCanvas?: ElementRef<HTMLCanvasElement>;
   @ViewChild('secondaryChartCanvas') secondaryChartCanvas?: ElementRef<HTMLCanvasElement>;

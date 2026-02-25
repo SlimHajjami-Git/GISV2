@@ -1,4 +1,12 @@
+@if (!embedded) {
 <app-layout>
+  <ng-container *ngTemplateOutlet="monitoringContent"></ng-container>
+</app-layout>
+} @else {
+  <ng-container *ngTemplateOutlet="monitoringContent"></ng-container>
+}
+
+<ng-template #monitoringContent>
   <div class="wialon-monitoring">
     <div class="monitoring-container">
       <aside class="vehicles-sidebar" [class.collapsed]="isPanelCollapsed">
@@ -498,4 +506,4 @@
       </div>
     </div>
   </div>
-</app-layout>
+</ng-template>
