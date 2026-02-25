@@ -218,7 +218,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     harshBraking: true,
     sharpSteering: true,
     overspeed: true,
-    highRpm: true
+    highRpm: true,
+    speedLimitViolation: true
   };
   
   // Driving behavior metric cards
@@ -232,7 +233,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     { key: 'harshBraking', label: 'Freinages brusques', color: '#4ECDC4', icon: '🛑' },
     { key: 'sharpSteering', label: 'Virages brusques', color: '#45B7D1', icon: '↩️' },
     { key: 'overspeed', label: 'Vitesse > 130 km/h', color: '#FFA07A', icon: '🏎️' },
-    { key: 'highRpm', label: 'RPM > 3500', color: '#9B59B6', icon: '⚙️' }
+    { key: 'highRpm', label: 'RPM > 3500', color: '#9B59B6', icon: '⚙️' },
+    { key: 'speedLimitViolation', label: 'Dépassement limite', color: '#E74C3C', icon: '🚫' }
   ];
   
   fromDate = '';
@@ -1450,6 +1452,21 @@ export class ReportsComponent implements OnInit, OnDestroy {
     });
   }
 
+  getSpeedLimitFromAddress(address: string): number {
+    if (!address) return 50;
+    const addr = address.toLowerCase();
+    // Autoroute → 110 km/h
+    if (addr.includes('autoroute') || addr.includes('a1 ') || addr.includes('a3 ') || addr.includes('a4 ')) {
+      return 110;
+    }
+    // Route nationale / route principale → 90 km/h
+    if (addr.includes('route nationale') || addr.includes('rn ') || addr.includes('gp ') || addr.includes('route principale') || addr.includes('route régionale') || addr.includes('rr ')) {
+      return 90;
+    }
+    // Default: zone urbaine → 50 km/h
+    return 50;
+  }
+
   detectDrivingIncidents(positions: any[], vehicle: any): any[] {
     const rawIncidents: any[] = [];
     
@@ -1547,6 +1564,27 @@ export class ReportsComponent implements OnInit, OnDestroy {
           valueFormatted: `${curr.rpm} RPM`,
           severity: curr.rpm > 5000 ? 'high' : curr.rpm > 4000 ? 'medium' : 'low'
         });
+      }
+      
+      // Detect speed limit violation based on road type from address
+      if (this.drivingBehaviorFilters['speedLimitViolation'] && curr.address && (curr.speedKph || 0) > 0) {
+        const speedLimit = this.getSpeedLimitFromAddress(curr.address);
+        const speed = curr.speedKph || 0;
+        const excess = speed - speedLimit;
+        if (excess > 0) {
+          rawIncidents.push({
+            type: 'speedLimitViolation',
+            vehicleId: vehicle.id,
+            vehicleName: vehicle.name || vehicle.plate,
+            time: curr.recordedAt,
+            latitude: curr.latitude,
+            longitude: curr.longitude,
+            address: curr.address,
+            value: speed,
+            valueFormatted: `${Math.round(speed)} km/h (limite ${speedLimit})`,
+            severity: excess > 30 ? 'high' : excess > 15 ? 'medium' : 'low'
+          });
+        }
       }
     }
     
