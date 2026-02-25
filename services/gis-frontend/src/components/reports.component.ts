@@ -1064,10 +1064,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   executeStopsReport(vehicleId: number, startDate?: Date, endDate?: Date) {
     console.log('executeStopsReport called with:', { vehicleId, startDate, endDate });
-    this.apiService.getVehicleStops(vehicleId, startDate, endDate).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (result) => {
+    // Fetch raw GPS positions and detect stops from ignition transitions
+    this.apiService.getVehicleHistory(vehicleId, startDate, endDate, 10000).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (positions: any[]) => {
         this.ngZone.run(() => {
-          this.processStopsFromApi(result);
+          this.processStopsFromPositions(positions);
           this.reportGenerated = true;
           this.loading = false;
           this.activeTab = 'table';
@@ -1094,7 +1095,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   executeStopsReportAllVehicles(startDate?: Date, endDate?: Date) {
     console.log('executeStopsReportAllVehicles called with:', { startDate, endDate });
-    const allStops: any[] = [];
+    const allPositions: any[] = [];
     let completedRequests = 0;
     const totalVehicles = this.vehicles.length;
 
@@ -1111,20 +1112,20 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
 
     this.vehicles.forEach(vehicle => {
-      this.apiService.getVehicleStops(vehicle.id, startDate, endDate).pipe(takeUntil(this.destroy$)).subscribe({
-        next: (result) => {
-          // Add vehicle info to each stop
-          const stopsWithVehicle = result.items.map(stop => ({
-            ...stop,
+      this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 10000).pipe(takeUntil(this.destroy$)).subscribe({
+        next: (positions: any[]) => {
+          // Tag each position with vehicle info
+          const tagged = positions.map(p => ({
+            ...p,
             vehicleName: vehicle.name || vehicle.brand + ' ' + vehicle.model,
             vehiclePlate: vehicle.plate
           }));
-          allStops.push(...stopsWithVehicle);
+          allPositions.push(...tagged);
           completedRequests++;
 
           if (completedRequests === totalVehicles) {
             this.ngZone.run(() => {
-              this.processStopsFromApiAllVehicles(allStops);
+              this.processStopsFromPositions(allPositions);
               this.reportGenerated = true;
               this.loading = false;
               this.activeTab = 'table';
@@ -1139,7 +1140,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           completedRequests++;
           if (completedRequests === totalVehicles) {
             this.ngZone.run(() => {
-              this.processStopsFromApiAllVehicles(allStops);
+              this.processStopsFromPositions(allPositions);
               this.reportGenerated = true;
               this.loading = false;
               this.activeTab = 'table';
@@ -1154,98 +1155,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     });
   }
 
-  processStopsFromApiAllVehicles(stops: any[]) {
-    if (!stops || stops.length === 0) {
-      this.tableData = [];
-      this.chartData = [];
-      this.statisticsData = { 'Information': 'Aucun arrêt trouvé pour cette période' };
-      return;
-    }
-
-    // Filter: keep only real stops (ignition OFF) and extended idle (ignition ON, >= 30 min)
-    // Short "Circulation" entries (traffic lights, brief pauses) are excluded
-    const meaningfulStops = stops.filter((stop: any) => {
-      if (stop.ignitionOff) return true; // Always keep real parked stops
-      return stop.durationSeconds >= 1800; // Keep idle only if >= 30 min ("Ralenti prolongé")
-    });
-
-    // Sort by start time descending (most recent first)
-    meaningfulStops.sort((a: any, b: any) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-
-    const formatDuration = (seconds: number): string => {
-      const minutes = seconds / 60;
-      if (minutes >= 60) {
-        const hours = Math.floor(minutes / 60);
-        const mins = Math.round(minutes % 60);
-        return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
-      }
-      return `${Math.round(minutes)}min`;
-    };
-
-    this.tableData = meaningfulStops.map((stop: any) => {
-      const stopTypeCode = stop.ignitionOff ? 'A' : 'C';
-      const stopTypeLabel = stop.ignitionOff ? '🅿️ Arrêt' : '🚦 Ralenti prolongé';
-      const durationMinutes = stop.durationSeconds / 60;
-
-      return {
-        vehicleName: stop.vehicleName || stop.vehiclePlate,
-        time: this.formatDateTime(stop.startTime),
-        endTime: stop.endTime ? this.formatDateTime(stop.endTime) : '-',
-        duration: formatDuration(stop.durationSeconds),
-        durationSeconds: stop.durationSeconds,
-        address: stop.address || 'Chargement...',
-        latitude: stop.latitude,
-        longitude: stop.longitude,
-        typeCode: stopTypeCode,
-        typeLabel: stopTypeLabel,
-        ignitionOff: stop.ignitionOff,
-        isLongStop: durationMinutes > 30,
-        geofenceName: stop.geofenceName
-      };
-    });
-
-    // Fetch addresses for stops without one
-    this.enrichStopsWithAddresses();
-
-    // Chart data - by type
-    const typeA = this.tableData.filter((s: any) => s.typeCode === 'A');
-    const typeC = this.tableData.filter((s: any) => s.typeCode === 'C');
-    const totalTypeASeconds = typeA.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
-    const totalTypeCSeconds = typeC.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
-
-    const totalSeconds = totalTypeASeconds + totalTypeCSeconds;
-    const pctA = totalSeconds > 0 ? Math.round(totalTypeASeconds / totalSeconds * 100) : 0;
-    const pctC = totalSeconds > 0 ? 100 - pctA : 0;
-
-    this.chartData = [
-      { label: `Arrêts ${pctA}%`, value: Math.round(totalTypeASeconds / 60), count: typeA.length, color: '#3B82F6' },
-      { label: `Ralenti prolongé ${pctC}%`, value: Math.round(totalTypeCSeconds / 60), count: typeC.length, color: '#F59E0B' }
-    ];
-
-    // Statistics
-    const filteredDurationSeconds = meaningfulStops.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
-    const vehiclesWithStops = new Set(meaningfulStops.map((s: any) => s.vehicleId || s.vehicleName)).size;
-
-    this.statisticsData = {
-      'Véhicules': vehiclesWithStops.toString(),
-      'Total arrêts': meaningfulStops.length.toString(),
-      '🅿️ Arrêts': `${typeA.length} (${formatDuration(totalTypeASeconds)})`,
-      '🚦 Ralenti prolongé': `${typeC.length} (${formatDuration(totalTypeCSeconds)})`,
-      'Durée totale': formatDuration(filteredDurationSeconds)
-    };
-
-    // Secondary chart: Stops by vehicle
-    const stopsByVehicle = new Map<string, number>();
-    this.tableData.forEach((s: any) => {
-      const current = stopsByVehicle.get(s.vehicleName) || 0;
-      stopsByVehicle.set(s.vehicleName, current + 1);
-    });
-
-    this.secondaryChartData = Array.from(stopsByVehicle.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([name, count]) => ({ label: name, value: count }));
-  }
+  // processStopsFromApiAllVehicles removed — now uses processStopsFromPositions for both single and all vehicles
 
   executeSpeedInfractionReport(start?: Date, end?: Date) {
     const now = new Date();
@@ -3613,10 +3523,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     });
   }
 
-  processStopsFromApi(result: VehicleStopsResult) {
-    const stops = result.items;
-    
-    if (!stops || stops.length === 0) {
+  processStopsFromPositions(positions: any[]) {
+    if (!positions || positions.length === 0) {
       this.tableData = [];
       this.chartData = [];
       this.statisticsData = { 'Information': 'Aucun arrêt trouvé pour cette période' };
@@ -3634,75 +3542,91 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return `${Math.round(minutes)}min`;
     };
 
-    // Filter: keep only real stops (ignition OFF) and extended idle (ignition ON, >= 30 min)
-    const meaningfulStops = stops.filter((stop: VehicleStopDto) => {
-      if (stop.ignitionOff) return true;
-      return stop.durationSeconds >= 1800; // "Ralenti prolongé"
-    });
+    // Sort positions chronologically
+    positions.sort((a: any, b: any) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
 
-    // Sort chronologically then merge overlapping stops OF SAME TYPE ONLY
-    meaningfulStops.sort((a: VehicleStopDto, b: VehicleStopDto) => 
-      new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-    );
+    // Detect stops from ignition transitions:
+    // Stop = sequence of ignition_on=false between ignition_on=true
+    const detectedStops: any[] = [];
+    let stopStart: any = null;
+    let stopPositions: any[] = [];
 
-    // Step 1: Merge only same ignition type (Arrêt+Arrêt or Idle+Idle)
-    const merged: VehicleStopDto[] = [];
-    for (const stop of meaningfulStops) {
-      if (merged.length === 0) { merged.push({ ...stop }); continue; }
-      const prev = merged[merged.length - 1];
-      const prevEnd = new Date(prev.endTime || prev.startTime).getTime();
-      const currStart = new Date(stop.startTime).getTime();
-      const sameType = prev.ignitionOff === stop.ignitionOff;
-      // Only merge same type with overlap or gap < 2 min
-      if (sameType && currStart <= prevEnd + 120000) {
-        const currEnd = new Date(stop.endTime || stop.startTime).getTime();
-        const newEnd = Math.max(prevEnd, currEnd);
-        prev.endTime = new Date(newEnd).toISOString();
-        prev.durationSeconds = Math.round((newEnd - new Date(prev.startTime).getTime()) / 1000);
-        if (!prev.address && stop.address) prev.address = stop.address;
+    for (let i = 0; i < positions.length; i++) {
+      const pos = positions[i];
+      const isIgnitionOn = pos.ignitionOn === true;
+
+      if (!isIgnitionOn) {
+        // Ignition OFF → accumulate stop positions
+        if (!stopStart) {
+          stopStart = pos;
+          stopPositions = [pos];
+        } else {
+          stopPositions.push(pos);
+        }
       } else {
-        merged.push({ ...stop });
+        // Ignition ON → end of stop (if we had one)
+        if (stopStart && stopPositions.length > 0) {
+          const lastStopPos = stopPositions[stopPositions.length - 1];
+          const startTime = new Date(stopStart.recordedAt).getTime();
+          const endTime = new Date(lastStopPos.recordedAt).getTime();
+          const durationSeconds = Math.round((endTime - startTime) / 1000);
+
+          // Only keep stops >= 1 minute
+          if (durationSeconds >= 60) {
+            detectedStops.push({
+              startTime: stopStart.recordedAt,
+              endTime: lastStopPos.recordedAt,
+              durationSeconds,
+              latitude: stopStart.latitude,
+              longitude: stopStart.longitude,
+              address: stopStart.address || null,
+              vehicleName: stopStart.vehicleName || null,
+              vehiclePlate: stopStart.vehiclePlate || null
+            });
+          }
+        }
+        stopStart = null;
+        stopPositions = [];
       }
     }
 
-    // Step 2: Remove entries fully contained within a longer entry
-    const deduped = merged.filter((stop, i) => {
-      const sStart = new Date(stop.startTime).getTime();
-      const sEnd = new Date(stop.endTime || stop.startTime).getTime();
-      for (let j = 0; j < merged.length; j++) {
-        if (i === j) continue;
-        const oStart = new Date(merged[j].startTime).getTime();
-        const oEnd = new Date(merged[j].endTime || merged[j].startTime).getTime();
-        if (sStart >= oStart && sEnd <= oEnd && stop.durationSeconds < merged[j].durationSeconds) {
-          return false; // This stop is fully inside a longer one → remove
-        }
+    // Handle case where data ends with ignition OFF (ongoing stop)
+    if (stopStart && stopPositions.length > 0) {
+      const lastStopPos = stopPositions[stopPositions.length - 1];
+      const startTime = new Date(stopStart.recordedAt).getTime();
+      const endTime = new Date(lastStopPos.recordedAt).getTime();
+      const durationSeconds = Math.round((endTime - startTime) / 1000);
+      if (durationSeconds >= 60) {
+        detectedStops.push({
+          startTime: stopStart.recordedAt,
+          endTime: lastStopPos.recordedAt,
+          durationSeconds,
+          latitude: stopStart.latitude,
+          longitude: stopStart.longitude,
+          address: stopStart.address || null,
+          vehicleName: stopStart.vehicleName || null,
+          vehiclePlate: stopStart.vehiclePlate || null
+        });
       }
-      return true;
-    });
+    }
 
-    this.tableData = deduped.map((stop: VehicleStopDto) => {
+    // Build table data
+    this.tableData = detectedStops.map((stop: any) => {
       const durationMinutes = stop.durationSeconds / 60;
-      const stopTypeCode = stop.ignitionOff ? 'A' : 'C';
-      const stopTypeLabel = stop.ignitionOff 
-        ? '🅿️ Arrêt' 
-        : '🚦 Ralenti prolongé';
-
       return {
         time: this.formatDateTime(stop.startTime),
-        endTime: stop.endTime ? this.formatDateTime(stop.endTime) : '-',
+        endTime: this.formatDateTime(stop.endTime),
         duration: formatDuration(stop.durationSeconds),
         durationSeconds: stop.durationSeconds,
         address: stop.address || 'Chargement...',
         latitude: stop.latitude,
         longitude: stop.longitude,
-        typeCode: stopTypeCode,
-        typeLabel: stopTypeLabel,
-        ignitionOff: stop.ignitionOff,
+        typeCode: 'A',
+        typeLabel: '🅿️ Arrêt',
+        ignitionOff: true,
         isLongStop: durationMinutes > 30,
-        geofenceName: stop.geofenceName,
-        fuelStart: stop.fuelLevelStart,
-        fuelEnd: stop.fuelLevelEnd,
-        fuelConsumed: stop.fuelConsumed
+        vehicleName: stop.vehicleName,
+        vehiclePlate: stop.vehiclePlate
       };
     });
 
@@ -3712,24 +3636,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Fetch real addresses for stops without one
     this.enrichStopsWithAddresses();
 
-    // Chart data - Gantt-style timeline showing stops
-    // Group by type for pie chart
-    const typeA = this.tableData.filter((s: any) => s.typeCode === 'A');
-    const typeC = this.tableData.filter((s: any) => s.typeCode === 'C');
-    
-    const totalTypeASeconds = typeA.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
-    const totalTypeCSeconds = typeC.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
-
-    const totalSeconds = totalTypeASeconds + totalTypeCSeconds;
-    const pctA = totalSeconds > 0 ? Math.round(totalTypeASeconds / totalSeconds * 100) : 0;
-    const pctC = totalSeconds > 0 ? 100 - pctA : 0;
+    // Chart data
+    const totalStopSeconds = detectedStops.reduce((sum: number, s: any) => sum + s.durationSeconds, 0);
 
     this.chartData = [
-      { label: `Arrêts ${pctA}%`, value: Math.round(totalTypeASeconds / 60), count: typeA.length, color: '#3B82F6' },
-      { label: `Ralenti prolongé ${pctC}%`, value: Math.round(totalTypeCSeconds / 60), count: typeC.length, color: '#F59E0B' }
+      { label: `🅿️ Arrêts 100%`, value: Math.round(totalStopSeconds / 60), count: detectedStops.length, color: '#3B82F6' }
     ];
 
-    // Secondary chart: duration range breakdown (matching Calypso bar chart)
+    // Secondary chart: duration range breakdown
     const durationRanges = [
       { label: '0-5 min', min: 0, max: 300, color: '#3B82F6' },
       { label: '5-15 min', min: 300, max: 900, color: '#6366F1' },
@@ -3743,22 +3657,19 @@ export class ReportsComponent implements OnInit, OnDestroy {
       color: r.color
     }));
 
-    // Statistics — based on merged stops
-    const mergedDurations = this.tableData.map((s: any) => s.durationSeconds);
-    const filteredDurationSeconds = mergedDurations.reduce((sum: number, d: number) => sum + d, 0);
-    const avgDurationSeconds = mergedDurations.length > 0 ? filteredDurationSeconds / mergedDurations.length : 0;
-    const maxDurationSeconds = mergedDurations.length > 0 ? Math.max(...mergedDurations) : 0;
-    const minDurationSeconds = mergedDurations.length > 0 ? Math.min(...mergedDurations) : 0;
+    // Statistics
+    const durations = this.tableData.map((s: any) => s.durationSeconds);
+    const totalDurationSeconds = durations.reduce((sum: number, d: number) => sum + d, 0);
+    const avgDurationSeconds = durations.length > 0 ? totalDurationSeconds / durations.length : 0;
+    const maxDurationSeconds = durations.length > 0 ? Math.max(...durations) : 0;
+    const minDurationSeconds = durations.length > 0 ? Math.min(...durations) : 0;
 
     this.statisticsData = {
       'Total arrêts': this.tableData.length.toString(),
       'Durée moy.': formatDuration(avgDurationSeconds),
       'Max. arrêt': formatDuration(maxDurationSeconds),
       'Min. arrêt': formatDuration(minDurationSeconds),
-      'Temps total arrêt': formatDuration(totalTypeASeconds),
-      'Temps total ralenti': formatDuration(totalTypeCSeconds),
-      '🅿️ Arrêts': typeA.length.toString(),
-      '🚦 Ralenti prolongé': typeC.length.toString()
+      'Temps total arrêt': formatDuration(totalDurationSeconds)
     };
   }
 
