@@ -334,10 +334,11 @@ public class GpsController : ControllerBase
                           AND recorded_at <= {2}
                     )
                     SELECT id, device_id, latitude, longitude, speed_kph, course_deg,
-                           ignition_on, recorded_at, address, fuel_raw, odometer_km,
-                           is_real_time, temperature_c, created_at, event_key,
-                           mems_x, mems_y, mems_z, rpm, send_flag, protocol_version,
-                           fuel_rate_l_per_100km, is_interpolated
+                           altitude_m, ignition_on, fuel_raw, power_voltage, satellites,
+                           is_valid, is_real_time, recorded_at, address, metadata,
+                           created_at, event_key, mems_x, mems_y, mems_z,
+                           temperature_c, odometer_km, rpm, send_flag, protocol_version,
+                           fuel_rate_l_per_100km
                     FROM numbered
                     WHERE rn = 1                           -- always keep first
                        OR rn = total                       -- always keep last
@@ -511,10 +512,11 @@ public class GpsController : ControllerBase
                           AND recorded_at <= {2}
                     )
                     SELECT id, device_id, latitude, longitude, speed_kph, course_deg,
-                           ignition_on, recorded_at, address, fuel_raw, odometer_km,
-                           is_real_time, temperature_c, created_at, event_key,
-                           mems_x, mems_y, mems_z, rpm, send_flag, protocol_version,
-                           fuel_rate_l_per_100km, is_interpolated
+                           altitude_m, ignition_on, fuel_raw, power_voltage, satellites,
+                           is_valid, is_real_time, recorded_at, address, metadata,
+                           created_at, event_key, mems_x, mems_y, mems_z,
+                           temperature_c, odometer_km, rpm, send_flag, protocol_version,
+                           fuel_rate_l_per_100km
                     FROM numbered
                     WHERE rn = 1
                        OR rn = total
