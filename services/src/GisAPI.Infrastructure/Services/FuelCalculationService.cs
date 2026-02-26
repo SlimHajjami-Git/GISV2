@@ -235,6 +235,14 @@ public class FuelCalculationService : IFuelCalculationService
             if (first.OdometerKm.HasValue && last.OdometerKm.HasValue && last.OdometerKm.Value > first.OdometerKm.Value)
             {
                 int odometerDist = (int)(last.OdometerKm.Value - first.OdometerKm.Value);
+                
+                // Auto-detect: some GPS devices send odometer in meters instead of km
+                // If odometer is ~1000x larger than haversine, it's likely in meters
+                if (haversineDist > 0 && odometerDist > haversineDist * 500)
+                {
+                    odometerDist = odometerDist / 1000;
+                }
+                
                 // Only trust odometer if it's within reasonable bounds
                 if (odometerDist <= maxReasonableKm)
                     return Math.Max(odometerDist, haversineDist);

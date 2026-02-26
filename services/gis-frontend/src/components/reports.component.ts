@@ -967,7 +967,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // Try odometer first, with sanity check
       let distanceKm = haversineDist;
       if (trip.end.odometerKm && trip.start.odometerKm && trip.end.odometerKm > trip.start.odometerKm) {
-        const odometerDist = trip.end.odometerKm - trip.start.odometerKm;
+        let odometerDist = trip.end.odometerKm - trip.start.odometerKm;
+        // Auto-detect: some GPS devices send odometer in meters instead of km
+        if (haversineDist > 0 && odometerDist > haversineDist * 500) {
+          odometerDist = odometerDist / 1000;
+        }
         const maxReasonable = Math.max((durationMin / 60) * 200, 5);
         if (odometerDist <= maxReasonable) {
           distanceKm = odometerDist;
@@ -4020,7 +4024,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
       
       // Try odometer first, with sanity check
       if (seg.start.odometerKm && seg.end.odometerKm && seg.end.odometerKm >= seg.start.odometerKm) {
-        const odometerDist = seg.end.odometerKm - seg.start.odometerKm;
+        let odometerDist = seg.end.odometerKm - seg.start.odometerKm;
+        // Auto-detect: some GPS devices send odometer in meters instead of km
+        if (distanceKm > 0 && odometerDist > distanceKm * 500) {
+          odometerDist = odometerDist / 1000;
+        }
         // Sanity: max ~200 km/h => max distance = duration(h) * 200
         const maxReasonable = Math.max((durationMin / 60) * 200, 5);
         if (odometerDist <= maxReasonable) {
