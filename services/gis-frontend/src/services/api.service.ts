@@ -583,11 +583,12 @@ export class ApiService {
     return this.http.post<any>(`${this.API_URL}/gps/vehicles/command`, { vehicleId, command }, { headers: this.getHeaders() });
   }
 
-  getVehicleHistory(vehicleId: number, from?: Date, to?: Date, maxPoints = 3000): Observable<PositionDto[]> {
+  getVehicleHistory(vehicleId: number, from?: Date, to?: Date, maxPoints = 3000, filterDrift = true): Observable<PositionDto[]> {
     let params = new HttpParams();
     if (from) params = params.set('from', this.toLocalIso(from));
     if (to) params = params.set('to', this.toLocalIso(to));
     params = params.set('maxPoints', maxPoints.toString());
+    if (!filterDrift) params = params.set('filterDrift', 'false');
     return this.http.get<any>(`${this.getMonitoringApiUrl()}/gps/vehicles/${vehicleId}/history`, { headers: this.getHeaders(), params }).pipe(
       map(resp => Array.isArray(resp) ? resp : resp?.positions ?? [])
     );

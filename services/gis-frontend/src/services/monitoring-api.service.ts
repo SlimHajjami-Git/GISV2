@@ -193,7 +193,8 @@ export class MonitoringApiService implements OnDestroy {
     vehicleId: number,
     from?: Date,
     to?: Date,
-    maxPoints = 3000
+    maxPoints = 3000,
+    filterDrift = true
   ): Observable<PositionHistoryItem[]> {
     let params = new HttpParams().set('maxPoints', maxPoints.toString());
 
@@ -202,6 +203,9 @@ export class MonitoringApiService implements OnDestroy {
     }
     if (to) {
       params = params.set('to', to.toISOString());
+    }
+    if (!filterDrift) {
+      params = params.set('filterDrift', 'false');
     }
 
     this.loadingSubject.next(true);

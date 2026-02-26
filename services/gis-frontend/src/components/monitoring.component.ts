@@ -892,7 +892,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // Store the vehicle ID for this playback to ensure data isolation
     this.playbackVehicleId = vehicleId;
 
-    this.apiService.getVehicleHistory(vehicleId, fromDate, toDate).subscribe({
+    this.apiService.getVehicleHistory(vehicleId, fromDate, toDate, 3000, false).subscribe({
       next: (positions) => {
         // Verify this is still the correct vehicle (user might have switched)
         if (this.playbackVehicleId !== vehicleId) {

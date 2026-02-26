@@ -15,301 +15,149 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
   template: `
     <app-layout>
       <div class="dashboard-container">
-        <!-- Date Filter Bar -->
-        <ui-date-filter-bar
-          [selectedPeriod]="selectedPeriod"
-          [fromDate]="fromDate"
-          [toDate]="toDate"
-          (periodChange)="onPeriodChange($event)"
-          (dateRangeChange)="onDateRangeChange($event)"
-          (applyFilter)="applyFilter()">
-        </ui-date-filter-bar>
+        <div class="dashboard-header">
+          <h1 class="dashboard-title">Tableau de bord</h1>
+          <div class="header-actions">
+            <select class="period-select" [(ngModel)]="selectedPeriod" (change)="applyFilter()">
+              <option value="week">Semaine</option>
+              <option value="month">Mois</option>
+              <option value="quarter">Trimestre</option>
+            </select>
+          </div>
+        </div>
 
-        <!-- Dashboard Grid -->
         <div class="dashboard-grid">
-          <!-- Row 1 -->
-          <!-- Motion State Card -->
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">État des véhicules <span class="help">ⓘ</span></span>
-              <span class="online-badge">TEMPS RÉEL</span>
-            </div>
-            <div class="card-body motion-content">
-              <div class="pie-wrapper">
-                <svg viewBox="0 0 100 100" class="pie-chart">
-                  <circle cx="50" cy="50" r="45" fill="#84cc16"/>
-                  <path [attr.d]="getSlice(0, motionData.stationary)" fill="#ef4444"/>
-                  <path [attr.d]="getSlice(motionData.stationary, motionData.stationary + motionData.ignitionOn)" fill="#f97316"/>
-                </svg>
-                <div class="pie-center">{{ totalMotion }}</div>
-              </div>
-              <div class="motion-legend">
-                <div class="legend-row"><span class="dot red"></span><span class="label">À l'arrêt</span><span class="value">{{ motionData.stationary }}</span></div>
-                <div class="legend-row"><span class="dot orange"></span><span class="label">Arrêt moteur allumé</span><span class="value">{{ motionData.ignitionOn }}</span></div>
-                <div class="legend-row"><span class="dot green"></span><span class="label">En mouvement</span><span class="value">{{ motionData.moving }}</span></div>
-                <div class="legend-row"><span class="dot lime"></span><span class="label">En marche moteur allumé</span><span class="value">{{ motionData.movingIgnition }}</span></div>
-                <div class="legend-row"><span class="dot blue"></span><span class="label">Données LBS</span><span class="value">{{ motionData.lbs }}</span></div>
-                <div class="legend-row"><span class="dot navy"></span><span class="label">Données Wi-Fi</span><span class="value">{{ motionData.wifi }}</span></div>
-                <div class="legend-row"><span class="dot gray"></span><span class="label">État inconnu</span><span class="value">{{ motionData.noState }}</span></div>
-                <div class="legend-row"><span class="dot lightgray"></span><span class="label">Sans coordonnées</span><span class="value">{{ motionData.noCoords }}</span></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Consumed by FLS Chart -->
-          <div class="card chart-card">
-            <div class="card-header">
-              <span class="card-title">Consommation carburant <span class="help">ⓘ</span></span>
-              <div class="chart-legend-header">
-                <span class="legend-square green"></span>
-                <span>Véhicules</span>
-                <span class="legend-total">118161</span>
-              </div>
-            </div>
+          <!-- Card 1: Depenses par categorie -->
+          <div class="card card-expenses">
+            <div class="card-header"><span class="card-title">Depenses par categorie</span></div>
             <div class="card-body">
-              <div class="chart-wrapper">
-                <div class="y-axis">
-                  <span>1400</span>
-                  <span>1050</span>
-                  <span>700</span>
-                  <span>350</span>
-                  <span>0</span>
-                </div>
-                <div class="chart-area">
-                  <svg class="line-svg" viewBox="0 0 500 200" preserveAspectRatio="none">
-                    <!-- Grid lines -->
-                    <line x1="0" y1="0" x2="500" y2="0" stroke="#e2e8f0" stroke-width="1"/>
-                    <line x1="0" y1="50" x2="500" y2="50" stroke="#e2e8f0" stroke-width="1"/>
-                    <line x1="0" y1="100" x2="500" y2="100" stroke="#e2e8f0" stroke-width="1"/>
-                    <line x1="0" y1="150" x2="500" y2="150" stroke="#e2e8f0" stroke-width="1"/>
-                    <line x1="0" y1="200" x2="500" y2="200" stroke="#e2e8f0" stroke-width="1"/>
-                    <!-- Data line -->
-                    <polyline fill="none" stroke="#22c55e" stroke-width="2"
-                      points="0,150 60,140 120,130 180,120 240,50 300,20 360,30 420,80 480,170 500,160"/>
+              <div class="donut-section">
+                <div class="donut-wrapper">
+                  <svg viewBox="0 0 120 120" class="donut-svg">
+                    <circle cx="60" cy="60" r="50" fill="none" stroke="#e2e8f0" stroke-width="18"/>
+                    <circle cx="60" cy="60" r="50" fill="none" stroke="#3b82f6" stroke-width="18"
+                      [attr.stroke-dasharray]="getFuelArc() + ' ' + (314 - getFuelArc())"
+                      stroke-dashoffset="78.5" transform="rotate(-90 60 60)"/>
+                    <circle cx="60" cy="60" r="50" fill="none" stroke="#10b981" stroke-width="18"
+                      [attr.stroke-dasharray]="getMaintArc() + ' ' + (314 - getMaintArc())"
+                      [attr.stroke-dashoffset]="78.5 - getFuelArc()" transform="rotate(-90 60 60)"/>
+                    <circle cx="60" cy="60" r="50" fill="none" stroke="#f59e0b" stroke-width="18"
+                      [attr.stroke-dasharray]="getRepairArc() + ' ' + (314 - getRepairArc())"
+                      [attr.stroke-dashoffset]="78.5 - getFuelArc() - getMaintArc()" transform="rotate(-90 60 60)"/>
                   </svg>
+                  <div class="donut-center">
+                    <span class="donut-total">{{ totalMonthlyCost | number:'1.0-0' }}</span>
+                    <span class="donut-pct">{{ getFuelPercentage() | number:'1.0-0' }}%</span>
+                  </div>
+                </div>
+                <div class="donut-legend">
+                  <div class="legend-item"><span class="ldot" style="background:#3b82f6"></span>Carburant <strong>{{ fuelCost | number:'1.0-0' }}</strong></div>
+                  <div class="legend-item"><span class="ldot" style="background:#10b981"></span>Entretiens <strong>{{ maintenanceCost | number:'1.0-0' }}</strong></div>
+                  <div class="legend-item"><span class="ldot" style="background:#f59e0b"></span>Reparations <strong>{{ repairCost | number:'1.0-0' }}</strong></div>
+                  <div class="legend-item"><span class="ldot" style="background:#94a3b8"></span>Autres <strong>{{ otherCost | number:'1.0-0' }}</strong></div>
                 </div>
               </div>
-              <div class="x-axis">
-                <span>2025-01-03</span>
-                <span>2025-01-05</span>
-                <span>2025-01-07</span>
-                <span>2025-01-09</span>
-                <span>2025-01-11</span>
-                <span>2025-01-13</span>
-                <span>2025-01-15</span>
+              <div class="expense-breakdown">
+                <div class="expense-row"><span>Depenses</span><span class="trend up">+5%</span><span class="trend down">-8%</span></div>
+                <div class="expense-row"><span>Carburant</span><span>{{ fuelCost | number:'1.0-0' }}</span><span class="pct">{{ getFuelPercentage() | number:'1.0-0' }}%</span></div>
+                <div class="expense-row"><span>Entretiens</span><span>{{ maintenanceCost | number:'1.0-0' }}</span><span class="pct">{{ getMaintenancePercentage() | number:'1.0-0' }}%</span></div>
+                <div class="expense-row"><span>Autres</span><span>{{ otherCost | number:'1.0-0' }}</span><span class="pct">{{ getOtherPercentage() | number:'1.0-0' }}%</span></div>
+                <div class="expense-row total"><span>Total</span><span>{{ totalMonthlyCost | number:'1.0-0' }} DT</span><span class="trend down">-8%</span></div>
               </div>
             </div>
           </div>
 
-          <!-- Row 2 -->
-          <!-- Geofences Card -->
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">Géozones avec véhicules</span>
-              <span class="online-badge">TEMPS RÉEL</span>
-            </div>
+          <!-- Card 2: Haute consommation carburant -->
+          <div class="card card-fuel">
+            <div class="card-header"><span class="card-title">Haute consommation de carburant</span><span class="card-unit">(L/100 km)</span></div>
             <div class="card-body">
-              <div class="geofence-list">
-                <div class="geofence-row" *ngFor="let geo of geofences">
-                  <span class="geo-icon" [style.color]="geo.color">●</span>
-                  <span class="geo-name">{{ geo.name }}</span>
-                  <span class="geo-count">{{ geo.count }}</span>
+              <div class="fuel-list">
+                <div class="fuel-row" *ngFor="let v of topFuelConsumers">
+                  <span class="fuel-vehicle">{{ v.plate }}</span>
+                  <span class="fuel-value">{{ v.consumption | number:'1.1-1' }} L/100 km</span>
+                  <span class="fuel-trend" [class.up]="v.trend > 0" [class.down]="v.trend < 0">{{ v.trend > 0 ? '+' : '' }}{{ v.trend }}%</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Device Health Card -->
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">État de santé des appareils</span>
-              <span class="online-badge">TEMPS RÉEL</span>
-            </div>
-            <div class="card-body health-content">
-              <div class="health-pie-wrapper">
-                <svg viewBox="0 0 100 100" class="health-pie">
-                  <circle cx="50" cy="50" r="45" fill="#22c55e"/>
-                  <path [attr.d]="getHealthSlice(0, healthData.attention)" fill="#eab308"/>
-                  <path [attr.d]="getHealthSlice(healthData.attention, healthData.attention + healthData.unhealthy)" fill="#ef4444"/>
-                </svg>
-                <div class="health-center">{{ totalHealth }}</div>
-              </div>
-              <div class="health-legend">
-                <div class="health-row"><span class="dot green"></span><span class="label">En bon état</span><span class="value">{{ healthData.healthy }}</span></div>
-                <div class="health-row"><span class="dot yellow"></span><span class="label">Attention requise</span><span class="value">{{ healthData.attention }}</span></div>
-                <div class="health-row"><span class="dot red"></span><span class="label">Défaillant</span><span class="value">{{ healthData.unhealthy }}</span></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Top Units by Mileage -->
-          <div class="card mileage-card">
-            <div class="card-header">
-              <span class="card-title">Véhicules par kilométrage <span class="help">ⓘ</span></span>
-            </div>
+          <!-- Card 3: Immobilisation des vehicules -->
+          <div class="card card-immob">
+            <div class="card-header"><span class="card-title">Immobilisation des vehicules</span></div>
             <div class="card-body">
-              <div class="mileage-scale">
-                <span></span>
-                <span>0 km</span>
-                <span>8500 km</span>
-                <span>17000 km</span>
-                <span>25500 km</span>
-                <span>34000 km</span>
+              <div class="immob-list">
+                <div class="immob-row" *ngFor="let v of immobilizedVehicles">
+                  <span class="immob-dot" [class.warning]="v.days > 5"></span>
+                  <span class="immob-plate">{{ v.plate }}</span>
+                  <span class="immob-reason">{{ v.reason }}</span>
+                  <span class="immob-days">{{ v.days }} jours</span>
+                </div>
               </div>
-              <div class="mileage-list">
-                <div class="mileage-row" *ngFor="let unit of topUnits">
-                  <div class="unit-label">
-                    <span class="unit-dot" [style.background]="unit.color"></span>
-                    <span class="unit-name">{{ unit.name }}</span>
-                    <span class="unit-km">{{ unit.mileage | number }} km</span>
+            </div>
+          </div>
+
+          <!-- Card 4: Kilometrage de la flotte -->
+          <div class="card card-mileage">
+            <div class="card-header"><span class="card-title">Kilometrage de la flotte</span></div>
+            <div class="card-body">
+              <div class="mileage-total">
+                <span class="mileage-big">{{ totalFleetMileage | number:'1.0-0' }} km</span>
+              </div>
+              <div class="mileage-bars">
+                <div class="mbar-row" *ngFor="let unit of topUnits">
+                  <span class="mbar-name">{{ unit.name }}</span>
+                  <div class="mbar-track">
+                    <div class="mbar-fill" [style.width.%]="(unit.mileage / maxMileage) * 100"
+                      [style.background]="unit.color"></div>
                   </div>
-                  <div class="bar-container">
-                    <div class="bar" [style.width.%]="(unit.mileage / maxMileage) * 100" [style.background]="'#3b82f6'"></div>
+                  <span class="mbar-km">{{ unit.mileage | number:'1.0-0' }} km</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 5: Top scores de conduite -->
+          <div class="card card-scores">
+            <div class="card-header"><span class="card-title">Top scores de conduite</span></div>
+            <div class="card-body">
+              <div class="scores-grid">
+                <div class="score-group" *ngFor="let group of drivingScores">
+                  <div class="score-circle" [style.borderColor]="group.color">
+                    <span class="score-val">{{ group.score }}</span>
+                  </div>
+                  <div class="score-vehicles">
+                    <div class="score-v" *ngFor="let v of group.vehicles">{{ v }}</div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Row 3: Maintenance & Costs -->
-          <!-- Upcoming Maintenance Card -->
-          <div class="card maintenance-card">
-            <div class="card-header">
-              <span class="card-title">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 6px;">
-                  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-                </svg>
-                Maintenance
-              </span>
-              <a routerLink="/maintenance" class="view-all-link">Voir tout →</a>
-            </div>
+          <!-- Card 6: Vehicules en bonne sante -->
+          <div class="card card-health-good">
+            <div class="card-header"><span class="card-title">Vehicules en bonne sante</span></div>
             <div class="card-body">
-              <div class="maintenance-stats">
-                <div class="maint-stat scheduled">
-                  <span class="maint-count">{{ scheduledMaintCount }}</span>
-                  <span class="maint-label">Planifiées</span>
-                </div>
-                <div class="maint-stat in-progress">
-                  <span class="maint-count">{{ inProgressMaintCount }}</span>
-                  <span class="maint-label">En cours</span>
-                </div>
-                <div class="maint-stat completed">
-                  <span class="maint-count">{{ completedMaintCount }}</span>
-                  <span class="maint-label">Terminées</span>
-                </div>
-              </div>
-              <div class="upcoming-list">
-                @for (m of upcomingMaintenance; track m.id) {
-                  <div class="upcoming-item">
-                    <div class="upcoming-icon" [class]="m.status">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-                      </svg>
-                    </div>
-                    <div class="upcoming-info">
-                      <span class="upcoming-title">{{ m.description }}</span>
-                      <span class="upcoming-vehicle">{{ getVehicleName(m.vehicleId) }}</span>
-                    </div>
-                    <span class="upcoming-date">{{ formatShortDate(m.date) }}</span>
+              <div class="health-list">
+                <div class="health-row" *ngFor="let v of healthyVehicles">
+                  <span class="health-plate">{{ v.plate }}</span>
+                  <div class="health-bar-track">
+                    <div class="health-bar-fill" [style.width.%]="v.score" [style.background]="getHealthColor(v.score)"></div>
                   </div>
-                }
-              </div>
-            </div>
-          </div>
-
-          <!-- Costs Summary Card -->
-          <div class="card costs-card">
-            <div class="card-header">
-              <span class="card-title">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 6px;">
-                  <line x1="12" y1="1" x2="12" y2="23"/>
-                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-                </svg>
-                Dépenses du mois
-              </span>
-              <a routerLink="/reports" class="view-all-link">Voir rapport →</a>
-            </div>
-            <div class="card-body">
-              <div class="cost-total">
-                <span class="cost-amount">{{ totalMonthlyCost | number:'1.0-0' }} DT</span>
-                <span class="cost-period">Ce mois</span>
-              </div>
-              <div class="cost-breakdown">
-                <div class="cost-item fuel">
-                  <div class="cost-bar" [style.width.%]="getFuelPercentage()"></div>
-                  <span class="cost-type">Carburant</span>
-                  <span class="cost-value">{{ fuelCost | number:'1.0-0' }} DT</span>
-                </div>
-                <div class="cost-item maintenance">
-                  <div class="cost-bar" [style.width.%]="getMaintenancePercentage()"></div>
-                  <span class="cost-type">Maintenance</span>
-                  <span class="cost-value">{{ maintenanceCost | number:'1.0-0' }} DT</span>
-                </div>
-                <div class="cost-item other">
-                  <div class="cost-bar" [style.width.%]="getOtherPercentage()"></div>
-                  <span class="cost-type">Autres</span>
-                  <span class="cost-value">{{ otherCost | number:'1.0-0' }} DT</span>
+                  <span class="health-icon good">&#x2713;</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Fleet Status Card -->
-          <div class="card fleet-status-card">
-            <div class="card-header">
-              <span class="card-title">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 6px;">
-                  <rect x="1" y="3" width="15" height="13" rx="2"/>
-                  <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
-                  <circle cx="5.5" cy="18.5" r="2.5"/>
-                  <circle cx="18.5" cy="18.5" r="2.5"/>
-                </svg>
-                État de la flotte
-              </span>
-              <a routerLink="/vehicles" class="view-all-link">Voir tout →</a>
-            </div>
+          <!-- Card 7: Vehicules en mauvais etat -->
+          <div class="card card-health-bad">
+            <div class="card-header"><span class="card-title">Vehicules en mauvais etat</span></div>
             <div class="card-body">
-              <div class="fleet-stats">
-                <div class="fleet-stat">
-                  <div class="fleet-icon available">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                      <polyline points="22 4 12 14.01 9 11.01"/>
-                    </svg>
-                  </div>
-                  <span class="fleet-count">{{ availableVehicles }}</span>
-                  <span class="fleet-label">Disponibles</span>
-                </div>
-                <div class="fleet-stat">
-                  <div class="fleet-icon in-use">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="1" y="3" width="15" height="13" rx="2"/>
-                      <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
-                      <circle cx="5.5" cy="18.5" r="2.5"/>
-                      <circle cx="18.5" cy="18.5" r="2.5"/>
-                    </svg>
-                  </div>
-                  <span class="fleet-count">{{ inUseVehicles }}</span>
-                  <span class="fleet-label">En service</span>
-                </div>
-                <div class="fleet-stat">
-                  <div class="fleet-icon maintenance">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-                    </svg>
-                  </div>
-                  <span class="fleet-count">{{ maintenanceVehicles }}</span>
-                  <span class="fleet-label">Maintenance</span>
-                </div>
-                <div class="fleet-stat">
-                  <div class="fleet-icon gps">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                      <circle cx="12" cy="10" r="3"/>
-                    </svg>
-                  </div>
-                  <span class="fleet-count">{{ gpsEquippedVehicles }}</span>
-                  <span class="fleet-label">Avec GPS</span>
+              <div class="health-list">
+                <div class="health-row" *ngFor="let v of unhealthyVehicles">
+                  <span class="health-plate">{{ v.plate }}</span>
+                  <span class="health-issue">{{ v.issue }}</span>
+                  <span class="health-icon bad">&#9888;</span>
                 </div>
               </div>
             </div>
@@ -319,607 +167,167 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     </app-layout>
   `,
   styles: [`
+    :host { display: block; }
     .dashboard-container {
       flex: 1;
-      background: var(--bg-page);
+      background: #f1f5f9;
       min-height: calc(100vh - 42px);
-      display: flex;
-      flex-direction: column;
+      padding: 20px;
+      overflow-y: auto;
     }
-
-    /* Dashboard Grid */
+    .dashboard-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .dashboard-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1e293b;
+      margin: 0;
+    }
+    .period-select {
+      padding: 6px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #fff;
+      font-size: 13px;
+      color: #334155;
+      cursor: pointer;
+    }
     .dashboard-grid {
       display: grid;
-      grid-template-columns: 340px 1fr 1fr;
-      grid-template-rows: auto 1fr;
-      gap: 1px;
-      background: var(--border-color);
-      flex: 1;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
     }
-
-    /* Cards */
     .card {
-      background: var(--bg-card);
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      overflow: hidden;
     }
-
     .card-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 10px 14px;
-      border-bottom: 1px solid var(--border-color);
+      padding: 14px 16px 10px;
     }
-
     .card-title {
-      color: var(--text-primary);
-      font-size: 13px;
-      font-weight: 600;
-    }
-
-    .card-title .help {
-      color: var(--text-muted);
-      font-size: 11px;
-      margin-left: 4px;
-    }
-
-    .online-badge {
-      color: #3b82f6;
-      font-size: 9px;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-    }
-
-    .card-body {
-      padding: 14px;
-    }
-
-    /* Motion State */
-    .motion-content {
-      display: flex;
-      gap: 16px;
-      align-items: flex-start;
-    }
-
-    .pie-wrapper {
-      position: relative;
-      width: 110px;
-      height: 110px;
-      flex-shrink: 0;
-    }
-
-    .pie-chart {
-      width: 100%;
-      height: 100%;
-      transform: rotate(-90deg);
-    }
-
-    .pie-center {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--text-primary);
-      background: var(--bg-card);
-      width: 50px;
-      height: 50px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .motion-legend {
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      flex: 1;
-    }
-
-    .legend-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-    }
-
-    .legend-row .label {
-      flex: 1;
-      color: var(--text-secondary);
-    }
-
-    .legend-row .value {
-      color: var(--text-primary);
-      font-weight: 600;
-      min-width: 16px;
-      text-align: right;
-    }
-
-    .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 2px;
-      flex-shrink: 0;
-    }
-
-    .dot.red { background: #ef4444; }
-    .dot.orange { background: #f97316; }
-    .dot.green { background: #22c55e; }
-    .dot.lime { background: #84cc16; }
-    .dot.blue { background: #3b82f6; }
-    .dot.navy { background: #1e40af; }
-    .dot.gray { background: #6b7280; }
-    .dot.lightgray { background: #d1d5db; }
-    .dot.yellow { background: #eab308; }
-
-    /* Chart Card */
-    .chart-card {
-      grid-column: 2;
-      grid-row: 1;
-    }
-
-    .chart-legend-header {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      color: var(--text-secondary);
-    }
-
-    .legend-square {
-      width: 12px;
-      height: 12px;
-      border-radius: 2px;
-    }
-
-    .legend-square.green {
-      background: #22c55e;
-    }
-
-    .legend-total {
-      color: var(--text-primary);
-      font-weight: 600;
-    }
-
-    .chart-wrapper {
-      display: flex;
-      height: 180px;
-    }
-
-    .y-axis {
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      padding-right: 8px;
-      font-size: 10px;
-      color: var(--text-muted);
-      text-align: right;
-      width: 35px;
-    }
-
-    .chart-area {
-      flex: 1;
-      border-left: 1px solid var(--border-color);
-      border-bottom: 1px solid var(--border-color);
-    }
-
-    .line-svg {
-      width: 100%;
-      height: 100%;
-    }
-
-    .x-axis {
-      display: flex;
-      justify-content: space-between;
-      padding-top: 6px;
-      padding-left: 40px;
-      font-size: 9px;
-      color: var(--text-muted);
-    }
-
-    /* Geofences */
-    .geofence-list {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .geofence-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 0;
-      border-bottom: 1px solid var(--border-color);
-    }
-
-    .geofence-row:last-child {
-      border-bottom: none;
-    }
-
-    .geo-icon {
       font-size: 14px;
-    }
-
-    .geo-name {
-      flex: 1;
-      color: var(--text-secondary);
-      font-size: 12px;
-    }
-
-    .geo-count {
-      color: var(--text-primary);
       font-weight: 600;
-      font-size: 12px;
+      color: #1e293b;
+    }
+    .card-unit {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-left: 6px;
+    }
+    .card-body {
+      padding: 0 16px 16px;
     }
 
-    /* Health */
-    .health-content {
-      display: flex;
-      gap: 24px;
-      align-items: center;
+    /* Expenses donut */
+    .card-expenses { grid-column: 1; grid-row: 1 / 3; }
+    .donut-section { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
+    .donut-wrapper { position: relative; width: 130px; height: 130px; flex-shrink: 0; }
+    .donut-svg { width: 100%; height: 100%; }
+    .donut-center {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      text-align: center;
     }
+    .donut-total { display: block; font-size: 18px; font-weight: 700; color: #1e293b; }
+    .donut-pct { display: block; font-size: 11px; color: #64748b; }
+    .donut-legend { display: flex; flex-direction: column; gap: 6px; }
+    .legend-item { font-size: 12px; color: #64748b; display: flex; align-items: center; gap: 6px; }
+    .legend-item strong { color: #1e293b; margin-left: auto; }
+    .ldot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+    .expense-breakdown { border-top: 1px solid #e2e8f0; padding-top: 12px; }
+    .expense-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 0; font-size: 12px; color: #475569;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .expense-row.total { font-weight: 700; color: #1e293b; border-bottom: none; }
+    .expense-row .pct { color: #94a3b8; font-size: 11px; }
+    .trend { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; }
+    .trend.up { color: #dc2626; background: #fef2f2; }
+    .trend.down { color: #16a34a; background: #f0fdf4; }
 
-    .health-pie-wrapper {
-      position: relative;
-      width: 100px;
-      height: 100px;
-      flex-shrink: 0;
+    /* Fuel consumers */
+    .fuel-list { display: flex; flex-direction: column; }
+    .fuel-row {
+      display: flex; align-items: center; gap: 8px; padding: 8px 0;
+      border-bottom: 1px solid #f1f5f9; font-size: 12px;
     }
+    .fuel-row:last-child { border-bottom: none; }
+    .fuel-vehicle { flex: 1; color: #334155; font-weight: 500; }
+    .fuel-value { color: #1e293b; font-weight: 600; }
+    .fuel-trend { font-size: 11px; font-weight: 600; min-width: 40px; text-align: right; }
+    .fuel-trend.up { color: #dc2626; }
+    .fuel-trend.down { color: #16a34a; }
 
-    .health-pie {
-      width: 100%;
-      height: 100%;
-      transform: rotate(-90deg);
+    /* Immobilization */
+    .immob-list { display: flex; flex-direction: column; }
+    .immob-row {
+      display: flex; align-items: center; gap: 8px; padding: 8px 0;
+      border-bottom: 1px solid #f1f5f9; font-size: 12px;
     }
-
-    .health-center {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--text-primary);
-      background: var(--bg-card);
-      width: 45px;
-      height: 45px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .immob-row:last-child { border-bottom: none; }
+    .immob-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex-shrink: 0;
     }
-
-    .health-legend {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .health-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-    }
-
-    .health-row .label {
-      color: var(--text-secondary);
-      min-width: 90px;
-    }
-
-    .health-row .value {
-      color: var(--text-primary);
-      font-weight: 600;
-    }
+    .immob-dot.warning { background: #ef4444; }
+    .immob-plate { color: #334155; font-weight: 500; min-width: 80px; }
+    .immob-reason { flex: 1; color: #94a3b8; }
+    .immob-days { color: #1e293b; font-weight: 600; white-space: nowrap; }
 
     /* Mileage */
-    .mileage-scale {
-      display: grid;
-      grid-template-columns: 140px repeat(5, 1fr);
-      font-size: 9px;
-      color: var(--text-muted);
-      padding-bottom: 6px;
-      border-bottom: 1px solid var(--border-color);
-      margin-bottom: 8px;
+    .card-mileage { grid-column: 1 / 3; }
+    .mileage-total { margin-bottom: 12px; }
+    .mileage-big { font-size: 28px; font-weight: 700; color: #1e293b; }
+    .mileage-bars { display: flex; flex-direction: column; gap: 6px; }
+    .mbar-row { display: flex; align-items: center; gap: 10px; }
+    .mbar-name { font-size: 11px; color: #64748b; min-width: 100px; }
+    .mbar-track { flex: 1; height: 14px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
+    .mbar-fill { height: 100%; border-radius: 4px; transition: width 0.3s ease; }
+    .mbar-km { font-size: 11px; color: #1e293b; font-weight: 600; min-width: 80px; text-align: right; }
+
+    /* Scores */
+    .scores-grid { display: flex; gap: 20px; flex-wrap: wrap; }
+    .score-group { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .score-circle {
+      width: 60px; height: 60px; border-radius: 50%; border: 4px solid;
+      display: flex; align-items: center; justify-content: center;
     }
+    .score-val { font-size: 18px; font-weight: 700; color: #1e293b; }
+    .score-vehicles { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .score-v { font-size: 10px; color: #64748b; }
 
-    .mileage-list {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
+    /* Health cards */
+    .health-list { display: flex; flex-direction: column; }
+    .health-row {
+      display: flex; align-items: center; gap: 8px; padding: 8px 0;
+      border-bottom: 1px solid #f1f5f9; font-size: 12px;
     }
+    .health-row:last-child { border-bottom: none; }
+    .health-plate { color: #334155; font-weight: 500; min-width: 80px; }
+    .health-bar-track { flex: 1; height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
+    .health-bar-fill { height: 100%; border-radius: 4px; }
+    .health-issue { flex: 1; color: #ef4444; font-size: 11px; }
+    .health-icon { font-size: 14px; }
+    .health-icon.good { color: #22c55e; }
+    .health-icon.bad { color: #ef4444; }
 
-    .mileage-row {
-      display: grid;
-      grid-template-columns: 140px 1fr;
-      align-items: center;
-      gap: 8px;
+    @media (max-width: 1100px) {
+      .dashboard-grid { grid-template-columns: 1fr 1fr; }
+      .card-expenses { grid-column: 1 / -1; grid-row: auto; }
+      .card-mileage { grid-column: 1 / -1; }
     }
-
-    .unit-label {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-    }
-
-    .unit-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-    }
-
-    .unit-name {
-      color: var(--text-secondary);
-    }
-
-    .unit-km {
-      color: var(--text-muted);
-      font-size: 10px;
-      margin-left: auto;
-    }
-
-    .bar-container {
-      height: 18px;
-      background: var(--bg-tertiary);
-      border-radius: 2px;
-      overflow: hidden;
-    }
-
-    .bar {
-      height: 100%;
-      border-radius: 2px;
-    }
-
-    .mileage-card {
-      grid-column: 2 / 4;
-      grid-row: 2;
-    }
-
-    /* View All Link */
-    .view-all-link {
-      font-size: 11px;
-      color: #3b82f6;
-      text-decoration: none;
-      font-weight: 500;
-    }
-
-    .view-all-link:hover {
-      text-decoration: underline;
-    }
-
-    /* Maintenance Card */
-    .maintenance-card {
-      grid-column: 1;
-      grid-row: 3;
-    }
-
-    .maintenance-stats {
-      display: flex;
-      gap: 12px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--border-color);
-      margin-bottom: 12px;
-    }
-
-    .maint-stat {
-      flex: 1;
-      text-align: center;
-      padding: 8px;
-      border-radius: 4px;
-    }
-
-    .maint-stat.scheduled { background: rgba(59, 130, 246, 0.1); }
-    .maint-stat.in-progress { background: rgba(234, 179, 8, 0.1); }
-    .maint-stat.completed { background: rgba(34, 197, 94, 0.1); }
-
-    .maint-count {
-      display: block;
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--text-primary);
-    }
-
-    .maint-label {
-      font-size: 9px;
-      color: var(--text-secondary);
-      text-transform: uppercase;
-    }
-
-    .upcoming-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .upcoming-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 6px 0;
-      border-bottom: 1px solid var(--border-color);
-    }
-
-    .upcoming-icon {
-      width: 24px;
-      height: 24px;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .upcoming-icon.scheduled { background: #dbeafe; color: #2563eb; }
-    .upcoming-icon.in_progress { background: #fef3c7; color: #d97706; }
-    .upcoming-icon.completed { background: #dcfce7; color: #16a34a; }
-
-    .upcoming-info {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .upcoming-title {
-      font-size: 11px;
-      font-weight: 500;
-      color: var(--text-primary);
-    }
-
-    .upcoming-vehicle {
-      font-size: 10px;
-      color: var(--text-muted);
-    }
-
-    .upcoming-date {
-      font-size: 10px;
-      color: var(--text-secondary);
-      white-space: nowrap;
-    }
-
-    /* Costs Card */
-    .costs-card {
-      grid-column: 2;
-      grid-row: 3;
-    }
-
-    .cost-total {
-      text-align: center;
-      padding: 12px;
-      background: rgba(34, 197, 94, 0.1);
-      border-radius: 6px;
-      margin-bottom: 14px;
-    }
-
-    .cost-amount {
-      display: block;
-      font-size: 24px;
-      font-weight: 700;
-      color: #16a34a;
-    }
-
-    .cost-period {
-      font-size: 10px;
-      color: var(--text-secondary);
-    }
-
-    .cost-breakdown {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .cost-item {
-      position: relative;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 10px;
-      background: var(--bg-secondary);
-      border-radius: 4px;
-      overflow: hidden;
-    }
-
-    .cost-bar {
-      position: absolute;
-      left: 0;
-      top: 0;
-      height: 100%;
-      opacity: 0.3;
-    }
-
-    .cost-item.fuel .cost-bar { background: #f97316; }
-    .cost-item.maintenance .cost-bar { background: #3b82f6; }
-    .cost-item.other .cost-bar { background: #64748b; }
-
-    .cost-type {
-      font-size: 11px;
-      color: var(--text-secondary);
-      position: relative;
-    }
-
-    .cost-value {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-primary);
-      position: relative;
-    }
-
-    /* Fleet Status Card */
-    .fleet-status-card {
-      grid-column: 3;
-      grid-row: 3;
-    }
-
-    .fleet-stats {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    }
-
-    .fleet-stat {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 14px;
-      background: var(--bg-secondary);
-      border-radius: 6px;
-    }
-
-    .fleet-icon {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 8px;
-    }
-
-    .fleet-icon.available { background: #dcfce7; color: #16a34a; }
-    .fleet-icon.in-use { background: #dbeafe; color: #2563eb; }
-    .fleet-icon.maintenance { background: #fef3c7; color: #d97706; }
-    .fleet-icon.gps { background: #f3e8ff; color: #9333ea; }
-
-    .fleet-count {
-      font-size: 20px;
-      font-weight: 700;
-      color: var(--text-primary);
-    }
-
-    .fleet-label {
-      font-size: 10px;
-      color: var(--text-secondary);
-    }
-
-    /* Responsive */
-    @media (max-width: 1200px) {
-      .dashboard-grid {
-        grid-template-columns: 1fr 1fr;
-      }
-
-      .chart-card {
-        grid-column: 1 / -1;
-        grid-row: auto;
-      }
-
-      .mileage-card {
-        grid-column: 1 / -1;
-        grid-row: auto;
-      }
-    }
-
-    @media (max-width: 768px) {
-      .dashboard-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .filter-bar {
-        flex-wrap: wrap;
-      }
-
-      .chart-card {
-        grid-column: 1;
-      }
+    @media (max-width: 700px) {
+      .dashboard-grid { grid-template-columns: 1fr; }
+      .card-expenses, .card-mileage { grid-column: 1; }
+      .dashboard-container { padding: 12px; }
     }
   `]
 })
@@ -928,68 +336,28 @@ export class DashboardComponent implements OnInit, OnDestroy {
   vehicles: Vehicle[] = [];
   company: Company | null = null;
 
-  selectedPeriod = 'week';
+  selectedPeriod = 'month';
   fromDate = '';
   toDate = '';
 
-  motionData = {
-    stationary: 3,
-    ignitionOn: 1,
-    moving: 0,
-    movingIgnition: 10,
-    lbs: 0,
-    wifi: 0,
-    noState: 0,
-    noCoords: 0
-  };
-
-  healthData = {
-    healthy: 13,
-    attention: 1,
-    unhealthy: 0
-  };
-
-  geofences = [
-    { name: 'Green geofence', color: '#22c55e', count: 2 },
-    { name: 'Road', color: '#3b82f6', count: 2 },
-    { name: 'Haltenhoffstraße', color: '#f97316', count: 1 },
-    { name: 'New road', color: '#06b6d4', count: 1 },
-    { name: 'Scheidestraße 3', color: '#8b5cf6', count: 1 },
-    { name: 'Waetzener Landstraße 119', color: '#ec4899', count: 1 }
-  ];
-
-  topUnits = [
-    { name: 'Fuel truck', color: '#f97316', mileage: 32050 },
-    { name: 'Mercedes-Benz', color: '#22c55e', mileage: 18971 },
-    { name: 'Mercedes-Benz', color: '#3b82f6', mileage: 10871 },
-    { name: 'Mercedes-Benz', color: '#8b5cf6', mileage: 10935 },
-    { name: 'Mercedes-Benz', color: '#06b6d4', mileage: 10935 },
-    { name: 'Mercedes-Benz', color: '#ec4899', mileage: 10808 },
-    { name: 'Mercedes-Benz', color: '#eab308', mileage: 10625 },
-    { name: 'Citaro', color: '#14b8a6', mileage: 9133 }
-  ];
-
-  maxMileage = 34000;
-
-  // Maintenance data
-  maintenanceRecords: MaintenanceRecord[] = [];
-  upcomingMaintenance: MaintenanceRecord[] = [];
-  scheduledMaintCount = 0;
-  inProgressMaintCount = 0;
-  completedMaintCount = 0;
+  topUnits: { name: string; color: string; mileage: number }[] = [];
+  maxMileage = 1;
+  totalFleetMileage = 0;
 
   // Cost data
   vehicleCosts: VehicleCost[] = [];
   totalMonthlyCost = 0;
   fuelCost = 0;
   maintenanceCost = 0;
+  repairCost = 0;
   otherCost = 0;
 
-  // Fleet status
-  availableVehicles = 0;
-  inUseVehicles = 0;
-  maintenanceVehicles = 0;
-  gpsEquippedVehicles = 0;
+  // New dashboard data
+  topFuelConsumers: { plate: string; consumption: number; trend: number }[] = [];
+  immobilizedVehicles: { plate: string; reason: string; days: number }[] = [];
+  drivingScores: { score: number; color: string; vehicles: string[] }[] = [];
+  healthyVehicles: { plate: string; score: number }[] = [];
+  unhealthyVehicles: { plate: string; issue: string }[] = [];
 
   constructor(
     private router: Router,
@@ -1005,19 +373,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Load data from API - use ngZone.run to ensure change detection
     this.ngZone.run(() => {
       this.loadVehicles();
-      this.loadMaintenanceData();
       this.loadCostData();
     });
 
     const today = new Date();
-    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthAgo = new Date(today.getFullYear(), today.getMonth(), 1);
     this.toDate = today.toISOString().split('T')[0];
-    this.fromDate = weekAgo.toISOString().split('T')[0];
-    
-    // Set company from current user
+    this.fromDate = monthAgo.toISOString().split('T')[0];
+
     const user = this.apiService.getCurrentUserSync();
     if (user) {
       this.company = {
@@ -1047,7 +412,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
             hasGPS: v.hasGps,
             mileage: v.mileage
           })) as Vehicle[];
-          this.calculateFleetStatus();
+          this.buildDashboardData();
           this.cdr.detectChanges();
           this.appRef.tick();
         });
@@ -1056,48 +421,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
-  loadMaintenanceData() {
-    this.apiService.getMaintenanceRecords().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (records) => {
-        this.ngZone.run(() => {
-          this.maintenanceRecords = records.map(m => ({
-            id: m.id?.toString() || '',
-            vehicleId: m.vehicleId?.toString() || '',
-            companyId: m.companyId?.toString() || '',
-            type: m.type,
-            description: m.description,
-            mileageAtService: m.mileageAtService,
-            date: new Date(m.date),
-            nextServiceDate: m.nextServiceDate ? new Date(m.nextServiceDate) : undefined,
-            nextServiceMileage: m.nextServiceMileage,
-            status: m.status as 'scheduled' | 'in_progress' | 'completed',
-            laborCost: m.laborCost,
-            partsCost: m.partsCost,
-            totalCost: m.totalCost,
-            serviceProvider: m.serviceProvider,
-            notes: m.notes,
-            parts: m.parts || []
-          })) as MaintenanceRecord[];
-          
-          this.scheduledMaintCount = this.maintenanceRecords.filter(m => m.status === 'scheduled').length;
-          this.inProgressMaintCount = this.maintenanceRecords.filter(m => m.status === 'in_progress').length;
-          this.completedMaintCount = this.maintenanceRecords.filter(m => m.status === 'completed').length;
-          
-          this.upcomingMaintenance = [...this.maintenanceRecords]
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-            .slice(0, 4);
-          this.cdr.detectChanges();
-          this.appRef.tick();
-        });
-      },
-      error: (err) => console.error('Error loading maintenance:', err)
-    });
-  }
-
   loadCostData() {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    
     this.apiService.getCosts({ startDate: startOfMonth }).pipe(takeUntil(this.destroy$)).subscribe({
       next: (costs) => {
         this.ngZone.run(() => {
@@ -1113,11 +439,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
             receiptNumber: c.receiptNumber,
             receiptUrl: c.receiptUrl
           })) as VehicleCost[];
-          
-          this.fuelCost = this.vehicleCosts.filter(c => c.type === 'fuel').reduce((sum, c) => sum + c.amount, 0);
-          this.maintenanceCost = this.vehicleCosts.filter(c => c.type === 'maintenance').reduce((sum, c) => sum + c.amount, 0);
-          this.otherCost = this.vehicleCosts.filter(c => c.type !== 'fuel' && c.type !== 'maintenance').reduce((sum, c) => sum + c.amount, 0);
-          this.totalMonthlyCost = this.fuelCost + this.maintenanceCost + this.otherCost;
+
+          this.fuelCost = this.vehicleCosts.filter(c => c.type === 'fuel').reduce((s, c) => s + c.amount, 0);
+          this.maintenanceCost = this.vehicleCosts.filter(c => c.type === 'maintenance').reduce((s, c) => s + c.amount, 0);
+          this.repairCost = this.vehicleCosts.filter(c => c.type === 'insurance' || c.type === 'fine').reduce((s, c) => s + c.amount, 0);
+          this.otherCost = this.vehicleCosts.filter(c => !['fuel','maintenance','insurance','fine'].includes(c.type)).reduce((s, c) => s + c.amount, 0);
+          this.totalMonthlyCost = this.fuelCost + this.maintenanceCost + this.repairCost + this.otherCost;
           this.cdr.detectChanges();
           this.appRef.tick();
         });
@@ -1126,97 +453,78 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
-  calculateFleetStatus() {
-    this.availableVehicles = this.vehicles.filter(v => v.status === 'available').length;
-    this.inUseVehicles = this.vehicles.filter(v => v.status === 'in_use').length;
-    this.maintenanceVehicles = this.vehicles.filter(v => v.status === 'maintenance').length;
-    this.gpsEquippedVehicles = this.vehicles.filter(v => v.hasGPS).length;
+  buildDashboardData() {
+    const colors = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#f97316'];
+
+    // Top units by mileage
+    const sorted = [...this.vehicles].sort((a, b) => (b.mileage || 0) - (a.mileage || 0));
+    this.topUnits = sorted.slice(0, 8).map((v, i) => ({
+      name: v.plate || v.name,
+      color: colors[i % colors.length],
+      mileage: v.mileage || 0
+    }));
+    this.maxMileage = Math.max(...this.topUnits.map(u => u.mileage), 1);
+    this.totalFleetMileage = this.vehicles.reduce((s, v) => s + (v.mileage || 0), 0);
+
+    // Fuel consumers (simulated from vehicle data)
+    this.topFuelConsumers = sorted.slice(0, 5).map(v => ({
+      plate: v.plate || v.name,
+      consumption: 8 + Math.random() * 12,
+      trend: Math.round((Math.random() - 0.5) * 20)
+    }));
+
+    // Immobilized vehicles (maintenance status)
+    this.immobilizedVehicles = this.vehicles
+      .filter(v => v.status === 'maintenance')
+      .map(v => ({
+        plate: v.plate || v.name,
+        reason: 'Maintenance',
+        days: Math.ceil(Math.random() * 10)
+      }));
+
+    // Driving scores (simulated)
+    this.drivingScores = [
+      { score: 92, color: '#22c55e', vehicles: sorted.slice(0, 2).map(v => v.plate || v.name) },
+      { score: 78, color: '#f59e0b', vehicles: sorted.slice(2, 4).map(v => v.plate || v.name) },
+      { score: 55, color: '#ef4444', vehicles: sorted.slice(4, 6).map(v => v.plate || v.name) }
+    ];
+
+    // Vehicle health
+    this.healthyVehicles = this.vehicles
+      .filter(v => v.status === 'available' || v.status === 'in_use')
+      .slice(0, 5)
+      .map(v => ({ plate: v.plate || v.name, score: 70 + Math.round(Math.random() * 30) }));
+
+    this.unhealthyVehicles = this.vehicles
+      .filter(v => v.status === 'maintenance')
+      .map(v => ({ plate: v.plate || v.name, issue: 'Maintenance requise' }));
   }
 
-  getVehicleName(vehicleId: string): string {
-    const vehicle = this.vehicles.find(v => v.id === vehicleId);
-    return vehicle ? vehicle.name : vehicleId;
+  // Donut arc helpers (circumference = 2 * PI * 50 = ~314)
+  getFuelArc(): number {
+    return this.totalMonthlyCost > 0 ? (this.fuelCost / this.totalMonthlyCost) * 314 : 0;
   }
-
-  formatShortDate(date: Date): string {
-    return new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+  getMaintArc(): number {
+    return this.totalMonthlyCost > 0 ? (this.maintenanceCost / this.totalMonthlyCost) * 314 : 0;
+  }
+  getRepairArc(): number {
+    return this.totalMonthlyCost > 0 ? (this.repairCost / this.totalMonthlyCost) * 314 : 0;
   }
 
   getFuelPercentage(): number {
     return this.totalMonthlyCost > 0 ? (this.fuelCost / this.totalMonthlyCost) * 100 : 0;
   }
-
   getMaintenancePercentage(): number {
     return this.totalMonthlyCost > 0 ? (this.maintenanceCost / this.totalMonthlyCost) * 100 : 0;
   }
-
   getOtherPercentage(): number {
     return this.totalMonthlyCost > 0 ? (this.otherCost / this.totalMonthlyCost) * 100 : 0;
   }
 
-  get totalMotion(): number {
-    return this.motionData.stationary + this.motionData.ignitionOn + 
-           this.motionData.moving + this.motionData.movingIgnition +
-           this.motionData.lbs + this.motionData.wifi +
-           this.motionData.noState + this.motionData.noCoords;
-  }
-
-  get totalHealth(): number {
-    return this.healthData.healthy + this.healthData.attention + this.healthData.unhealthy;
-  }
-
-  getSlice(startPercent: number, endPercent: number): string {
-    const total = this.totalMotion;
-    if (total === 0) return '';
-    
-    const startAngle = (startPercent / total) * 360;
-    const endAngle = (endPercent / total) * 360;
-    
-    return this.describeArc(50, 50, 45, startAngle, endAngle);
-  }
-
-  getHealthSlice(startPercent: number, endPercent: number): string {
-    const total = this.totalHealth;
-    if (total === 0) return '';
-    
-    const startAngle = (startPercent / total) * 360;
-    const endAngle = (endPercent / total) * 360;
-    
-    return this.describeArc(50, 50, 45, startAngle, endAngle);
-  }
-
-  describeArc(x: number, y: number, radius: number, startAngle: number, endAngle: number): string {
-    if (endAngle - startAngle >= 360) {
-      endAngle = startAngle + 359.99;
-    }
-    
-    const start = this.polarToCartesian(x, y, radius, endAngle);
-    const end = this.polarToCartesian(x, y, radius, startAngle);
-    const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
-
-    return [
-      "M", x, y,
-      "L", start.x, start.y,
-      "A", radius, radius, 0, largeArcFlag, 0, end.x, end.y,
-      "Z"
-    ].join(" ");
-  }
-
-  polarToCartesian(centerX: number, centerY: number, radius: number, angleInDegrees: number) {
-    const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
-    return {
-      x: centerX + (radius * Math.cos(angleInRadians)),
-      y: centerY + (radius * Math.sin(angleInRadians))
-    };
-  }
-
-  onPeriodChange(period: string) {
-    this.selectedPeriod = period;
-  }
-
-  onDateRangeChange(range: { from: string; to: string }) {
-    this.fromDate = range.from;
-    this.toDate = range.to;
+  getHealthColor(score: number): string {
+    if (score >= 80) return '#22c55e';
+    if (score >= 60) return '#f59e0b';
+    return '#ef4444';
   }
 
   ngOnDestroy() {
@@ -1225,6 +533,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   applyFilter() {
-    console.log('Applying filter:', this.fromDate, 'to', this.toDate);
+    this.loadVehicles();
+    this.loadCostData();
   }
 }

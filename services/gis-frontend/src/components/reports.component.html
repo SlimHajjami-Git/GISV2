@@ -560,6 +560,12 @@
                         {{ drivingBehaviorCards.scoreConduite >= 80 ? '✅ Bon' : drivingBehaviorCards.scoreConduite >= 50 ? '⚠️ Moyen' : '❌ Mauvais' }}
                       </div>
                     </div>
+                    <div class="behavior-card consumption-card">
+                      <div class="behavior-card-icon">⛽</div>
+                      <div class="behavior-card-label">CONSOMMATION</div>
+                      <div class="behavior-card-value">{{ drivingBehaviorCards.consommation !== null ? drivingBehaviorCards.consommation : '-' }}</div>
+                      <div class="behavior-card-unit">L/100 km</div>
+                    </div>
                   </div>
                 } @else if (secondaryChartData && secondaryChartData.length > 0) {
                   <div class="chart-area secondary-chart">
