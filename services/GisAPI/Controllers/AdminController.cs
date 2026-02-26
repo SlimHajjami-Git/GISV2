@@ -243,7 +243,7 @@ public class AdminController : ControllerBase
             request.Year, request.Color, request.Status, request.HasGps, request.Mileage,
             request.FuelType, request.FuelTankCapacity, request.CompanyId,
             request.GpsDeviceId, request.GpsImei, request.GpsMat,
-            request.GpsBrand, request.GpsModel, request.GpsFuelSensorMode
+            request.GpsBrand, request.GpsModel, request.GpsFirmwareVersion, request.GpsFuelSensorMode
         ));
         if (!result.Success) return BadRequest(new { message = result.Error });
         return CreatedAtAction(nameof(GetVehicle), new { id = result.Vehicle!.Id }, result.Vehicle);
@@ -257,7 +257,7 @@ public class AdminController : ControllerBase
             request.Year, request.Color, request.Status, request.HasGps, request.Mileage,
             request.FuelType, request.FuelTankCapacity, request.CompanyId,
             request.GpsDeviceId, request.GpsImei, request.GpsMat,
-            request.GpsBrand, request.GpsModel, request.GpsFuelSensorMode
+            request.GpsBrand, request.GpsModel, request.GpsFirmwareVersion, request.GpsFuelSensorMode
         ));
         if (!result.Success && result.Error == "not_found") return NotFound();
         if (!result.Success) return BadRequest(new { message = result.Error });
@@ -1131,6 +1131,7 @@ public class CreateAdminVehicleRequest
     public string? GpsMat { get; set; }
     public string? GpsBrand { get; set; }
     public string? GpsModel { get; set; }
+    public string? GpsFirmwareVersion { get; set; }
     public string? GpsFuelSensorMode { get; set; }
 }
 
@@ -1154,6 +1155,7 @@ public class UpdateAdminVehicleRequest
     public string? GpsMat { get; set; }
     public string? GpsBrand { get; set; }
     public string? GpsModel { get; set; }
+    public string? GpsFirmwareVersion { get; set; }
     public string? GpsFuelSensorMode { get; set; }
 }
 

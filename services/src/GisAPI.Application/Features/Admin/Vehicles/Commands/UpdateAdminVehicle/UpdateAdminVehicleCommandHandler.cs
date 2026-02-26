@@ -81,7 +81,8 @@ public class UpdateAdminVehicleCommandHandler : IRequestHandler<UpdateAdminVehic
                 if (!string.IsNullOrWhiteSpace(r.GpsImei)) gpsDevice.DeviceUid = r.GpsImei!;
                 if (!string.IsNullOrWhiteSpace(r.GpsMat)) gpsDevice.Mat = r.GpsMat;
                 if (!string.IsNullOrWhiteSpace(r.GpsBrand)) gpsDevice.Brand = r.GpsBrand;
-                if (!string.IsNullOrWhiteSpace(r.GpsModel)) gpsDevice.FirmwareVersion = r.GpsModel;
+                if (!string.IsNullOrWhiteSpace(r.GpsModel)) gpsDevice.Model = r.GpsModel;
+                if (!string.IsNullOrWhiteSpace(r.GpsFirmwareVersion)) gpsDevice.FirmwareVersion = r.GpsFirmwareVersion;
                 if (!string.IsNullOrWhiteSpace(r.GpsFuelSensorMode)) gpsDevice.FuelSensorMode = r.GpsFuelSensorMode;
             }
         }

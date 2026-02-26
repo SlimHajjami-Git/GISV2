@@ -909,6 +909,7 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
       gpsMat: this.selectedVehicle.gpsMat,
       gpsBrand: this.selectedVehicle.gpsBrand,
       gpsModel: this.selectedVehicle.gpsModel,
+      gpsFirmwareVersion: this.selectedVehicle.gpsFirmwareVersion,
       gpsFuelSensorMode: this.selectedVehicle.gpsFuelSensorMode
     };
   }
@@ -1078,6 +1079,7 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
       gpsMat: formData.hasGPS ? formData.gpsMat || undefined : undefined,
       gpsBrand: formData.hasGPS ? formData.gpsBrand || undefined : undefined,
       gpsModel: formData.hasGPS ? formData.gpsModel || undefined : undefined,
+      gpsFirmwareVersion: formData.hasGPS ? formData.gpsFirmwareVersion || undefined : undefined,
       gpsFuelSensorMode: formData.hasGPS ? formData.gpsFuelSensorMode || undefined : undefined
     };
 
@@ -1126,6 +1128,7 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
       gpsMat: this.vehicleForm.hasGps ? this.vehicleForm.gpsMat || undefined : undefined,
       gpsBrand: this.vehicleForm.hasGps ? (this.vehicleForm as any).gpsBrand || undefined : undefined,
       gpsModel: this.vehicleForm.hasGps ? this.vehicleForm.gpsModel || undefined : undefined,
+      gpsFirmwareVersion: this.vehicleForm.hasGps ? this.vehicleForm.gpsFirmwareVersion || undefined : undefined,
       gpsFuelSensorMode: this.vehicleForm.hasGps ? (this.vehicleForm as any).gpsFuelSensorMode || undefined : undefined
     };
 

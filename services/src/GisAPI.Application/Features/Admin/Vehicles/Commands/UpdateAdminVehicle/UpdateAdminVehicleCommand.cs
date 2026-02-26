@@ -23,6 +23,7 @@ public record UpdateAdminVehicleCommand(
     string? GpsMat,
     string? GpsBrand,
     string? GpsModel,
+    string? GpsFirmwareVersion,
     string? GpsFuelSensorMode
 ) : IRequest<UpdateAdminVehicleResult>;
 

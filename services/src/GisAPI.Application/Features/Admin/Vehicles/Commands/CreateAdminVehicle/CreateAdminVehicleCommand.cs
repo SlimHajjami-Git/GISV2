@@ -22,6 +22,7 @@ public record CreateAdminVehicleCommand(
     string? GpsMat,
     string? GpsBrand,
     string? GpsModel,
+    string? GpsFirmwareVersion,
     string? GpsFuelSensorMode
 ) : IRequest<CreateAdminVehicleResult>;
 
