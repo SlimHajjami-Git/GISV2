@@ -485,12 +485,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   sanitizeMileage(rawKm: number): number {
     if (!rawKm || rawKm <= 0) return 0;
+    // GPS protocol artifact: ~2^20 = 1,048,576 (tracker default value)
+    if (rawKm >= 1_048_000 && rawKm <= 1_049_000) return 0;
     let km = rawKm;
-    // GPS protocol artifacts: values > 10M are likely in meters
-    if (km > 10_000_000) km = km / 1000;
-    // Still too large? Probably millimeters or garbage data
-    if (km > 2_000_000) km = km / 1000;
-    // Cap at reasonable max for any vehicle (500,000 km)
+    // Values > 1,000,000 are likely in meters from GPS tracker
+    if (km > 1_000_000) km = Math.round(km / 1000);
+    // After conversion, still unreasonable (> 500,000 km) = garbage
     if (km > 500_000) return 0;
     return Math.round(km);
   }

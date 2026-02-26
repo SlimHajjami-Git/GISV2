@@ -43,13 +43,30 @@ public class SyncMileageCommandHandler : IRequestHandler<SyncMileageCommand, Syn
                 .Select(p => p.OdometerKm)
                 .FirstOrDefaultAsync(ct);
 
-            if (lastOdometer.HasValue && lastOdometer.Value > vehicle.Mileage)
+            if (lastOdometer.HasValue)
             {
-                vehicle.Mileage = (int)lastOdometer.Value;
-                vehicle.UpdatedAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync(ct);
-                source = "gps";
-                updated = true;
+                var odoValue = lastOdometer.Value;
+
+                // Skip GPS protocol artifact (~2^20 = 1,048,576 default)
+                if (odoValue >= 1_048_000 && odoValue <= 1_049_000)
+                {
+                    // Protocol default, ignore
+                }
+                else
+                {
+                    // Values > 1,000,000 are likely in meters from GPS tracker
+                    if (odoValue > 1_000_000) odoValue = odoValue / 1000;
+
+                    // Sanity cap: max 500,000 km
+                    if (odoValue > 0 && odoValue <= 500_000 && odoValue > vehicle.Mileage)
+                    {
+                        vehicle.Mileage = (int)odoValue;
+                        vehicle.UpdatedAt = DateTime.UtcNow;
+                        await _context.SaveChangesAsync(ct);
+                        source = "gps";
+                        updated = true;
+                    }
+                }
             }
         }
 
