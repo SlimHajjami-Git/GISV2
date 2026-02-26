@@ -252,8 +252,6 @@ export class PdfExportService {
           { header: 'Véhicule', dataKey: 'vehicleName' },
           { header: 'Date/Heure', dataKey: 'time' },
           { header: 'Vitesse', dataKey: 'speed' },
-          { header: 'Limite véhicule', dataKey: 'vehicleLimit' },
-          { header: 'Excès', dataKey: 'excess' },
           { header: 'Adresse', dataKey: 'address' }
         ];
       case 'speed-infraction':
@@ -263,7 +261,7 @@ export class PdfExportService {
           { header: 'Adresse', dataKey: 'address' },
           { header: 'Vitesse', dataKey: 'speed' },
           { header: 'Limite', dataKey: 'limit' },
-          { header: 'Excès', dataKey: 'excess' }
+          { header: 'Sévérité', dataKey: 'severityLabel' }
         ];
       case 'driving-behavior':
         return [

@@ -68,10 +68,6 @@
               <input type="checkbox" [(ngModel)]="filterByVehicle" (change)="onFilterTypeChange()">
               <span>Véhicule</span>
             </label>
-            <label class="filter-check-item">
-              <input type="checkbox" [(ngModel)]="filterByDriver" (change)="onFilterTypeChange()">
-              <span>Chauffeur</span>
-            </label>
             <label class="filter-check-item" *ngIf="departments.length > 0">
               <input type="checkbox" [(ngModel)]="filterByDepartment" (change)="onFilterTypeChange()">
               <span>Département</span>
@@ -101,16 +97,6 @@
           </select>
         </div>
 
-        <!-- Driver Filter -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && filterByDriver && drivers.length > 0">
-          <label class="field-label">Chauffeur</label>
-          <select class="field-select" [(ngModel)]="selectedDriverId" (change)="onDriverFilterChange()">
-            <option value="">Tous les chauffeurs</option>
-            @for (driver of drivers; track driver.id) {
-              <option [value]="driver.id">{{ driver.firstName }} {{ driver.lastName }}</option>
-            }
-          </select>
-        </div>
 
         <!-- Mileage Period Type Selector -->
         <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'mileage-period'">
@@ -683,8 +669,6 @@
                         <th class="sortable" (click)="sortBy('vehicleName')">Véhicule <span class="sort-icon">{{ getSortIcon('vehicleName') }}</span></th>
                         <th class="sortable" (click)="sortBy('time')">Date/Heure <span class="sort-icon">{{ getSortIcon('time') }}</span></th>
                         <th class="sortable" (click)="sortBy('speedValue')">Vitesse <span class="sort-icon">{{ getSortIcon('speedValue') }}</span></th>
-                        <th class="sortable" (click)="sortBy('vehicleLimit')">Limite véhicule <span class="sort-icon">{{ getSortIcon('vehicleLimit') }}</span></th>
-                        <th class="sortable" (click)="sortBy('excessValue')">Excès <span class="sort-icon">{{ getSortIcon('excessValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('address')">Adresse <span class="sort-icon">{{ getSortIcon('address') }}</span></th>
                       } @else if (selectedTemplate?.type === 'speed-infraction') {
                         <th class="sortable" (click)="sortBy('vehicle')">Véhicule <span class="sort-icon">{{ getSortIcon('vehicle') }}</span></th>
@@ -692,7 +676,7 @@
                         <th class="sortable" (click)="sortBy('address')">Adresse <span class="sort-icon">{{ getSortIcon('address') }}</span></th>
                         <th class="sortable" (click)="sortBy('speedValue')">Vitesse <span class="sort-icon">{{ getSortIcon('speedValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('limitValue')">Limite <span class="sort-icon">{{ getSortIcon('limitValue') }}</span></th>
-                        <th class="sortable" (click)="sortBy('excessValue')">Excès <span class="sort-icon">{{ getSortIcon('excessValue') }}</span></th>
+                        <th class="sortable" (click)="sortBy('severityOrder')">Sévérité <span class="sort-icon">{{ getSortIcon('severityOrder') }}</span></th>
                       } @else if (selectedTemplate?.type === 'driving-behavior') {
                         <th class="sortable" (click)="sortBy('vehicle')">Véhicule <span class="sort-icon">{{ getSortIcon('vehicle') }}</span></th>
                         <th class="sortable" (click)="sortBy('time')">Date/Heure <span class="sort-icon">{{ getSortIcon('time') }}</span></th>
@@ -816,17 +800,15 @@
                         } @else if (selectedTemplate?.type === 'speed') {
                           <td class="vehicle-cell" [class.exceeds-limit]="row.exceedsLimit">{{ row.vehicleName }}</td>
                           <td class="time-cell">{{ row.time }}</td>
-                          <td class="speed-cell" [class.exceeds-limit]="row.exceedsLimit">{{ row.speed }}</td>
-                          <td class="limit-cell">{{ row.vehicleLimit }}</td>
-                          <td class="excess-cell" [class.exceeds-limit]="row.exceedsLimit">{{ row.excess }}</td>
+                          <td class="speed-cell" [class.exceeds-limit]="row.exceedsLimit" [style.color]="row.exceedsLimit ? '#DC2626' : ''" [style.font-weight]="row.exceedsLimit ? 'bold' : ''">{{ row.speed }}</td>
                           <td class="location-cell">{{ row.address }}</td>
                         } @else if (selectedTemplate?.type === 'speed-infraction') {
                           <td class="vehicle-cell">{{ row.vehicle }}</td>
                           <td class="time-cell">{{ row.time }}</td>
                           <td class="location-cell">{{ row.address }}</td>
-                          <td class="speed-cell anomaly">{{ row.speed }}</td>
+                          <td class="speed-cell" [style.color]="'#DC2626'" [style.font-weight]="'bold'">{{ row.speed }}</td>
                           <td class="limit-cell">{{ row.limit }}</td>
-                          <td class="excess-cell" [class.severe]="row.excessValue > 30">{{ row.excess }}</td>
+                          <td class="severity-cell" [class.severity-low]="row.severityLevel === 'leger'" [class.severity-medium]="row.severityLevel === 'modere'" [class.severity-high]="row.severityLevel === 'grave'">{{ row.severityLabel }}</td>
                         } @else if (selectedTemplate?.type === 'driving-behavior') {
                           <td class="vehicle-cell">{{ row.vehicle }}</td>
                           <td class="time-cell">{{ row.time }}</td>

@@ -1337,19 +1337,42 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return;
     }
     
-    // Process table data
-    this.tableData = infractions.map(inf => ({
-      vehicle: inf.vehicleName || inf.vehiclePlate,
-      time: this.formatDateTime(inf.time),
-      address: inf.address || `${inf.latitude.toFixed(5)}, ${inf.longitude.toFixed(5)}`,
-      latitude: inf.latitude,
-      longitude: inf.longitude,
-      speed: `${inf.speed.toFixed(1)} km/h`,
-      limit: `${inf.limit} km/h`,
-      excess: `+${inf.excess.toFixed(1)} km/h`,
-      excessValue: inf.excess,
-      isAnomaly: inf.excess > 30
-    }));
+    // Process table data with % based severity
+    this.tableData = infractions.map(inf => {
+      const excessPct = (inf.excess / inf.limit) * 100;
+      let severityLevel: string;
+      let severityLabel: string;
+      let severityOrder: number;
+      if (excessPct > 20) {
+        severityLevel = 'grave';
+        severityLabel = '🔴 Grave';
+        severityOrder = 3;
+      } else if (excessPct > 10) {
+        severityLevel = 'modere';
+        severityLabel = '🟡 Modéré';
+        severityOrder = 2;
+      } else {
+        severityLevel = 'leger';
+        severityLabel = '🟢 Léger';
+        severityOrder = 1;
+      }
+      return {
+        vehicle: inf.vehicleName || inf.vehiclePlate,
+        time: this.formatDateTime(inf.time),
+        address: inf.address || `${inf.latitude.toFixed(5)}, ${inf.longitude.toFixed(5)}`,
+        latitude: inf.latitude,
+        longitude: inf.longitude,
+        speed: `${inf.speed.toFixed(1)} km/h`,
+        speedValue: inf.speed,
+        limit: `${inf.limit} km/h`,
+        limitValue: inf.limit,
+        excessValue: inf.excess,
+        excessPct,
+        severityLevel,
+        severityLabel,
+        severityOrder
+      };
+    });
     
     // Fetch addresses for rows without one
     this.enrichSpeedInfractionAddresses();
@@ -1382,31 +1405,30 @@ export class ReportsComponent implements OnInit, OnDestroy {
         .map(([label, value]) => ({ label, value }));
     }
     
-    // Secondary chart data - severity distribution
-    const light = infractions.filter(i => i.excess <= 15).length;
-    const medium = infractions.filter(i => i.excess > 15 && i.excess <= 30).length;
-    const severe = infractions.filter(i => i.excess > 30).length;
+    // Secondary chart data - severity distribution (% based)
+    const light = this.tableData.filter((r: any) => r.severityLevel === 'leger').length;
+    const medium = this.tableData.filter((r: any) => r.severityLevel === 'modere').length;
+    const severe = this.tableData.filter((r: any) => r.severityLevel === 'grave').length;
     this.secondaryChartData = [
-      { label: '🟢 Léger (≤15 km/h)', value: light, color: '#22C55E' },
-      { label: '🟡 Modéré (15-30 km/h)', value: medium, color: '#F59E0B' },
-      { label: '🔴 Grave (>30 km/h)', value: severe, color: '#EF4444' }
+      { label: '🟢 Léger (+1-10%)', value: light, color: '#22C55E' },
+      { label: '🟡 Modéré (+11-20%)', value: medium, color: '#F59E0B' },
+      { label: '🔴 Grave (+21%+)', value: severe, color: '#EF4444' }
     ].filter(d => d.value > 0);
     
     // Statistics
     const maxSpeed = Math.max(...infractions.map(i => i.speed));
     const avgExcess = infractions.reduce((sum, i) => sum + i.excess, 0) / infractions.length;
-    const severeCount = infractions.filter(i => i.excess > 30).length;
     const lightPct = ((light / infractions.length) * 100).toFixed(0);
     const mediumPct = ((medium / infractions.length) * 100).toFixed(0);
-    const severePct = ((severeCount / infractions.length) * 100).toFixed(0);
+    const severePct = ((severe / infractions.length) * 100).toFixed(0);
     
     this.statisticsData = {
       '⚠️ Total infractions': infractions.length.toString(),
       '🏎️ Vitesse max': `${maxSpeed.toFixed(1)} km/h`,
       '📊 Excès moyen': `+${avgExcess.toFixed(1)} km/h`,
-      '🟢 Léger (≤15)': `${light} (${lightPct}%)`,
-      '🟡 Modéré (15-30)': `${medium} (${mediumPct}%)`,
-      '🔴 Grave (>30)': `${severeCount} (${severePct}%)`,
+      '🟢 Léger (+1-10%)': `${light} (${lightPct}%)`,
+      '🟡 Modéré (+11-20%)': `${medium} (${mediumPct}%)`,
+      '🔴 Grave (+21%+)': `${severe} (${severePct}%)`,
       '🚗 Véhicules concernés': vehicleCount.toString()
     };
   }
