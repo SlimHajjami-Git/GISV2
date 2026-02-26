@@ -46,6 +46,22 @@ public class GetVehicleDetailsQueryHandler : IRequestHandler<GetVehicleDetailsQu
 
         var now = DateTime.UtcNow;
 
+        // Firmware "L": override mileage from GPS odometer_km
+        var mileage = vehicle.Mileage;
+        if (vehicle.GpsDevice != null
+            && !string.IsNullOrEmpty(vehicle.GpsDevice.FirmwareVersion)
+            && vehicle.GpsDevice.FirmwareVersion.StartsWith("L", StringComparison.OrdinalIgnoreCase))
+        {
+            var latestOdo = await _context.GpsPositions
+                .Where(p => p.DeviceId == vehicle.GpsDeviceId!.Value
+                         && p.OdometerKm.HasValue && p.OdometerKm > 0)
+                .OrderByDescending(p => p.RecordedAt)
+                .Select(p => p.OdometerKm)
+                .FirstOrDefaultAsync(ct);
+            if (latestOdo.HasValue && latestOdo.Value > 0)
+                mileage = (int)latestOdo.Value;
+        }
+
         return new VehicleDetailsDto(
             vehicle.Id,
             vehicle.Name,
@@ -57,7 +73,7 @@ public class GetVehicleDetailsQueryHandler : IRequestHandler<GetVehicleDetailsQu
             vehicle.Color,
             vehicle.Status,
             vehicle.HasGps,
-            vehicle.Mileage,
+            mileage,
             vehicle.RentalMileage,
             
             // Driver info

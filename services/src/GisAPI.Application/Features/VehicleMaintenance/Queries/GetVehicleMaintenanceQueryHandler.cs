@@ -36,14 +36,39 @@ public class GetVehicleMaintenanceQueryHandler : IRequestHandler<GetVehicleMaint
         var today = DateTime.UtcNow.Date;
         var results = new List<VehicleMaintenanceStatusDto>();
 
+        // Firmware "L": batch fetch latest odometer_km for all firmware L devices
+        var firmwareLDeviceIds = vehicles
+            .Where(v => v.GpsDevice != null
+                     && !string.IsNullOrEmpty(v.GpsDevice.FirmwareVersion)
+                     && v.GpsDevice.FirmwareVersion.StartsWith("L", StringComparison.OrdinalIgnoreCase))
+            .Select(v => v.GpsDevice!.Id)
+            .ToList();
+
+        var odometerMap = new Dictionary<int, long>();
+        if (firmwareLDeviceIds.Any())
+        {
+            var latestOdometers = await _context.GpsPositions
+                .Where(p => firmwareLDeviceIds.Contains(p.DeviceId)
+                         && p.OdometerKm.HasValue && p.OdometerKm > 0)
+                .GroupBy(p => p.DeviceId)
+                .Select(g => new { DeviceId = g.Key, OdometerKm = g.OrderByDescending(p => p.RecordedAt).First().OdometerKm })
+                .ToListAsync(cancellationToken);
+            odometerMap = latestOdometers.ToDictionary(x => x.DeviceId, x => x.OdometerKm ?? 0);
+        }
+
         foreach (var vehicle in vehicles)
         {
+            // Override mileage for firmware "L" devices
+            var currentMileage = vehicle.Mileage;
+            if (vehicle.GpsDevice != null && odometerMap.TryGetValue(vehicle.GpsDevice.Id, out var odo) && odo > 0)
+                currentMileage = (int)odo;
+
             var vehicleSchedules = schedules.Where(s => s.VehicleId == vehicle.Id).ToList();
             if (vehicleSchedules.Count == 0 && request.Status != null) continue;
 
             var items = vehicleSchedules.Select(s =>
             {
-                var kmUntilDue = s.NextDueKm.HasValue ? s.NextDueKm.Value - vehicle.Mileage : (int?)null;
+                var kmUntilDue = s.NextDueKm.HasValue ? s.NextDueKm.Value - currentMileage : (int?)null;
                 var daysUntilDue = s.NextDueDate.HasValue ? (int)(s.NextDueDate.Value - today).TotalDays : (int?)null;
 
                 return new MaintenanceItemDto(
@@ -68,7 +93,7 @@ public class GetVehicleMaintenanceQueryHandler : IRequestHandler<GetVehicleMaint
                 vehicle.Id,
                 vehicle.Name,
                 vehicle.Plate,
-                vehicle.Mileage,
+                currentMileage,
                 items
             ));
         }

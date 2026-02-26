@@ -18,15 +18,41 @@ public class GetMaintenanceAlertsQueryHandler : IRequestHandler<GetMaintenanceAl
         var schedules = await _context.VehicleMaintenanceSchedules
             .Include(s => s.Template)
             .Include(s => s.Vehicle)
+                .ThenInclude(v => v!.GpsDevice)
             .Where(s => s.Status == "overdue" || s.Status == "due")
             .ToListAsync(cancellationToken);
 
         var today = DateTime.UtcNow.Date;
 
+        // Firmware "L": batch fetch latest odometer_km
+        var firmwareLDeviceIds = schedules
+            .Where(s => s.Vehicle?.GpsDevice != null
+                     && !string.IsNullOrEmpty(s.Vehicle.GpsDevice.FirmwareVersion)
+                     && s.Vehicle.GpsDevice.FirmwareVersion.StartsWith("L", StringComparison.OrdinalIgnoreCase))
+            .Select(s => s.Vehicle!.GpsDevice!.Id)
+            .Distinct()
+            .ToList();
+
+        var odometerMap = new Dictionary<int, long>();
+        if (firmwareLDeviceIds.Any())
+        {
+            var latestOdometers = await _context.GpsPositions
+                .Where(p => firmwareLDeviceIds.Contains(p.DeviceId)
+                         && p.OdometerKm.HasValue && p.OdometerKm > 0)
+                .GroupBy(p => p.DeviceId)
+                .Select(g => new { DeviceId = g.Key, OdometerKm = g.OrderByDescending(p => p.RecordedAt).First().OdometerKm })
+                .ToListAsync(cancellationToken);
+            odometerMap = latestOdometers.ToDictionary(x => x.DeviceId, x => x.OdometerKm ?? 0);
+        }
+
         return schedules.Select(s =>
         {
+            var vehicleMileage = s.Vehicle?.Mileage ?? 0;
+            if (s.Vehicle?.GpsDevice != null && odometerMap.TryGetValue(s.Vehicle.GpsDevice.Id, out var odo) && odo > 0)
+                vehicleMileage = (int)odo;
+
             var kmUntilDue = s.NextDueKm.HasValue && s.Vehicle != null 
-                ? s.NextDueKm.Value - s.Vehicle.Mileage 
+                ? s.NextDueKm.Value - vehicleMileage 
                 : (int?)null;
             var daysUntilDue = s.NextDueDate.HasValue 
                 ? (int)(s.NextDueDate.Value - today).TotalDays 
@@ -267,7 +293,11 @@ public class GetCurrentVehicleMileageQueryHandler : IRequestHandler<GetCurrentVe
                 .OrderByDescending(p => p.RecordedAt)
                 .FirstOrDefaultAsync(cancellationToken);
 
-            if (lastPosition != null && lastPosition.OdometerKm > vehicle.Mileage)
+            var isFirmwareL = vehicle.GpsDevice != null
+                && !string.IsNullOrEmpty(vehicle.GpsDevice.FirmwareVersion)
+                && vehicle.GpsDevice.FirmwareVersion.StartsWith("L", StringComparison.OrdinalIgnoreCase);
+
+            if (lastPosition != null && (isFirmwareL || lastPosition.OdometerKm > vehicle.Mileage))
             {
                 source = "gps";
                 lastGpsUpdate = lastPosition.RecordedAt;
