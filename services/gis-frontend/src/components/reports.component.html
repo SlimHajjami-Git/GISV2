@@ -553,11 +553,11 @@
                       <div class="behavior-card-unit">km/h</div>
                     </div>
                     <div class="behavior-card score-card">
-                      <div class="behavior-card-icon score-circle">{{ drivingBehaviorCards.scoreConduite }}</div>
+                      <div class="behavior-card-icon">🏆</div>
                       <div class="behavior-card-label">SCORE CONDUCTEUR</div>
                       <div class="behavior-card-value">{{ drivingBehaviorCards.scoreConduite }} / 100</div>
                       <div class="behavior-card-unit" [style.color]="drivingBehaviorCards.scoreConduite >= 80 ? '#22C55E' : drivingBehaviorCards.scoreConduite >= 50 ? '#F59E0B' : '#EF4444'">
-                        {{ drivingBehaviorCards.scoreConduite >= 80 ? '✅ Bon' : drivingBehaviorCards.scoreConduite >= 50 ? '⚠️ Moyen' : '❌ Mauvais' }}
+                        {{ drivingBehaviorCards.scoreConduite >= 80 ? 'Bon' : drivingBehaviorCards.scoreConduite >= 50 ? 'Moyen' : 'Mauvais' }}
                       </div>
                     </div>
                     <div class="behavior-card consumption-card">

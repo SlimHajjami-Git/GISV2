@@ -778,22 +778,24 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 
 /* Driving Behavior Metric Cards */
 .behavior-cards-grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 6px;
-  min-width: 160px;
-  max-width: 180px;
+  width: 220px;
   flex-shrink: 0;
+  align-self: stretch;
 }
 
 .behavior-card {
   background: white;
   border-radius: 8px;
-  padding: 6px 10px;
+  padding: 6px 8px;
   text-align: center;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
   border: 1px solid #e2e8f0;
-  transition: transform 0.2s;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .behavior-card:hover {

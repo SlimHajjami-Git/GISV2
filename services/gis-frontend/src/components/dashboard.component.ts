@@ -485,9 +485,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   sanitizeMileage(rawKm: number): number {
     if (!rawKm || rawKm <= 0) return 0;
-    // If value > 1,000,000 it's likely in meters, convert to km
-    if (rawKm > 1_000_000) return Math.round(rawKm / 1000);
-    return Math.round(rawKm);
+    let km = rawKm;
+    // GPS protocol artifacts: values > 10M are likely in meters
+    if (km > 10_000_000) km = km / 1000;
+    // Still too large? Probably millimeters or garbage data
+    if (km > 2_000_000) km = km / 1000;
+    // Cap at reasonable max for any vehicle (500,000 km)
+    if (km > 500_000) return 0;
+    return Math.round(km);
   }
 
   buildDashboardData() {
