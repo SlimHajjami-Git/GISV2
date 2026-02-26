@@ -3813,15 +3813,27 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   processDistanceReport(positions: any[]) {
-    // Calculate distance between points using Haversine
+    // Calculate distance between points using Haversine with jump filter
     let totalDistance = 0;
+    let filteredPoints = 0;
     const segments: any[] = [];
 
     for (let i = 1; i < positions.length; i++) {
       const prev = positions[i - 1];
       const curr = positions[i];
       const dist = this.haversineDistance(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
-      totalDistance += dist;
+      
+      // Filter out unrealistic GPS jumps (> 5 km between consecutive points)
+      // Also check speed-based max: if time gap known, cap at 200 km/h
+      const timeDiffMs = new Date(curr.recordedAt).getTime() - new Date(prev.recordedAt).getTime();
+      const timeDiffH = timeDiffMs / 3600000;
+      const maxReasonableDist = timeDiffH > 0 ? Math.max(5, timeDiffH * 200) : 5;
+      
+      if (dist < maxReasonableDist) {
+        totalDistance += dist;
+      } else {
+        filteredPoints++;
+      }
       
       if (i % 10 === 0) {
         segments.push({
@@ -3844,6 +3856,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
       'Distance totale': `${totalDistance.toFixed(2)} km`,
       'Points GPS': positions.length.toString()
     };
+    if (filteredPoints > 0) {
+      this.statisticsData['Points filtrés (sauts GPS)'] = filteredPoints.toString();
+    }
   }
 
   processTripReport(positions: any[]) {
