@@ -39,6 +39,10 @@ public class MaintenanceSchedulerService : IMaintenanceSchedulerService
         // Si le véhicule a un GPS, chercher le dernier odometer_km
         if (vehicle.GpsDeviceId.HasValue)
         {
+            var firmwareVersion = vehicle.GpsDevice?.FirmwareVersion;
+            var isFirmwareL = !string.IsNullOrEmpty(firmwareVersion)
+                && firmwareVersion.StartsWith("L", StringComparison.OrdinalIgnoreCase);
+
             var lastOdometer = await _context.GpsPositions
                 .Where(p => p.DeviceId == vehicle.GpsDeviceId.Value 
                          && p.OdometerKm.HasValue 
@@ -47,24 +51,16 @@ public class MaintenanceSchedulerService : IMaintenanceSchedulerService
                 .Select(p => p.OdometerKm)
                 .FirstOrDefaultAsync(ct);
 
-            if (lastOdometer.HasValue)
+            if (lastOdometer.HasValue && lastOdometer.Value > 0)
             {
-                var odoValue = lastOdometer.Value;
-
-                // Skip GPS protocol artifact (~2^20 = 1,048,576 default)
-                if (odoValue >= 1_048_000 && odoValue <= 1_049_000)
+                if (isFirmwareL)
                 {
-                    // Protocol default, ignore
+                    // Firmware "L": odometer_km is reliable
+                    return (int)lastOdometer.Value;
                 }
-                else
+                else if (lastOdometer.Value > vehicle.Mileage)
                 {
-                    // Values > 1,000,000 are likely in meters from GPS tracker
-                    if (odoValue > 1_000_000) odoValue = odoValue / 1000;
-
-                    if (odoValue > 0 && odoValue <= 500_000 && odoValue > vehicle.Mileage)
-                    {
-                        return (int)odoValue;
-                    }
+                    return (int)lastOdometer.Value;
                 }
             }
         }

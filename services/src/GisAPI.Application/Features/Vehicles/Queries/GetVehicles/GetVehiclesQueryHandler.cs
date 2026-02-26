@@ -105,7 +105,43 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
                 v.TransportPermitExpiry
             ));
 
-        return await projectedQuery.ToPaginatedListAsync(request.Page, request.PageSize, ct);
+        var result = await projectedQuery.ToPaginatedListAsync(request.Page, request.PageSize, ct);
+
+        // For devices with firmware "L", override mileage from GPS odometer_km
+        var firmwareLDeviceIds = result.Items
+            .Where(v => v.GpsDevice != null 
+                     && !string.IsNullOrEmpty(v.GpsDevice.FirmwareVersion)
+                     && v.GpsDevice.FirmwareVersion.StartsWith("L", StringComparison.OrdinalIgnoreCase))
+            .Select(v => v.GpsDevice!.Id)
+            .ToList();
+
+        if (firmwareLDeviceIds.Any())
+        {
+            // Batch fetch latest odometer_km for all firmware "L" devices
+            var latestOdometers = await _context.GpsPositions
+                .Where(p => firmwareLDeviceIds.Contains(p.DeviceId)
+                         && p.OdometerKm.HasValue
+                         && p.OdometerKm > 0)
+                .GroupBy(p => p.DeviceId)
+                .Select(g => new { DeviceId = g.Key, OdometerKm = g.OrderByDescending(p => p.RecordedAt).First().OdometerKm })
+                .ToListAsync(ct);
+
+            var odometerMap = latestOdometers.ToDictionary(x => x.DeviceId, x => x.OdometerKm ?? 0);
+
+            result = new PaginatedList<VehicleDto>(
+                result.Items.Select(v =>
+                {
+                    if (v.GpsDevice != null && odometerMap.TryGetValue(v.GpsDevice.Id, out var odo) && odo > 0)
+                        return v with { Mileage = (int)odo };
+                    return v;
+                }).ToList(),
+                result.TotalCount,
+                result.PageNumber,
+                request.PageSize
+            );
+        }
+
+        return result;
     }
 }
 
