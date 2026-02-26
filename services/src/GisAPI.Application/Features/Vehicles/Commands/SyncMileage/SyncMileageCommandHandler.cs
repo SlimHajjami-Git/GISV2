@@ -32,6 +32,11 @@ public class SyncMileageCommandHandler : IRequestHandler<SyncMileageCommand, Syn
         var source = "manual";
         var updated = false;
 
+        // Reset corrupted mileage (protocol artifacts or absurd values)
+        var currentMileage = vehicle.Mileage;
+        if (currentMileage >= 1_048_000 && currentMileage <= 1_049_000) currentMileage = 0;
+        else if (currentMileage > 1_000_000) currentMileage = 0;
+
         // Si le véhicule a un GPS, chercher le dernier odometer_km
         if (vehicle.GpsDeviceId.HasValue)
         {
@@ -50,15 +55,22 @@ public class SyncMileageCommandHandler : IRequestHandler<SyncMileageCommand, Syn
                 // Skip GPS protocol artifact (~2^20 = 1,048,576 default)
                 if (odoValue >= 1_048_000 && odoValue <= 1_049_000)
                 {
-                    // Protocol default, ignore
+                    // Protocol default, ignore — but still reset corrupted mileage
+                    if (vehicle.Mileage != currentMileage)
+                    {
+                        vehicle.Mileage = currentMileage;
+                        vehicle.UpdatedAt = DateTime.UtcNow;
+                        await _context.SaveChangesAsync(ct);
+                        updated = true;
+                    }
                 }
                 else
                 {
                     // Values > 1,000,000 are likely in meters from GPS tracker
                     if (odoValue > 1_000_000) odoValue = odoValue / 1000;
 
-                    // Sanity cap: max 500,000 km
-                    if (odoValue > 0 && odoValue <= 500_000 && odoValue > vehicle.Mileage)
+                    // Accept if valid and greater than (sanitized) current mileage
+                    if (odoValue > 0 && odoValue <= 500_000 && odoValue > currentMileage)
                     {
                         vehicle.Mileage = (int)odoValue;
                         vehicle.UpdatedAt = DateTime.UtcNow;
@@ -66,7 +78,23 @@ public class SyncMileageCommandHandler : IRequestHandler<SyncMileageCommand, Syn
                         source = "gps";
                         updated = true;
                     }
+                    else if (vehicle.Mileage != currentMileage)
+                    {
+                        // Reset corrupted value even if GPS odometer isn't better
+                        vehicle.Mileage = currentMileage;
+                        vehicle.UpdatedAt = DateTime.UtcNow;
+                        await _context.SaveChangesAsync(ct);
+                        updated = true;
+                    }
                 }
+            }
+            else if (vehicle.Mileage != currentMileage)
+            {
+                // No GPS odometer, but mileage was corrupted — reset it
+                vehicle.Mileage = currentMileage;
+                vehicle.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync(ct);
+                updated = true;
             }
         }
 
