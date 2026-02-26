@@ -1549,18 +1549,30 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   getSpeedLimitFromAddress(address: string): number {
-    if (!address) return 50;
+    if (!address) return 90;
     const addr = address.toLowerCase();
-    // Autoroute → 110 km/h
-    if (addr.includes('autoroute') || addr.includes('a1 ') || addr.includes('a3 ') || addr.includes('a4 ')) {
+    // Autoroute → 110 km/h (A1, A3, A4, etc.)
+    if (addr.includes('autoroute') || /\ba\d+\b/.test(addr)) {
       return 110;
     }
-    // Route nationale / route principale → 90 km/h
-    if (addr.includes('route nationale') || addr.includes('rn ') || addr.includes('gp ') || addr.includes('route principale') || addr.includes('route régionale') || addr.includes('rr ')) {
+    // Route nationale / route principale / GP → 90 km/h
+    if (addr.includes('route nationale') || /\brn\d*\b/.test(addr) || /\bgp\d*\b/.test(addr) || addr.includes('route principale')) {
       return 90;
     }
-    // Default: zone urbaine → 50 km/h
-    return 50;
+    // Route régionale (RR) → 90 km/h
+    if (addr.includes('route régionale') || addr.includes('route regionale') || /\brr\d*\b/.test(addr)) {
+      return 90;
+    }
+    // Route locale (RL) → 70 km/h
+    if (/\brl\d*\b/.test(addr) || addr.includes('route locale')) {
+      return 70;
+    }
+    // MC (chemin municipal) → 50 km/h
+    if (/\bmc\d*\b/.test(addr) || addr.includes('chemin') || addr.includes('rue ') || addr.includes('avenue ')) {
+      return 50;
+    }
+    // Default: hors agglomération → 90 km/h
+    return 90;
   }
 
   detectDrivingIncidents(positions: any[], vehicle: any): any[] {

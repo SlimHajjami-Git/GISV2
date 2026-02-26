@@ -96,18 +96,40 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
             </div>
           </div>
 
-          <!-- Card 4: Kilometrage de la flotte -->
+          <!-- Card 4: Kilometrage global de la flotte -->
           <div class="card card-mileage">
-            <div class="card-header"><span class="card-title">Kilometrage de la flotte</span></div>
+            <div class="card-header"><span class="card-title">Kilometrage global de la flotte</span></div>
             <div class="card-body">
               <div class="mileage-total">
                 <span class="mileage-big">{{ totalFleetMileage | number:'1.0-0' }} km</span>
+                <span class="mileage-sub">{{ vehicles.length }} vehicules</span>
               </div>
               <div class="mileage-bars">
                 <div class="mbar-row" *ngFor="let unit of topUnits">
                   <span class="mbar-name">{{ unit.name }}</span>
                   <div class="mbar-track">
                     <div class="mbar-fill" [style.width.%]="(unit.mileage / maxMileage) * 100"
+                      [style.background]="unit.color"></div>
+                  </div>
+                  <span class="mbar-km">{{ unit.mileage | number:'1.0-0' }} km</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 4b: Kilometrage filtre -->
+          <div class="card card-mileage-filtered">
+            <div class="card-header"><span class="card-title">Kilometrage ({{ selectedPeriod === 'week' ? 'Semaine' : selectedPeriod === 'month' ? 'Mois' : 'Trimestre' }})</span></div>
+            <div class="card-body">
+              <div class="mileage-total">
+                <span class="mileage-big">{{ filteredFleetMileage | number:'1.0-0' }} km</span>
+                <span class="mileage-sub">Estimation periode</span>
+              </div>
+              <div class="mileage-bars">
+                <div class="mbar-row" *ngFor="let unit of filteredTopUnits">
+                  <span class="mbar-name">{{ unit.name }}</span>
+                  <div class="mbar-track">
+                    <div class="mbar-fill" [style.width.%]="(unit.mileage / filteredMaxMileage) * 100"
                       [style.background]="unit.color"></div>
                   </div>
                   <span class="mbar-km">{{ unit.mileage | number:'1.0-0' }} km</span>
@@ -284,8 +306,10 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
 
     /* Mileage */
     .card-mileage { grid-column: 1 / 3; }
+    .card-mileage-filtered { grid-column: 3; }
     .mileage-total { margin-bottom: 12px; }
     .mileage-big { font-size: 28px; font-weight: 700; color: #1e293b; }
+    .mileage-sub { display: block; font-size: 12px; color: #94a3b8; margin-top: 2px; }
     .mileage-bars { display: flex; flex-direction: column; gap: 6px; }
     .mbar-row { display: flex; align-items: center; gap: 10px; }
     .mbar-name { font-size: 11px; color: #64748b; min-width: 100px; }
@@ -323,10 +347,11 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
       .dashboard-grid { grid-template-columns: 1fr 1fr; }
       .card-expenses { grid-column: 1 / -1; grid-row: auto; }
       .card-mileage { grid-column: 1 / -1; }
+      .card-mileage-filtered { grid-column: 1 / -1; }
     }
     @media (max-width: 700px) {
       .dashboard-grid { grid-template-columns: 1fr; }
-      .card-expenses, .card-mileage { grid-column: 1; }
+      .card-expenses, .card-mileage, .card-mileage-filtered { grid-column: 1; }
       .dashboard-container { padding: 12px; }
     }
   `]
@@ -343,6 +368,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   topUnits: { name: string; color: string; mileage: number }[] = [];
   maxMileage = 1;
   totalFleetMileage = 0;
+  filteredTopUnits: { name: string; color: string; mileage: number }[] = [];
+  filteredMaxMileage = 1;
+  filteredFleetMileage = 0;
+  maintenanceAlerts: any[] = [];
 
   // Cost data
   vehicleCosts: VehicleCost[] = [];
@@ -376,6 +405,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.ngZone.run(() => {
       this.loadVehicles();
       this.loadCostData();
+      this.loadMaintenanceAlerts();
     });
 
     const today = new Date();
@@ -453,18 +483,41 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
+  sanitizeMileage(rawKm: number): number {
+    if (!rawKm || rawKm <= 0) return 0;
+    // If value > 1,000,000 it's likely in meters, convert to km
+    if (rawKm > 1_000_000) return Math.round(rawKm / 1000);
+    return Math.round(rawKm);
+  }
+
   buildDashboardData() {
     const colors = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#f97316'];
 
-    // Top units by mileage
-    const sorted = [...this.vehicles].sort((a, b) => (b.mileage || 0) - (a.mileage || 0));
+    // Sanitize mileage for all vehicles
+    const vehiclesWithKm = this.vehicles.map(v => ({
+      ...v,
+      mileageKm: this.sanitizeMileage(v.mileage || 0)
+    }));
+
+    // Top units by mileage (global)
+    const sorted = [...vehiclesWithKm].sort((a, b) => b.mileageKm - a.mileageKm);
     this.topUnits = sorted.slice(0, 8).map((v, i) => ({
       name: v.plate || v.name,
       color: colors[i % colors.length],
-      mileage: v.mileage || 0
+      mileage: v.mileageKm
     }));
     this.maxMileage = Math.max(...this.topUnits.map(u => u.mileage), 1);
-    this.totalFleetMileage = this.vehicles.reduce((s, v) => s + (v.mileage || 0), 0);
+    this.totalFleetMileage = vehiclesWithKm.reduce((s, v) => s + v.mileageKm, 0);
+
+    // Filtered mileage estimation based on period
+    const divisor = this.selectedPeriod === 'week' ? 52 : this.selectedPeriod === 'month' ? 12 : 4;
+    this.filteredTopUnits = sorted.slice(0, 8).map((v, i) => ({
+      name: v.plate || v.name,
+      color: colors[i % colors.length],
+      mileage: Math.round(v.mileageKm / divisor)
+    }));
+    this.filteredMaxMileage = Math.max(...this.filteredTopUnits.map(u => u.mileage), 1);
+    this.filteredFleetMileage = Math.round(this.totalFleetMileage / divisor);
 
     // Fuel consumers (simulated from vehicle data)
     this.topFuelConsumers = sorted.slice(0, 5).map(v => ({
@@ -473,14 +526,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
       trend: Math.round((Math.random() - 0.5) * 20)
     }));
 
-    // Immobilized vehicles (maintenance status)
-    this.immobilizedVehicles = this.vehicles
-      .filter(v => v.status === 'maintenance')
-      .map(v => ({
-        plate: v.plate || v.name,
-        reason: 'Maintenance',
-        days: Math.ceil(Math.random() * 10)
-      }));
+    // Immobilized vehicles: from maintenance alerts + maintenance status vehicles
+    this.buildImmobilizedVehicles(vehiclesWithKm);
 
     // Driving scores (simulated)
     this.drivingScores = [
@@ -490,14 +537,60 @@ export class DashboardComponent implements OnInit, OnDestroy {
     ];
 
     // Vehicle health
-    this.healthyVehicles = this.vehicles
+    this.healthyVehicles = vehiclesWithKm
       .filter(v => v.status === 'available' || v.status === 'in_use')
       .slice(0, 5)
       .map(v => ({ plate: v.plate || v.name, score: 70 + Math.round(Math.random() * 30) }));
 
-    this.unhealthyVehicles = this.vehicles
+    this.unhealthyVehicles = vehiclesWithKm
       .filter(v => v.status === 'maintenance')
       .map(v => ({ plate: v.plate || v.name, issue: 'Maintenance requise' }));
+  }
+
+  buildImmobilizedVehicles(vehiclesWithKm: any[]) {
+    const immob: { plate: string; reason: string; days: number }[] = [];
+    const seen = new Set<string>();
+
+    // From maintenance alerts (due/overdue/critical)
+    if (this.maintenanceAlerts && this.maintenanceAlerts.length > 0) {
+      for (const alert of this.maintenanceAlerts) {
+        const plate = alert.vehiclePlate || alert.vehicleName || 'N/A';
+        if (seen.has(plate)) continue;
+        seen.add(plate);
+        const status = (alert.status || '').toLowerCase();
+        const reason = alert.templateName || alert.description || (status === 'overdue' ? 'Maintenance en retard' : status === 'critical' ? 'Maintenance critique' : 'Maintenance planifiee');
+        const daysSince = alert.nextDueDate ? Math.max(0, Math.round((Date.now() - new Date(alert.nextDueDate).getTime()) / 86400000)) : 0;
+        immob.push({ plate, reason, days: daysSince || 1 });
+      }
+    }
+
+    // From vehicles with maintenance status
+    for (const v of vehiclesWithKm) {
+      const plate = v.plate || v.name;
+      if (seen.has(plate)) continue;
+      if (v.status === 'maintenance') {
+        seen.add(plate);
+        immob.push({ plate, reason: 'En maintenance', days: 1 });
+      }
+    }
+
+    this.immobilizedVehicles = immob.sort((a, b) => b.days - a.days);
+  }
+
+  loadMaintenanceAlerts() {
+    this.apiService.getMaintenanceAlerts().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (alerts) => {
+        this.ngZone.run(() => {
+          this.maintenanceAlerts = alerts || [];
+          this.buildImmobilizedVehicles(this.vehicles.map(v => ({
+            ...v,
+            mileageKm: this.sanitizeMileage(v.mileage || 0)
+          })));
+          this.cdr.detectChanges();
+        });
+      },
+      error: (err) => console.error('Error loading maintenance alerts:', err)
+    });
   }
 
   // Donut arc helpers (circumference = 2 * PI * 50 = ~314)
