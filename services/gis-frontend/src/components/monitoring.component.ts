@@ -8,6 +8,7 @@ import { SignalRService, PositionUpdate } from '../services/signalr.service';
 import { GeocodingService } from '../services/geocoding.service';
 import { Vehicle } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { AdminService } from '../admin/services/admin.service';
 import { getVehicleIcon } from './shared/vehicle-icons';
 import * as L from 'leaflet';
 import 'leaflet-routing-machine';
@@ -148,11 +149,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     private geocodingService: GeocodingService,
     private cdr: ChangeDetectorRef,
     private ngZone: NgZone,
-    private appRef: ApplicationRef
+    private appRef: ApplicationRef,
+    private adminService: AdminService
   ) {}
 
   ngOnInit() {
-    if (!this.apiService.isAuthenticated()) {
+    if (!this.embedded && !this.apiService.isAuthenticated()) {
       this.router.navigate(['/login']);
       return;
     }
@@ -396,8 +398,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.loading = true;
     this.cdr.detectChanges();
 
-    // Single API call to get vehicles with their GPS positions
-    this.apiService.getVehiclesWithPositions().subscribe({
+    // Use admin API when embedded (admin context), otherwise regular API
+    const vehiclesObs = this.embedded
+      ? this.adminService.getVehiclesWithPositions()
+      : this.apiService.getVehiclesWithPositions();
+    vehiclesObs.subscribe({
       next: (vehicles) => {
         // Run inside Angular zone to ensure change detection triggers
         this.ngZone.run(() => {

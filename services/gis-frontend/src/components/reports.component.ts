@@ -6,6 +6,7 @@ import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, Activit
 import { Subject, takeUntil } from 'rxjs';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { AdminService } from '../admin/services/admin.service';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 
@@ -320,11 +321,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     private geocodingService: GeocodingService,
     private ngZone: NgZone,
     private cdr: ChangeDetectorRef,
-    private appRef: ApplicationRef
+    private appRef: ApplicationRef,
+    private adminService: AdminService
   ) {}
 
   ngOnInit() {
-    if (!this.apiService.isAuthenticated()) {
+    if (!this.embedded && !this.apiService.isAuthenticated()) {
       this.router.navigate(['/login']);
       return;
     }
@@ -373,8 +375,18 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.dailyReportDate = yesterday.toISOString().split('T')[0];
   }
 
+  private getVehiclesObs() {
+    return this.embedded ? this.adminService.getVehicles() : this.apiService.getVehicles();
+  }
+
+  private getVehicleHistoryObs(vehicleId: number, from?: Date, to?: Date, maxPoints = 3000) {
+    return this.embedded
+      ? this.adminService.getVehicleHistory(vehicleId, from, to, maxPoints)
+      : this.apiService.getVehicleHistory(vehicleId, from, to, maxPoints);
+  }
+
   loadData() {
-    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
+    this.getVehiclesObs().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => this.vehicles = vehicles,
       error: (err) => console.error('Error loading vehicles:', err)
     });
@@ -798,7 +810,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
 
     this.vehicles.forEach(vehicle => {
-      this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 5000).pipe(takeUntil(this.destroy$)).subscribe({
+      this.getVehicleHistoryObs(vehicle.id, startDate, endDate, 5000).pipe(takeUntil(this.destroy$)).subscribe({
         next: (positions) => {
           const positionsWithVehicle = positions.map(p => ({
             ...p,
@@ -1112,7 +1124,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   executeStopsReport(vehicleId: number, startDate?: Date, endDate?: Date) {
     console.log('executeStopsReport called with:', { vehicleId, startDate, endDate });
     // Fetch raw GPS positions and detect stops from ignition transitions
-    this.apiService.getVehicleHistory(vehicleId, startDate, endDate, 10000).pipe(takeUntil(this.destroy$)).subscribe({
+    this.getVehicleHistoryObs(vehicleId, startDate, endDate, 10000).pipe(takeUntil(this.destroy$)).subscribe({
       next: (positions: any[]) => {
         this.ngZone.run(() => {
           this.processStopsFromPositions(positions);
@@ -1159,7 +1171,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
 
     this.vehicles.forEach(vehicle => {
-      this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 10000).pipe(takeUntil(this.destroy$)).subscribe({
+      this.getVehicleHistoryObs(vehicle.id, startDate, endDate, 10000).pipe(takeUntil(this.destroy$)).subscribe({
         next: (positions: any[]) => {
           // Tag each position with vehicle info
           const tagged = positions.map(p => ({
@@ -1211,8 +1223,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const selectedVehicleId = this.selectedVehicleId ? parseInt(this.selectedVehicleId) : null;
     
     // Fetch vehicles — filter by selected vehicle if one is chosen
-    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (vehicles) => {
+    this.getVehiclesObs().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (vehicles: any[]) => {
         let targetVehicles = vehicles;
         if (selectedVehicleId) {
           targetVehicles = vehicles.filter(v => v.id === selectedVehicleId);
@@ -1240,7 +1252,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             ? this.speedLimit 
             : (vehicle.speedLimit || 120);
           
-          this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 10000).pipe(takeUntil(this.destroy$)).subscribe({
+          this.getVehicleHistoryObs(vehicle.id, startDate, endDate, 10000).pipe(takeUntil(this.destroy$)).subscribe({
             next: (positions) => {
               const infractions = positions
                 .filter((p: any) => (p.speedKph || 0) > vehicleSpeedLimit)
@@ -1415,8 +1427,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const selectedVehicleId = this.selectedVehicleId ? parseInt(this.selectedVehicleId) : null;
     
     // Fetch vehicles — filter by selected vehicle if one is chosen
-    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (vehicles) => {
+    this.getVehiclesObs().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (vehicles: any[]) => {
         let targetVehicles = vehicles;
         if (selectedVehicleId) {
           targetVehicles = vehicles.filter(v => v.id === selectedVehicleId);
@@ -1441,7 +1453,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         }
         
         targetVehicles.forEach(vehicle => {
-          this.apiService.getVehicleHistory(vehicle.id, startDate, endDate, 10000).pipe(takeUntil(this.destroy$)).subscribe({
+          this.getVehicleHistoryObs(vehicle.id, startDate, endDate, 10000).pipe(takeUntil(this.destroy$)).subscribe({
             next: (positions) => {
               const incidents = this.detectDrivingIncidents(positions, vehicle);
               allIncidents.push(...incidents);
@@ -3144,7 +3156,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.apiService.getVehicleHistory(vehicleId, startDate, endDate).pipe(takeUntil(this.destroy$)).subscribe({
+    this.getVehicleHistoryObs(vehicleId, startDate, endDate).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {
         this.ngZone.run(() => {
           this.processVehicleData(result);

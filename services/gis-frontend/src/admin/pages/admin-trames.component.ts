@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil, forkJoin } from 'rxjs';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
-import { ApiService } from '../../services/api.service';
+import { AdminService } from '../services/admin.service';
 
 @Component({
   selector: 'admin-trames',
@@ -454,7 +454,7 @@ export class AdminTramesComponent implements OnInit, OnDestroy {
   statsFuelMin = 0;
   statsFuelMax = 0;
 
-  constructor(private apiService: ApiService) {}
+  constructor(private adminService: AdminService) {}
 
   ngOnInit() {
     // Set default dates: last 24h
@@ -463,7 +463,7 @@ export class AdminTramesComponent implements OnInit, OnDestroy {
     this.toDate = this.toLocalDatetime(now);
     this.fromDate = this.toLocalDatetime(yesterday);
 
-    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
+    this.adminService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => {
         this.vehicles = vehicles.sort((a: any, b: any) => (a.plate || a.name || '').localeCompare(b.plate || b.name || ''));
       }
@@ -489,7 +489,7 @@ export class AdminTramesComponent implements OnInit, OnDestroy {
     const from = this.fromDate ? new Date(this.fromDate) : undefined;
     const to = this.toDate ? new Date(this.toDate) : undefined;
 
-    this.apiService.getVehicleHistory(this.selectedVehicleId, from, to, this.maxPoints)
+    this.adminService.getVehicleHistory(this.selectedVehicleId, from, to, this.maxPoints)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (positions) => {

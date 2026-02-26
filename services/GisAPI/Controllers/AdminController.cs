@@ -278,6 +278,191 @@ public class AdminController : ControllerBase
         return Ok(vehicles);
     }
 
+    // ==================== ADMIN VEHICLES WITH POSITIONS (ALL COMPANIES) ====================
+
+    [HttpGet("vehicles/with-positions")]
+    public async Task<ActionResult> GetAllVehiclesWithPositions([FromQuery] int? companyId)
+    {
+        var vehicleQuery = _context.Vehicles
+            .AsNoTracking()
+            .Include(v => v.GpsDevice)
+            .Include(v => v.Societe)
+            .AsQueryable();
+
+        if (companyId.HasValue)
+            vehicleQuery = vehicleQuery.Where(v => v.CompanyId == companyId.Value);
+
+        var vehicles = await vehicleQuery.ToListAsync();
+
+        var deviceIds = vehicles
+            .Where(v => v.GpsDevice != null)
+            .Select(v => v.GpsDevice!.Id)
+            .ToList();
+
+        // Fetch latest position per device (batch query)
+        var latestPositions = new Dictionary<int, dynamic>();
+        foreach (var deviceId in deviceIds)
+        {
+            var pos = await _context.GpsPositions
+                .AsNoTracking()
+                .Where(p => p.DeviceId == deviceId)
+                .OrderByDescending(p => p.RecordedAt)
+                .Select(p => new {
+                    p.Id, p.Latitude, p.Longitude, p.SpeedKph, p.CourseDeg,
+                    p.IgnitionOn, p.RecordedAt, p.FuelRaw, p.TemperatureC,
+                    p.PowerVoltage, p.Address, p.OdometerKm
+                })
+                .FirstOrDefaultAsync();
+            if (pos != null) latestPositions[deviceId] = pos;
+        }
+
+        var result = vehicles.Select(v =>
+        {
+            var deviceId = v.GpsDevice?.Id ?? 0;
+            latestPositions.TryGetValue(deviceId, out var position);
+            var lastComm = v.GpsDevice?.LastCommunication;
+            var isOnline = lastComm.HasValue && (DateTime.UtcNow - lastComm.Value).TotalMinutes < 30;
+
+            var ignitionOn = (bool?)(position?.IgnitionOn) ?? false;
+            var rawSpeed = (double?)(position?.SpeedKph) ?? 0.0;
+
+            if (ignitionOn && rawSpeed <= 1 && position != null)
+            {
+                var positionAge = (DateTime.UtcNow - (DateTime)position.RecordedAt).TotalMinutes;
+                if (positionAge > 10) ignitionOn = false;
+            }
+
+            var currentSpeed = ignitionOn ? Math.Round(rawSpeed) : 0.0;
+
+            // Fuel conversion
+            int? fuelLevel = null;
+            var fuelRaw = (int?)position?.FuelRaw;
+            if (fuelRaw.HasValue)
+            {
+                var fuelMode = v.GpsDevice?.FuelSensorMode ?? "raw_255";
+                var tankCapacity = v.FuelTankCapacity ?? 60;
+                fuelLevel = fuelMode switch
+                {
+                    "percent" => fuelRaw.Value,
+                    "raw_255" => (int)Math.Round(fuelRaw.Value / 255.0 * 100.0),
+                    "liters" => tankCapacity > 0 ? (int)Math.Round(fuelRaw.Value * 100.0 / tankCapacity) : fuelRaw.Value,
+                    "half_liter" => tankCapacity > 0 ? (int)Math.Round(fuelRaw.Value * 0.5 * 100.0 / tankCapacity) : (int)Math.Round(fuelRaw.Value * 0.5),
+                    _ => fuelRaw.Value
+                };
+                if (fuelLevel > 100) fuelLevel = 100;
+                if (fuelLevel < 0) fuelLevel = 0;
+            }
+
+            // Temperature filter
+            var temperature = (short?)position?.TemperatureC;
+            if (temperature.HasValue && (temperature.Value < -100 || temperature.Value > 200))
+                temperature = null;
+
+            return new {
+                id = v.Id,
+                name = v.Name,
+                type = v.Type,
+                brand = v.Brand,
+                model = v.Model,
+                plate = v.Plate,
+                status = v.Status,
+                hasGps = v.HasGps,
+                deviceUid = v.GpsDevice?.DeviceUid,
+                lastCommunication = lastComm,
+                isOnline,
+                companyId = v.CompanyId,
+                companyName = v.Societe?.Name,
+                mileage = v.Mileage,
+                lastPosition = position != null ? new {
+                    id = (long)position.Id,
+                    latitude = (double)position.Latitude,
+                    longitude = (double)position.Longitude,
+                    speedKph = currentSpeed,
+                    courseDeg = (double?)(position.CourseDeg) ?? 0.0,
+                    ignitionOn,
+                    recordedAt = (DateTime)position.RecordedAt,
+                    fuelRaw = (int?)position.FuelRaw,
+                    temperatureC = temperature,
+                    address = (string?)position.Address,
+                    odometerKm = (long?)position.OdometerKm
+                } : (object?)null,
+                stats = new {
+                    currentSpeed,
+                    fuelLevel,
+                    temperature,
+                    isMoving = ignitionOn && rawSpeed > 5
+                }
+            };
+        }).ToList();
+
+        return Ok(result);
+    }
+
+    [HttpGet("vehicles/{vehicleId}/history")]
+    public async Task<ActionResult> GetAdminVehicleHistory(
+        int vehicleId,
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null,
+        [FromQuery] int maxPoints = 5000)
+    {
+        var vehicle = await _context.Vehicles
+            .AsNoTracking()
+            .Include(v => v.GpsDevice)
+            .FirstOrDefaultAsync(v => v.Id == vehicleId);
+
+        if (vehicle == null) return NotFound();
+        if (!vehicle.GpsDeviceId.HasValue) return Ok(new List<object>());
+
+        from ??= DateTime.UtcNow.AddHours(-24);
+        to ??= DateTime.UtcNow;
+        var fromUtc = from.Value.Kind == DateTimeKind.Utc ? from.Value : from.Value.ToUniversalTime();
+        var toUtc = to.Value.Kind == DateTimeKind.Utc ? to.Value : to.Value.ToUniversalTime();
+        maxPoints = Math.Clamp(maxPoints, 100, 50000);
+
+        var query = _context.GpsPositions
+            .AsNoTracking()
+            .Where(p => p.DeviceId == vehicle.GpsDeviceId.Value && p.RecordedAt >= fromUtc && p.RecordedAt <= toUtc)
+            .OrderBy(p => p.RecordedAt);
+
+        var totalCount = await query.CountAsync();
+
+        List<object> positions;
+        if (totalCount <= maxPoints)
+        {
+            positions = await query.Select(p => (object)new {
+                p.Id, p.Latitude, p.Longitude, speedKph = p.SpeedKph, courseDeg = p.CourseDeg,
+                ignitionOn = p.IgnitionOn, recordedAt = p.RecordedAt, fuelRaw = p.FuelRaw,
+                rpm = p.Rpm, odometerKm = p.OdometerKm, temperatureC = p.TemperatureC,
+                isRealTime = p.IsRealTime, address = p.Address, createdAt = p.CreatedAt
+            }).ToListAsync();
+        }
+        else
+        {
+            // Downsample: take every Nth record
+            var step = (double)totalCount / maxPoints;
+            var allIds = await query.Select(p => p.Id).ToListAsync();
+            var sampledIds = new HashSet<long>();
+            for (double i = 0; i < allIds.Count; i += step)
+                sampledIds.Add(allIds[(int)i]);
+            // Always include first and last
+            sampledIds.Add(allIds[0]);
+            sampledIds.Add(allIds[^1]);
+
+            positions = await _context.GpsPositions
+                .AsNoTracking()
+                .Where(p => sampledIds.Contains(p.Id))
+                .OrderBy(p => p.RecordedAt)
+                .Select(p => (object)new {
+                    p.Id, p.Latitude, p.Longitude, speedKph = p.SpeedKph, courseDeg = p.CourseDeg,
+                    ignitionOn = p.IgnitionOn, recordedAt = p.RecordedAt, fuelRaw = p.FuelRaw,
+                    rpm = p.Rpm, odometerKm = p.OdometerKm, temperatureC = p.TemperatureC,
+                    isRealTime = p.IsRealTime, address = p.Address, createdAt = p.CreatedAt
+                }).ToListAsync();
+        }
+
+        return Ok(positions);
+    }
+
     // ==================== SERVICE HEALTH ====================
 
     [HttpGet("health")]

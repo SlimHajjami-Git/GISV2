@@ -550,6 +550,32 @@ export class AdminService {
     );
   }
 
+  getVehiclesWithPositions(companyId?: number): Observable<any[]> {
+    let url = `${this.apiUrl}/admin/vehicles/with-positions`;
+    if (companyId) url += `?companyId=${companyId}`;
+    return this.http.get<any[]>(url, { headers: this.getHeaders() }).pipe(
+      catchError(err => {
+        console.error('Error fetching admin vehicles with positions:', err);
+        return of([]);
+      })
+    );
+  }
+
+  getVehicleHistory(vehicleId: number, from?: Date, to?: Date, maxPoints = 5000): Observable<any[]> {
+    let url = `${this.apiUrl}/admin/vehicles/${vehicleId}/history`;
+    const params: string[] = [];
+    if (from) params.push(`from=${from.toISOString()}`);
+    if (to) params.push(`to=${to.toISOString()}`);
+    params.push(`maxPoints=${maxPoints}`);
+    url += '?' + params.join('&');
+    return this.http.get<any[]>(url, { headers: this.getHeaders() }).pipe(
+      catchError(err => {
+        console.error('Error fetching admin vehicle history:', err);
+        return of([]);
+      })
+    );
+  }
+
   getCompanyVehicles(companyId: number): Observable<AdminVehicle[]> {
     return this.http.get<AdminVehicle[]>(`${this.apiUrl}/admin/company/${companyId}/vehicles`, { headers: this.getHeaders() }).pipe(
       catchError(err => {
