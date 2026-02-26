@@ -696,6 +696,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.mileagePeriodReport = null;
     this.fuelEstimationReport = null;
 
+    // Re-compute dates from the selected period to ensure fresh timestamps
+    if (this.selectedStandardPeriod !== 'custom') {
+      this.selectStandardPeriod(this.selectedStandardPeriod);
+    }
     let startDate = this.fromDate ? new Date(this.fromDate) : undefined;
     let endDate = this.toDate ? new Date(this.toDate) : undefined;
     const vehicleId = this.selectedVehicleId ? parseInt(this.selectedVehicleId) : undefined;
@@ -2223,9 +2227,18 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
 
     // Convert daily breakdown to table data - FILTER OUT days with no trips
-    const daysWithActivity = report.dailyBreakdown.filter((day: DailyMileage) => 
-      day.tripCount > 0 || day.distanceKm > 0
-    );
+    // Also filter to only include days within the requested date range
+    const fromDateStr = this.fromDate ? this.fromDate.split('T')[0] : '';
+    const toDateStr = this.toDate ? this.toDate.split('T')[0] : '';
+    const daysWithActivity = report.dailyBreakdown.filter((day: DailyMileage) => {
+      if (day.tripCount === 0 && day.distanceKm === 0) return false;
+      if (fromDateStr) {
+        const dayDate = new Date(day.date).toISOString().split('T')[0];
+        if (dayDate < fromDateStr) return false;
+        if (toDateStr && dayDate > toDateStr) return false;
+      }
+      return true;
+    });
 
     this.tableData = daysWithActivity.map((day: DailyMileage) => ({
       date: new Date(day.date).toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' }),
