@@ -630,7 +630,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       this.sortDirection = 'asc';
     }
     const dir = this.sortDirection === 'asc' ? 1 : -1;
-    this.tableData.sort((a: any, b: any) => {
+    this.tableData = [...this.tableData].sort((a: any, b: any) => {
       let valA = a[column];
       let valB = b[column];
       // Handle null/undefined
@@ -651,6 +651,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return String(valA).localeCompare(String(valB), 'fr') * dir;
     });
     this.currentPage = 1;
+    this.cdr.detectChanges();
   }
 
   getSortIcon(column: string): string {
