@@ -7,6 +7,7 @@ import { Subject, takeUntil } from 'rxjs';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { AdminService } from '../admin/services/admin.service';
+import { PdfExportService } from '../services/pdf-export.service';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 
@@ -322,7 +323,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     private ngZone: NgZone,
     private cdr: ChangeDetectorRef,
     private appRef: ApplicationRef,
-    private adminService: AdminService
+    private adminService: AdminService,
+    private pdfExportService: PdfExportService
   ) {}
 
   ngOnInit() {
@@ -4873,7 +4875,126 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   exportReport(format: string) {
-    alert(`Export ${format.toUpperCase()} - fonctionnalité à venir`);
+    if (!this.selectedTemplate || !this.reportGenerated) return;
+
+    const type = this.selectedTemplate.type;
+    const vehicleName = this.selectedVehicleId
+      ? (this.vehicles.find((v: any) => v.id == this.selectedVehicleId)?.name ||
+         this.vehicles.find((v: any) => v.id == this.selectedVehicleId)?.plate || 'Véhicule')
+      : 'Tous les véhicules';
+
+    let dateRange = '';
+    if (this.fromDate && this.toDate) {
+      const f = new Date(this.fromDate).toLocaleDateString('fr-FR');
+      const t = new Date(this.toDate).toLocaleDateString('fr-FR');
+      dateRange = `${f} - ${t}`;
+    } else if (this.dailyReportDate) {
+      dateRange = new Date(this.dailyReportDate).toLocaleDateString('fr-FR');
+    }
+
+    // Monthly report special handling
+    if (type === 'monthly' && this.monthlyReport) {
+      this.exportMonthlyReportPdf();
+      return;
+    }
+
+    // Fuel estimation special handling
+    if (type === 'fuel-estimation' && this.fuelEstimationReport) {
+      this.exportFuelEstimationPdf(vehicleName, dateRange);
+      return;
+    }
+
+    const allVehicles = !this.selectedVehicleId;
+    const options: any = { allVehicles };
+    if (type === 'mileage-period') options.periodType = this.selectedMileagePeriodType;
+
+    const columns = this.pdfExportService.getColumnsForReport(type, options);
+    const formatters = this.pdfExportService.getFormattersForReport(type);
+
+    this.pdfExportService.exportReport({
+      title: this.selectedTemplate.name,
+      vehicleName,
+      dateRange,
+      statistics: this.statisticsData,
+      columns,
+      data: this.tableData,
+      formatters
+    });
+  }
+
+  private exportMonthlyReportPdf() {
+    if (!this.monthlyReport) return;
+    const r = this.monthlyReport;
+    const columns = [
+      { header: 'Véhicule', dataKey: 'vehicleName' },
+      { header: 'Distance', dataKey: 'distance' },
+      { header: 'Trajets', dataKey: 'trips' },
+      { header: 'Temps conduite', dataKey: 'drivingTime' },
+      { header: 'Vit. max', dataKey: 'maxSpeed' },
+      { header: 'Arrêts', dataKey: 'stops' },
+      { header: 'Score', dataKey: 'score' }
+    ];
+    const data = (r as any).vehicleReports?.map((v: any) => ({
+      vehicleName: v.vehicleName || v.plate || '-',
+      distance: `${(v.totalDistanceKm || 0).toFixed(1)} km`,
+      trips: v.totalTrips || 0,
+      drivingTime: this.formatDuration(v.totalDrivingTimeSeconds || 0),
+      maxSpeed: `${(v.maxSpeed || 0).toFixed(0)} km/h`,
+      stops: v.totalStops || 0,
+      score: `${(v.drivingScore || 0).toFixed(0)}/100`
+    })) || [];
+
+    const monthLabel = this.monthlyMonths.find((m: any) => m.value === this.selectedMonthlyMonth)?.label || '';
+    this.pdfExportService.exportReport({
+      title: 'Rapport mensuel flotte',
+      subtitle: `${monthLabel} ${this.selectedMonthlyYear}`,
+      dateRange: `${monthLabel} ${this.selectedMonthlyYear}`,
+      statistics: {
+        'Véhicules': String((r as any).vehicleReports?.length || 0),
+        'Distance totale': `${((r as any).totalDistanceKm || 0).toFixed(1)} km`,
+        'Trajets': String((r as any).totalTrips || 0)
+      },
+      columns,
+      data
+    });
+  }
+
+  private exportFuelEstimationPdf(vehicleName: string, dateRange: string) {
+    const report = this.fuelEstimationReport;
+    if (!report) return;
+    const columns = [
+      { header: 'Véhicule', dataKey: 'vehicleName' },
+      { header: 'Plaque', dataKey: 'plate' },
+      { header: 'Distance (km)', dataKey: 'distance' },
+      { header: 'Conso. est. (L)', dataKey: 'fuel' },
+      { header: 'Coût est. (DA)', dataKey: 'cost' },
+      { header: 'L/100km', dataKey: 'consumption' }
+    ];
+    const data = (report as any).vehicles?.map((v: any) => ({
+      vehicleName: v.name || '-',
+      plate: v.plate || '-',
+      distance: (v.distanceKm || 0).toFixed(1),
+      fuel: (v.estimatedFuelLiters || 0).toFixed(1),
+      cost: (v.estimatedCostDa || 0).toFixed(0),
+      consumption: (v.consumptionPer100km || 0).toFixed(1)
+    })) || [];
+
+    this.pdfExportService.exportReport({
+      title: 'Estimation coûts carburant',
+      vehicleName,
+      dateRange,
+      statistics: this.statisticsData,
+      columns,
+      data
+    });
+  }
+
+  private formatDuration(seconds: number): string {
+    if (!seconds || seconds <= 0) return '-';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) return `${h}h ${m}min`;
+    return `${m}min`;
   }
 
   // ==================== FUEL ESTIMATION REPORT ====================
