@@ -205,25 +205,29 @@ public class FuelCalculationService : IFuelCalculationService
         var positions = await _context.GpsPositions
             .Where(p => p.DeviceId == deviceId && p.RecordedAt >= startUtc && p.RecordedAt <= endUtc)
             .OrderBy(p => p.RecordedAt)
-            .Select(p => new { p.OdometerKm, p.Latitude, p.Longitude, p.SpeedKph })
+            .Select(p => new { p.OdometerKm, p.Latitude, p.Longitude, p.SpeedKph, p.RecordedAt })
             .ToListAsync(ct);
 
         if (positions.Count < 2) return 0;
 
-        // Always compute Haversine distance
+        // Always compute Haversine distance with jump filter (max 5 km between consecutive points)
         double haversineKm = 0;
         for (int i = 1; i < positions.Count; i++)
         {
             var prev = positions[i - 1];
             var curr = positions[i];
             var dist = HaversineKm(prev.Latitude, prev.Longitude, curr.Latitude, curr.Longitude);
-            if (dist > 0.01 && dist < 50 && (curr.SpeedKph ?? 0) > 2)
+            if (dist > 0.01 && dist < 5 && (curr.SpeedKph ?? 0) > 2)
                 haversineKm += dist;
         }
 
         int haversineDist = (int)Math.Round(haversineKm);
 
-        // For L-type devices, also try odometer and take the larger value
+        // Sanity check: max reasonable distance = period hours * 200 km/h
+        var periodHours = (endUtc - startUtc).TotalHours;
+        var maxReasonableKm = (int)Math.Max(periodHours * 200, 500);
+
+        // For L-type devices, also try odometer with sanity check
         if (trustOdometer)
         {
             var first = positions.First();
@@ -231,11 +235,14 @@ public class FuelCalculationService : IFuelCalculationService
             if (first.OdometerKm.HasValue && last.OdometerKm.HasValue && last.OdometerKm.Value > first.OdometerKm.Value)
             {
                 int odometerDist = (int)(last.OdometerKm.Value - first.OdometerKm.Value);
-                return Math.Max(odometerDist, haversineDist);
+                // Only trust odometer if it's within reasonable bounds
+                if (odometerDist <= maxReasonableKm)
+                    return Math.Max(odometerDist, haversineDist);
+                // Odometer aberrant → fall back to haversine
             }
         }
 
-        return haversineDist;
+        return Math.Min(haversineDist, maxReasonableKm);
     }
 
     /// <summary>
@@ -261,7 +268,7 @@ public class FuelCalculationService : IFuelCalculationService
             // Estimation mode = S-type device → odometer is garbage, always use Haversine
             decimal segDist = 0;
             var h = HaversineKm(prev.Latitude, prev.Longitude, curr.Latitude, curr.Longitude);
-            if (h > 0.01 && h < 50 && (curr.SpeedKph ?? 0) > 2)
+            if (h > 0.01 && h < 5 && (curr.SpeedKph ?? 0) > 2)
                 segDist = (decimal)h;
 
             if (segDist <= 0) continue;
