@@ -210,8 +210,7 @@ export class PdfExportService {
           { header: 'Début', dataKey: 'time' },
           { header: 'Fin', dataKey: 'endTime' },
           { header: 'Durée', dataKey: 'duration' },
-          { header: 'Adresse', dataKey: 'address' },
-          { header: 'Zone', dataKey: 'geofenceName' }
+          { header: 'Adresse', dataKey: 'address' }
         ];
       case 'mileage':
         return [

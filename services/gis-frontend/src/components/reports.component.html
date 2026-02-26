@@ -679,7 +679,6 @@
                         <th class="sortable" (click)="sortBy('endTime')">Fin <span class="sort-icon">{{ getSortIcon('endTime') }}</span></th>
                         <th class="sortable" (click)="sortBy('durationSeconds')">Durée <span class="sort-icon">{{ getSortIcon('durationSeconds') }}</span></th>
                         <th class="sortable" (click)="sortBy('address')">Adresse <span class="sort-icon">{{ getSortIcon('address') }}</span></th>
-                        <th class="sortable" (click)="sortBy('geofenceName')">Zone <span class="sort-icon">{{ getSortIcon('geofenceName') }}</span></th>
                       } @else if (selectedTemplate?.type === 'speed') {
                         <th class="sortable" (click)="sortBy('vehicleName')">Véhicule <span class="sort-icon">{{ getSortIcon('vehicleName') }}</span></th>
                         <th class="sortable" (click)="sortBy('time')">Date/Heure <span class="sort-icon">{{ getSortIcon('time') }}</span></th>
@@ -814,7 +813,6 @@
                           <td class="time-cell">{{ row.endTime }}</td>
                           <td class="duration-cell" [class.long-stop]="row.isLongStop">{{ row.duration }}</td>
                           <td class="location-cell">{{ row.address }}</td>
-                          <td class="zone-cell">{{ row.geofenceName || '-' }}</td>
                         } @else if (selectedTemplate?.type === 'speed') {
                           <td class="vehicle-cell" [class.exceeds-limit]="row.exceedsLimit">{{ row.vehicleName }}</td>
                           <td class="time-cell">{{ row.time }}</td>

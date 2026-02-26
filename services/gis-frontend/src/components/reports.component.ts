@@ -950,17 +950,23 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const endTime = new Date(trip.end.recordedAt);
       const durationMin = (endTime.getTime() - startTime.getTime()) / 60000;
       
-      // Try odometer first for accurate distance
-      let distanceKm = 0;
+      // Haversine calculation (always compute as fallback)
+      let haversineDist = 0;
+      for (let i = 1; i < trip.positions.length; i++) {
+        const d = this.haversineDistance(
+          trip.positions[i-1].latitude, trip.positions[i-1].longitude,
+          trip.positions[i].latitude, trip.positions[i].longitude
+        );
+        if (!Number.isNaN(d) && d < 5) haversineDist += d;
+      }
+      
+      // Try odometer first, with sanity check
+      let distanceKm = haversineDist;
       if (trip.end.odometerKm && trip.start.odometerKm && trip.end.odometerKm > trip.start.odometerKm) {
-        distanceKm = trip.end.odometerKm - trip.start.odometerKm;
-      } else {
-        // Fallback to haversine calculation
-        for (let i = 1; i < trip.positions.length; i++) {
-          distanceKm += this.haversineDistance(
-            trip.positions[i-1].latitude, trip.positions[i-1].longitude,
-            trip.positions[i].latitude, trip.positions[i].longitude
-          );
+        const odometerDist = trip.end.odometerKm - trip.start.odometerKm;
+        const maxReasonable = Math.max((durationMin / 60) * 200, 5);
+        if (odometerDist <= maxReasonable) {
+          distanceKm = odometerDist;
         }
       }
       
@@ -3840,7 +3846,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
       // Calculate distance
       const dist = this.haversineDistance(prev.latitude, prev.longitude, pos.latitude, pos.longitude);
-      if (!Number.isNaN(dist) && dist < 50) { // Filter unrealistic jumps
+      if (!Number.isNaN(dist) && dist < 5) { // Filter unrealistic jumps (max 5km between 2 points)
         currentSegment.distanceKm += dist;
       }
 
@@ -3962,9 +3968,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
       tripNumber--;
       let distanceKm = seg.distanceKm;
       
-      // Try odometer first
+      // Try odometer first, with sanity check
       if (seg.start.odometerKm && seg.end.odometerKm && seg.end.odometerKm >= seg.start.odometerKm) {
-        distanceKm = seg.end.odometerKm - seg.start.odometerKm;
+        const odometerDist = seg.end.odometerKm - seg.start.odometerKm;
+        // Sanity: max ~200 km/h => max distance = duration(h) * 200
+        const maxReasonable = Math.max((durationMin / 60) * 200, 5);
+        if (odometerDist <= maxReasonable) {
+          distanceKm = odometerDist;
+        }
+        // else: keep haversine distance (odometer glitch)
       }
       
       // If still 0, estimate from average speed
