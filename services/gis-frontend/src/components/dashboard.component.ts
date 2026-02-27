@@ -292,10 +292,11 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
 
     /* Expenses donut */
     .card-expenses { grid-column: 1; grid-row: 1 / 3; }
-    .card-fuel, .card-fleet-status { display: flex; flex-direction: column; }
+    .card-fuel { grid-row: 1 / 3; display: flex; flex-direction: column; }
+    .card-fleet-status { grid-row: 1 / 3; display: flex; flex-direction: column; }
     .card-fuel .card-body, .card-fleet-status .card-body { flex: 1; display: flex; flex-direction: column; }
     .card-fuel .fuel-list { flex: 1; display: flex; flex-direction: column; justify-content: space-around; }
-    .card-fleet-status .fleet-status-content { flex: 1; }
+    .card-fleet-status .fleet-status-content { flex: 1; display: flex; align-items: center; gap: 16px; }
     .donut-section { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
     .donut-wrapper { position: relative; width: 130px; height: 130px; flex-shrink: 0; }
     .donut-svg { width: 100%; height: 100%; }
