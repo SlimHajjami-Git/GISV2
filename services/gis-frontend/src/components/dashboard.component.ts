@@ -73,6 +73,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
             <div class="card-body">
               <div class="fuel-list">
                 <div class="fuel-row" *ngFor="let v of topFuelConsumers">
+                  <span class="fuel-icon">&#x1F69B;</span>
                   <span class="fuel-vehicle">{{ v.plate }}</span>
                   <span class="fuel-value">{{ v.consumption | number:'1.1-1' }} L/100 km</span>
                   <span class="fuel-trend" [class.up]="v.trend > 0" [class.down]="v.trend < 0">{{ v.trend > 0 ? '+' : '' }}{{ v.trend }}%</span>
@@ -81,72 +82,56 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
             </div>
           </div>
 
-          <!-- Card 3: Statut de la flotte -->
-          <div class="card card-fleet-status">
-            <div class="card-header"><span class="card-title">Statut de la flotte</span></div>
+          <!-- Card 3: Immobilisation des vehicules -->
+          <div class="card card-immob">
+            <div class="card-header"><span class="card-title">Immobilisation des vehicules</span><span class="card-menu">&#8943;</span></div>
             <div class="card-body">
-              <div class="fleet-status-content">
-                <div class="fleet-donut-wrapper">
-                  <svg viewBox="0 0 100 100" class="fleet-donut-svg">
-                    <circle cx="50" cy="50" r="38" fill="none" stroke="#e2e8f0" stroke-width="12"/>
-                    <circle cx="50" cy="50" r="38" fill="none" stroke="#22c55e" stroke-width="12"
-                      [attr.stroke-dasharray]="getStatusArc('in_use') + ' ' + (239 - getStatusArc('in_use'))"
-                      stroke-dashoffset="60" transform="rotate(-90 50 50)"/>
-                    <circle cx="50" cy="50" r="38" fill="none" stroke="#3b82f6" stroke-width="12"
-                      [attr.stroke-dasharray]="getStatusArc('available') + ' ' + (239 - getStatusArc('available'))"
-                      [attr.stroke-dashoffset]="60 - getStatusArc('in_use')" transform="rotate(-90 50 50)"/>
-                    <circle cx="50" cy="50" r="38" fill="none" stroke="#f59e0b" stroke-width="12"
-                      [attr.stroke-dasharray]="getStatusArc('maintenance') + ' ' + (239 - getStatusArc('maintenance'))"
-                      [attr.stroke-dashoffset]="60 - getStatusArc('in_use') - getStatusArc('available')" transform="rotate(-90 50 50)"/>
-                  </svg>
-                  <div class="fleet-donut-center">
-                    <span class="fleet-donut-total">{{ vehicles.length }}</span>
-                    <span class="fleet-donut-label">Total</span>
-                  </div>
-                </div>
-                <div class="fleet-status-legend">
-                  <div class="fleet-legend-row">
-                    <span class="ldot" style="background:#22c55e"></span>
-                    <span class="fleet-legend-label">En circulation</span>
-                    <span class="fleet-legend-count">{{ getStatusCount('in_use') }}</span>
-                  </div>
-                  <div class="fleet-legend-row">
-                    <span class="ldot" style="background:#3b82f6"></span>
-                    <span class="fleet-legend-label">Disponible</span>
-                    <span class="fleet-legend-count">{{ getStatusCount('available') }}</span>
-                  </div>
-                  <div class="fleet-legend-row">
-                    <span class="ldot" style="background:#f59e0b"></span>
-                    <span class="fleet-legend-label">Maintenance</span>
-                    <span class="fleet-legend-count">{{ getStatusCount('maintenance') }}</span>
-                  </div>
+              <div class="immob-subtitle">Arret prolonge (jours)</div>
+              <div class="immob-chart">
+                <svg viewBox="0 0 260 100" class="immob-line-svg" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="immobGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#22c55e" stop-opacity="0.25"/>
+                      <stop offset="100%" stop-color="#22c55e" stop-opacity="0.02"/>
+                    </linearGradient>
+                  </defs>
+                  <path [attr.d]="getImmobAreaPath()" fill="url(#immobGrad)" />
+                  <polyline [attr.points]="getImmobLinePath()" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  <circle *ngFor="let pt of immobChartPoints; let i = index" [attr.cx]="pt.x" [attr.cy]="pt.y" r="3.5" fill="#fff" stroke="#22c55e" stroke-width="2"/>
+                </svg>
+                <div class="immob-chart-labels">
+                  <span *ngFor="let lbl of immobChartLabels">{{ lbl }}</span>
                 </div>
               </div>
-              <div class="immob-section" *ngIf="immobilizedVehicles.length > 0">
-                <div class="immob-divider"></div>
-                <div class="immob-title">Vehicules immobilises</div>
-                <div class="immob-list">
-                  <div class="immob-row" *ngFor="let v of immobilizedVehicles">
-                    <span class="immob-dot" [class.warning]="v.days > 5"></span>
-                    <span class="immob-plate">{{ v.plate }}</span>
-                    <span class="immob-reason">{{ v.reason }}</span>
-                    <span class="immob-days">{{ v.days }}j</span>
-                  </div>
+              <div class="immob-list">
+                <div class="immob-row" *ngFor="let v of immobilizedVehicles">
+                  <span class="immob-dot" [style.background]="v.days > 3 ? '#f59e0b' : v.days > 1 ? '#3b82f6' : '#22c55e'"></span>
+                  <span class="immob-plate">{{ v.plate }}</span>
+                  <span class="immob-date">{{ v.reason }}</span>
+                  <span class="immob-days">{{ v.days }} jours</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Card 4: Kilometrage global de la flotte -->
+          <!-- Card 4: Kilometrage de la flotte (left, tall) -->
           <div class="card card-mileage">
-            <div class="card-header"><span class="card-title">Kilometrage global de la flotte</span></div>
+            <div class="card-header">
+              <span class="card-title">Kilometrage de la flotte</span>
+              <select class="period-select-sm" [(ngModel)]="selectedPeriod" (change)="applyFilter()">
+                <option value="week">Semaine</option>
+                <option value="month">Mois</option>
+                <option value="quarter">Trimestre</option>
+              </select>
+            </div>
             <div class="card-body">
               <div class="mileage-total">
                 <span class="mileage-big">{{ totalFleetMileage | number:'1.0-0' }} km</span>
-                <span class="mileage-sub">{{ vehicles.length }} vehicules</span>
+                <span class="mileage-trend up">+12%</span>
               </div>
               <div class="mileage-bars">
                 <div class="mbar-row" *ngFor="let unit of topUnits">
+                  <span class="mbar-icon">&#x1F69A;</span>
                   <span class="mbar-name">{{ unit.name }}</span>
                   <div class="mbar-track">
                     <div class="mbar-fill" [style.width.%]="(unit.mileage / maxMileage) * 100"
@@ -158,39 +143,16 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
             </div>
           </div>
 
-          <!-- Card 4b: Kilometrage filtre -->
-          <div class="card card-mileage-filtered">
-            <div class="card-header"><span class="card-title">Kilometrage ({{ selectedPeriod === 'week' ? 'Semaine' : selectedPeriod === 'month' ? 'Mois' : 'Trimestre' }})</span></div>
+          <!-- Card 5: Kilometrage de la flotte (center, stacked bars) -->
+          <div class="card card-mileage-chart">
+            <div class="card-header"><span class="card-title">Kilometrage de la flotte</span></div>
             <div class="card-body">
-              <div class="mileage-total">
-                <span class="mileage-big">{{ filteredFleetMileage | number:'1.0-0' }} km</span>
-                <span class="mileage-sub">Estimation periode</span>
-              </div>
-              <div class="mileage-bars">
-                <div class="mbar-row" *ngFor="let unit of filteredTopUnits">
-                  <span class="mbar-name">{{ unit.name }}</span>
-                  <div class="mbar-track">
-                    <div class="mbar-fill" [style.width.%]="(unit.mileage / filteredMaxMileage) * 100"
-                      [style.background]="unit.color"></div>
-                  </div>
-                  <span class="mbar-km">{{ unit.mileage | number:'1.0-0' }} km</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Card 5: Top scores de conduite -->
-          <div class="card card-scores">
-            <div class="card-header"><span class="card-title">Top scores de conduite</span></div>
-            <div class="card-body">
-              <div class="scores-grid">
-                <div class="score-group" *ngFor="let group of drivingScores">
-                  <div class="score-circle" [style.borderColor]="group.color">
-                    <span class="score-val">{{ group.score }}</span>
-                  </div>
-                  <div class="score-vehicles">
-                    <div class="score-v" *ngFor="let v of group.vehicles">{{ v }}</div>
-                  </div>
+              <div class="mileage-chart-total">{{ totalFleetMileage | number:'1.0-0' }} km</div>
+              <div class="stacked-bars">
+                <div class="stacked-bar-row" *ngFor="let unit of filteredTopUnits">
+                  <div class="stacked-bar" [style.width.%]="(unit.mileage / filteredMaxMileage) * 100"
+                    [style.background]="unit.color"></div>
+                  <span class="stacked-km">{{ unit.mileage | number:'1.0-0' }} km</span>
                 </div>
               </div>
             </div>
@@ -198,7 +160,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
 
           <!-- Card 6: Vehicules en bonne sante -->
           <div class="card card-health-good">
-            <div class="card-header"><span class="card-title">Vehicules en bonne sante</span></div>
+            <div class="card-header"><span class="card-title">Vehicules en bonne sante</span><span class="card-menu">&#8943;</span></div>
             <div class="card-body">
               <div class="health-list">
                 <div class="health-row" *ngFor="let v of healthyVehicles">
@@ -206,21 +168,40 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
                   <div class="health-bar-track">
                     <div class="health-bar-fill" [style.width.%]="v.score" [style.background]="getHealthColor(v.score)"></div>
                   </div>
-                  <span class="health-icon good">&#x2713;</span>
+                  <span class="health-icon" [class.good]="v.score >= 70" [class.bad]="v.score < 70">{{ v.score >= 70 ? '&#x2713;' : '&#9888;' }}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Card 7: Vehicules en mauvais etat -->
-          <div class="card card-health-bad">
-            <div class="card-header"><span class="card-title">Vehicules en mauvais etat</span></div>
+          <!-- Card 7: Top scores de conduite -->
+          <div class="card card-scores">
+            <div class="card-header">
+              <span class="card-title">Top scores de conduite</span>
+              <span class="scores-summary">{{ filteredFleetMileage | number:'1.0-0' }} km <span class="trend up">+25%</span></span>
+            </div>
             <div class="card-body">
-              <div class="health-list">
-                <div class="health-row" *ngFor="let v of unhealthyVehicles">
-                  <span class="health-plate">{{ v.plate }}</span>
-                  <span class="health-issue">{{ v.issue }}</span>
+              <div class="scores-grid">
+                <div class="score-group" *ngFor="let group of drivingScores">
+                  <div class="score-circle" [style.borderColor]="group.color">
+                    <span class="score-val">{{ group.score }}</span>
+                  </div>
+                  <div class="score-vehicles">
+                    <div class="score-v" *ngFor="let v of group.vehicles">&#x1F69A; {{ v }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 8: Vehicules en mauvais etat -->
+          <div class="card card-health-bad">
+            <div class="card-header"><span class="card-title">Vehicules en mauvais etat</span><span class="card-menu">&#8943;</span></div>
+            <div class="card-body">
+              <div class="health-bad-grid">
+                <div class="health-bad-item" *ngFor="let v of unhealthyVehicles">
                   <span class="health-icon bad">&#9888;</span>
+                  <span class="health-plate">{{ v.plate }}</span>
                 </div>
               </div>
             </div>
@@ -293,10 +274,9 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     /* Expenses donut */
     .card-expenses { grid-column: 1; grid-row: 1 / 3; }
     .card-fuel { grid-row: 1 / 3; display: flex; flex-direction: column; }
-    .card-fleet-status { grid-row: 1 / 3; display: flex; flex-direction: column; }
-    .card-fuel .card-body, .card-fleet-status .card-body { flex: 1; display: flex; flex-direction: column; }
+    .card-immob { grid-row: 1 / 3; display: flex; flex-direction: column; }
+    .card-fuel .card-body, .card-immob .card-body { flex: 1; display: flex; flex-direction: column; }
     .card-fuel .fuel-list { flex: 1; display: flex; flex-direction: column; justify-content: space-around; }
-    .card-fleet-status .fleet-status-content { flex: 1; display: flex; align-items: center; gap: 16px; }
     .donut-section { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
     .donut-wrapper { position: relative; width: 130px; height: 130px; flex-shrink: 0; }
     .donut-svg { width: 100%; height: 100%; }
@@ -323,6 +303,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     .trend.down { color: #16a34a; background: #f0fdf4; }
 
     /* Fuel consumers */
+    .fuel-icon { font-size: 14px; flex-shrink: 0; }
     .fuel-list { display: flex; flex-direction: column; }
     .fuel-row {
       display: flex; align-items: center; gap: 8px; padding: 8px 0;
@@ -335,87 +316,100 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     .fuel-trend.up { color: #dc2626; }
     .fuel-trend.down { color: #16a34a; }
 
-    /* Fleet status card */
-    .fleet-status-content { display: flex; gap: 16px; align-items: center; }
-    .fleet-donut-wrapper { position: relative; width: 100px; height: 100px; flex-shrink: 0; }
-    .fleet-donut-svg { width: 100%; height: 100%; }
-    .fleet-donut-center {
-      position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-      text-align: center;
-    }
-    .fleet-donut-total { display: block; font-size: 20px; font-weight: 700; color: #1e293b; }
-    .fleet-donut-label { display: block; font-size: 10px; color: #94a3b8; }
-    .fleet-status-legend { display: flex; flex-direction: column; gap: 8px; flex: 1; }
-    .fleet-legend-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-    .fleet-legend-label { flex: 1; color: #475569; }
-    .fleet-legend-count { font-weight: 700; color: #1e293b; font-size: 14px; }
-
-    /* Immobilization */
-    .immob-section { margin-top: 4px; }
-    .immob-divider { border-top: 1px solid #e2e8f0; margin-bottom: 8px; }
-    .immob-title { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-    .immob-list { display: flex; flex-direction: column; }
+    /* Immobilisation card */
+    .card-menu { color: #94a3b8; cursor: pointer; font-size: 18px; letter-spacing: 2px; }
+    .immob-subtitle { font-size: 11px; color: #94a3b8; margin-bottom: 8px; }
+    .immob-chart { margin-bottom: 12px; }
+    .immob-line-svg { width: 100%; height: 100px; }
+    .immob-chart-labels { display: flex; justify-content: space-between; font-size: 10px; color: #94a3b8; margin-top: 4px; }
+    .immob-list { display: flex; flex-direction: column; flex: 1; }
     .immob-row {
-      display: flex; align-items: center; gap: 6px; padding: 5px 0;
+      display: flex; align-items: center; gap: 8px; padding: 6px 0;
       border-bottom: 1px solid #f1f5f9; font-size: 11px;
     }
     .immob-row:last-child { border-bottom: none; }
-    .immob-dot {
-      width: 6px; height: 6px; border-radius: 50%; background: #22c55e; flex-shrink: 0;
-    }
-    .immob-dot.warning { background: #ef4444; }
-    .immob-plate { color: #334155; font-weight: 500; min-width: 70px; }
-    .immob-reason { flex: 1; color: #94a3b8; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .immob-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .immob-plate { color: #334155; font-weight: 600; min-width: 80px; }
+    .immob-date { flex: 1; color: #94a3b8; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .immob-days { color: #1e293b; font-weight: 600; white-space: nowrap; }
 
-    /* Mileage */
-    .card-mileage { grid-column: 1 / 3; }
-    .card-mileage-filtered { grid-column: 3; }
-    .mileage-total { margin-bottom: 12px; }
+    /* Mileage (left, spans 2 rows) */
+    .card-mileage { grid-column: 1; grid-row: 3 / 5; display: flex; flex-direction: column; }
+    .card-mileage .card-body { flex: 1; display: flex; flex-direction: column; }
+    .period-select-sm {
+      padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 5px;
+      background: #fff; font-size: 11px; color: #334155; cursor: pointer;
+    }
+    .mileage-total { margin-bottom: 12px; display: flex; align-items: baseline; gap: 8px; }
     .mileage-big { font-size: 28px; font-weight: 700; color: #1e293b; }
-    .mileage-sub { display: block; font-size: 12px; color: #94a3b8; margin-top: 2px; }
-    .mileage-bars { display: flex; flex-direction: column; gap: 6px; }
-    .mbar-row { display: flex; align-items: center; gap: 10px; }
-    .mbar-name { font-size: 11px; color: #64748b; min-width: 100px; }
+    .mileage-trend { font-size: 12px; font-weight: 600; }
+    .mileage-trend.up { color: #16a34a; }
+    .mileage-bars { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+    .mbar-row { display: flex; align-items: center; gap: 6px; }
+    .mbar-icon { font-size: 12px; flex-shrink: 0; }
+    .mbar-name { font-size: 11px; color: #64748b; min-width: 80px; }
     .mbar-track { flex: 1; height: 14px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
     .mbar-fill { height: 100%; border-radius: 4px; transition: width 0.3s ease; }
-    .mbar-km { font-size: 11px; color: #1e293b; font-weight: 600; min-width: 80px; text-align: right; }
+    .mbar-km { font-size: 11px; color: #1e293b; font-weight: 600; min-width: 70px; text-align: right; }
 
-    /* Scores */
-    .scores-grid { display: flex; gap: 20px; flex-wrap: wrap; }
-    .score-group { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    /* Mileage chart (center-top) */
+    .card-mileage-chart { grid-column: 2; grid-row: 3; }
+    .mileage-chart-total { font-size: 24px; font-weight: 700; color: #1e293b; margin-bottom: 12px; }
+    .stacked-bars { display: flex; flex-direction: column; gap: 5px; }
+    .stacked-bar-row { display: flex; align-items: center; gap: 6px; }
+    .stacked-bar { height: 16px; border-radius: 3px; min-width: 4px; }
+    .stacked-km { font-size: 10px; color: #64748b; white-space: nowrap; }
+
+    /* Health good (right-top) */
+    .card-health-good { grid-column: 3; grid-row: 3; }
+
+    /* Scores (center-bottom) */
+    .card-scores { grid-column: 2; grid-row: 4; }
+    .scores-summary { font-size: 11px; color: #64748b; }
+    .scores-grid { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+    .score-group { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; min-width: 60px; }
     .score-circle {
-      width: 60px; height: 60px; border-radius: 50%; border: 4px solid;
+      width: 54px; height: 54px; border-radius: 50%; border: 4px solid;
       display: flex; align-items: center; justify-content: center;
     }
-    .score-val { font-size: 18px; font-weight: 700; color: #1e293b; }
+    .score-val { font-size: 16px; font-weight: 700; color: #1e293b; }
     .score-vehicles { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-    .score-v { font-size: 10px; color: #64748b; }
+    .score-v { font-size: 9px; color: #64748b; }
 
-    /* Health cards */
+    /* Health bad (right-bottom) */
+    .card-health-bad { grid-column: 3; grid-row: 4; }
+    .health-bad-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    }
+    .health-bad-item {
+      display: flex; align-items: center; gap: 4px; font-size: 11px;
+    }
+
+    /* Health shared */
     .health-list { display: flex; flex-direction: column; }
     .health-row {
-      display: flex; align-items: center; gap: 8px; padding: 8px 0;
+      display: flex; align-items: center; gap: 8px; padding: 7px 0;
       border-bottom: 1px solid #f1f5f9; font-size: 12px;
     }
     .health-row:last-child { border-bottom: none; }
-    .health-plate { color: #334155; font-weight: 500; min-width: 80px; }
+    .health-plate { color: #334155; font-weight: 500; min-width: 80px; font-size: 12px; }
     .health-bar-track { flex: 1; height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
     .health-bar-fill { height: 100%; border-radius: 4px; }
-    .health-issue { flex: 1; color: #ef4444; font-size: 11px; }
     .health-icon { font-size: 14px; }
     .health-icon.good { color: #22c55e; }
     .health-icon.bad { color: #ef4444; }
 
     @media (max-width: 1100px) {
       .dashboard-grid { grid-template-columns: 1fr 1fr; }
-      .card-expenses { grid-column: 1 / -1; grid-row: auto; }
-      .card-mileage { grid-column: 1 / -1; }
-      .card-mileage-filtered { grid-column: 1 / -1; }
+      .card-expenses, .card-mileage { grid-column: 1 / -1; grid-row: auto; }
+      .card-fuel, .card-immob { grid-row: auto; }
+      .card-mileage-chart, .card-scores { grid-column: auto; grid-row: auto; }
+      .card-health-good, .card-health-bad { grid-column: auto; grid-row: auto; }
     }
     @media (max-width: 700px) {
       .dashboard-grid { grid-template-columns: 1fr; }
-      .card-expenses, .card-mileage, .card-mileage-filtered { grid-column: 1; }
+      .card-expenses, .card-mileage, .card-mileage-chart { grid-column: 1; grid-row: auto; }
+      .card-fuel, .card-immob { grid-column: 1; grid-row: auto; }
       .dashboard-container { padding: 12px; }
     }
   `]
@@ -448,6 +442,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // New dashboard data
   topFuelConsumers: { plate: string; consumption: number; trend: number }[] = [];
   immobilizedVehicles: { plate: string; reason: string; days: number }[] = [];
+  immobChartPoints: { x: number; y: number }[] = [];
+  immobChartLabels: string[] = [];
   drivingScores: { score: number; color: string; vehicles: string[] }[] = [];
   healthyVehicles: { plate: string; score: number }[] = [];
   unhealthyVehicles: { plate: string; issue: string }[] = [];
@@ -591,11 +587,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // Immobilized vehicles: from maintenance alerts + maintenance status vehicles
     this.buildImmobilizedVehicles(vehiclesWithKm);
 
-    // Driving scores (simulated)
+    // Driving scores (simulated) - 4 groups matching reference
     this.drivingScores = [
-      { score: 92, color: '#22c55e', vehicles: sorted.slice(0, 2).map(v => v.plate || v.name) },
-      { score: 78, color: '#f59e0b', vehicles: sorted.slice(2, 4).map(v => v.plate || v.name) },
-      { score: 55, color: '#ef4444', vehicles: sorted.slice(4, 6).map(v => v.plate || v.name) }
+      { score: 68, color: '#3b82f6', vehicles: sorted.slice(0, 2).map(v => v.plate || v.name) },
+      { score: 63, color: '#10b981', vehicles: sorted.slice(2, 4).map(v => v.plate || v.name) },
+      { score: 61, color: '#f59e0b', vehicles: sorted.slice(4, 6).map(v => v.plate || v.name) },
+      { score: 57, color: '#ef4444', vehicles: sorted.slice(6, 8).map(v => v.plate || v.name) }
     ];
 
     // Vehicle health
@@ -637,6 +634,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
 
     this.immobilizedVehicles = immob.sort((a, b) => b.days - a.days);
+    this.buildImmobChart();
   }
 
   loadMaintenanceAlerts() {
@@ -676,14 +674,37 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return this.totalMonthlyCost > 0 ? (this.otherCost / this.totalMonthlyCost) * 100 : 0;
   }
 
-  // Fleet status donut helpers (circumference = 2 * PI * 38 = ~239)
-  getStatusCount(status: string): number {
-    return this.vehicles.filter(v => v.status === status).length;
+  // Immobilisation line chart helpers
+  getImmobLinePath(): string {
+    return this.immobChartPoints.map(p => `${p.x},${p.y}`).join(' ');
   }
-  getStatusArc(status: string): number {
-    const total = this.vehicles.length;
-    if (total === 0) return 0;
-    return (this.getStatusCount(status) / total) * 239;
+  getImmobAreaPath(): string {
+    if (this.immobChartPoints.length < 2) return '';
+    const pts = this.immobChartPoints;
+    let d = `M ${pts[0].x},100 L ${pts[0].x},${pts[0].y}`;
+    for (let i = 1; i < pts.length; i++) d += ` L ${pts[i].x},${pts[i].y}`;
+    d += ` L ${pts[pts.length - 1].x},100 Z`;
+    return d;
+  }
+  buildImmobChart() {
+    const months = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aou', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const now = new Date();
+    const labels: string[] = [];
+    const values: number[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      labels.push(months[d.getMonth()]);
+      values.push(Math.max(0, this.immobilizedVehicles.length + Math.round((Math.random() - 0.4) * 3)));
+    }
+    this.immobChartLabels = labels;
+    const maxVal = Math.max(...values, 1);
+    const w = 260;
+    const h = 90;
+    const step = w / (values.length - 1);
+    this.immobChartPoints = values.map((v, i) => ({
+      x: Math.round(i * step),
+      y: Math.round(h - (v / maxVal) * (h - 10))
+    }));
   }
 
   getHealthColor(score: number): string {
