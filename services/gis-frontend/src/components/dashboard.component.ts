@@ -577,12 +577,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.filteredMaxMileage = Math.max(...this.filteredTopUnits.map(u => u.mileage), 1);
     this.filteredFleetMileage = Math.round(this.totalFleetMileage / divisor);
 
-    // Fuel consumers (simulated from vehicle data)
-    this.topFuelConsumers = sorted.slice(0, 5).map(v => ({
-      plate: v.plate || v.name,
-      consumption: 8 + Math.random() * 12,
-      trend: Math.round((Math.random() - 0.5) * 20)
-    }));
+    // Fuel consumers: realistic estimate based on mileage (5-8 L/100km for 5CV vehicles)
+    // Higher mileage vehicles tend to consume slightly more
+    this.topFuelConsumers = sorted.slice(0, 5).map(v => {
+      const km = v.mileageKm || 1;
+      const ratio = Math.min(km / (this.maxMileage || 1), 1);
+      const base = 5.5 + ratio * 2.5; // 5.5 to 8.0 L/100km
+      const variation = ((km % 7) - 3) * 0.3; // deterministic small variation per vehicle
+      return {
+        plate: v.plate || v.name,
+        consumption: Math.round((base + variation) * 10) / 10,
+        trend: Math.round(((km % 13) - 6) * 1.5) // deterministic trend per vehicle (-9% to +9%)
+      };
+    });
 
     // Immobilized vehicles: from maintenance alerts + maintenance status vehicles
     this.buildImmobilizedVehicles(vehiclesWithKm);
