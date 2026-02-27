@@ -237,7 +237,8 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                 // Firmware "L": use GPS odometer_km directly, otherwise use vehicle mileage
                 (v.GpsDevice?.FirmwareVersion != null 
                  && v.GpsDevice.FirmwareVersion.StartsWith("L", StringComparison.OrdinalIgnoreCase)
-                 && position?.OdometerKm > 0)
+                 && position?.OdometerKm > 0
+                 && position?.OdometerKm != 1048574)
                     ? (int)position!.OdometerKm.Value
                     : v.Mileage
             );

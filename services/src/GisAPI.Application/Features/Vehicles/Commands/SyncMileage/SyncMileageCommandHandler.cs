@@ -42,7 +42,8 @@ public class SyncMileageCommandHandler : IRequestHandler<SyncMileageCommand, Syn
             var lastOdometer = await _context.GpsPositions
                 .Where(p => p.DeviceId == vehicle.GpsDeviceId.Value 
                          && p.OdometerKm.HasValue 
-                         && p.OdometerKm > 0)
+                         && p.OdometerKm > 0
+                         && p.OdometerKm != 1048574)
                 .OrderByDescending(p => p.RecordedAt)
                 .Select(p => p.OdometerKm)
                 .FirstOrDefaultAsync(ct);

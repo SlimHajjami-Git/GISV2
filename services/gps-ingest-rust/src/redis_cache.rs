@@ -111,7 +111,7 @@ impl RedisCache {
             "batteryPercent": battery_percent,
             "powerSourceRescue": frame.power_source_rescue,
             "temperatureC": temperature_c,
-            "odometerKm": frame.odometer_km,
+            "odometerKm": if frame.odometer_km != 1048574 { frame.odometer_km } else { 0 },
             "rpm": frame.rpm,
             "memsX": frame.mems_x,
             "memsY": frame.mems_y,

@@ -112,8 +112,8 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
         };
 
         // Odometer readings
-        var firstWithOdometer = positions.FirstOrDefault(p => p.OdometerKm.HasValue && p.OdometerKm > 0);
-        var lastWithOdometer = positions.LastOrDefault(p => p.OdometerKm.HasValue && p.OdometerKm > 0);
+        var firstWithOdometer = positions.FirstOrDefault(p => p.OdometerKm.HasValue && p.OdometerKm > 0 && p.OdometerKm != 1048574);
+        var lastWithOdometer = positions.LastOrDefault(p => p.OdometerKm.HasValue && p.OdometerKm > 0 && p.OdometerKm != 1048574);
         
         if (firstWithOdometer != null && lastWithOdometer != null)
         {

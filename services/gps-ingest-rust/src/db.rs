@@ -915,7 +915,7 @@ impl Database {
         
         // FMS fields: only store for V3 frames (has_fms) — V1 frames don't have FMS data
         let fuel_raw: Option<i32> = if has_fms && frame.fuel_raw > 0 { Some(i32::from(frame.fuel_raw)) } else { None };
-        let odometer_km: Option<i64> = if has_fms && frame.odometer_km > 0 { Some(frame.odometer_km as i64) } else { None };
+        let odometer_km: Option<i64> = if has_fms && frame.odometer_km > 0 && frame.odometer_km != 1048574 { Some(frame.odometer_km as i64) } else { None };
         let rpm: Option<i16> = if has_fms { frame.rpm.filter(|&r| r > 0).map(|r| r as i16) } else { None };
 
         let row = sqlx::query(

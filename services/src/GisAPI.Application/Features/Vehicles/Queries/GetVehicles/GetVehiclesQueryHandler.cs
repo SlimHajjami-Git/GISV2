@@ -121,7 +121,8 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
             var latestOdometers = await _context.GpsPositions
                 .Where(p => firmwareLDeviceIds.Contains(p.DeviceId)
                          && p.OdometerKm.HasValue
-                         && p.OdometerKm > 0)
+                         && p.OdometerKm > 0
+                         && p.OdometerKm != 1048574)
                 .GroupBy(p => p.DeviceId)
                 .Select(g => new { DeviceId = g.Key, OdometerKm = g.OrderByDescending(p => p.RecordedAt).First().OdometerKm })
                 .ToListAsync(ct);
