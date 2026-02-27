@@ -54,8 +54,9 @@ impl RedisCache {
         // Preserve last known good values from previous cache entry
         // Use GETDEL-like pattern: read previous in same pipeline as write (below)
         let device_key = format!("vehicle:position:{}", device_uid);
-        let prev_cache: Option<serde_json::Value> = if frame.fuel_raw == 0 {
-            // Only read previous cache when we actually need fallback values
+        let needs_fallback = frame.fuel_raw == 0 || frame.odometer_km == 1048574;
+        let prev_cache: Option<serde_json::Value> = if needs_fallback {
+            // Read previous cache when we need fallback values (fuel=0 or odometer artifact)
             conn.get::<_, Option<String>>(&device_key).await
                 .ok()
                 .flatten()
@@ -111,7 +112,13 @@ impl RedisCache {
             "batteryPercent": battery_percent,
             "powerSourceRescue": frame.power_source_rescue,
             "temperatureC": temperature_c,
-            "odometerKm": if frame.odometer_km != 1048574 { frame.odometer_km } else { 0 },
+            "odometerKm": if frame.odometer_km != 1048574 {
+                frame.odometer_km
+            } else {
+                prev_cache.as_ref()
+                    .and_then(|c| c["odometerKm"].as_u64())
+                    .unwrap_or(0) as u32
+            },
             "rpm": frame.rpm,
             "memsX": frame.mems_x,
             "memsY": frame.mems_y,

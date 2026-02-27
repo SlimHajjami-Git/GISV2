@@ -915,7 +915,26 @@ impl Database {
         
         // FMS fields: only store for V3 frames (has_fms) — V1 frames don't have FMS data
         let fuel_raw: Option<i32> = if has_fms && frame.fuel_raw > 0 { Some(i32::from(frame.fuel_raw)) } else { None };
-        let odometer_km: Option<i64> = if has_fms && frame.odometer_km > 0 && frame.odometer_km != 1048574 { Some(frame.odometer_km as i64) } else { None };
+        let odometer_km: Option<i64> = if has_fms && frame.odometer_km > 0 && frame.odometer_km != 1048574 {
+            Some(frame.odometer_km as i64)
+        } else if has_fms && frame.odometer_km == 1048574 {
+            // GPS protocol artifact: replace with last valid odometer_km from DB
+            let last_odo = sqlx::query_scalar::<_, i64>(
+                r#"SELECT odometer_km FROM gps_positions
+                   WHERE device_id = $1 AND odometer_km IS NOT NULL AND odometer_km > 0 AND odometer_km != 1048574
+                   ORDER BY recorded_at DESC LIMIT 1"#,
+            )
+            .bind(device_id)
+            .fetch_optional(&self.pool)
+            .await
+            .unwrap_or(None);
+            if last_odo.is_some() {
+                tracing::warn!(device_id, "GPS artifact 1048574 detected, replacing with last valid odometer: {:?}", last_odo);
+            }
+            last_odo
+        } else {
+            None
+        };
         let rpm: Option<i16> = if has_fms { frame.rpm.filter(|&r| r > 0).map(|r| r as i16) } else { None };
 
         let row = sqlx::query(
