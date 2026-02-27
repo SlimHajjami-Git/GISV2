@@ -81,16 +81,57 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
             </div>
           </div>
 
-          <!-- Card 3: Immobilisation des vehicules -->
-          <div class="card card-immob">
-            <div class="card-header"><span class="card-title">Immobilisation des vehicules</span></div>
+          <!-- Card 3: Statut de la flotte -->
+          <div class="card card-fleet-status">
+            <div class="card-header"><span class="card-title">Statut de la flotte</span></div>
             <div class="card-body">
-              <div class="immob-list">
-                <div class="immob-row" *ngFor="let v of immobilizedVehicles">
-                  <span class="immob-dot" [class.warning]="v.days > 5"></span>
-                  <span class="immob-plate">{{ v.plate }}</span>
-                  <span class="immob-reason">{{ v.reason }}</span>
-                  <span class="immob-days">{{ v.days }} jours</span>
+              <div class="fleet-status-content">
+                <div class="fleet-donut-wrapper">
+                  <svg viewBox="0 0 100 100" class="fleet-donut-svg">
+                    <circle cx="50" cy="50" r="38" fill="none" stroke="#e2e8f0" stroke-width="12"/>
+                    <circle cx="50" cy="50" r="38" fill="none" stroke="#22c55e" stroke-width="12"
+                      [attr.stroke-dasharray]="getStatusArc('in_use') + ' ' + (239 - getStatusArc('in_use'))"
+                      stroke-dashoffset="60" transform="rotate(-90 50 50)"/>
+                    <circle cx="50" cy="50" r="38" fill="none" stroke="#3b82f6" stroke-width="12"
+                      [attr.stroke-dasharray]="getStatusArc('available') + ' ' + (239 - getStatusArc('available'))"
+                      [attr.stroke-dashoffset]="60 - getStatusArc('in_use')" transform="rotate(-90 50 50)"/>
+                    <circle cx="50" cy="50" r="38" fill="none" stroke="#f59e0b" stroke-width="12"
+                      [attr.stroke-dasharray]="getStatusArc('maintenance') + ' ' + (239 - getStatusArc('maintenance'))"
+                      [attr.stroke-dashoffset]="60 - getStatusArc('in_use') - getStatusArc('available')" transform="rotate(-90 50 50)"/>
+                  </svg>
+                  <div class="fleet-donut-center">
+                    <span class="fleet-donut-total">{{ vehicles.length }}</span>
+                    <span class="fleet-donut-label">Total</span>
+                  </div>
+                </div>
+                <div class="fleet-status-legend">
+                  <div class="fleet-legend-row">
+                    <span class="ldot" style="background:#22c55e"></span>
+                    <span class="fleet-legend-label">En circulation</span>
+                    <span class="fleet-legend-count">{{ getStatusCount('in_use') }}</span>
+                  </div>
+                  <div class="fleet-legend-row">
+                    <span class="ldot" style="background:#3b82f6"></span>
+                    <span class="fleet-legend-label">Disponible</span>
+                    <span class="fleet-legend-count">{{ getStatusCount('available') }}</span>
+                  </div>
+                  <div class="fleet-legend-row">
+                    <span class="ldot" style="background:#f59e0b"></span>
+                    <span class="fleet-legend-label">Maintenance</span>
+                    <span class="fleet-legend-count">{{ getStatusCount('maintenance') }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="immob-section" *ngIf="immobilizedVehicles.length > 0">
+                <div class="immob-divider"></div>
+                <div class="immob-title">Vehicules immobilises</div>
+                <div class="immob-list">
+                  <div class="immob-row" *ngFor="let v of immobilizedVehicles">
+                    <span class="immob-dot" [class.warning]="v.days > 5"></span>
+                    <span class="immob-plate">{{ v.plate }}</span>
+                    <span class="immob-reason">{{ v.reason }}</span>
+                    <span class="immob-days">{{ v.days }}j</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -289,19 +330,37 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     .fuel-trend.up { color: #dc2626; }
     .fuel-trend.down { color: #16a34a; }
 
+    /* Fleet status card */
+    .fleet-status-content { display: flex; gap: 16px; align-items: center; }
+    .fleet-donut-wrapper { position: relative; width: 100px; height: 100px; flex-shrink: 0; }
+    .fleet-donut-svg { width: 100%; height: 100%; }
+    .fleet-donut-center {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      text-align: center;
+    }
+    .fleet-donut-total { display: block; font-size: 20px; font-weight: 700; color: #1e293b; }
+    .fleet-donut-label { display: block; font-size: 10px; color: #94a3b8; }
+    .fleet-status-legend { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+    .fleet-legend-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+    .fleet-legend-label { flex: 1; color: #475569; }
+    .fleet-legend-count { font-weight: 700; color: #1e293b; font-size: 14px; }
+
     /* Immobilization */
+    .immob-section { margin-top: 4px; }
+    .immob-divider { border-top: 1px solid #e2e8f0; margin-bottom: 8px; }
+    .immob-title { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
     .immob-list { display: flex; flex-direction: column; }
     .immob-row {
-      display: flex; align-items: center; gap: 8px; padding: 8px 0;
-      border-bottom: 1px solid #f1f5f9; font-size: 12px;
+      display: flex; align-items: center; gap: 6px; padding: 5px 0;
+      border-bottom: 1px solid #f1f5f9; font-size: 11px;
     }
     .immob-row:last-child { border-bottom: none; }
     .immob-dot {
-      width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex-shrink: 0;
+      width: 6px; height: 6px; border-radius: 50%; background: #22c55e; flex-shrink: 0;
     }
     .immob-dot.warning { background: #ef4444; }
-    .immob-plate { color: #334155; font-weight: 500; min-width: 80px; }
-    .immob-reason { flex: 1; color: #94a3b8; }
+    .immob-plate { color: #334155; font-weight: 500; min-width: 70px; }
+    .immob-reason { flex: 1; color: #94a3b8; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .immob-days { color: #1e293b; font-weight: 600; white-space: nowrap; }
 
     /* Mileage */
@@ -610,6 +669,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
   getOtherPercentage(): number {
     return this.totalMonthlyCost > 0 ? (this.otherCost / this.totalMonthlyCost) * 100 : 0;
+  }
+
+  // Fleet status donut helpers (circumference = 2 * PI * 38 = ~239)
+  getStatusCount(status: string): number {
+    return this.vehicles.filter(v => v.status === status).length;
+  }
+  getStatusArc(status: string): number {
+    const total = this.vehicles.length;
+    if (total === 0) return 0;
+    return (this.getStatusCount(status) / total) * 239;
   }
 
   getHealthColor(score: number): string {
