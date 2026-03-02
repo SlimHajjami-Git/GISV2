@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Threading.Channels;
 using MediatR;
 using StackExchange.Redis;
 using GisAPI.Application.Features.Gps.Commands.BroadcastPosition;
@@ -18,6 +19,10 @@ public class RedisPubSubConsumer : BackgroundService
     private readonly IConfiguration _configuration;
     private IConnectionMultiplexer? _redis;
     private ISubscriber? _subscriber;
+    // Bounded channel decouples message receipt (non-blocking) from processing (parallel workers)
+    private readonly Channel<string> _messageChannel = Channel.CreateBounded<string>(
+        new BoundedChannelOptions(500) { FullMode = BoundedChannelFullMode.DropOldest });
+    private const int WorkerCount = 4;
 
     public RedisPubSubConsumer(
         ILogger<RedisPubSubConsumer> logger,
@@ -81,31 +86,51 @@ public class RedisPubSubConsumer : BackgroundService
     {
         if (_subscriber == null) return;
 
-        // Subscribe to all company update channels using pattern
-        var pattern = new RedisChannel("vehicle:updates:*", RedisChannel.PatternMode.Pattern);
-        
-        await _subscriber.SubscribeAsync(pattern, async (channel, message) =>
+        // Start worker pool BEFORE subscribing so no messages are lost
+        var workers = new Task[WorkerCount];
+        for (int i = 0; i < WorkerCount; i++)
         {
-            try
+            var workerId = i;
+            workers[i] = Task.Run(async () =>
             {
-                if (message.IsNullOrEmpty) return;
-                
-                var messageStr = message.ToString();
-                await ProcessRedisMessage(messageStr);
-            }
-            catch (Exception ex)
+                await foreach (var msg in _messageChannel.Reader.ReadAllAsync(stoppingToken))
+                {
+                    try
+                    {
+                        await ProcessRedisMessage(msg);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Redis PubSub worker {WorkerId} error", workerId);
+                    }
+                }
+            }, stoppingToken);
+        }
+        _logger.LogInformation("📡 Started {WorkerCount} Redis PubSub processing workers", WorkerCount);
+
+        // Subscribe — callback only enqueues to channel (non-blocking, <1ms)
+        var pattern = new RedisChannel("vehicle:updates:*", RedisChannel.PatternMode.Pattern);
+        await _subscriber.SubscribeAsync(pattern, (channel, message) =>
+        {
+            if (message.IsNullOrEmpty) return;
+            // TryWrite is non-blocking; if channel is full, oldest message is dropped
+            if (!_messageChannel.Writer.TryWrite(message.ToString()))
             {
-                _logger.LogError(ex, "Error processing Redis PubSub message");
+                _logger.LogWarning("Redis PubSub channel full — dropping oldest message");
             }
         });
 
         _logger.LogInformation("📡 Subscribed to Redis PubSub pattern: vehicle:updates:*");
 
-        // Keep the service running
-        while (!stoppingToken.IsCancellationRequested)
+        // Keep the service running until cancellation
+        try
         {
-            await Task.Delay(1000, stoppingToken);
+            await Task.Delay(Timeout.Infinite, stoppingToken);
         }
+        catch (OperationCanceledException) { }
+
+        _messageChannel.Writer.Complete();
+        await Task.WhenAll(workers);
     }
 
     private async Task ProcessRedisMessage(string message)

@@ -781,12 +781,26 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   startAutoRefresh() {
-    // Fallback polling every 60 seconds when SignalR is disconnected
+    // ALWAYS poll periodically as a safety net — even when SignalR is connected,
+    // frames can be lost in the pipeline (Redis PubSub disconnect, RabbitMQ backlog, etc.)
+    // When connected: every 2 min (catch-up). When disconnected: every 30s (primary source).
     this.refreshInterval = setInterval(() => {
       if (this.connectionStatus !== 'Connected') {
         this.loadData();
+      } else {
+        // Light catch-up: only refresh if at least one vehicle may be stale
+        const now = Date.now();
+        const hasStale = this.vehicles.some((v: any) => {
+          if (!v.isMoving && !v.ignitionOn) return false; // Parked vehicles are fine
+          const last = v.lastCommunication || v.lastRecordedAt;
+          if (!last) return true; // No data at all
+          return (now - new Date(last).getTime()) > 120000; // >2 min without update
+        });
+        if (hasStale) {
+          this.loadData();
+        }
       }
-    }, 60000); // 1 minute fallback
+    }, 30000); // Check every 30 seconds
   }
 
   startStalenessCheck() {

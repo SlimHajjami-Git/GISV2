@@ -97,7 +97,10 @@ public class GpsTelemetryConsumer : BackgroundService
                 await _channel.QueueDeclareAsync(queue, durable: true, exclusive: false, autoDelete: false, arguments: queueArgs, cancellationToken: stoppingToken);
                 await _channel.QueueBindAsync(queue, exchange, routingKey, cancellationToken: stoppingToken);
 
-                _logger.LogInformation("Connected to RabbitMQ, consuming from queue: {Queue}", queue);
+                // Allow processing up to 10 messages concurrently (prevents head-of-line blocking)
+                await _channel.BasicQosAsync(prefetchSize: 0, prefetchCount: 10, global: false, cancellationToken: stoppingToken);
+
+                _logger.LogInformation("Connected to RabbitMQ, consuming from queue: {Queue} (prefetch=10)", queue);
                 return;
             }
             catch (Exception ex)
@@ -173,12 +176,14 @@ public class GpsTelemetryConsumer : BackgroundService
             }
 
             // IMPORTANT: Ignore old messages (RabbitMQ may have accumulated stale data)
-            // Only process messages recorded within the last 5 minutes
-            var messageAge = DateTime.UtcNow - telemetry.RecordedAt;
-            if (messageAge.TotalMinutes > 5)
+            // Use ingested_at (when Rust processed the frame) NOT recorded_at (GPS timestamp)
+            // GPS recorded_at can have timezone offset or tracker clock drift
+            var referenceTime = telemetry.IngestedAt ?? telemetry.RecordedAt;
+            var messageAge = DateTime.UtcNow - referenceTime;
+            if (messageAge.TotalMinutes > 10)
             {
-                _logger.LogDebug("Ignoring stale message for device {DeviceUid}: recorded {Age:F1} minutes ago", 
-                    telemetry.DeviceUid, messageAge.TotalMinutes);
+                _logger.LogInformation("Ignoring stale RabbitMQ message for device {DeviceUid}: ingested {Age:F1} minutes ago (recorded {RecordedAge:F1} min ago)", 
+                    telemetry.DeviceUid, messageAge.TotalMinutes, (DateTime.UtcNow - telemetry.RecordedAt).TotalMinutes);
                 return;
             }
 
