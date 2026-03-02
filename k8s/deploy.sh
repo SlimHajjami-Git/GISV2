@@ -179,7 +179,27 @@ mirrors:
   "registry.local:5000":
     endpoint:
       - "http://localhost:${REGISTRY_PORT}"
+  "localhost:5000":
+    endpoint:
+      - "http://localhost:${REGISTRY_PORT}"
 EOF
+
+    # Configure Docker daemon to trust the insecure local registry (HTTP)
+    mkdir -p /etc/docker
+    if [ ! -f /etc/docker/daemon.json ]; then
+        echo '{}' > /etc/docker/daemon.json
+    fi
+    # Add insecure-registries if not already present
+    if ! grep -q "insecure-registries" /etc/docker/daemon.json; then
+        cat > /etc/docker/daemon.json <<DEOF
+{
+  "insecure-registries": ["localhost:${REGISTRY_PORT}", "${REGISTRY_NAME}:${REGISTRY_PORT}"]
+}
+DEOF
+        # Restart Docker to pick up the config
+        systemctl restart docker 2>/dev/null || true
+        sleep 5
+    fi
 
     # Add to /etc/hosts if not already there
     if ! grep -q "${REGISTRY_NAME}" /etc/hosts; then
@@ -191,7 +211,22 @@ EOF
     sleep 15
 
     kubectl wait --for=condition=Ready node --all --timeout=120s
-    log "Local registry configured at ${REGISTRY_NAME}:${REGISTRY_PORT}"
+
+    # Wait for registry pod to be ready
+    info "Waiting for registry pod to be ready..."
+    sleep 10
+    for i in $(seq 1 30); do
+        if curl -sf http://localhost:${REGISTRY_PORT}/v2/ > /dev/null 2>&1; then
+            break
+        fi
+        sleep 3
+    done
+
+    if ! curl -sf http://localhost:${REGISTRY_PORT}/v2/ > /dev/null 2>&1; then
+        err "Registry not reachable at localhost:${REGISTRY_PORT} after 90s"
+    fi
+
+    log "Local registry configured and ready at localhost:${REGISTRY_PORT}"
 }
 
 # =============================================================================
@@ -212,6 +247,12 @@ phase5_build_images() {
     fi
 
     REGISTRY="localhost:${REGISTRY_PORT}"
+
+    # Verify registry is reachable
+    if ! curl -sf http://${REGISTRY}/v2/ > /dev/null 2>&1; then
+        err "Registry not reachable at ${REGISTRY}. Run 'sudo bash deploy.sh registry' first."
+    fi
+    log "Registry reachable at ${REGISTRY}"
 
     # Build gis-api
     info "Building gis-api..."
