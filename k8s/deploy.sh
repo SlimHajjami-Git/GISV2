@@ -23,6 +23,18 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 REGISTRY_PORT=5000
 REGISTRY_NAME="registry.local"
 
+# Ensure kubectl is available (K3s installs it as 'k3s kubectl')
+setup_kubectl() {
+    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+    if ! command -v kubectl &> /dev/null; then
+        if command -v k3s &> /dev/null; then
+            ln -sf "$(which k3s)" /usr/local/bin/kubectl 2>/dev/null || alias kubectl='k3s kubectl'
+        else
+            err "Neither kubectl nor k3s found. Run 'deploy.sh k3s' first."
+        fi
+    fi
+}
+
 # =============================================================================
 # Phase 1: System Prerequisites
 # =============================================================================
@@ -114,6 +126,7 @@ phase3_cert_manager() {
 # =============================================================================
 phase4_registry() {
     info "Phase 4: Setting up local container registry..."
+    setup_kubectl
 
     # Check if registry is already running in K3s
     if kubectl get deployment registry -n kube-system &> /dev/null; then
@@ -298,8 +311,7 @@ phase5_build_images() {
 # =============================================================================
 phase6_deploy() {
     info "Phase 6: Deploying GIS V2 to K3s..."
-
-    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+    setup_kubectl
 
     # Apply in order (dependencies first)
     info "Creating namespace and secrets..."
@@ -339,8 +351,7 @@ phase6_deploy() {
 # =============================================================================
 phase7_verify() {
     info "Phase 7: Verifying deployment..."
-
-    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+    setup_kubectl
 
     echo ""
     echo "========================================="
