@@ -214,6 +214,55 @@ spec:
                   number: 5000
 
 ---
+# -----------------------------------------------------------------------------
+# IP-based Ingress — access via VPS IP directly (no domain required)
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ip-ingress
+  namespace: gisv2
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          # API requests → gis-api
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: gis-api
+                port:
+                  number: 5000
+          # SignalR hub → gis-api
+          - path: /gps-hub
+            pathType: Prefix
+            backend:
+              service:
+                name: gis-api
+                port:
+                  number: 5000
+          # Health check
+          - path: /health
+            pathType: Prefix
+            backend:
+              service:
+                name: gis-api
+                port:
+                  number: 5000
+          # Everything else → frontend
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
+
+---
 # Traefik middleware for HTTPS redirect
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
