@@ -53,10 +53,10 @@ phase1_prerequisites() {
     fi
     log "RAM: ${TOTAL_RAM_MB}MB (OK)"
 
-    # Check disk space (minimum 40GB free)
+    # Check disk space (minimum 15GB free)
     FREE_DISK_GB=$(df -BG / | awk 'NR==2{print $4}' | tr -d 'G')
-    if [ "$FREE_DISK_GB" -lt 40 ]; then
-        err "Minimum 40GB free disk required. Found: ${FREE_DISK_GB}GB"
+    if [ "$FREE_DISK_GB" -lt 15 ]; then
+        err "Minimum 15GB free disk required. Found: ${FREE_DISK_GB}GB"
     fi
     log "Disk: ${FREE_DISK_GB}GB free (OK)"
 
