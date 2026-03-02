@@ -1264,6 +1264,13 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Get snapped road position for a given playback index (uses segmentBoundaries)
   private getSnappedLatLng(index: number): L.LatLngExpression {
+    // Anchored: return fixed position to prevent GPS drift while parked/stopped
+    if (this.ignitionOffAnchor) {
+      return [this.ignitionOffAnchor.latitude, this.ignitionOffAnchor.longitude];
+    }
+    if (this.stoppedAnchor) {
+      return [this.stoppedAnchor.latitude, this.stoppedAnchor.longitude];
+    }
     // Primary: use segment boundaries mapping
     if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0 && index < this.segmentBoundaries.length) {
       const roadIdx = this.segmentBoundaries[index];
@@ -1442,6 +1449,22 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       const baseDurationMs = Math.max(50, Math.min(5000, gpsTimeDiffMinutes * 1000));
       const durationMs = baseDurationMs / this.playbackSpeed;
 
+      // === ANCHOR LOGIC: prevent GPS drift animation while parked/stopped ===
+      if (fromPos.ignitionOn === false) {
+        if (!this.ignitionOffAnchor) {
+          this.ignitionOffAnchor = { latitude: fromPos.latitude, longitude: fromPos.longitude };
+        }
+        this.stoppedAnchor = null;
+      } else if ((fromPos.speedKph || 0) < 3 && (toPos.speedKph || 0) < 3) {
+        if (!this.stoppedAnchor) {
+          this.stoppedAnchor = { latitude: fromPos.latitude, longitude: fromPos.longitude };
+        }
+        this.ignitionOffAnchor = null;
+      } else {
+        this.ignitionOffAnchor = null;
+        this.stoppedAnchor = null;
+      }
+
       // ===== GET ROAD SEGMENT from pre-computed matchedRouteCoords =====
       this.currentRouteCoords = this.getPrecomputedSegment(this.playbackIndex);
       this.routeAnimationIndex = 0;
@@ -1456,18 +1479,26 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         }
       }
 
-      // Vehicle is stationary (no distance) — wait proportionally then advance
-      if (totalDistance < 1) {
+      // Vehicle is stationary: no movement OR anchored (ignition off / stopped with no speed)
+      const isAnchored = !!(this.ignitionOffAnchor || this.stoppedAnchor);
+      if (totalDistance < 1 || isAnchored) {
         this.updatePlaybackMarker();
+        // Use shorter wait when anchored to skip through parked periods faster
+        const waitMs = isAnchored 
+          ? Math.max(30, Math.min(500, durationMs)) 
+          : durationMs;
         this.ngZone.run(() => {
           setTimeout(() => {
-            this.appendProgressTrace(this.playbackIndex, this.playbackIndex + 1);
+            // Don't extend trace when anchored (vehicle isn't actually moving)
+            if (!isAnchored) {
+              this.appendProgressTrace(this.playbackIndex, this.playbackIndex + 1);
+            }
             this.playbackIndex++;
             this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
             this.updatePlaybackMarker();
             this.cdr.detectChanges();
             this.animateToNextPoint().catch(e => console.error('[Playback] stationary error:', e));
-          }, durationMs);
+          }, waitMs);
         });
         return;
       }
@@ -1706,7 +1737,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         this.addTripRawFallback(tripStart, tripEnd, allRoadPath, allSegmentBoundaries);
       }
 
-      // Don't increment i — it's already at the next point after the trip
+      // Skip past tripEnd — it was already included in the trip's boundaries
+      i++;
       continue;
     }
 
@@ -2247,6 +2279,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   onPlaybackProgressChange(progress: number) {
     this.stopPlaybackAnimation();
     this.isPlaying = false;
+    this.ignitionOffAnchor = null;
+    this.stoppedAnchor = null;
     this.playbackProgress = progress;
     this.playbackIndex = Math.floor((progress / 100) * (this.playbackPositions.length - 1));
     this.updatePlaybackMarker();
@@ -2263,6 +2297,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.playbackIndex > 0) {
       this.stopPlaybackAnimation();
       this.isPlaying = false;
+      this.ignitionOffAnchor = null;
+      this.stoppedAnchor = null;
       this.playbackIndex--;
       this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
       this.updatePlaybackMarker();
@@ -2279,6 +2315,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.playbackIndex < this.playbackPositions.length - 1) {
       this.stopPlaybackAnimation();
       this.isPlaying = false;
+      this.ignitionOffAnchor = null;
+      this.stoppedAnchor = null;
       this.playbackIndex++;
       this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
       this.updatePlaybackMarker();

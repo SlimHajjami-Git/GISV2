@@ -35,8 +35,8 @@ builder.Services.AddHostedService<GisAPI.Services.GpsTelemetryConsumer>();
 // Redis PubSub Consumer (Redis -> SignalR) - LOWER LATENCY than RabbitMQ
 builder.Services.AddHostedService<GisAPI.Services.RedisPubSubConsumer>();
 
-// Tour Monitoring Service - DISABLED (tours table not yet provisioned)
-// builder.Services.AddHostedService<GisAPI.Services.TourMonitoringService>();
+// Tour Monitoring Service - auto-start, waypoint detection, auto-complete
+builder.Services.AddHostedService<GisAPI.Services.TourMonitoringService>();
 
 // Predictive Alert Service (document expiry, maintenance due, fuel anomaly)
 builder.Services.AddHostedService<GisAPI.Services.PredictiveAlertService>();
