@@ -95,6 +95,10 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 30
+      volumes:
+        - name: valhalla-data
+          persistentVolumeClaim:
+            claimName: valhalla-data
 
 ---
 # -----------------------------------------------------------------------------
@@ -185,3 +189,7 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 30
+      volumes:
+        - name: nominatim-data
+          persistentVolumeClaim:
+            claimName: nominatim-data
