@@ -1,0 +1,226 @@
+# =============================================================================
+# GIS V2 - Ingress: Traefik (built-in with K3s)
+# Routes external traffic to internal services
+# TLS via cert-manager + Let's Encrypt (configured in deploy.sh)
+# =============================================================================
+#
+# IMPORTANT: Replace ALL occurrences of "belive.calypso.com" and
+# "mobile.calypso.com" with your actual domain names.
+#
+# DNS Records required (point to your VPS IP):
+#   A  belive.calypso.com      → <VPS_IP>
+#   A  mobile.calypso.com   → <VPS_IP>
+#   A  api.calypso.com      → <VPS_IP>
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Certificate Issuer (Let's Encrypt production)
+# Requires cert-manager to be installed (see deploy.sh)
+# -----------------------------------------------------------------------------
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@calypso.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-key
+    solvers:
+      - http01:
+          ingress:
+            class: traefik
+
+---
+# -----------------------------------------------------------------------------
+# Frontend Ingress — belive.calypso.com
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend-ingress
+  namespace: gisv2
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - belive.calypso.com
+      secretName: gisv2-frontend-tls
+  rules:
+    - host: belive.calypso.com
+      http:
+        paths:
+          # API requests → gis-api
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: gis-api
+                port:
+                  number: 5000
+          # SignalR hub → gis-api (WebSocket support via Traefik)
+          - path: /gps-hub
+            pathType: Prefix
+            backend:
+              service:
+                name: gis-api
+                port:
+                  number: 5000
+          # Health endpoint → gis-api
+          - path: /health
+            pathType: Prefix
+            backend:
+              service:
+                name: gis-api
+                port:
+                  number: 5000
+          # Everything else → frontend (Angular SPA)
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
+
+---
+# -----------------------------------------------------------------------------
+# Mobile Ingress — mobile.calypso.com
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mobile-ingress
+  namespace: gisv2
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - mobile.calypso.com
+      secretName: gisv2-mobile-tls
+  rules:
+    - host: mobile.calypso.com
+      http:
+        paths:
+          # API requests → gis-api
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: gis-api
+                port:
+                  number: 5000
+          # SignalR hub
+          - path: /gps-hub
+            pathType: Prefix
+            backend:
+              service:
+                name: gis-api
+                port:
+                  number: 5000
+          # Everything else → mobile SPA
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mobile
+                port:
+                  number: 80
+
+---
+# -----------------------------------------------------------------------------
+# API-only Ingress — api.calypso.com (optional, for direct API access)
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-ingress
+  namespace: gisv2
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - api.calypso.com
+      secretName: gisv2-api-tls
+  rules:
+    - host: api.calypso.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gis-api
+                port:
+                  number: 5000
+
+---
+# -----------------------------------------------------------------------------
+# HTTP → HTTPS redirect middleware
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: http-redirect
+  namespace: gisv2
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.middlewares: gisv2-redirect-https@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: belive.calypso.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
+    - host: mobile.calypso.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mobile
+                port:
+                  number: 80
+    - host: api.calypso.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gis-api
+                port:
+                  number: 5000
+
+---
+# Traefik middleware for HTTPS redirect
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-https
+  namespace: gisv2
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true

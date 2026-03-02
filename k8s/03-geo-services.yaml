@@ -1,0 +1,187 @@
+# =============================================================================
+# GIS V2 - Geo Services: Valhalla (routing), Nominatim (geocoding)
+# These are heavy services — resource-limited to prevent starving other pods
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Valhalla (road routing + map matching)
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: valhalla
+  namespace: gisv2
+  labels:
+    app: valhalla
+spec:
+  ports:
+    - port: 8002
+      targetPort: 8002
+  selector:
+    app: valhalla
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: valhalla-data
+  namespace: gisv2
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: valhalla
+  namespace: gisv2
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: valhalla
+  template:
+    metadata:
+      labels:
+        app: valhalla
+    spec:
+      containers:
+        - name: valhalla
+          image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+          ports:
+            - containerPort: 8002
+          env:
+            - name: tile_urls
+              value: "https://download.geofabrik.de/africa/tunisia-latest.osm.pbf"
+            - name: serve_tiles
+              value: "True"
+            - name: build_tar
+              value: "False"
+            - name: use_tiles_ignore_pbf
+              value: "False"
+            - name: force_rebuild
+              value: "False"
+            - name: server_threads
+              value: "2"
+          volumeMounts:
+            - name: valhalla-data
+              mountPath: /custom_files
+          resources:
+            requests:
+              memory: "768Mi"
+              cpu: "250m"
+            limits:
+              memory: "1536Mi"
+              cpu: "1500m"
+          livenessProbe:
+            httpGet:
+              path: /status
+              port: 8002
+            initialDelaySeconds: 300
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 10
+          readinessProbe:
+            httpGet:
+              path: /status
+              port: 8002
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 30
+
+---
+# -----------------------------------------------------------------------------
+# Nominatim (geocoding + reverse geocoding)
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: nominatim
+  namespace: gisv2
+  labels:
+    app: nominatim
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: nominatim
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nominatim-data
+  namespace: gisv2
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 15Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nominatim
+  namespace: gisv2
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nominatim
+  template:
+    metadata:
+      labels:
+        app: nominatim
+    spec:
+      containers:
+        - name: nominatim
+          image: mediagis/nominatim:4.4
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PBF_URL
+              value: "https://download.geofabrik.de/africa/tunisia-latest.osm.pbf"
+            - name: REPLICATION_URL
+              value: "https://download.geofabrik.de/africa/tunisia-updates/"
+            - name: NOMINATIM_PASSWORD
+              value: "nominatim"
+            - name: IMPORT_STYLE
+              value: "full"
+          volumeMounts:
+            - name: nominatim-data
+              mountPath: /var/lib/postgresql/14/main
+          resources:
+            requests:
+              memory: "768Mi"
+              cpu: "250m"
+            limits:
+              memory: "1536Mi"
+              cpu: "1500m"
+          livenessProbe:
+            httpGet:
+              path: /status
+              port: 8080
+            initialDelaySeconds: 300
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 10
+          readinessProbe:
+            httpGet:
+              path: /status
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 30

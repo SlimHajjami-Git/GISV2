@@ -1,0 +1,446 @@
+# =============================================================================
+# GIS V2 - Applications: gis-api, gps-ingest, frontend, mobile
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# GIS API (.NET) — scalable to 2+ replicas
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: gis-api
+  namespace: gisv2
+  labels:
+    app: gis-api
+spec:
+  ports:
+    - port: 5000
+      targetPort: 5000
+  selector:
+    app: gis-api
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gis-uploads
+  namespace: gisv2
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gis-api
+  namespace: gisv2
+spec:
+  # 8GB VPS: 1 replica. Scale to 2 if you upgrade to 16GB.
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: gis-api
+  template:
+    metadata:
+      labels:
+        app: gis-api
+    spec:
+      initContainers:
+        # Wait for infrastructure to be ready before starting
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z postgres 5432; do echo "Waiting for postgres..."; sleep 2; done']
+        - name: wait-for-rabbitmq
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z rabbitmq 5672; do echo "Waiting for rabbitmq..."; sleep 2; done']
+        - name: wait-for-redis
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z redis 6379; do echo "Waiting for redis..."; sleep 2; done']
+      containers:
+        - name: gis-api
+          image: registry.local:5000/gisv2/gis-api:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: ASPNETCORE_ENVIRONMENT
+            - name: ASPNETCORE_URLS
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: ASPNETCORE_URLS
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gisv2-secrets
+                  key: POSTGRES_PASSWORD
+            - name: ConnectionStrings__DefaultConnection
+              value: "Host=postgres;Database=gis_v2;Username=postgres;Password=$(POSTGRES_PASSWORD)"
+            - name: Jwt__Key
+              valueFrom:
+                secretKeyRef:
+                  name: gisv2-secrets
+                  key: JWT_SECRET_KEY
+            - name: Jwt__Issuer
+              value: "GisAPI"
+            - name: Jwt__Audience
+              value: "GisAPI"
+            - name: RABBITMQ_USER
+              valueFrom:
+                secretKeyRef:
+                  name: gisv2-secrets
+                  key: RABBITMQ_USER
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gisv2-secrets
+                  key: RABBITMQ_PASSWORD
+            - name: RabbitMQ__Host
+              value: "rabbitmq"
+            - name: RabbitMQ__Port
+              value: "5672"
+            - name: RabbitMQ__Username
+              value: "$(RABBITMQ_USER)"
+            - name: RabbitMQ__Password
+              value: "$(RABBITMQ_PASSWORD)"
+            - name: RabbitMQ__Exchange
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: RABBITMQ_EXCHANGE
+            - name: RabbitMQ__Queue
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: RABBITMQ_QUEUE
+            - name: RabbitMQ__RoutingKey
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: RABBITMQ_ROUTING_KEY
+            - name: Redis__ConnectionString
+              value: "redis:6379,abortConnect=false"
+            - name: Valhalla__Url
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: VALHALLA_URL
+            - name: Groq__ApiKey
+              valueFrom:
+                secretKeyRef:
+                  name: gisv2-secrets
+                  key: GROQ_API_KEY
+            - name: Groq__ApiUrl
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: GROQ_API_URL
+            - name: Groq__Model
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: GROQ_MODEL
+            # CORS — allow both internal K8s and external domain
+            - name: Cors__AllowedOrigins__0
+              value: "http://frontend:80"
+            - name: Cors__AllowedOrigins__1
+              value: "https://belive.calypso.com"
+            - name: Cors__AllowedOrigins__2
+              value: "https://mobile.calypso.com"
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/uploads
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: gis-uploads
+
+---
+# -----------------------------------------------------------------------------
+# GPS Ingest (Rust) — single replica, needs host TCP ports for trackers
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: gps-ingest
+  namespace: gisv2
+  labels:
+    app: gps-ingest
+spec:
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+  selector:
+    app: gps-ingest
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gps-ingest
+  namespace: gisv2
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: gps-ingest
+  template:
+    metadata:
+      labels:
+        app: gps-ingest
+    spec:
+      # hostNetwork: true would also work but is less isolated
+      containers:
+        - name: gps-ingest
+          image: registry.local:5000/gisv2/gps-ingest:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+            # TCP ports for GPS trackers — exposed via hostPort
+            - containerPort: 6100
+              hostPort: 6100
+              protocol: TCP
+            - containerPort: 6200
+              hostPort: 6200
+              protocol: TCP
+            - containerPort: 6210
+              hostPort: 6210
+              protocol: TCP
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gisv2-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@postgres:5432/gis_v2"
+            - name: RABBITMQ_HOST
+              value: "rabbitmq"
+            - name: RABBITMQ_PORT
+              value: "5672"
+            - name: RABBITMQ_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: gisv2-secrets
+                  key: RABBITMQ_USER
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gisv2-secrets
+                  key: RABBITMQ_PASSWORD
+            - name: RABBITMQ_EXCHANGE
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: RABBITMQ_EXCHANGE
+            - name: RABBITMQ_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: RABBITMQ_ROUTING_KEY
+            - name: REDIS_URL
+              value: "redis://redis:6379"
+            - name: API_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: API_PORT
+            - name: RUST_LOG
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: RUST_LOG
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "150m"
+            limits:
+              memory: "384Mi"
+              cpu: "800m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+
+---
+# -----------------------------------------------------------------------------
+# Frontend (Angular + Nginx)
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: gisv2
+  labels:
+    app: frontend
+spec:
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: frontend
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: gisv2
+spec:
+  # 8GB VPS: 1 replica. Scale to 2 if you upgrade to 16GB.
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: registry.local:5000/gisv2/frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+---
+# -----------------------------------------------------------------------------
+# Mobile (Ionic/Angular PWA + Nginx)
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: mobile
+  namespace: gisv2
+  labels:
+    app: mobile
+spec:
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: mobile
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mobile
+  namespace: gisv2
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: mobile
+  template:
+    metadata:
+      labels:
+        app: mobile
+    spec:
+      containers:
+        - name: mobile
+          image: registry.local:5000/gisv2/mobile:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10

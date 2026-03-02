@@ -1,0 +1,259 @@
+# =============================================================================
+# GIS V2 - Infrastructure: PostgreSQL, Redis, RabbitMQ
+# StatefulSets with PersistentVolumeClaims (K3s local-path default)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# PostgreSQL (PostGIS)
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: gisv2
+  labels:
+    app: postgres
+spec:
+  clusterIP: None
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: gisv2
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgis/postgis:16-3.4-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gisv2-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "gis_v2"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "gis_v2"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 20Gi
+
+---
+# -----------------------------------------------------------------------------
+# Redis
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: gisv2
+  labels:
+    app: redis
+spec:
+  clusterIP: None
+  ports:
+    - port: 6379
+      targetPort: 6379
+  selector:
+    app: redis
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: gisv2
+spec:
+  serviceName: redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 2Gi
+
+---
+# -----------------------------------------------------------------------------
+# RabbitMQ
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: gisv2
+  labels:
+    app: rabbitmq
+spec:
+  clusterIP: None
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: 5672
+    - name: management
+      port: 15672
+      targetPort: 15672
+  selector:
+    app: rabbitmq
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+  namespace: gisv2
+spec:
+  serviceName: rabbitmq
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3-management-alpine
+          ports:
+            - containerPort: 5672
+            - containerPort: 15672
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: gisv2-secrets
+                  key: RABBITMQ_USER
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: gisv2-secrets
+                  key: RABBITMQ_PASSWORD
+            - name: RABBITMQ_LOOPBACK_USERS
+              value: "none"
+          volumeMounts:
+            - name: rabbitmq-data
+              mountPath: /var/lib/rabbitmq
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "ping"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "check_port_connectivity"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: rabbitmq-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 5Gi
