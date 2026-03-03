@@ -472,7 +472,7 @@
                         <td>{{ vehicle.fuelTankCapacity ? vehicle.fuelTankCapacity + ' L' : '-' }}</td>
                         <td class="distance-cell">{{ vehicle.totalDistanceKm | number:'1.0-0' }} km</td>
                         <td class="value-cell">{{ vehicle.totalFuelConsumedLiters | number:'1.1-1' }}</td>
-                        <td class="cost-cell" style="font-weight:600; color:#16a34a;">{{ vehicle.totalFuelCost | number:'1.2-2' }}</td>
+                        <td class="cost-cell" style="font-weight:600; color:#16a34a;">{{ vehicle.totalFuelCost | number:'1.0-0' }}</td>
                         <td class="speed-cell">{{ vehicle.averageConsumptionPer100Km | number:'1.2-2' }}</td>
                         <td>
                           @if (vehicle.refuels && vehicle.refuels.length > 0) {
@@ -625,7 +625,6 @@
                         <th class="sortable" (click)="sortBy('durationSeconds')">Durée <span class="sort-icon">{{ getSortIcon('durationSeconds') }}</span></th>
                         <th class="sortable" (click)="sortBy('distanceValue')">Distance <span class="sort-icon">{{ getSortIcon('distanceValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('speedValue')">Vitesse <span class="sort-icon">{{ getSortIcon('speedValue') }}</span></th>
-                        <th class="sortable" (click)="sortBy('address')">Lieu <span class="sort-icon">{{ getSortIcon('address') }}</span></th>
                       } @else if (selectedTemplate?.type === 'mileage') {
                         <th class="sortable" (click)="sortBy('date')">Date <span class="sort-icon">{{ getSortIcon('date') }}</span></th>
                         <th class="sortable" (click)="sortBy('distanceValue')">Distance <span class="sort-icon">{{ getSortIcon('distanceValue') }}</span></th>
@@ -683,6 +682,7 @@
                         <th class="sortable" (click)="sortBy('speedValue')">Vitesse <span class="sort-icon">{{ getSortIcon('speedValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('limitValue')">Limite <span class="sort-icon">{{ getSortIcon('limitValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('severityOrder')">Sévérité <span class="sort-icon">{{ getSortIcon('severityOrder') }}</span></th>
+                        <th>Carte</th>
                       } @else if (selectedTemplate?.type === 'driving-behavior') {
                         <th class="sortable" (click)="sortBy('vehicle')">Véhicule <span class="sort-icon">{{ getSortIcon('vehicle') }}</span></th>
                         <th class="sortable" (click)="sortBy('time')">Date/Heure <span class="sort-icon">{{ getSortIcon('time') }}</span></th>
@@ -718,7 +718,10 @@
                   </thead>
                   <tbody>
                     @for (row of paginatedData; track $index) {
-                      <tr [class.highlighted]="row.isAnomaly" [class.anomaly-row]="row.isAnomaly" [class.drive-row]="row.isDrive">
+                      <tr [class.highlighted]="row.isAnomaly" [class.anomaly-row]="row.isAnomaly" [class.drive-row]="row.isDrive"
+                          [class.infraction-grave]="selectedTemplate?.type === 'speed-infraction' && row.severityLevel === 'grave'"
+                          [class.infraction-modere]="selectedTemplate?.type === 'speed-infraction' && row.severityLevel === 'modere'"
+                          [class.infraction-leger]="selectedTemplate?.type === 'speed-infraction' && row.severityLevel === 'leger'">
                         @if (selectedTemplate?.type === 'fuel') {
                           <td class="time-cell">{{ row.time }}</td>
                           <td class="value-cell">{{ row.fuelPercent }}</td>
@@ -742,7 +745,6 @@
                           <td class="duration-cell">{{ row.duration }}</td>
                           <td class="distance-cell">{{ row.distance }}</td>
                           <td class="speed-cell">{{ row.speed }}</td>
-                          <td class="location-cell">{{ row.address }}</td>
                         } @else if (selectedTemplate?.type === 'mileage') {
                           <td class="date-cell">{{ row.date }}</td>
                           <td class="distance-cell" [class.high-mileage]="row.distanceValue > 100">{{ row.distance }}</td>
@@ -815,6 +817,9 @@
                           <td class="speed-cell" [style.color]="'#DC2626'" [style.font-weight]="'bold'">{{ row.speed }}</td>
                           <td class="limit-cell">{{ row.limit }}</td>
                           <td class="severity-cell" [class.severity-low]="row.severityLevel === 'leger'" [class.severity-medium]="row.severityLevel === 'modere'" [class.severity-high]="row.severityLevel === 'grave'">{{ row.severityLabel }}</td>
+                          <td class="action-cell">
+                            <button class="btn-map-view" title="Voir sur la carte" (click)="viewInfractionOnMap(row)">📍</button>
+                          </td>
                         } @else if (selectedTemplate?.type === 'driving-behavior') {
                           <td class="vehicle-cell">{{ row.vehicle }}</td>
                           <td class="time-cell">{{ row.time }}</td>

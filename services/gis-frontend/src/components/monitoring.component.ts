@@ -648,7 +648,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   isTemperatureHigh(vehicle: any): boolean {
     if (!vehicle.ignitionOn) return false;
     const stats = this.getVehicleStats(vehicle);
-    return stats?.temperature != null && stats.temperature >= 90;
+    return stats?.temperature != null && stats.temperature >= 105;
   }
 
   isOverSpeeding(vehicle: any): boolean {
@@ -664,8 +664,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       if (!this.playbackFromDate || !this.playbackToDate) {
         const now = new Date();
         const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        this.playbackFromDate = yesterday.toISOString().slice(0, 16);
-        this.playbackToDate = now.toISOString().slice(0, 16);
+        this.playbackFromDate = this.toLocalDateTimeString(yesterday);
+        this.playbackToDate = this.toLocalDateTimeString(now);
       }
     }
   }
@@ -1144,9 +1144,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const position = this.playbackPositions[index];
     const latLng = this.getSnappedLatLng(index);
     const speed = position.speedKph || 0;
-    const time = new Date(position.recordedAt).toLocaleString('fr-FR', {
+    const dateStr = new Date(position.recordedAt).toLocaleString('fr-FR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit'
     });
+    const cacheKey = `${position.latitude.toFixed(4)},${position.longitude.toFixed(4)}`;
+    const address = this.playbackAddressCache?.get(cacheKey) || `${position.latitude.toFixed(4)}°, ${position.longitude.toFixed(4)}°`;
 
     const marker = L.circleMarker(latLng as L.LatLngExpression, {
       radius: 4,
@@ -1157,7 +1160,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       fillOpacity: 0.9
     }).addTo(this.map);
 
-    marker.bindTooltip(`#${index + 1} — ${time} — ${speed.toFixed(0)} km/h`, {
+    marker.bindTooltip(`${dateStr} — ${address} — ${speed.toFixed(0)} km/h`, {
       direction: 'top', offset: [0, -6]
     });
 
@@ -2452,6 +2455,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
+  toLocalDateTimeString(date: Date): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const h = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d}T${h}:${min}`;
+  }
+
   getPlaybackTotalDuration(): string {
     if (this.playbackPositions.length < 2) return '0min';
     const first = new Date(this.playbackPositions[0].recordedAt).getTime();
@@ -2532,8 +2544,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.remoteCommandLoading) return;
     
     const actionLabel = command === 'stop' ? "ARRÊTER" : "REMETTRE EN MARCHE";
-    const confirmMsg = `Êtes-vous sûr de vouloir ${actionLabel} le moteur du véhicule "${vehicle.name || vehicle.plate}" à distance ?`;
-    if (!confirm(confirmMsg)) return;
+    const password = prompt(`Pour ${actionLabel} le moteur du véhicule "${vehicle.name || vehicle.plate}", veuillez entrer votre mot de passe :`);
+    if (!password) return;
 
     this.remoteCommandLoading = true;
     this.remoteCommandMessage = '';

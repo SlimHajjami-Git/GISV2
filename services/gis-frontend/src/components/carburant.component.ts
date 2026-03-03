@@ -676,7 +676,32 @@ export class CarburantComponent implements OnInit, OnDestroy {
   }
 
   parseNumber(v: any): number { if (typeof v === 'number') return v; if (!v) return 0; return parseFloat(String(v).replace(/[^\d.,\-]/g, '').replace(',', '.')) || 0; }
-  parseDate(v: any): string { if (!v) return ''; if (typeof v === 'number') { const d = new Date(Date.UTC(1899, 11, 30) + v * 86400000); return d.toISOString().split('T')[0]; } const d = new Date(v); return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : ''; }
+  parseDate(v: any): string {
+    if (!v) return '';
+    // Excel serial number
+    if (typeof v === 'number') {
+      const d = new Date(Date.UTC(1899, 11, 30) + v * 86400000);
+      return d.toISOString().split('T')[0];
+    }
+    const s = String(v).trim();
+    // Try DD/MM/YYYY or DD-MM-YYYY (French format — most common in Tunisia)
+    const frMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (frMatch) {
+      const [, day, month, year] = frMatch;
+      const d = new Date(+year, +month - 1, +day);
+      if (!isNaN(d.getTime()) && +day <= 31 && +month <= 12) return d.toISOString().split('T')[0];
+    }
+    // Try YYYY-MM-DD or YYYY/MM/DD (ISO format)
+    const isoMatch = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+    if (isoMatch) {
+      const [, year, month, day] = isoMatch;
+      const d = new Date(+year, +month - 1, +day);
+      if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+    }
+    // Fallback: try native Date parsing
+    const d = new Date(v);
+    return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : '';
+  }
   getValidEntries() { return this.importEntries.filter(e => e.isValid); }
   getInvalidEntries() { return this.importEntries.filter(e => !e.isValid); }
 

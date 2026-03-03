@@ -462,6 +462,7 @@ declare let L: any;
           <button class="btn-danger-sm" *ngIf="selectedTour.status==='planned'||selectedTour.status==='in_progress'" (click)="cancelSelectedTour()">Annuler</button>
           <button class="btn-save" *ngIf="selectedTour.status==='planned'" (click)="startSelectedTour()">Demarrer</button>
           <button class="btn-save green" *ngIf="selectedTour.status==='in_progress'" (click)="completeSelectedTour()">Terminer</button>
+          <button class="btn-danger-sm" (click)="deleteSelectedTour()">Supprimer</button>
         </div>
       </div>
       <div class="cv-right">
@@ -1152,6 +1153,15 @@ export class ToursComponent implements OnInit, OnDestroy {
     if (!confirm('Annuler cette tournee ?')) return;
     this.apiService.cancelTour(this.selectedTour.id).subscribe({
       next: () => { this.closeDetail(); this.loadTours(); this.loadStats(); }
+    });
+  }
+
+  deleteSelectedTour() {
+    if (!this.selectedTour) return;
+    if (!confirm('Supprimer définitivement cette tournée ?')) return;
+    this.apiService.deleteTour(this.selectedTour.id).subscribe({
+      next: () => { this.closeDetail(); this.loadTours(); this.loadStats(); },
+      error: (err: any) => { console.error('Error deleting tour:', err); alert('Erreur lors de la suppression'); }
     });
   }
 

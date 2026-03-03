@@ -817,7 +817,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
 
     this.vehicles.forEach(vehicle => {
-      this.getVehicleHistoryObs(vehicle.id, startDate, endDate, 5000).pipe(takeUntil(this.destroy$)).subscribe({
+      this.getVehicleHistoryObs(vehicle.id, startDate, endDate, 10000).pipe(takeUntil(this.destroy$)).subscribe({
         next: (positions) => {
           const positionsWithVehicle = positions.map(p => ({
             ...p,
@@ -1439,6 +1439,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
       '🔴 Grave (+21%+)': `${severe} (${severePct}%)`,
       '🚗 Véhicules concernés': vehicleCount.toString()
     };
+  }
+
+  viewInfractionOnMap(row: any) {
+    if (row.latitude && row.longitude) {
+      window.open(`/monitoring?lat=${row.latitude}&lng=${row.longitude}&zoom=17`, '_blank');
+    }
   }
 
   enrichSpeedInfractionAddresses() {
@@ -3216,7 +3222,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.getVehicleHistoryObs(vehicleId, startDate, endDate).pipe(takeUntil(this.destroy$)).subscribe({
+    this.getVehicleHistoryObs(vehicleId, startDate, endDate, 10000).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {
         this.ngZone.run(() => {
           this.processVehicleData(result);
@@ -3396,7 +3402,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     // Chart data - use cleaned positions for smooth fuel level graph (no spikes)
     this.chartData = cleanPositions.map((pos: any) => ({
-      label: new Date(pos.recordedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      label: new Date(pos.recordedAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
       value: pos.fuelRaw || 0
     }));
 
@@ -3890,15 +3896,18 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const segments: { type: 'trip' | 'stop'; start: any; end: any; positions: any[]; distanceKm: number }[] = [];
     let currentSegment: { type: 'trip' | 'stop'; start: any; end: any; positions: any[]; distanceKm: number } | null = null;
 
+    // Check if this vehicle has ignition data
+    const hasIgnitionData = positions.some(p => p.ignitionOn === true || p.ignitionOn === false);
+
     for (let i = 0; i < positions.length; i++) {
       const pos = positions[i];
-      const isIgnitionOn = pos.ignitionOn === true;
       const hasMovement = (pos.speedKph || 0) > 2;
-      // Trip = ignition ON (speed > 2 to START, but ignition OFF to END)
+      // Use ignition if available, otherwise fall back to speed-based detection
+      const isMoving = hasIgnitionData ? (pos.ignitionOn === true && hasMovement) : hasMovement;
 
       if (!currentSegment) {
         currentSegment = {
-          type: (isIgnitionOn && hasMovement) ? 'trip' : 'stop',
+          type: isMoving ? 'trip' : 'stop',
           start: pos,
           end: pos,
           positions: [pos],
@@ -3908,7 +3917,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       }
 
       const prev = positions[i - 1];
-      const prevIgnitionOn = prev.ignitionOn === true;
+      const prevMoving = hasIgnitionData ? (prev.ignitionOn === true && (prev.speedKph || 0) > 2) : ((prev.speedKph || 0) > 2);
 
       // Calculate distance
       const dist = this.haversineDistance(prev.latitude, prev.longitude, pos.latitude, pos.longitude);
@@ -3916,8 +3925,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
         currentSegment.distanceKm += dist;
       }
 
-      // Detect transition: ignition turned OFF = end of trip
-      if (prevIgnitionOn && !isIgnitionOn) {
+      // Detect transition: was moving, now stopped
+      if (prevMoving && !isMoving) {
         currentSegment.end = prev;
         segments.push(currentSegment);
         currentSegment = {
@@ -3928,8 +3937,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
           distanceKm: 0
         };
       }
-      // Detect transition: ignition turned ON + movement = start of new trip
-      else if (!prevIgnitionOn && isIgnitionOn && hasMovement) {
+      // Detect transition: was stopped, now moving
+      else if (!prevMoving && isMoving) {
         currentSegment.end = prev;
         segments.push(currentSegment);
         currentSegment = {
@@ -3940,8 +3949,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
           distanceKm: 0
         };
       }
-      // Ignition ON + first movement after idle = start trip
-      else if (currentSegment.type === 'stop' && isIgnitionOn && hasMovement) {
+      // Stopped vehicle starts moving = start trip
+      else if (currentSegment.type === 'stop' && isMoving) {
         currentSegment.end = prev;
         segments.push(currentSegment);
         currentSegment = {
@@ -5113,9 +5122,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
           // Prepare statistics
           this.statisticsData = {
             'Véhicules analysés': report.vehicleCount.toString(),
-            'Distance totale': `${report.totalFleetDistanceKm.toLocaleString('fr-FR')} km`,
+            'Distance totale': `${Math.round(report.totalFleetDistanceKm).toLocaleString('fr-FR')} km`,
             'Carburant consommé': `${report.totalFleetFuelConsumedLiters.toFixed(1)} L`,
-            'Coût total estimé': `${report.totalFleetFuelCost.toFixed(2)} TND`,
+            'Coût total estimé': `${Math.round(report.totalFleetFuelCost).toLocaleString('fr-FR')} TND`,
             'Consommation moyenne': `${report.fleetAverageConsumptionPer100Km.toFixed(2)} L/100km`,
             'Écart-type': `${report.fleetStandardDeviation.toFixed(2)} L/100km`
           };

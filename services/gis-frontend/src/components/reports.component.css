@@ -1505,6 +1505,43 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   color: #dc2626;
 }
 
+/* Speed Infraction Row Severity Colors */
+.data-table tbody tr.infraction-grave {
+  background: #fef2f2;
+}
+.data-table tbody tr.infraction-grave:hover {
+  background: #fee2e2;
+}
+.data-table tbody tr.infraction-grave td {
+  border-bottom-color: #fecaca;
+}
+.data-table tbody tr.infraction-modere {
+  background: #fffbeb;
+}
+.data-table tbody tr.infraction-modere:hover {
+  background: #fef3c7;
+}
+.data-table tbody tr.infraction-leger {
+  background: #f0fdf4;
+}
+.data-table tbody tr.infraction-leger:hover {
+  background: #dcfce7;
+}
+
+.btn-map-view {
+  background: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+.btn-map-view:hover {
+  background: #f1f5f9;
+  border-color: #3b82f6;
+}
+
 /* Speed Infraction Styles */
 .excess-cell {
   font-weight: 600;
