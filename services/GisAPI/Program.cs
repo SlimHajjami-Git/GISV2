@@ -92,7 +92,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 var accessToken = context.Request.Query["access_token"];
                 var path = context.HttpContext.Request.Path;
 
-                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs/gps"))
+                if (!string.IsNullOrEmpty(accessToken) && (path.StartsWithSegments("/api/hubs/gps") || path.StartsWithSegments("/hubs/gps")))
                 {
                     context.Token = accessToken;
                 }
@@ -202,6 +202,7 @@ app.UseTenantMiddleware();
 app.MapControllers();
 
 // SignalR Hub endpoints
+app.MapHub<GpsHub>("/api/hubs/gps");
 app.MapHub<GpsHub>("/hubs/gps");
 
 // Health check endpoint
