@@ -688,14 +688,16 @@ export class CarburantComponent implements OnInit, OnDestroy {
     const frMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
     if (frMatch) {
       const [, day, month, year] = frMatch;
-      const d = new Date(+year, +month - 1, +day);
-      if (!isNaN(d.getTime()) && +day <= 31 && +month <= 12) return d.toISOString().split('T')[0];
+      if (+day <= 31 && +month <= 12) {
+        const d = new Date(Date.UTC(+year, +month - 1, +day));
+        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+      }
     }
     // Try YYYY-MM-DD or YYYY/MM/DD (ISO format)
     const isoMatch = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
     if (isoMatch) {
       const [, year, month, day] = isoMatch;
-      const d = new Date(+year, +month - 1, +day);
+      const d = new Date(Date.UTC(+year, +month - 1, +day));
       if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
     }
     // Fallback: try native Date parsing
