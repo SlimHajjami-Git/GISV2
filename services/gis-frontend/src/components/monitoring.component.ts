@@ -717,9 +717,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       if (this.filterStatus === 'online') {
         filtered = filtered.filter((v: any) => v.isOnline);
       } else if (this.filterStatus === 'moving') {
-        filtered = filtered.filter((v: any) => v.isOnline && (v.currentSpeed || 0) > 5);
-      } else if (this.filterStatus === 'stopped') {
-        filtered = filtered.filter((v: any) => v.isOnline && (v.currentSpeed || 0) <= 5);
+        filtered = filtered.filter((v: any) => v.isOnline && v.ignitionOn && (v.currentSpeed || 0) > 5);
+      } else if (this.filterStatus === 'idle') {
+        filtered = filtered.filter((v: any) => v.isOnline && v.ignitionOn && (v.currentSpeed || 0) <= 5);
+      } else if (this.filterStatus === 'parked') {
+        filtered = filtered.filter((v: any) => v.isOnline && !v.ignitionOn);
       } else if (this.filterStatus === 'offline') {
         filtered = filtered.filter((v: any) => !v.isOnline);
       }

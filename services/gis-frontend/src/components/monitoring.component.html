@@ -40,8 +40,11 @@
             <button class="tool-btn filter-moving" [class.active]="filterStatus === 'moving'" (click)="onFilterStatusChange('moving')" title="En mouvement">
               <span class="status-dot moving"></span>
             </button>
-            <button class="tool-btn filter-stopped" [class.active]="filterStatus === 'stopped'" (click)="onFilterStatusChange('stopped')" title="À l'arrêt">
+            <button class="tool-btn filter-idle" [class.active]="filterStatus === 'idle'" (click)="onFilterStatusChange('idle')" title="Au ralenti">
               <span class="status-dot stopped"></span>
+            </button>
+            <button class="tool-btn filter-parked" [class.active]="filterStatus === 'parked'" (click)="onFilterStatusChange('parked')" title="Arrêt moteur">
+              <span class="status-dot parked"></span>
             </button>
             <button class="tool-btn filter-offline" [class.active]="filterStatus === 'offline'" (click)="onFilterStatusChange('offline')" title="Hors ligne">
               <span class="status-dot offline"></span>
@@ -65,8 +68,8 @@
         <!-- Status Legend -->
         <div class="status-legend" *ngIf="!isPanelCollapsed">
           <span class="legend-item"><span class="status-dot moving"></span> En mouvement</span>
-          <span class="legend-item"><span class="status-dot stopped"></span> Arrêt moteur</span>
-          <span class="legend-item"><span class="status-dot idle"></span> Au ralenti</span>
+          <span class="legend-item"><span class="status-dot stopped"></span> Au ralenti</span>
+          <span class="legend-item"><span class="status-dot parked"></span> Arrêt moteur</span>
           <span class="legend-item"><span class="status-dot offline"></span> Hors ligne</span>
         </div>
 
@@ -98,7 +101,7 @@
               </div>
               <div class="vehicle-info">
                 <span class="vehicle-name">{{ vehicle.plate || vehicle.name }}</span>
-                <span class="vehicle-plate-tag">{{ getStatusTag(vehicle) }}</span>
+                <span class="vehicle-plate-tag vehicle-model">{{ vehicle.model || vehicle.brand || '' }}</span>
               </div>
               <div class="vehicle-indicators simplified">
                 <!-- Fuel Warning -->

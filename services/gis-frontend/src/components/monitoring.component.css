@@ -105,8 +105,8 @@
   flex-shrink: 0;
 }
 .status-legend .status-dot.moving { background: #22c55e; }
-.status-legend .status-dot.stopped { background: #ef4444; }
-.status-legend .status-dot.idle { background: #f59e0b; }
+.status-legend .status-dot.stopped { background: #ff9800; }
+.status-legend .status-dot.parked { background: #ef4444; }
 .status-legend .status-dot.offline { background: #94a3b8; }
 
 .sidebar-toolbar {
@@ -192,6 +192,11 @@
   box-shadow: 0 0 4px rgba(255, 152, 0, 0.5);
 }
 
+.status-dot.parked {
+  background: #ef4444;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
+}
+
 .status-dot.offline {
   background: #9e9e9e;
   box-shadow: 0 0 4px rgba(158, 158, 158, 0.5);
@@ -202,9 +207,14 @@
   border: 1px solid #4caf50;
 }
 
-.tool-btn.filter-stopped.active {
+.tool-btn.filter-idle.active {
   background: rgba(255, 152, 0, 0.15);
   border: 1px solid #ff9800;
+}
+
+.tool-btn.filter-parked.active {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid #ef4444;
 }
 
 .tool-btn.filter-offline.active {
