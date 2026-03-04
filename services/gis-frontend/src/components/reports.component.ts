@@ -397,7 +397,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       error: (err) => console.error('Error loading drivers:', err)
     });
     this.apiService.getDepartments().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (departments) => this.departments = departments,
+      next: (departments) => { this.departments = departments; this.cdr.detectChanges(); },
       error: (err) => console.error('Error loading departments:', err)
     });
   }
