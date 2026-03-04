@@ -261,32 +261,6 @@
           }
         </div>
 
-        <!-- Chart Legend -->
-        @if (reportGenerated && activeTab === 'chart') {
-          <div class="chart-legend">
-            <div class="legend-title">Légende</div>
-            <label class="legend-item">
-              <input type="checkbox" [(ngModel)]="chartLines.all" (change)="toggleAllLines()">
-              <span class="legend-line" style="background: #64748b"></span>
-              <span>Toutes les lignes</span>
-            </label>
-            <label class="legend-item">
-              <input type="checkbox" [(ngModel)]="chartLines.speed">
-              <span class="legend-line" style="background: #22c55e"></span>
-              <span>Vitesse, km/h</span>
-            </label>
-            <label class="legend-item">
-              <input type="checkbox" [(ngModel)]="chartLines.fuel">
-              <span class="legend-line" style="background: #3b82f6"></span>
-              <span>Niveau carburant, L</span>
-            </label>
-            <label class="legend-item">
-              <input type="checkbox" [(ngModel)]="chartLines.consumption">
-              <span class="legend-line" style="background: #f97316"></span>
-              <span>Consommation, L/h</span>
-            </label>
-          </div>
-        }
       </aside>
 
       <!-- WORKSPACE PRINCIPAL -->
@@ -616,7 +590,6 @@
                         <th class="sortable" (click)="sortBy('fuelDelta')">Variation <span class="sort-icon">{{ getSortIcon('fuelDelta') }}</span></th>
                         <th class="sortable" (click)="sortBy('eventType')">Type <span class="sort-icon">{{ getSortIcon('eventType') }}</span></th>
                         <th class="sortable" (click)="sortBy('location')">Position <span class="sort-icon">{{ getSortIcon('location') }}</span></th>
-                        <th class="sortable" (click)="sortBy('mileage')">Km parcourus <span class="sort-icon">{{ getSortIcon('mileage') }}</span></th>
                         <th class="sortable" (click)="sortBy('odometer')">Odomètre <span class="sort-icon">{{ getSortIcon('odometer') }}</span></th>
                       } @else if (selectedTemplate?.type === 'daily') {
                         <th class="th-narrow sortable" (click)="sortBy('eventNumber')"># <span class="sort-icon">{{ getSortIcon('eventNumber') }}</span></th>
@@ -634,7 +607,7 @@
                         <th class="sortable" (click)="sortBy('maxSpeedValue')">Vitesse max <span class="sort-icon">{{ getSortIcon('maxSpeedValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('odometerValue')">Odomètre <span class="sort-icon">{{ getSortIcon('odometerValue') }}</span></th>
                       } @else if (selectedTemplate?.type === 'mileage-period') {
-                        <th class="sortable" (click)="sortBy('period')">Période <span class="sort-icon">{{ getSortIcon('period') }}</span></th>
+                        <th class="sortable" (click)="sortBy('period')">{{ !selectedVehicleId ? 'Matricule' : 'Période' }} <span class="sort-icon">{{ getSortIcon('period') }}</span></th>
                         @if (selectedMileagePeriodType === 'day') {
                           <th class="sortable" (click)="sortBy('dayOfWeek')">Jour <span class="sort-icon">{{ getSortIcon('dayOfWeek') }}</span></th>
                         }
@@ -728,7 +701,6 @@
                           <td class="change-cell" [class.positive]="row.fuelChange?.startsWith('+')" [class.negative]="row.fuelChange?.startsWith('-')">{{ row.fuelChange }}</td>
                           <td>{{ row.eventType }}</td>
                           <td class="location-cell">{{ row.location }}</td>
-                          <td>{{ row.mileage }}</td>
                           <td>{{ row.odometer }}</td>
                         } @else if (selectedTemplate?.type === 'daily') {
                           <td class="event-number-cell">{{ row.eventNumber }}</td>

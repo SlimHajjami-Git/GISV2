@@ -2274,8 +2274,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
       odometer: day.endOdometerKm ? `${day.endOdometerKm.toFixed(0)} km` : '-'
     }));
 
-    // Chart data - daily distances
-    this.chartData = report.dailyBreakdown.map((day: DailyMileage) => ({
+    // Chart data - daily distances (use same filtered days as table)
+    this.chartData = daysWithActivity.map((day: DailyMileage) => ({
       label: new Date(day.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
       value: day.distanceKm
     }));
@@ -2562,6 +2562,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
       this.apiService.getMileagePeriodReport(vehicle.id, this.selectedMileagePeriodType, start, end).pipe(takeUntil(this.destroy$)).subscribe({
         next: (report) => {
           if (report.hasData) {
+            // Compute speed from breakdown data
+            const breakdown = report.hourlyBreakdown?.length ? report.hourlyBreakdown
+              : report.dailyBreakdown?.length ? report.dailyBreakdown
+              : report.monthlyBreakdown || [];
+            const maxSpd = breakdown.length > 0 ? Math.max(...breakdown.map((b: any) => b.maxSpeedKph || 0)) : 0;
+            const avgSpds = breakdown.filter((b: any) => b.avgSpeedKph > 0).map((b: any) => b.avgSpeedKph);
+            const avgSpd = avgSpds.length > 0 ? avgSpds.reduce((a: number, b: number) => a + b, 0) / avgSpds.length : 0;
+
             allResults.push({
               vehicleName: vehicle.name || vehicle.plate,
               vehiclePlate: vehicle.plate,
@@ -2570,7 +2578,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
               totalDriving: report.totalDrivingMinutes,
               totalDrivingFormatted: report.totalDrivingFormatted,
               avgDistance: report.averageDistanceKm,
-              maxDistance: report.maxDistanceKm
+              maxDistance: report.maxDistanceKm,
+              maxSpeedKph: maxSpd,
+              avgSpeedKph: avgSpd
             });
           }
           completedRequests++;
@@ -2611,13 +2621,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     results.sort((a, b) => b.totalDistance - a.totalDistance);
 
     this.tableData = results.map(r => ({
-      vehicle: `${r.vehicleName}${r.vehiclePlate ? ' (' + r.vehiclePlate + ')' : ''}`,
+      period: r.vehiclePlate || r.vehicleName,
       distance: `${r.totalDistance.toFixed(1)} km`,
       distanceValue: r.totalDistance,
       tripCount: r.totalTrips,
       drivingTime: r.totalDrivingFormatted,
-      avgDistance: `${r.avgDistance.toFixed(1)} km`,
-      maxDistance: `${r.maxDistance.toFixed(1)} km`
+      avgSpeed: `${r.avgSpeedKph.toFixed(1)} km/h`,
+      maxSpeed: `${r.maxSpeedKph.toFixed(1)} km/h`
     }));
 
     this.chartData = results.map(r => ({
@@ -2662,7 +2672,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         this.tableData = (report.hourlyBreakdown || [])
           .filter((h: HourlyMileagePeriod) => h.distanceKm > 0)
           .map((h: HourlyMileagePeriod) => ({
-            period: h.hourLabel,
+            period: h.hourLabel || `${String(h.hour).padStart(2, '0')}:00 - ${String(h.hour + 1).padStart(2, '0')}:00`,
             distance: `${h.distanceKm.toFixed(1)} km`,
             distanceValue: h.distanceKm,
             tripCount: h.tripCount,
@@ -3382,8 +3392,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           location,
           latitude: pos.latitude,
           longitude: pos.longitude,
-          mileage: kmDelta > 0 ? `${kmDelta.toLocaleString('fr-FR')} km` : '-',
-          odometer: odometer > 0 ? `${odometer.toLocaleString('fr-FR')} km` : '-',
+          odometer: odometer > 0 ? `${Math.round(odometer)} km` : '-',
           isAnomaly
         });
 
@@ -5158,9 +5167,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
           // Prepare statistics
           this.statisticsData = {
             'Véhicules analysés': report.vehicleCount.toString(),
-            'Distance totale': `${Math.round(report.totalFleetDistanceKm).toLocaleString('fr-FR')} km`,
+            'Distance totale': `${Math.round(report.totalFleetDistanceKm)} km`,
             'Carburant consommé': `${report.totalFleetFuelConsumedLiters.toFixed(1)} L`,
-            'Coût total estimé': `${Math.round(report.totalFleetFuelCost).toLocaleString('fr-FR')} TND`,
+            'Coût total estimé': `${Math.round(report.totalFleetFuelCost)} TND`,
             'Consommation moyenne': `${report.fleetAverageConsumptionPer100Km.toFixed(2)} L/100km`,
             'Écart-type': `${report.fleetStandardDeviation.toFixed(2)} L/100km`
           };

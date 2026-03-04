@@ -684,25 +684,37 @@ export class CarburantComponent implements OnInit, OnDestroy {
       return d.toISOString().split('T')[0];
     }
     const s = String(v).trim();
-    // Try DD/MM/YYYY or DD-MM-YYYY (French format — most common in Tunisia)
-    const frMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-    if (frMatch) {
-      const [, day, month, year] = frMatch;
-      if (+day <= 31 && +month <= 12) {
-        const d = new Date(Date.UTC(+year, +month - 1, +day));
-        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
-      }
-    }
-    // Try YYYY-MM-DD or YYYY/MM/DD (ISO format)
+    // Try YYYY-MM-DD or YYYY/MM/DD (ISO format) first
     const isoMatch = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
     if (isoMatch) {
       const [, year, month, day] = isoMatch;
       const d = new Date(Date.UTC(+year, +month - 1, +day));
       if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
     }
-    // Fallback: try native Date parsing
-    const d = new Date(v);
-    return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : '';
+    // Try DD/MM/YYYY, DD-MM-YYYY, or MM/DD/YYYY
+    // Always interpret as DD/MM/YYYY (French/Tunisian format)
+    // If first number > 12, it must be a day; if second > 12, first must be month (American)
+    const slashMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (slashMatch) {
+      let [, p1, p2, year] = slashMatch;
+      let day: number, month: number;
+      if (+p1 > 12) {
+        // First part > 12, must be day (DD/MM/YYYY)
+        day = +p1; month = +p2;
+      } else if (+p2 > 12) {
+        // Second part > 12, must be day → first is month (MM/DD/YYYY American)
+        month = +p1; day = +p2;
+      } else {
+        // Both <= 12, ambiguous → default to DD/MM/YYYY (French format)
+        day = +p1; month = +p2;
+      }
+      if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+        const d = new Date(Date.UTC(+year, month - 1, day));
+        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+      }
+    }
+    // No fallback to native Date() to avoid American format misinterpretation
+    return '';
   }
   getValidEntries() { return this.importEntries.filter(e => e.isValid); }
   getInvalidEntries() { return this.importEntries.filter(e => !e.isValid); }

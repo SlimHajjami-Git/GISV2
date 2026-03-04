@@ -279,7 +279,6 @@ export class PdfExportService {
           { header: 'Variation', dataKey: 'fuelChange' },
           { header: 'Type', dataKey: 'eventType' },
           { header: 'Position', dataKey: 'location' },
-          { header: 'Km parcourus', dataKey: 'mileage' },
           { header: 'Odomètre', dataKey: 'odometer' }
         ];
       case 'fuel-estimation':
