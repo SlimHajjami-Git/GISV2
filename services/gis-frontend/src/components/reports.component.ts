@@ -5338,79 +5338,95 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return val.includes('°') || val === 'Chargement...' || !/[a-zA-Z\u00C0-\u024F\u0600-\u06FF]/.test(val);
     };
 
-    // Collect all coordinates that need geocoding
-    const coordsToGeocode: { lat: number; lon: number }[] = [];
-
-    this.tableData.forEach((row: any) => {
-      if (needsGeocode(row.location) && row.latitude && row.longitude) {
-        coordsToGeocode.push({ lat: row.latitude, lon: row.longitude });
-      }
-      if (needsGeocode(row.address) && row.latitude && row.longitude) {
-        coordsToGeocode.push({ lat: row.latitude, lon: row.longitude });
-      }
-      if (needsGeocode(row.startAddress) && row.startLat && row.startLng) {
-        coordsToGeocode.push({ lat: row.startLat, lon: row.startLng });
-      }
-      if (needsGeocode(row.endAddress) && row.endLat && row.endLng) {
-        coordsToGeocode.push({ lat: row.endLat, lon: row.endLng });
-      }
-    });
-
-    if (coordsToGeocode.length === 0) return;
-
-    try {
-      const addressMap = await this.geocodingService.batchReverseGeocode(coordsToGeocode);
-
+    // Apply geocoding results to tableData, return count of unresolved fields
+    const applyResults = (addressMap: Map<string, string>): number => {
+      let unresolved = 0;
       this.ngZone.run(() => {
         this.tableData = this.tableData.map((row: any) => {
           const updated = { ...row };
           if (needsGeocode(row.location) && row.latitude && row.longitude) {
             const key = `${row.latitude.toFixed(4)},${row.longitude.toFixed(4)}`;
             const addr = addressMap.get(key);
-            updated.location = addr || `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}`;
+            if (addr) { updated.location = addr; } else { updated.location = `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}`; unresolved++; }
           }
           if (needsGeocode(row.address) && row.latitude && row.longitude) {
             const key = `${row.latitude.toFixed(4)},${row.longitude.toFixed(4)}`;
             const addr = addressMap.get(key);
-            const resolved = addr || `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}`;
-            updated.address = resolved;
-            // Also update description if it matches the old address (daily report pattern)
-            if (row.description && row.description === row.address) {
-              updated.description = resolved;
-            }
+            if (addr) {
+              updated.address = addr;
+              if (row.description && row.description === row.address) updated.description = addr;
+            } else { updated.address = `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}`; unresolved++; }
           }
           if (needsGeocode(row.startAddress) && row.startLat && row.startLng) {
             const key = `${row.startLat.toFixed(4)},${row.startLng.toFixed(4)}`;
             const addr = addressMap.get(key);
-            updated.startAddress = addr || `${row.startLat.toFixed(5)}, ${row.startLng.toFixed(5)}`;
+            if (addr) { updated.startAddress = addr; } else { updated.startAddress = `${row.startLat.toFixed(5)}, ${row.startLng.toFixed(5)}`; unresolved++; }
           }
           if (needsGeocode(row.endAddress) && row.endLat && row.endLng) {
             const key = `${row.endLat.toFixed(4)},${row.endLng.toFixed(4)}`;
             const addr = addressMap.get(key);
-            updated.endAddress = addr || `${row.endLat.toFixed(5)}, ${row.endLng.toFixed(5)}`;
+            if (addr) { updated.endAddress = addr; } else { updated.endAddress = `${row.endLat.toFixed(5)}, ${row.endLng.toFixed(5)}`; unresolved++; }
           }
           return updated;
         });
         this.cdr.detectChanges();
       });
+      return unresolved;
+    };
+
+    // Collect coordinates needing geocoding from current tableData
+    const collectCoords = (): { lat: number; lon: number }[] => {
+      const coords: { lat: number; lon: number }[] = [];
+      this.tableData.forEach((row: any) => {
+        if (needsGeocode(row.location) && row.latitude && row.longitude)
+          coords.push({ lat: row.latitude, lon: row.longitude });
+        if (needsGeocode(row.address) && row.latitude && row.longitude)
+          coords.push({ lat: row.latitude, lon: row.longitude });
+        if (needsGeocode(row.startAddress) && row.startLat && row.startLng)
+          coords.push({ lat: row.startLat, lon: row.startLng });
+        if (needsGeocode(row.endAddress) && row.endLat && row.endLng)
+          coords.push({ lat: row.endLat, lon: row.endLng });
+      });
+      return coords;
+    };
+
+    const coordsToGeocode = collectCoords();
+    if (coordsToGeocode.length === 0) return;
+
+    // --- Pass 1: initial geocoding ---
+    try {
+      const addressMap = await this.geocodingService.batchReverseGeocode(coordsToGeocode);
+      const unresolved = applyResults(addressMap);
+
+      // --- Pass 2 & 3: retry unresolved after delay ---
+      if (unresolved > 0) {
+        const retryDelays = [3000, 8000]; // 3s then 8s
+        for (const delay of retryDelays) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+          // Re-collect only coords still needing geocoding
+          const retryCoords = collectCoords();
+          if (retryCoords.length === 0) break;
+          // Clear cache for these coords so Nominatim is re-queried
+          this.geocodingService.clearCacheForCoords(retryCoords);
+          const retryMap = await this.geocodingService.batchReverseGeocode(retryCoords);
+          const stillUnresolved = applyResults(retryMap);
+          if (stillUnresolved === 0) break;
+        }
+      }
     } catch (error) {
       console.error('Error enriching addresses:', error);
-      // Fallback: replace 'Chargement...' with coordinates so it doesn't stay forever
+      // Fallback: replace 'Chargement...' with coordinates
       this.ngZone.run(() => {
         this.tableData = this.tableData.map((row: any) => {
           const updated = { ...row };
-          if (row.address === 'Chargement...' && row.latitude && row.longitude) {
+          if (row.address === 'Chargement...' && row.latitude && row.longitude)
             updated.address = `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}`;
-          }
-          if (row.location === 'Chargement...' && row.latitude && row.longitude) {
+          if (row.location === 'Chargement...' && row.latitude && row.longitude)
             updated.location = `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}`;
-          }
-          if (row.startAddress === 'Chargement...' && row.startLat && row.startLng) {
+          if (row.startAddress === 'Chargement...' && row.startLat && row.startLng)
             updated.startAddress = `${row.startLat.toFixed(5)}, ${row.startLng.toFixed(5)}`;
-          }
-          if (row.endAddress === 'Chargement...' && row.endLat && row.endLng) {
+          if (row.endAddress === 'Chargement...' && row.endLat && row.endLng)
             updated.endAddress = `${row.endLat.toFixed(5)}, ${row.endLng.toFixed(5)}`;
-          }
           return updated;
         });
         this.cdr.detectChanges();

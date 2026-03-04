@@ -143,6 +143,16 @@ export class GeocodingService {
   }
 
   /**
+   * Clear cache entries for specific coordinates (used before retry)
+   */
+  clearCacheForCoords(coordinates: { lat: number; lon: number }[]): void {
+    for (const coord of coordinates) {
+      const key = `${coord.lat.toFixed(4)},${coord.lon.toFixed(4)}`;
+      this.cache.delete(key);
+    }
+  }
+
+  /**
    * Clear the cache
    */
   clearCache(): void {
