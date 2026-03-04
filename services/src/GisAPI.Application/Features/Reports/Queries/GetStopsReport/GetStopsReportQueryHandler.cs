@@ -141,20 +141,24 @@ public class GetStopsReportQueryHandler : IRequestHandler<GetStopsReportQuery, S
     /// <summary>
     /// Detect stops from GPS positions based on ignition_on == false.
     /// A stop = continuous period where ignition is OFF.
+    /// Stop end is extended to the next ignition-ON position (covers GPS data gaps).
     /// Adjacent stops separated by < 60s gap are merged (noisy ignition debounce).
     /// </summary>
     internal static List<StopEntryDto> DetectStops(List<PositionSlim> positions, int minDurationSeconds)
     {
         if (positions.Count == 0) return new List<StopEntryDto>();
 
-        // Step 1: Find raw continuous periods of ignition OFF
+        // Step 1: Find raw continuous periods of ignition OFF.
+        // When a stop ends, extend its end time to the NEXT position (ignition ON),
+        // because the vehicle was still stopped during any GPS data gap.
         var rawStops = new List<(DateTime Start, DateTime End, double Lat, double Lon)>();
         DateTime? stopStart = null;
         DateTime stopEnd = default;
         double stopLat = 0, stopLon = 0;
 
-        foreach (var pos in positions)
+        for (int i = 0; i < positions.Count; i++)
         {
+            var pos = positions[i];
             var isOff = pos.IgnitionOn == false;
 
             if (isOff)
@@ -171,7 +175,9 @@ public class GetStopsReportQueryHandler : IRequestHandler<GetStopsReportQuery, S
             {
                 if (stopStart != null)
                 {
-                    rawStops.Add((stopStart.Value, stopEnd, stopLat, stopLon));
+                    // Extend stop end to this position's time (first ignition-ON after stop).
+                    // The vehicle was still stopped until it turned on.
+                    rawStops.Add((stopStart.Value, pos.RecordedAt, stopLat, stopLon));
                     stopStart = null;
                 }
             }
