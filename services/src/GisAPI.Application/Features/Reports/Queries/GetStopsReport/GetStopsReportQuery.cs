@@ -67,3 +67,14 @@ public class StopsSummaryDto
     public int MinStopSeconds { get; set; }
     public string MinStopFormatted { get; set; } = string.Empty;
 }
+
+/// <summary>
+/// Lightweight projection for stop detection — only 4 columns loaded from DB
+/// </summary>
+public class PositionSlim
+{
+    public DateTime RecordedAt { get; set; }
+    public bool? IgnitionOn { get; set; }
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+}

@@ -1,6 +1,4 @@
 using GisAPI.Application.Common.Interfaces;
-using GisAPI.Domain.Entities;
-using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,12 +7,10 @@ namespace GisAPI.Application.Features.Reports.Queries.GetStopsReport;
 public class GetStopsReportQueryHandler : IRequestHandler<GetStopsReportQuery, StopsReportDto>
 {
     private readonly IGisDbContext _context;
-    private readonly IGeocodingService _geocodingService;
 
-    public GetStopsReportQueryHandler(IGisDbContext context, IGeocodingService geocodingService)
+    public GetStopsReportQueryHandler(IGisDbContext context)
     {
         _context = context;
-        _geocodingService = geocodingService;
     }
 
     public async Task<StopsReportDto> Handle(GetStopsReportQuery request, CancellationToken ct)
@@ -48,23 +44,24 @@ public class GetStopsReportQueryHandler : IRequestHandler<GetStopsReportQuery, S
         var rangeStart = DateTime.SpecifyKind(request.StartDate.Date, DateTimeKind.Utc);
         var rangeEnd = DateTime.SpecifyKind(request.EndDate.Date.AddDays(1), DateTimeKind.Utc);
 
-        // Query all positions in range, ordered chronologically
+        // Projection: only load columns needed for stop detection (much faster than full entity)
         var positions = await _context.GpsPositions
             .AsNoTracking()
             .Where(p => p.DeviceId == vehicle.GpsDeviceId &&
                         p.RecordedAt >= rangeStart &&
                         p.RecordedAt < rangeEnd)
             .OrderBy(p => p.RecordedAt)
+            .Select(p => new PositionSlim
+            {
+                RecordedAt = p.RecordedAt,
+                IgnitionOn = p.IgnitionOn,
+                Latitude = p.Latitude,
+                Longitude = p.Longitude
+            })
             .ToListAsync(ct);
 
         var allStops = DetectStops(positions, request.MinStopDurationSeconds);
-
-        // Geocode stop addresses (batch)
-        foreach (var stop in allStops)
-        {
-            var address = await _geocodingService.ReverseGeocodeAsync(stop.Latitude, stop.Longitude);
-            stop.Address = address;
-        }
+        // No geocoding here — frontend handles address enrichment via enrichAllAddresses()
 
         // Group stops by day
         var days = allStops
@@ -119,7 +116,7 @@ public class GetStopsReportQueryHandler : IRequestHandler<GetStopsReportQuery, S
     /// A stop = continuous period where ignition is OFF.
     /// Adjacent stops separated by < 60s gap are merged (noisy ignition debounce).
     /// </summary>
-    internal static List<StopEntryDto> DetectStops(List<GpsPosition> positions, int minDurationSeconds)
+    internal static List<StopEntryDto> DetectStops(List<PositionSlim> positions, int minDurationSeconds)
     {
         if (positions.Count == 0) return new List<StopEntryDto>();
 
@@ -233,16 +230,15 @@ public class GetStopsReportAllVehiclesQueryHandler : IRequestHandler<GetStopsRep
         var vehicleIds = await vehiclesQuery.Select(v => v.Id).ToListAsync(ct);
         var reports = new List<StopsReportDto>();
 
-        foreach (var vehicleId in vehicleIds)
-        {
-            var report = await _mediator.Send(new GetStopsReportQuery(
+        // Parallel: process all vehicles concurrently
+        var tasks = vehicleIds.Select(vehicleId =>
+            _mediator.Send(new GetStopsReportQuery(
                 vehicleId,
                 request.StartDate,
                 request.EndDate,
-                request.MinStopDurationSeconds), ct);
-            reports.Add(report);
-        }
+                request.MinStopDurationSeconds), ct));
 
-        return reports;
+        var results = await Task.WhenAll(tasks);
+        return results.ToList();
     }
 }
