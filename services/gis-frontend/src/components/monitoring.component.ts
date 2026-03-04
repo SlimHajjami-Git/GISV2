@@ -941,6 +941,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         this.playbackIndex = 0;
         this.playbackProgress = 0;
 
+        // Pre-populate address cache from positions that already have addresses
+        this.playbackAddressCache.clear();
+        this.playbackPositions.forEach((p: any) => {
+          if (p.address && !p.address.includes('°')) {
+            const key = `${p.latitude.toFixed(4)},${p.longitude.toFixed(4)}`;
+            this.playbackAddressCache.set(key, p.address);
+          }
+        });
+
         // Save monitoring map and show overlay
         this.monitoringMap = this.map;
         this.isPlaybackLoaded = true;
@@ -1115,14 +1124,26 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
                 <div style="font-weight: 600; color: #1e293b;">${position.temperatureC != null ? position.temperatureC + '°C' : 'N/A'}</div>
               </div>
             </div>
-            <div style="
+            <div id="playback-addr-${index}" style="
               margin-top: 8px;
-              padding: 6px 10px;
+              padding: 8px 10px;
               background: #fff;
-              border-radius: 4px;
+              border-radius: 6px;
               border: 1px solid #e2e8f0;
-              font-size: 10px;
-              color: #64748b;
+              font-size: 11px;
+              color: #475569;
+              display: flex;
+              align-items: flex-start;
+              gap: 6px;
+            ">
+              <span style="flex-shrink:0;">📍</span>
+              <span class="addr-text">${position.address && !position.address.includes('°') ? position.address : 'Chargement...'}</span>
+            </div>
+            <div style="
+              margin-top: 4px;
+              padding: 4px 10px;
+              font-size: 9px;
+              color: #94a3b8;
               font-family: 'SF Mono', Monaco, monospace;
               text-align: center;
             ">
@@ -1133,6 +1154,35 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       `;
 
       marker.bindPopup(popupContent);
+
+      // Lazy geocode on popup open if no address
+      if (!position.address || position.address.includes('°')) {
+        marker.on('popupopen', () => {
+          const cacheKey = `${position.latitude.toFixed(4)},${position.longitude.toFixed(4)}`;
+          const addrEl = document.querySelector(`#playback-addr-${index} .addr-text`);
+          if (!addrEl) return;
+
+          if (this.playbackAddressCache.has(cacheKey)) {
+            const cached = this.playbackAddressCache.get(cacheKey)!;
+            if (!cached.includes('°')) addrEl.textContent = cached;
+            return;
+          }
+
+          this.geocodingService.reverseGeocode(position.latitude, position.longitude).subscribe({
+            next: (addr) => {
+              if (addr && !addr.includes('°')) {
+                this.playbackAddressCache.set(cacheKey, addr);
+                const el = document.querySelector(`#playback-addr-${index} .addr-text`);
+                if (el) el.textContent = addr;
+              } else {
+                const el = document.querySelector(`#playback-addr-${index} .addr-text`);
+                if (el) el.textContent = `${position.latitude.toFixed(5)}, ${position.longitude.toFixed(5)}`;
+              }
+            }
+          });
+        }, { once: true } as any);
+      }
+
       this.pointMarkers.push(marker);
     });
   }
@@ -1149,7 +1199,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       hour: '2-digit', minute: '2-digit', second: '2-digit'
     });
     const cacheKey = `${position.latitude.toFixed(4)},${position.longitude.toFixed(4)}`;
-    const address = this.playbackAddressCache?.get(cacheKey) || `${position.latitude.toFixed(4)}°, ${position.longitude.toFixed(4)}°`;
+    // Priority: backend address > cache > coordinates (with lazy geocode)
+    let address = position.address || this.playbackAddressCache?.get(cacheKey) || '';
 
     const marker = L.circleMarker(latLng as L.LatLngExpression, {
       radius: 4,
@@ -1160,9 +1211,33 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       fillOpacity: 0.9
     }).addTo(this.map);
 
-    marker.bindTooltip(`${dateStr} — ${address} — ${speed.toFixed(0)} km/h`, {
-      direction: 'top', offset: [0, -6]
-    });
+    if (address && !address.includes('°')) {
+      marker.bindTooltip(`${dateStr} — ${address} — ${speed.toFixed(0)} km/h`, {
+        direction: 'top', offset: [0, -6]
+      });
+    } else {
+      // Show coordinates initially, geocode lazily on first hover
+      marker.bindTooltip(`${dateStr} — ${position.latitude.toFixed(4)}°, ${position.longitude.toFixed(4)}° — ${speed.toFixed(0)} km/h`, {
+        direction: 'top', offset: [0, -6]
+      });
+      marker.on('tooltipopen', () => {
+        if (this.playbackAddressCache.has(cacheKey)) {
+          const cached = this.playbackAddressCache.get(cacheKey)!;
+          if (!cached.includes('°')) {
+            marker.setTooltipContent(`${dateStr} — ${cached} — ${speed.toFixed(0)} km/h`);
+          }
+          return;
+        }
+        this.geocodingService.reverseGeocode(position.latitude, position.longitude).subscribe({
+          next: (addr) => {
+            if (addr && !addr.includes('°')) {
+              this.playbackAddressCache.set(cacheKey, addr);
+              marker.setTooltipContent(`${dateStr} — ${addr} — ${speed.toFixed(0)} km/h`);
+            }
+          }
+        });
+      }, { once: true } as any);
+    }
 
     this.pointMarkers.push(marker);
   }
