@@ -163,16 +163,18 @@ spec:
               value: "nominatim"
             - name: IMPORT_STYLE
               value: "full"
+            - name: THREADS
+              value: "2"
           volumeMounts:
             - name: nominatim-data
               mountPath: /var/lib/postgresql/14/main
           resources:
             requests:
-              memory: "768Mi"
-              cpu: "250m"
-            limits:
               memory: "1536Mi"
-              cpu: "1500m"
+              cpu: "500m"
+            limits:
+              memory: "3Gi"
+              cpu: "2000m"
           startupProbe:
             httpGet:
               path: /status.php
