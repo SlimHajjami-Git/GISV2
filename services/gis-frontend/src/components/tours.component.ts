@@ -114,9 +114,15 @@ declare let L: any;
               <td><span class="cell-sub">{{formatDateShort(t.scheduledStartTime)}}</span></td>
               <td><strong class="cell-km">{{t.estimatedDistanceKm | number:'1.0-0'}} km</strong></td>
               <td><span class="cell-dur">{{formatDuration(t.estimatedDurationMinutes)}}</span></td>
-              <td class="col-actions">
+              <td class="col-actions action-group">
+                <button class="row-action" (click)="$event.stopPropagation();quickEdit(t)" title="Modifier" *ngIf="t.status==='planned'">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button class="row-action" (click)="$event.stopPropagation();quickDelete(t)" title="Supprimer">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
                 <button class="row-action" (click)="$event.stopPropagation();openDetail(t)" title="Details">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
                 </button>
               </td>
             </tr>
@@ -546,7 +552,8 @@ declare let L: any;
     .cell-sub { font-size: 12px; color: #64748b; }
     .cell-km { font-size: 13px; color: #0f172a; }
     .cell-dur { font-size: 12px; color: #3b82f6; font-weight: 600; }
-    .row-action { background: none; border: none; cursor: pointer; color: #94a3b8; padding: 4px; border-radius: 4px; }
+    .action-group { display: flex; gap: 2px; justify-content: flex-end; }
+    .row-action { background: none; border: none; cursor: pointer; color: #94a3b8; padding: 4px; border-radius: 4px; display: flex; align-items: center; }
     .row-action:hover { background: #f1f5f9; color: #475569; }
 
     /* ════ CREATE / DETAIL VIEW ════ */
@@ -1161,6 +1168,19 @@ export class ToursComponent implements OnInit, OnDestroy {
     if (!confirm('Supprimer définitivement cette tournée ?')) return;
     this.apiService.deleteTour(this.selectedTour.id).subscribe({
       next: () => { this.closeDetail(); this.loadTours(); this.loadStats(); },
+      error: (err: any) => { console.error('Error deleting tour:', err); alert('Erreur lors de la suppression'); }
+    });
+  }
+
+  quickEdit(tour: any) {
+    this.selectedTour = tour;
+    this.editTour();
+  }
+
+  quickDelete(tour: any) {
+    if (!confirm('Supprimer définitivement cette tournée ?')) return;
+    this.apiService.deleteTour(tour.id).subscribe({
+      next: () => { this.loadTours(); this.loadStats(); },
       error: (err: any) => { console.error('Error deleting tour:', err); alert('Erreur lors de la suppression'); }
     });
   }
