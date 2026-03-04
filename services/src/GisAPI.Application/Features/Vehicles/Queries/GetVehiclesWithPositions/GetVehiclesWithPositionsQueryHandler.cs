@@ -101,24 +101,40 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             if (pos != null) latestPositions[deviceId] = pos;
         }
 
-        // Get today's stats per device (last 24 hours)
+        // Get today's stats per device (last 24 hours) with accurate time calculation
         var since = DateTime.UtcNow.AddHours(-24);
-        var deviceStats = new Dictionary<int, (double MaxSpeed, int MovingCount, int StoppedCount, int TotalCount)>();
+        var deviceStats = new Dictionary<int, (double MaxSpeed, double MovingMinutes, double StoppedMinutes, int TotalCount)>();
         foreach (var deviceId in deviceIds)
         {
-            var stats = await _context.GpsPositions
+            // Fetch ordered positions for time-gap based calculation
+            var positions = await _context.GpsPositions
                 .AsNoTracking()
                 .Where(p => p.DeviceId == deviceId && p.RecordedAt >= since)
-                .GroupBy(p => 1)
-                .Select(g => new {
-                    MaxSpeed = g.Max(p => p.SpeedKph ?? 0),
-                    MovingCount = g.Count(p => p.SpeedKph > 5),
-                    StoppedCount = g.Count(p => p.SpeedKph <= 5),
-                    TotalCount = g.Count()
-                })
-                .FirstOrDefaultAsync(ct);
-            if (stats != null)
-                deviceStats[deviceId] = (stats.MaxSpeed, stats.MovingCount, stats.StoppedCount, stats.TotalCount);
+                .OrderBy(p => p.RecordedAt)
+                .Select(p => new { p.RecordedAt, p.SpeedKph })
+                .ToListAsync(ct);
+
+            if (positions.Count > 0)
+            {
+                var maxSpeed = positions.Max(p => p.SpeedKph ?? 0);
+                double movingSeconds = 0;
+                double stoppedSeconds = 0;
+
+                for (int i = 1; i < positions.Count; i++)
+                {
+                    var gap = (positions[i].RecordedAt - positions[i - 1].RecordedAt).TotalSeconds;
+                    // Cap gap at 10 minutes to avoid counting long offline periods
+                    if (gap > 600) gap = 600;
+                    
+                    // Attribute the gap to moving or stopped based on the previous position's speed
+                    if ((positions[i - 1].SpeedKph ?? 0) > 5)
+                        movingSeconds += gap;
+                    else
+                        stoppedSeconds += gap;
+                }
+
+                deviceStats[deviceId] = (maxSpeed, movingSeconds / 60.0, stoppedSeconds / 60.0, positions.Count);
+            }
         }
 
         var result = vehicles.Select(v =>
@@ -191,9 +207,9 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                 if (fuelLevel < 0) fuelLevel = 0;
             }
 
-            // Estimate moving/stopped time based on position counts (approx 1 min per position)
-            var movingMinutes = stats.MovingCount;
-            var stoppedMinutes = stats.StoppedCount;
+            // Accurate moving/stopped time from time-gap calculation
+            var movingMinutes = stats.MovingMinutes;
+            var stoppedMinutes = stats.StoppedMinutes;
 
             return new VehicleWithPositionDto(
                 v.Id,

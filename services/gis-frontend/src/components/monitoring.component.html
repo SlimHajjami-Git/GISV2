@@ -62,6 +62,14 @@
           </div>
         </div>
 
+        <!-- Status Legend -->
+        <div class="status-legend" *ngIf="!isPanelCollapsed">
+          <span class="legend-item"><span class="status-dot moving"></span> En mouvement</span>
+          <span class="legend-item"><span class="status-dot stopped"></span> Arrêt moteur</span>
+          <span class="legend-item"><span class="status-dot idle"></span> Au ralenti</span>
+          <span class="legend-item"><span class="status-dot offline"></span> Hors ligne</span>
+        </div>
+
         <div class="vehicles-list" *ngIf="!isPanelCollapsed">
           <div class="vehicle-item" *ngFor="let vehicle of filteredVehicles; trackBy: trackByVehicleId">
             <div
