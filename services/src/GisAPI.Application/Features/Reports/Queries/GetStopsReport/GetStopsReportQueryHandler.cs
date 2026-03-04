@@ -63,6 +63,33 @@ public class GetStopsReportQueryHandler : IRequestHandler<GetStopsReportQuery, S
         var allStops = DetectStops(positions, request.MinStopDurationSeconds);
         // No geocoding here — frontend handles address enrichment via enrichAllAddresses()
 
+        // Fix boundary stops: if vehicle was already stopped at range start, extend to midnight
+        if (allStops.Count > 0 && positions.Count > 0)
+        {
+            var firstStop = allStops[0];
+            var firstPos = positions[0];
+            // If the first position is ignition OFF and the first stop starts at that position,
+            // the vehicle was already stopped before our query range → extend to range start
+            if (firstPos.IgnitionOn == false && firstStop.StartTime == firstPos.RecordedAt)
+            {
+                firstStop.StartTime = rangeStart;
+                firstStop.DurationSeconds = (int)(firstStop.EndTime - firstStop.StartTime).TotalSeconds;
+                firstStop.DurationFormatted = FormatDuration(firstStop.DurationSeconds);
+            }
+
+            var lastStop = allStops[^1];
+            var lastPos = positions[^1];
+            // If the last position is ignition OFF and the last stop ends at that position,
+            // the vehicle is still stopped → extend to range end (or now if today)
+            if (lastPos.IgnitionOn == false && lastStop.EndTime == lastPos.RecordedAt)
+            {
+                var now = DateTime.UtcNow;
+                lastStop.EndTime = now < rangeEnd ? now : rangeEnd;
+                lastStop.DurationSeconds = (int)(lastStop.EndTime - lastStop.StartTime).TotalSeconds;
+                lastStop.DurationFormatted = FormatDuration(lastStop.DurationSeconds);
+            }
+        }
+
         // Group stops by day
         var days = allStops
             .GroupBy(s => s.StartTime.Date)
