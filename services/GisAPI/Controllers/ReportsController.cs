@@ -10,6 +10,7 @@ using GisAPI.Application.Features.Reports.Queries.GetMileageReport;
 using GisAPI.Application.Features.Reports.Queries.GetMonthlyFleetReport;
 using GisAPI.Application.Features.Reports.Queries.GetMileagePeriodReport;
 using GisAPI.Application.Features.Reports.Queries.GetStopsReport;
+using GisAPI.Application.Features.Reports.Queries.GetTripsReport;
 
 namespace GisAPI.Controllers;
 
@@ -430,6 +431,52 @@ public class ReportsController : ControllerBase
 
         var result = await _mediator.Send(new GetStopsReportAllVehiclesQuery(
             start, end, vehicleIds, minStopDurationSeconds));
+
+        return Ok(result);
+    }
+
+    // ==================== TRIPS REPORT ====================
+
+    /// <summary>
+    /// Get trips report for a single vehicle (ignition ON periods grouped by day)
+    /// </summary>
+    [HttpGet("trips/{vehicleId}")]
+    public async Task<ActionResult<TripsReportDto>> GetTripsReport(
+        int vehicleId,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null)
+    {
+        var companyId = GetCompanyId();
+
+        var vehicleExists = await _context.Vehicles
+            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
+
+        if (!vehicleExists)
+            return NotFound(new { message = "Vehicle not found" });
+
+        var start = startDate?.Date ?? DateTime.UtcNow.Date;
+        var end = endDate?.Date ?? DateTime.UtcNow.Date;
+
+        var result = await _mediator.Send(new GetTripsReportQuery(
+            vehicleId, start, end));
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Get trips report for all vehicles (ignition ON periods grouped by day)
+    /// </summary>
+    [HttpGet("trips")]
+    public async Task<ActionResult<List<TripsReportDto>>> GetTripsReportAll(
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] int[]? vehicleIds = null)
+    {
+        var start = startDate?.Date ?? DateTime.UtcNow.Date;
+        var end = endDate?.Date ?? DateTime.UtcNow.Date;
+
+        var result = await _mediator.Send(new GetTripsReportAllVehiclesQuery(
+            start, end, vehicleIds));
 
         return Ok(result);
     }

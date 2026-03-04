@@ -760,6 +760,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // Handle trips report using backend API
+    if (this.selectedTemplate.type === 'trips') {
+      if (vehicleId) {
+        this.executeTripsReport(vehicleId, startDate, endDate);
+      } else {
+        this.executeTripsReportAllVehicles(startDate, endDate);
+      }
+      return;
+    }
+
     // Handle speed infraction report
     if (this.selectedTemplate.type === 'speed-infraction') {
       this.executeSpeedInfractionReport(startDate, endDate);
@@ -874,7 +884,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const type = this.selectedTemplate?.type || 'trips';
 
     if (type === 'trips') {
-      this.processTripReportAllVehicles(positions);
+      // Trips report is now handled by backend API via executeTripsReport
+      return;
     } else if (type === 'speed') {
       this.processSpeedReportAllVehicles(positions);
     } else {
@@ -1207,6 +1218,64 @@ export class ReportsComponent implements OnInit, OnDestroy {
           this.tableData = [];
           this.chartData = [];
           this.statisticsData = { 'Erreur': 'Impossible de charger le rapport des arrêts' };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
+      }
+    });
+  }
+
+  executeTripsReport(vehicleId: number, startDate?: Date, endDate?: Date) {
+    this.apiService.getTripsReport(vehicleId, startDate, endDate).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (report: any) => {
+        this.ngZone.run(() => {
+          this.processTripsFromBackend([report]);
+          this.reportGenerated = true;
+          this.loading = false;
+          this.activeTab = 'table';
+          this.currentPage = 1;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+          setTimeout(() => this.createChart(), 100);
+        });
+      },
+      error: (err) => {
+        this.ngZone.run(() => {
+          console.error('Error loading trips report:', err);
+          this.tableData = [];
+          this.chartData = [];
+          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport des trajets' };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
+      }
+    });
+  }
+
+  executeTripsReportAllVehicles(startDate?: Date, endDate?: Date) {
+    this.apiService.getTripsReportAll(startDate, endDate).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (reports: any[]) => {
+        this.ngZone.run(() => {
+          this.processTripsFromBackend(reports);
+          this.reportGenerated = true;
+          this.loading = false;
+          this.activeTab = 'table';
+          this.currentPage = 1;
+          this.cdr.detectChanges();
+          this.appRef.tick();
+          setTimeout(() => this.createChart(), 100);
+        });
+      },
+      error: (err) => {
+        this.ngZone.run(() => {
+          console.error('Error loading trips report:', err);
+          this.tableData = [];
+          this.chartData = [];
+          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport des trajets' };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -3222,7 +3291,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         this.processDistanceReport(sorted);
         break;
       case 'trips':
-        this.processTripReport(sorted);
+        // Trips report is now handled by backend API via executeTripsReport
         break;
       default:
         this.processFuelReport(sorted);
@@ -3656,192 +3725,107 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
   }
 
-  processTripReport(positions: any[]) {
-    if (!positions.length) {
+  /**
+   * Process trips report from backend API response.
+   * Backend returns data grouped by day with ignition_on == true periods.
+   */
+  processTripsFromBackend(reports: any[]) {
+    if (!reports || reports.length === 0) {
       this.tableData = [];
       this.chartData = [];
-      this.statisticsData = { 'Information': 'Aucune donnée pour cette période' };
+      this.statisticsData = { 'Information': 'Aucun trajet trouvé pour cette période' };
       return;
-    }
-
-    // ═══════ TRIP DETECTION — matches backend daily report algorithm ═══════
-    // Trip = ignition ON period (continues through red lights / speed=0)
-    // Stop = ignition OFF period
-    // Distance only counted when speed > 2 AND haversine > 0.01 km (filters GPS noise)
-    const SPEED_THRESHOLD = 3; // km/h — must match backend StopSpeedThresholdKph
-    const hasIgnitionData = positions.some(p => p.ignitionOn === true || p.ignitionOn === false);
-
-    const trips: { start: any; end: any; positions: any[]; distanceKm: number }[] = [];
-    let i = 0;
-
-    while (i < positions.length) {
-      const pos = positions[i];
-      const ignitionOn = hasIgnitionData ? (pos.ignitionOn === true) : ((pos.speedKph || 0) > SPEED_THRESHOLD);
-      const isMoving = (pos.speedKph || 0) > SPEED_THRESHOLD;
-
-      if (ignitionOn && isMoving) {
-        // Start of a drive segment — require actual movement to begin
-        const drivePositions: any[] = [pos];
-        let driveDistanceKm = 0;
-        i++;
-        let consecutiveSlowPoints = 0;
-
-        while (i < positions.length) {
-          const nextPos = positions[i];
-          const nextSpeed = nextPos.speedKph || 0;
-          const nextIgnition = hasIgnitionData ? (nextPos.ignitionOn === true) : (nextSpeed > SPEED_THRESHOLD);
-
-          if (nextSpeed > SPEED_THRESHOLD) {
-            // Actually moving — accumulate distance
-            consecutiveSlowPoints = 0;
-            const prev = drivePositions[drivePositions.length - 1];
-            const dist = this.haversineDistance(prev.latitude, prev.longitude, nextPos.latitude, nextPos.longitude);
-            if (!Number.isNaN(dist) && dist > 0.01 && dist < 5) {
-              driveDistanceKm += dist;
-            }
-            drivePositions.push(nextPos);
-            i++;
-          } else if (nextIgnition && nextSpeed > 0 && consecutiveSlowPoints < 5) {
-            // Brief slowdown (traffic light, traffic) — allow up to 5 consecutive slow points
-            consecutiveSlowPoints++;
-            drivePositions.push(nextPos);
-            i++;
-          } else if (nextIgnition && nextSpeed === 0 && consecutiveSlowPoints < 3) {
-            // Stopped briefly with ignition on (red light) — allow up to 3 zero-speed points
-            consecutiveSlowPoints++;
-            drivePositions.push(nextPos);
-            i++;
-          } else {
-            break; // End of drive
-          }
-        }
-
-        if (drivePositions.length > 1) {
-          const driveEnd = drivePositions[drivePositions.length - 1];
-          const speeds = drivePositions.map((p: any) => p.speedKph || 0).filter((s: number) => s > 0);
-          const avgSpeed = speeds.length > 0 ? speeds.reduce((a: number, b: number) => a + b, 0) / speeds.length : 0;
-
-          // Quality filter: matches backend (distance >= 0.2 km AND avgSpeed >= 5 km/h)
-          if (driveDistanceKm >= 0.2 && avgSpeed >= 5) {
-            trips.push({
-              start: drivePositions[0],
-              end: driveEnd,
-              positions: drivePositions,
-              distanceKm: driveDistanceKm
-            });
-          }
-        }
-      } else {
-        i++; // Skip stopped/idle positions
-      }
-    }
-
-    if (!trips.length) {
-      this.tableData = [];
-      this.chartData = [];
-      this.statisticsData = { 'Information': 'Aucun trajet significatif détecté' };
-      return;
-    }
-
-    // ═══════ MERGE PHASE ═══════
-    // Merge consecutive trips with small gaps (< 5 min between end of one and start of next)
-    const mergedTrips: typeof trips = [trips[0]];
-    for (let t = 1; t < trips.length; t++) {
-      const prev = mergedTrips[mergedTrips.length - 1];
-      const curr = trips[t];
-      const gapMs = new Date(curr.start.recordedAt).getTime() - new Date(prev.end.recordedAt).getTime();
-      if (gapMs < 300000) { // < 5 min gap → merge into one trip
-        prev.end = curr.end;
-        prev.positions = [...prev.positions, ...curr.positions];
-        prev.distanceKm += curr.distanceKm;
-      } else {
-        mergedTrips.push(curr);
-      }
     }
 
     // Format duration helper
-    const formatDuration = (minutes: number): string => {
+    const formatDuration = (seconds: number): string => {
+      if (seconds < 60) return `${seconds}s`;
+      const minutes = seconds / 60;
       if (minutes >= 60) {
-        const h = Math.floor(minutes / 60);
-        const m = Math.round(minutes % 60);
-        return m > 0 ? `${h}h ${m}min` : `${h}h`;
+        const hours = Math.floor(minutes / 60);
+        const mins = Math.round(minutes % 60);
+        return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
       }
       return `${Math.round(minutes)}min`;
     };
 
-    // Reverse to show most recent first
-    mergedTrips.reverse();
-
-    // Build table data
-    const totalTrips = mergedTrips.length;
-    let tripNumber = totalTrips + 1;
-    this.tableData = mergedTrips.map((seg) => {
-      const startTime = new Date(seg.start.recordedAt);
-      const endTime = new Date(seg.end.recordedAt);
-      const durationMin = (endTime.getTime() - startTime.getTime()) / 60000;
-
-      tripNumber--;
-      let distanceKm = seg.distanceKm;
-      
-      // Try odometer first, with sanity check
-      if (seg.start.odometerKm && seg.end.odometerKm && seg.end.odometerKm >= seg.start.odometerKm) {
-        let odometerDist = seg.end.odometerKm - seg.start.odometerKm;
-        // Auto-detect: some GPS devices send odometer in meters instead of km
-        if (distanceKm > 0 && odometerDist > distanceKm * 500) {
-          odometerDist = odometerDist / 1000;
-        }
-        // Sanity: max ~200 km/h => max distance = duration(h) * 200
-        const maxReasonable = Math.max((durationMin / 60) * 200, 5);
-        if (odometerDist <= maxReasonable) {
-          distanceKm = odometerDist;
+    // Flatten all trips from all reports (multi-vehicle support)
+    const allTrips: any[] = [];
+    for (const report of reports) {
+      if (!report.days) continue;
+      for (const day of report.days) {
+        for (const trip of day.trips) {
+          allTrips.push({
+            ...trip,
+            dayDate: day.date,
+            vehicleName: report.vehicleName,
+            vehiclePlate: report.plate
+          });
         }
       }
-      
-      const maxSpeed = Math.max(...seg.positions.map((p: any) => p.speedKph || 0));
-      const speeds = seg.positions.map((p: any) => p.speedKph || 0).filter((s: number) => s > 0);
-      const avgSpeed = speeds.length > 0 ? speeds.reduce((a: number, b: number) => a + b, 0) / speeds.length : 0;
+    }
 
+    // Build table data — most recent first
+    allTrips.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+
+    let tripNumber = allTrips.length + 1;
+    this.tableData = allTrips.map((trip: any) => {
+      tripNumber--;
+      const durationMin = trip.durationSeconds / 60;
       return {
         isTrip: true,
         tripNumber,
-        startTime: this.formatDateTime(seg.start.recordedAt),
-        endTime: this.formatDateTime(seg.end.recordedAt),
-        duration: formatDuration(durationMin),
+        startTime: this.formatDateTime(trip.startTime),
+        endTime: this.formatDateTime(trip.endTime),
+        duration: trip.durationFormatted || formatDuration(trip.durationSeconds),
         durationMin,
-        distance: `${distanceKm.toFixed(1)} km`,
-        distanceKm,
-        maxSpeed: `${maxSpeed.toFixed(0)} km/h`,
-        avgSpeed: `${avgSpeed.toFixed(0)} km/h`,
-        startAddress: seg.start.address || `${seg.start.latitude.toFixed(4)}°, ${seg.start.longitude.toFixed(4)}°`,
-        endAddress: seg.end.address || `${seg.end.latitude.toFixed(4)}°, ${seg.end.longitude.toFixed(4)}°`,
-        startLat: seg.start.latitude,
-        startLng: seg.start.longitude,
-        endLat: seg.end.latitude,
-        endLng: seg.end.longitude
+        distance: `${trip.distanceKm.toFixed(1)} km`,
+        distanceKm: trip.distanceKm,
+        maxSpeed: `${trip.maxSpeedKph.toFixed(0)} km/h`,
+        avgSpeed: `${trip.avgSpeedKph.toFixed(0)} km/h`,
+        startAddress: trip.startAddress || `${trip.startLatitude?.toFixed(5)}, ${trip.startLongitude?.toFixed(5)}`,
+        endAddress: trip.endAddress || `${trip.endLatitude?.toFixed(5)}, ${trip.endLongitude?.toFixed(5)}`,
+        startLat: trip.startLatitude,
+        startLng: trip.startLongitude,
+        endLat: trip.endLatitude,
+        endLng: trip.endLongitude,
+        vehicleName: trip.vehicleName,
+        vehiclePlate: trip.vehiclePlate
       };
     });
 
     // Enrich addresses
     this.enrichAllAddresses();
 
-    // Chart data - trips only
+    // Chart data - distance per trip
     this.chartData = this.tableData.map((t: any) => ({
       label: `Trajet ${t.tripNumber}`,
       value: t.distanceKm,
       duration: t.durationMin
     }));
 
-    // Statistics
-    const totalDistance = this.tableData.reduce((sum: number, t: any) => sum + t.distanceKm, 0);
-    const totalDrivingMin = this.tableData.reduce((sum: number, t: any) => sum + t.durationMin, 0);
-    const maxSpeedAll = Math.max(...this.tableData.map((t: any) => parseFloat(t.maxSpeed) || 0));
-
-    this.statisticsData = {
-      'Nombre de trajets': this.tableData.length.toString(),
-      'Distance totale': `${totalDistance.toFixed(1)} km`,
-      'Temps de conduite': formatDuration(totalDrivingMin),
-      'Vitesse max': `${maxSpeedAll.toFixed(0)} km/h`
-    };
+    // Statistics from backend summary (single vehicle) or computed (multi)
+    if (reports.length === 1 && reports[0].summary) {
+      const s = reports[0].summary;
+      this.statisticsData = {
+        'Nombre de trajets': s.totalTrips.toString(),
+        'Distance totale': `${s.totalDistanceKm} km`,
+        'Temps de conduite': s.totalTripFormatted,
+        'Vitesse max': `${s.maxSpeedKph} km/h`,
+        'Vitesse moy.': `${s.avgSpeedKph} km/h`
+      };
+    } else {
+      const totalDistance = allTrips.reduce((sum: number, t: any) => sum + t.distanceKm, 0);
+      const totalDrivingMin = allTrips.reduce((sum: number, t: any) => sum + t.durationSeconds / 60, 0);
+      const maxSpeedAll = allTrips.length > 0 ? Math.max(...allTrips.map((t: any) => t.maxSpeedKph)) : 0;
+      this.statisticsData = {
+        'Nombre de trajets': allTrips.length.toString(),
+        'Distance totale': `${totalDistance.toFixed(1)} km`,
+        'Temps de conduite': formatDuration(Math.round(totalDrivingMin * 60)),
+        'Vitesse max': `${maxSpeedAll.toFixed(0)} km/h`,
+        'Véhicules': new Set(allTrips.map((t: any) => t.vehicleName)).size.toString()
+      };
+    }
   }
 
   enrichTripAddresses() {

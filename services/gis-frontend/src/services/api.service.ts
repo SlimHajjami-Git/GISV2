@@ -1152,6 +1152,25 @@ export class ApiService {
     return this.http.get<any[]>(`${this.API_URL}/reports/stops`, { headers: this.getHeaders(), params });
   }
 
+  // ==================== TRIPS REPORTS ====================
+
+  getTripsReport(vehicleId: number, startDate?: Date, endDate?: Date): Observable<any> {
+    let params = new HttpParams();
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate).split('T')[0]);
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate).split('T')[0]);
+    return this.http.get<any>(`${this.API_URL}/reports/trips/${vehicleId}`, { headers: this.getHeaders(), params });
+  }
+
+  getTripsReportAll(startDate?: Date, endDate?: Date, vehicleIds?: number[]): Observable<any[]> {
+    let params = new HttpParams();
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate).split('T')[0]);
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate).split('T')[0]);
+    if (vehicleIds?.length) {
+      vehicleIds.forEach(id => params = params.append('vehicleIds', id.toString()));
+    }
+    return this.http.get<any[]>(`${this.API_URL}/reports/trips`, { headers: this.getHeaders(), params });
+  }
+
   // ==================== MILEAGE REPORTS ====================
 
   getMileageReport(vehicleId: number, startDate?: Date, endDate?: Date): Observable<MileageReport> {
