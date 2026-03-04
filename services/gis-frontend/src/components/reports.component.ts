@@ -1024,6 +1024,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const timeB = new Date(b.startTime.split('/').reverse().join('-')).getTime();
       return timeB - timeA;
     });
+
+    // Enrich addresses
+    this.enrichAllAddresses();
+
     const totalDistance = tripResults.reduce((sum, t) => sum + t.distanceKm, 0);
     const totalDurationMin = tripResults.reduce((sum, t) => sum + t.durationMin, 0);
 
@@ -1118,6 +1122,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
         longitude: p.longitude
       };
     });
+
+    // Enrich addresses
+    this.enrichAllAddresses();
 
     // Count infractions (exceeding vehicle limit)
     const infractions = highSpeedPositions.filter(p => {
@@ -1461,21 +1468,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   enrichSpeedInfractionAddresses() {
-    this.tableData.forEach((row: any, index: number) => {
-      const isCoordinateOnly = row.address && !/[a-zA-Z]/.test(row.address);
-      if (isCoordinateOnly && row.latitude && row.longitude) {
-        this.geocodingService.reverseGeocode(row.latitude, row.longitude).pipe(takeUntil(this.destroy$)).subscribe({
-          next: (address) => {
-            if (address) {
-              this.ngZone.run(() => {
-                this.tableData[index] = { ...this.tableData[index], address };
-                this.cdr.detectChanges();
-              });
-            }
-          }
-        });
-      }
-    });
+    this.enrichAllAddresses();
   }
 
   executeDrivingBehaviorReport(start?: Date, end?: Date) {
@@ -1840,21 +1833,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   enrichDrivingBehaviorAddresses() {
-    this.tableData.forEach((row: any, index: number) => {
-      const isCoordinateOnly = row.address && !/[a-zA-Z]/.test(row.address);
-      if (isCoordinateOnly && row.latitude && row.longitude) {
-        this.geocodingService.reverseGeocode(row.latitude, row.longitude).pipe(takeUntil(this.destroy$)).subscribe({
-          next: (address) => {
-            if (address) {
-              this.ngZone.run(() => {
-                this.tableData[index] = { ...this.tableData[index], address };
-                this.cdr.detectChanges();
-              });
-            }
-          }
-        });
-      }
-    });
+    this.enrichAllAddresses();
   }
 
   executeDailyReport(vehicleId: number, date?: Date) {
@@ -2166,20 +2145,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   enrichDailyReportAddresses() {
-    this.tableData.forEach((row: any, index: number) => {
-      if (row.address?.includes('°') && row.latitude && row.longitude) {
-        this.geocodingService.reverseGeocode(row.latitude, row.longitude).pipe(takeUntil(this.destroy$)).subscribe({
-          next: (addr) => {
-            if (addr) {
-              this.ngZone.run(() => {
-                this.tableData[index] = { ...this.tableData[index], address: addr, description: addr };
-                this.cdr.detectChanges();
-              });
-            }
-          }
-        });
-      }
-    });
+    this.enrichAllAddresses();
   }
 
   formatTime(dateStr: string): string {
@@ -3420,7 +3386,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.tableData = fuelChanges;
 
     // Fetch addresses asynchronously for positions without address
-    this.enrichWithAddresses();
+    this.enrichAllAddresses();
 
     // Chart data - use cleaned positions for smooth fuel level graph (no spikes)
     this.chartData = cleanPositions.map((pos: any) => ({
@@ -3512,22 +3478,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
       };
     });
 
-    // Enrich with addresses (only for coordinate-only entries, not real addresses)
-    this.tableData.forEach((row: any, index: number) => {
-      const isCoordinateOnly = row.address && !/[a-zA-Z]/.test(row.address);
-      if (isCoordinateOnly && row.latitude && row.longitude) {
-        this.geocodingService.reverseGeocode(row.latitude, row.longitude).pipe(takeUntil(this.destroy$)).subscribe({
-          next: (addr) => {
-            if (addr) {
-              this.ngZone.run(() => {
-                this.tableData[index] = { ...this.tableData[index], address: addr };
-                this.cdr.detectChanges();
-              });
-            }
-          }
-        });
-      }
-    });
+    // Enrich with addresses
+    this.enrichAllAddresses();
 
     // Chart data - Speed distribution
     this.chartData = rangeCounts.filter(r => r.count > 0).map(range => ({
@@ -3685,25 +3637,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   enrichStopsWithAddresses() {
-    // Fetch addresses for stops that don't have one
-    this.tableData.forEach((row: any, index: number) => {
-      if (row.address === 'Chargement...' && row.latitude && row.longitude) {
-        this.geocodingService.reverseGeocode(row.latitude, row.longitude).pipe(takeUntil(this.destroy$)).subscribe({
-          next: (address) => {
-            this.ngZone.run(() => {
-              this.tableData[index] = { ...this.tableData[index], address: address || `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}` };
-              this.cdr.detectChanges();
-            });
-          },
-          error: () => {
-            this.ngZone.run(() => {
-              this.tableData[index] = { ...this.tableData[index], address: `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}` };
-              this.cdr.detectChanges();
-            });
-          }
-        });
-      }
-    });
+    this.enrichAllAddresses();
   }
 
   processStopsFromPositions(positions: any[], periodStart?: Date, periodEnd?: Date) {
@@ -4107,7 +4041,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     });
 
     // Enrich addresses
-    this.enrichTripAddresses();
+    this.enrichAllAddresses();
 
     // Chart data - trips only
     this.chartData = this.tableData.map((t: any) => ({
@@ -4130,45 +4064,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   enrichTripAddresses() {
-    this.tableData.forEach((row: any, index: number) => {
-      if (row.isTrip) {
-        if (row.startAddress?.includes('°')) {
-          this.geocodingService.reverseGeocode(row.startLat, row.startLng).pipe(takeUntil(this.destroy$)).subscribe({
-            next: (addr) => {
-              if (addr) {
-                this.ngZone.run(() => {
-                  this.tableData[index] = { ...this.tableData[index], startAddress: addr };
-                  this.cdr.detectChanges();
-                });
-              }
-            }
-          });
-        }
-        if (row.endAddress?.includes('°')) {
-          this.geocodingService.reverseGeocode(row.endLat, row.endLng).pipe(takeUntil(this.destroy$)).subscribe({
-            next: (addr) => {
-              if (addr) {
-                this.ngZone.run(() => {
-                  this.tableData[index] = { ...this.tableData[index], endAddress: addr };
-                  this.cdr.detectChanges();
-                });
-              }
-            }
-          });
-        }
-      } else if (row.isStop && row.address?.includes('°')) {
-        this.geocodingService.reverseGeocode(row.latitude, row.longitude).pipe(takeUntil(this.destroy$)).subscribe({
-          next: (addr) => {
-            if (addr) {
-              this.ngZone.run(() => {
-                this.tableData[index] = { ...this.tableData[index], address: addr };
-                this.cdr.detectChanges();
-              });
-            }
-          }
-        });
-      }
-    });
+    this.enrichAllAddresses();
   }
 
   haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -5432,36 +5328,69 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Enrich table data with addresses from Nominatim for positions without address
+   * Universal address enrichment for ALL reports.
+   * Detects and geocodes coordinate-based fields: location, address, startAddress, endAddress.
    */
-  async enrichWithAddresses() {
-    // Find positions that need geocoding (no address yet, only coordinates)
-    const positionsToGeocode = this.tableData.filter(
-      (row: any) => row.latitude && row.longitude && row.location.includes('°')
-    );
+  async enrichAllAddresses() {
+    const needsGeocode = (val: string | undefined | null): boolean => {
+      if (!val) return false;
+      // Detect: coordinates with °, 'Chargement...', or pure numeric (no letters = raw coordinates)
+      return val.includes('°') || val === 'Chargement...' || !/[a-zA-Z\u00C0-\u024F\u0600-\u06FF]/.test(val);
+    };
 
-    if (positionsToGeocode.length === 0) return;
+    // Collect all coordinates that need geocoding
+    const coordsToGeocode: { lat: number; lon: number }[] = [];
 
-    // Batch geocode coordinates
-    const coordinates = positionsToGeocode.map((row: any) => ({
-      lat: row.latitude,
-      lon: row.longitude
-    }));
+    this.tableData.forEach((row: any) => {
+      if (needsGeocode(row.location) && row.latitude && row.longitude) {
+        coordsToGeocode.push({ lat: row.latitude, lon: row.longitude });
+      }
+      if (needsGeocode(row.address) && row.latitude && row.longitude) {
+        coordsToGeocode.push({ lat: row.latitude, lon: row.longitude });
+      }
+      if (needsGeocode(row.startAddress) && row.startLat && row.startLng) {
+        coordsToGeocode.push({ lat: row.startLat, lon: row.startLng });
+      }
+      if (needsGeocode(row.endAddress) && row.endLat && row.endLng) {
+        coordsToGeocode.push({ lat: row.endLat, lon: row.endLng });
+      }
+    });
+
+    if (coordsToGeocode.length === 0) return;
 
     try {
-      const addressMap = await this.geocodingService.batchReverseGeocode(coordinates);
-      
-      // Update table data with addresses
+      const addressMap = await this.geocodingService.batchReverseGeocode(coordsToGeocode);
+
       this.ngZone.run(() => {
         this.tableData = this.tableData.map((row: any) => {
-          if (row.latitude && row.longitude && row.location.includes('°')) {
+          const updated = { ...row };
+          if (needsGeocode(row.location) && row.latitude && row.longitude) {
             const key = `${row.latitude.toFixed(4)},${row.longitude.toFixed(4)}`;
-            const address = addressMap.get(key);
-            if (address) {
-              return { ...row, location: address };
+            const addr = addressMap.get(key);
+            if (addr) updated.location = addr;
+          }
+          if (needsGeocode(row.address) && row.latitude && row.longitude) {
+            const key = `${row.latitude.toFixed(4)},${row.longitude.toFixed(4)}`;
+            const addr = addressMap.get(key);
+            if (addr) {
+              updated.address = addr;
+              // Also update description if it matches the old address (daily report pattern)
+              if (row.description && row.description === row.address) {
+                updated.description = addr;
+              }
             }
           }
-          return row;
+          if (needsGeocode(row.startAddress) && row.startLat && row.startLng) {
+            const key = `${row.startLat.toFixed(4)},${row.startLng.toFixed(4)}`;
+            const addr = addressMap.get(key);
+            if (addr) updated.startAddress = addr;
+          }
+          if (needsGeocode(row.endAddress) && row.endLat && row.endLng) {
+            const key = `${row.endLat.toFixed(4)},${row.endLng.toFixed(4)}`;
+            const addr = addressMap.get(key);
+            if (addr) updated.endAddress = addr;
+          }
+          return updated;
         });
         this.cdr.detectChanges();
       });
