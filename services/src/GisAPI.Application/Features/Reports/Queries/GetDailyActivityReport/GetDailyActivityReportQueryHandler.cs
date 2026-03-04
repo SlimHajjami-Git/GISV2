@@ -495,9 +495,12 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
         double totalDistance = 0;
         for (int i = 1; i < positions.Count; i++)
         {
-            totalDistance += HaversineDistance(
+            var dist = HaversineDistance(
                 positions[i - 1].Latitude, positions[i - 1].Longitude,
                 positions[i].Latitude, positions[i].Longitude);
+            // Filter GPS noise: min 10m, max 5km jump, speed > 2 km/h
+            if (dist > 0.01 && dist < 5 && (positions[i].SpeedKph ?? 0) > 2)
+                totalDistance += dist;
         }
         return totalDistance;
     }

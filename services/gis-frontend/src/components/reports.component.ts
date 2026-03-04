@@ -901,41 +901,73 @@ export class ReportsComponent implements OnInit, OnDestroy {
       byVehicle.set(p.vehicleId, list);
     });
 
+    const SPEED_THRESHOLD = 3;
     const allTrips: any[] = [];
     let tripNumber = 0;
 
     byVehicle.forEach((vehiclePositions, vehicleId) => {
       const vehicleName = vehiclePositions[0]?.vehicleName || 'Véhicule';
+      const hasIgnitionData = vehiclePositions.some((p: any) => p.ignitionOn === true || p.ignitionOn === false);
       
-      // Detect trips for this vehicle - require actual movement
-      let currentTrip: any = null;
-      
-      vehiclePositions.forEach((pos, i) => {
-        const isIgnitionOn = pos.ignitionOn === true;
-        const hasMovement = (pos.speedKph || 0) > 2;
-        
-        if (isIgnitionOn && hasMovement && !currentTrip) {
-          // Start trip: ignition ON + movement
-          currentTrip = { start: pos, end: pos, positions: [pos], vehicleName, vehicleId, hasMovement: true };
-        } else if (isIgnitionOn && currentTrip) {
-          // Continue trip: ignition still ON (even if speed=0, e.g. traffic light)
-          currentTrip.end = pos;
-          currentTrip.positions.push(pos);
-        } else if (!isIgnitionOn && currentTrip) {
-          // End trip: ignition turned OFF
-          if (currentTrip.hasMovement && currentTrip.positions.length > 1) {
-            tripNumber++;
-            currentTrip.tripNumber = tripNumber;
-            allTrips.push(currentTrip);
+      let idx = 0;
+      while (idx < vehiclePositions.length) {
+        const pos = vehiclePositions[idx];
+        const ignitionOn = hasIgnitionData ? (pos.ignitionOn === true) : ((pos.speedKph || 0) > SPEED_THRESHOLD);
+        const isMoving = (pos.speedKph || 0) > SPEED_THRESHOLD;
+
+        if (ignitionOn && isMoving) {
+          const drivePositions: any[] = [pos];
+          let driveDistanceKm = 0;
+          idx++;
+          let consecutiveSlowPoints = 0;
+
+          while (idx < vehiclePositions.length) {
+            const nextPos = vehiclePositions[idx];
+            const nextSpeed = nextPos.speedKph || 0;
+            const nextIgnition = hasIgnitionData ? (nextPos.ignitionOn === true) : (nextSpeed > SPEED_THRESHOLD);
+
+            if (nextSpeed > SPEED_THRESHOLD) {
+              consecutiveSlowPoints = 0;
+              const prev = drivePositions[drivePositions.length - 1];
+              const dist = this.haversineDistance(prev.latitude, prev.longitude, nextPos.latitude, nextPos.longitude);
+              if (!Number.isNaN(dist) && dist > 0.01 && dist < 5) {
+                driveDistanceKm += dist;
+              }
+              drivePositions.push(nextPos);
+              idx++;
+            } else if (nextIgnition && nextSpeed > 0 && consecutiveSlowPoints < 5) {
+              consecutiveSlowPoints++;
+              drivePositions.push(nextPos);
+              idx++;
+            } else if (nextIgnition && nextSpeed === 0 && consecutiveSlowPoints < 3) {
+              consecutiveSlowPoints++;
+              drivePositions.push(nextPos);
+              idx++;
+            } else {
+              break;
+            }
           }
-          currentTrip = null;
+
+          if (drivePositions.length > 1) {
+            const speeds = drivePositions.map((p: any) => p.speedKph || 0).filter((s: number) => s > 0);
+            const avgSpeed = speeds.length > 0 ? speeds.reduce((a: number, b: number) => a + b, 0) / speeds.length : 0;
+
+            if (driveDistanceKm >= 0.2 && avgSpeed >= 5) {
+              tripNumber++;
+              allTrips.push({
+                start: drivePositions[0],
+                end: drivePositions[drivePositions.length - 1],
+                positions: drivePositions,
+                distanceKm: driveDistanceKm,
+                vehicleName,
+                vehicleId,
+                tripNumber
+              });
+            }
+          }
+        } else {
+          idx++;
         }
-      });
-      
-      if (currentTrip && currentTrip.positions.length > 1 && currentTrip.hasMovement) {
-        tripNumber++;
-        currentTrip.tripNumber = tripNumber;
-        allTrips.push(currentTrip);
       }
     });
 
@@ -954,36 +986,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const endTime = new Date(trip.end.recordedAt);
       const durationMin = (endTime.getTime() - startTime.getTime()) / 60000;
       
-      // Haversine calculation (always compute as fallback)
-      let haversineDist = 0;
-      for (let i = 1; i < trip.positions.length; i++) {
-        const d = this.haversineDistance(
-          trip.positions[i-1].latitude, trip.positions[i-1].longitude,
-          trip.positions[i].latitude, trip.positions[i].longitude
-        );
-        if (!Number.isNaN(d) && d < 5) haversineDist += d;
-      }
+      let distanceKm = trip.distanceKm;
       
       // Try odometer first, with sanity check
-      let distanceKm = haversineDist;
       if (trip.end.odometerKm && trip.start.odometerKm && trip.end.odometerKm > trip.start.odometerKm) {
         let odometerDist = trip.end.odometerKm - trip.start.odometerKm;
-        // Auto-detect: some GPS devices send odometer in meters instead of km
-        if (haversineDist > 0 && odometerDist > haversineDist * 500) {
+        if (distanceKm > 0 && odometerDist > distanceKm * 500) {
           odometerDist = odometerDist / 1000;
         }
         const maxReasonable = Math.max((durationMin / 60) * 200, 5);
         if (odometerDist <= maxReasonable) {
           distanceKm = odometerDist;
-        }
-      }
-      
-      // If still 0, estimate from average speed
-      if (distanceKm < 0.1 && durationMin > 1) {
-        const speeds = trip.positions.map((p: any) => p.speedKph || 0).filter((s: number) => s > 0);
-        if (speeds.length > 0) {
-          const avgSpeedFromPositions = speeds.reduce((a: number, b: number) => a + b, 0) / speeds.length;
-          distanceKm = avgSpeedFromPositions * (durationMin / 60);
         }
       }
       
@@ -1035,7 +1048,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       '🛣️ Nombre de trajets': allTrips.length.toString(),
       '📏 Distance totale': `${totalDistance.toFixed(1)} km`,
       '⏱️ Temps total': formatDuration(totalDurationMin),
-      '⌀ Distance/trajet': `${(totalDistance / allTrips.length || 0).toFixed(1)} km`
+      '⌀ Distance/trajet': `${(totalDistance / (allTrips.length || 1)).toFixed(1)} km`
     };
 
     this.secondaryChartData = [];
@@ -3936,122 +3949,99 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Detect trips based on ignition_on transitions
-    // Trip starts when ignition_on = true, ends when ignition_on = false
-    const segments: { type: 'trip' | 'stop'; start: any; end: any; positions: any[]; distanceKm: number }[] = [];
-    let currentSegment: { type: 'trip' | 'stop'; start: any; end: any; positions: any[]; distanceKm: number } | null = null;
-
-    // Check if this vehicle has ignition data
+    // ═══════ TRIP DETECTION — matches backend daily report algorithm ═══════
+    // Trip = ignition ON period (continues through red lights / speed=0)
+    // Stop = ignition OFF period
+    // Distance only counted when speed > 2 AND haversine > 0.01 km (filters GPS noise)
+    const SPEED_THRESHOLD = 3; // km/h — must match backend StopSpeedThresholdKph
     const hasIgnitionData = positions.some(p => p.ignitionOn === true || p.ignitionOn === false);
 
-    for (let i = 0; i < positions.length; i++) {
+    const trips: { start: any; end: any; positions: any[]; distanceKm: number }[] = [];
+    let i = 0;
+
+    while (i < positions.length) {
       const pos = positions[i];
-      const hasMovement = (pos.speedKph || 0) > 2;
-      // Use ignition if available, otherwise fall back to speed-based detection
-      const isMoving = hasIgnitionData ? (pos.ignitionOn === true && hasMovement) : hasMovement;
+      const ignitionOn = hasIgnitionData ? (pos.ignitionOn === true) : ((pos.speedKph || 0) > SPEED_THRESHOLD);
+      const isMoving = (pos.speedKph || 0) > SPEED_THRESHOLD;
 
-      if (!currentSegment) {
-        currentSegment = {
-          type: isMoving ? 'trip' : 'stop',
-          start: pos,
-          end: pos,
-          positions: [pos],
-          distanceKm: 0
-        };
-        continue;
-      }
+      if (ignitionOn && isMoving) {
+        // Start of a drive segment — require actual movement to begin
+        const drivePositions: any[] = [pos];
+        let driveDistanceKm = 0;
+        i++;
+        let consecutiveSlowPoints = 0;
 
-      const prev = positions[i - 1];
-      const prevMoving = hasIgnitionData ? (prev.ignitionOn === true && (prev.speedKph || 0) > 2) : ((prev.speedKph || 0) > 2);
+        while (i < positions.length) {
+          const nextPos = positions[i];
+          const nextSpeed = nextPos.speedKph || 0;
+          const nextIgnition = hasIgnitionData ? (nextPos.ignitionOn === true) : (nextSpeed > SPEED_THRESHOLD);
 
-      // Calculate distance
-      const dist = this.haversineDistance(prev.latitude, prev.longitude, pos.latitude, pos.longitude);
-      if (!Number.isNaN(dist) && dist < 5) { // Filter unrealistic jumps (max 5km between 2 points)
-        currentSegment.distanceKm += dist;
-      }
+          if (nextSpeed > SPEED_THRESHOLD) {
+            // Actually moving — accumulate distance
+            consecutiveSlowPoints = 0;
+            const prev = drivePositions[drivePositions.length - 1];
+            const dist = this.haversineDistance(prev.latitude, prev.longitude, nextPos.latitude, nextPos.longitude);
+            if (!Number.isNaN(dist) && dist > 0.01 && dist < 5) {
+              driveDistanceKm += dist;
+            }
+            drivePositions.push(nextPos);
+            i++;
+          } else if (nextIgnition && nextSpeed > 0 && consecutiveSlowPoints < 5) {
+            // Brief slowdown (traffic light, traffic) — allow up to 5 consecutive slow points
+            consecutiveSlowPoints++;
+            drivePositions.push(nextPos);
+            i++;
+          } else if (nextIgnition && nextSpeed === 0 && consecutiveSlowPoints < 3) {
+            // Stopped briefly with ignition on (red light) — allow up to 3 zero-speed points
+            consecutiveSlowPoints++;
+            drivePositions.push(nextPos);
+            i++;
+          } else {
+            break; // End of drive
+          }
+        }
 
-      // Detect transition: was moving, now stopped
-      if (prevMoving && !isMoving) {
-        currentSegment.end = prev;
-        segments.push(currentSegment);
-        currentSegment = {
-          type: 'stop',
-          start: pos,
-          end: pos,
-          positions: [pos],
-          distanceKm: 0
-        };
-      }
-      // Detect transition: was stopped, now moving
-      else if (!prevMoving && isMoving) {
-        currentSegment.end = prev;
-        segments.push(currentSegment);
-        currentSegment = {
-          type: 'trip',
-          start: pos,
-          end: pos,
-          positions: [pos],
-          distanceKm: 0
-        };
-      }
-      // Stopped vehicle starts moving = start trip
-      else if (currentSegment.type === 'stop' && isMoving) {
-        currentSegment.end = prev;
-        segments.push(currentSegment);
-        currentSegment = {
-          type: 'trip',
-          start: pos,
-          end: pos,
-          positions: [pos],
-          distanceKm: 0
-        };
-      }
-      // Continue current segment
-      else {
-        currentSegment.end = pos;
-        currentSegment.positions.push(pos);
+        if (drivePositions.length > 1) {
+          const driveEnd = drivePositions[drivePositions.length - 1];
+          const speeds = drivePositions.map((p: any) => p.speedKph || 0).filter((s: number) => s > 0);
+          const avgSpeed = speeds.length > 0 ? speeds.reduce((a: number, b: number) => a + b, 0) / speeds.length : 0;
+
+          // Quality filter: matches backend (distance >= 0.2 km AND avgSpeed >= 5 km/h)
+          if (driveDistanceKm >= 0.2 && avgSpeed >= 5) {
+            trips.push({
+              start: drivePositions[0],
+              end: driveEnd,
+              positions: drivePositions,
+              distanceKm: driveDistanceKm
+            });
+          }
+        }
+      } else {
+        i++; // Skip stopped/idle positions
       }
     }
 
-    if (currentSegment) {
-      segments.push(currentSegment);
-    }
-
-    // === MERGE PHASE ===
-    // Since trips now continue through speed=0 with ignition ON,
-    // we only need to merge consecutive stops into one stop
-    let merged: typeof segments = [];
-    
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i];
-      
-      // Merge consecutive stops
-      if (seg.type === 'stop' && merged.length > 0 && merged[merged.length - 1].type === 'stop') {
-        const prevStop = merged[merged.length - 1];
-        prevStop.end = seg.end;
-        prevStop.positions = [...prevStop.positions, ...seg.positions];
-        prevStop.distanceKm += seg.distanceKm;
-        continue;
-      }
-      
-      merged.push(seg);
-    }
-
-    // Filter meaningful segments
-    const meaningfulSegments = merged.filter(seg => {
-      const durationMs = new Date(seg.end.recordedAt).getTime() - new Date(seg.start.recordedAt).getTime();
-      const durationMin = durationMs / 60000;
-      if (seg.type === 'trip') {
-        return durationMin >= 1 || seg.distanceKm >= 0.1;
-      }
-      return durationMin >= 2; // Show stops >= 2 min (filters GPS noise)
-    });
-
-    if (!meaningfulSegments.length) {
+    if (!trips.length) {
       this.tableData = [];
       this.chartData = [];
       this.statisticsData = { 'Information': 'Aucun trajet significatif détecté' };
       return;
+    }
+
+    // ═══════ MERGE PHASE ═══════
+    // Merge consecutive trips with small gaps (< 5 min between end of one and start of next)
+    const mergedTrips: typeof trips = [trips[0]];
+    for (let t = 1; t < trips.length; t++) {
+      const prev = mergedTrips[mergedTrips.length - 1];
+      const curr = trips[t];
+      const gapMs = new Date(curr.start.recordedAt).getTime() - new Date(prev.end.recordedAt).getTime();
+      if (gapMs < 300000) { // < 5 min gap → merge into one trip
+        prev.end = curr.end;
+        prev.positions = [...prev.positions, ...curr.positions];
+        prev.distanceKm += curr.distanceKm;
+      } else {
+        mergedTrips.push(curr);
+      }
     }
 
     // Format duration helper
@@ -4064,23 +4054,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return `${Math.round(minutes)}min`;
     };
 
-    // Only keep trips (remove all stops)
-    const tripsOnly = meaningfulSegments.filter(s => s.type === 'trip');
-
-    if (!tripsOnly.length) {
-      this.tableData = [];
-      this.chartData = [];
-      this.statisticsData = { 'Information': 'Aucun trajet significatif détecté' };
-      return;
-    }
-
     // Reverse to show most recent first
-    tripsOnly.reverse();
+    mergedTrips.reverse();
 
-    // Build table data with trips only
-    const totalTrips = tripsOnly.length;
+    // Build table data
+    const totalTrips = mergedTrips.length;
     let tripNumber = totalTrips + 1;
-    this.tableData = tripsOnly.map((seg) => {
+    this.tableData = mergedTrips.map((seg) => {
       const startTime = new Date(seg.start.recordedAt);
       const endTime = new Date(seg.end.recordedAt);
       const durationMin = (endTime.getTime() - startTime.getTime()) / 60000;
@@ -4100,19 +4080,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
         if (odometerDist <= maxReasonable) {
           distanceKm = odometerDist;
         }
-        // else: keep haversine distance (odometer glitch)
       }
       
-      // If still 0, estimate from average speed
-      if (distanceKm < 0.1 && durationMin > 1) {
-        const speeds = seg.positions.map((p: any) => p.speedKph || 0).filter((s: number) => s > 0);
-        if (speeds.length > 0) {
-          const avgSpeedFromPositions = speeds.reduce((a: number, b: number) => a + b, 0) / speeds.length;
-          distanceKm = avgSpeedFromPositions * (durationMin / 60);
-        }
-      }
-      
-      const maxSpeed = Math.max(...seg.positions.map(p => p.speedKph || 0));
+      const maxSpeed = Math.max(...seg.positions.map((p: any) => p.speedKph || 0));
+      const speeds = seg.positions.map((p: any) => p.speedKph || 0).filter((s: number) => s > 0);
+      const avgSpeed = speeds.length > 0 ? speeds.reduce((a: number, b: number) => a + b, 0) / speeds.length : 0;
 
       return {
         isTrip: true,
@@ -4124,6 +4096,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         distance: `${distanceKm.toFixed(1)} km`,
         distanceKm,
         maxSpeed: `${maxSpeed.toFixed(0)} km/h`,
+        avgSpeed: `${avgSpeed.toFixed(0)} km/h`,
         startAddress: seg.start.address || `${seg.start.latitude.toFixed(4)}°, ${seg.start.longitude.toFixed(4)}°`,
         endAddress: seg.end.address || `${seg.end.latitude.toFixed(4)}°, ${seg.end.longitude.toFixed(4)}°`,
         startLat: seg.start.latitude,
