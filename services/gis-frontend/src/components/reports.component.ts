@@ -3706,18 +3706,28 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Sort positions chronologically
     positions.sort((a: any, b: any) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
 
-    // Detect stops from ignition transitions:
-    // Stop = sequence of ignition_on=false between ignition_on=true
+    // Detect stops: use ignition if available, otherwise fallback to speed
+    // ignition data exists if ANY position has explicit true or false (not null/undefined)
+    const hasIgnitionData = positions.some((p: any) => p.ignitionOn === true || p.ignitionOn === false);
+
     const detectedStops: any[] = [];
     let stopStart: any = null;
     let stopPositions: any[] = [];
 
+    const isStopped = (pos: any): boolean => {
+      if (hasIgnitionData) {
+        // ignition_on = false → stopped
+        return pos.ignitionOn === false;
+      }
+      // Fallback: speed <= 2 km/h = stopped (no ignition wire)
+      return (pos.speedKph || 0) <= 2;
+    };
+
     for (let i = 0; i < positions.length; i++) {
       const pos = positions[i];
-      const isIgnitionOn = pos.ignitionOn === true;
 
-      if (!isIgnitionOn) {
-        // Ignition OFF → accumulate stop positions
+      if (isStopped(pos)) {
+        // Vehicle stopped → accumulate stop positions
         if (!stopStart) {
           stopStart = pos;
           stopPositions = [pos];
@@ -3725,7 +3735,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           stopPositions.push(pos);
         }
       } else {
-        // Ignition ON → end of stop (if we had one)
+        // Vehicle moving → end of stop (if we had one)
         if (stopStart && stopPositions.length > 0) {
           const lastStopPos = stopPositions[stopPositions.length - 1];
           const startTime = new Date(stopStart.recordedAt).getTime();
@@ -3751,7 +3761,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       }
     }
 
-    // Handle case where data ends with ignition OFF (ongoing stop)
+    // Handle case where data ends with vehicle stopped (ongoing stop)
     if (stopStart && stopPositions.length > 0) {
       const lastStopPos = stopPositions[stopPositions.length - 1];
       const startTime = new Date(stopStart.recordedAt).getTime();
