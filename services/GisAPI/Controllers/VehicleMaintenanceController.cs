@@ -97,6 +97,19 @@ public class VehicleMaintenanceController : ControllerBase
     }
 
     /// <summary>
+    /// Get all maintenance logs for reporting (all vehicles, with optional date filter)
+    /// </summary>
+    [HttpGet("logs")]
+    public async Task<ActionResult<List<MaintenanceLogReportDto>>> GetAllMaintenanceLogs(
+        [FromQuery] int? vehicleId = null,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null)
+    {
+        var logs = await _mediator.Send(new GetAllMaintenanceLogsQuery(vehicleId, startDate, endDate));
+        return Ok(logs);
+    }
+
+    /// <summary>
     /// Mark a maintenance as done
     /// </summary>
     [HttpPost("mark-done")]

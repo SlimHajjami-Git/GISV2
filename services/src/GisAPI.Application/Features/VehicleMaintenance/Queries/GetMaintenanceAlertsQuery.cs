@@ -83,5 +83,29 @@ public record MaintenanceLogDto(
     string? Notes
 );
 
+public record GetAllMaintenanceLogsQuery(
+    int? VehicleId = null,
+    DateTime? StartDate = null,
+    DateTime? EndDate = null
+) : IQuery<List<MaintenanceLogReportDto>>;
+
+public record MaintenanceLogReportDto(
+    int Id,
+    int VehicleId,
+    string VehicleName,
+    string? Plate,
+    int TemplateId,
+    string TemplateName,
+    string? Category,
+    DateTime DoneDate,
+    int DoneKm,
+    decimal ActualCost,
+    decimal? LaborCost,
+    decimal? PartsCost,
+    string? SupplierName,
+    string? Notes,
+    string Status
+);
+
 
 

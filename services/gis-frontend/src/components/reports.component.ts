@@ -5340,21 +5340,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
   executeMaintenanceReport(vehicleId?: number, startDate?: Date, endDate?: Date) {
     this.loading = true;
     
-    this.apiService.getMaintenanceRecords(vehicleId).subscribe({
+    this.apiService.getMaintenanceRecords(vehicleId, startDate, endDate).subscribe({
       next: (records) => {
-        // Filter by date if provided
-        let filteredRecords = records;
-        if (startDate || endDate) {
-          filteredRecords = records.filter(r => {
-            const recordDate = new Date(r.date || r.scheduledDate || r.createdAt);
-            if (startDate && recordDate < startDate) return false;
-            if (endDate && recordDate > endDate) return false;
-            return true;
-          });
-        }
-        
         this.ngZone.run(() => {
-          this.processMaintenanceReport(filteredRecords);
+          this.processMaintenanceReport(records);
           this.reportGenerated = true;
           this.loading = false;
           this.activeTab = 'table';
@@ -5385,39 +5374,36 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Sort by date descending
+    // Sort by date descending (backend field: doneDate)
     records.sort((a, b) => {
-      const dateA = new Date(a.date || a.scheduledDate || a.createdAt);
-      const dateB = new Date(b.date || b.scheduledDate || b.createdAt);
+      const dateA = new Date(a.doneDate || a.date || a.createdAt);
+      const dateB = new Date(b.doneDate || b.date || b.createdAt);
       return dateB.getTime() - dateA.getTime();
     });
 
-    // Build vehicle name map
-    const vehicleMap = new Map<number, string>();
-    this.vehicles.forEach(v => vehicleMap.set(v.id, v.name || v.plateNumber || `Véhicule ${v.id}`));
-
-    // Process table data
+    // Process table data — uses MaintenanceLogReportDto fields from backend
     this.tableData = records.map(record => {
-      const vehicleName = vehicleMap.get(record.vehicleId) || `Véhicule ${record.vehicleId}`;
-      const date = record.date || record.scheduledDate || record.createdAt;
+      const cost = record.actualCost || record.totalCost || 0;
       return {
-        vehicleName: vehicleName,
+        vehicleName: record.vehicleName || record.plate || `Véhicule ${record.vehicleId}`,
         vehicleId: record.vehicleId,
-        date: this.formatDateTime(date),
-        type: record.type || record.maintenanceType || 'Général',
-        description: record.description || record.notes || '-',
+        date: this.formatDateTime(record.doneDate || record.date),
+        type: record.templateName || record.category || record.type || 'Général',
+        description: record.notes || record.description || '-',
         status: this.getMaintenanceStatusLabel(record.status),
         statusKey: record.status,
-        cost: record.cost || record.totalCost || 0,
-        costFormatted: this.formatCurrency(record.cost || record.totalCost || 0),
-        mileage: record.mileage ? `${record.mileage.toLocaleString('fr-FR')} km` : '-'
+        cost: cost,
+        costFormatted: this.formatCurrency(cost),
+        mileage: record.doneKm ? `${record.doneKm.toLocaleString('fr-FR')} km` : '-',
+        mileageValue: record.doneKm || 0,
+        supplierName: record.supplierName || '-'
       };
     });
 
-    // Chart data - group by type
+    // Chart data - group by type (templateName)
     const byType: { [key: string]: number } = {};
     records.forEach(record => {
-      const type = record.type || record.maintenanceType || 'Général';
+      const type = record.templateName || record.category || 'Général';
       byType[type] = (byType[type] || 0) + 1;
     });
 
@@ -5432,8 +5418,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Secondary chart - costs by vehicle
     const costsByVehicle: { [key: string]: number } = {};
     records.forEach(record => {
-      const vehicleName = vehicleMap.get(record.vehicleId) || `Véhicule ${record.vehicleId}`;
-      costsByVehicle[vehicleName] = (costsByVehicle[vehicleName] || 0) + (record.cost || record.totalCost || 0);
+      const vehicleName = record.vehicleName || `Véhicule ${record.vehicleId}`;
+      costsByVehicle[vehicleName] = (costsByVehicle[vehicleName] || 0) + (record.actualCost || 0);
     });
 
     this.secondaryChartData = Object.entries(costsByVehicle)
@@ -5446,18 +5432,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
       }));
 
     // Statistics
-    const totalCost = records.reduce((sum, r) => sum + (r.cost || r.totalCost || 0), 0);
-    const completedCount = records.filter(r => r.status === 'completed' || r.status === 'done').length;
-    const scheduledCount = records.filter(r => r.status === 'scheduled' || r.status === 'pending').length;
-    const overdueCount = records.filter(r => r.status === 'overdue').length;
+    const totalCost = records.reduce((sum: number, r: any) => sum + (r.actualCost || 0), 0);
 
     this.statisticsData = {
       'Total maintenances': records.length.toString(),
       'Coût total': this.formatCurrency(totalCost),
-      '✅ Complétées': completedCount.toString(),
-      '📅 Planifiées': scheduledCount.toString(),
-      '⚠️ En retard': overdueCount.toString(),
-      'Véhicules': new Set(records.map(r => r.vehicleId)).size.toString()
+      'Véhicules': new Set(records.map((r: any) => r.vehicleId)).size.toString()
     };
   }
 

@@ -473,13 +473,15 @@ export class ApiService {
 
   // ==================== MAINTENANCE ====================
 
-  getMaintenanceRecords(vehicleId?: number): Observable<any[]> {
+  getMaintenanceRecords(vehicleId?: number, startDate?: Date, endDate?: Date): Observable<any[]> {
     if (this.isMockUser()) {
       return this.mockDataService.getMaintenanceRecords();
     }
     let params = new HttpParams();
     if (vehicleId) params = params.set('vehicleId', vehicleId.toString());
-    return this.http.get<any[]>(`${this.API_URL}/maintenance`, { headers: this.getHeaders(), params });
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate).split('T')[0]);
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate).split('T')[0]);
+    return this.http.get<any[]>(`${this.API_URL}/vehicle-maintenance/logs`, { headers: this.getHeaders(), params });
   }
 
   getUpcomingMaintenance(): Observable<any[]> {

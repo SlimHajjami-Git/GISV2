@@ -262,6 +262,57 @@ public class GetMaintenanceLogsQueryHandler : IRequestHandler<GetMaintenanceLogs
     }
 }
 
+public class GetAllMaintenanceLogsQueryHandler : IRequestHandler<GetAllMaintenanceLogsQuery, List<MaintenanceLogReportDto>>
+{
+    private readonly IGisDbContext _context;
+
+    public GetAllMaintenanceLogsQueryHandler(IGisDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<List<MaintenanceLogReportDto>> Handle(GetAllMaintenanceLogsQuery request, CancellationToken ct)
+    {
+        var query = _context.MaintenanceLogs
+            .Include(l => l.Vehicle)
+            .Include(l => l.Template)
+            .Include(l => l.Supplier)
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (request.VehicleId.HasValue)
+            query = query.Where(l => l.VehicleId == request.VehicleId.Value);
+
+        if (request.StartDate.HasValue)
+            query = query.Where(l => l.DoneDate >= request.StartDate.Value);
+
+        if (request.EndDate.HasValue)
+            query = query.Where(l => l.DoneDate <= request.EndDate.Value);
+
+        var logs = await query
+            .OrderByDescending(l => l.DoneDate)
+            .ToListAsync(ct);
+
+        return logs.Select(l => new MaintenanceLogReportDto(
+            l.Id,
+            l.VehicleId,
+            l.Vehicle?.Name ?? $"Véhicule {l.VehicleId}",
+            l.Vehicle?.Plate,
+            l.TemplateId,
+            l.Template?.Name ?? "Général",
+            l.Template?.Category,
+            l.DoneDate,
+            l.DoneKm,
+            l.ActualCost,
+            l.LaborCost,
+            l.PartsCost,
+            l.Supplier?.Name,
+            l.Notes,
+            "completed"
+        )).ToList();
+    }
+}
+
 public class GetCurrentVehicleMileageQueryHandler : IRequestHandler<GetCurrentVehicleMileageQuery, VehicleMileageDto>
 {
     private readonly IGisDbContext _context;
