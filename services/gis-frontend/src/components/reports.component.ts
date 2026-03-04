@@ -3715,11 +3715,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     // Detect stops: use ignition if available, otherwise fallback to speed
     const hasIgnitionData = positions.some((p: any) => p.ignitionOn === true || p.ignitionOn === false);
-    console.log('[STOPS DEBUG] hasIgnitionData:', hasIgnitionData);
-
-    const detectedStops: any[] = [];
-    let stopStart: any = null;
-    let stopPositions: any[] = [];
 
     const isStopped = (pos: any): boolean => {
       if (hasIgnitionData) {
@@ -3728,59 +3723,84 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return (pos.speedKph || 0) <= 2;
     };
 
+    // Step 1: Detect ALL raw stops (no minimum duration) to handle noisy ignition
+    const rawStops: { startTime: number; endTime: number; pos: any }[] = [];
+    let rStart: any = null;
+    let rEnd: any = null;
+
     for (let i = 0; i < positions.length; i++) {
       const pos = positions[i];
-
       if (isStopped(pos)) {
-        if (!stopStart) {
-          stopStart = pos;
-          stopPositions = [pos];
-        } else {
-          stopPositions.push(pos);
-        }
+        if (!rStart) { rStart = pos; rEnd = pos; } else { rEnd = pos; }
       } else {
-        if (stopStart && stopPositions.length > 0) {
-          const lastStopPos = stopPositions[stopPositions.length - 1];
-          // If this is the first stop and it starts at the first position, extend to period start
-          const startTime = (stopStart === positions[0]) ? pStart : new Date(stopStart.recordedAt).getTime();
-          const endTime = new Date(lastStopPos.recordedAt).getTime();
-          const durationSeconds = Math.round((endTime - startTime) / 1000);
-
-          if (durationSeconds >= 60) {
-            detectedStops.push({
-              startTime: new Date(startTime).toISOString(),
-              endTime: lastStopPos.recordedAt,
-              durationSeconds,
-              latitude: stopStart.latitude,
-              longitude: stopStart.longitude,
-              address: stopStart.address || null,
-              vehicleName: stopStart.vehicleName || null,
-              vehiclePlate: stopStart.vehiclePlate || null
-            });
-          }
+        if (rStart) {
+          rawStops.push({
+            startTime: new Date(rStart.recordedAt).getTime(),
+            endTime: new Date(rEnd.recordedAt).getTime(),
+            pos: rStart
+          });
         }
-        stopStart = null;
-        stopPositions = [];
+        rStart = null; rEnd = null;
       }
     }
+    // Trailing raw stop
+    if (rStart) {
+      rawStops.push({
+        startTime: new Date(rStart.recordedAt).getTime(),
+        endTime: new Date(rEnd.recordedAt).getTime(),
+        pos: rStart
+      });
+    }
 
-    // Handle trailing stop (data ends with vehicle stopped) → extend to period end
-    if (stopStart && stopPositions.length > 0) {
-      // If stop started at first position, extend start to period start
-      const startTime = (stopStart === positions[0]) ? pStart : new Date(stopStart.recordedAt).getTime();
-      // Extend end to period end (or now)
-      const endTime = pEnd;
+    console.log('[STOPS DEBUG] rawStops count:', rawStops.length);
+
+    // Step 2: Merge adjacent stops separated by gaps < 60 seconds (debounce noisy ignition)
+    const MERGE_GAP_MS = 60 * 1000;
+    const mergedStops: { startTime: number; endTime: number; pos: any }[] = [];
+
+    for (const stop of rawStops) {
+      if (mergedStops.length > 0) {
+        const prev = mergedStops[mergedStops.length - 1];
+        if (stop.startTime - prev.endTime < MERGE_GAP_MS) {
+          // Merge: extend previous stop to include this one
+          prev.endTime = Math.max(prev.endTime, stop.endTime);
+          continue;
+        }
+      }
+      mergedStops.push({ ...stop });
+    }
+
+    console.log('[STOPS DEBUG] mergedStops count:', mergedStops.length);
+
+    // Step 3: Apply period boundaries and build final stops
+    const detectedStops: any[] = [];
+
+    for (let i = 0; i < mergedStops.length; i++) {
+      const stop = mergedStops[i];
+      // Extend first stop to period start if it begins at the first position
+      let startTime = stop.startTime;
+      if (i === 0 && stop.startTime <= new Date(positions[0].recordedAt).getTime() + 1000) {
+        startTime = pStart;
+      }
+      // Extend last stop to period end if it includes the last position
+      let endTime = stop.endTime;
+      if (i === mergedStops.length - 1 && stop.endTime >= new Date(positions[positions.length - 1].recordedAt).getTime() - 1000) {
+        endTime = pEnd;
+      }
+
       const durationSeconds = Math.round((endTime - startTime) / 1000);
+
+      // Only keep stops >= 1 minute
       if (durationSeconds >= 60) {
         detectedStops.push({
           startTime: new Date(startTime).toISOString(),
           endTime: new Date(endTime).toISOString(),
           durationSeconds,
-          latitude: stopStart.latitude,
-          longitude: stopStart.longitude,
-          address: stopStart.address || null,
-          vehicleName: stopStart.vehicleName || null,
-          vehiclePlate: stopStart.vehiclePlate || null
+          latitude: stop.pos.latitude,
+          longitude: stop.pos.longitude,
+          address: stop.pos.address || null,
+          vehicleName: stop.pos.vehicleName || null,
+          vehiclePlate: stop.pos.vehiclePlate || null
         });
       }
     }
