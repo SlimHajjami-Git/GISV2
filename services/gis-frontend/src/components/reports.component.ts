@@ -1144,7 +1144,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.getVehicleHistoryObs(vehicleId, startDate, endDate, 10000).pipe(takeUntil(this.destroy$)).subscribe({
       next: (positions: any[]) => {
         this.ngZone.run(() => {
-          this.processStopsFromPositions(positions);
+          this.processStopsFromPositions(positions, startDate, endDate);
           this.reportGenerated = true;
           this.loading = false;
           this.activeTab = 'table';
@@ -1201,7 +1201,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
           if (completedRequests === totalVehicles) {
             this.ngZone.run(() => {
-              this.processStopsFromPositions(allPositions);
+              this.processStopsFromPositions(allPositions, startDate, endDate);
               this.reportGenerated = true;
               this.loading = false;
               this.activeTab = 'table';
@@ -1216,7 +1216,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           completedRequests++;
           if (completedRequests === totalVehicles) {
             this.ngZone.run(() => {
-              this.processStopsFromPositions(allPositions);
+              this.processStopsFromPositions(allPositions, startDate, endDate);
               this.reportGenerated = true;
               this.loading = false;
               this.activeTab = 'table';
@@ -3684,10 +3684,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     });
   }
 
-  processStopsFromPositions(positions: any[]) {
-    console.log('[STOPS DEBUG] processStopsFromPositions called, positions count:', positions?.length);
+  processStopsFromPositions(positions: any[], periodStart?: Date, periodEnd?: Date) {
+    console.log('[STOPS DEBUG] processStopsFromPositions called, positions:', positions?.length, 'period:', periodStart, '->', periodEnd);
     if (!positions || positions.length === 0) {
-      console.log('[STOPS DEBUG] No positions received');
       this.tableData = [];
       this.chartData = [];
       this.statisticsData = { 'Information': 'Aucun arrêt trouvé pour cette période' };
@@ -3708,12 +3707,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Sort positions chronologically
     positions.sort((a: any, b: any) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
 
-    // Log sample data for debugging
-    console.log('[STOPS DEBUG] First 3 positions:', positions.slice(0, 3).map(p => ({ recordedAt: p.recordedAt, ignitionOn: p.ignitionOn, speedKph: p.speedKph, typeofIgnition: typeof p.ignitionOn })));
-    console.log('[STOPS DEBUG] Last position:', { recordedAt: positions[positions.length-1]?.recordedAt, ignitionOn: positions[positions.length-1]?.ignitionOn });
+    // Period boundaries (used to extend first/last stops to cover full period)
+    const pStart = periodStart ? periodStart.getTime() : new Date(positions[0].recordedAt).getTime();
+    const pEnd = periodEnd ? periodEnd.getTime() : new Date(positions[positions.length - 1].recordedAt).getTime();
+
+    console.log('[STOPS DEBUG] First 3 positions:', positions.slice(0, 3).map((p: any) => ({ recordedAt: p.recordedAt, ignitionOn: p.ignitionOn, speedKph: p.speedKph })));
 
     // Detect stops: use ignition if available, otherwise fallback to speed
-    // ignition data exists if ANY position has explicit true or false (not null/undefined)
     const hasIgnitionData = positions.some((p: any) => p.ignitionOn === true || p.ignitionOn === false);
     console.log('[STOPS DEBUG] hasIgnitionData:', hasIgnitionData);
 
@@ -3723,10 +3723,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     const isStopped = (pos: any): boolean => {
       if (hasIgnitionData) {
-        // ignition_on = false → stopped
         return pos.ignitionOn === false;
       }
-      // Fallback: speed <= 2 km/h = stopped (no ignition wire)
       return (pos.speedKph || 0) <= 2;
     };
 
@@ -3734,7 +3732,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const pos = positions[i];
 
       if (isStopped(pos)) {
-        // Vehicle stopped → accumulate stop positions
         if (!stopStart) {
           stopStart = pos;
           stopPositions = [pos];
@@ -3742,17 +3739,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
           stopPositions.push(pos);
         }
       } else {
-        // Vehicle moving → end of stop (if we had one)
         if (stopStart && stopPositions.length > 0) {
           const lastStopPos = stopPositions[stopPositions.length - 1];
-          const startTime = new Date(stopStart.recordedAt).getTime();
+          // If this is the first stop and it starts at the first position, extend to period start
+          const startTime = (stopStart === positions[0]) ? pStart : new Date(stopStart.recordedAt).getTime();
           const endTime = new Date(lastStopPos.recordedAt).getTime();
           const durationSeconds = Math.round((endTime - startTime) / 1000);
 
-          // Only keep stops >= 1 minute
           if (durationSeconds >= 60) {
             detectedStops.push({
-              startTime: stopStart.recordedAt,
+              startTime: new Date(startTime).toISOString(),
               endTime: lastStopPos.recordedAt,
               durationSeconds,
               latitude: stopStart.latitude,
@@ -3768,16 +3764,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
       }
     }
 
-    // Handle case where data ends with vehicle stopped (ongoing stop)
+    // Handle trailing stop (data ends with vehicle stopped) → extend to period end
     if (stopStart && stopPositions.length > 0) {
-      const lastStopPos = stopPositions[stopPositions.length - 1];
-      const startTime = new Date(stopStart.recordedAt).getTime();
-      const endTime = new Date(lastStopPos.recordedAt).getTime();
+      // If stop started at first position, extend start to period start
+      const startTime = (stopStart === positions[0]) ? pStart : new Date(stopStart.recordedAt).getTime();
+      // Extend end to period end (or now)
+      const endTime = pEnd;
       const durationSeconds = Math.round((endTime - startTime) / 1000);
       if (durationSeconds >= 60) {
         detectedStops.push({
-          startTime: stopStart.recordedAt,
-          endTime: lastStopPos.recordedAt,
+          startTime: new Date(startTime).toISOString(),
+          endTime: new Date(endTime).toISOString(),
           durationSeconds,
           latitude: stopStart.latitude,
           longitude: stopStart.longitude,
@@ -3788,7 +3785,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       }
     }
 
-    console.log('[STOPS DEBUG] detectedStops count:', detectedStops.length, 'stopStart still open:', !!stopStart, 'stopPositions.length:', stopPositions.length);
+    console.log('[STOPS DEBUG] detectedStops count:', detectedStops.length);
 
     // Build table data
     this.tableData = detectedStops.map((stop: any) => {
