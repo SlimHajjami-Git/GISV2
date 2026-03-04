@@ -9,6 +9,7 @@ using GisAPI.Application.Features.Reports.Queries.GetDailyActivityReport;
 using GisAPI.Application.Features.Reports.Queries.GetMileageReport;
 using GisAPI.Application.Features.Reports.Queries.GetMonthlyFleetReport;
 using GisAPI.Application.Features.Reports.Queries.GetMileagePeriodReport;
+using GisAPI.Application.Features.Reports.Queries.GetStopsReport;
 
 namespace GisAPI.Controllers;
 
@@ -381,6 +382,54 @@ public class ReportsController : ControllerBase
             vehicleTypeFilter,
             departmentFilter,
             vehicleIds));
+
+        return Ok(result);
+    }
+
+    // ==================== STOPS REPORT ====================
+
+    /// <summary>
+    /// Get stops report for a single vehicle (ignition OFF periods grouped by day)
+    /// </summary>
+    [HttpGet("stops/{vehicleId}")]
+    public async Task<ActionResult<StopsReportDto>> GetStopsReport(
+        int vehicleId,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] int minStopDurationSeconds = 60)
+    {
+        var companyId = GetCompanyId();
+
+        var vehicleExists = await _context.Vehicles
+            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
+
+        if (!vehicleExists)
+            return NotFound(new { message = "Vehicle not found" });
+
+        var start = startDate?.Date ?? DateTime.UtcNow.Date;
+        var end = endDate?.Date ?? DateTime.UtcNow.Date;
+
+        var result = await _mediator.Send(new GetStopsReportQuery(
+            vehicleId, start, end, minStopDurationSeconds));
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Get stops report for all vehicles (ignition OFF periods grouped by day)
+    /// </summary>
+    [HttpGet("stops")]
+    public async Task<ActionResult<List<StopsReportDto>>> GetStopsReportAll(
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] int[]? vehicleIds = null,
+        [FromQuery] int minStopDurationSeconds = 60)
+    {
+        var start = startDate?.Date ?? DateTime.UtcNow.Date;
+        var end = endDate?.Date ?? DateTime.UtcNow.Date;
+
+        var result = await _mediator.Send(new GetStopsReportAllVehiclesQuery(
+            start, end, vehicleIds, minStopDurationSeconds));
 
         return Ok(result);
     }
