@@ -5367,28 +5367,27 @@ export class ReportsComponent implements OnInit, OnDestroy {
           if (needsGeocode(row.location) && row.latitude && row.longitude) {
             const key = `${row.latitude.toFixed(4)},${row.longitude.toFixed(4)}`;
             const addr = addressMap.get(key);
-            if (addr) updated.location = addr;
+            updated.location = addr || `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}`;
           }
           if (needsGeocode(row.address) && row.latitude && row.longitude) {
             const key = `${row.latitude.toFixed(4)},${row.longitude.toFixed(4)}`;
             const addr = addressMap.get(key);
-            if (addr) {
-              updated.address = addr;
-              // Also update description if it matches the old address (daily report pattern)
-              if (row.description && row.description === row.address) {
-                updated.description = addr;
-              }
+            const resolved = addr || `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}`;
+            updated.address = resolved;
+            // Also update description if it matches the old address (daily report pattern)
+            if (row.description && row.description === row.address) {
+              updated.description = resolved;
             }
           }
           if (needsGeocode(row.startAddress) && row.startLat && row.startLng) {
             const key = `${row.startLat.toFixed(4)},${row.startLng.toFixed(4)}`;
             const addr = addressMap.get(key);
-            if (addr) updated.startAddress = addr;
+            updated.startAddress = addr || `${row.startLat.toFixed(5)}, ${row.startLng.toFixed(5)}`;
           }
           if (needsGeocode(row.endAddress) && row.endLat && row.endLng) {
             const key = `${row.endLat.toFixed(4)},${row.endLng.toFixed(4)}`;
             const addr = addressMap.get(key);
-            if (addr) updated.endAddress = addr;
+            updated.endAddress = addr || `${row.endLat.toFixed(5)}, ${row.endLng.toFixed(5)}`;
           }
           return updated;
         });
@@ -5396,6 +5395,26 @@ export class ReportsComponent implements OnInit, OnDestroy {
       });
     } catch (error) {
       console.error('Error enriching addresses:', error);
+      // Fallback: replace 'Chargement...' with coordinates so it doesn't stay forever
+      this.ngZone.run(() => {
+        this.tableData = this.tableData.map((row: any) => {
+          const updated = { ...row };
+          if (row.address === 'Chargement...' && row.latitude && row.longitude) {
+            updated.address = `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}`;
+          }
+          if (row.location === 'Chargement...' && row.latitude && row.longitude) {
+            updated.location = `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}`;
+          }
+          if (row.startAddress === 'Chargement...' && row.startLat && row.startLng) {
+            updated.startAddress = `${row.startLat.toFixed(5)}, ${row.startLng.toFixed(5)}`;
+          }
+          if (row.endAddress === 'Chargement...' && row.endLat && row.endLng) {
+            updated.endAddress = `${row.endLat.toFixed(5)}, ${row.endLng.toFixed(5)}`;
+          }
+          return updated;
+        });
+        this.cdr.detectChanges();
+      });
     }
   }
 
