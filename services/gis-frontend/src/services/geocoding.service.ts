@@ -48,8 +48,18 @@ export class GeocodingService {
     const request$ = this.http.get<{latitude: number; longitude: number; address: string | null}>(
       `/api/gps/geocode/reverse?lat=${lat}&lon=${lon}`
     ).pipe(
-      map(response => response.address || `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`),
-      catchError(() => of(`${lat.toFixed(4)}°, ${lon.toFixed(4)}°`)),
+      map(response => {
+        const address = response.address || null;
+        // Only cache successful geocoding results (not null/coordinate fallbacks)
+        if (!address) {
+          this.cache.delete(cacheKey);
+        }
+        return address || `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+      }),
+      catchError(() => {
+        this.cache.delete(cacheKey); // Don't cache failures
+        return of(`${lat.toFixed(4)}°, ${lon.toFixed(4)}°`);
+      }),
       shareReplay(1)
     );
 
@@ -82,9 +92,12 @@ export class GeocodingService {
       const promises = batch.map(async ([key, coord]) => {
         try {
           const address = await this.reverseGeocode(coord.lat, coord.lon).toPromise();
-          results.set(key, address || key);
+          // Only store real addresses (not coordinate fallbacks)
+          if (address && !address.includes('°')) {
+            results.set(key, address);
+          }
         } catch {
-          results.set(key, `${coord.lat.toFixed(4)}°, ${coord.lon.toFixed(4)}°`);
+          // Don't store failed geocoding results
         }
       });
       await Promise.all(promises);
