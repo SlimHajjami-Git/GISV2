@@ -3685,7 +3685,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   processStopsFromPositions(positions: any[]) {
+    console.log('[STOPS DEBUG] processStopsFromPositions called, positions count:', positions?.length);
     if (!positions || positions.length === 0) {
+      console.log('[STOPS DEBUG] No positions received');
       this.tableData = [];
       this.chartData = [];
       this.statisticsData = { 'Information': 'Aucun arrêt trouvé pour cette période' };
@@ -3706,9 +3708,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Sort positions chronologically
     positions.sort((a: any, b: any) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
 
+    // Log sample data for debugging
+    console.log('[STOPS DEBUG] First 3 positions:', positions.slice(0, 3).map(p => ({ recordedAt: p.recordedAt, ignitionOn: p.ignitionOn, speedKph: p.speedKph, typeofIgnition: typeof p.ignitionOn })));
+    console.log('[STOPS DEBUG] Last position:', { recordedAt: positions[positions.length-1]?.recordedAt, ignitionOn: positions[positions.length-1]?.ignitionOn });
+
     // Detect stops: use ignition if available, otherwise fallback to speed
     // ignition data exists if ANY position has explicit true or false (not null/undefined)
     const hasIgnitionData = positions.some((p: any) => p.ignitionOn === true || p.ignitionOn === false);
+    console.log('[STOPS DEBUG] hasIgnitionData:', hasIgnitionData);
 
     const detectedStops: any[] = [];
     let stopStart: any = null;
@@ -3780,6 +3787,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
         });
       }
     }
+
+    console.log('[STOPS DEBUG] detectedStops count:', detectedStops.length, 'stopStart still open:', !!stopStart, 'stopPositions.length:', stopPositions.length);
 
     // Build table data
     this.tableData = detectedStops.map((stop: any) => {
