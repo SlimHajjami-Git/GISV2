@@ -175,17 +175,17 @@ spec:
               cpu: "1500m"
           livenessProbe:
             httpGet:
-              path: /status
+              path: /status.php
               port: 8080
-            initialDelaySeconds: 300
+            initialDelaySeconds: 600
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 10
           readinessProbe:
             httpGet:
-              path: /status
+              path: /status.php
               port: 8080
-            initialDelaySeconds: 120
+            initialDelaySeconds: 300
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 30

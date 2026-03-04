@@ -138,6 +138,11 @@ spec:
                 configMapKeyRef:
                   name: gisv2-config
                   key: VALHALLA_URL
+            - name: Nominatim__Url
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: NOMINATIM_URL
             - name: Groq__ApiKey
               valueFrom:
                 secretKeyRef:
