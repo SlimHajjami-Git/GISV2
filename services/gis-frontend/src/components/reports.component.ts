@@ -3299,19 +3299,49 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   processFuelReport(positions: any[]) {
+    // === PRE-FILTER: Only keep positions with valid fuel data (0-100) ===
+    // Positions without fuelRaw break the spike filter's triplet detection
+    const fuelPositions = positions.filter((p: any) => p.fuelRaw != null && p.fuelRaw >= 0 && p.fuelRaw <= 100);
+
+    if (fuelPositions.length === 0) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = { 'Information': 'Aucune donnée carburant disponible pour ce véhicule' };
+      return;
+    }
+
+    // === BINARY OSCILLATION DETECTION ===
+    // Some vehicles have broken sensors that only report 0 and 100 (or max).
+    // Detect: if >60% of readings are at extremes (0-2 or 98-100) AND there are
+    // frequent large swings, the sensor is unreliable.
+    const extremeCount = fuelPositions.filter((p: any) => p.fuelRaw <= 2 || p.fuelRaw >= 98).length;
+    const extremeRatio = extremeCount / fuelPositions.length;
+    let largeSwings = 0;
+    for (let i = 1; i < fuelPositions.length; i++) {
+      if (Math.abs(fuelPositions[i].fuelRaw - fuelPositions[i - 1].fuelRaw) > 50) largeSwings++;
+    }
+    const swingRatio = fuelPositions.length > 1 ? largeSwings / (fuelPositions.length - 1) : 0;
+
+    if (extremeRatio > 0.6 && swingRatio > 0.1) {
+      console.warn(`Fuel report: unreliable sensor detected (${(extremeRatio * 100).toFixed(0)}% extreme, ${largeSwings} large swings)`);
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = {
+        '⚠️ Capteur carburant': 'Données non fiables',
+        'Diagnostic': `${(extremeRatio * 100).toFixed(0)}% des lectures sont à 0% ou 100% avec ${largeSwings} oscillations`,
+        'Recommandation': 'Vérifier le branchement du capteur carburant ou le mode capteur du boîtier GPS'
+      };
+      return;
+    }
+
     // === SPIKE FILTER: Remove isolated bad fuel readings ===
-    // Pattern: fuel at F1, then drops to F2 (spike), then returns near F1
-    // If a reading drops/rises >10% and the NEXT reading returns within 5% of the previous level,
-    // it's a sensor glitch → remove the spike reading
-    const filtered = [...positions];
+    // Runs on fuel-only positions (no null gaps to break triplet detection)
     const spikeIndices = new Set<number>();
     
-    for (let i = 1; i < filtered.length - 1; i++) {
-      const prevFuel = filtered[i - 1].fuelRaw ?? -1;
-      const currFuel = filtered[i].fuelRaw ?? -1;
-      const nextFuel = filtered[i + 1].fuelRaw ?? -1;
-      
-      if (prevFuel < 0 || currFuel < 0 || nextFuel < 0) continue;
+    for (let i = 1; i < fuelPositions.length - 1; i++) {
+      const prevFuel = fuelPositions[i - 1].fuelRaw;
+      const currFuel = fuelPositions[i].fuelRaw;
+      const nextFuel = fuelPositions[i + 1].fuelRaw;
       
       const dropFromPrev = Math.abs(currFuel - prevFuel);
       const recoveryToNext = Math.abs(nextFuel - prevFuel);
@@ -3323,14 +3353,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
     
     // Also handle consecutive spikes (e.g., 40 → 20 → 15 → 40)
-    for (let i = 1; i < filtered.length - 2; i++) {
+    for (let i = 1; i < fuelPositions.length - 2; i++) {
       if (spikeIndices.has(i)) continue;
-      const prevFuel = filtered[i - 1].fuelRaw ?? -1;
-      const currFuel = filtered[i].fuelRaw ?? -1;
-      const nextFuel = filtered[i + 1].fuelRaw ?? -1;
-      const afterNextFuel = filtered[i + 2].fuelRaw ?? -1;
-      
-      if (prevFuel < 0 || currFuel < 0 || nextFuel < 0 || afterNextFuel < 0) continue;
+      const prevFuel = fuelPositions[i - 1].fuelRaw;
+      const currFuel = fuelPositions[i].fuelRaw;
+      const afterNextFuel = fuelPositions[i + 2].fuelRaw;
       
       const dropFromPrev = Math.abs(currFuel - prevFuel);
       const recoveryToAfterNext = Math.abs(afterNextFuel - prevFuel);
@@ -3341,10 +3368,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       }
     }
     
-    const cleanPositions = filtered.filter((_, idx) => !spikeIndices.has(idx));
+    const cleanPositions = fuelPositions.filter((_: any, idx: number) => !spikeIndices.has(idx));
     
     if (spikeIndices.size > 0) {
-      console.log(`Fuel report: filtered ${spikeIndices.size} spike reading(s) from ${positions.length} positions`);
+      console.log(`Fuel report: filtered ${spikeIndices.size} spike reading(s) from ${fuelPositions.length} fuel positions`);
     }
 
     // Only show rows where fuel level CHANGES (no duplicate consecutive readings)

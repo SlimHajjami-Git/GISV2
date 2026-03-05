@@ -73,11 +73,33 @@ public class FuelCalculationService : IFuelCalculationService
             })
             .ToListAsync(cancellationToken);
 
-        // ===== 2. Spike filter: remove isolated sensor glitches =====
+        // ===== 2. Binary oscillation detection: broken sensors that only report 0 and 100 =====
+        if (rawPositions.Count >= 4)
+        {
+            var extremeCount = rawPositions.Count(p => p.FuelPercent <= 2 || p.FuelPercent >= 98);
+            var extremeRatio = (double)extremeCount / rawPositions.Count;
+            var largeSwings = 0;
+            for (int i = 1; i < rawPositions.Count; i++)
+            {
+                if (Math.Abs(rawPositions[i].FuelPercent - rawPositions[i - 1].FuelPercent) > 50)
+                    largeSwings++;
+            }
+            var swingRatio = (double)largeSwings / (rawPositions.Count - 1);
+
+            if (extremeRatio > 0.6 && swingRatio > 0.1)
+            {
+                // Sensor is garbage (0↔100 oscillation) — fall back to distance-based estimation
+                rawPositions.Clear();
+            }
+        }
+
+        // ===== 3. Spike filter: remove isolated sensor glitches =====
         var positions = FilterFuelSpikes(rawPositions);
 
-        // ===== 3. Calculate distance from GPS positions =====
-        int totalDistance = CalculateDistanceFromPositions(positions, startDateUtc, endDateUtc);
+        // ===== 4. Calculate distance from GPS positions =====
+        int totalDistance = positions.Count >= 2
+            ? CalculateDistanceFromPositions(positions, startDateUtc, endDateUtc)
+            : await CalculateDistanceFromGps(vehicle.GpsDeviceId.Value, startDateUtc, endDateUtc, true, cancellationToken);
 
         // ===== 4. Walk through fuel level changes → consumption + refuels =====
         decimal totalFuelConsumedPercent = 0;
