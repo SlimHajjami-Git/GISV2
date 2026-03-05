@@ -50,49 +50,56 @@ public class FuelCalculationService : IFuelCalculationService
         var fuelType = vehicle.FuelType?.ToLower() ?? "diesel";
         var vehicleType = vehicle.Type?.ToLower() ?? "berline";
 
-        var startDateUtc = DateTime.SpecifyKind(startDate, DateTimeKind.Utc);
-        var endDateUtc = DateTime.SpecifyKind(endDate, DateTimeKind.Utc);
+        var startDateUtc = startDate.Kind == DateTimeKind.Utc ? startDate : startDate.ToUniversalTime();
+        var endDateUtc = endDate.Kind == DateTimeKind.Utc ? endDate : endDate.ToUniversalTime();
 
-        // ===== 1. Get fuel_records for this vehicle (primary data source) =====
-        var fuelRecords = await _context.FuelRecords
-            .Where(fr => fr.VehicleId == vehicle.Id &&
-                         fr.RecordedAt >= startDateUtc &&
-                         fr.RecordedAt <= endDateUtc)
-            .OrderBy(fr => fr.RecordedAt)
+        // ===== 1. Get GPS positions with fuel data (primary source — granular per-position) =====
+        // fuel_records table only has significant events (refuels, theft, spikes).
+        // gps_positions.fuelRaw has every 1% change — much more accurate for consumption.
+        var rawPositions = await _context.GpsPositions
+            .Where(p => p.DeviceId == vehicle.GpsDeviceId.Value &&
+                        p.RecordedAt >= startDateUtc &&
+                        p.RecordedAt <= endDateUtc &&
+                        p.FuelRaw != null && p.FuelRaw >= 0 && p.FuelRaw <= 100)
+            .OrderBy(p => p.RecordedAt)
+            .Select(p => new FuelPositionSlim
+            {
+                RecordedAt = p.RecordedAt,
+                FuelPercent = p.FuelRaw!.Value,
+                OdometerKm = p.OdometerKm,
+                Latitude = p.Latitude,
+                Longitude = p.Longitude,
+                SpeedKph = p.SpeedKph ?? 0
+            })
             .ToListAsync(cancellationToken);
 
-        // Deduplicate: keep only one record per (recorded_at, fuel_percent) combo
-        var deduped = fuelRecords
-            .GroupBy(fr => new { fr.RecordedAt, fr.FuelPercent })
-            .Select(g => g.First())
-            .OrderBy(fr => fr.RecordedAt)
-            .ToList();
+        // ===== 2. Spike filter: remove isolated sensor glitches =====
+        var positions = FilterFuelSpikes(rawPositions);
 
-        // ===== 2. Calculate distance: always use GPS positions (most reliable) =====
-        // fuel_records odometer only captures snapshots during fuel events — not the full trip distance.
-        // GPS positions cover the entire period, so always compute from there.
-        var hasFuelRecords = deduped.Count >= 2;
-        int totalDistance = await CalculateDistanceFromGps(
-            vehicle.GpsDeviceId.Value, startDateUtc, endDateUtc, hasFuelRecords, cancellationToken);
+        // ===== 3. Calculate distance from GPS positions =====
+        int totalDistance = CalculateDistanceFromPositions(positions, startDateUtc, endDateUtc);
 
-        // ===== 3. Calculate fuel consumption + detect refuels from fuel_records =====
+        // ===== 4. Walk through fuel level changes → consumption + refuels =====
         decimal totalFuelConsumedPercent = 0;
         bool hasFuelData = false;
         var dailyConsumption = new Dictionary<DateTime, (decimal fuelPercent, int distance)>();
         var refuels = new List<FuelRefillEventDto>();
 
-        if (deduped.Count >= 2)
-        {
-            for (int i = 1; i < deduped.Count; i++)
-            {
-                var prev = deduped[i - 1];
-                var curr = deduped[i];
+        // Collapse consecutive positions with same fuel level (keep first and last)
+        var fuelChanges = CollapseFuelReadings(positions);
 
-                // Detect refuel: fuel went up significantly
-                if (curr.FuelPercent > prev.FuelPercent + 3) // +3% threshold to avoid noise
+        if (fuelChanges.Count >= 2)
+        {
+            for (int i = 1; i < fuelChanges.Count; i++)
+            {
+                var prev = fuelChanges[i - 1];
+                var curr = fuelChanges[i];
+                var fuelDelta = curr.FuelPercent - prev.FuelPercent;
+
+                // Detect refuel: fuel went up >= 10%
+                if (fuelDelta >= 10)
                 {
-                    var addedPercent = curr.FuelPercent - prev.FuelPercent;
-                    var addedLiters = (addedPercent / 100m) * tankCapacity;
+                    var addedLiters = (fuelDelta / 100m) * tankCapacity;
                     var priceForRefuel = fuelPrices.GetValueOrDefault(fuelType, 0);
                     refuels.Add(new FuelRefillEventDto(
                         Timestamp: curr.RecordedAt,
@@ -105,8 +112,12 @@ public class FuelCalculationService : IFuelCalculationService
                     continue;
                 }
 
-                var drop = prev.FuelPercent - curr.FuelPercent;
-                if (drop > 0 && drop < 80) // Sanity: ignore drops > 80% (sensor error)
+                // Skip small positive changes (+1 to +4%): sensor noise
+                if (fuelDelta > 0)
+                    continue;
+
+                var drop = -fuelDelta; // Make positive
+                if (drop > 0 && drop < 50) // Ignore drops > 50% (sensor error/disconnect)
                 {
                     totalFuelConsumedPercent += drop;
                     hasFuelData = true;
@@ -116,7 +127,8 @@ public class FuelCalculationService : IFuelCalculationService
                         dailyConsumption[date] = (0, 0);
 
                     var segDist = 0;
-                    if (prev.OdometerKm.HasValue && curr.OdometerKm.HasValue)
+                    if (prev.OdometerKm.HasValue && curr.OdometerKm.HasValue &&
+                        curr.OdometerKm.Value > prev.OdometerKm.Value)
                         segDist = (int)(curr.OdometerKm.Value - prev.OdometerKm.Value);
 
                     var (existPct, existDist) = dailyConsumption[date];
@@ -130,34 +142,29 @@ public class FuelCalculationService : IFuelCalculationService
         decimal avgConsumption = 0;
         bool useEstimation = false;
 
-        if (hasFuelRecords && totalFuelConsumedLiters > 0)
+        if (hasFuelData && totalFuelConsumedLiters > 0)
         {
-            // Fuel sensor captured real consumption drops → use actual data
+            // Real fuel sensor data → use actual consumption
             avgConsumption = totalDistance > 0
                 ? (totalFuelConsumedLiters / totalDistance) * 100
                 : 0;
         }
         else if (totalDistance > 0)
         {
-            // Either no fuel records, or sensor shows 0 drops (precision too low for short trips)
-            // → estimate consumption from distance + default L/100km rate
+            // No fuel data → estimate from distance + default L/100km rate
             useEstimation = true;
             avgConsumption = DefaultConsumptionRates.GetValueOrDefault(vehicleType, 8.0m);
             totalFuelConsumedLiters = (avgConsumption / 100m) * totalDistance;
 
-            if (!hasFuelRecords)
-            {
-                // No fuel records at all → also build daily breakdown from GPS
-                dailyConsumption = await BuildDailyFromGps(
-                    vehicle.GpsDeviceId.Value, startDateUtc, endDateUtc, avgConsumption, cancellationToken);
-            }
+            dailyConsumption = await BuildDailyFromGps(
+                vehicle.GpsDeviceId.Value, startDateUtc, endDateUtc, avgConsumption, cancellationToken);
         }
 
-        // ===== 4. Apply fuel price =====
+        // ===== 5. Apply fuel price =====
         var pricePerLiter = fuelPrices.GetValueOrDefault(fuelType, 0);
         var totalCost = totalFuelConsumedLiters * pricePerLiter;
 
-        // ===== 5. Build daily DTOs =====
+        // ===== 6. Build daily DTOs =====
         var dailyDtos = dailyConsumption
             .OrderBy(kv => kv.Key)
             .Select(kv =>
@@ -192,6 +199,129 @@ public class FuelCalculationService : IFuelCalculationService
             DailyConsumption: dailyDtos,
             Refuels: refuels
         );
+    }
+
+    /// <summary>
+    /// Lightweight DTO for fuel calculation from GPS positions
+    /// </summary>
+    private class FuelPositionSlim
+    {
+        public DateTime RecordedAt { get; set; }
+        public int FuelPercent { get; set; }
+        public long? OdometerKm { get; set; }
+        public double Latitude { get; set; }
+        public double Longitude { get; set; }
+        public double SpeedKph { get; set; }
+    }
+
+    /// <summary>
+    /// Remove isolated fuel spikes (sensor glitches).
+    /// Pattern: F1 → F2 (spike) → back near F1 → remove F2.
+    /// </summary>
+    private static List<FuelPositionSlim> FilterFuelSpikes(List<FuelPositionSlim> positions)
+    {
+        if (positions.Count < 3) return positions;
+
+        var spikeIndices = new HashSet<int>();
+
+        for (int i = 1; i < positions.Count - 1; i++)
+        {
+            var prevFuel = positions[i - 1].FuelPercent;
+            var currFuel = positions[i].FuelPercent;
+            var nextFuel = positions[i + 1].FuelPercent;
+
+            var dropFromPrev = Math.Abs(currFuel - prevFuel);
+            var recoveryToNext = Math.Abs(nextFuel - prevFuel);
+
+            // Big change from previous (>10%) and next reading recovers (<5% from original)
+            if (dropFromPrev > 10 && recoveryToNext <= 5)
+                spikeIndices.Add(i);
+        }
+
+        // Handle consecutive spikes (e.g., 40 → 20 → 15 → 40)
+        for (int i = 1; i < positions.Count - 2; i++)
+        {
+            if (spikeIndices.Contains(i)) continue;
+
+            var prevFuel = positions[i - 1].FuelPercent;
+            var currFuel = positions[i].FuelPercent;
+            var afterNextFuel = positions[i + 2].FuelPercent;
+
+            var dropFromPrev = Math.Abs(currFuel - prevFuel);
+            var recoveryToAfterNext = Math.Abs(afterNextFuel - prevFuel);
+
+            if (dropFromPrev > 10 && recoveryToAfterNext <= 5)
+            {
+                spikeIndices.Add(i);
+                spikeIndices.Add(i + 1);
+            }
+        }
+
+        return positions.Where((_, idx) => !spikeIndices.Contains(idx)).ToList();
+    }
+
+    /// <summary>
+    /// Collapse consecutive readings with the same fuel level into a single entry.
+    /// Keeps the first occurrence of each fuel level change.
+    /// </summary>
+    private static List<FuelPositionSlim> CollapseFuelReadings(List<FuelPositionSlim> positions)
+    {
+        if (positions.Count == 0) return positions;
+
+        var result = new List<FuelPositionSlim> { positions[0] };
+        var lastFuel = positions[0].FuelPercent;
+
+        for (int i = 1; i < positions.Count; i++)
+        {
+            if (positions[i].FuelPercent != lastFuel)
+            {
+                result.Add(positions[i]);
+                lastFuel = positions[i].FuelPercent;
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Calculate distance directly from a list of GPS positions (Haversine + odometer).
+    /// </summary>
+    private static int CalculateDistanceFromPositions(List<FuelPositionSlim> positions, DateTime startUtc, DateTime endUtc)
+    {
+        if (positions.Count < 2) return 0;
+
+        // Haversine distance with jump filter
+        double haversineKm = 0;
+        for (int i = 1; i < positions.Count; i++)
+        {
+            var prev = positions[i - 1];
+            var curr = positions[i];
+            var dist = HaversineKm(prev.Latitude, prev.Longitude, curr.Latitude, curr.Longitude);
+            if (dist > 0.01 && dist < 5 && curr.SpeedKph > 2)
+                haversineKm += dist;
+        }
+
+        int haversineDist = (int)Math.Round(haversineKm);
+
+        // Odometer-based distance
+        var first = positions.First();
+        var last = positions.Last();
+        if (first.OdometerKm.HasValue && last.OdometerKm.HasValue && last.OdometerKm.Value > first.OdometerKm.Value)
+        {
+            int odometerDist = (int)(last.OdometerKm.Value - first.OdometerKm.Value);
+
+            // Auto-detect meters vs km (some devices send odometer in meters)
+            if (haversineDist > 0 && odometerDist > haversineDist * 500)
+                odometerDist /= 1000;
+
+            var periodHours = (endUtc - startUtc).TotalHours;
+            var maxReasonableKm = (int)Math.Max(periodHours * 200, 500);
+
+            if (odometerDist <= maxReasonableKm)
+                return Math.Max(odometerDist, haversineDist);
+        }
+
+        return haversineDist;
     }
 
     /// <summary>
@@ -318,8 +448,8 @@ public class FuelCalculationService : IFuelCalculationService
     {
         var refills = new List<FuelRefillEventDto>();
 
-        var startDateUtc = DateTime.SpecifyKind(startDate, DateTimeKind.Utc);
-        var endDateUtc = DateTime.SpecifyKind(endDate, DateTimeKind.Utc);
+        var startDateUtc = startDate.Kind == DateTimeKind.Utc ? startDate : startDate.ToUniversalTime();
+        var endDateUtc = endDate.Kind == DateTimeKind.Utc ? endDate : endDate.ToUniversalTime();
 
         var vehicleId = await _context.Vehicles
             .Where(v => v.GpsDeviceId == deviceId)
