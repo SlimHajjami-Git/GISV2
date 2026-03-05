@@ -455,9 +455,9 @@ data:
         gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
 
         # Mobile app served under /mobile/ prefix
-        # Assets are built with --base-href=/mobile/ so all paths are relative to /mobile/
+        # Files are deployed to /usr/share/nginx/html/mobile/ via DEPLOY_SUBDIR build arg
+        # root + try_files works correctly (unlike alias + try_files which is broken)
         location /mobile/ {
-            alias /usr/share/nginx/html/;
             try_files $uri $uri/ /mobile/index.html;
         }
 
@@ -468,8 +468,6 @@ data:
 
         # Cache static assets under /mobile/
         location ~* ^/mobile/.*\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
-            alias /usr/share/nginx/html/;
-            rewrite ^/mobile/(.*)$ /$1 break;
             expires 1y;
             add_header Cache-Control "public, immutable";
         }
