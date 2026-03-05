@@ -281,6 +281,76 @@ public class DashboardController : ControllerBase
         });
     }
 
+    [HttpGet("cost-summary")]
+    public async Task<ActionResult> GetCostSummary()
+    {
+        var companyId = GetCompanyId();
+        var now = DateTime.UtcNow;
+        var thisMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        // 1. Manual costs from VehicleCosts table
+        var manualCosts = await _context.VehicleCosts
+            .AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Date >= thisMonth)
+            .GroupBy(c => c.Type)
+            .Select(g => new { Type = g.Key, Total = g.Sum(c => c.Amount) })
+            .ToListAsync();
+
+        var manualFuel = manualCosts.Where(c => c.Type == "fuel").Sum(c => c.Total);
+        var manualMaintenance = manualCosts.Where(c => c.Type == "maintenance").Sum(c => c.Total);
+        var manualInsurance = manualCosts.Where(c => c.Type == "insurance" || c.Type == "fine").Sum(c => c.Total);
+        var manualOther = manualCosts.Where(c => !new[] { "fuel", "maintenance", "insurance", "fine" }.Contains(c.Type)).Sum(c => c.Total);
+
+        // 2. Fuel costs from FuelRecords (GPS telemetry refuels)
+        var fuelRecordCosts = await _context.FuelRecords
+            .AsNoTracking()
+            .Where(f => f.RecordedAt >= thisMonth && f.RefuelCost != null && f.RefuelCost > 0)
+            .SumAsync(f => f.RefuelCost ?? 0);
+
+        // 3. Maintenance costs from MaintenanceLogs (completed maintenance)
+        var maintenanceLogCosts = await _context.MaintenanceLogs
+            .AsNoTracking()
+            .Where(m => m.CompanyId == companyId && m.DoneDate >= thisMonth && m.ActualCost > 0)
+            .SumAsync(m => m.ActualCost);
+
+        // Combine: manual + automated sources (avoid double-counting by checking CostId link)
+        var linkedCostIds = await _context.MaintenanceLogs
+            .AsNoTracking()
+            .Where(m => m.CompanyId == companyId && m.DoneDate >= thisMonth && m.CostId != null)
+            .Select(m => m.CostId!.Value)
+            .ToListAsync();
+
+        // Subtract linked manual costs that are already counted in maintenanceLogCosts
+        var linkedMaintenanceManual = linkedCostIds.Count > 0
+            ? await _context.VehicleCosts
+                .AsNoTracking()
+                .Where(c => linkedCostIds.Contains(c.Id))
+                .SumAsync(c => c.Amount)
+            : 0m;
+
+        var totalFuel = manualFuel + fuelRecordCosts;
+        var totalMaintenance = manualMaintenance + maintenanceLogCosts - linkedMaintenanceManual;
+        if (totalMaintenance < 0) totalMaintenance = Math.Max(manualMaintenance, maintenanceLogCosts);
+        var totalRepair = manualInsurance;
+        var totalOther = manualOther;
+        var grandTotal = totalFuel + totalMaintenance + totalRepair + totalOther;
+
+        return Ok(new
+        {
+            FuelCost = totalFuel,
+            MaintenanceCost = totalMaintenance,
+            RepairCost = totalRepair,
+            OtherCost = totalOther,
+            TotalCost = grandTotal,
+            Sources = new
+            {
+                ManualCosts = manualCosts.Sum(c => c.Total),
+                FuelRecordCosts = fuelRecordCosts,
+                MaintenanceLogCosts = maintenanceLogCosts
+            }
+        });
+    }
+
     [HttpGet("activity")]
     public async Task<ActionResult> GetRecentActivity([FromQuery] int limit = 20)
     {

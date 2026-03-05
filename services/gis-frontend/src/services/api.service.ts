@@ -929,6 +929,13 @@ export class ApiService {
     return this.http.get<any>(`${this.API_URL}/dashboard/stats`, { headers: this.getHeaders() });
   }
 
+  getDashboardCostSummary(): Observable<any> {
+    if (this.isMockUser()) {
+      return of({ fuelCost: 0, maintenanceCost: 0, repairCost: 0, otherCost: 0, totalCost: 0 });
+    }
+    return this.http.get<any>(`${this.API_URL}/dashboard/cost-summary`, { headers: this.getHeaders() });
+  }
+
   getDashboardActivity(limit = 20): Observable<any[]> {
     if (this.isMockUser()) {
       return of([]);

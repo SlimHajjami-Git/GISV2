@@ -595,6 +595,7 @@
                         <th class="th-narrow sortable" (click)="sortBy('eventNumber')"># <span class="sort-icon">{{ getSortIcon('eventNumber') }}</span></th>
                         <th class="sortable" (click)="sortBy('time')">Horaire <span class="sort-icon">{{ getSortIcon('time') }}</span></th>
                         <th class="sortable" (click)="sortBy('typeLabel')">Événement <span class="sort-icon">{{ getSortIcon('typeLabel') }}</span></th>
+                        <th class="sortable" (click)="sortBy('address')">Adresse <span class="sort-icon">{{ getSortIcon('address') }}</span></th>
                         <th class="sortable" (click)="sortBy('durationSeconds')">Durée <span class="sort-icon">{{ getSortIcon('durationSeconds') }}</span></th>
                         <th class="sortable" (click)="sortBy('distanceValue')">Distance <span class="sort-icon">{{ getSortIcon('distanceValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('speedValue')">Vitesse <span class="sort-icon">{{ getSortIcon('speedValue') }}</span></th>
@@ -714,6 +715,7 @@
                               {{ row.typeIcon }} {{ row.typeLabel }}
                             </span>
                           </td>
+                          <td class="location-cell">{{ row.type !== 'drive' ? row.address : '-' }}</td>
                           <td class="duration-cell">{{ row.duration }}</td>
                           <td class="distance-cell">{{ row.distance }}</td>
                           <td class="speed-cell">{{ row.speed }}</td>

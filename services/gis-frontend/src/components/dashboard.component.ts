@@ -546,34 +546,43 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   loadCostData() {
+    this.apiService.getDashboardCostSummary().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (summary) => {
+        this.ngZone.run(() => {
+          this.fuelCost = summary?.fuelCost || 0;
+          this.maintenanceCost = summary?.maintenanceCost || 0;
+          this.repairCost = summary?.repairCost || 0;
+          this.otherCost = summary?.otherCost || 0;
+          this.totalMonthlyCost = summary?.totalCost || (this.fuelCost + this.maintenanceCost + this.repairCost + this.otherCost);
+          this.cdr.detectChanges();
+          this.appRef.tick();
+        });
+      },
+      error: (err) => {
+        console.error('Error loading cost summary:', err);
+        // Fallback: try loading from VehicleCosts directly
+        this.loadCostDataFallback();
+      }
+    });
+  }
+
+  private loadCostDataFallback() {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     this.apiService.getCosts({ startDate: startOfMonth }).pipe(takeUntil(this.destroy$)).subscribe({
       next: (costs) => {
         this.ngZone.run(() => {
-          this.vehicleCosts = costs.map(c => ({
-            id: c.id?.toString() || '',
-            vehicleId: c.vehicleId?.toString() || '',
-            companyId: c.companyId?.toString() || '',
-            type: c.type as 'fuel' | 'maintenance' | 'insurance' | 'tax' | 'toll' | 'parking' | 'fine' | 'other',
-            description: c.description,
-            amount: c.amount,
-            date: new Date(c.date),
-            mileage: c.mileage,
-            receiptNumber: c.receiptNumber,
-            receiptUrl: c.receiptUrl
-          })) as VehicleCost[];
-
-          this.fuelCost = this.vehicleCosts.filter(c => c.type === 'fuel').reduce((s, c) => s + c.amount, 0);
-          this.maintenanceCost = this.vehicleCosts.filter(c => c.type === 'maintenance').reduce((s, c) => s + c.amount, 0);
-          this.repairCost = this.vehicleCosts.filter(c => c.type === 'insurance' || c.type === 'fine').reduce((s, c) => s + c.amount, 0);
-          this.otherCost = this.vehicleCosts.filter(c => !['fuel','maintenance','insurance','fine'].includes(c.type)).reduce((s, c) => s + c.amount, 0);
+          if (!Array.isArray(costs)) { costs = []; }
+          this.fuelCost = costs.filter((c: any) => c.type === 'fuel').reduce((s: number, c: any) => s + (c.amount || 0), 0);
+          this.maintenanceCost = costs.filter((c: any) => c.type === 'maintenance').reduce((s: number, c: any) => s + (c.amount || 0), 0);
+          this.repairCost = costs.filter((c: any) => c.type === 'insurance' || c.type === 'fine').reduce((s: number, c: any) => s + (c.amount || 0), 0);
+          this.otherCost = costs.filter((c: any) => !['fuel','maintenance','insurance','fine'].includes(c.type)).reduce((s: number, c: any) => s + (c.amount || 0), 0);
           this.totalMonthlyCost = this.fuelCost + this.maintenanceCost + this.repairCost + this.otherCost;
           this.cdr.detectChanges();
           this.appRef.tick();
         });
       },
-      error: (err) => console.error('Error loading costs:', err)
+      error: (err) => console.error('Error loading costs fallback:', err)
     });
   }
 
