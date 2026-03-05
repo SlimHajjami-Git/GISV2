@@ -1586,6 +1586,10 @@ export class ApiService {
     return this.http.post<{ id: number }>(`${this.API_URL}/fuelentries`, request, { headers: this.getHeaders() });
   }
 
+  bulkCreateFuelEntries(requests: CreateFuelEntryRequest[]): Observable<{ total: number; success: number; failed: number; results: any[] }> {
+    return this.http.post<any>(`${this.API_URL}/fuelentries/bulk`, requests, { headers: this.getHeaders() });
+  }
+
   deleteFuelEntry(id: number): Observable<void> {
     return this.http.delete<void>(`${this.API_URL}/fuelentries/${id}`, { headers: this.getHeaders() });
   }

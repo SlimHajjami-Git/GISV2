@@ -52,6 +52,38 @@ public class FuelEntriesController : ControllerBase
         return CreatedAtAction(nameof(GetFuelEntries), new { id }, new { Id = id });
     }
 
+    [HttpPost("bulk")]
+    public async Task<ActionResult> BulkCreateFuelEntries([FromBody] List<CreateFuelEntryRequest> requests)
+    {
+        var results = new List<object>();
+        foreach (var request in requests)
+        {
+            try
+            {
+                var command = new CreateFuelEntryCommand(
+                    request.VehiclePlate,
+                    request.FuelTypeId,
+                    request.Volume,
+                    request.PricePerLiter,
+                    request.InvoiceDate,
+                    request.StationName,
+                    request.InvoiceNumber,
+                    request.Notes,
+                    request.DriverId,
+                    request.OdometerKm
+                );
+                var id = await _mediator.Send(command);
+                results.Add(new { Id = id, Success = true, Error = (string?)null });
+            }
+            catch (Exception ex)
+            {
+                results.Add(new { Id = 0, Success = false, Error = ex.Message });
+            }
+        }
+        var successCount = results.Count(r => ((dynamic)r).Success);
+        return Ok(new { Total = requests.Count, Success = successCount, Failed = requests.Count - successCount, Results = results });
+    }
+
     [HttpDelete("{id}")]
     public async Task<ActionResult> DeleteFuelEntry(int id)
     {

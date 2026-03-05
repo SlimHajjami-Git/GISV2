@@ -719,21 +719,27 @@ export class CarburantComponent implements OnInit, OnDestroy {
   getValidEntries() { return this.importEntries.filter(e => e.isValid); }
   getInvalidEntries() { return this.importEntries.filter(e => !e.isValid); }
 
-  async saveData() {
+  saveData() {
     this.isSaving = true;
     const valid = this.getValidEntries();
-    for (const e of valid) {
-      try {
-        await this.apiService.createFuelEntry({
-          vehiclePlate: e.vehiclePlate,
-          fuelTypeId: e.fuelTypeId,
-          volume: e.volume,
-          pricePerLiter: e.pricePerLiter,
-          invoiceDate: e.invoiceDate
-        }).toPromise();
-      } catch (err) { console.error(err); }
-    }
-    this.isSaving = false; this.resetImport(); this.loadHistory(); this.activeTab = 'history';
+    const requests = valid.map(e => ({
+      vehiclePlate: e.vehiclePlate,
+      fuelTypeId: e.fuelTypeId,
+      volume: e.volume,
+      pricePerLiter: e.pricePerLiter,
+      invoiceDate: e.invoiceDate
+    }));
+    this.apiService.bulkCreateFuelEntries(requests).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (result) => {
+        console.log(`Import carburant: ${result.success}/${result.total} réussis`);
+        this.isSaving = false; this.resetImport(); this.loadHistory(); this.activeTab = 'history';
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Bulk import error:', err);
+        this.isSaving = false; this.cdr.detectChanges();
+      }
+    });
   }
 
   deleteEntry(entry: FuelEntryDto) {
