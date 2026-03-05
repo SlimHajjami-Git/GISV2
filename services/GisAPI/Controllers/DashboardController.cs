@@ -312,10 +312,10 @@ public class DashboardController : ControllerBase
             .Where(c => c.CompanyId == companyId && c.Type == "maintenance" && c.Date >= thisMonth)
             .SumAsync(c => c.Amount);
 
-        // 3. Réparations: from MaintenanceRecords type='repair' (completed)
-        var repairCost = await _context.MaintenanceRecords
+        // 3. Réparations: from Repairs table (SocieteId = companyId)
+        var repairCost = await _context.Repairs
             .AsNoTracking()
-            .Where(r => r.CompanyId == companyId && r.Type == "repair" && r.Status == "completed" && r.Date >= thisMonth)
+            .Where(r => r.SocieteId == companyId && r.RepairDate >= thisMonth)
             .SumAsync(r => r.TotalCost);
 
         // 4. Autres: remaining VehicleCosts (insurance, tax, toll, parking, fine, other)
