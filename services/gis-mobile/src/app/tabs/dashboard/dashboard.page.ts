@@ -278,7 +278,8 @@ export class DashboardPage implements OnInit, OnDestroy {
 
     this.api.getLastPositions().subscribe({
       next: (positions) => {
-        this.recentPositions = (positions || [])
+        const list = Array.isArray(positions) ? positions : [];
+        this.recentPositions = list
           .filter((p: any) => p.lastPosition)
           .slice(0, 10)
           .map((p: any) => ({

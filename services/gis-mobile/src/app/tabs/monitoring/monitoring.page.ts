@@ -181,7 +181,8 @@ export class MonitoringPage implements OnInit, OnDestroy, AfterViewInit {
   private loadPositions() {
     this.api.getLastPositions().subscribe({
       next: (positions) => {
-        (positions || []).filter((p: any) => p.lastPosition).forEach((p: any) => {
+        const list = Array.isArray(positions) ? positions : [];
+        list.filter((p: any) => p.lastPosition).forEach((p: any) => {
           const pos: PositionUpdate = {
             deviceId: p.deviceId || 0,
             deviceUid: p.deviceUid || '',

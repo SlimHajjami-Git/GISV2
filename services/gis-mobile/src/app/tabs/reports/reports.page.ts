@@ -518,7 +518,7 @@ export class ReportsPage implements OnInit {
 
   loadVehicles() {
     this.api.getVehicles().subscribe({
-      next: (v) => this.vehicles = v || []
+      next: (v) => this.vehicles = Array.isArray(v) ? v : []
     });
   }
 
@@ -592,7 +592,7 @@ export class ReportsPage implements OnInit {
       });
     } else {
       this.api.getDailyReports(date).subscribe({
-        next: (r) => { this.dailyReports = r || []; this.loading = false; },
+        next: (r) => { this.dailyReports = Array.isArray(r) ? r : []; this.loading = false; },
         error: () => { this.dailyReports = []; this.loading = false; }
       });
     }
@@ -610,7 +610,7 @@ export class ReportsPage implements OnInit {
       });
     } else {
       this.api.getMileageReports(start, end).subscribe({
-        next: (r) => { this.mileageReports = r || []; this.loading = false; },
+        next: (r) => { this.mileageReports = Array.isArray(r) ? r : []; this.loading = false; },
         error: () => { this.mileageReports = []; this.loading = false; }
       });
     }
@@ -621,7 +621,7 @@ export class ReportsPage implements OnInit {
     const endDate = date;
 
     this.api.getTrips(this.selectedVehicleId || undefined, startDate, endDate).subscribe({
-      next: (t) => { this.trips = t || []; this.loading = false; },
+      next: (t) => { this.trips = Array.isArray(t) ? t : []; this.loading = false; },
       error: () => { this.trips = []; this.loading = false; }
     });
 

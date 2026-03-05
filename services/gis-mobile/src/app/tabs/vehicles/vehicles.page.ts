@@ -264,7 +264,7 @@ export class VehiclesPage implements OnInit, OnDestroy {
     this.loading = true;
     this.api.getVehicles().subscribe({
       next: (vehicles) => {
-        this.vehicles = vehicles || [];
+        this.vehicles = Array.isArray(vehicles) ? vehicles : [];
         this.updateCounts();
         this.filterVehicles();
         this.loading = false;

@@ -322,7 +322,7 @@ export class PlaybackPage implements OnInit, OnDestroy {
   loadVehicles() {
     this.api.getVehicles().subscribe({
       next: (v) => {
-        this.vehicles = v || [];
+        this.vehicles = Array.isArray(v) ? v : [];
         // Set vehicle name if ID was passed via params
         if (this.selectedVehicleId && !this.selectedVehicleName) {
           const found = this.vehicles.find(x => parseInt(x.id) === this.selectedVehicleId);
@@ -374,12 +374,13 @@ export class PlaybackPage implements OnInit, OnDestroy {
           this.loadingTrack = false;
           this.trackLoaded = true;
 
-          if (!data || data.length === 0) {
+          const positions = Array.isArray(data) ? data : [];
+          if (positions.length === 0) {
             this.points = [];
             return;
           }
 
-          this.points = data.map((p: any) => ({
+          this.points = positions.map((p: any) => ({
             lat: p.latitude,
             lng: p.longitude,
             speed: p.speedKph || 0,
