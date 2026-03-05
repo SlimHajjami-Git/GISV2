@@ -38,10 +38,13 @@ public class GpsController : ControllerBase
     }
 
     // Npgsql 6+ requires DateTimeKind.Utc for timestamptz columns.
-    // GPS ingest stores timestamps in real UTC. We tag Unspecified kinds as UTC for Npgsql compatibility.
+    // GPS ingest stores timestamps in real UTC.
     private static DateTime EnsureUtc(DateTime dt)
     {
-        return dt.Kind == DateTimeKind.Utc ? dt : DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+        if (dt.Kind == DateTimeKind.Utc) return dt;
+        if (dt.Kind == DateTimeKind.Local) return dt.ToUniversalTime();
+        // Unspecified — assume UTC (GPS data is stored in UTC)
+        return DateTime.SpecifyKind(dt, DateTimeKind.Utc);
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");

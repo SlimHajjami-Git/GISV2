@@ -115,7 +115,11 @@ builder.Services.AddAuthorization(options =>
 });
 
 // Controllers with camelCase JSON serialization + UTC DateTime converter
-builder.Services.AddControllers()
+builder.Services.AddControllers(options =>
+    {
+        // Ensure all DateTime query/route parameters are parsed as UTC
+        options.ModelBinderProviders.Insert(0, new GisAPI.Middleware.UtcDateTimeModelBinderProvider());
+    })
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
