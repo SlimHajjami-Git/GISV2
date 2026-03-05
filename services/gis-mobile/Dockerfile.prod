@@ -4,7 +4,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --legacy-peer-deps
 COPY . .
-RUN npm run build -- --configuration=production
+# BASE_HREF: set to /mobile/ for K8s (path-based routing), / for Docker Compose
+ARG BASE_HREF=/
+RUN npm run build -- --configuration=production --base-href=${BASE_HREF}
 
 # Runtime stage
 FROM nginx:alpine

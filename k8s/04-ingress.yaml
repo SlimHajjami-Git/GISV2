@@ -292,6 +292,14 @@ spec:
                 name: gis-api
                 port:
                   number: 5000
+          # Mobile app → mobile service (served under /mobile/ prefix)
+          - path: /mobile
+            pathType: Prefix
+            backend:
+              service:
+                name: mobile
+                port:
+                  number: 80
           # Everything else → frontend
           - path: /
             pathType: Prefix
