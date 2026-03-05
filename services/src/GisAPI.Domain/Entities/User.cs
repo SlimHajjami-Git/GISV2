@@ -24,7 +24,7 @@ public class User : TenantEntity
     public string AccessLevel { get; set; } = "user"; // "admin" or "user"
     public bool CanMonitoring { get; set; } = true;
     public bool CanVehicles { get; set; } = true;
-    public bool CanDrivers { get; set; } = false;
+    public bool CanDrivers { get; set; } = true;
     public bool CanReports { get; set; } = false;
     public bool CanGeofences { get; set; } = false;
     public bool CanMaintenance { get; set; } = false;

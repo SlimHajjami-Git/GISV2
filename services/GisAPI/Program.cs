@@ -231,6 +231,20 @@ using (var scope = app.Services.CreateScope())
         Console.WriteLine("[Startup] No pending migrations");
     }
     
+    // Fix: ensure all subscription types have module_employees enabled (was defaulting to false in DB)
+    var subTypesToFix = await context.SubscriptionTypes
+        .Where(s => !s.ModuleEmployees)
+        .ToListAsync();
+    if (subTypesToFix.Any())
+    {
+        foreach (var st in subTypesToFix)
+        {
+            st.ModuleEmployees = true;
+            Console.WriteLine($"[Startup] Fixed module_employees=true for subscription '{st.Name}'");
+        }
+        await context.SaveChangesAsync();
+    }
+
     await SeedBeliveCompany(context);
     await SeedSubscriptionPlansAndTestCompany(context);
     await SeedFuelTypesAndPricing(context);
@@ -318,7 +332,20 @@ static async Task SeedBeliveCompany(GisAPI.Infrastructure.Persistence.GisDbConte
                 MaxUsers = 20,
                 MaxGpsDevices = 100,
                 MaxGeofences = 50,
-                IsActive = true
+                IsActive = true,
+                ModuleEmployees = true,
+                ModuleDashboard = true,
+                ModuleVehicles = true,
+                ModuleMaintenance = true,
+                ModuleCosts = true,
+                ModuleReports = true,
+                ModuleSettings = true,
+                ModuleUsers = true,
+                ModuleDocuments = true,
+                ModuleMonitoring = true,
+                ModuleGeofences = true,
+                ModuleSuppliers = true,
+                ModuleAccidents = true
             };
             context.SubscriptionTypes.Add(subscriptionType);
             await context.SaveChangesAsync();

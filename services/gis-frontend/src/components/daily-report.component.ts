@@ -216,18 +216,6 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                                 <span class="stat">📏 {{ activity.distanceKm }} km</span>
                                 <span class="stat">⚡ max {{ activity.maxSpeedKph }} km/h</span>
                               </div>
-                              <div class="locations">
-                                <div class="location from">
-                                  <span class="location-label">De:</span>
-                                  <span class="location-address">{{ activity.startLocation.address || 'Adresse inconnue' }}</span>
-                                </div>
-                                @if (activity.endLocation) {
-                                  <div class="location to">
-                                    <span class="location-label">À:</span>
-                                    <span class="location-address">{{ activity.endLocation.address || 'Adresse inconnue' }}</span>
-                                  </div>
-                                }
-                              </div>
                             } @else {
                               <div class="stop-location">
                                 <span class="location-icon">📍</span>

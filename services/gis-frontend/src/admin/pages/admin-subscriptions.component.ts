@@ -687,7 +687,7 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
     { key: 'dashboard', label: 'Tableau de bord' },
     { key: 'monitoring', label: 'Monitoring GPS' },
     { key: 'vehicles', label: 'Véhicules' },
-    { key: 'employees', label: 'Employés' },
+    { key: 'employees', label: 'Chauffeurs' },
     { key: 'geofences', label: 'Géofences' },
     { key: 'maintenance', label: 'Maintenance' },
     { key: 'costs', label: 'Coûts' },

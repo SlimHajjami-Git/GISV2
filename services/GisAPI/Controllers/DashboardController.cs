@@ -193,19 +193,17 @@ public class DashboardController : ControllerBase
                         a.Timestamp >= today)
             .CountAsync();
 
-        // Maintenance stats
-        var upcomingMaintenance = await _context.MaintenanceRecords
+        // Maintenance stats (from VehicleMaintenanceSchedules — the active system)
+        var upcomingMaintenance = await _context.VehicleMaintenanceSchedules
             .AsNoTracking()
-            .Where(m => m.CompanyId == companyId && 
-                        m.Status == "scheduled" && 
-                        m.Date <= today.AddDays(30))
+            .Where(s => s.CompanyId == companyId && !s.IsPaused &&
+                        (s.Status == "upcoming" || s.Status == "due"))
             .CountAsync();
 
-        var overdueMaintenance = await _context.MaintenanceRecords
+        var overdueMaintenance = await _context.VehicleMaintenanceSchedules
             .AsNoTracking()
-            .Where(m => m.CompanyId == companyId && 
-                        m.Status == "scheduled" && 
-                        m.Date < today)
+            .Where(s => s.CompanyId == companyId && !s.IsPaused &&
+                        (s.Status == "overdue" || s.Status == "critical"))
             .CountAsync();
 
         // Cost stats this month

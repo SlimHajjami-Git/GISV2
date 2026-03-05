@@ -80,7 +80,20 @@ public class AuthController : ControllerBase
                     MaxUsers = 20,
                     MaxGpsDevices = 100,
                     MaxGeofences = 50,
-                    IsActive = true
+                    IsActive = true,
+                    ModuleEmployees = true,
+                    ModuleDashboard = true,
+                    ModuleVehicles = true,
+                    ModuleMaintenance = true,
+                    ModuleCosts = true,
+                    ModuleReports = true,
+                    ModuleSettings = true,
+                    ModuleUsers = true,
+                    ModuleDocuments = true,
+                    ModuleMonitoring = true,
+                    ModuleGeofences = true,
+                    ModuleSuppliers = true,
+                    ModuleAccidents = true
                 };
                 _context.SubscriptionTypes.Add(subscriptionType);
                 await _context.SaveChangesAsync();
