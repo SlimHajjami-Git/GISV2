@@ -288,66 +288,52 @@ public class DashboardController : ControllerBase
         var now = DateTime.UtcNow;
         var thisMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        // 1. Manual costs from VehicleCosts table
-        var manualCosts = await _context.VehicleCosts
+        // 1. Carburant: from FuelEntries (manual fuel invoices/fill-ups)
+        var fuelCost = await _context.FuelEntries
             .AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Date >= thisMonth)
-            .GroupBy(c => c.Type)
-            .Select(g => new { Type = g.Key, Total = g.Sum(c => c.Amount) })
-            .ToListAsync();
+            .Where(f => f.CompanyId == companyId && f.InvoiceDate >= thisMonth)
+            .SumAsync(f => f.TotalAmount);
 
-        var manualFuel = manualCosts.Where(c => c.Type == "fuel").Sum(c => c.Total);
-        var manualMaintenance = manualCosts.Where(c => c.Type == "maintenance").Sum(c => c.Total);
-        var manualInsurance = manualCosts.Where(c => c.Type == "insurance" || c.Type == "fine").Sum(c => c.Total);
-        var manualOther = manualCosts.Where(c => !new[] { "fuel", "maintenance", "insurance", "fine" }.Contains(c.Type)).Sum(c => c.Total);
-
-        // 2. Fuel costs from FuelRecords (GPS telemetry refuels)
-        var fuelRecordCosts = await _context.FuelRecords
+        // Also add VehicleCosts type='fuel' (legacy manual cost entries)
+        fuelCost += await _context.VehicleCosts
             .AsNoTracking()
-            .Where(f => f.RecordedAt >= thisMonth && f.RefuelCost != null && f.RefuelCost > 0)
-            .SumAsync(f => f.RefuelCost ?? 0);
+            .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= thisMonth)
+            .SumAsync(c => c.Amount);
 
-        // 3. Maintenance costs from MaintenanceLogs (completed maintenance)
-        var maintenanceLogCosts = await _context.MaintenanceLogs
+        // 2. Entretiens: from MaintenanceLogs (completed scheduled maintenance)
+        var maintenanceCost = await _context.MaintenanceLogs
             .AsNoTracking()
             .Where(m => m.CompanyId == companyId && m.DoneDate >= thisMonth && m.ActualCost > 0)
             .SumAsync(m => m.ActualCost);
 
-        // Combine: manual + automated sources (avoid double-counting by checking CostId link)
-        var linkedCostIds = await _context.MaintenanceLogs
+        // Also add VehicleCosts type='maintenance'
+        maintenanceCost += await _context.VehicleCosts
             .AsNoTracking()
-            .Where(m => m.CompanyId == companyId && m.DoneDate >= thisMonth && m.CostId != null)
-            .Select(m => m.CostId!.Value)
-            .ToListAsync();
+            .Where(c => c.CompanyId == companyId && c.Type == "maintenance" && c.Date >= thisMonth)
+            .SumAsync(c => c.Amount);
 
-        // Subtract linked manual costs that are already counted in maintenanceLogCosts
-        var linkedMaintenanceManual = linkedCostIds.Count > 0
-            ? await _context.VehicleCosts
-                .AsNoTracking()
-                .Where(c => linkedCostIds.Contains(c.Id))
-                .SumAsync(c => c.Amount)
-            : 0m;
+        // 3. Réparations: from MaintenanceRecords type='repair' (completed)
+        var repairCost = await _context.MaintenanceRecords
+            .AsNoTracking()
+            .Where(r => r.CompanyId == companyId && r.Type == "repair" && r.Status == "completed" && r.Date >= thisMonth)
+            .SumAsync(r => r.TotalCost);
 
-        var totalFuel = manualFuel + fuelRecordCosts;
-        var totalMaintenance = manualMaintenance + maintenanceLogCosts - linkedMaintenanceManual;
-        if (totalMaintenance < 0) totalMaintenance = Math.Max(manualMaintenance, maintenanceLogCosts);
-        var totalRepair = manualInsurance;
-        var totalOther = manualOther;
-        var grandTotal = totalFuel + totalMaintenance + totalRepair + totalOther;
+        // 4. Autres: remaining VehicleCosts (insurance, tax, toll, parking, fine, other)
+        var otherCost = await _context.VehicleCosts
+            .AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Date >= thisMonth
+                && c.Type != "fuel" && c.Type != "maintenance")
+            .SumAsync(c => c.Amount);
+
+        var grandTotal = fuelCost + maintenanceCost + repairCost + otherCost;
 
         return Ok(new
         {
-            FuelCost = totalFuel,
-            MaintenanceCost = totalMaintenance,
-            RepairCost = totalRepair,
-            OtherCost = totalOther,
-            TotalCost = grandTotal,
-            Sources = new
-            {
-                ManualCosts = manualCosts.Sum(c => c.Total),
-                FuelRecordCosts = fuelRecordCosts,
-                MaintenanceLogCosts = maintenanceLogCosts
-            }
+            FuelCost = fuelCost,
+            MaintenanceCost = maintenanceCost,
+            RepairCost = repairCost,
+            OtherCost = otherCost,
+            TotalCost = grandTotal
         });
     }
 
