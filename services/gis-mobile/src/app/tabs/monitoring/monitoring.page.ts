@@ -141,6 +141,9 @@ export class MonitoringPage implements OnInit, OnDestroy, AfterViewInit {
   ) {}
 
   ngOnInit() {
+    // Ensure SignalR is connected (may already be started by dashboard)
+    this.signalr.startConnection();
+
     this.subs.push(
       this.signalr.positionUpdate$.subscribe(pos => {
         this.updateMarker(pos);
