@@ -127,6 +127,9 @@ services:
       RabbitMQ__GpsPositionsQueue: "gis.gps.positions"
       RabbitMQ__AlertsQueue: "gis.alerts.notifications"
       Redis__ConnectionString: "redis:6379"
+      Groq__ApiKey: "${GROQ_API_KEY:-}"
+      Groq__ApiUrl: "https://api.groq.com/openai/v1/chat/completions"
+      Groq__Model: "llama-3.3-70b-versatile"
       Valhalla__Url: "http://valhalla:8002"
     ports:
       - "5000:5000"

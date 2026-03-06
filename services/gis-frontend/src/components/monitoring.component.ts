@@ -70,10 +70,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   pointMarkers: L.CircleMarker[] = []; // Markers for each GPS point
   filteredBirdFlights = 0; // Count of filtered bird flight positions
 
-  // Stationary stop markers (displayed progressively as animation reaches each stop)
+  // Stationary stop markers (placed during animation when ignition is OFF)
   stationaryMarkers: L.Marker[] = [];
-  stationaryClusters: { startIndex: number; endIndex: number; lat: number; lng: number; startTime: Date; endTime: Date; durationMs: number; fuelStart: number | null; fuelEnd: number | null; ignitionOff: boolean }[] = [];
-  private shownClusterIndices = new Set<number>();
+  private stopMarkerCount = 0;
   
   // Smooth animation properties
   private animationFrameId: number | null = null;
@@ -1029,253 +1028,171 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
     // Point markers and end marker will be added progressively during animation
 
-    // Pre-compute stationary clusters (markers will be shown progressively during animation)
-    this.computeStationaryClusters();
-    this.shownClusterIndices.clear();
+    // Stop marker counter reset
+    this.stopMarkerCount = 0;
   }
 
-  // Pre-compute stationary clusters: groups of consecutive GPS points where the vehicle is stopped
-  // A stop is defined as: ignition OFF, OR speed < 3 km/h for consecutive points
-  // Minimum cluster duration: 60 seconds (to avoid marking brief traffic stops)
-  private computeStationaryClusters() {
-    this.stationaryClusters = [];
-    if (this.playbackPositions.length < 2) return;
-
-    let clusterStart = -1;
-
-    for (let i = 0; i < this.playbackPositions.length; i++) {
-      const pos = this.playbackPositions[i];
-      const speed = pos.speedKph || 0;
-      const ignitionOff = pos.ignitionOn === false;
-      const isStopped = ignitionOff || speed < 3;
-
-      if (isStopped) {
-        if (clusterStart === -1) clusterStart = i;
-      } else {
-        if (clusterStart !== -1) {
-          this.finalizeCluster(clusterStart, i - 1);
-          clusterStart = -1;
-        }
-      }
-    }
-    // Handle cluster that extends to end of data
-    if (clusterStart !== -1) {
-      this.finalizeCluster(clusterStart, this.playbackPositions.length - 1);
-    }
-
-    console.log(`[Playback] Computed ${this.stationaryClusters.length} stationary clusters`);
-  }
-
-  private finalizeCluster(startIdx: number, endIdx: number) {
-    const startPos = this.playbackPositions[startIdx];
-    const endPos = this.playbackPositions[endIdx];
-    const startTime = new Date(startPos.recordedAt);
-    const endTime = new Date(endPos.recordedAt);
-    const durationMs = endTime.getTime() - startTime.getTime();
-
-    // Only keep clusters longer than 60 seconds (skip brief traffic pauses)
-    if (durationMs < 60000) return;
-
-    // Use snapped coordinates for the cluster center (first point)
-    const latLng = this.getSnappedLatLng(startIdx);
-    const lat = Array.isArray(latLng) ? latLng[0] : (latLng as any).lat || startPos.latitude;
-    const lng = Array.isArray(latLng) ? latLng[1] : (latLng as any).lng || startPos.longitude;
-
-    // Find fuel values: first non-null and last non-null in the cluster
-    let fuelStart: number | null = null;
-    let fuelEnd: number | null = null;
-    for (let j = startIdx; j <= endIdx; j++) {
-      if (this.playbackPositions[j].fuelRaw != null) {
-        if (fuelStart === null) fuelStart = this.playbackPositions[j].fuelRaw;
-        fuelEnd = this.playbackPositions[j].fuelRaw;
-      }
-    }
-
-    // Check if any point in cluster has ignition off
-    let ignitionOff = false;
-    for (let j = startIdx; j <= endIdx; j++) {
-      if (this.playbackPositions[j].ignitionOn === false) { ignitionOff = true; break; }
-    }
-
-    this.stationaryClusters.push({
-      startIndex: startIdx, endIndex: endIdx,
-      lat, lng, startTime, endTime, durationMs,
-      fuelStart, fuelEnd, ignitionOff
-    });
-  }
-
-  // Draw ALL stationary markers at once (used by skipToEnd)
-  private drawAllStationaryMarkers() {
+  // Place a stop marker at the given position during animation
+  // Called inline from animateToNextPoint when ignition OFF is detected
+  private placeStopMarker(lat: number, lng: number, startTime: Date, endTime: Date, fuel: number | null) {
     if (!this.map) return;
-    this.stationaryClusters.forEach((_, idx) => {
-      this.showSingleStationaryMarker(idx);
+    this.stopMarkerCount++;
+    const stopNum = this.stopMarkerCount;
+
+    const durationMs = endTime.getTime() - startTime.getTime();
+    const durationMin = Math.round(durationMs / 60000);
+    const durationLabel = durationMin >= 60
+      ? `${Math.floor(durationMin / 60)}h${durationMin % 60 > 0 ? (durationMin % 60) + 'min' : ''}`
+      : `${durationMin}min`;
+
+    const durationH = Math.floor(durationMs / 3600000);
+    const durationM = Math.round((durationMs % 3600000) / 60000);
+    const durationFull = durationH > 0 ? `${durationH}h ${durationM}min` : `${durationM} min`;
+
+    const bgColor = '#ef4444';
+    const borderColor = '#dc2626';
+
+    const icon = L.divIcon({
+      html: `
+        <div style="
+          position:relative;
+          display:flex;align-items:center;justify-content:center;
+          width:36px;height:36px;
+          background:${bgColor};
+          border:3px solid #fff;
+          border-radius:50%;
+          box-shadow:0 2px 8px rgba(0,0,0,0.35);
+          cursor:pointer;
+          transition:transform 0.2s;
+        "
+        onmouseenter="this.style.transform='scale(1.25)'"
+        onmouseleave="this.style.transform='scale(1)'"
+        >
+          <span style="font-size:16px;line-height:1;">🅿️</span>
+        </div>
+        <div style="
+          position:absolute;
+          bottom:-18px;left:50%;transform:translateX(-50%);
+          background:${bgColor};
+          color:#fff;
+          font-size:9px;font-weight:700;
+          padding:1px 5px;border-radius:6px;
+          white-space:nowrap;
+          box-shadow:0 1px 3px rgba(0,0,0,0.3);
+        ">${durationLabel}</div>
+      `,
+      className: 'stationary-stop-marker',
+      iconSize: [36, 50],
+      iconAnchor: [18, 18]
     });
-  }
 
-  // Draw a single stationary marker for the given cluster index (progressive display)
-  private showSingleStationaryMarker(clusterIdx: number) {
-    if (!this.map || clusterIdx < 0 || clusterIdx >= this.stationaryClusters.length) return;
-    if (this.shownClusterIndices.has(clusterIdx)) return; // Already shown
-    this.shownClusterIndices.add(clusterIdx);
+    const marker = L.marker([lat, lng], { icon, zIndexOffset: 500 }).addTo(this.map);
 
-    const cluster = this.stationaryClusters[clusterIdx];
-    const idx = clusterIdx;
-    {
-      const durationMin = Math.round(cluster.durationMs / 60000);
-      const durationLabel = durationMin >= 60
-        ? `${Math.floor(durationMin / 60)}h${durationMin % 60 > 0 ? (durationMin % 60) + 'min' : ''}`
-        : `${durationMin}min`;
+    // Hover tooltip
+    const startTimeStr = startTime.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const endTimeStr = endTime.toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    marker.bindTooltip(`Moteur éteint — ${durationLabel} (${startTimeStr} → ${endTimeStr})`, {
+      direction: 'top', offset: [0, -24], className: 'stationary-tooltip'
+    });
 
-      const bgColor = cluster.ignitionOff ? '#ef4444' : '#f97316';
-      const borderColor = cluster.ignitionOff ? '#dc2626' : '#ea580c';
-      const statusIcon = cluster.ignitionOff ? '🅿️' : '⏸️';
+    // Click popup
+    const fuelDisplay = fuel != null ? `${fuel}%` : 'N/A';
+    const startFull = startTime.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const endFull = endTime.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-      const icon = L.divIcon({
-        html: `
-          <div style="
-            position:relative;
-            display:flex;align-items:center;justify-content:center;
-            width:36px;height:36px;
-            background:${bgColor};
-            border:3px solid #fff;
-            border-radius:50%;
-            box-shadow:0 2px 8px rgba(0,0,0,0.35);
-            cursor:pointer;
-            transition:transform 0.2s;
-          " 
-          onmouseenter="this.style.transform='scale(1.25)'"
-          onmouseleave="this.style.transform='scale(1)'"
-          >
-            <span style="font-size:16px;line-height:1;">${statusIcon}</span>
-          </div>
-          <div style="
-            position:absolute;
-            bottom:-18px;left:50%;transform:translateX(-50%);
-            background:${bgColor};
-            color:#fff;
-            font-size:9px;font-weight:700;
-            padding:1px 5px;border-radius:6px;
-            white-space:nowrap;
-            box-shadow:0 1px 3px rgba(0,0,0,0.3);
-          ">${durationLabel}</div>
-        `,
-        className: 'stationary-stop-marker',
-        iconSize: [36, 50],
-        iconAnchor: [18, 18]
-      });
+    const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+    const cachedAddr = this.playbackAddressCache.get(cacheKey) || '';
 
-      const marker = L.marker([cluster.lat, cluster.lng], {
-        icon,
-        zIndexOffset: 500
-      }).addTo(this.map!);
-
-      // Hover tooltip (preview info)
-      const startTimeStr = cluster.startTime.toLocaleString('fr-FR', {
-        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-      });
-      const endTimeStr = cluster.endTime.toLocaleString('fr-FR', {
-        hour: '2-digit', minute: '2-digit'
-      });
-      const statusLabel = cluster.ignitionOff ? 'Moteur éteint' : 'Arrêt (moteur allumé)';
-      marker.bindTooltip(`${statusLabel} — ${durationLabel} (${startTimeStr} → ${endTimeStr})`, {
-        direction: 'top', offset: [0, -24], className: 'stationary-tooltip'
-      });
-
-      // Click popup (detailed view)
-      const fuelDisplay = cluster.fuelStart != null
-        ? (cluster.fuelEnd != null && cluster.fuelEnd !== cluster.fuelStart
-          ? `${cluster.fuelStart}% → ${cluster.fuelEnd}%`
-          : `${cluster.fuelStart}%`)
-        : 'N/A';
-      const fuelDelta = (cluster.fuelStart != null && cluster.fuelEnd != null)
-        ? cluster.fuelEnd - cluster.fuelStart
-        : null;
-      const fuelDeltaStr = fuelDelta !== null && fuelDelta !== 0
-        ? `<span style="color:${fuelDelta < 0 ? '#ef4444' : '#22c55e'};font-weight:600;">(${fuelDelta > 0 ? '+' : ''}${fuelDelta}%)</span>`
-        : '';
-
-      const durationH = Math.floor(cluster.durationMs / 3600000);
-      const durationM = Math.round((cluster.durationMs % 3600000) / 60000);
-      const durationFull = durationH > 0 ? `${durationH}h ${durationM}min` : `${durationM} min`;
-
-      const startFull = cluster.startTime.toLocaleString('fr-FR', {
-        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
-      });
-      const endFull = cluster.endTime.toLocaleString('fr-FR', {
-        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
-      });
-
-      const cacheKey = `${cluster.lat.toFixed(4)},${cluster.lng.toFixed(4)}`;
-      const cachedAddr = this.playbackAddressCache.get(cacheKey) || '';
-
-      marker.bindPopup(`
-        <div style="font-family:'Inter',-apple-system,sans-serif;min-width:260px;padding:0;margin:-14px -20px;">
-          <div style="background:linear-gradient(135deg,${bgColor},${borderColor});padding:10px 14px;border-radius:8px 8px 0 0;display:flex;align-items:center;gap:8px;">
-            <span style="font-size:20px;">${statusIcon}</span>
-            <div>
-              <div style="font-weight:700;font-size:13px;color:#fff;">${cluster.ignitionOff ? 'Stationnement' : 'Arrêt temporaire'}</div>
-              <div style="font-size:11px;color:rgba(255,255,255,0.85);">Arrêt #${idx + 1}</div>
-            </div>
-          </div>
-          ${cachedAddr ? `<div style="padding:8px 14px;background:#fff;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6366f1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📍 ${cachedAddr}</div>` : ''}
-          <div style="background:#fff;padding:12px 14px;">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-              <div style="background:#f8fafc;padding:8px 10px;border-radius:8px;border:1px solid #e2e8f0;">
-                <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Durée</div>
-                <div style="font-size:16px;font-weight:700;color:#1e293b;">${durationFull}</div>
-              </div>
-              <div style="background:#f8fafc;padding:8px 10px;border-radius:8px;border:1px solid #e2e8f0;">
-                <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Carburant</div>
-                <div style="font-size:14px;font-weight:700;color:#f59e0b;">${fuelDisplay} ${fuelDeltaStr}</div>
-              </div>
-            </div>
-            <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-              <div style="background:#f0fdf4;padding:8px 10px;border-radius:8px;border:1px solid #bbf7d0;">
-                <div style="font-size:9px;color:#16a34a;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Début</div>
-                <div style="font-size:11px;font-weight:600;color:#15803d;">${startFull}</div>
-              </div>
-              <div style="background:#fef2f2;padding:8px 10px;border-radius:8px;border:1px solid #fecaca;">
-                <div style="font-size:9px;color:#dc2626;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Fin</div>
-                <div style="font-size:11px;font-weight:600;color:#b91c1c;">${endFull}</div>
-              </div>
-            </div>
-          </div>
-          <div style="padding:6px 14px 8px;background:#f8fafc;font-size:10px;color:#94a3b8;font-family:monospace;text-align:center;border-radius:0 0 8px 8px;">
-            ${cluster.lat.toFixed(6)}, ${cluster.lng.toFixed(6)}
+    marker.bindPopup(`
+      <div style="font-family:'Inter',-apple-system,sans-serif;min-width:260px;padding:0;margin:-14px -20px;">
+        <div style="background:linear-gradient(135deg,${bgColor},${borderColor});padding:10px 14px;border-radius:8px 8px 0 0;display:flex;align-items:center;gap:8px;">
+          <span style="font-size:20px;">🅿️</span>
+          <div>
+            <div style="font-weight:700;font-size:13px;color:#fff;">Stationnement</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.85);">Arrêt #${stopNum}</div>
           </div>
         </div>
-      `, { maxWidth: 320 });
+        ${cachedAddr ? `<div style="padding:8px 14px;background:#fff;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6366f1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📍 ${cachedAddr}</div>` : ''}
+        <div style="background:#fff;padding:12px 14px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div style="background:#f8fafc;padding:8px 10px;border-radius:8px;border:1px solid #e2e8f0;">
+              <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Durée</div>
+              <div style="font-size:16px;font-weight:700;color:#1e293b;">${durationFull}</div>
+            </div>
+            <div style="background:#f8fafc;padding:8px 10px;border-radius:8px;border:1px solid #e2e8f0;">
+              <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Carburant</div>
+              <div style="font-size:14px;font-weight:700;color:#f59e0b;">${fuelDisplay}</div>
+            </div>
+          </div>
+          <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div style="background:#f0fdf4;padding:8px 10px;border-radius:8px;border:1px solid #bbf7d0;">
+              <div style="font-size:9px;color:#16a34a;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Début</div>
+              <div style="font-size:11px;font-weight:600;color:#15803d;">${startFull}</div>
+            </div>
+            <div style="background:#fef2f2;padding:8px 10px;border-radius:8px;border:1px solid #fecaca;">
+              <div style="font-size:9px;color:#dc2626;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Fin</div>
+              <div style="font-size:11px;font-weight:600;color:#b91c1c;">${endFull}</div>
+            </div>
+          </div>
+        </div>
+        <div style="padding:6px 14px 8px;background:#f8fafc;font-size:10px;color:#94a3b8;font-family:monospace;text-align:center;border-radius:0 0 8px 8px;">
+          ${lat.toFixed(6)}, ${lng.toFixed(6)}
+        </div>
+      </div>
+    `, { maxWidth: 320 });
 
-      // Lazy geocode on popup open
-      if (!cachedAddr) {
-        marker.on('popupopen', () => {
-          this.geocodingService.reverseGeocode(cluster.lat, cluster.lng).subscribe({
-            next: (addr) => {
-              if (addr && !addr.includes('°')) {
-                this.playbackAddressCache.set(cacheKey, addr);
-                // Re-open popup to refresh content
-                marker.closePopup();
-                setTimeout(() => {
-                  // Update popup content with address
-                  const popupEl = marker.getPopup()?.getElement();
-                  if (popupEl) {
-                    const content = marker.getPopup()?.getContent() as string;
-                    if (content && !content.includes(addr)) {
-                      marker.setPopupContent(content.replace(
-                        '</div>\n          <div style="background:#fff;padding:12px 14px;">',
-                        `</div>\n          <div style="padding:8px 14px;background:#fff;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6366f1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📍 ${addr}</div>\n          <div style="background:#fff;padding:12px 14px;">`
-                      ));
-                    }
-                  }
-                  marker.openPopup();
-                }, 100);
-              }
+    // Lazy geocode on popup open
+    if (!cachedAddr) {
+      marker.on('popupopen', () => {
+        this.geocodingService.reverseGeocode(lat, lng).subscribe({
+          next: (addr) => {
+            if (addr && !addr.includes('°')) {
+              this.playbackAddressCache.set(cacheKey, addr);
+              marker.closePopup();
+              setTimeout(() => {
+                const content = marker.getPopup()?.getContent() as string;
+                if (content && !content.includes(addr)) {
+                  marker.setPopupContent(content.replace(
+                    '</div>\n        <div style="background:#fff;padding:12px 14px;">',
+                    `</div>\n        <div style="padding:8px 14px;background:#fff;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6366f1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📍 ${addr}</div>\n        <div style="background:#fff;padding:12px 14px;">`
+                  ));
+                }
+                marker.openPopup();
+              }, 100);
             }
-          });
-        }, { once: true } as any);
-      }
+          }
+        });
+      }, { once: true } as any);
+    }
 
-      this.stationaryMarkers.push(marker);
+    this.stationaryMarkers.push(marker);
+    console.log(`[Playback] Stop marker #${stopNum} placed at ${lat.toFixed(5)},${lng.toFixed(5)} — ${durationLabel}`);
+  }
+
+  // Place stop markers for ALL ignition OFF periods at once (used by skipToEnd)
+  private placeAllStopMarkers() {
+    if (!this.map || this.playbackPositions.length < 2) return;
+    let i = 0;
+    while (i < this.playbackPositions.length) {
+      const pos = this.playbackPositions[i];
+      if (pos.ignitionOn === false) {
+        const startIdx = i;
+        while (i < this.playbackPositions.length - 1 && this.playbackPositions[i + 1].ignitionOn === false) {
+          i++;
+        }
+        const startTime = new Date(this.playbackPositions[startIdx].recordedAt);
+        const endTime = new Date(this.playbackPositions[i].recordedAt);
+        let fuel: number | null = null;
+        for (let j = startIdx; j <= i; j++) {
+          if (this.playbackPositions[j].fuelRaw != null) fuel = this.playbackPositions[j].fuelRaw;
+        }
+        this.placeStopMarker(
+          this.playbackPositions[startIdx].latitude,
+          this.playbackPositions[startIdx].longitude,
+          startTime, endTime, fuel
+        );
+      }
+      i++;
     }
   }
 
@@ -1785,33 +1702,39 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     try {
-      // === SKIP STATIONARY CLUSTERS: jump past entire stopped periods ===
-      const cluster = this.stationaryClusters.find(
-        c => this.playbackIndex >= c.startIndex && this.playbackIndex <= c.endIndex
-      );
-      if (cluster && this.playbackIndex < cluster.endIndex) {
-        // Show the stationary marker progressively when we reach this cluster
-        const clusterIdx = this.stationaryClusters.indexOf(cluster);
-        if (clusterIdx >= 0) this.showSingleStationaryMarker(clusterIdx);
+      // === IGNITION OFF: skip stopped period, place stop marker at this position ===
+      const fromPos = this.playbackPositions[this.playbackIndex];
+      if (fromPos.ignitionOn === false) {
+        // Scan forward to find where ignition turns back ON
+        let endIdx = this.playbackIndex;
+        while (endIdx < this.playbackPositions.length - 1 && this.playbackPositions[endIdx + 1].ignitionOn === false) {
+          endIdx++;
+        }
+        const startTime = new Date(fromPos.recordedAt);
+        const endTime = new Date(this.playbackPositions[endIdx].recordedAt);
+        // Get latest fuel in the stop range
+        let fuel: number | null = null;
+        for (let j = this.playbackIndex; j <= endIdx; j++) {
+          if (this.playbackPositions[j].fuelRaw != null) fuel = this.playbackPositions[j].fuelRaw;
+        }
+        // Place stop marker at the RAW GPS position where ignition turned off
+        this.placeStopMarker(fromPos.latitude, fromPos.longitude, startTime, endTime, fuel);
 
-        // Jump to end of cluster — the stationary marker now represents this stop
-        const skipTo = Math.min(cluster.endIndex, this.playbackPositions.length - 1);
-        console.log(`[Playback] Skipping stationary cluster: index ${this.playbackIndex} → ${skipTo} (${Math.round(cluster.durationMs / 60000)}min stop)`);
+        const skipTo = Math.min(endIdx + 1, this.playbackPositions.length - 1);
+        console.log(`[Playback] Ignition OFF: index ${this.playbackIndex} → ${skipTo}`);
         this.ngZone.run(() => {
           this.playbackIndex = skipTo;
           this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
           this.updatePlaybackMarker();
           this.updatePlaybackAddress();
           this.cdr.detectChanges();
-          // Brief visual pause at the stop marker before continuing
+          // Brief pause then continue
           setTimeout(() => {
-            this.animateToNextPoint().catch(e => console.error('[Playback] post-skip error:', e));
+            this.animateToNextPoint().catch(e => console.error('[Playback] post-stop error:', e));
           }, Math.max(200, Math.min(800, 500 / this.playbackSpeed)));
         });
         return;
       }
-
-      const fromPos = this.playbackPositions[this.playbackIndex];
       const toPos = this.playbackPositions[this.playbackIndex + 1];
 
       // Drop a small dot at the current position
@@ -2607,10 +2530,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     
     this.updatePlaybackMarker();
 
-    // Clear stationary markers from map and reset tracking (they'll appear progressively again)
+    // Clear stationary markers from map
     this.stationaryMarkers.forEach(m => m.remove());
     this.stationaryMarkers = [];
-    this.shownClusterIndices.clear();
+    this.stopMarkerCount = 0;
 
     // Center on start position (snapped) - maintain current zoom level
     if (this.map && this.playbackPositions.length > 0) {
@@ -2633,8 +2556,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.playbackProgress = 100;
     this.updatePlaybackMarker();
 
-    // Show all stationary markers at once when skipping to end
-    this.drawAllStationaryMarkers();
+    // Place stop markers for all ignition OFF periods when skipping to end
+    this.placeAllStopMarkers();
 
     // Add end marker
     if (this.map && this.playbackPositions.length > 1) {
@@ -2878,9 +2801,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.matchedRouteCoords = [];
     this.matchedRouteIndex = 0;
 
-    // Reset stationary clusters data
-    this.stationaryClusters = [];
-    this.shownClusterIndices.clear();
+    // Reset stop marker counter
+    this.stopMarkerCount = 0;
 
     // Clear route display on overlay map before destroying it
     this.clearRouteDisplay();
