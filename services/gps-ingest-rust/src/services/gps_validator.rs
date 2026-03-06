@@ -27,13 +27,13 @@ const MAX_JUMP_DISTANCE_M: f64 = 5000.0;
 /// without a continuous trail of intermediate positions.
 const MAX_ABSOLUTE_JUMP_DISTANCE_M: f64 = 200_000.0; // 200 km
 
-/// Geographic bounding box for operational area (Tunisia / Maghreb region).
+/// Geographic bounding box for operational area (Tunisia only).
 /// Any position outside this box is rejected as GPS noise or hardware glitch.
-/// Generous margins: covers Tunisia + border areas of Algeria/Libya.
-const GEO_BOUNDS_LAT_MIN: f64 = 29.0;  // South (below Saharan Tunisia)
-const GEO_BOUNDS_LAT_MAX: f64 = 38.5;  // North (above Bizerte)
-const GEO_BOUNDS_LON_MIN: f64 = 5.0;   // West  (into eastern Algeria)
-const GEO_BOUNDS_LON_MAX: f64 = 13.0;  // East  (into western Libya)
+/// Small margins around Tunisia's actual borders for GPS accuracy.
+const GEO_BOUNDS_LAT_MIN: f64 = 30.0;  // South (Borj El Khadra ~30.2°)
+const GEO_BOUNDS_LAT_MAX: f64 = 37.6;  // North (Cap Angela ~37.35°)
+const GEO_BOUNDS_LON_MIN: f64 = 7.4;   // West  (Nefta/Tozeur ~7.5°)
+const GEO_BOUNDS_LON_MAX: f64 = 11.7;  // East  (Ras Ajdir ~11.6°)
 
 /// Speed tolerance for coherence check (percentage)
 /// Allows 100% difference between reported and calculated speed
@@ -332,20 +332,20 @@ mod tests {
     async fn test_geo_bounds_rejection() {
         let validator = GpsValidator::new();
 
-        // Algeria (lon=4 < 5) - outside operational area
+        // Algeria (lon=4 < 7.4) - outside Tunisia
         let frame = create_test_frame(36.798, 4.015, 8.0, "2026-01-29 12:00:00");
         let result = validator.validate(10, &frame).await;
-        assert!(!result.is_valid(), "Should reject Algeria position (lon<5)");
+        assert!(!result.is_valid(), "Should reject Algeria position (lon<7.4)");
 
         // Partial null-island (lat=-0, lon=-0.98)
         let frame = create_test_frame(-0.0, -0.983, 0.0, "2026-01-29 12:01:00");
         let result = validator.validate(11, &frame).await;
         assert!(!result.is_valid(), "Should reject partial null-island");
 
-        // Italy/sea (lat=39.6 > 38.5)
+        // Italy/sea (lat=39.6 > 37.6) - outside Tunisia
         let frame = create_test_frame(39.597, 10.200, 9.6, "2026-01-29 12:02:00");
         let result = validator.validate(12, &frame).await;
-        assert!(!result.is_valid(), "Should reject lat>38.5");
+        assert!(!result.is_valid(), "Should reject lat>37.6");
 
         // Valid position in Sfax
         let frame = create_test_frame(34.74, 10.76, 40.0, "2026-01-29 12:03:00");
