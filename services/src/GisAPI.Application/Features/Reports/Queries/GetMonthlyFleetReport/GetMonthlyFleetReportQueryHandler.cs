@@ -215,26 +215,34 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         return utilization;
     }
 
+    // Default consumption rates (L/100km) by vehicle type for estimation fallback
+    private static readonly Dictionary<string, double> DefaultConsumptionRates = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "citadine", 6.5 }, { "berline", 7.5 }, { "suv", 9.0 }, { "camion", 25.0 },
+        { "camionnette", 10.0 }, { "fourgon", 11.0 }, { "utilitaire", 10.0 }, { "bus", 30.0 },
+        { "moto", 4.0 }, { "pickup", 11.0 }, { "van", 9.5 }, { "minibus", 15.0 }
+    };
+
     private FuelAnalyticsDto BuildFuelAnalytics(List<Vehicle> vehicles, List<GpsPosition> positions)
     {
         var analytics = new FuelAnalyticsDto();
         var fuelEfficiencies = new List<double>();
 
         var totalDistance = CalculateDistance(positions);
-        
-        // Estimate fuel consumption based on positions with fuel data
-        var positionsWithFuel = positions.Where(p => p.FuelRaw.HasValue && p.FuelRaw > 0).ToList();
-        
-        // By vehicle
+
+        // By vehicle — use real fuel data when available
         foreach (var vehicle in vehicles.Where(v => v.GpsDeviceId.HasValue))
         {
-            var vehiclePositions = positions.Where(p => p.DeviceId == vehicle.GpsDeviceId).ToList();
+            var vehiclePositions = positions
+                .Where(p => p.DeviceId == vehicle.GpsDeviceId)
+                .OrderBy(p => p.RecordedAt)
+                .ToList();
             var distance = CalculateDistance(vehiclePositions);
-            
-            // Estimate consumption (assuming average 8L/100km if no data)
-            var estimatedConsumption = distance > 0 ? distance * 0.08 : 0;
-            var efficiency = estimatedConsumption > 0 ? distance / estimatedConsumption : 0;
-            
+
+            var (consumptionLiters, consumptionPer100Km, isEstimated) =
+                CalculateVehicleFuelConsumption(vehicle, vehiclePositions, distance);
+
+            var efficiency = consumptionLiters > 0 ? distance / consumptionLiters : 0;
             if (efficiency > 0) fuelEfficiencies.Add(efficiency);
 
             analytics.ByVehicle.Add(new VehicleFuelConsumptionDto
@@ -242,18 +250,18 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
                 VehicleId = vehicle.Id,
                 VehicleName = vehicle.Name,
                 TotalDistanceKm = Math.Round(distance, 2),
-                TotalConsumedLiters = Math.Round(estimatedConsumption, 2),
+                TotalConsumedLiters = Math.Round(consumptionLiters, 2),
                 EfficiencyKmPerLiter = Math.Round(efficiency, 2),
-                ConsumptionPer100Km = distance > 0 ? Math.Round(estimatedConsumption / distance * 100, 2) : 0,
+                ConsumptionPer100Km = Math.Round(consumptionPer100Km, 2),
                 EfficiencyRating = GetEfficiencyRating(efficiency)
             });
 
-            analytics.TotalFuelConsumedLiters += estimatedConsumption;
+            analytics.TotalFuelConsumedLiters += consumptionLiters;
         }
 
         analytics.TotalFuelConsumedLiters = Math.Round(analytics.TotalFuelConsumedLiters, 2);
-        analytics.TotalFuelCost = (decimal)Math.Round(analytics.TotalFuelConsumedLiters * 2.1, 2); // Estimated price
-        analytics.AverageConsumptionPer100Km = totalDistance > 0 
+        analytics.TotalFuelCost = (decimal)Math.Round(analytics.TotalFuelConsumedLiters * 2.1, 2);
+        analytics.AverageConsumptionPer100Km = totalDistance > 0
             ? Math.Round(analytics.TotalFuelConsumedLiters / totalDistance * 100, 2) : 0;
         analytics.AverageFuelEfficiencyKmPerLiter = analytics.TotalFuelConsumedLiters > 0
             ? Math.Round(totalDistance / analytics.TotalFuelConsumedLiters, 2) : 0;
@@ -264,6 +272,100 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         }
 
         return analytics;
+    }
+
+    /// <summary>
+    /// Calculate fuel consumption for a single vehicle using real sensor data.
+    /// Priority: 1) FMS FuelRateLPer100Km (CAN bus)  2) FuelRaw % drops  3) Vehicle-type default
+    /// </summary>
+    private (double consumptionLiters, double consumptionPer100Km, bool isEstimated)
+        CalculateVehicleFuelConsumption(Vehicle vehicle, List<GpsPosition> sortedPositions, double distanceKm)
+    {
+        if (distanceKm <= 0 || sortedPositions.Count < 2)
+            return (0, 0, true);
+
+        // === SOURCE 1: FMS CAN bus FuelRateLPer100Km (most accurate) ===
+        var fmsRates = sortedPositions
+            .Where(p => p.FuelRateLPer100Km.HasValue && p.FuelRateLPer100Km > 0 && p.FuelRateLPer100Km < 80)
+            .Select(p => (double)p.FuelRateLPer100Km!.Value)
+            .ToList();
+
+        if (fmsRates.Count >= 5)
+        {
+            // Use weighted average: exclude top/bottom 10% outliers (trimmed mean)
+            var sorted = fmsRates.OrderBy(r => r).ToList();
+            var trimCount = Math.Max(1, sorted.Count / 10);
+            var trimmed = sorted.Skip(trimCount).Take(sorted.Count - 2 * trimCount).ToList();
+            var avgRate = trimmed.Any() ? trimmed.Average() : sorted.Average();
+            var consumed = (avgRate / 100.0) * distanceKm;
+            return (consumed, avgRate, false);
+        }
+
+        // === SOURCE 2: FuelRaw sensor % drops ===
+        var fuelPositions = sortedPositions
+            .Where(p => p.FuelRaw.HasValue && p.FuelRaw >= 0 && p.FuelRaw <= 100)
+            .ToList();
+
+        if (fuelPositions.Count >= 3)
+        {
+            // Check for binary oscillation (broken sensor: only 0 and 100)
+            var extremeCount = fuelPositions.Count(p => p.FuelRaw <= 2 || p.FuelRaw >= 98);
+            var extremeRatio = (double)extremeCount / fuelPositions.Count;
+            var largeSwings = 0;
+            for (int i = 1; i < fuelPositions.Count; i++)
+            {
+                if (Math.Abs(fuelPositions[i].FuelRaw!.Value - fuelPositions[i - 1].FuelRaw!.Value) > 50)
+                    largeSwings++;
+            }
+            var swingRatio = (double)largeSwings / (fuelPositions.Count - 1);
+
+            if (extremeRatio <= 0.6 || swingRatio <= 0.1)
+            {
+                // Sensor data looks valid — calculate consumption from fuel % drops
+                var tankCapacity = vehicle.FuelTankCapacity ?? 60;
+                double totalDropPercent = 0;
+                int lastFuel = fuelPositions[0].FuelRaw!.Value;
+
+                for (int i = 1; i < fuelPositions.Count; i++)
+                {
+                    var currFuel = fuelPositions[i].FuelRaw!.Value;
+                    var delta = currFuel - lastFuel;
+
+                    if (delta >= 10)
+                    {
+                        // Refuel event — skip, don't count as consumption
+                        lastFuel = currFuel;
+                        continue;
+                    }
+                    if (delta > 0)
+                    {
+                        // Small positive change — sensor noise, skip
+                        continue;
+                    }
+                    var drop = -delta;
+                    if (drop > 0 && drop < 50)
+                    {
+                        totalDropPercent += drop;
+                    }
+                    lastFuel = currFuel;
+                }
+
+                if (totalDropPercent > 0)
+                {
+                    var consumedLiters = (totalDropPercent / 100.0) * tankCapacity;
+                    var per100Km = (consumedLiters / distanceKm) * 100.0;
+                    // Sanity check: reject if result is clearly wrong (< 2 or > 60 L/100km)
+                    if (per100Km >= 2.0 && per100Km <= 60.0)
+                        return (consumedLiters, per100Km, false);
+                }
+            }
+        }
+
+        // === SOURCE 3: Fallback — vehicle type default rate ===
+        var vehicleType = vehicle.Type?.ToLower() ?? "berline";
+        var defaultRate = DefaultConsumptionRates.GetValueOrDefault(vehicleType, 8.0);
+        var estimatedLiters = (defaultRate / 100.0) * distanceKm;
+        return (estimatedLiters, defaultRate, true);
     }
 
     private async Task<MaintenanceAnalyticsDto> BuildMaintenanceAsync(List<Vehicle> vehicles, DateTime start, DateTime end, CancellationToken ct)
@@ -330,7 +432,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
                 HarshBrakingEvents = 0, // Would need acceleration data
                 HarshAccelerationEvents = 0,
                 SpeedingEvents = driverPositions.Count(p => p.SpeedKph > 120),
-                FuelEfficiency = distance > 0 ? Math.Round(distance / (distance * 0.08), 2) : 0,
+                FuelEfficiency = distance > 0 ? Math.Round(CalculateFuelEfficiencyForPositions(driverPositions, distance), 2) : 0,
                 PerformanceScore = Math.Round(score, 1),
                 Rating = GetPerformanceRating(score)
             });
@@ -467,8 +569,10 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         {
             ComparisonPeriod = period,
             Distance = BuildComparisonMetric("Distance", currentDistance, previousDistance, "km", true),
-            FuelConsumption = BuildComparisonMetric("Carburant", currentDistance * 0.08, previousDistance * 0.08, "L", false),
-            Cost = BuildComparisonMetric("Coût", currentDistance * 0.08 * 2.1, previousDistance * 0.08 * 2.1, "TND", false),
+            FuelConsumption = BuildComparisonMetric("Carburant", 
+                CalculateFuelFromPositions(current), CalculateFuelFromPositions(previous), "L", false),
+            Cost = BuildComparisonMetric("Coût", 
+                CalculateFuelFromPositions(current) * 2.1, CalculateFuelFromPositions(previous) * 2.1, "TND", false),
             Utilization = BuildComparisonMetric("Utilisation", 
                 current.Select(p => p.DeviceId).Distinct().Count(),
                 previous.Select(p => p.DeviceId).Distinct().Count(), "%", true),
@@ -767,6 +871,75 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
     }
 
     // ==================== HELPER METHODS ====================
+
+    /// <summary>
+    /// Estimate total fuel consumed from a set of positions (for period comparisons).
+    /// Uses FMS rates when available, otherwise FuelRaw drops, otherwise distance-based estimate.
+    /// </summary>
+    private double CalculateFuelFromPositions(List<GpsPosition> positions)
+    {
+        if (!positions.Any()) return 0;
+
+        var distance = CalculateDistance(positions);
+        if (distance <= 0) return 0;
+
+        // Try FMS CAN bus rates first
+        var fmsRates = positions
+            .Where(p => p.FuelRateLPer100Km.HasValue && p.FuelRateLPer100Km > 0 && p.FuelRateLPer100Km < 80)
+            .Select(p => (double)p.FuelRateLPer100Km!.Value)
+            .ToList();
+
+        if (fmsRates.Count >= 5)
+        {
+            var avgRate = fmsRates.OrderBy(r => r)
+                .Skip(fmsRates.Count / 10)
+                .Take(fmsRates.Count - 2 * (fmsRates.Count / 10))
+                .DefaultIfEmpty(fmsRates.Average())
+                .Average();
+            return (avgRate / 100.0) * distance;
+        }
+
+        // Try FuelRaw sensor drops
+        var fuelPositions = positions
+            .Where(p => p.FuelRaw.HasValue && p.FuelRaw >= 0 && p.FuelRaw <= 100)
+            .OrderBy(p => p.RecordedAt)
+            .ToList();
+
+        if (fuelPositions.Count >= 3)
+        {
+            double totalDrop = 0;
+            int lastFuel = fuelPositions[0].FuelRaw!.Value;
+            for (int i = 1; i < fuelPositions.Count; i++)
+            {
+                var curr = fuelPositions[i].FuelRaw!.Value;
+                var delta = curr - lastFuel;
+                if (delta >= 10) { lastFuel = curr; continue; } // refuel
+                if (delta > 0) continue; // noise
+                var drop = -delta;
+                if (drop > 0 && drop < 50) totalDrop += drop;
+                lastFuel = curr;
+            }
+            if (totalDrop > 0)
+            {
+                var liters = (totalDrop / 100.0) * 60; // assume 60L tank
+                var rate = (liters / distance) * 100.0;
+                if (rate >= 2.0 && rate <= 60.0) return liters;
+            }
+        }
+
+        // Fallback: 8 L/100km default
+        return (8.0 / 100.0) * distance;
+    }
+
+    /// <summary>
+    /// Calculate fuel efficiency (km/L) for a set of positions.
+    /// </summary>
+    private double CalculateFuelEfficiencyForPositions(List<GpsPosition> driverPositions, double distance)
+    {
+        if (distance <= 0) return 0;
+        var fuel = CalculateFuelFromPositions(driverPositions);
+        return fuel > 0 ? distance / fuel : 0;
+    }
 
     private double CalculateDistance(List<GpsPosition> positions)
     {
