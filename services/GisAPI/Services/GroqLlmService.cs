@@ -10,6 +10,7 @@ public class GroqLlmService : ILlmService
 {
     private readonly HttpClient _httpClient;
     private readonly string _model;
+    private readonly string _completionsPath;
     private readonly ILogger<GroqLlmService> _logger;
 
     public GroqLlmService(IConfiguration configuration, ILogger<GroqLlmService> logger)
@@ -17,16 +18,20 @@ public class GroqLlmService : ILlmService
         _logger = logger;
         _model = configuration["Groq:Model"] ?? "llama-3.3-70b-versatile";
 
+        var apiUrl = configuration["Groq:ApiUrl"] ?? "https://api.groq.com/openai/v1/chat/completions";
+        var uri = new Uri(apiUrl);
+        // Separate base address (scheme+host) from path so HttpClient resolves correctly
         _httpClient = new HttpClient
         {
-            BaseAddress = new Uri(configuration["Groq:ApiUrl"] ?? "https://api.groq.com/openai/v1/chat/completions"),
+            BaseAddress = new Uri($"{uri.Scheme}://{uri.Authority}"),
             Timeout = TimeSpan.FromSeconds(60)
         };
+        _completionsPath = uri.PathAndQuery;
 
         var apiKey = configuration["Groq:ApiKey"];
-        if (string.IsNullOrWhiteSpace(apiKey))
+        if (string.IsNullOrWhiteSpace(apiKey) || apiKey == "your-groq-api-key")
         {
-            _logger.LogWarning("Groq:ApiKey is not configured. AI chat will not work until the key is set via env var Groq__ApiKey.");
+            _logger.LogWarning("Groq:ApiKey is not configured or is a placeholder. AI chat will not work. Set env var Groq__ApiKey with a valid key from https://console.groq.com/keys");
         }
         else
         {
@@ -37,7 +42,7 @@ public class GroqLlmService : ILlmService
     public async Task<LlmResponse> ChatAsync(string systemPrompt, List<LlmMessage> messages, CancellationToken ct = default)
     {
         if (_httpClient.DefaultRequestHeaders.Authorization == null)
-            throw new Exception("Clé API Groq non configurée. Définissez la variable d'environnement Groq__ApiKey.");
+            throw new Exception("Clé API Groq non configurée. Créez une clé sur https://console.groq.com/keys puis définissez la variable Groq__ApiKey.");
 
         var requestMessages = new List<object>
         {
@@ -63,13 +68,15 @@ public class GroqLlmService : ILlmService
 
         try
         {
-            var response = await _httpClient.PostAsync("", content, ct);
+            var response = await _httpClient.PostAsync(_completionsPath, content, ct);
             var responseBody = await response.Content.ReadAsStringAsync(ct);
 
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogError("Groq API error {StatusCode}: {Body}", response.StatusCode, responseBody);
-                throw new Exception($"Groq API returned {response.StatusCode}");
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    throw new Exception("Clé API Groq invalide ou expirée. Vérifiez votre clé sur https://console.groq.com/keys");
+                throw new Exception($"Erreur Groq API: {response.StatusCode}");
             }
 
             var result = JsonSerializer.Deserialize<GroqChatResponse>(responseBody);
