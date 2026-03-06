@@ -936,6 +936,14 @@ export class ApiService {
     return this.http.get<any>(`${this.API_URL}/dashboard/cost-summary`, { headers: this.getHeaders() });
   }
 
+  getDashboardWidgetData(period: string = 'month'): Observable<any> {
+    if (this.isMockUser()) {
+      return of({ topFuelConsumers: [], drivingScores: [], healthyVehicles: [], unhealthyVehicles: [], immobilizedVehicles: [], immobHistory: [], trends: { mileage: 0, expenses: 0, fuel: 0 } });
+    }
+    const params = new HttpParams().set('period', period);
+    return this.http.get<any>(`${this.API_URL}/dashboard/widget-data`, { headers: this.getHeaders(), params });
+  }
+
   getDashboardActivity(limit = 20): Observable<any[]> {
     if (this.isMockUser()) {
       return of([]);

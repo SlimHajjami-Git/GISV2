@@ -63,11 +63,11 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
                     </div>
                   </div>
                   <div class="expense-breakdown">
-                    <div class="expense-row"><span>Depenses</span><span class="trend up">+5%</span><span class="trend down">-8%</span></div>
+                    <div class="expense-row"><span>Depenses</span><span class="trend" [class.up]="trends.expenses > 0" [class.down]="trends.expenses <= 0">{{ trends.expenses >= 0 ? '+' : '' }}{{ trends.expenses }}%</span></div>
                     <div class="expense-row"><span>Carburant</span><span>{{ fuelCost | number:'1.0-0' }}</span><span class="pct">{{ getFuelPercentage() | number:'1.0-0' }}%</span></div>
                     <div class="expense-row"><span>Entretiens</span><span>{{ maintenanceCost | number:'1.0-0' }}</span><span class="pct">{{ getMaintenancePercentage() | number:'1.0-0' }}%</span></div>
                     <div class="expense-row"><span>Autres</span><span>{{ otherCost | number:'1.0-0' }}</span><span class="pct">{{ getOtherPercentage() | number:'1.0-0' }}%</span></div>
-                    <div class="expense-row total"><span>Total</span><span>{{ totalMonthlyCost | number:'1.0-0' }} DT</span><span class="trend down">-8%</span></div>
+                    <div class="expense-row total"><span>Total</span><span>{{ totalMonthlyCost | number:'1.0-0' }} DT</span><span class="trend" [class.up]="trends.expenses > 0" [class.down]="trends.expenses <= 0">{{ trends.expenses >= 0 ? '+' : '' }}{{ trends.expenses }}%</span></div>
                   </div>
                 </div>
               </ng-container>
@@ -130,7 +130,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
                 <div class="card-body">
                   <div class="mileage-total">
                     <span class="mileage-big">{{ totalFleetMileage | number:'1.0-0' }} km</span>
-                    <span class="mileage-trend up">+12%</span>
+                    <span class="mileage-trend" [class.up]="trends.mileage >= 0" [class.down]="trends.mileage < 0">{{ trends.mileage >= 0 ? '+' : '' }}{{ trends.mileage }}%</span>
                   </div>
                   <div class="mileage-bars">
                     <div class="mbar-row" *ngFor="let unit of topUnits">
@@ -178,7 +178,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
               <ng-container *ngSwitchCase="'scores'">
                 <div class="card-header" cdkDragHandle>
                   <span class="card-title">Top scores de conduite</span>
-                  <span class="scores-summary">{{ filteredFleetMileage | number:'1.0-0' }} km <span class="trend up">+25%</span></span>
+                  <span class="scores-summary">{{ filteredFleetMileage | number:'1.0-0' }} km <span class="trend" [class.up]="trends.mileage > 0" [class.down]="trends.mileage < 0">{{ trends.mileage >= 0 ? '+' : '' }}{{ trends.mileage }}%</span></span>
                   <span class="drag-grip">&#x2630;</span>
                 </div>
                 <div class="card-body">
@@ -462,7 +462,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   repairCost = 0;
   otherCost = 0;
 
-  // New dashboard data
+  // New dashboard data (from API)
   topFuelConsumers: { plate: string; consumption: number; trend: number }[] = [];
   immobilizedVehicles: { plate: string; reason: string; days: number }[] = [];
   immobChartPoints: { x: number; y: number }[] = [];
@@ -470,6 +470,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   drivingScores: { score: number; color: string; vehicles: string[] }[] = [];
   healthyVehicles: { plate: string; score: number }[] = [];
   unhealthyVehicles: { plate: string; issue: string }[] = [];
+  trends = { mileage: 0, expenses: 0, fuel: 0 };
 
   constructor(
     private router: Router,
@@ -499,7 +500,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.ngZone.run(() => {
       this.loadVehicles();
       this.loadCostData();
-      this.loadMaintenanceAlerts();
+      this.loadWidgetData();
     });
 
     const today = new Date();
@@ -620,88 +621,41 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.filteredMaxMileage = Math.max(...this.filteredTopUnits.map(u => u.mileage), 1);
     this.filteredFleetMileage = Math.round(this.totalFleetMileage / divisor);
 
-    // Fuel consumers: realistic estimate based on mileage (5-8 L/100km for 5CV vehicles)
-    // Higher mileage vehicles tend to consume slightly more
-    this.topFuelConsumers = sorted.slice(0, 5).map(v => {
-      const km = v.mileageKm || 1;
-      const ratio = Math.min(km / (this.maxMileage || 1), 1);
-      const base = 5.5 + ratio * 2.5; // 5.5 to 8.0 L/100km
-      const variation = ((km % 7) - 3) * 0.3; // deterministic small variation per vehicle
-      return {
-        plate: v.plate || v.name,
-        consumption: Math.round((base + variation) * 10) / 10,
-        trend: Math.round(((km % 13) - 6) * 1.5) // deterministic trend per vehicle (-9% to +9%)
-      };
-    });
-
-    // Immobilized vehicles: from maintenance alerts + maintenance status vehicles
-    this.buildImmobilizedVehicles(vehiclesWithKm);
-
-    // Driving scores (simulated) - 4 groups matching reference
-    this.drivingScores = [
-      { score: 68, color: '#3b82f6', vehicles: sorted.slice(0, 2).map(v => v.plate || v.name) },
-      { score: 63, color: '#10b981', vehicles: sorted.slice(2, 4).map(v => v.plate || v.name) },
-      { score: 61, color: '#f59e0b', vehicles: sorted.slice(4, 6).map(v => v.plate || v.name) },
-      { score: 57, color: '#ef4444', vehicles: sorted.slice(6, 8).map(v => v.plate || v.name) }
-    ];
-
-    // Vehicle health
-    this.healthyVehicles = vehiclesWithKm
-      .filter(v => v.status === 'available' || v.status === 'in_use')
-      .slice(0, 5)
-      .map(v => ({ plate: v.plate || v.name, score: 70 + Math.round(Math.random() * 30) }));
-
-    this.unhealthyVehicles = vehiclesWithKm
-      .filter(v => v.status === 'maintenance')
-      .map(v => ({ plate: v.plate || v.name, issue: 'Maintenance requise' }));
   }
 
-  buildImmobilizedVehicles(vehiclesWithKm: any[]) {
-    const immob: { plate: string; reason: string; days: number }[] = [];
-    const seen = new Set<string>();
-
-    // From maintenance alerts (due/overdue/critical)
-    if (this.maintenanceAlerts && this.maintenanceAlerts.length > 0) {
-      for (const alert of this.maintenanceAlerts) {
-        const plate = alert.vehiclePlate || alert.vehicleName || 'N/A';
-        if (seen.has(plate)) continue;
-        seen.add(plate);
-        const status = (alert.status || '').toLowerCase();
-        const reason = alert.templateName || alert.description || (status === 'overdue' ? 'Maintenance en retard' : status === 'critical' ? 'Maintenance critique' : 'Maintenance planifiee');
-        const daysSince = alert.nextDueDate ? Math.max(0, Math.round((Date.now() - new Date(alert.nextDueDate).getTime()) / 86400000)) : 0;
-        immob.push({ plate, reason, days: daysSince || 1 });
-      }
-    }
-
-    // From vehicles with maintenance status
-    for (const v of vehiclesWithKm) {
-      const plate = v.plate || v.name;
-      if (seen.has(plate)) continue;
-      if (v.status === 'maintenance') {
-        seen.add(plate);
-        immob.push({ plate, reason: 'En maintenance', days: 1 });
-      }
-    }
-
-    this.immobilizedVehicles = immob.sort((a, b) => b.days - a.days);
-    this.buildImmobChart();
-  }
-
-  loadMaintenanceAlerts() {
-    this.apiService.getMaintenanceAlerts().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (alerts) => {
+  loadWidgetData() {
+    this.apiService.getDashboardWidgetData(this.selectedPeriod).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (data) => {
         this.ngZone.run(() => {
-          this.maintenanceAlerts = alerts || [];
-          this.buildImmobilizedVehicles(this.vehicles.map(v => ({
-            ...v,
-            mileageKm: this.sanitizeMileage(v.mileage || 0)
-          })));
+          if (data.topFuelConsumers?.length) this.topFuelConsumers = data.topFuelConsumers;
+          if (data.drivingScores?.length) this.drivingScores = data.drivingScores;
+          if (data.healthyVehicles?.length) this.healthyVehicles = data.healthyVehicles;
+          if (data.unhealthyVehicles) this.unhealthyVehicles = data.unhealthyVehicles;
+          if (data.immobilizedVehicles) this.immobilizedVehicles = data.immobilizedVehicles;
+          if (data.trends) this.trends = data.trends;
+          if (data.immobHistory?.length) this.buildImmobChartFromApi(data.immobHistory);
+          else this.buildImmobChart();
           this.cdr.detectChanges();
+          this.appRef.tick();
         });
       },
-      error: (err) => console.error('Error loading maintenance alerts:', err)
+      error: (err) => console.error('Error loading widget data:', err)
     });
   }
+
+  buildImmobChartFromApi(history: { month: string; count: number }[]) {
+    this.immobChartLabels = history.map(h => h.month);
+    const values = history.map(h => h.count);
+    const maxVal = Math.max(...values, 1);
+    const w = 260;
+    const h = 90;
+    const step = values.length > 1 ? w / (values.length - 1) : w;
+    this.immobChartPoints = values.map((v, i) => ({
+      x: Math.round(i * step),
+      y: Math.round(h - (v / maxVal) * (h - 10))
+    }));
+  }
+
 
   // Donut arc helpers (circumference = 2 * PI * 50 = ~314)
   getFuelArc(): number {
@@ -786,5 +740,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   applyFilter() {
     this.loadVehicles();
     this.loadCostData();
+    this.loadWidgetData();
   }
 }

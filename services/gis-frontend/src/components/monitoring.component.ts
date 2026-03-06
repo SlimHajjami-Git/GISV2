@@ -70,9 +70,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   pointMarkers: L.CircleMarker[] = []; // Markers for each GPS point
   filteredBirdFlights = 0; // Count of filtered bird flight positions
 
-  // Stationary stop markers (displayed instead of animating through stopped periods)
+  // Stationary stop markers (displayed progressively as animation reaches each stop)
   stationaryMarkers: L.Marker[] = [];
   stationaryClusters: { startIndex: number; endIndex: number; lat: number; lng: number; startTime: Date; endTime: Date; durationMs: number; fuelStart: number | null; fuelEnd: number | null; ignitionOff: boolean }[] = [];
+  private shownClusterIndices = new Set<number>();
   
   // Smooth animation properties
   private animationFrameId: number | null = null;
@@ -1028,9 +1029,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
     // Point markers and end marker will be added progressively during animation
 
-    // Compute and draw stationary stop markers
+    // Pre-compute stationary clusters (markers will be shown progressively during animation)
     this.computeStationaryClusters();
-    this.drawStationaryMarkers();
+    this.shownClusterIndices.clear();
   }
 
   // Pre-compute stationary clusters: groups of consecutive GPS points where the vehicle is stopped
@@ -1103,14 +1104,23 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
-  // Draw distinctive markers on the map for each stationary cluster
-  private drawStationaryMarkers() {
-    // Clear any existing stationary markers
-    this.stationaryMarkers.forEach(m => m.remove());
-    this.stationaryMarkers = [];
+  // Draw ALL stationary markers at once (used by skipToEnd)
+  private drawAllStationaryMarkers() {
     if (!this.map) return;
+    this.stationaryClusters.forEach((_, idx) => {
+      this.showSingleStationaryMarker(idx);
+    });
+  }
 
-    this.stationaryClusters.forEach((cluster, idx) => {
+  // Draw a single stationary marker for the given cluster index (progressive display)
+  private showSingleStationaryMarker(clusterIdx: number) {
+    if (!this.map || clusterIdx < 0 || clusterIdx >= this.stationaryClusters.length) return;
+    if (this.shownClusterIndices.has(clusterIdx)) return; // Already shown
+    this.shownClusterIndices.add(clusterIdx);
+
+    const cluster = this.stationaryClusters[clusterIdx];
+    const idx = clusterIdx;
+    {
       const durationMin = Math.round(cluster.durationMs / 60000);
       const durationLabel = durationMin >= 60
         ? `${Math.floor(durationMin / 60)}h${durationMin % 60 > 0 ? (durationMin % 60) + 'min' : ''}`
@@ -1266,7 +1276,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
 
       this.stationaryMarkers.push(marker);
-    });
+    }
   }
 
   addPointMarkers() {
@@ -1780,7 +1790,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         c => this.playbackIndex >= c.startIndex && this.playbackIndex <= c.endIndex
       );
       if (cluster && this.playbackIndex < cluster.endIndex) {
-        // Jump to end of cluster — the stationary marker already represents this stop
+        // Show the stationary marker progressively when we reach this cluster
+        const clusterIdx = this.stationaryClusters.indexOf(cluster);
+        if (clusterIdx >= 0) this.showSingleStationaryMarker(clusterIdx);
+
+        // Jump to end of cluster — the stationary marker now represents this stop
         const skipTo = Math.min(cluster.endIndex, this.playbackPositions.length - 1);
         console.log(`[Playback] Skipping stationary cluster: index ${this.playbackIndex} → ${skipTo} (${Math.round(cluster.durationMs / 60000)}min stop)`);
         this.ngZone.run(() => {
@@ -2593,8 +2607,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     
     this.updatePlaybackMarker();
 
-    // Re-draw stationary markers (they persist across reset since clusters don't change)
-    this.drawStationaryMarkers();
+    // Clear stationary markers from map and reset tracking (they'll appear progressively again)
+    this.stationaryMarkers.forEach(m => m.remove());
+    this.stationaryMarkers = [];
+    this.shownClusterIndices.clear();
 
     // Center on start position (snapped) - maintain current zoom level
     if (this.map && this.playbackPositions.length > 0) {
@@ -2616,6 +2632,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.playbackIndex = this.playbackPositions.length - 1;
     this.playbackProgress = 100;
     this.updatePlaybackMarker();
+
+    // Show all stationary markers at once when skipping to end
+    this.drawAllStationaryMarkers();
 
     // Add end marker
     if (this.map && this.playbackPositions.length > 1) {
@@ -2861,6 +2880,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
     // Reset stationary clusters data
     this.stationaryClusters = [];
+    this.shownClusterIndices.clear();
 
     // Clear route display on overlay map before destroying it
     this.clearRouteDisplay();

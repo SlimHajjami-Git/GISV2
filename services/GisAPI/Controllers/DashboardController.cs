@@ -8,6 +8,7 @@ using GisAPI.Domain.Entities;
 using GisAPI.Application.Features.Dashboard.Queries.GetDashboardKpis;
 using GisAPI.Application.Features.Dashboard.Queries.GetDashboardCharts;
 using GisAPI.Application.Features.Dashboard.Queries.GetFleetStatistics;
+using GisAPI.Services;
 
 namespace GisAPI.Controllers;
 
@@ -24,13 +25,15 @@ public class DashboardController : ControllerBase
     private readonly GisDbContext _context;
     private readonly IMediator _mediator;
     private readonly IMemoryCache _cache;
+    private readonly IVehicleHealthScoreService _healthService;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
 
-    public DashboardController(GisDbContext context, IMediator mediator, IMemoryCache cache)
+    public DashboardController(GisDbContext context, IMediator mediator, IMemoryCache cache, IVehicleHealthScoreService healthService)
     {
         _context = context;
         _mediator = mediator;
         _cache = cache;
+        _healthService = healthService;
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
@@ -134,6 +137,249 @@ public class DashboardController : ControllerBase
         // Clear all dashboard-related cache entries for this company
         // Note: In production, use distributed cache with pattern-based invalidation
         return Ok(new { message = "Cache refresh initiated", companyId });
+    }
+
+    /// <summary>
+    /// Get real data for all dashboard widget cards (fuel consumers, driving scores, health, immobilization, trends)
+    /// </summary>
+    [HttpGet("widget-data")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult> GetWidgetData([FromQuery] string period = "month")
+    {
+        var companyId = GetCompanyId();
+        var cacheKey = $"dashboard_widgets_{companyId}_{period}";
+        if (_cache.TryGetValue(cacheKey, out object? cached) && cached != null)
+            return Ok(cached);
+
+        var now = DateTime.UtcNow;
+        var (periodStart, periodEnd, prevStart, prevEnd) = GetPeriodRange(now, period);
+
+        var vehicles = await _context.Vehicles.AsNoTracking()
+            .Where(v => v.CompanyId == companyId)
+            .ToListAsync();
+
+        var deviceMap = vehicles
+            .Where(v => v.GpsDeviceId.HasValue)
+            .ToDictionary(v => v.GpsDeviceId!.Value, v => v);
+        var deviceIds = deviceMap.Keys.ToList();
+
+        // ── Top fuel consumers (from FMS FuelRateLPer100Km) ──
+        var fuelData = await _context.GpsPositions.AsNoTracking()
+            .Where(p => deviceIds.Contains(p.DeviceId) &&
+                        p.RecordedAt >= periodStart && p.RecordedAt <= periodEnd &&
+                        p.FuelRateLPer100Km != null && p.FuelRateLPer100Km > 0 && p.FuelRateLPer100Km < 80)
+            .GroupBy(p => p.DeviceId)
+            .Select(g => new { DeviceId = g.Key, AvgRate = g.Average(p => (double)p.FuelRateLPer100Km!), Count = g.Count() })
+            .Where(x => x.Count >= 3)
+            .OrderByDescending(x => x.AvgRate)
+            .Take(5)
+            .ToListAsync();
+
+        // Previous period fuel for trend
+        var prevFuelData = await _context.GpsPositions.AsNoTracking()
+            .Where(p => deviceIds.Contains(p.DeviceId) &&
+                        p.RecordedAt >= prevStart && p.RecordedAt <= prevEnd &&
+                        p.FuelRateLPer100Km != null && p.FuelRateLPer100Km > 0 && p.FuelRateLPer100Km < 80)
+            .GroupBy(p => p.DeviceId)
+            .Select(g => new { DeviceId = g.Key, AvgRate = g.Average(p => (double)p.FuelRateLPer100Km!) })
+            .ToListAsync();
+
+        var topFuelConsumers = fuelData.Select(f =>
+        {
+            var v = deviceMap.GetValueOrDefault(f.DeviceId);
+            var prevRate = prevFuelData.FirstOrDefault(p => p.DeviceId == f.DeviceId)?.AvgRate ?? f.AvgRate;
+            var trend = prevRate > 0 ? Math.Round((f.AvgRate - prevRate) / prevRate * 100, 1) : 0;
+            return new { plate = v?.Plate ?? v?.Name ?? "N/A", consumption = Math.Round(f.AvgRate, 1), trend };
+        }).ToList();
+
+        // If no FMS data, fallback: estimate from vehicle mileage & type
+        if (topFuelConsumers.Count == 0)
+        {
+            topFuelConsumers = vehicles
+                .Where(v => v.Mileage > 0)
+                .OrderByDescending(v => v.Mileage)
+                .Take(5)
+                .Select(v =>
+                {
+                    var rate = (v.Type?.ToLower()) switch
+                    {
+                        "camion" => 25.0, "bus" => 30.0, "fourgon" => 11.0,
+                        "utilitaire" or "camionnette" => 10.0, "suv" => 9.0,
+                        _ => 8.0
+                    };
+                    return new { plate = v.Plate ?? v.Name, consumption = rate, trend = 0.0 };
+                }).ToList();
+        }
+
+        // ── Driving scores (from alerts count in period — fewer alerts = better score) ──
+        var alertsByVehicle = await _context.GpsAlerts.AsNoTracking()
+            .Where(a => a.VehicleId.HasValue && a.Vehicle!.CompanyId == companyId &&
+                        a.Timestamp >= periodStart && a.Timestamp <= periodEnd)
+            .GroupBy(a => a.VehicleId!.Value)
+            .Select(g => new { VehicleId = g.Key, AlertCount = g.Count() })
+            .ToListAsync();
+
+        var drivingScores = vehicles
+            .Select(v =>
+            {
+                var alerts = alertsByVehicle.FirstOrDefault(a => a.VehicleId == v.Id)?.AlertCount ?? 0;
+                var score = Math.Max(0, 100 - (alerts * 5)); // -5 per alert, min 0
+                return new { vehicleId = v.Id, plate = v.Plate ?? v.Name, score };
+            })
+            .OrderByDescending(x => x.score)
+            .ToList();
+
+        // Group into 4 score tiers
+        string[] tierColors = { "#3b82f6", "#10b981", "#f59e0b", "#ef4444" };
+        var scoreTiers = new List<object>();
+        if (drivingScores.Count > 0)
+        {
+            var chunkSize = Math.Max(1, (drivingScores.Count + 3) / 4);
+            for (int i = 0; i < 4 && i * chunkSize < drivingScores.Count; i++)
+            {
+                var chunk = drivingScores.Skip(i * chunkSize).Take(chunkSize).ToList();
+                var avgScore = (int)Math.Round(chunk.Average(x => x.score));
+                scoreTiers.Add(new
+                {
+                    score = avgScore,
+                    color = tierColors[i],
+                    vehicles = chunk.Take(2).Select(x => x.plate).ToList()
+                });
+            }
+        }
+
+        // ── Vehicle health (from IVehicleHealthScoreService — real DB data) ──
+        var healthResults = await _healthService.CalculateAllScoresAsync(companyId);
+        var healthyVehicles = healthResults
+            .Where(h => h.Score >= 60)
+            .OrderByDescending(h => h.Score)
+            .Take(5)
+            .Select(h => new { plate = h.VehicleName, score = h.Score })
+            .ToList();
+
+        var unhealthyVehicles = healthResults
+            .Where(h => h.Score < 60)
+            .OrderBy(h => h.Score)
+            .Select(h => new
+            {
+                plate = h.VehicleName,
+                issue = h.Warnings.FirstOrDefault() ?? (h.Level == "critical" ? "État critique" : "Maintenance requise")
+            })
+            .ToList();
+
+        // ── Immobilized vehicles (from maintenance schedules overdue/critical + vehicle status) ──
+        var immobSchedules = await _context.VehicleMaintenanceSchedules.AsNoTracking()
+            .Where(s => s.CompanyId == companyId && !s.IsPaused &&
+                        (s.Status == "overdue" || s.Status == "critical" || s.Status == "due"))
+            .Include(s => s.Vehicle)
+            .Include(s => s.Template)
+            .ToListAsync();
+
+        var seen = new HashSet<int>();
+        var immobilizedVehicles = new List<object>();
+        foreach (var s in immobSchedules.OrderByDescending(s => s.Status == "critical").ThenByDescending(s => s.Status == "overdue"))
+        {
+            if (s.Vehicle == null || !seen.Add(s.VehicleId)) continue;
+            var days = s.NextDueDate.HasValue ? Math.Max(0, (int)(now - s.NextDueDate.Value).TotalDays) : 0;
+            immobilizedVehicles.Add(new
+            {
+                plate = s.Vehicle.Plate ?? s.Vehicle.Name,
+                reason = s.Template?.Name ?? (s.Status == "critical" ? "Maintenance critique" : "Maintenance en retard"),
+                days = Math.Max(days, 1)
+            });
+        }
+        // Add vehicles with maintenance status not already covered
+        foreach (var v in vehicles.Where(v => v.Status == "maintenance" && !seen.Contains(v.Id)))
+        {
+            immobilizedVehicles.Add(new { plate = v.Plate ?? v.Name, reason = "En maintenance", days = 1 });
+        }
+
+        // ── Immobilization history (real monthly counts from maintenance logs) ──
+        var immobHistory = new List<object>();
+        var monthNames = new[] { "Jan", "Fev", "Mar", "Avr", "Mai", "Jun", "Jul", "Aou", "Sep", "Oct", "Nov", "Dec" };
+        for (int i = 5; i >= 0; i--)
+        {
+            var mStart = DateTime.SpecifyKind(new DateTime(now.Year, now.Month, 1).AddMonths(-i), DateTimeKind.Utc);
+            var mEnd = DateTime.SpecifyKind(mStart.AddMonths(1).AddSeconds(-1), DateTimeKind.Utc);
+            var count = await _context.VehicleMaintenanceSchedules.AsNoTracking()
+                .Where(s => s.CompanyId == companyId &&
+                            (s.Status == "overdue" || s.Status == "critical") &&
+                            (s.NextDueDate.HasValue && s.NextDueDate.Value <= mEnd && s.NextDueDate.Value >= mStart))
+                .Select(s => s.VehicleId)
+                .Distinct()
+                .CountAsync();
+            // Also count vehicles in "maintenance" status (approximate)
+            immobHistory.Add(new { month = monthNames[mStart.Month - 1], count });
+        }
+
+        // ── Trends (real period comparison) ──
+        // Mileage trend: compare current vs previous period trip distances
+        var currentMileage = await _context.Trips.AsNoTracking()
+            .Where(t => t.CompanyId == companyId && t.StartTime >= periodStart && t.StartTime <= periodEnd && t.Status == "completed")
+            .SumAsync(t => t.DistanceKm);
+        var prevMileage = await _context.Trips.AsNoTracking()
+            .Where(t => t.CompanyId == companyId && t.StartTime >= prevStart && t.StartTime <= prevEnd && t.Status == "completed")
+            .SumAsync(t => t.DistanceKm);
+        var mileageTrend = prevMileage > 0 ? Math.Round((double)(currentMileage - prevMileage) / (double)prevMileage * 100, 1) : 0;
+
+        // Cost trend: compare current vs previous period costs
+        var currentCost = await _context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd)
+            .SumAsync(c => c.Amount);
+        var prevCost = await _context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Date >= prevStart && c.Date <= prevEnd)
+            .SumAsync(c => c.Amount);
+        var costTrend = prevCost > 0 ? Math.Round((double)(currentCost - prevCost) / (double)prevCost * 100, 1) : 0;
+
+        var result = new
+        {
+            topFuelConsumers,
+            drivingScores = scoreTiers,
+            healthyVehicles,
+            unhealthyVehicles,
+            immobilizedVehicles,
+            immobHistory,
+            trends = new
+            {
+                mileage = mileageTrend,
+                expenses = costTrend,
+                fuel = topFuelConsumers.Any()
+                    ? Math.Round(topFuelConsumers.Average(f => f.trend), 1)
+                    : 0.0
+            }
+        };
+
+        _cache.Set(cacheKey, result, CacheDuration);
+        return Ok(result);
+    }
+
+    private (DateTime start, DateTime end, DateTime prevStart, DateTime prevEnd) GetPeriodRange(DateTime now, string period)
+    {
+        DateTime start, end, prevStart, prevEnd;
+        switch (period)
+        {
+            case "week":
+                var dayOfWeek = (int)now.DayOfWeek;
+                start = DateTime.SpecifyKind(now.Date.AddDays(-dayOfWeek), DateTimeKind.Utc);
+                end = DateTime.SpecifyKind(start.AddDays(7).AddSeconds(-1), DateTimeKind.Utc);
+                prevStart = DateTime.SpecifyKind(start.AddDays(-7), DateTimeKind.Utc);
+                prevEnd = DateTime.SpecifyKind(start.AddSeconds(-1), DateTimeKind.Utc);
+                break;
+            case "quarter":
+                var quarterMonth = ((now.Month - 1) / 3) * 3 + 1;
+                start = DateTime.SpecifyKind(new DateTime(now.Year, quarterMonth, 1), DateTimeKind.Utc);
+                end = DateTime.SpecifyKind(start.AddMonths(3).AddSeconds(-1), DateTimeKind.Utc);
+                prevStart = DateTime.SpecifyKind(start.AddMonths(-3), DateTimeKind.Utc);
+                prevEnd = DateTime.SpecifyKind(start.AddSeconds(-1), DateTimeKind.Utc);
+                break;
+            default: // month
+                start = DateTime.SpecifyKind(new DateTime(now.Year, now.Month, 1), DateTimeKind.Utc);
+                end = DateTime.SpecifyKind(start.AddMonths(1).AddSeconds(-1), DateTimeKind.Utc);
+                prevStart = DateTime.SpecifyKind(start.AddMonths(-1), DateTimeKind.Utc);
+                prevEnd = DateTime.SpecifyKind(start.AddSeconds(-1), DateTimeKind.Utc);
+                break;
+        }
+        return (start, end, prevStart, prevEnd);
     }
 
     #endregion
