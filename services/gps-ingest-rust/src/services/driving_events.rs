@@ -466,6 +466,8 @@ mod tests {
             signal_quality: Some(20),
             satellites_in_view: Some(10),
             rpm: None,
+            fuel_rate_l_per_100km: None,
+            fms_temperature_c: None,
             is_valid: true,
             is_real_time: true,
             flags_raw: 0,

@@ -541,7 +541,7 @@ async fn process_single_frame(
 
                 // Coordinates near 0,0 = GPS has no fix (null island)
                 // Instead of rejecting, use last known valid position (same as GISV1)
-                if frame.latitude.abs() < 0.05 && frame.longitude.abs() < 0.05 {
+                if frame.latitude.abs() < 1.0 && frame.longitude.abs() < 2.0 {
                     if let Some(device_id) = device_id_opt {
                         if let Some(last_pos) = database.get_last_position(device_id).await? {
                             frame.latitude = last_pos.latitude;
@@ -1020,6 +1020,10 @@ mod tests {
 
         async fn get_last_position(&self, _device_id: i32) -> anyhow::Result<Option<crate::db::LastKnownPosition>> {
             Ok(None) // No last position for tests
+        }
+
+        async fn get_device_uid_by_mat(&self, _mat: &str) -> anyhow::Result<Option<String>> {
+            Ok(None) // No MAT lookup for tests
         }
 
         async fn get_last_fuel_record(&self, _device_id: i32) -> anyhow::Result<Option<(i16, u32, chrono::DateTime<chrono::Utc>)>> {

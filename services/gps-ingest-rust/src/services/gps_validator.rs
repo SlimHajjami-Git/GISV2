@@ -22,6 +22,19 @@ const MAX_SPEED_KPH: f64 = 250.0;
 /// 250 km/h = ~4.2 km/min, so 5km is a reasonable max
 const MAX_JUMP_DISTANCE_M: f64 = 5000.0;
 
+/// Maximum absolute jump distance in meters regardless of time gap.
+/// Even hours apart, a fleet vehicle cannot teleport 200km between frames
+/// without a continuous trail of intermediate positions.
+const MAX_ABSOLUTE_JUMP_DISTANCE_M: f64 = 200_000.0; // 200 km
+
+/// Geographic bounding box for operational area (Tunisia / Maghreb region).
+/// Any position outside this box is rejected as GPS noise or hardware glitch.
+/// Generous margins: covers Tunisia + border areas of Algeria/Libya.
+const GEO_BOUNDS_LAT_MIN: f64 = 29.0;  // South (below Saharan Tunisia)
+const GEO_BOUNDS_LAT_MAX: f64 = 38.5;  // North (above Bizerte)
+const GEO_BOUNDS_LON_MIN: f64 = 5.0;   // West  (into eastern Algeria)
+const GEO_BOUNDS_LON_MAX: f64 = 13.0;  // East  (into western Libya)
+
 /// Speed tolerance for coherence check (percentage)
 /// Allows 100% difference between reported and calculated speed
 const SPEED_COHERENCE_TOLERANCE: f64 = 1.0;
@@ -127,8 +140,20 @@ impl GpsValidator {
             });
         }
 
-        // Note: null island (0,0) check is handled in transport.rs
-        // where we substitute last known position instead of rejecting
+        // Geographic bounding box: reject positions outside operational area
+        // Catches null-island (0,0), GPS noise in wrong hemisphere, and hardware glitches
+        if frame.latitude < GEO_BOUNDS_LAT_MIN || frame.latitude > GEO_BOUNDS_LAT_MAX
+            || frame.longitude < GEO_BOUNDS_LON_MIN || frame.longitude > GEO_BOUNDS_LON_MAX
+        {
+            return Some(ValidationResult::Invalid {
+                reason: format!(
+                    "Position ({:.6}, {:.6}) outside operational area [lat {}-{}, lon {}-{}]",
+                    frame.latitude, frame.longitude,
+                    GEO_BOUNDS_LAT_MIN, GEO_BOUNDS_LAT_MAX,
+                    GEO_BOUNDS_LON_MIN, GEO_BOUNDS_LON_MAX
+                ),
+            });
+        }
 
         None
     }
@@ -155,17 +180,24 @@ impl GpsValidator {
         );
 
         // Check for GPS jump (teleportation)
-        if distance_m > MAX_JUMP_DISTANCE_M && time_diff_secs < 120 {
+        // Two thresholds:
+        //   - Short gap (< 2 min): reject if > 5 km (physically impossible acceleration)
+        //   - Any gap: reject if > 200 km (absolute teleportation, no continuous trail)
+        let is_short_jump = distance_m > MAX_JUMP_DISTANCE_M && time_diff_secs < 120;
+        let is_absolute_teleport = distance_m > MAX_ABSOLUTE_JUMP_DISTANCE_M;
+        if is_short_jump || is_absolute_teleport {
             warn!(
                 device_id,
                 distance_m,
                 time_diff_secs,
+                threshold = if is_absolute_teleport { "absolute" } else { "short-gap" },
                 "GPS jump detected - position rejected"
             );
             return ValidationResult::Invalid {
                 reason: format!(
-                    "GPS jump: {} m in {} seconds (max: {} m)",
-                    distance_m as i64, time_diff_secs, MAX_JUMP_DISTANCE_M as i64
+                    "GPS jump: {:.0} m in {} seconds (threshold: {})",
+                    distance_m, time_diff_secs,
+                    if is_absolute_teleport { "200km absolute" } else { "5km short-gap" }
                 ),
             };
         }
@@ -263,6 +295,8 @@ mod tests {
             temperature_raw: 0,
             odometer_km: 0,
             rpm: None,
+            fuel_rate_l_per_100km: None,
+            fms_temperature_c: None,
             send_flag: 0,
             added_info: 0,
             signal_quality: None,
@@ -278,7 +312,7 @@ mod tests {
     async fn test_basic_validation() {
         let validator = GpsValidator::new();
         
-        // Valid frame
+        // Valid frame (Tunis)
         let frame = create_test_frame(36.8, 10.1, 50.0, "2026-01-29 12:00:00");
         let result = validator.validate(1, &frame).await;
         assert!(result.is_valid());
@@ -288,10 +322,55 @@ mod tests {
         let result = validator.validate(1, &frame).await;
         assert!(!result.is_valid());
 
-        // Null island
+        // Null island (0,0) - outside geo bounds
         let frame = create_test_frame(0.001, 0.001, 50.0, "2026-01-29 12:02:00");
         let result = validator.validate(2, &frame).await;
         assert!(!result.is_valid());
+    }
+
+    #[tokio::test]
+    async fn test_geo_bounds_rejection() {
+        let validator = GpsValidator::new();
+
+        // Algeria (lon=4 < 5) - outside operational area
+        let frame = create_test_frame(36.798, 4.015, 8.0, "2026-01-29 12:00:00");
+        let result = validator.validate(10, &frame).await;
+        assert!(!result.is_valid(), "Should reject Algeria position (lon<5)");
+
+        // Partial null-island (lat=-0, lon=-0.98)
+        let frame = create_test_frame(-0.0, -0.983, 0.0, "2026-01-29 12:01:00");
+        let result = validator.validate(11, &frame).await;
+        assert!(!result.is_valid(), "Should reject partial null-island");
+
+        // Italy/sea (lat=39.6 > 38.5)
+        let frame = create_test_frame(39.597, 10.200, 9.6, "2026-01-29 12:02:00");
+        let result = validator.validate(12, &frame).await;
+        assert!(!result.is_valid(), "Should reject lat>38.5");
+
+        // Valid position in Sfax
+        let frame = create_test_frame(34.74, 10.76, 40.0, "2026-01-29 12:03:00");
+        let result = validator.validate(13, &frame).await;
+        assert!(result.is_valid(), "Should accept Sfax position");
+
+        // Valid position at Ras Jedir border (lon ~11.5)
+        let frame = create_test_frame(33.16, 11.55, 60.0, "2026-01-29 12:04:00");
+        let result = validator.validate(14, &frame).await;
+        assert!(result.is_valid(), "Should accept Ras Jedir border position");
+    }
+
+    #[tokio::test]
+    async fn test_absolute_teleport_rejection() {
+        let validator = GpsValidator::new();
+
+        // Establish position in Tunis
+        let frame1 = create_test_frame(36.8, 10.1, 50.0, "2026-01-29 12:00:00");
+        validator.validate(20, &frame1).await;
+
+        // 10 minutes later, jump to Sfax (250km away) - should be rejected
+        // even though time gap > 120s
+        let frame2 = create_test_frame(34.74, 10.76, 50.0, "2026-01-29 12:10:00");
+        let result = validator.validate(20, &frame2).await;
+        assert!(!result.is_valid(), "Should reject 250km jump even with 10min gap");
     }
 
     #[tokio::test]

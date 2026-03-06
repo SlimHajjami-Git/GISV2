@@ -250,6 +250,8 @@ mod tests {
             signal_quality: None,
             satellites_in_view: None,
             rpm: None,
+            fuel_rate_l_per_100km: None,
+            fms_temperature_c: None,
             is_valid: true,
             is_real_time: true,
             flags_raw: 0,
