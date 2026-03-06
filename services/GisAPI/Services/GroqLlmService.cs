@@ -39,7 +39,10 @@ public class GroqLlmService : ILlmService
         }
     }
 
-    public async Task<LlmResponse> ChatAsync(string systemPrompt, List<LlmMessage> messages, CancellationToken ct = default)
+    public Task<LlmResponse> ChatAsync(string systemPrompt, List<LlmMessage> messages, CancellationToken ct = default)
+        => ChatAsync(systemPrompt, messages, 2048, ct);
+
+    public async Task<LlmResponse> ChatAsync(string systemPrompt, List<LlmMessage> messages, int maxTokens, CancellationToken ct = default)
     {
         if (_httpClient.DefaultRequestHeaders.Authorization == null)
             throw new Exception("Clé API Groq non configurée. Créez une clé sur https://console.groq.com/keys puis définissez la variable Groq__ApiKey.");
@@ -59,7 +62,7 @@ public class GroqLlmService : ILlmService
             model = _model,
             messages = requestMessages,
             temperature = 0.3,
-            max_tokens = 2048,
+            max_tokens = maxTokens,
             top_p = 0.9
         };
 

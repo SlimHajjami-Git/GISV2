@@ -856,6 +856,14 @@ export class ApiService {
     return this.http.post<any>(`${this.API_URL}/reports/${id}/generate`, {}, { headers: this.getHeaders() });
   }
 
+  generateFleetReport(period: string = 'month', question?: string): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/ai-chat/fleet-report`, { period, question }, { headers: this.getHeaders() });
+  }
+
+  askFleetReport(question: string, reportContext?: string): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/ai-chat/fleet-report/ask`, { question, reportContext }, { headers: this.getHeaders() });
+  }
+
   deleteReport(id: number): Observable<void> {
     return this.http.delete<void>(`${this.API_URL}/reports/${id}`, { headers: this.getHeaders() });
   }

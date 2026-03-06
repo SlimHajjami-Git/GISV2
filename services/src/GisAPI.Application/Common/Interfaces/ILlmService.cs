@@ -3,6 +3,7 @@ namespace GisAPI.Application.Common.Interfaces;
 public interface ILlmService
 {
     Task<LlmResponse> ChatAsync(string systemPrompt, List<LlmMessage> messages, CancellationToken ct = default);
+    Task<LlmResponse> ChatAsync(string systemPrompt, List<LlmMessage> messages, int maxTokens, CancellationToken ct = default);
 }
 
 public record LlmMessage(string Role, string Content);

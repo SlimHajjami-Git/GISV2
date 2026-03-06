@@ -713,12 +713,330 @@ public class AiChatController : ControllerBase
 
         return sb.ToString();
     }
+
+    // ═══════ FLEET-WIDE AI REPORT ═══════
+
+    /// <summary>
+    /// Generate a comprehensive AI fleet report with charts data and Groq analysis
+    /// </summary>
+    [HttpPost("fleet-report")]
+    public async Task<IActionResult> GenerateFleetReport([FromBody] FleetReportRequest request)
+    {
+        var companyId = GetCompanyId();
+        var now = DateTime.UtcNow;
+        var periodDays = (request.Period ?? "month") switch
+        {
+            "week" => 7, "quarter" => 90, "year" => 365, _ => 30
+        };
+        var periodStart = DateTime.SpecifyKind(now.AddDays(-periodDays).Date, DateTimeKind.Utc);
+
+        // ── Company info ──
+        var company = await _context.Societes.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == companyId);
+
+        // ── Vehicles + health scores ──
+        var vehicles = await _context.Vehicles.AsNoTracking()
+            .Where(v => v.CompanyId == companyId)
+            .ToListAsync();
+
+        var healthScores = await _healthService.CalculateAllScoresAsync(companyId);
+        var healthMap = healthScores.ToDictionary(h => h.VehicleId);
+
+        // ── Trips data ──
+        var trips = await _context.Trips.AsNoTracking()
+            .Where(t => t.CompanyId == companyId && t.StartTime >= periodStart && t.Status == "completed")
+            .ToListAsync();
+        var tripsByVehicle = trips.GroupBy(t => t.VehicleId).ToDictionary(g => g.Key, g => g.ToList());
+
+        // ── Costs data ──
+        var costs = await _context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Date >= periodStart)
+            .ToListAsync();
+        var costsByType = costs.GroupBy(c => c.Type).ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
+
+        // ── Maintenance & Repairs ──
+        var vehicleIds = vehicles.Select(v => v.Id).ToList();
+        var maintenance = await _context.MaintenanceRecords.AsNoTracking()
+            .Where(m => vehicleIds.Contains(m.VehicleId) && m.Date >= periodStart)
+            .ToListAsync();
+        var repairs = await _context.Repairs.AsNoTracking()
+            .Where(r => vehicleIds.Contains(r.VehicleId) && r.RepairDate >= periodStart)
+            .ToListAsync();
+
+        // ── Alerts ──
+        var alerts = await _context.GpsAlerts.AsNoTracking()
+            .Where(a => a.VehicleId.HasValue && vehicleIds.Contains(a.VehicleId.Value) && a.Timestamp >= periodStart)
+            .ToListAsync();
+        var alertsByVehicle = alerts.GroupBy(a => a.VehicleId!.Value).ToDictionary(g => g.Key, g => g.Count());
+
+        // ── Fuel from GPS (FuelRateLPer100Km) ──
+        var deviceMap = vehicles.Where(v => v.GpsDeviceId.HasValue).ToDictionary(v => v.GpsDeviceId!.Value, v => v);
+        var deviceIds = deviceMap.Keys.ToList();
+        var fuelData = await _context.GpsPositions.AsNoTracking()
+            .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= periodStart &&
+                        p.FuelRateLPer100Km != null && p.FuelRateLPer100Km > 0 && p.FuelRateLPer100Km < 80)
+            .GroupBy(p => p.DeviceId)
+            .Select(g => new { DeviceId = g.Key, AvgRate = g.Average(p => (double)p.FuelRateLPer100Km!), Count = g.Count() })
+            .Where(x => x.Count >= 3)
+            .ToListAsync();
+        var fuelByVehicle = fuelData.ToDictionary(
+            f => deviceMap.ContainsKey(f.DeviceId) ? deviceMap[f.DeviceId].Id : 0,
+            f => f.AvgRate);
+
+        // ── Scheduled maintenance status ──
+        var schedules = await _context.VehicleMaintenanceSchedules.AsNoTracking()
+            .Where(s => s.CompanyId == companyId && !s.IsPaused)
+            .Include(s => s.Template)
+            .ToListAsync();
+
+        // ══════════ BUILD CHART DATA ══════════
+        var totalDistance = trips.Sum(t => t.DistanceKm);
+        var totalFuelCost = costsByType.GetValueOrDefault("fuel", 0) + costsByType.GetValueOrDefault("carburant", 0);
+        var totalMaintCost = costsByType.GetValueOrDefault("maintenance", 0) + costsByType.GetValueOrDefault("entretien", 0);
+        var totalRepairCost = costsByType.GetValueOrDefault("repair", 0) + costsByType.GetValueOrDefault("reparation", 0);
+        var totalOtherCost = costs.Sum(c => c.Amount) - totalFuelCost - totalMaintCost - totalRepairCost;
+        if (totalOtherCost < 0) totalOtherCost = 0;
+
+        // Health distribution
+        var healthDist = new { excellent = 0, good = 0, fair = 0, poor = 0, critical = 0 };
+        var exc = healthScores.Count(h => h.Level == "excellent");
+        var goo = healthScores.Count(h => h.Level == "good");
+        var fai = healthScores.Count(h => h.Level == "fair");
+        var poo = healthScores.Count(h => h.Level == "poor");
+        var cri = healthScores.Count(h => h.Level == "critical");
+
+        // Per-vehicle details
+        var vehicleDetails = vehicles.Select(v =>
+        {
+            var vTrips = tripsByVehicle.GetValueOrDefault(v.Id, new List<Trip>());
+            var vHealth = healthMap.GetValueOrDefault(v.Id);
+            var vAlerts = alertsByVehicle.GetValueOrDefault(v.Id, 0);
+            var vFuel = fuelByVehicle.GetValueOrDefault(v.Id, 0);
+            var vCosts = costs.Where(c => c.VehicleId == v.Id).Sum(c => c.Amount);
+            var vRepairs = repairs.Where(r => r.VehicleId == v.Id).ToList();
+            var vMaint = maintenance.Where(m => m.VehicleId == v.Id).ToList();
+            var vSchedules = schedules.Where(s => s.VehicleId == v.Id).ToList();
+
+            // Driving score from trips
+            var harshBrake = vTrips.Sum(t => t.HarshBrakingCount ?? 0);
+            var harshAccel = vTrips.Sum(t => t.HarshAccelerationCount ?? 0);
+            var overspeed = vTrips.Sum(t => t.OverspeedingCount ?? 0);
+            var drivingScore = Math.Max(0, 100 - harshBrake * 3 - harshAccel * 2 - overspeed * 5);
+
+            return new
+            {
+                id = v.Id, name = v.Name, plate = v.Plate ?? "", brand = v.Brand ?? "",
+                model = v.Model ?? "", type = v.Type ?? "", year = v.Year,
+                fuelType = v.FuelType ?? "", mileage = v.Mileage, status = v.Status ?? "",
+                healthScore = vHealth?.Score ?? 0, healthLevel = vHealth?.Level ?? "unknown",
+                warnings = vHealth?.Warnings ?? new List<string>(),
+                distance = Math.Round(vTrips.Sum(t => t.DistanceKm), 1),
+                tripCount = vTrips.Count,
+                fuelConsumption = Math.Round(vFuel, 1),
+                totalCosts = Math.Round(vCosts, 0),
+                alertCount = vAlerts,
+                drivingScore,
+                repairCount = vRepairs.Count,
+                repairCost = Math.Round(vRepairs.Sum(r => r.TotalCost), 0),
+                maintCount = vMaint.Count,
+                maintCost = Math.Round(vMaint.Sum(m => m.TotalCost), 0),
+                overdueSchedules = vSchedules.Count(s => s.Status == "overdue" || s.Status == "critical"),
+                topRepairs = vRepairs.OrderByDescending(r => r.TotalCost).Take(3)
+                    .Select(r => new { description = r.Description ?? "N/A", cost = Math.Round(r.TotalCost, 0), date = r.RepairDate.ToString("dd/MM/yyyy") }).ToList()
+            };
+        }).OrderByDescending(v => v.totalCosts).ToList();
+
+        // Top fuel consumers
+        var topFuel = vehicleDetails.Where(v => v.fuelConsumption > 0)
+            .OrderByDescending(v => v.fuelConsumption).Take(5)
+            .Select(v => new { name = v.plate.Length > 0 ? v.plate : v.name, value = v.fuelConsumption }).ToList();
+
+        // Mileage by vehicle
+        var mileageChart = vehicleDetails.OrderByDescending(v => v.distance).Take(10)
+            .Select(v => new { name = v.plate.Length > 0 ? v.plate : v.name, value = v.distance }).ToList();
+
+        // Driving scores
+        var drivingChart = vehicleDetails.Where(v => v.tripCount > 0)
+            .OrderByDescending(v => v.drivingScore).Take(10)
+            .Select(v => new { name = v.plate.Length > 0 ? v.plate : v.name, value = v.drivingScore }).ToList();
+
+        // ══════════ BUILD GROQ PROMPT ══════════
+        var sb = new StringBuilder();
+        sb.AppendLine("Tu es un expert senior en gestion de flotte automobile et consultant TCO (Total Cost of Ownership).");
+        sb.AppendLine("RÈGLES:");
+        sb.AppendLine("1. Base ton analyse UNIQUEMENT sur les données fournies. Ne fabrique JAMAIS de chiffres.");
+        sb.AppendLine("2. Réponds en français, structuré avec des titres markdown (##, ###) et des listes.");
+        sb.AppendLine("3. Classe chaque problème: 🔴 Critique, 🟠 Important, 🟡 À surveiller, 🟢 OK.");
+        sb.AppendLine("4. Fournis des conseils TCO concrets basés sur le type d'entreprise.");
+        sb.AppendLine("5. Pour chaque modèle de véhicule, utilise ta connaissance des problèmes courants de cette marque/modèle.");
+        sb.AppendLine("6. Propose un top 10 des pièces à surveiller par modèle si pertinent.");
+        sb.AppendLine("7. Si des données manquent, dis-le clairement.");
+        sb.AppendLine();
+
+        // Company context
+        sb.AppendLine("═══ ENTREPRISE ═══");
+        sb.AppendLine($"Nom: {company?.Name ?? "N/A"}");
+        sb.AppendLine($"Type d'activité: {company?.Type ?? "transport"} | Pays: {company?.Country ?? "TN"}");
+        sb.AppendLine($"Devise: {company?.Settings?.Currency ?? "DT"}");
+        sb.AppendLine($"Nombre de véhicules: {vehicles.Count}");
+        sb.AppendLine();
+
+        // Fleet summary
+        sb.AppendLine("═══ RÉSUMÉ FLOTTE ═══");
+        sb.AppendLine($"Période analysée: {periodDays} derniers jours");
+        sb.AppendLine($"Distance totale parcourue: {totalDistance:N0} km");
+        sb.AppendLine($"Nombre de trajets: {trips.Count}");
+        sb.AppendLine($"Véhicules actifs (avec trajets): {tripsByVehicle.Count}");
+        sb.AppendLine($"Score santé moyen: {(healthScores.Any() ? healthScores.Average(h => h.Score) : 0):F0}/100");
+        sb.AppendLine($"Distribution santé: Excellent={exc}, Bon={goo}, Moyen={fai}, Faible={poo}, Critique={cri}");
+        sb.AppendLine($"Coûts totaux: {costs.Sum(c => c.Amount):N0} DT (Carburant: {totalFuelCost:N0}, Maintenance: {totalMaintCost:N0}, Réparations: {totalRepairCost:N0}, Autres: {totalOtherCost:N0})");
+        sb.AppendLine($"Alertes totales: {alerts.Count}");
+        sb.AppendLine($"Entretiens réalisés: {maintenance.Count} | Réparations: {repairs.Count}");
+        sb.AppendLine($"Entretiens en retard/critique: {schedules.Count(s => s.Status == "overdue" || s.Status == "critical")}");
+        sb.AppendLine();
+
+        // Per-vehicle summary (compressed)
+        sb.AppendLine("═══ DÉTAIL PAR VÉHICULE ═══");
+        foreach (var v in vehicleDetails)
+        {
+            sb.AppendLine($"▸ {v.name} ({v.plate}) | {v.brand} {v.model} {v.year} | {v.type} | {v.fuelType} | {v.mileage:N0} km | Statut: {v.status}");
+            sb.AppendLine($"  Santé: {v.healthScore}/100 ({v.healthLevel}) | Score conduite: {v.drivingScore}/100 | Alertes: {v.alertCount}");
+            sb.AppendLine($"  Distance période: {v.distance:N0} km | Trajets: {v.tripCount} | Conso: {(v.fuelConsumption > 0 ? $"{v.fuelConsumption:F1} L/100km" : "N/A")}");
+            sb.AppendLine($"  Coûts: {v.totalCosts:N0} DT | Entretiens: {v.maintCount} ({v.maintCost:N0} DT) | Réparations: {v.repairCount} ({v.repairCost:N0} DT)");
+            if (v.overdueSchedules > 0)
+                sb.AppendLine($"  ⚠️ {v.overdueSchedules} entretien(s) en retard/critique");
+            if (v.warnings.Count > 0)
+                sb.AppendLine($"  Avertissements: {string.Join("; ", v.warnings.Take(3))}");
+            if (v.topRepairs.Count > 0)
+                sb.AppendLine($"  Dernières réparations: {string.Join(", ", v.topRepairs.Select(r => $"{r.description} ({r.cost} DT, {r.date})"))}");
+        }
+
+        var userMessage = request.Question ?? @"Génère un rapport d'analyse de flotte complet et structuré. Inclus:
+## 1. Résumé exécutif
+Vue d'ensemble de la flotte en 5 lignes max.
+
+## 2. Analyse TCO (Total Cost of Ownership)
+Coût total de possession, coût/km, projections, optimisations possibles.
+
+## 3. Analyse par véhicule
+Pour chaque véhicule problématique ou notable, analyse détaillée.
+
+## 4. Problèmes par marque/modèle
+Problèmes connus typiques pour chaque marque/modèle présent dans la flotte. Top 10 pièces à surveiller.
+
+## 5. Maintenance préventive
+Recommandations de maintenance basées sur le kilométrage et l'âge. Pièces d'usure à anticiper.
+
+## 6. Efficacité carburant
+Analyse des consommations, véhicules les plus gourmands, optimisations.
+
+## 7. Sécurité et conduite
+Analyse des scores de conduite, alertes, recommandations.
+
+## 8. Recommandations prioritaires
+Actions concrètes classées par urgence avec estimation d'impact.
+
+## 9. Plan d'action
+Calendrier recommandé pour les 3 prochains mois.";
+
+        try
+        {
+            var llmResponse = await _llmService.ChatAsync(sb.ToString(), new List<LlmMessage> { new("user", userMessage) }, 8000);
+
+            var result = new
+            {
+                companyInfo = new { name = company?.Name ?? "N/A", type = company?.Type ?? "transport", vehicleCount = vehicles.Count },
+                generatedAt = now,
+                period = request.Period ?? "month",
+                periodDays,
+                fleetSummary = new
+                {
+                    totalVehicles = vehicles.Count,
+                    activeVehicles = tripsByVehicle.Count,
+                    totalDistance = Math.Round(totalDistance, 0),
+                    totalTrips = trips.Count,
+                    avgHealthScore = healthScores.Any() ? (int)Math.Round(healthScores.Average(h => h.Score)) : 0,
+                    totalCosts = Math.Round(costs.Sum(c => c.Amount), 0),
+                    totalAlerts = alerts.Count,
+                    overdueSchedules = schedules.Count(s => s.Status == "overdue" || s.Status == "critical")
+                },
+                charts = new
+                {
+                    healthDistribution = new { excellent = exc, good = goo, fair = fai, poor = poo, critical = cri },
+                    costBreakdown = new { fuel = Math.Round(totalFuelCost, 0), maintenance = Math.Round(totalMaintCost, 0), repairs = Math.Round(totalRepairCost, 0), other = Math.Round(totalOtherCost, 0) },
+                    topFuelConsumers = topFuel,
+                    mileageByVehicle = mileageChart,
+                    drivingScores = drivingChart
+                },
+                vehicleDetails,
+                aiAnalysis = llmResponse.Content,
+                tokensUsed = llmResponse.TokensUsed
+            };
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AI fleet report error");
+            return StatusCode(503, new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Ask a follow-up question about the fleet report (interactive Q&A)
+    /// </summary>
+    [HttpPost("fleet-report/ask")]
+    public async Task<IActionResult> AskFleetReport([FromBody] FleetReportAskRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Question))
+            return BadRequest(new { message = "La question ne peut pas être vide" });
+
+        var companyId = GetCompanyId();
+        var company = await _context.Societes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == companyId);
+        var vehicles = await _context.Vehicles.AsNoTracking().Where(v => v.CompanyId == companyId).ToListAsync();
+
+        var sb = new StringBuilder();
+        sb.AppendLine("Tu es un expert en gestion de flotte et consultant TCO. L'utilisateur pose une question de suivi sur le rapport de flotte.");
+        sb.AppendLine($"Entreprise: {company?.Name ?? "N/A"} | Type: {company?.Type ?? "transport"} | {vehicles.Count} véhicules");
+        sb.AppendLine("Réponds en français, de manière précise et structurée avec markdown.");
+        sb.AppendLine("Utilise ta connaissance des marques/modèles pour donner des conseils spécifiques.");
+
+        if (!string.IsNullOrWhiteSpace(request.ReportContext))
+        {
+            sb.AppendLine();
+            sb.AppendLine("═══ CONTEXTE DU RAPPORT PRÉCÉDENT ═══");
+            // Include a truncated version of the report context to stay within token limits
+            var ctx = request.ReportContext.Length > 3000 ? request.ReportContext[..3000] + "..." : request.ReportContext;
+            sb.AppendLine(ctx);
+        }
+
+        // Quick vehicle summary for context
+        sb.AppendLine();
+        sb.AppendLine("═══ VÉHICULES ═══");
+        foreach (var v in vehicles.Take(20))
+            sb.AppendLine($"- {v.Name} ({v.Plate}) | {v.Brand} {v.Model} {v.Year} | {v.Type} | {v.Mileage:N0} km");
+
+        try
+        {
+            var llmResponse = await _llmService.ChatAsync(sb.ToString(),
+                new List<LlmMessage> { new("user", request.Question) }, 4000);
+
+            return Ok(new { answer = llmResponse.Content, tokensUsed = llmResponse.TokensUsed });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AI fleet report Q&A error");
+            return StatusCode(503, new { message = ex.Message });
+        }
+    }
 }
 
 // ═══════ REQUEST / CONTEXT DTOs ═══════
 
 public record AiChatRequest(int VehicleId, string Message);
 public record CompareVehiclesRequest(List<int> VehicleIds, string? Question);
+public record FleetReportRequest(string? Period, string? Question);
+public record FleetReportAskRequest(string Question, string? ReportContext);
 
 public class VehicleDiagnosticContext
 {
