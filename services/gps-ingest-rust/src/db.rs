@@ -32,7 +32,13 @@ pub struct LastKnownPosition {
     pub longitude: f64,
     pub recorded_at: NaiveDateTime,
     pub ignition_on: bool,
+    pub odometer_km: Option<i64>,
 }
+
+/// Maximum allowed odometer jump between two consecutive frames (km).
+/// GPS sends every 1 min (moving) or 30 min (stopped).
+/// At 250 km/h for 30 min = 125 km max. Use 1000 km as generous threshold.
+const MAX_ODOMETER_JUMP_KM: i64 = 1000;
 
 /// Minimum interval (in seconds) between position recordings for stopped vehicles (ignition OFF)
 const STOPPED_VEHICLE_INTERVAL_SECS: i64 = 30; // 30 seconds when ignition OFF
@@ -134,7 +140,7 @@ impl Database {
         }
         */
 
-        let position_id = self.insert_position(device_id, frame, event_key, has_fms).await?;
+        let position_id = self.insert_position(device_id, frame, event_key, has_fms, &last_pos).await?;
 
         // Update last position cache for next frame's stopped-vehicle check
         if position_id > 0 {
@@ -187,6 +193,7 @@ impl Database {
                     longitude: cached.longitude,
                     recorded_at: cached.recorded_at,
                     ignition_on: cached.ignition_on,
+                    odometer_km: cached.odometer_km,
                 }));
             }
         }
@@ -194,7 +201,7 @@ impl Database {
         // Cache miss — hit DB
         let row = sqlx::query(
             r#"
-            SELECT latitude, longitude, recorded_at, ignition_on
+            SELECT latitude, longitude, recorded_at, ignition_on, odometer_km
             FROM gps_positions
             WHERE device_id = $1
             ORDER BY recorded_at DESC
@@ -213,6 +220,7 @@ impl Database {
                 longitude: r.get("longitude"),
                 recorded_at: recorded_at.naive_utc(),
                 ignition_on: r.get::<Option<bool>, _>("ignition_on").unwrap_or(false),
+                odometer_km: r.get::<Option<i64>, _>("odometer_km"),
             }
         });
 
@@ -224,6 +232,7 @@ impl Database {
                 longitude: pos.longitude,
                 recorded_at: pos.recorded_at,
                 ignition_on: pos.ignition_on,
+                odometer_km: pos.odometer_km,
             });
         }
 
@@ -238,6 +247,7 @@ impl Database {
             longitude: frame.longitude,
             recorded_at: frame.recorded_at,
             ignition_on: frame.ignition_on,
+            odometer_km: if frame.odometer_km > 0 { Some(frame.odometer_km as i64) } else { None },
         });
     }
 
@@ -889,7 +899,7 @@ impl Database {
         Ok((id, fw))
     }
 
-    async fn insert_position(&self, device_id: i32, frame: &HhFrame, event_key: &str, has_fms: bool) -> Result<i64> {
+    async fn insert_position(&self, device_id: i32, frame: &HhFrame, event_key: &str, has_fms: bool, last_pos: &Option<LastKnownPosition>) -> Result<i64> {
         // Metadata for additional fields not in dedicated columns
         let metadata = json!({
             "power_source_rescue": frame.power_source_rescue,
@@ -915,23 +925,51 @@ impl Database {
         
         // FMS fields: only store for V3 frames (has_fms) — V1 frames don't have FMS data
         let fuel_raw: Option<i32> = if has_fms && frame.fuel_raw > 0 { Some(i32::from(frame.fuel_raw)) } else { None };
+        // Odometer spike filter: detect and reject erroneous jumps
+        // Example: vehicle at 2310 km suddenly reports 31332 km = GPS glitch
+        let last_valid_odo = last_pos.as_ref().and_then(|p| p.odometer_km);
         let odometer_km: Option<i64> = if has_fms && frame.odometer_km > 0 && frame.odometer_km != 1048574 {
-            Some(frame.odometer_km as i64)
-        } else if has_fms && frame.odometer_km == 1048574 {
-            // GPS protocol artifact: replace with last valid odometer_km from DB
-            let last_odo = sqlx::query_scalar::<_, i64>(
-                r#"SELECT odometer_km FROM gps_positions
-                   WHERE device_id = $1 AND odometer_km IS NOT NULL AND odometer_km > 0 AND odometer_km != 1048574
-                   ORDER BY recorded_at DESC LIMIT 1"#,
-            )
-            .bind(device_id)
-            .fetch_optional(&self.pool)
-            .await
-            .unwrap_or(None);
-            if last_odo.is_some() {
-                tracing::warn!(device_id, "GPS artifact 1048574 detected, replacing with last valid odometer: {:?}", last_odo);
+            let new_odo = frame.odometer_km as i64;
+            // Check for spike: compare with last known odometer
+            if let Some(prev_odo) = last_valid_odo {
+                let jump = (new_odo - prev_odo).abs();
+                if jump > MAX_ODOMETER_JUMP_KM {
+                    tracing::warn!(
+                        device_id,
+                        previous_km = prev_odo,
+                        received_km = new_odo,
+                        jump_km = jump,
+                        "Odometer spike detected! Jump of {}km exceeds {}km threshold — using last valid value",
+                        jump, MAX_ODOMETER_JUMP_KM
+                    );
+                    Some(prev_odo) // Use last valid odometer instead of erroneous value
+                } else {
+                    Some(new_odo)
+                }
+            } else {
+                Some(new_odo) // No previous value to compare — accept as-is
             }
-            last_odo
+        } else if has_fms && frame.odometer_km == 1048574 {
+            // GPS protocol artifact: replace with last valid odometer_km
+            if let Some(prev_odo) = last_valid_odo {
+                tracing::warn!(device_id, "GPS artifact 1048574 detected, replacing with last valid odometer: {}", prev_odo);
+                Some(prev_odo)
+            } else {
+                // Fallback: query DB if cache miss
+                let db_odo = sqlx::query_scalar::<_, i64>(
+                    r#"SELECT odometer_km FROM gps_positions
+                       WHERE device_id = $1 AND odometer_km IS NOT NULL AND odometer_km > 0 AND odometer_km != 1048574
+                       ORDER BY recorded_at DESC LIMIT 1"#,
+                )
+                .bind(device_id)
+                .fetch_optional(&self.pool)
+                .await
+                .unwrap_or(None);
+                if db_odo.is_some() {
+                    tracing::warn!(device_id, "GPS artifact 1048574 detected, replacing with DB odometer: {:?}", db_odo);
+                }
+                db_odo
+            }
         } else {
             None
         };
