@@ -26,7 +26,6 @@ import { RepairsComponent } from './components/repairs.component';
 import { ExpensesComponent } from './components/expenses.component';
 import { CarburantComponent } from './components/carburant.component';
 import { ToursComponent } from './components/tours.component';
-import { AiFleetReportComponent } from './components/ai-fleet-report.component';
 import { adminRoutes } from './admin/admin.routes';
 import { AuthGuard } from './guards/auth.guard';
 import { FeatureGuard } from './guards/feature.guard';
@@ -72,8 +71,6 @@ export const routes: Routes = [
   // Reports module
   { path: 'reports', component: ReportsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'reports' } },
   { path: 'reports/monthly', component: MonthlyReportComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'reports' } },
-  { path: 'rapport-ia', component: AiFleetReportComponent, canActivate: [AuthGuard] },
-  { path: 'ai-fleet-report', component: AiFleetReportComponent, canActivate: [AuthGuard] },
   
   // Geofences module
   { path: 'geofences', component: GeofencesComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'geofences' } },

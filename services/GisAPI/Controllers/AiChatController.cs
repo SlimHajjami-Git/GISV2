@@ -764,10 +764,12 @@ public class AiChatController : ControllerBase
             .ToListAsync();
 
         // ── Alerts ──
-        var alerts = await _context.GpsAlerts.AsNoTracking()
+        var alertsByVehicle = await _context.GpsAlerts.AsNoTracking()
             .Where(a => a.VehicleId.HasValue && vehicleIds.Contains(a.VehicleId.Value) && a.Timestamp >= periodStart)
-            .ToListAsync();
-        var alertsByVehicle = alerts.GroupBy(a => a.VehicleId!.Value).ToDictionary(g => g.Key, g => g.Count());
+            .GroupBy(a => a.VehicleId!.Value)
+            .Select(g => new { VehicleId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.VehicleId, g => g.Count);
+        var totalAlerts = alertsByVehicle.Values.Sum();
 
         // ── Fuel from GPS (FuelRateLPer100Km) ──
         var deviceMap = vehicles.Where(v => v.GpsDeviceId.HasValue).ToDictionary(v => v.GpsDeviceId!.Value, v => v);
@@ -890,7 +892,7 @@ public class AiChatController : ControllerBase
         sb.AppendLine($"Score santé moyen: {(healthScores.Any() ? healthScores.Average(h => h.Score) : 0):F0}/100");
         sb.AppendLine($"Distribution santé: Excellent={exc}, Bon={goo}, Moyen={fai}, Faible={poo}, Critique={cri}");
         sb.AppendLine($"Coûts totaux: {costs.Sum(c => c.Amount):N0} DT (Carburant: {totalFuelCost:N0}, Maintenance: {totalMaintCost:N0}, Réparations: {totalRepairCost:N0}, Autres: {totalOtherCost:N0})");
-        sb.AppendLine($"Alertes totales: {alerts.Count}");
+        sb.AppendLine($"Alertes totales: {totalAlerts}");
         sb.AppendLine($"Entretiens réalisés: {maintenance.Count} | Réparations: {repairs.Count}");
         sb.AppendLine($"Entretiens en retard/critique: {schedules.Count(s => s.Status == "overdue" || s.Status == "critical")}");
         sb.AppendLine();
@@ -957,7 +959,7 @@ Calendrier recommandé pour les 3 prochains mois.";
                     totalTrips = trips.Count,
                     avgHealthScore = healthScores.Any() ? (int)Math.Round(healthScores.Average(h => h.Score)) : 0,
                     totalCosts = Math.Round(costs.Sum(c => c.Amount), 0),
-                    totalAlerts = alerts.Count,
+                    totalAlerts,
                     overdueSchedules = schedules.Count(s => s.Status == "overdue" || s.Status == "critical")
                 },
                 charts = new

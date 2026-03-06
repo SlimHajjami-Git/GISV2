@@ -56,12 +56,33 @@
                   </div>
                 </div>
               </div>
+              <div class="dropdown-category">
+                <span class="category-title">🤖 Intelligence Artificielle</span>
+                <div class="dropdown-item" *ngFor="let t of getTemplatesByCategory('ai')" (click)="selectTemplateFromDropdown(t)">
+                  <span class="item-icon">{{ t.icon }}</span>
+                  <div class="item-content">
+                    <span class="item-name">{{ t.name }}</span>
+                    <span class="item-desc">{{ t.description }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
+        <!-- AI Fleet Period Selector -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'ai-fleet'">
+          <label class="field-label">Période d'analyse</label>
+          <select class="field-select" [(ngModel)]="aiFleetPeriod">
+            <option value="week">7 derniers jours</option>
+            <option value="month">30 derniers jours</option>
+            <option value="quarter">90 derniers jours</option>
+            <option value="year">365 derniers jours</option>
+          </select>
+        </div>
+
         <!-- Filter Type Checkboxes -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly'">
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'ai-fleet'">
           <label class="field-label">Filtrer par</label>
           <div class="filter-checkboxes">
             <label class="filter-check-item">
@@ -86,8 +107,8 @@
           </select>
         </div>
 
-        <!-- Vehicle Selector (hidden for monthly reports) -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && filterByVehicle">
+        <!-- Vehicle Selector (hidden for monthly and AI reports) -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'ai-fleet' && filterByVehicle">
           <label class="field-label">Véhicule</label>
           <select class="field-select" [(ngModel)]="selectedVehicleId">
             <option value="">Tous les véhicules</option>
@@ -354,6 +375,174 @@
                 </table>
               </div>
             </ui-card>
+          </div>
+        } @else if (selectedTemplate?.type === 'ai-fleet') {
+          <!-- ========== AI FLEET REPORT SECTION ========== -->
+          <div class="workspace-content ai-fleet-workspace">
+            @if (aiFleetLoading) {
+              <div class="ai-loading-state">
+                <div class="ai-pulse-icon">🤖</div>
+                <h3>L'IA analyse votre flotte...</h3>
+                <p>Collecte des données véhicules, maintenance, carburant, alertes et coûts.</p>
+                <div class="ai-progress-bar"><div class="ai-progress-fill"></div></div>
+              </div>
+            } @else if (aiFleetReport) {
+              <!-- KPI Summary -->
+              <div class="ai-kpi-row">
+                <div class="ai-kpi"><span class="ai-kpi-val">{{ aiFleetReport.fleetSummary.totalVehicles }}</span><span class="ai-kpi-lbl">Véhicules</span></div>
+                <div class="ai-kpi"><span class="ai-kpi-val">{{ aiFleetReport.fleetSummary.totalDistance | number:'1.0-0' }} km</span><span class="ai-kpi-lbl">Distance</span></div>
+                <div class="ai-kpi"><span class="ai-kpi-val">{{ aiFleetReport.fleetSummary.totalCosts | number:'1.0-0' }} DT</span><span class="ai-kpi-lbl">Coûts</span></div>
+                <div class="ai-kpi"><span class="ai-kpi-val">{{ aiFleetReport.fleetSummary.avgHealthScore }}/100</span><span class="ai-kpi-lbl">Santé moy.</span></div>
+                <div class="ai-kpi"><span class="ai-kpi-val">{{ aiFleetReport.fleetSummary.totalAlerts }}</span><span class="ai-kpi-lbl">Alertes</span></div>
+                <div class="ai-kpi"><span class="ai-kpi-val">{{ aiFleetReport.fleetSummary.overdueSchedules }}</span><span class="ai-kpi-lbl">Retards</span></div>
+              </div>
+
+              <!-- Charts -->
+              <div class="ai-charts-grid">
+                <!-- Health Distribution -->
+                <ui-card title="Distribution santé" [showHeader]="true">
+                  <div class="ai-hbars">
+                    <div class="ai-hbar" *ngFor="let item of [
+                      {label:'Excellent', count: aiFleetReport.charts.healthDistribution.excellent, color:'#22c55e'},
+                      {label:'Bon', count: aiFleetReport.charts.healthDistribution.good, color:'#3b82f6'},
+                      {label:'Moyen', count: aiFleetReport.charts.healthDistribution.fair, color:'#f59e0b'},
+                      {label:'Faible', count: aiFleetReport.charts.healthDistribution.poor, color:'#f97316'},
+                      {label:'Critique', count: aiFleetReport.charts.healthDistribution.critical, color:'#ef4444'}
+                    ]">
+                      <span class="ai-hbar-lbl">{{ item.label }}</span>
+                      <div class="ai-hbar-track"><div class="ai-hbar-fill" [style.width.%]="aiFleetReport.fleetSummary.totalVehicles > 0 ? (item.count / aiFleetReport.fleetSummary.totalVehicles * 100) : 0" [style.background]="item.color"></div></div>
+                      <span class="ai-hbar-val">{{ item.count }}</span>
+                    </div>
+                  </div>
+                </ui-card>
+
+                <!-- Cost Breakdown -->
+                <ui-card title="Répartition des coûts" [showHeader]="true">
+                  <div class="ai-cost-items">
+                    <div class="ai-cost-item" *ngFor="let c of [
+                      {label:'Carburant', value: aiFleetReport.charts.costBreakdown.fuel, color:'#f59e0b'},
+                      {label:'Maintenance', value: aiFleetReport.charts.costBreakdown.maintenance, color:'#3b82f6'},
+                      {label:'Réparations', value: aiFleetReport.charts.costBreakdown.repairs, color:'#ef4444'},
+                      {label:'Autres', value: aiFleetReport.charts.costBreakdown.other, color:'#94a3b8'}
+                    ]">
+                      <span class="ai-cost-dot" [style.background]="c.color"></span>
+                      <span class="ai-cost-lbl">{{ c.label }}</span>
+                      <span class="ai-cost-val">{{ c.value | number:'1.0-0' }} DT</span>
+                    </div>
+                  </div>
+                  <div class="ai-cost-bar">
+                    <div *ngFor="let c of [
+                      {value: aiFleetReport.charts.costBreakdown.fuel, color:'#f59e0b'},
+                      {value: aiFleetReport.charts.costBreakdown.maintenance, color:'#3b82f6'},
+                      {value: aiFleetReport.charts.costBreakdown.repairs, color:'#ef4444'},
+                      {value: aiFleetReport.charts.costBreakdown.other, color:'#94a3b8'}
+                    ]" class="ai-cost-seg" [style.width.%]="aiFleetReport.fleetSummary.totalCosts > 0 ? (c.value / aiFleetReport.fleetSummary.totalCosts * 100) : 0" [style.background]="c.color"></div>
+                  </div>
+                </ui-card>
+
+                <!-- Top Fuel Consumers -->
+                <ui-card title="Top consommation (L/100km)" [showHeader]="true">
+                  <div class="ai-bar-list">
+                    <div class="ai-brow" *ngFor="let item of aiFleetReport.charts.topFuelConsumers; let i = index">
+                      <span class="ai-brow-rank">#{{ i+1 }}</span>
+                      <span class="ai-brow-name">{{ item.name }}</span>
+                      <div class="ai-brow-track"><div class="ai-brow-fill" [style.width.%]="getAiBarPct(item.value, aiMaxFuel)" style="background:#f59e0b"></div></div>
+                      <span class="ai-brow-val">{{ item.value }}</span>
+                    </div>
+                    <div *ngIf="!aiFleetReport.charts.topFuelConsumers?.length" class="ai-no-data">Aucune donnée</div>
+                  </div>
+                </ui-card>
+              </div>
+
+              <!-- Mileage + Driving Scores -->
+              <div class="ai-charts-grid two-col">
+                <ui-card title="Kilométrage par véhicule" [showHeader]="true">
+                  <div class="ai-bar-list">
+                    <div class="ai-brow" *ngFor="let item of aiFleetReport.charts.mileageByVehicle; let i = index">
+                      <span class="ai-brow-rank">#{{ i+1 }}</span>
+                      <span class="ai-brow-name">{{ item.name }}</span>
+                      <div class="ai-brow-track"><div class="ai-brow-fill" [style.width.%]="getAiBarPct(item.value, aiMaxMileage)" style="background:#6366f1"></div></div>
+                      <span class="ai-brow-val">{{ item.value | number:'1.0-0' }}</span>
+                    </div>
+                  </div>
+                </ui-card>
+                <ui-card title="Scores de conduite" [showHeader]="true">
+                  <div class="ai-bar-list">
+                    <div class="ai-brow" *ngFor="let item of aiFleetReport.charts.drivingScores; let i = index">
+                      <span class="ai-brow-rank">#{{ i+1 }}</span>
+                      <span class="ai-brow-name">{{ item.name }}</span>
+                      <div class="ai-brow-track"><div class="ai-brow-fill" [style.width.%]="item.value" [style.background]="getAiScoreColor(item.value)"></div></div>
+                      <span class="ai-brow-val">{{ item.value }}</span>
+                    </div>
+                  </div>
+                </ui-card>
+              </div>
+
+              <!-- Vehicle Details Table -->
+              <ui-card title="Détail par véhicule" [showHeader]="true" [noPadding]="true">
+                <div class="table-wrapper">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Véhicule</th>
+                        <th>Marque/Modèle</th>
+                        <th>Km</th>
+                        <th>Santé</th>
+                        <th>Conduite</th>
+                        <th>Conso</th>
+                        <th>Coûts</th>
+                        <th>Alertes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (v of aiFleetReport.vehicleDetails; track v.id) {
+                        <tr [class.warning-row]="v.healthScore < 50" [class.critical-row]="v.healthScore < 30">
+                          <td><strong>{{ v.plate || v.name }}</strong></td>
+                          <td>{{ v.brand }} {{ v.model }} {{ v.year || '' }}</td>
+                          <td>{{ v.mileage | number:'1.0-0' }}</td>
+                          <td><span class="badge" [style.background]="getAiHealthColor(v.healthLevel)" style="color:#fff;padding:2px 8px;border-radius:6px;font-size:11px;">{{ v.healthScore }}/100</span></td>
+                          <td><span class="badge" [style.background]="getAiScoreColor(v.drivingScore)" style="color:#fff;padding:2px 8px;border-radius:6px;font-size:11px;">{{ v.drivingScore }}</span></td>
+                          <td>{{ v.fuelConsumption > 0 ? (v.fuelConsumption + ' L') : '-' }}</td>
+                          <td>{{ v.totalCosts | number:'1.0-0' }} DT</td>
+                          <td>{{ v.alertCount }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </ui-card>
+
+              <!-- AI Analysis -->
+              <div class="ai-analysis-card">
+                <div class="ai-analysis-header">
+                  <h3>🤖 Analyse IA — Expert Flotte & TCO</h3>
+                  <span class="ai-tokens">{{ aiFleetReport.tokensUsed }} tokens</span>
+                </div>
+                <div class="ai-analysis-body" [innerHTML]="aiFleetAnalysisHtml"></div>
+              </div>
+
+              <!-- Interactive Q&A -->
+              <div class="ai-qa-card">
+                <h3>💬 Questions de suivi</h3>
+                <p class="ai-qa-hint">Posez une question — l'IA connaît vos véhicules et les problèmes typiques de chaque marque/modèle.</p>
+                <div class="ai-qa-suggestions">
+                  <button *ngFor="let s of aiFleetSuggestions" class="ai-suggestion-btn" (click)="askAiFleetQuestion(s)" [disabled]="aiFleetAskLoading">{{ s }}</button>
+                </div>
+                <div class="ai-qa-messages" *ngIf="aiFleetQaMessages.length > 0">
+                  <div *ngFor="let msg of aiFleetQaMessages" class="ai-qa-msg" [class.user]="msg.role === 'user'" [class.ai]="msg.role === 'ai'">
+                    <div class="ai-qa-msg-hdr">{{ msg.role === 'user' ? 'Vous' : '🤖 IA Expert' }}</div>
+                    <div class="ai-qa-msg-body" [innerHTML]="msg.html"></div>
+                  </div>
+                </div>
+                <div class="ai-qa-input-row">
+                  <input type="text" [(ngModel)]="aiFleetQuestionInput" placeholder="Ex: Quel véhicule devrait être remplacé ?" (keydown.enter)="askAiFleetQuestion(aiFleetQuestionInput)" [disabled]="aiFleetAskLoading" />
+                  <button class="btn-execute" (click)="askAiFleetQuestion(aiFleetQuestionInput)" [disabled]="aiFleetAskLoading || !aiFleetQuestionInput.trim()">
+                    @if (aiFleetAskLoading) { <span class="spinner"></span> }
+                    Envoyer
+                  </button>
+                </div>
+              </div>
+            }
           </div>
         } @else if (selectedTemplate?.type === 'fuel-estimation' && fuelEstimationReport) {
           <!-- ========== FUEL ESTIMATION REPORT ========== -->

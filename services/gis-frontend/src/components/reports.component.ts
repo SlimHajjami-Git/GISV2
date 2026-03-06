@@ -10,6 +10,8 @@ import { AdminService } from '../admin/services/admin.service';
 import { PdfExportService } from '../services/pdf-export.service';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { marked } from 'marked';
 
 Chart.register(...registerables);
 
@@ -146,9 +148,18 @@ export class ReportsComponent implements OnInit, OnDestroy {
       id: '9',
       name: 'Rapport mensuel flotte',
       type: 'monthly',
-      icon: '�',
+      icon: '📊',
       description: 'KPIs et analyses complètes',
       category: 'stats'
+    },
+    // AI Reports
+    {
+      id: '14',
+      name: 'Rapport IA Flotte',
+      type: 'ai-fleet',
+      icon: '🤖',
+      description: 'Analyse IA avec TCO et recommandations',
+      category: 'ai'
     }
   ];
 
@@ -294,6 +305,21 @@ export class ReportsComponent implements OnInit, OnDestroy {
     { id: 'trends', label: 'Tendances', icon: '📈' }
   ];
   
+  // AI Fleet Report data
+  aiFleetReport: any = null;
+  aiFleetLoading = false;
+  aiFleetAnalysisHtml: SafeHtml = '';
+  aiFleetPeriod = 'month';
+  aiFleetQaMessages: { role: string; text: string; html: SafeHtml }[] = [];
+  aiFleetQuestionInput = '';
+  aiFleetAskLoading = false;
+  aiFleetSuggestions = [
+    'Quel véhicule devrait être remplacé en priorité ?',
+    'Quelles pièces sont à surveiller sur mes véhicules ?',
+    'Comment réduire les coûts de maintenance ?',
+    'Quel est le coût total de possession par véhicule ?'
+  ];
+
   monthlySections = [
     { id: 'summary', label: 'Résumé', icon: '📊' },
     { id: 'fleet', label: 'Flotte', icon: '🚗' },
@@ -324,7 +350,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     private cdr: ChangeDetectorRef,
     private appRef: ApplicationRef,
     private adminService: AdminService,
-    private pdfExportService: PdfExportService
+    private pdfExportService: PdfExportService,
+    private sanitizer: DomSanitizer
   ) {}
 
   ngOnInit() {
@@ -779,6 +806,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Handle driving behavior report
     if (this.selectedTemplate.type === 'driving-behavior') {
       this.executeDrivingBehaviorReport(startDate, endDate);
+      return;
+    }
+
+    // Handle AI fleet report
+    if (this.selectedTemplate.type === 'ai-fleet') {
+      this.executeAiFleetReport();
       return;
     }
 
@@ -5479,6 +5512,101 @@ export class ReportsComponent implements OnInit, OnDestroy {
       'cancelled': '❌ Annulée'
     };
     return statuses[status] || status || '⏳ En attente';
+  }
+
+  // ==================== AI FLEET REPORT ====================
+
+  executeAiFleetReport() {
+    this.loading = true;
+    this.aiFleetLoading = true;
+    this.aiFleetReport = null;
+    this.aiFleetQaMessages = [];
+    this.aiFleetQuestionInput = '';
+
+    this.apiService.generateFleetReport(this.aiFleetPeriod).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (data: any) => {
+        this.ngZone.run(() => {
+          this.aiFleetReport = data;
+          this.aiFleetAnalysisHtml = this.renderMarkdown(data.aiAnalysis || '');
+          this.reportGenerated = true;
+          this.loading = false;
+          this.aiFleetLoading = false;
+          this.activeTab = 'statistics';
+          this.cdr.detectChanges();
+        });
+      },
+      error: (err: any) => {
+        this.ngZone.run(() => {
+          this.statisticsData = { 'Erreur': err.error?.message || 'Erreur lors de la génération du rapport IA' };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.aiFleetLoading = false;
+          this.cdr.detectChanges();
+        });
+      }
+    });
+  }
+
+  askAiFleetQuestion(question: string) {
+    if (!question?.trim() || this.aiFleetAskLoading) return;
+    this.aiFleetAskLoading = true;
+    this.aiFleetQuestionInput = '';
+    this.aiFleetQaMessages.push({ role: 'user', text: question, html: question as any });
+
+    const context = this.aiFleetReport?.aiAnalysis || '';
+    this.apiService.askFleetReport(question, context).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (data: any) => {
+        this.ngZone.run(() => {
+          this.aiFleetQaMessages.push({ role: 'ai', text: data.answer, html: this.renderMarkdown(data.answer) });
+          this.aiFleetAskLoading = false;
+          this.cdr.detectChanges();
+          setTimeout(() => {
+            const el = document.querySelector('.ai-qa-messages');
+            if (el) el.scrollTop = el.scrollHeight;
+          }, 100);
+        });
+      },
+      error: (err: any) => {
+        this.ngZone.run(() => {
+          this.aiFleetQaMessages.push({ role: 'ai', text: 'Erreur: ' + (err.error?.message || 'Service indisponible'), html: ('Erreur: ' + (err.error?.message || 'Service indisponible')) as any });
+          this.aiFleetAskLoading = false;
+          this.cdr.detectChanges();
+        });
+      }
+    });
+  }
+
+  getAiHealthColor(level: string): string {
+    const colors: any = { excellent: '#22c55e', good: '#3b82f6', fair: '#f59e0b', poor: '#f97316', critical: '#ef4444' };
+    return colors[level] || '#94a3b8';
+  }
+
+  getAiScoreColor(score: number): string {
+    if (score >= 80) return '#22c55e';
+    if (score >= 60) return '#3b82f6';
+    if (score >= 40) return '#f59e0b';
+    return '#ef4444';
+  }
+
+  getAiBarPct(value: number, max: number): number {
+    return max > 0 ? (value / max) * 100 : 0;
+  }
+
+  get aiMaxFuel(): number {
+    return Math.max(...(this.aiFleetReport?.charts?.topFuelConsumers?.map((f: any) => f.value) || [1]), 1);
+  }
+
+  get aiMaxMileage(): number {
+    return Math.max(...(this.aiFleetReport?.charts?.mileageByVehicle?.map((m: any) => m.value) || [1]), 1);
+  }
+
+  private renderMarkdown(text: string): SafeHtml {
+    try {
+      const html = marked.parse(text, { async: false }) as string;
+      return this.sanitizer.bypassSecurityTrustHtml(html);
+    } catch {
+      return text;
+    }
   }
 
   ngOnDestroy() {
