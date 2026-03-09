@@ -47,7 +47,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   playbackVehicleSearch = '';
   private playbackSetupMap: L.Map | null = null;
 
-  // Playback
+  // Playback (default: last 24 hours)
   playbackFromDate = '';
   playbackToDate = '';
   isPlaybackLoaded = false;
@@ -175,17 +175,35 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.monitoringView = 'playback';
     }
 
+    // Set default playback dates to last 24 hours
+    if (!this.playbackFromDate || !this.playbackToDate) {
+      const now = new Date();
+      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      this.playbackToDate = this.toLocalDateTimeString(now);
+      this.playbackFromDate = this.toLocalDateTimeString(yesterday);
+    }
+
     // Subscribe to route data changes (same component reused for /monitoring and /playback)
     this.routeSub = this.route.data.subscribe(data => {
       const newView = data['view'] === 'playback' ? 'playback' : 'live';
       if (newView !== this.monitoringView) {
+        // Clean up current map before switching
+        if (this.playbackSetupMap) {
+          try { this.playbackSetupMap.remove(); } catch(e) {}
+          this.playbackSetupMap = null;
+        }
+        if (newView === 'live' && this.map) {
+          // Don't double-init — map already exists
+        }
         this.monitoringView = newView;
         this.cdr.detectChanges();
         if (newView === 'playback') {
           this.initPlaybackSetupMap();
         } else {
-          if (this.playbackSetupMap) { this.playbackSetupMap.remove(); this.playbackSetupMap = null; }
-          if (!this.map) this.initializeMap();
+          // Wait for DOM to render the monitoring container
+          setTimeout(() => {
+            if (!this.map) this.initializeMap();
+          }, 200);
         }
       }
     });
@@ -231,13 +249,13 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.loadDataController) {
       this.loadDataController.abort();
     }
-    // Clean up overlay map if active
+    // Clean up all maps defensively (try/catch to avoid "container already in use" errors)
     if (this.playbackOverlayMap) {
-      this.playbackOverlayMap.remove();
+      try { this.playbackOverlayMap.remove(); } catch(e) {}
       this.playbackOverlayMap = null;
     }
     if (this.playbackSetupMap) {
-      this.playbackSetupMap.remove();
+      try { this.playbackSetupMap.remove(); } catch(e) {}
       this.playbackSetupMap = null;
     }
     // Restore monitoring map ref before removing
@@ -246,7 +264,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.monitoringMap = null;
     }
     if (this.map) {
-      this.map.remove();
+      try { this.map.remove(); } catch(e) {}
+      this.map = null;
     }
   }
 
@@ -3125,13 +3144,14 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   getPlaybackTotalKm(): string {
     if (this.playbackPositions.length < 2) return '0';
-    let totalKm = 0;
+    let totalMeters = 0;
     for (let i = 1; i < this.playbackPositions.length; i++) {
       const prev = this.playbackPositions[i - 1];
       const curr = this.playbackPositions[i];
       if (prev.ignitionOn === false) continue;
-      totalKm += this.calculateDistance(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
+      totalMeters += this.calculateDistance(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
     }
+    const totalKm = totalMeters / 1000;
     return totalKm < 10 ? totalKm.toFixed(1) : Math.round(totalKm).toString();
   }
 
