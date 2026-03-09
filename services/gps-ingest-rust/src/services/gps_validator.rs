@@ -27,6 +27,11 @@ const MAX_JUMP_DISTANCE_M: f64 = 5000.0;
 /// without a continuous trail of intermediate positions.
 const MAX_ABSOLUTE_JUMP_DISTANCE_M: f64 = 200_000.0; // 200 km
 
+/// Minimum number of satellites for a reliable GPS fix.
+/// 3 satellites = 2D fix (no altitude), 4 = 3D fix.
+/// Below 3, the position is unreliable and should be rejected.
+const MIN_SATELLITES_FOR_VALID_FIX: u8 = 3;
+
 /// Geographic bounding box for operational area (Tunisia only).
 /// Any position outside this box is rejected as GPS noise or hardware glitch.
 /// Small margins around Tunisia's actual borders for GPS accuracy.
@@ -133,6 +138,31 @@ impl GpsValidator {
 
     /// Basic validation checks
     fn validate_basic(&self, frame: &HhFrame) -> Option<ValidationResult> {
+        // Check Frame Validity bit (Bit 7 / 0x40 in flags byte)
+        // When GPS module has no valid satellite fix, coordinates are stale/unreliable.
+        // This is the primary cause of vehicles appearing in wrong locations (e.g., lakes).
+        if !frame.is_valid {
+            return Some(ValidationResult::Invalid {
+                reason: format!(
+                    "Frame Validity bit is FALSE (flags=0x{:02X}) - GPS has no valid fix, coordinates unreliable",
+                    frame.flags_raw
+                ),
+            });
+        }
+
+        // Check satellite count: minimum 3 for a 2D fix
+        // With fewer satellites, trilateration fails and position is meaningless.
+        if let Some(sats) = frame.satellites_in_view {
+            if sats < MIN_SATELLITES_FOR_VALID_FIX {
+                return Some(ValidationResult::Invalid {
+                    reason: format!(
+                        "Only {} satellites in view (minimum {} required for valid fix)",
+                        sats, MIN_SATELLITES_FOR_VALID_FIX
+                    ),
+                });
+            }
+        }
+
         // Check for impossible speed
         if frame.speed_kph > MAX_SPEED_KPH {
             return Some(ValidationResult::Invalid {
@@ -371,6 +401,87 @@ mod tests {
         let frame2 = create_test_frame(34.74, 10.76, 50.0, "2026-01-29 12:10:00");
         let result = validator.validate(20, &frame2).await;
         assert!(!result.is_valid(), "Should reject 250km jump even with 10min gap");
+    }
+
+    #[tokio::test]
+    async fn test_frame_validity_bit_rejection() {
+        let validator = GpsValidator::new();
+
+        // Frame with is_valid = false (GPS has no fix) - should be REJECTED
+        // This is the exact scenario: vehicle appears in Lac de Tunis because
+        // GPS module reports stale coordinates when it has no satellite fix.
+        let mut frame = create_test_frame(36.82, 10.23, 0.0, "2026-01-29 12:00:00");
+        frame.is_valid = false;
+        frame.flags_raw = 0x63; // Bit 7 (0x40) NOT set = invalid fix
+        let result = validator.validate(30, &frame).await;
+        assert!(!result.is_valid(), "Should reject frame with is_valid=false (no GPS fix)");
+
+        // Same coordinates but with valid fix - should be ACCEPTED
+        let mut frame_valid = create_test_frame(36.82, 10.23, 0.0, "2026-01-29 12:01:00");
+        frame_valid.is_valid = true;
+        frame_valid.flags_raw = 0xE7; // Bit 7 (0x40) SET = valid fix
+        let result = validator.validate(31, &frame_valid).await;
+        assert!(result.is_valid(), "Should accept frame with is_valid=true");
+    }
+
+    #[tokio::test]
+    async fn test_satellite_count_rejection() {
+        let validator = GpsValidator::new();
+
+        // 0 satellites = no fix at all
+        let mut frame = create_test_frame(36.8, 10.1, 50.0, "2026-01-29 12:00:00");
+        frame.satellites_in_view = Some(0);
+        let result = validator.validate(40, &frame).await;
+        assert!(!result.is_valid(), "Should reject 0 satellites");
+
+        // 2 satellites = insufficient for 2D fix
+        let mut frame = create_test_frame(36.8, 10.1, 50.0, "2026-01-29 12:01:00");
+        frame.satellites_in_view = Some(2);
+        let result = validator.validate(41, &frame).await;
+        assert!(!result.is_valid(), "Should reject 2 satellites");
+
+        // 3 satellites = minimum 2D fix, acceptable
+        let mut frame = create_test_frame(36.8, 10.1, 50.0, "2026-01-29 12:02:00");
+        frame.satellites_in_view = Some(3);
+        let result = validator.validate(42, &frame).await;
+        assert!(result.is_valid(), "Should accept 3 satellites (2D fix)");
+
+        // No satellite info (None) = don't reject (older firmware may not report)
+        let frame = create_test_frame(36.8, 10.1, 50.0, "2026-01-29 12:03:00");
+        let result = validator.validate(43, &frame).await;
+        assert!(result.is_valid(), "Should accept when satellite count unknown (None)");
+
+        // 12 satellites = excellent fix
+        let mut frame = create_test_frame(36.8, 10.1, 50.0, "2026-01-29 12:04:00");
+        frame.satellites_in_view = Some(12);
+        let result = validator.validate(44, &frame).await;
+        assert!(result.is_valid(), "Should accept 12 satellites");
+    }
+
+    #[tokio::test]
+    async fn test_lac_de_tunis_scenario() {
+        // Real-world scenario: vehicle near Lac de Tunis with invalid GPS fix
+        // GPS reports coordinates IN the lake because fix is stale/inaccurate
+        let validator = GpsValidator::new();
+
+        // Establish a valid position on road near the lake
+        let frame1 = create_test_frame(36.78, 10.21, 60.0, "2026-01-29 12:00:00");
+        let result = validator.validate(50, &frame1).await;
+        assert!(result.is_valid(), "Initial valid position should be accepted");
+
+        // GPS loses fix (enters tunnel, near water reflection, etc.)
+        // Reports stale position IN the lake with is_valid=false
+        let mut frame_lake = create_test_frame(36.795, 10.215, 0.0, "2026-01-29 12:01:00");
+        frame_lake.is_valid = false;
+        frame_lake.flags_raw = 0x63; // No validity bit
+        frame_lake.satellites_in_view = Some(1); // Only 1 satellite
+        let result = validator.validate(50, &frame_lake).await;
+        assert!(!result.is_valid(), "Lake position with invalid fix should be REJECTED");
+
+        // GPS regains fix, vehicle back on road
+        let frame3 = create_test_frame(36.79, 10.22, 40.0, "2026-01-29 12:02:00");
+        let result = validator.validate(50, &frame3).await;
+        assert!(result.is_valid(), "Valid fix after recovery should be accepted");
     }
 
     #[tokio::test]

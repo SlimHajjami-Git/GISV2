@@ -416,16 +416,22 @@ async fn process_single_frame(
                     // When ignition is ON or speed >= 20 km/h, all frames are stored (no throttling)
                 }
 
-                // GPS Validation: Check for aberrant points (jumps, speed incoherence)
+                // GPS Validation: Check for aberrant points, invalid fix, low satellites, jumps
                 if let Some(device_id) = device_id_opt {
                     let validation = services.gps_validator.validate(device_id, &frame).await;
                     if !validation.should_store() {
                         if let crate::services::gps_validator::ValidationResult::Invalid { reason } = &validation {
+                            let flags_hex = format!("0x{:02X}", frame.flags_raw);
                             warn!(
                                 device_id,
                                 imei = %resolved_uid,
                                 lat = frame.latitude,
                                 lon = frame.longitude,
+                                speed = frame.speed_kph,
+                                is_valid = frame.is_valid,
+                                flags = %flags_hex,
+                                satellites = ?frame.satellites_in_view,
+                                send_flag = frame.send_flag,
                                 reason = %reason,
                                 "Frame REJECTED by GPS validator"
                             );
