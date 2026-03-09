@@ -40,11 +40,17 @@ import { ChatComponent } from './chat.component';
             </svg>
             <span>Tableau de bord</span>
           </a>
-          <a *ngIf="hasModule('monitoring')" [routerLink]="['/monitoring']" routerLinkActive="active" class="nav-link" title="Suivi en direct">
+          <a *ngIf="hasModule('monitoring')" [routerLink]="['/monitoring']" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}" class="nav-link" title="Suivi en direct">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
             </svg>
             <span>Suivi en direct</span>
+          </a>
+          <a *ngIf="hasModule('monitoring')" [routerLink]="['/playback']" routerLinkActive="active" class="nav-link" title="Tracer Playback">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            <span>Tracer Playback</span>
           </a>
 
           <!-- Opérations dropdown -->

@@ -8,18 +8,6 @@
 
 <ng-template #monitoringContent>
   <div class="wialon-monitoring">
-    <!-- ═══════ TOP-LEVEL TABS ═══════ -->
-    <div class="monitoring-top-tabs">
-      <button class="top-tab" [class.active]="monitoringView === 'live'" (click)="monitoringView = 'live'">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z"/></svg>
-        Suivi en Direct
-      </button>
-      <button class="top-tab" [class.active]="monitoringView === 'playback'" (click)="monitoringView = 'playback'">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-        Tracer Playback
-      </button>
-    </div>
-
     <div class="monitoring-container" *ngIf="monitoringView === 'live'">
       <aside class="vehicles-sidebar" [class.collapsed]="isPanelCollapsed">
         <div class="sidebar-header">
@@ -172,20 +160,8 @@
                   </div>
                 </div>
 
-                <!-- Tab bar -->
-                <div class="inline-tab-bar" (click)="$event.stopPropagation()">
-                  <button class="inline-tab" [class.active]="activeTab === 'details'" (click)="activeTab = 'details'">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                    Détails
-                  </button>
-                  <button class="inline-tab" [class.active]="activeTab === 'playback'" (click)="activeTab = 'playback'">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                    Tracé
-                  </button>
-                </div>
-
-                <!-- === TAB: Détails === -->
-                <div class="inline-tab-content" *ngIf="activeTab === 'details'">
+                <!-- === Détails === -->
+                <div class="inline-tab-content">
                   <!-- Status toolbar -->
                   <div class="info-panel-toolbar inline-toolbar">
                     <span class="status-badge" [ngClass]="getStatusColorClass(vehicle)">{{ getStatusTag(vehicle) }}</span>
@@ -253,27 +229,6 @@
                   </div>
                 </div>
 
-                <!-- === TAB: Tracé === -->
-                <div class="inline-tab-content" *ngIf="activeTab === 'playback'">
-                  <div class="playback-section inline-playback">
-                    <div class="date-range">
-                      <div class="date-field">
-                        <label>De</label>
-                        <input type="datetime-local" [(ngModel)]="playbackFromDate" (click)="$event.stopPropagation()">
-                      </div>
-                      <div class="date-field">
-                        <label>À</label>
-                        <input type="datetime-local" [(ngModel)]="playbackToDate" (click)="$event.stopPropagation()">
-                      </div>
-                    </div>
-                    <button class="load-route-btn" (click)="loadPlaybackRoute(); $event.stopPropagation()" [disabled]="playbackLoading">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polygon points="5 3 19 12 5 21 5 3"/>
-                      </svg>
-                      {{ playbackLoading ? 'Chargement...' : 'Lancer le tracé' }}
-                    </button>
-                  </div>
-                </div>
                 
               </div>
             </div>
@@ -381,41 +336,73 @@
       </div>
     </div>
 
-    <!-- ═══════ TRACER PLAYBACK TAB ═══════ -->
-    <div class="playback-tab-content" *ngIf="monitoringView === 'playback' && !isPlaybackLoaded">
-      <div class="pb-setup">
-        <div class="pb-setup-card">
-          <div class="pb-setup-icon">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.5">
-              <polygon points="5 3 19 12 5 21 5 3"/>
-            </svg>
-          </div>
-          <h2 class="pb-setup-title">Tracer Playback</h2>
-          <p class="pb-setup-desc">Visualisez l'historique des déplacements d'un véhicule sur la carte</p>
+    <!-- ═══════ TRACER PLAYBACK PAGE ═══════ -->
+    <div class="playback-page" *ngIf="monitoringView === 'playback' && !isPlaybackLoaded">
+      <!-- Full-screen map background -->
+      <div id="playback-setup-map" class="playback-page-map"></div>
 
-          <div class="pb-setup-form">
-            <div class="pb-setup-field">
-              <label>Véhicule</label>
-              <select [(ngModel)]="playbackVehicleSelect" class="pb-setup-select">
-                <option [ngValue]="null" disabled>Sélectionner un véhicule</option>
-                <option *ngFor="let v of vehicles" [ngValue]="v.id">{{ v.plate || v.name }} — {{ v.model || v.brand || '' }}</option>
-              </select>
-            </div>
-            <div class="pb-setup-dates">
-              <div class="pb-setup-field">
-                <label>Date de début</label>
-                <input type="datetime-local" [(ngModel)]="playbackFromDate" class="pb-setup-input">
-              </div>
-              <div class="pb-setup-field">
-                <label>Date de fin</label>
-                <input type="datetime-local" [(ngModel)]="playbackToDate" class="pb-setup-input">
-              </div>
-            </div>
-            <button class="pb-setup-btn" (click)="launchPlaybackFromTab()" [disabled]="playbackLoading || !playbackVehicleSelect">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              {{ playbackLoading ? 'Chargement en cours...' : 'Lancer le tracé' }}
-            </button>
+      <!-- Floating left panel -->
+      <div class="playback-panel">
+        <!-- Panel header -->
+        <div class="playback-panel-header">
+          <div class="playback-panel-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span>Tracer Playback</span>
           </div>
+          <span class="playback-panel-subtitle">Historique des déplacements</span>
+        </div>
+
+        <!-- Vehicle search -->
+        <div class="playback-panel-section">
+          <label class="playback-label">Véhicule</label>
+          <div class="playback-vehicle-search">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input type="text" placeholder="Rechercher un véhicule..." [(ngModel)]="playbackVehicleSearch" class="playback-search-input">
+          </div>
+          <div class="playback-vehicle-list">
+            <div class="playback-vehicle-card"
+                 *ngFor="let v of getPlaybackFilteredVehicles()"
+                 [class.selected]="playbackVehicleSelect === v.id"
+                 (click)="playbackVehicleSelect = v.id">
+              <div class="playback-vehicle-icon" [ngClass]="getStatusColorClass(v)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><polygon points="16 8 20 12 16 16"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="13.5" cy="18.5" r="2.5"/></svg>
+              </div>
+              <div class="playback-vehicle-info">
+                <span class="playback-vehicle-plate">{{ v.plate || v.name }}</span>
+                <span class="playback-vehicle-model">{{ v.brand }} {{ v.model }}</span>
+              </div>
+              <div class="playback-vehicle-check" *ngIf="playbackVehicleSelect === v.id">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+            </div>
+            <div class="playback-vehicle-empty" *ngIf="getPlaybackFilteredVehicles().length === 0">
+              Aucun véhicule trouvé
+            </div>
+          </div>
+        </div>
+
+        <!-- Date range -->
+        <div class="playback-panel-section">
+          <label class="playback-label">Période</label>
+          <div class="playback-date-row">
+            <div class="playback-date-field">
+              <span class="playback-date-label">Début</span>
+              <input type="datetime-local" [(ngModel)]="playbackFromDate" class="playback-date-input">
+            </div>
+            <div class="playback-date-field">
+              <span class="playback-date-label">Fin</span>
+              <input type="datetime-local" [(ngModel)]="playbackToDate" class="playback-date-input">
+            </div>
+          </div>
+        </div>
+
+        <!-- Launch button -->
+        <div class="playback-panel-footer">
+          <button class="playback-launch-btn" (click)="launchPlaybackFromTab()" [disabled]="playbackLoading || !playbackVehicleSelect">
+            <svg *ngIf="!playbackLoading" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span *ngIf="playbackLoading" class="playback-spinner"></span>
+            {{ playbackLoading ? 'Chargement en cours...' : 'Lancer le tracé' }}
+          </button>
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, AfterViewInit, ChangeDetectorRef, NgZone, ApplicationRef, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { SignalRService, PositionUpdate } from '../services/signalr.service';
@@ -43,7 +43,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   activeTab: 'details' | 'playback' | 'message' = 'details';
   showInlinePlayback = false;
   monitoringView: 'live' | 'playback' = 'live';
-  playbackVehicleSelect: string | null = null; // Vehicle ID selected in playback tab
+  playbackVehicleSelect: string | null = null;
+  playbackVehicleSearch = '';
+  private playbackSetupMap: L.Map | null = null;
 
   // Playback
   playbackFromDate = '';
@@ -150,6 +152,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   constructor(
     private router: Router,
+    private route: ActivatedRoute,
     private apiService: ApiService,
     private signalRService: SignalRService,
     private geocodingService: GeocodingService,
@@ -163,6 +166,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (!this.embedded && !this.apiService.isAuthenticated()) {
       this.router.navigate(['/login']);
       return;
+    }
+
+    // Detect if we're on the /playback route
+    if (this.route.snapshot.data['view'] === 'playback') {
+      this.monitoringView = 'playback';
     }
 
     // Initialize state
@@ -180,8 +188,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngAfterViewInit() {
-    // Initialize map immediately without delay
-    this.initializeMap();
+    if (this.monitoringView === 'playback') {
+      this.initPlaybackSetupMap();
+    } else {
+      this.initializeMap();
+    }
   }
 
   ngOnDestroy() {
@@ -204,6 +215,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.playbackOverlayMap) {
       this.playbackOverlayMap.remove();
       this.playbackOverlayMap = null;
+    }
+    if (this.playbackSetupMap) {
+      this.playbackSetupMap.remove();
+      this.playbackSetupMap = null;
     }
     // Restore monitoring map ref before removing
     if (this.monitoringMap) {
@@ -899,6 +914,37 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       return vehicle.assignedDriver.charAt(0).toUpperCase();
     }
     return '?';
+  }
+
+  // Filter vehicles for the playback setup panel search
+  getPlaybackFilteredVehicles(): Vehicle[] {
+    if (!this.playbackVehicleSearch || this.playbackVehicleSearch.trim() === '') {
+      return this.vehicles;
+    }
+    const q = this.playbackVehicleSearch.toLowerCase().trim();
+    return this.vehicles.filter(v =>
+      (v.plate && v.plate.toLowerCase().includes(q)) ||
+      (v.name && v.name.toLowerCase().includes(q)) ||
+      (v.brand && v.brand.toLowerCase().includes(q)) ||
+      (v.model && v.model.toLowerCase().includes(q))
+    );
+  }
+
+  // Initialize the background map for the playback setup page
+  initPlaybackSetupMap() {
+    setTimeout(() => {
+      const container = document.getElementById('playback-setup-map');
+      if (!container || this.playbackSetupMap) return;
+      this.playbackSetupMap = L.map(container, {
+        center: [36.8, 10.18],
+        zoom: 12,
+        zoomControl: false,
+        attributionControl: false
+      });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19
+      }).addTo(this.playbackSetupMap);
+    }, 100);
   }
 
   // Playback methods
