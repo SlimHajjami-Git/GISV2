@@ -932,8 +932,8 @@ public class GpsController : ControllerBase
 
         if (protocolType.Contains("aap") || protocolType.Contains("aci") || deviceUid.Contains("NR08"))
         {
-            // AAP/ACI protocol: AJ+STOP / AJ+GO
-            gpsCommand = command == "stop" ? "AJ+STOP" : "AJ+GO";
+            // AAP/ACI protocol: AJ+STOP#9999 / AJ+GO#9999 (with PIN code)
+            gpsCommand = command == "stop" ? "AJ+STOP#9999" : "AJ+GO#9999";
         }
         else
         {
