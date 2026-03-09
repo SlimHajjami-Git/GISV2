@@ -633,6 +633,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.popupPosition = { x: 0, y: 0 }; // Reset position to center
     this.isDragging = false;
 
+    // Default playback dates to last 24 hours
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    this.playbackFromDate = this.toLocalDateTimeString(yesterday);
+    this.playbackToDate = this.toLocalDateTimeString(now);
+
     if (this.map && vehicle.currentLocation) {
       this.map.setView([vehicle.currentLocation.lat, vehicle.currentLocation.lng], 12);
     }
