@@ -3662,13 +3662,33 @@ export class ReportsComponent implements OnInit, OnDestroy {
     };
 
     // Flatten all stops from all reports (multi-vehicle support)
+    // Cap stop endTime at 23:59:59 of the start day if it crosses midnight
     const allStops: any[] = [];
     for (const report of reports) {
       if (!report.days) continue;
       for (const day of report.days) {
         for (const stop of day.stops) {
+          let endTime = stop.endTime;
+          let durationSeconds = stop.durationSeconds;
+          let durationFormatted = stop.durationFormatted;
+
+          const startDate = new Date(stop.startTime);
+          const endDate = new Date(stop.endTime);
+
+          // If stop crosses midnight, cap at 23:59:59 of the start day
+          if (startDate.toDateString() !== endDate.toDateString()) {
+            const endOfDay = new Date(startDate);
+            endOfDay.setHours(23, 59, 59, 0);
+            endTime = endOfDay.toISOString();
+            durationSeconds = Math.round((endOfDay.getTime() - startDate.getTime()) / 1000);
+            durationFormatted = null; // Force recalculation via formatDuration
+          }
+
           allStops.push({
             ...stop,
+            endTime,
+            durationSeconds,
+            durationFormatted,
             dayDate: day.date,
             vehicleName: report.vehicleName,
             vehiclePlate: report.plate

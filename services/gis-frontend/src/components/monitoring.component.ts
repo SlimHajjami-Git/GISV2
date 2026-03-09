@@ -2124,58 +2124,79 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
       const tripEnd = i; // inclusive — last point of this trip
 
-      // Trip waypoints: GPS points from tripStart to tripEnd
-      const waypoints = [];
-      for (let j = tripStart; j <= tripEnd; j++) {
-        const p = this.playbackPositions[j];
-        waypoints.push({
-          lat: p.latitude,
-          lon: p.longitude,
-          timestamp: p.recordedAt ? new Date(p.recordedAt).getTime() : null,
-          speed: p.speedKph || 0,
-          heading: p.courseDeg || null,
-          ignitionOn: p.ignitionOn
-        });
-      }
+      // Route trip in chunks to avoid API failures on large segments
+      const CHUNK_SIZE = 80; // Max waypoints per API call (with overlap)
+      const tripLength = tripEnd - tripStart + 1;
+      const numChunks = Math.ceil(tripLength / (CHUNK_SIZE - 1)); // -1 for overlap
+      let isFirstChunk = true;
 
-      try {
-        const response = await fetch('/api/routing/process', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-          },
-          body: JSON.stringify({ points: waypoints, enableRoadSnapping: true })
-        });
+      for (let c = 0; c < numChunks; c++) {
+        const chunkGpsStart = tripStart + c * (CHUNK_SIZE - 1);
+        const chunkGpsEnd = Math.min(chunkGpsStart + CHUNK_SIZE - 1, tripEnd);
 
-        if (!response.ok) throw new Error(`API error: ${response.status}`);
-        const data = await response.json();
-
-        if (data.roadPath && data.roadPath.length >= 2 && data.segmentBoundaries) {
-          const tripRoadCoords: L.LatLng[] = data.roadPath.map((p: any) => L.latLng(p.lat, p.lon));
-          const tripBoundaries: number[] = data.segmentBoundaries;
-          const roadOffset = allRoadPath.length;
-
-          allRoadPath.push(...tripRoadCoords);
-
-          // First waypoint boundary already added above (allSegmentBoundaries.push)
-          // Update it to point to correct road offset
-          allSegmentBoundaries[allSegmentBoundaries.length - 1] = roadOffset + (tripBoundaries[0] || 0);
-
-          // Add boundaries for remaining waypoints in this trip
-          for (let j = 1; j <= tripEnd - tripStart; j++) {
-            const localBound = j < tripBoundaries.length ? tripBoundaries[j] : tripRoadCoords.length - 1;
-            allSegmentBoundaries.push(roadOffset + localBound);
-          }
-
-          routedTrips++;
-        } else {
-          // Valhalla failed — add raw GPS for this trip
-          this.addTripRawFallback(tripStart, tripEnd, allRoadPath, allSegmentBoundaries);
+        // Build waypoints for this chunk
+        const waypoints = [];
+        for (let j = chunkGpsStart; j <= chunkGpsEnd; j++) {
+          const p = this.playbackPositions[j];
+          waypoints.push({
+            lat: p.latitude,
+            lon: p.longitude,
+            timestamp: p.recordedAt ? new Date(p.recordedAt).getTime() : null,
+            speed: p.speedKph || 0,
+            heading: p.courseDeg || null,
+            ignitionOn: p.ignitionOn
+          });
         }
-      } catch (error) {
-        console.error(`[Playback] Trip routing FAILED (points ${tripStart}-${tripEnd}):`, error);
-        this.addTripRawFallback(tripStart, tripEnd, allRoadPath, allSegmentBoundaries);
+
+        try {
+          const response = await fetch('/api/routing/process', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+            },
+            body: JSON.stringify({ points: waypoints, enableRoadSnapping: true })
+          });
+
+          if (!response.ok) throw new Error(`API error: ${response.status}`);
+          const data = await response.json();
+
+          if (data.roadPath && data.roadPath.length >= 2 && data.segmentBoundaries) {
+            const tripRoadCoords: L.LatLng[] = data.roadPath.map((p: any) => L.latLng(p.lat, p.lon));
+            const tripBoundaries: number[] = data.segmentBoundaries;
+            const roadOffset = allRoadPath.length;
+
+            allRoadPath.push(...tripRoadCoords);
+
+            if (isFirstChunk) {
+              // First chunk: update the boundary that was already pushed by the outer loop
+              allSegmentBoundaries[allSegmentBoundaries.length - 1] = roadOffset + (tripBoundaries[0] || 0);
+              for (let j = 1; j <= chunkGpsEnd - chunkGpsStart; j++) {
+                const localBound = j < tripBoundaries.length ? tripBoundaries[j] : tripRoadCoords.length - 1;
+                allSegmentBoundaries.push(roadOffset + localBound);
+              }
+            } else {
+              // Subsequent chunks: add all boundaries (first point overlaps with previous chunk's last)
+              for (let j = 0; j <= chunkGpsEnd - chunkGpsStart; j++) {
+                const localBound = j < tripBoundaries.length ? tripBoundaries[j] : tripRoadCoords.length - 1;
+                allSegmentBoundaries.push(roadOffset + localBound);
+              }
+            }
+
+            routedTrips++;
+          } else {
+            console.warn(`[Playback] Chunk routing returned no data (GPS ${chunkGpsStart}-${chunkGpsEnd})`);
+            this.addTripRawFallback(chunkGpsStart, chunkGpsEnd, allRoadPath, allSegmentBoundaries, isFirstChunk);
+          }
+        } catch (error) {
+          console.error(`[Playback] Chunk routing FAILED (GPS ${chunkGpsStart}-${chunkGpsEnd}):`, error);
+          this.addTripRawFallback(chunkGpsStart, chunkGpsEnd, allRoadPath, allSegmentBoundaries, isFirstChunk);
+        }
+
+        isFirstChunk = false;
+
+        // If this chunk covered the rest of the trip, stop
+        if (chunkGpsEnd >= tripEnd) break;
       }
 
       // Skip past tripEnd — it was already included in the trip's boundaries
@@ -2205,16 +2226,25 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   // Fallback: add raw GPS points for a trip that failed Valhalla routing
-  private addTripRawFallback(tripStart: number, tripEnd: number, allRoadPath: L.LatLng[], allSegmentBoundaries: number[]) {
-    // First point's boundary was already added by the caller, update it
-    const pos0 = this.playbackPositions[tripStart];
-    allRoadPath.push(L.latLng(pos0.latitude, pos0.longitude));
-    allSegmentBoundaries[allSegmentBoundaries.length - 1] = allRoadPath.length - 1;
+  private addTripRawFallback(tripStart: number, tripEnd: number, allRoadPath: L.LatLng[], allSegmentBoundaries: number[], isFirstChunk: boolean = true) {
+    if (isFirstChunk) {
+      // First chunk: boundary was already added by the outer loop, update it
+      const pos0 = this.playbackPositions[tripStart];
+      allRoadPath.push(L.latLng(pos0.latitude, pos0.longitude));
+      allSegmentBoundaries[allSegmentBoundaries.length - 1] = allRoadPath.length - 1;
 
-    for (let j = tripStart + 1; j <= tripEnd; j++) {
-      const pos = this.playbackPositions[j];
-      allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
-      allSegmentBoundaries.push(allRoadPath.length - 1);
+      for (let j = tripStart + 1; j <= tripEnd; j++) {
+        const pos = this.playbackPositions[j];
+        allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
+        allSegmentBoundaries.push(allRoadPath.length - 1);
+      }
+    } else {
+      // Subsequent chunks: add all boundaries
+      for (let j = tripStart; j <= tripEnd; j++) {
+        const pos = this.playbackPositions[j];
+        allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
+        allSegmentBoundaries.push(allRoadPath.length - 1);
+      }
     }
   }
 
