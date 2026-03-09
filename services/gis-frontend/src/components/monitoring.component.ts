@@ -972,6 +972,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         setTimeout(() => {
           this.initPlaybackOverlayMap();
 
+          // Pre-process: consolidate rapid ignition ON/OFF toggles
+          this.smoothIgnitionData();
+
           // Process route: batch road correction via Valhalla
           this.processPlaybackRoute().then(() => {
             this.playbackLoading = false;
@@ -1173,6 +1176,109 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
     this.stationaryMarkers.push(marker);
     console.log(`[Playback] Stop marker #${stopNum} placed at ${lat.toFixed(5)},${lng.toFixed(5)} — ${durationLabel}`);
+  }
+
+  /**
+   * Pre-process ignition data to consolidate rapid ON/OFF toggles.
+   * GPS devices often send noisy ignition signals when parked, creating
+   * hundreds of micro-stops (1-2 points OFF, then 1-2 ON, then OFF again).
+   * This merges them into proper consolidated stop periods.
+   * Must run BEFORE processPlaybackRoute() so routing sees clean data.
+   */
+  private smoothIgnitionData() {
+    const positions = this.playbackPositions;
+    if (positions.length < 5) return;
+
+    const MAX_MERGE_DISTANCE_M = 100; // Max distance between OFF positions to merge
+    const MAX_GAP_POINTS = 5; // Max ON points between two OFF periods to merge
+    const MIN_STOP_DURATION_MS = 60 * 1000; // 1 minute minimum for a real stop
+
+    // Step 1: Find all ignition OFF periods
+    let offPeriods: { start: number; end: number }[] = [];
+    let i = 0;
+    while (i < positions.length) {
+      if (positions[i].ignitionOn === false) {
+        const start = i;
+        while (i < positions.length && positions[i].ignitionOn === false) i++;
+        offPeriods.push({ start, end: i - 1 });
+      } else {
+        i++;
+      }
+    }
+
+    if (offPeriods.length < 2) {
+      // Even with single period, filter if too short
+      if (offPeriods.length === 1) {
+        const p = offPeriods[0];
+        const dur = new Date(positions[p.end].recordedAt).getTime() - new Date(positions[p.start].recordedAt).getTime();
+        if (dur < MIN_STOP_DURATION_MS && p.end - p.start <= 1) {
+          for (let j = p.start; j <= p.end; j++) positions[j].ignitionOn = true;
+        }
+      }
+      return;
+    }
+
+    // Step 2: Iteratively merge nearby OFF periods at the same location
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const merged: { start: number; end: number }[] = [offPeriods[0]];
+
+      for (let k = 1; k < offPeriods.length; k++) {
+        const prev = merged[merged.length - 1];
+        const curr = offPeriods[k];
+        const gapPoints = curr.start - prev.end - 1;
+
+        if (gapPoints <= MAX_GAP_POINTS) {
+          const prevPos = positions[prev.start];
+          const currPos = positions[curr.start];
+          const dist = this.calculateDistance(
+            prevPos.latitude, prevPos.longitude,
+            currPos.latitude, currPos.longitude
+          );
+
+          if (dist < MAX_MERGE_DISTANCE_M) {
+            prev.end = curr.end;
+            changed = true;
+            continue;
+          }
+        }
+        merged.push({ start: curr.start, end: curr.end });
+      }
+      offPeriods = merged;
+    }
+
+    // Step 3: Apply merged periods — mark all points in each period as OFF
+    for (const period of offPeriods) {
+      for (let j = period.start; j <= period.end; j++) {
+        positions[j].ignitionOn = false;
+      }
+    }
+
+    // Step 4: Remove very short OFF periods (< 1 min AND < 2 points) as noise
+    for (const period of offPeriods) {
+      const dur = new Date(positions[period.end].recordedAt).getTime() -
+                  new Date(positions[period.start].recordedAt).getTime();
+      if (dur < MIN_STOP_DURATION_MS && period.end - period.start <= 1) {
+        for (let j = period.start; j <= period.end; j++) {
+          positions[j].ignitionOn = true;
+        }
+      }
+    }
+
+    // Log result
+    const finalOffPeriods: { start: number; end: number }[] = [];
+    i = 0;
+    while (i < positions.length) {
+      if (positions[i].ignitionOn === false) {
+        const start = i;
+        while (i < positions.length && positions[i].ignitionOn === false) i++;
+        finalOffPeriods.push({ start, end: i - 1 });
+      } else {
+        i++;
+      }
+    }
+    console.log(`[Playback] Ignition smoothing: ${offPeriods.length} raw OFF periods → ${finalOffPeriods.length} consolidated stops`);
   }
 
   // Place stop markers for ALL ignition OFF periods at once (used by skipToEnd)
@@ -2582,13 +2688,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.stopPlaybackAnimation();
     this.isPlaying = false;
     
-    // Draw all remaining segments
-    for (let i = this.traceDrawnUpToIndex; i < this.playbackPositions.length - 1; i++) {
-      this.drawProgressiveSegment(i, i + 1);
-    }
-    
     this.playbackIndex = this.playbackPositions.length - 1;
     this.playbackProgress = 100;
+    
+    // Draw the full route using road-snapped coords (single polyline, not per-segment)
+    this.rebuildProgressTrace(this.playbackIndex);
+    this.traceDrawnUpToIndex = this.playbackIndex;
     this.updatePlaybackMarker();
 
     // Place stop markers for all ignition OFF periods when skipping to end
