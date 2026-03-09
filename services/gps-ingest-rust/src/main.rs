@@ -11,7 +11,9 @@ use anyhow::Result;
 use chrono::NaiveDate;
 use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
+use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 use tracing::{info, warn, error, Level};
 
 use crate::ports::{TelemetryEventPublisher, TelemetryStore};
@@ -172,22 +174,28 @@ async fn main() -> Result<()> {
 
             info!("GPS Ingest service running in WRITE-ONLY mode (API served by .NET)");
 
-            // Spawn a minimal health HTTP server so Docker/monitoring can check liveness
+            // Create shared device writer map for remote commands (IMEI -> TCP WriteHalf)
+            let device_writers: transport::DeviceWriterMap = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+
+            // Spawn HTTP server with health check + remote command endpoint
             let api_port: u16 = std::env::var("API_PORT")
                 .ok()
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(3000);
+            let writers_for_api = Arc::clone(&device_writers);
             tokio::spawn(async move {
                 let app = axum::Router::new()
                     .route("/api/health", axum::routing::get(|| async { "OK" }))
-                    .route("/health", axum::routing::get(|| async { "OK" }));
+                    .route("/health", axum::routing::get(|| async { "OK" }))
+                    .route("/api/command", axum::routing::post(handle_device_command))
+                    .with_state(writers_for_api);
                 let addr = std::net::SocketAddr::from(([0, 0, 0, 0], api_port));
-                info!("Health endpoint listening on port {}", api_port);
+                info!("HTTP API listening on port {} (health + remote commands)", api_port);
                 if let Err(e) = axum::serve(
                     tokio::net::TcpListener::bind(addr).await.unwrap(),
                     app,
                 ).await {
-                    error!(?e, "Health HTTP server failed");
+                    error!(?e, "HTTP API server failed");
                 }
             });
 
@@ -196,11 +204,106 @@ async fn main() -> Result<()> {
                 warn!("No listeners configured; service will idle");
             }
 
-            transport::run_listeners(&app_config, database, publisher, redis_cache).await?;
+            transport::run_listeners(&app_config, database, publisher, redis_cache, device_writers).await?;
         }
     }
 
     Ok(())
+}
+
+// ==================== REMOTE COMMAND HTTP HANDLER ====================
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceCommandRequest {
+    device_uid: String,
+    command: String,
+    source: Option<String>,
+    user_id: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct DeviceCommandResponse {
+    success: bool,
+    message: String,
+    device_uid: String,
+    command_sent: String,
+}
+
+async fn handle_device_command(
+    axum::extract::State(device_writers): axum::extract::State<transport::DeviceWriterMap>,
+    axum::Json(req): axum::Json<DeviceCommandRequest>,
+) -> axum::response::Response {
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+
+    info!(
+        device_uid = %req.device_uid,
+        command = %req.command,
+        source = ?req.source,
+        user_id = ?req.user_id,
+        "[RemoteCmd] Received command request"
+    );
+
+    // Look up the active TCP writer for this device
+    let writer = {
+        let map = device_writers.lock().await;
+        map.get(&req.device_uid).cloned()
+    };
+
+    let writer = match writer {
+        Some(w) => w,
+        None => {
+            // Check how many devices are connected
+            let connected_count = device_writers.lock().await.len();
+            warn!(
+                device_uid = %req.device_uid,
+                connected_devices = connected_count,
+                "[RemoteCmd] Device not connected — cannot send command"
+            );
+            let resp = DeviceCommandResponse {
+                success: false,
+                message: format!("GPS {} n'est pas connecté au serveur ({} appareils connectés)", req.device_uid, connected_count),
+                device_uid: req.device_uid,
+                command_sent: req.command,
+            };
+            return (StatusCode::NOT_FOUND, axum::Json(resp)).into_response();
+        }
+    };
+
+    // Send the command over the TCP socket to the GPS device
+    let command_bytes = format!("{}\r\n", req.command);
+    let mut w = writer.lock().await;
+    match w.write_all(command_bytes.as_bytes()).await {
+        Ok(()) => {
+            info!(
+                device_uid = %req.device_uid,
+                command = %req.command,
+                "[RemoteCmd] Command sent successfully to GPS device"
+            );
+            let resp = DeviceCommandResponse {
+                success: true,
+                message: format!("Commande '{}' envoyée au GPS {}", req.command, req.device_uid),
+                device_uid: req.device_uid,
+                command_sent: req.command,
+            };
+            (StatusCode::OK, axum::Json(resp)).into_response()
+        }
+        Err(e) => {
+            error!(
+                device_uid = %req.device_uid,
+                error = %e,
+                "[RemoteCmd] Failed to send command to GPS device"
+            );
+            let resp = DeviceCommandResponse {
+                success: false,
+                message: format!("Erreur d'envoi de la commande au GPS {}: {}", req.device_uid, e),
+                device_uid: req.device_uid,
+                command_sent: req.command,
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, axum::Json(resp)).into_response()
+        }
+    }
 }
 
 #[cfg(test)]

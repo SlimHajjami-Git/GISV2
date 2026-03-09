@@ -4,7 +4,7 @@ use anyhow::{anyhow, Context, Result};
 use chrono::Duration;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
+    net::{tcp::OwnedWriteHalf, TcpListener, TcpStream},
     signal,
     sync::Mutex,
 };
@@ -30,6 +30,9 @@ use crate::{
 
 type ConnectionMap = Arc<Mutex<HashMap<String, String>>>;
 
+/// Map of IMEI -> TCP write half for sending commands to connected GPS devices
+pub type DeviceWriterMap = Arc<Mutex<HashMap<String, Arc<Mutex<OwnedWriteHalf>>>>>;
+
 /// Shared services for stop detection, fuel tracking, geocoding, geofencing, GPS stabilization, validation, trip detection, and driving events
 pub struct TelemetryServices {
     pub stop_detector: StopDetector,
@@ -48,6 +51,7 @@ pub async fn run_listeners(
     database: Arc<dyn TelemetryStore>,
     publisher: Option<Arc<dyn TelemetryEventPublisher>>,
     redis_cache: Option<Arc<RedisCache>>,
+    device_writers: DeviceWriterMap,
 ) -> Result<()> {
     if config.listeners.is_empty() {
         info!("No listeners configured; nothing to start");
@@ -91,8 +95,9 @@ pub async fn run_listeners(
                 let publisher_clone = publisher.clone();
                 let services_clone = Arc::clone(&services);
                 let redis_clone = redis_cache.clone();
+                let writers_clone = Arc::clone(&device_writers);
                 handles.push(tokio::spawn(async move {
-                    if let Err(err) = run_tcp_listener(cfg, db, mapping, publisher_clone, services_clone, redis_clone).await {
+                    if let Err(err) = run_tcp_listener(cfg, db, mapping, publisher_clone, services_clone, redis_clone, writers_clone).await {
                         error!(?err, "TCP listener terminated unexpectedly");
                     }
                 }));
@@ -121,6 +126,7 @@ async fn run_tcp_listener(
     publisher: Option<Arc<dyn TelemetryEventPublisher>>,
     services: Arc<TelemetryServices>,
     redis_cache: Option<Arc<RedisCache>>,
+    device_writers: DeviceWriterMap,
 ) -> Result<()> {
     let bind_addr = format!("0.0.0.0:{}", cfg.port);
     let listener = TcpListener::bind(&bind_addr).await?;
@@ -135,8 +141,9 @@ async fn run_tcp_listener(
         let publisher_clone = publisher.clone();
         let services_clone = Arc::clone(&services);
         let redis_clone = redis_cache.clone();
+        let writers_clone = Arc::clone(&device_writers);
         tokio::spawn(async move {
-            if let Err(err) = handle_tcp_connection(stream, cfg_clone, db, map_clone, publisher_clone, services_clone, redis_clone).await {
+            if let Err(err) = handle_tcp_connection(stream, cfg_clone, db, map_clone, publisher_clone, services_clone, redis_clone, writers_clone).await {
                 error!(?err, "TCP connection handler exited with error");
             }
         });
@@ -145,18 +152,26 @@ async fn run_tcp_listener(
 }
 
 async fn handle_tcp_connection(
-    mut stream: TcpStream,
+    stream: TcpStream,
     cfg: Arc<ListenerConfig>,
     database: Arc<dyn TelemetryStore>,
     connection_map: ConnectionMap,
     publisher: Option<Arc<dyn TelemetryEventPublisher>>,
     services: Arc<TelemetryServices>,
     redis_cache: Option<Arc<RedisCache>>,
+    device_writers: DeviceWriterMap,
 ) -> Result<()> {
-    let mut buffer = vec![0u8; 8192];
     let peer = stream.peer_addr().ok().map(|addr| addr.to_string());
+
+    // Split TcpStream into read/write halves so we can store the writer for remote commands
+    let (mut reader, writer) = stream.into_split();
+    let writer = Arc::new(Mutex::new(writer));
+
+    let mut buffer = vec![0u8; 8192];
+    let mut device_imei: Option<String> = None; // Track IMEI for cleanup on disconnect
+
     loop {
-        let read = stream.read(&mut buffer).await?;
+        let read = reader.read(&mut buffer).await?;
         if read == 0 {
             break;
         }
@@ -170,7 +185,8 @@ async fn handle_tcp_connection(
         // Without ACK, tracker falls back to degraded mode (3 min interval)
         if let Ok(ascii) = std::str::from_utf8(payload) {
             if ascii.contains("AAAA") {
-                if let Err(e) = stream.write_all(b"AA06").await {
+                let mut w = writer.lock().await;
+                if let Err(e) = w.write_all(b"AA06").await {
                     warn!(?e, "Failed to send AA06 ACK to tracker");
                 } else {
                     info!(peer = peer.as_deref().unwrap_or("unknown"), "Sent AA06 ACK to tracker (keepalive)");
@@ -192,6 +208,28 @@ async fn handle_tcp_connection(
         {
             warn!(?err, "Failed to process payload");
         }
+
+        // After processing, check if we now know the device IMEI (from connection_map)
+        // and register the writer if not already done
+        if device_imei.is_none() {
+            if let Some(ref peer_str) = peer {
+                let map = connection_map.lock().await;
+                if let Some(imei) = map.get(peer_str).cloned() {
+                    info!(imei = %imei, "Registering TCP writer for remote commands");
+                    device_writers.lock().await.insert(imei.clone(), Arc::clone(&writer));
+                    device_imei = Some(imei);
+                }
+            }
+        }
+    }
+
+    // Connection closed — clean up the writer from the map
+    if let Some(imei) = &device_imei {
+        info!(imei = %imei, "Device disconnected, removing TCP writer");
+        device_writers.lock().await.remove(imei);
+    }
+    if let Some(ref peer_str) = peer {
+        connection_map.lock().await.remove(peer_str);
     }
 
     Ok(())
