@@ -1142,6 +1142,24 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   border-bottom-color: #fecaca;
 }
 
+/* Day header rows (grouping by day) */
+.day-header-row {
+  background: #e2e8f0 !important;
+}
+
+.day-header-cell {
+  font-weight: 600;
+  font-size: 11px;
+  color: #334155;
+  padding: 6px 12px !important;
+  border-bottom: 2px solid #cbd5e1 !important;
+}
+
+/* Text center utility */
+.text-center {
+  text-align: center !important;
+}
+
 /* Change cell (fuel variation) */
 .change-cell {
   font-weight: 500;

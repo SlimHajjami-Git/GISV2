@@ -253,6 +253,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   
   fromDate = '';
   toDate = '';
+  todayStr = new Date().toISOString().split('T')[0]; // For max date on inputs
 
   reportGenerated = false;
   activeTab = 'chart';
@@ -459,6 +460,27 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   initializeDates() {
     this.selectStandardPeriod('today');
+  }
+
+  // Auto-execute wrappers — triggered by (change) / (click) in template
+  onVehicleChange() {
+    if (this.selectedTemplateId && !this.loading) {
+      this.executeReport();
+    }
+  }
+
+  onStandardPeriodChange(period: string) {
+    this.selectStandardPeriod(period);
+    if (this.selectedTemplateId && !this.loading) {
+      this.executeReport();
+    }
+  }
+
+  onCostPeriodChange(period: string) {
+    this.selectCostPeriod(period);
+    if (this.selectedTemplateId && !this.loading) {
+      this.executeReport();
+    }
   }
 
   selectStandardPeriod(period: string) {
@@ -2306,8 +2328,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return true;
     });
 
+    // Sort: most recent first
+    daysWithActivity.sort((a: DailyMileage, b: DailyMileage) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
     this.tableData = daysWithActivity.map((day: DailyMileage) => ({
-      date: new Date(day.date).toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' }),
+      date: new Date(day.date).toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit', year: '2-digit' }),
       dayOfWeek: day.dayOfWeek,
       distance: `${day.distanceKm.toFixed(1)} km`,
       distanceValue: day.distanceKm,
@@ -2318,9 +2343,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       odometer: day.endOdometerKm ? `${day.endOdometerKm.toFixed(0)} km` : '-'
     }));
 
-    // Chart data - daily distances (use same filtered days as table)
-    this.chartData = daysWithActivity.map((day: DailyMileage) => ({
-      label: new Date(day.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
+    // Chart data - daily distances (oldest left → newest right)
+    const chartDays = [...daysWithActivity].sort((a: DailyMileage, b: DailyMileage) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    this.chartData = chartDays.map((day: DailyMileage) => ({
+      label: new Date(day.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' }),
       value: day.distanceKm
     }));
 
@@ -2478,6 +2504,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             position: 'top'
           },
           title: { display: true, text: '📏 Distance journalière', font: { size: 14, weight: 'bold' } },
+          // No dataset label needed
           tooltip: {
             callbacks: {
               label: (context) => `${(context.parsed.y ?? 0).toFixed(1)} km`
@@ -2486,16 +2513,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
         },
         scales: {
           y: {
-            beginAtZero: true,
-            title: {
-              display: true,
-              text: 'Distance (km)'
-            }
+            beginAtZero: true
           },
           x: {
             title: {
-              display: true,
-              text: 'Date'
+              display: false
             }
           }
         }
@@ -3669,7 +3691,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         latitude: stop.latitude,
         longitude: stop.longitude,
         typeCode: 'A',
-        typeLabel: durationMinutes > 30 ? '🅿️ Arrêt prolongé' : '🅿️ Arrêt',
+        typeLabel: '🅿️ Arrêt',
         ignitionOff: true,
         isLongStop: durationMinutes > 30,
         vehicleName: stop.vehicleName,
@@ -3681,7 +3703,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Enrich addresses that are still coordinates
     this.enrichAllAddresses();
 
-    // Chart: duration range breakdown
+    // Chart: duration range breakdown — include count for tooltip
     const durationRanges = [
       { label: '0-5 min', min: 0, max: 300, color: '#3B82F6' },
       { label: '5-15 min', min: 300, max: 900, color: '#6366F1' },
@@ -3689,21 +3711,41 @@ export class ReportsComponent implements OnInit, OnDestroy {
       { label: '30-60 min', min: 1800, max: 3600, color: '#F59E0B' },
       { label: '>60 min', min: 3600, max: Infinity, color: '#EF4444' }
     ];
-    this.chartData = durationRanges.map(r => ({
-      label: r.label,
-      value: allStops.filter(s => s.durationSeconds >= r.min && s.durationSeconds < r.max).length,
-      color: r.color
-    }));
+    this.chartData = durationRanges.map(r => {
+      const stops = allStops.filter(s => s.durationSeconds >= r.min && s.durationSeconds < r.max);
+      const totalMin = Math.round(stops.reduce((sum: number, s: any) => sum + s.durationSeconds, 0) / 60);
+      return {
+        label: r.label,
+        value: totalMin,
+        count: stops.length,
+        color: r.color
+      };
+    });
 
     // Secondary chart: stops per day
     const stopsByDay = new Map<string, number>();
     for (const stop of allStops) {
-      const dayKey = new Date(stop.startTime).toLocaleDateString('fr-FR');
+      const d = new Date(stop.startTime);
+      const dayKey = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
       stopsByDay.set(dayKey, (stopsByDay.get(dayKey) || 0) + 1);
     }
     this.secondaryChartData = Array.from(stopsByDay.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([day, count]) => ({ label: day, value: count, color: '#3B82F6' }));
+
+    // Group stops by day — insert day header rows
+    const grouped: any[] = [];
+    let currentDay = '';
+    for (const row of this.tableData) {
+      const dayKey = row.time ? row.time.split(' ')[0] : '';
+      if (dayKey && dayKey !== currentDay) {
+        currentDay = dayKey;
+        const dayStops = this.tableData.filter((r: any) => r.time?.startsWith(dayKey));
+        grouped.push({ isDayHeader: true, dayLabel: `📅 ${dayKey} — ${dayStops.length} arrêt(s)`, _sortKey: dayKey });
+      }
+      grouped.push(row);
+    }
+    this.tableData = grouped;
 
     // Statistics from backend summary (single vehicle) or computed (multi)
     if (reports.length === 1 && reports[0].summary) {
@@ -3857,9 +3899,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Enrich addresses
     this.enrichAllAddresses();
 
-    // Chart data - distance per trip
-    this.chartData = this.tableData.map((t: any) => ({
-      label: `Trajet ${t.tripNumber}`,
+    // Chart data - distance per trip (oldest left → newest right)
+    this.chartData = [...this.tableData].filter((t: any) => t.isTrip).reverse().map((t: any) => ({
+      label: `T${t.tripNumber}`,
       value: t.distanceKm,
       duration: t.durationMin
     }));
@@ -3871,8 +3913,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         'Nombre de trajets': s.totalTrips.toString(),
         'Distance totale': `${s.totalDistanceKm} km`,
         'Temps de conduite': s.totalTripFormatted,
-        'Vitesse max': `${s.maxSpeedKph} km/h`,
-        'Vitesse moy.': `${s.avgSpeedKph} km/h`
+        'Vitesse max': `${s.maxSpeedKph} km/h`
       };
     } else {
       const totalDistance = allTrips.reduce((sum: number, t: any) => sum + t.distanceKm, 0);
@@ -3886,6 +3927,22 @@ export class ReportsComponent implements OnInit, OnDestroy {
         'Véhicules': new Set(allTrips.map((t: any) => t.vehicleName)).size.toString()
       };
     }
+
+    // Group trips by day — insert day header rows
+    const grouped: any[] = [];
+    let currentDay = '';
+    for (const row of this.tableData) {
+      const dayKey = row.startTime ? row.startTime.split(' ')[0] : '';
+      if (dayKey && dayKey !== currentDay) {
+        currentDay = dayKey;
+        const dayTrips = this.tableData.filter((r: any) => r.startTime?.startsWith(dayKey));
+        const tripNums = dayTrips.filter((r: any) => r.isTrip).map((r: any) => r.tripNumber);
+        const dayLabel = tripNums.length > 0 ? `📅 ${dayKey} — Trajets ${Math.min(...tripNums)} à ${Math.max(...tripNums)}` : `📅 ${dayKey}`;
+        grouped.push({ isDayHeader: true, dayLabel, _sortKey: dayKey });
+      }
+      grouped.push(row);
+    }
+    this.tableData = grouped;
   }
 
   enrichTripAddresses() {
@@ -3987,8 +4044,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
               callbacks: {
                 label: (context: any) => {
                   const item = this.chartData[context.dataIndex];
-                  const pct = totalMinutes > 0 ? ((item.value / totalMinutes) * 100).toFixed(1) : 0;
-                  return [`${item.value} min (${pct}%)`, `${item.count || 0} arrêts`];
+                  const totalVal = this.chartData.reduce((s: number, d: any) => s + d.value, 0);
+                  const pct = totalVal > 0 ? ((item.value / totalVal) * 100).toFixed(1) : 0;
+                  return [`${item.value} min (${pct}%)`, `${item.count} arrêt(s)`];
                 }
               }
             }

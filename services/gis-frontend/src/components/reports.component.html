@@ -110,8 +110,8 @@
         <!-- Vehicle Selector (hidden for monthly and AI reports) -->
         <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'ai-fleet' && filterByVehicle">
           <label class="field-label">Véhicule</label>
-          <select class="field-select" [(ngModel)]="selectedVehicleId">
-            <option value="">Tous les véhicules</option>
+          <select class="field-select" [(ngModel)]="selectedVehicleId" (ngModelChange)="onVehicleChange()">
+            <option value="">Sélectionner véhicule</option>
             @for (vehicle of getFilteredVehicles(); track vehicle.id) {
               <option [value]="vehicle.id">{{ vehicle.name || (vehicle.brand + ' ' + vehicle.model) }} {{ vehicle.plate ? '(' + vehicle.plate + ')' : '' }}</option>
             }
@@ -131,17 +131,17 @@
         <!-- Hourly: Single date picker -->
         <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'mileage-period' && selectedMileagePeriodType === 'hour'">
           <label class="field-label">Date</label>
-          <input type="date" class="field-input" [(ngModel)]="mileagePeriodDate">
+          <input type="date" class="field-input" [(ngModel)]="mileagePeriodDate" [max]="todayStr">
         </div>
 
         <!-- Daily: Date range picker -->
         <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'mileage-period' && selectedMileagePeriodType === 'day'">
           <label class="field-label">Date début</label>
-          <input type="date" class="field-input" [(ngModel)]="mileagePeriodStartDate">
+          <input type="date" class="field-input" [(ngModel)]="mileagePeriodStartDate" [max]="todayStr">
         </div>
         <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'mileage-period' && selectedMileagePeriodType === 'day'">
           <label class="field-label">Date fin</label>
-          <input type="date" class="field-input" [(ngModel)]="mileagePeriodEndDate">
+          <input type="date" class="field-input" [(ngModel)]="mileagePeriodEndDate" [max]="todayStr">
         </div>
 
         <!-- Monthly: Month/Year selector -->
@@ -173,7 +173,7 @@
         <!-- ===== DAILY REPORT: Single date picker ===== -->
         <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'daily'">
           <label class="field-label">Date du rapport</label>
-          <input type="date" class="field-input" [(ngModel)]="dailyReportDate">
+          <input type="date" class="field-input" [(ngModel)]="dailyReportDate" [max]="todayStr">
         </div>
 
         <!-- ===== GPS REPORTS: Standard period buttons ===== -->
@@ -181,24 +181,24 @@
         <div class="period-row" *ngIf="selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance'">
           <button *ngFor="let p of standardPeriods" 
             [class.active]="selectedStandardPeriod === p.value"
-            (click)="selectStandardPeriod(p.value)">{{ p.label }}</button>
+            (click)="onStandardPeriodChange(p.value)">{{ p.label }}</button>
         </div>
 
         <!-- ===== COSTS / MAINTENANCE: Longer period buttons ===== -->
         <div class="period-row" *ngIf="selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance'">
           <button *ngFor="let p of costPeriods" 
             [class.active]="selectedCostPeriod === p.value"
-            (click)="selectCostPeriod(p.value)">{{ p.label }}</button>
+            (click)="onCostPeriodChange(p.value)">{{ p.label }}</button>
         </div>
 
         <!-- ===== CUSTOM DATE RANGE (when Personnalisé selected) ===== -->
         <div class="sidebar-row" *ngIf="(selectedStandardPeriod === 'custom' && selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance') || (selectedCostPeriod === 'custom' && (selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance'))">
           <label class="field-label">Date début</label>
-          <input type="date" class="field-input" [(ngModel)]="customStartDate">
+          <input type="date" class="field-input" [(ngModel)]="customStartDate" [max]="todayStr">
         </div>
         <div class="sidebar-row" *ngIf="(selectedStandardPeriod === 'custom' && selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance') || (selectedCostPeriod === 'custom' && (selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance'))">
           <label class="field-label">Date fin</label>
-          <input type="date" class="field-input" [(ngModel)]="customEndDate">
+          <input type="date" class="field-input" [(ngModel)]="customEndDate" [max]="todayStr">
         </div>
 
         <!-- ===== SPEED LIMIT INPUT (for speed & speed-infraction) ===== -->
@@ -223,17 +223,7 @@
           <div class="validation-hint">⚠️ Sélectionnez un véhicule</div>
         }
 
-        <!-- Report Sections (Accordion) -->
-        <div class="accordion-section">
-          <div class="accordion-header" (click)="toggleSection('templates')">
-            <span>Modèles de rapport</span>
-            <svg [class.rotated]="expandedSections['templates']" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          </div>
-        </div>
-
-        <!-- Incident Type Filters under accordion (for driving-behavior) -->
+        <!-- Incident Type Filters (for driving-behavior) -->
         <div class="accordion-section" *ngIf="selectedTemplate?.type === 'driving-behavior'">
           <div class="accordion-header active">
             <span>Types d'incidents</span>
@@ -247,40 +237,6 @@
           </div>
         </div>
 
-        <div class="accordion-section">
-          <div class="accordion-header" [class.active]="reportGenerated" (click)="toggleSection('result')">
-            <span>Résultat du rapport</span>
-            <svg [class.rotated]="expandedSections['result']" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          </div>
-          @if (expandedSections['result'] && reportGenerated) {
-            <div class="accordion-content">
-              <div class="result-item" [class.active]="activeTab === 'statistics'" (click)="setActiveTab('statistics')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="3" y="3" width="18" height="18" rx="2"/>
-                </svg>
-                <span>Statistiques</span>
-              </div>
-              <div class="result-item" [class.active]="activeTab === 'table'" (click)="setActiveTab('table')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="3" y="3" width="18" height="18" rx="2"/>
-                  <line x1="3" y1="9" x2="21" y2="9"/>
-                  <line x1="9" y1="21" x2="9" y2="9"/>
-                </svg>
-                <span>{{ selectedTemplate?.name || 'Données' }}</span>
-              </div>
-              <div class="result-item" [class.active]="activeTab === 'chart'" (click)="setActiveTab('chart')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="20" x2="18" y2="10"/>
-                  <line x1="12" y1="20" x2="12" y2="4"/>
-                  <line x1="6" y1="20" x2="6" y2="14"/>
-                </svg>
-                <span>Graphique</span>
-              </div>
-            </div>
-          }
-        </div>
 
       </aside>
 
@@ -792,7 +748,7 @@
                         <th class="sortable" (click)="sortBy('date')">Date <span class="sort-icon">{{ getSortIcon('date') }}</span></th>
                         <th class="sortable" (click)="sortBy('distanceValue')">Distance <span class="sort-icon">{{ getSortIcon('distanceValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('tripCount')">Trajets <span class="sort-icon">{{ getSortIcon('tripCount') }}</span></th>
-                        <th class="sortable" (click)="sortBy('drivingTimeSeconds')">Temps conduite <span class="sort-icon">{{ getSortIcon('drivingTimeSeconds') }}</span></th>
+                        <th class="sortable" (click)="sortBy('drivingTimeSeconds')">Temps de conduite <span class="sort-icon">{{ getSortIcon('drivingTimeSeconds') }}</span></th>
                         <th class="sortable" (click)="sortBy('avgSpeedValue')">Vitesse moy. <span class="sort-icon">{{ getSortIcon('avgSpeedValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('maxSpeedValue')">Vitesse max <span class="sort-icon">{{ getSortIcon('maxSpeedValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('odometerValue')">Odomètre <span class="sort-icon">{{ getSortIcon('odometerValue') }}</span></th>
@@ -806,8 +762,8 @@
                           <th class="sortable" (click)="sortBy('avgDaily')">Moy. jour <span class="sort-icon">{{ getSortIcon('avgDaily') }}</span></th>
                           <th class="sortable" (click)="sortBy('activeDays')">Jours actifs <span class="sort-icon">{{ getSortIcon('activeDays') }}</span></th>
                         }
-                        <th class="sortable" (click)="sortBy('tripCount')">Trajets <span class="sort-icon">{{ getSortIcon('tripCount') }}</span></th>
-                        <th class="sortable" (click)="sortBy('drivingTimeSeconds')">Temps conduite <span class="sort-icon">{{ getSortIcon('drivingTimeSeconds') }}</span></th>
+                        <th class="sortable text-center" (click)="sortBy('tripCount')">Trajets <span class="sort-icon">{{ getSortIcon('tripCount') }}</span></th>
+                        <th class="sortable text-center" (click)="sortBy('drivingTimeSeconds')">Temps de conduite <span class="sort-icon">{{ getSortIcon('drivingTimeSeconds') }}</span></th>
                         @if (selectedMileagePeriodType !== 'month') {
                           <th class="sortable" (click)="sortBy('avgSpeedValue')">Vitesse moy. <span class="sort-icon">{{ getSortIcon('avgSpeedValue') }}</span></th>
                           <th class="sortable" (click)="sortBy('maxSpeedValue')">Vitesse max <span class="sort-icon">{{ getSortIcon('maxSpeedValue') }}</span></th>
@@ -821,7 +777,6 @@
                         <th class="sortable" (click)="sortBy('endTime')">Fin <span class="sort-icon">{{ getSortIcon('endTime') }}</span></th>
                         <th class="sortable" (click)="sortBy('durationSeconds')">Durée <span class="sort-icon">{{ getSortIcon('durationSeconds') }}</span></th>
                         <th class="sortable" (click)="sortBy('distanceValue')">Distance <span class="sort-icon">{{ getSortIcon('distanceValue') }}</span></th>
-                        <th class="sortable" (click)="sortBy('avgSpeedValue')">Vit. moy <span class="sort-icon">{{ getSortIcon('avgSpeedValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('maxSpeedValue')">Vit. max <span class="sort-icon">{{ getSortIcon('maxSpeedValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('startAddress')">Lieu <span class="sort-icon">{{ getSortIcon('startAddress') }}</span></th>
                       } @else if (selectedTemplate?.type === 'stops') {
@@ -881,6 +836,11 @@
                   </thead>
                   <tbody>
                     @for (row of paginatedData; track $index) {
+                      @if (row.isDayHeader) {
+                        <tr class="day-header-row">
+                          <td [attr.colspan]="20" class="day-header-cell">{{ row.dayLabel }}</td>
+                        </tr>
+                      } @else {
                       <tr [class.highlighted]="row.isAnomaly" [class.anomaly-row]="row.isAnomaly" [class.drive-row]="row.isDrive"
                           [class.infraction-grave]="selectedTemplate?.type === 'speed-infraction' && row.severityLevel === 'grave'"
                           [class.infraction-modere]="selectedTemplate?.type === 'speed-infraction' && row.severityLevel === 'modere'"
@@ -942,7 +902,6 @@
                             <td class="time-cell">{{ row.endTime }}</td>
                             <td class="duration-cell">{{ row.duration }}</td>
                             <td class="distance-cell">{{ row.distance }}</td>
-                            <td class="speed-cell">{{ row.avgSpeed }}</td>
                             <td class="speed-cell">{{ row.maxSpeed }}</td>
                             <td class="location-cell">{{ row.startAddress }} → {{ row.endAddress }}</td>
                           } @else {
@@ -951,7 +910,6 @@
                             <td class="time-cell">{{ row.endTime }}</td>
                             <td class="duration-cell stop-duration">{{ row.duration }}</td>
                             <td class="distance-cell">-</td>
-                            <td class="speed-cell">-</td>
                             <td class="speed-cell">-</td>
                             <td class="location-cell">{{ row.address }}</td>
                           }
@@ -1019,6 +977,7 @@
                           <td>{{ row.kilometrage || row.status || row.type || row.avgSpeed }}</td>
                         }
                       </tr>
+                      }
                     }
                   </tbody>
                 </table>
