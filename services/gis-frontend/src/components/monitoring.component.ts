@@ -42,6 +42,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   isPanelCollapsed = false;
   activeTab: 'details' | 'playback' | 'message' = 'details';
   showInlinePlayback = false;
+  monitoringView: 'live' | 'playback' = 'live';
+  playbackVehicleSelect: string | null = null; // Vehicle ID selected in playback tab
 
   // Playback
   playbackFromDate = '';
@@ -900,6 +902,20 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   // Playback methods
+  // Launch playback from the dedicated Tracer Playback tab
+  launchPlaybackFromTab() {
+    if (!this.playbackVehicleSelect || !this.playbackFromDate || !this.playbackToDate) {
+      alert('Veuillez sélectionner un véhicule et une plage de dates');
+      return;
+    }
+    // Find the vehicle object and set it as selected
+    const vehicle = this.vehicles.find(v => v.id === this.playbackVehicleSelect);
+    if (vehicle) {
+      this.selectedVehicle = vehicle;
+    }
+    this.loadPlaybackRoute();
+  }
+
   loadPlaybackRoute() {
     if (!this.selectedVehicle || !this.playbackFromDate || !this.playbackToDate) {
       alert('Veuillez sélectionner un véhicule et une plage de dates');
@@ -1334,7 +1350,21 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       // Create popup content with details
       const speed = position.speedKph || 0;
       const isMoving = speed > 3;
-      const speedColor = speed > 80 ? '#ef4444' : speed > 50 ? '#f59e0b' : '#10b981';
+
+      // Compute arrival/departure/stop for this point
+      const arrivalTime = new Date(position.recordedAt).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const nextPos = index < this.playbackPositions.length - 1 ? this.playbackPositions[index + 1] : null;
+      const departureTime = nextPos ? new Date(nextPos.recordedAt).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Fin';
+      // Stop duration: if ignition OFF at this point, compute until ON resumes
+      let stopDuration = 'N/A';
+      if (position.ignitionOn === false) {
+        let endIdx = index;
+        while (endIdx < this.playbackPositions.length - 1 && this.playbackPositions[endIdx + 1].ignitionOn === false) endIdx++;
+        const durMs = new Date(this.playbackPositions[endIdx].recordedAt).getTime() - new Date(position.recordedAt).getTime();
+        const durMin = Math.round(durMs / 60000);
+        stopDuration = durMin >= 60 ? `${Math.floor(durMin / 60)}h ${durMin % 60}min` : `${durMin}min`;
+      }
+      const arrivalColor = '#3b82f6';
       
       const popupContent = `
         <div style="
@@ -1370,7 +1400,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
             <span style="font-size: 11px; color: rgba(255,255,255,0.8);">${time.split(' ')[1] || ''}</span>
           </div>
           
-          <!-- Speed highlight -->
+          <!-- Arrival time highlight -->
           <div style="
             background: #fff;
             padding: 12px 14px;
@@ -1382,18 +1412,18 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
             <div style="
               width: 44px;
               height: 44px;
-              background: ${speedColor}15;
+              background: ${arrivalColor}15;
               border-radius: 10px;
               display: flex;
               align-items: center;
               justify-content: center;
-              border: 2px solid ${speedColor};
+              border: 2px solid ${arrivalColor};
             ">
-              <span style="font-size: 16px; font-weight: 700; color: ${speedColor};">${speed.toFixed(0)}</span>
+              <span style="font-size: 13px; font-weight: 700; color: ${arrivalColor};">🕐</span>
             </div>
             <div>
-              <div style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Vitesse</div>
-              <div style="font-size: 14px; font-weight: 600; color: #1e293b;">${speed.toFixed(1)} km/h</div>
+              <div style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Heure d'arrivée</div>
+              <div style="font-size: 14px; font-weight: 600; color: #1e293b;">${arrivalTime}</div>
             </div>
           </div>
           
@@ -1401,12 +1431,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           <div style="padding: 10px 14px; background: #f8fafc; border-radius: 0 0 8px 8px;">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px;">
               <div style="background: #fff; padding: 8px 10px; border-radius: 6px; border: 1px solid #e2e8f0;">
-                <div style="color: #64748b; margin-bottom: 2px;">⛽ Carburant</div>
-                <div style="font-weight: 600; color: #1e293b;">${position.fuelRaw || 0}%</div>
+                <div style="color: #64748b; margin-bottom: 2px;">🚀 Heure de départ</div>
+                <div style="font-weight: 600; color: #1e293b;">${departureTime}</div>
               </div>
               <div style="background: #fff; padding: 8px 10px; border-radius: 6px; border: 1px solid #e2e8f0;">
-                <div style="color: #64748b; margin-bottom: 2px;">🌡️ Température</div>
-                <div style="font-weight: 600; color: #1e293b;">${position.temperatureC != null ? position.temperatureC + '°C' : 'N/A'}</div>
+                <div style="color: #64748b; margin-bottom: 2px;">🅿️ Durée de l'arrêt</div>
+                <div style="font-weight: 600; color: ${position.ignitionOn === false ? '#ef4444' : '#1e293b'};">${stopDuration}</div>
               </div>
             </div>
             <div id="playback-addr-${index}" style="
@@ -2945,6 +2975,42 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return `${h}h${m > 0 ? m + 'min' : ''}`;
   }
 
+  // Heure d'arrivée: last recorded timestamp
+  getPlaybackArrivalTime(): string {
+    if (this.playbackPositions.length === 0) return '--:--';
+    const last = this.playbackPositions[this.playbackPositions.length - 1];
+    return new Date(last.recordedAt).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // Heure de départ: first recorded timestamp
+  getPlaybackDepartureTime(): string {
+    if (this.playbackPositions.length === 0) return '--:--';
+    const first = this.playbackPositions[0];
+    return new Date(first.recordedAt).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // Durée de l'arrêt: total time with ignition OFF
+  getPlaybackTotalStopDuration(): string {
+    if (this.playbackPositions.length < 2) return '0min';
+    let totalMs = 0;
+    let i = 0;
+    while (i < this.playbackPositions.length) {
+      if (this.playbackPositions[i].ignitionOn === false) {
+        const startTime = new Date(this.playbackPositions[i].recordedAt).getTime();
+        while (i < this.playbackPositions.length && this.playbackPositions[i].ignitionOn === false) i++;
+        const endTime = new Date(this.playbackPositions[Math.max(0, i - 1)].recordedAt).getTime();
+        totalMs += endTime - startTime;
+      } else {
+        i++;
+      }
+    }
+    const diffMin = Math.round(totalMs / 60000);
+    if (diffMin < 60) return `${diffMin}min`;
+    const h = Math.floor(diffMin / 60);
+    const m = diffMin % 60;
+    return `${h}h${m > 0 ? m + 'min' : ''}`;
+  }
+
   getPlaybackTotalKm(): string {
     if (this.playbackPositions.length < 2) return '0';
     let totalKm = 0;
@@ -2957,7 +3023,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return totalKm < 10 ? totalKm.toFixed(1) : Math.round(totalKm).toString();
   }
 
-  // End playback - called when user clicks "Retour au suivi" button
+  // End playback - called when user clicks "Fermer" button
   endPlayback() {
     console.log('Ending playback - restoring live view');
     
@@ -2965,6 +3031,14 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const currentZoom = this.map?.getZoom() || this.playbackZoomLevel;
     
     this.clearPlayback();
+    
+    // If launched from the playback tab, stay in that tab (show setup)
+    // If launched from inline, go back to live view
+    if (this.monitoringView === 'playback') {
+      // Stay in playback tab — just reset to setup view
+      this.cdr.detectChanges();
+      return;
+    }
     
     // Center map on the live vehicle position - maintain zoom level
     if (this.map && this.selectedVehicle?.currentLocation) {

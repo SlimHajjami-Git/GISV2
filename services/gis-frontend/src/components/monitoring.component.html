@@ -8,7 +8,19 @@
 
 <ng-template #monitoringContent>
   <div class="wialon-monitoring">
-    <div class="monitoring-container">
+    <!-- ═══════ TOP-LEVEL TABS ═══════ -->
+    <div class="monitoring-top-tabs">
+      <button class="top-tab" [class.active]="monitoringView === 'live'" (click)="monitoringView = 'live'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z"/></svg>
+        Suivi en Direct
+      </button>
+      <button class="top-tab" [class.active]="monitoringView === 'playback'" (click)="monitoringView = 'playback'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Tracer Playback
+      </button>
+    </div>
+
+    <div class="monitoring-container" *ngIf="monitoringView === 'live'">
       <aside class="vehicles-sidebar" [class.collapsed]="isPanelCollapsed">
         <div class="sidebar-header">
           <div class="search-box">
@@ -356,7 +368,7 @@
       </div>
     </div>
 
-    <div class="status-bar">
+    <div class="status-bar" *ngIf="monitoringView === 'live'">
       <span class="copyright">&#169; Calypso</span>
       <div class="status-indicators">
         <span class="connection-status" [class.connected]="connectionStatus === 'Connected'">
@@ -366,6 +378,45 @@
           {{ connectionStatus === 'Connected' ? 'Connecté' : 'Déconnecté' }}
         </span>
         <span class="timestamp">{{ getCurrentTime() }}</span>
+      </div>
+    </div>
+
+    <!-- ═══════ TRACER PLAYBACK TAB ═══════ -->
+    <div class="playback-tab-content" *ngIf="monitoringView === 'playback' && !isPlaybackLoaded">
+      <div class="pb-setup">
+        <div class="pb-setup-card">
+          <div class="pb-setup-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.5">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+          </div>
+          <h2 class="pb-setup-title">Tracer Playback</h2>
+          <p class="pb-setup-desc">Visualisez l'historique des déplacements d'un véhicule sur la carte</p>
+
+          <div class="pb-setup-form">
+            <div class="pb-setup-field">
+              <label>Véhicule</label>
+              <select [(ngModel)]="playbackVehicleSelect" class="pb-setup-select">
+                <option [ngValue]="null" disabled>Sélectionner un véhicule</option>
+                <option *ngFor="let v of vehicles" [ngValue]="v.id">{{ v.plate || v.name }} — {{ v.model || v.brand || '' }}</option>
+              </select>
+            </div>
+            <div class="pb-setup-dates">
+              <div class="pb-setup-field">
+                <label>Date de début</label>
+                <input type="datetime-local" [(ngModel)]="playbackFromDate" class="pb-setup-input">
+              </div>
+              <div class="pb-setup-field">
+                <label>Date de fin</label>
+                <input type="datetime-local" [(ngModel)]="playbackToDate" class="pb-setup-input">
+              </div>
+            </div>
+            <button class="pb-setup-btn" (click)="launchPlaybackFromTab()" [disabled]="playbackLoading || !playbackVehicleSelect">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              {{ playbackLoading ? 'Chargement en cours...' : 'Lancer le tracé' }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -411,29 +462,29 @@
         <div class="pb-metrics">
           <div class="pb-metric-card">
             <div class="pb-metric-icon" style="background:#eff6ff;color:#3b82f6">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L12 22M17 7l-5-5-5 5"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             </div>
             <div class="pb-metric-data">
-              <span class="pb-metric-val" [style.color]="getPlaybackSpeedColor()">{{ getPlaybackCurrentSpeed() }}</span>
-              <span class="pb-metric-lbl">km/h</span>
+              <span class="pb-metric-val" style="color:#3b82f6">{{ getPlaybackDepartureTime() }}</span>
+              <span class="pb-metric-lbl">Heure de départ</span>
             </div>
           </div>
           <div class="pb-metric-card">
-            <div class="pb-metric-icon" [style.background]="getPlaybackIgnitionColor() === '#10b981' ? '#ecfdf5' : '#fef2f2'" [style.color]="getPlaybackIgnitionColor()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            <div class="pb-metric-icon" style="background:#faf5ff;color:#8b5cf6">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             </div>
             <div class="pb-metric-data">
-              <span class="pb-metric-val" [style.color]="getPlaybackIgnitionColor()">{{ getPlaybackIgnitionLabel() }}</span>
-              <span class="pb-metric-lbl">Moteur</span>
+              <span class="pb-metric-val" style="color:#8b5cf6">{{ getPlaybackArrivalTime() }}</span>
+              <span class="pb-metric-lbl">Heure d'arrivée</span>
             </div>
           </div>
           <div class="pb-metric-card">
-            <div class="pb-metric-icon" style="background:#fffbeb;color:#f59e0b">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 22V8l4-6h10l4 6v14"/><path d="M3 14h18"/><path d="M10 14v4"/><path d="M14 14v4"/></svg>
+            <div class="pb-metric-icon" style="background:#fef2f2;color:#ef4444">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></svg>
             </div>
             <div class="pb-metric-data">
-              <span class="pb-metric-val" style="color:#f59e0b">{{ getPlaybackFuel() }}</span>
-              <span class="pb-metric-lbl">Carburant</span>
+              <span class="pb-metric-val" style="color:#ef4444">{{ getPlaybackTotalStopDuration() }}</span>
+              <span class="pb-metric-lbl">Durée de l'arrêt</span>
             </div>
           </div>
           <div class="pb-metric-card">
