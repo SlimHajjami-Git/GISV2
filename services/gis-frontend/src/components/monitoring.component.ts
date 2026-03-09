@@ -1845,6 +1845,35 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return [L.latLng(from.latitude, from.longitude), L.latLng(to.latitude, to.longitude)];
   }
 
+  // Rebuild progressCoords up to a given GPS index (used when rewinding)
+  private rebuildProgressTrace(upToGpsIndex: number) {
+    this.progressCoords = [];
+    if (!this.progressPolyline) return;
+    if (upToGpsIndex <= 0) {
+      this.progressPolyline.setLatLngs([]);
+      return;
+    }
+    if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0) {
+      const endRoad = this.segmentBoundaries[Math.min(upToGpsIndex, this.segmentBoundaries.length - 1)];
+      if (endRoad !== undefined) {
+        for (let i = 0; i <= endRoad; i++) {
+          const coord = this.matchedRouteCoords[i];
+          if (coord && !isNaN(coord.lat) && !isNaN(coord.lng)) {
+            this.progressCoords.push(coord);
+          }
+        }
+        this.progressPolyline.setLatLngs(this.progressCoords);
+        return;
+      }
+    }
+    // Fallback: use raw GPS positions
+    for (let i = 0; i <= Math.min(upToGpsIndex, this.playbackPositions.length - 1); i++) {
+      const pos = this.playbackPositions[i];
+      if (pos) this.progressCoords.push(L.latLng(pos.latitude, pos.longitude));
+    }
+    this.progressPolyline.setLatLngs(this.progressCoords);
+  }
+
   // Append road coords to the growing progress polyline
   private appendProgressTrace(fromGpsIndex: number, toGpsIndex: number) {
     if (!this.progressPolyline || !this.map) return;
@@ -2596,7 +2625,14 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.ignitionOffAnchor = null;
     this.stoppedAnchor = null;
     this.playbackProgress = progress;
-    this.playbackIndex = Math.floor((progress / 100) * (this.playbackPositions.length - 1));
+    const newIndex = Math.floor((progress / 100) * (this.playbackPositions.length - 1));
+    // Rebuild trace when rewinding to avoid stray connecting lines
+    if (newIndex < this.playbackIndex) {
+      this.playbackIndex = newIndex;
+      this.rebuildProgressTrace(this.playbackIndex);
+    } else {
+      this.playbackIndex = newIndex;
+    }
     this.updatePlaybackMarker();
     
     // Center map on current snapped position
@@ -2615,6 +2651,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.stoppedAnchor = null;
       this.playbackIndex--;
       this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+      // Rebuild trace to trim back the polyline
+      this.rebuildProgressTrace(this.playbackIndex);
       this.updatePlaybackMarker();
       
       if (this.map) {
@@ -2770,6 +2808,18 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const h = Math.floor(diffMin / 60);
     const m = diffMin % 60;
     return `${h}h${m > 0 ? m + 'min' : ''}`;
+  }
+
+  getPlaybackTotalKm(): string {
+    if (this.playbackPositions.length < 2) return '0';
+    let totalKm = 0;
+    for (let i = 1; i < this.playbackPositions.length; i++) {
+      const prev = this.playbackPositions[i - 1];
+      const curr = this.playbackPositions[i];
+      if (prev.ignitionOn === false) continue;
+      totalKm += this.calculateDistance(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
+    }
+    return totalKm < 10 ? totalKm.toFixed(1) : Math.round(totalKm).toString();
   }
 
   // End playback - called when user clicks "Retour au suivi" button

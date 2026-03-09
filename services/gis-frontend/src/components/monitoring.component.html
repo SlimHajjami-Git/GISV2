@@ -160,90 +160,107 @@
                   </div>
                 </div>
 
-                <!-- Status toolbar -->
-                <div class="info-panel-toolbar inline-toolbar">
-                  <span class="status-badge" [ngClass]="getStatusColorClass(vehicle)">{{ getStatusTag(vehicle) }}</span>
-                </div>
-                
-                <!-- Timestamp and Location -->
-                <div class="timestamp-row">
-                  <div class="timestamp-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="2" y="3" width="20" height="18" rx="2"/><path d="M8 3v3M16 3v3M2 9h20"/>
-                    </svg>
-                  </div>
-                  <span class="timestamp-text">{{ getLastUpdateTime(vehicle) }}</span>
-                </div>
-
-                <div class="location-row">
-                  <span class="location-text">{{ getVehicleAddress(vehicle) }}</span>
-                </div>
-
-                <!-- Sensors Section -->
-                <div class="sensors-section">
-                  <div class="section-header">
-                    <span>Statistiques véhicule:</span>
-                  </div>
-                  <div class="sensors-grid">
-                    <div class="sensor-item">
-                      <span class="sensor-label">🚗 Vitesse actuelle</span>
-                      <span class="sensor-value">{{ getVehicleStats(vehicle)?.currentSpeed | number:'1.0-0' }} km/h</span>
-                    </div>
-                    <div class="sensor-item">
-                      <span class="sensor-label">⚡ Vitesse max (24h)</span>
-                      <span class="sensor-value">{{ getVehicleStats(vehicle)?.maxSpeed | number:'1.0-0' }} km/h</span>
-                    </div>
-                    <div class="sensor-item">
-                      <span class="sensor-label">⛽ Carburant</span>
-                      <span class="sensor-value">{{ getVehicleStats(vehicle)?.fuelLevel != null ? (getVehicleStats(vehicle)?.fuelLevel + '%') : 'N/A' }}</span>
-                    </div>
-                    <div class="sensor-item">
-                      <span class="sensor-label">🌡️ Temp. moteur</span>
-                      <span class="sensor-value">{{ getVehicleStats(vehicle)?.temperature != null ? (getVehicleStats(vehicle)?.temperature + '°C') : 'N/A' }}</span>
-                    </div>
-                    <div class="sensor-item">
-                      <span class="sensor-label">🔋 Batterie</span>
-                      <span class="sensor-value">{{ getVehicleStats(vehicle)?.batteryLevel != null ? (getVehicleStats(vehicle)?.batteryLevel + '%') : 'N/A' }}</span>
-                    </div>
-                    <div class="sensor-item">
-                      <span class="sensor-label">📏 Kilométrage</span>
-                      <span class="sensor-value">{{ vehicle.odometerKm ? (vehicle.odometerKm | number:'1.0-0') + ' km' : (vehicle.mileage ? (vehicle.mileage | number:'1.0-0') + ' km' : 'N/A') }}</span>
-                    </div>
-                    <div class="sensor-item">
-                      <span class="sensor-label">📍 Statut</span>
-                      <span class="sensor-value status-value" [ngClass]="getStatusColorClass(vehicle)">
-                        {{ getStatusTag(vehicle) }}
-                      </span>
-                    </div>
-                    <div class="sensor-item">
-                      <span class="sensor-label">🚦 Temps en circulation</span>
-                      <span class="sensor-value">{{ formatDuration(getVehicleStats(vehicle)?.movingTime) }}</span>
-                    </div>
-                    <div class="sensor-item">
-                      <span class="sensor-label">🅿️ Temps à l'arrêt</span>
-                      <span class="sensor-value">{{ formatDuration(getVehicleStats(vehicle)?.stoppedTime) }}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Playback date picker -->
-                <div class="playback-section inline-playback">
-                  <div class="date-range">
-                    <div class="date-field">
-                      <label>De</label>
-                      <input type="datetime-local" [(ngModel)]="playbackFromDate" (click)="$event.stopPropagation()">
-                    </div>
-                    <div class="date-field">
-                      <label>À</label>
-                      <input type="datetime-local" [(ngModel)]="playbackToDate" (click)="$event.stopPropagation()">
-                    </div>
-                  </div>
-                  <button class="load-route-btn" (click)="loadPlaybackRoute(); $event.stopPropagation()" [disabled]="playbackLoading">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polygon points="5 3 19 12 5 21 5 3"/>
-                    </svg>
-                    {{ playbackLoading ? 'Chargement...' : 'Lancer l\'historique' }}
+                <!-- Tab bar -->
+                <div class="inline-tab-bar" (click)="$event.stopPropagation()">
+                  <button class="inline-tab" [class.active]="activeTab === 'details'" (click)="activeTab = 'details'">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    Détails
                   </button>
+                  <button class="inline-tab" [class.active]="activeTab === 'playback'" (click)="activeTab = 'playback'">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    Tracé
+                  </button>
+                </div>
+
+                <!-- === TAB: Détails === -->
+                <div class="inline-tab-content" *ngIf="activeTab === 'details'">
+                  <!-- Status toolbar -->
+                  <div class="info-panel-toolbar inline-toolbar">
+                    <span class="status-badge" [ngClass]="getStatusColorClass(vehicle)">{{ getStatusTag(vehicle) }}</span>
+                  </div>
+                  
+                  <!-- Timestamp and Location -->
+                  <div class="timestamp-row">
+                    <div class="timestamp-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="3" width="20" height="18" rx="2"/><path d="M8 3v3M16 3v3M2 9h20"/>
+                      </svg>
+                    </div>
+                    <span class="timestamp-text">{{ getLastUpdateTime(vehicle) }}</span>
+                  </div>
+
+                  <div class="location-row">
+                    <span class="location-text">{{ getVehicleAddress(vehicle) }}</span>
+                  </div>
+
+                  <!-- Sensors Section -->
+                  <div class="sensors-section">
+                    <div class="section-header">
+                      <span>Statistiques véhicule:</span>
+                    </div>
+                    <div class="sensors-grid">
+                      <div class="sensor-item">
+                        <span class="sensor-label">🚗 Vitesse actuelle</span>
+                        <span class="sensor-value">{{ getVehicleStats(vehicle)?.currentSpeed | number:'1.0-0' }} km/h</span>
+                      </div>
+                      <div class="sensor-item">
+                        <span class="sensor-label">⚡ Vitesse max (24h)</span>
+                        <span class="sensor-value">{{ getVehicleStats(vehicle)?.maxSpeed | number:'1.0-0' }} km/h</span>
+                      </div>
+                      <div class="sensor-item">
+                        <span class="sensor-label">⛽ Carburant</span>
+                        <span class="sensor-value">{{ getVehicleStats(vehicle)?.fuelLevel != null ? (getVehicleStats(vehicle)?.fuelLevel + '%') : 'N/A' }}</span>
+                      </div>
+                      <div class="sensor-item">
+                        <span class="sensor-label">🌡️ Temp. moteur</span>
+                        <span class="sensor-value">{{ getVehicleStats(vehicle)?.temperature != null ? (getVehicleStats(vehicle)?.temperature + '°C') : 'N/A' }}</span>
+                      </div>
+                      <div class="sensor-item">
+                        <span class="sensor-label">🔋 Batterie</span>
+                        <span class="sensor-value">{{ getVehicleStats(vehicle)?.batteryLevel != null ? (getVehicleStats(vehicle)?.batteryLevel + '%') : 'N/A' }}</span>
+                      </div>
+                      <div class="sensor-item">
+                        <span class="sensor-label">📏 Kilométrage</span>
+                        <span class="sensor-value">{{ vehicle.odometerKm ? (vehicle.odometerKm | number:'1.0-0') + ' km' : (vehicle.mileage ? (vehicle.mileage | number:'1.0-0') + ' km' : 'N/A') }}</span>
+                      </div>
+                      <div class="sensor-item">
+                        <span class="sensor-label">📍 Statut</span>
+                        <span class="sensor-value status-value" [ngClass]="getStatusColorClass(vehicle)">
+                          {{ getStatusTag(vehicle) }}
+                        </span>
+                      </div>
+                      <div class="sensor-item">
+                        <span class="sensor-label">🚦 Temps en circulation</span>
+                        <span class="sensor-value">{{ formatDuration(getVehicleStats(vehicle)?.movingTime) }}</span>
+                      </div>
+                      <div class="sensor-item">
+                        <span class="sensor-label">🅿️ Temps à l'arrêt</span>
+                        <span class="sensor-value">{{ formatDuration(getVehicleStats(vehicle)?.stoppedTime) }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- === TAB: Tracé === -->
+                <div class="inline-tab-content" *ngIf="activeTab === 'playback'">
+                  <div class="playback-section inline-playback">
+                    <div class="date-range">
+                      <div class="date-field">
+                        <label>De</label>
+                        <input type="datetime-local" [(ngModel)]="playbackFromDate" (click)="$event.stopPropagation()">
+                      </div>
+                      <div class="date-field">
+                        <label>À</label>
+                        <input type="datetime-local" [(ngModel)]="playbackToDate" (click)="$event.stopPropagation()">
+                      </div>
+                    </div>
+                    <button class="load-route-btn" (click)="loadPlaybackRoute(); $event.stopPropagation()" [disabled]="playbackLoading">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="5 3 19 12 5 21 5 3"/>
+                      </svg>
+                      {{ playbackLoading ? 'Chargement...' : 'Lancer le tracé' }}
+                    </button>
+                  </div>
                 </div>
                 
               </div>
@@ -421,11 +438,11 @@
           </div>
           <div class="pb-metric-card">
             <div class="pb-metric-icon" style="background:#f0fdf4;color:#22c55e">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L12 22M17 7l-5-5-5 5M7 17l5 5 5-5"/></svg>
             </div>
             <div class="pb-metric-data">
-              <span class="pb-metric-val" style="color:#22c55e">{{ getPlaybackTotalDuration() }}</span>
-              <span class="pb-metric-lbl">Durée</span>
+              <span class="pb-metric-val" style="color:#22c55e">{{ getPlaybackTotalKm() }}</span>
+              <span class="pb-metric-lbl">Km parcourus</span>
             </div>
           </div>
         </div>
