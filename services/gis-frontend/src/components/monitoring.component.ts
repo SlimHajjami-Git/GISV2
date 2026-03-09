@@ -61,6 +61,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   playbackSpeed = 1;
   playbackSpeeds = [0.5, 1, 2, 4, 8];
   playbackPositions: any[] = [];
+  playbackDataGaps = new Set<number>(); // indices where data gaps exist (vol d'oiseau prevention)
   playbackRawCount = 0;
   playbackIndex = 0;
   playbackInterval: any = null;
@@ -1981,6 +1982,26 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
       const toPos = this.playbackPositions[this.playbackIndex + 1];
 
+      // DATA GAP DETECTION: if there's a large time gap + large distance,
+      // it means there's missing GPS data (vehicle was driving but no frames stored).
+      // Don't draw the connecting line to avoid "vol d'oiseau" straight lines across the map.
+      if (this.playbackDataGaps.has(this.playbackIndex)) {
+        const gapTimeSec = Math.round(Math.abs(new Date(toPos.recordedAt).getTime() - new Date(fromPos.recordedAt).getTime()) / 1000);
+        const gapDist = Math.round(this.calculateDistance(fromPos.latitude, fromPos.longitude, toPos.latitude, toPos.longitude));
+        console.log(`[Playback] Skipping data gap at index ${this.playbackIndex}: ${gapTimeSec}s, ${gapDist}m — no line drawn`);
+        this.ngZone.run(() => {
+          this.playbackIndex++;
+          this.playbackProgress = (this.playbackIndex / (this.playbackPositions.length - 1)) * 100;
+          this.updatePlaybackMarker();
+          this.updatePlaybackAddress();
+          this.cdr.detectChanges();
+          setTimeout(() => {
+            this.animateToNextPoint().catch(e => console.error('[Playback] gap skip error:', e));
+          }, Math.max(100, Math.min(500, 300 / this.playbackSpeed)));
+        });
+        return;
+      }
+
       // Drop a small dot at the current position
       this.addSinglePointMarker(this.playbackIndex);
 
@@ -2212,13 +2233,26 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     // Step 1: Classify each transition (i → i+1) as "route" or "raw"
+    // Also detect data gaps (large time + distance) to avoid vol d'oiseau straight lines
+    const DATA_GAP_TIME_MS = 5 * 60 * 1000; // 5 minutes
+    const DATA_GAP_DISTANCE_M = 500; // 500 meters
     const transitions: boolean[] = []; // true = should route via Valhalla
+    this.playbackDataGaps = new Set<number>(); // reset
+    const dataGaps = this.playbackDataGaps; // local alias
     for (let i = 0; i < totalPositions - 1; i++) {
       const from = this.playbackPositions[i];
       const to = this.playbackPositions[i + 1];
       const ignitionOn = to.ignitionOn !== false;
       const dist = this.calculateDistance(from.latitude, from.longitude, to.latitude, to.longitude);
-      transitions.push(ignitionOn && dist > 20);
+      const timeGapMs = Math.abs(new Date(to.recordedAt).getTime() - new Date(from.recordedAt).getTime());
+      // Data gap: large time gap + large distance = missing GPS data, don't route
+      if (timeGapMs > DATA_GAP_TIME_MS && dist > DATA_GAP_DISTANCE_M) {
+        transitions.push(false);
+        dataGaps.add(i);
+        console.log(`[Playback] Data gap detected at index ${i}: ${Math.round(timeGapMs/1000)}s, ${Math.round(dist)}m`);
+      } else {
+        transitions.push(ignitionOn && dist > 20);
+      }
     }
 
     // Step 2: Group consecutive "route" transitions into trips
@@ -3223,6 +3257,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // Now hide overlay and reset state
     this.isPlaybackLoaded = false;
     this.playbackPositions = [];
+    this.playbackDataGaps = new Set<number>();
     this.playbackIndex = 0;
     this.playbackProgress = 0;
     this.playbackCurrentAddress = '';
