@@ -162,6 +162,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     private adminService: AdminService
   ) {}
 
+  private routeSub: Subscription | null = null;
+
   ngOnInit() {
     if (!this.embedded && !this.apiService.isAuthenticated()) {
       this.router.navigate(['/login']);
@@ -172,6 +174,21 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.route.snapshot.data['view'] === 'playback') {
       this.monitoringView = 'playback';
     }
+
+    // Subscribe to route data changes (same component reused for /monitoring and /playback)
+    this.routeSub = this.route.data.subscribe(data => {
+      const newView = data['view'] === 'playback' ? 'playback' : 'live';
+      if (newView !== this.monitoringView) {
+        this.monitoringView = newView;
+        this.cdr.detectChanges();
+        if (newView === 'playback') {
+          this.initPlaybackSetupMap();
+        } else {
+          if (this.playbackSetupMap) { this.playbackSetupMap.remove(); this.playbackSetupMap = null; }
+          if (!this.map) this.initializeMap();
+        }
+      }
+    });
 
     // Initialize state
     this.vehicles = [];
@@ -207,6 +224,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     if (this.connectionStateSubscription) {
       this.connectionStateSubscription.unsubscribe();
+    }
+    if (this.routeSub) {
+      this.routeSub.unsubscribe();
     }
     if (this.loadDataController) {
       this.loadDataController.abort();
@@ -932,19 +952,36 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Initialize the background map for the playback setup page
   initPlaybackSetupMap() {
+    // Destroy previous instance if any
+    if (this.playbackSetupMap) {
+      this.playbackSetupMap.remove();
+      this.playbackSetupMap = null;
+    }
     setTimeout(() => {
       const container = document.getElementById('playback-setup-map');
-      if (!container || this.playbackSetupMap) return;
+      if (!container) return;
       this.playbackSetupMap = L.map(container, {
         center: [36.8, 10.18],
         zoom: 12,
-        zoomControl: false,
+        zoomControl: true,
         attributionControl: false
       });
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19
       }).addTo(this.playbackSetupMap);
-    }, 100);
+
+      // Show vehicle positions on the setup map if available
+      this.vehicles.forEach(v => {
+        if (v.currentLocation?.lat && v.currentLocation?.lng) {
+          const statusClass = this.getStatusColorClass(v);
+          const color = statusClass === 'status-moving' ? '#10b981' : statusClass === 'status-idle' ? '#eab308' : '#ef4444';
+          L.circleMarker([v.currentLocation.lat, v.currentLocation.lng], {
+            radius: 5, fillColor: color, color: '#fff', weight: 1.5, fillOpacity: 0.9
+          }).addTo(this.playbackSetupMap!)
+            .bindTooltip(v.plate || v.name || '', { direction: 'top', offset: [0, -8] });
+        }
+      });
+    }, 150);
   }
 
   // Playback methods
@@ -3110,8 +3147,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // If launched from the playback tab, stay in that tab (show setup)
     // If launched from inline, go back to live view
     if (this.monitoringView === 'playback') {
-      // Stay in playback tab — just reset to setup view
+      // Stay in playback page — reset to setup view, re-init setup map
       this.cdr.detectChanges();
+      this.initPlaybackSetupMap();
       return;
     }
     
