@@ -2206,8 +2206,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
                 allSegmentBoundaries.push(roadOffset + localBound);
               }
             } else {
-              // Subsequent chunks: add all boundaries (first point overlaps with previous chunk's last)
-              for (let j = 0; j <= chunkGpsEnd - chunkGpsStart; j++) {
+              // Subsequent chunks: skip j=0 (overlap point already has boundary from previous chunk)
+              for (let j = 1; j <= chunkGpsEnd - chunkGpsStart; j++) {
                 const localBound = j < tripBoundaries.length ? tripBoundaries[j] : tripRoadCoords.length - 1;
                 allSegmentBoundaries.push(roadOffset + localBound);
               }
@@ -2242,11 +2242,30 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       allSegmentBoundaries.length = totalPositions;
     }
 
+    // Diagnostic: verify boundary count matches GPS count
+    if (allSegmentBoundaries.length !== totalPositions) {
+      console.warn(`[Playback] BOUNDARY MISMATCH: ${allSegmentBoundaries.length} boundaries for ${totalPositions} GPS points — fixing`);
+    }
+
     if (allRoadPath.length >= 2) {
       this.matchedRouteCoords = allRoadPath;
       this.segmentBoundaries = allSegmentBoundaries;
       this.matchedRouteIndex = 0;
-      console.log(`[Playback] Route built: ${totalPositions} GPS points -> ${allRoadPath.length} road coords (${routedTrips} routed trips, ${rawTransitions} raw transitions)`);
+      console.log(`[Playback] Route built: ${totalPositions} GPS points -> ${allRoadPath.length} road coords (${routedTrips} routed trips, ${rawTransitions} raw transitions, ${allSegmentBoundaries.length} boundaries)`);
+
+      // Diagnostic: check for boundary anomalies
+      let anomalies = 0;
+      for (let k = 0; k < allSegmentBoundaries.length - 1; k++) {
+        if (allSegmentBoundaries[k] > allSegmentBoundaries[k + 1]) {
+          anomalies++;
+          if (anomalies <= 5) console.warn(`[Playback] Boundary inversion at GPS ${k}: ${allSegmentBoundaries[k]} > ${allSegmentBoundaries[k + 1]}`);
+        }
+        if (allSegmentBoundaries[k] >= allRoadPath.length) {
+          anomalies++;
+          if (anomalies <= 5) console.warn(`[Playback] Boundary OOB at GPS ${k}: ${allSegmentBoundaries[k]} >= ${allRoadPath.length}`);
+        }
+      }
+      if (anomalies > 0) console.warn(`[Playback] Total boundary anomalies: ${anomalies}`);
     } else {
       console.warn('[Playback] Route processing failed, using raw GPS');
       this.matchedRouteCoords = this.playbackPositions.map(p => L.latLng(p.latitude, p.longitude));
@@ -2269,8 +2288,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         allSegmentBoundaries.push(allRoadPath.length - 1);
       }
     } else {
-      // Subsequent chunks: add all boundaries
-      for (let j = tripStart; j <= tripEnd; j++) {
+      // Subsequent chunks: skip first point (overlap with previous chunk's last)
+      for (let j = tripStart + 1; j <= tripEnd; j++) {
         const pos = this.playbackPositions[j];
         allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
         allSegmentBoundaries.push(allRoadPath.length - 1);
@@ -2616,6 +2635,16 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     
     // Fallback: draw straight line using snapped coordinates (not raw GPS)
+    // Log why we fell through to help diagnose straight-line issues
+    const _dbgFromIdx = this.playbackPositions.indexOf(fromPos);
+    const _dbgGpsIdx = _dbgFromIdx >= 0 ? _dbgFromIdx : this.playbackIndex - 1;
+    if (this._traceFrameCount < 20 || this._traceFrameCount % 50 === 0) {
+      const _sb = this.segmentBoundaries;
+      const _startB = _dbgGpsIdx >= 0 && _dbgGpsIdx < _sb.length ? _sb[_dbgGpsIdx] : -1;
+      const _endB = _dbgGpsIdx + 1 < _sb.length ? _sb[_dbgGpsIdx + 1] : -1;
+      console.warn(`[Playback] STRAIGHT LINE fallback at GPS ${_dbgGpsIdx}: boundaries=[${_startB},${_endB}], roadCoords=${this.matchedRouteCoords.length}, segBounds=${_sb.length}`);
+    }
+    this._traceFrameCount++;
     if (!this.map) return;
     const fromIdx = this.playbackPositions.indexOf(fromPos);
     const toIdx = this.playbackPositions.indexOf(toPos);
