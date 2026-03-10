@@ -2092,9 +2092,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0 && index < this.segmentBoundaries.length - 1) {
       const startIdx = this.segmentBoundaries[index];
       const endIdx = this.segmentBoundaries[index + 1];
-      if (startIdx !== undefined && endIdx !== undefined && endIdx > startIdx) {
-        const segment = this.matchedRouteCoords.slice(startIdx, endIdx + 1);
-        if (segment.length >= 2) return segment;
+      if (startIdx !== undefined && endIdx !== undefined) {
+        if (endIdx > startIdx) {
+          const segment = this.matchedRouteCoords.slice(startIdx, endIdx + 1);
+          if (segment.length >= 2) return segment;
+        } else {
+          // Equal or inverted boundaries: return single road point (stationary logic will handle it)
+          const point = this.matchedRouteCoords[startIdx];
+          if (point && !isNaN(point.lat) && !isNaN(point.lng)) return [point];
+        }
       }
     }
     // Fallback: straight line between raw GPS points
@@ -2139,8 +2145,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0) {
       const startRoad = this.segmentBoundaries[fromGpsIndex];
       const endRoad = this.segmentBoundaries[Math.min(toGpsIndex, this.segmentBoundaries.length - 1)];
-      if (startRoad !== undefined && endRoad !== undefined && endRoad >= startRoad) {
-        for (let i = startRoad; i <= endRoad; i++) {
+      if (startRoad !== undefined && endRoad !== undefined) {
+        // Handle normal and equal boundaries (skip inversions gracefully)
+        const lo = Math.min(startRoad, endRoad);
+        const hi = Math.max(startRoad, endRoad);
+        for (let i = lo; i <= hi; i++) {
           const coord = this.matchedRouteCoords[i];
           if (coord && !isNaN(coord.lat) && !isNaN(coord.lng)) {
             this.progressCoords.push(coord);
@@ -2376,6 +2385,14 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     if (allSegmentBoundaries.length > totalPositions) {
       allSegmentBoundaries.length = totalPositions;
+    }
+
+    // Fix boundary inversions: ensure monotonically non-decreasing
+    // This prevents getPrecomputedSegment/appendProgressTrace from falling back to straight lines
+    for (let k = 1; k < allSegmentBoundaries.length; k++) {
+      if (allSegmentBoundaries[k] < allSegmentBoundaries[k - 1]) {
+        allSegmentBoundaries[k] = allSegmentBoundaries[k - 1];
+      }
     }
 
     // Diagnostic: verify boundary count matches GPS count
