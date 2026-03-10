@@ -18,6 +18,10 @@ use crate::telemetry::model::HhFrame;
 /// Maximum allowed speed (km/h) - anything above is rejected
 const MAX_SPEED_KPH: f64 = 250.0;
 
+/// Maximum realistic odometer for a fleet vehicle (500,000 km).
+/// Anything above is likely a GPS firmware artifact (e.g. 0x0FFFFE = 1048574).
+const MAX_REALISTIC_ODOMETER_KM: u32 = 500_000;
+
 /// Maximum distance jump in meters for a single frame interval (~1 min)
 /// 250 km/h = ~4.2 km/min, so 5km is a reasonable max
 const MAX_JUMP_DISTANCE_M: f64 = 5000.0;
@@ -183,6 +187,20 @@ impl GpsValidator {
                     GEO_BOUNDS_LON_MIN, GEO_BOUNDS_LON_MAX
                 ),
             });
+        }
+
+        // Odometer sanity check: detect firmware sentinel values or unrealistic readings
+        // 0x0FFFFE (1048574) is a known NEMS sentinel for "no CAN bus odometer"
+        // Values > 500,000 km are unrealistic for fleet vehicles
+        if frame.odometer_km > MAX_REALISTIC_ODOMETER_KM {
+            warn!(
+                odometer_km = frame.odometer_km,
+                "Odometer value {} km exceeds maximum realistic {} km — likely firmware artifact",
+                frame.odometer_km, MAX_REALISTIC_ODOMETER_KM
+            );
+            // Don't reject the frame (position data may still be valid),
+            // but downstream should treat odometer_km as unreliable.
+            // The parser should have already filtered known sentinels to 0.
         }
 
         None

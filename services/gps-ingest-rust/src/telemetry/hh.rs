@@ -7,6 +7,11 @@ use super::model::{FrameKind, FrameVersion, HhFrame, HhInfoFrame};
 /// Supported protocol headers (HH is placeholder, AA is real after NDA)
 const VALID_HEADERS: [&str; 2] = ["HH", "AA"];
 
+/// GPS firmware sentinel value for "no odometer data available".
+/// 0x0FFFFE = 1048574 — sent by NEMS trackers when FMS/CAN bus odometer is not connected.
+/// Must be treated as 0 (no data) at parse level to prevent pollution downstream.
+const ODOMETER_SENTINEL: u32 = 0x0F_FF_FE; // 1048574
+
 pub fn parse_frame(payload: &str) -> Result<HhFrame> {
     let payload = payload.trim();
     if !VALID_HEADERS.iter().any(|h| payload.starts_with(h)) {
@@ -219,7 +224,7 @@ fn parse_unified(payload: &str, kind: FrameKind) -> Result<HhFrame> {
             .map(|v| (v as i16) - 40);
         let fms_odo = payload.get(74..82)
             .and_then(|s| u32::from_str_radix(s, 16).ok())
-            .filter(|&v| v > 0);
+            .filter(|&v| v > 0 && v != ODOMETER_SENTINEL);
         let fms_rpm = payload.get(84..88)
             .and_then(|s| u16::from_str_radix(s, 16).ok())
             .filter(|&v| v > 0);
@@ -244,6 +249,11 @@ fn parse_unified(payload: &str, kind: FrameKind) -> Result<HhFrame> {
     // FMS values from CAN bus are more reliable - prioritize them when available
     // Base fuel is often a raw/percentage value, FMS fuel is actual liters from vehicle
     let fuel_final = fms_fuel.unwrap_or(base_fuel);
+    // Filter GPS sentinel values BEFORE fallback:
+    // base_odometer and fms_odometer can both contain 0x0FFFFE (1048574)
+    // which means "no CAN bus odometer" — treat as 0 (no data)
+    let base_odometer = if base_odometer == ODOMETER_SENTINEL { 0 } else { base_odometer };
+    let fms_odometer = fms_odometer.filter(|&v| v != ODOMETER_SENTINEL);
     let odometer_km = fms_odometer.unwrap_or(base_odometer);
     
     // GISV1 line 832: GPSData.speed = (Ignition == true ? KilometersPerHour : 0)
@@ -607,5 +617,29 @@ mod tests {
             assert_eq!(frame.send_flag, expected_flag, 
                 "Expected send_flag {} but got {}", expected_flag, frame.send_flag);
         }
+    }
+
+    #[test]
+    fn odometer_sentinel_0xffffe_is_filtered_to_zero() {
+        // Regression test: GPS firmware sends 0x000FFFFE (1048574) as "no CAN bus odometer"
+        // Frame layout: positions 48-55 = odometer (8 hex chars)
+        // Base frame from parse_v3_short_frame_no_fms with odometer changed to 000FFFFE
+        let payload = "AA330008A5022C1970009B4ED70003232A18000000638000000FFFFE010000000025EA0E13";
+        let frame = parse_frame(payload).expect("frame with sentinel odometer should parse");
+        
+        assert_eq!(frame.odometer_km, 0, 
+            "Sentinel value 0x0FFFFE (1048574) should be filtered to 0, got {}", 
+            frame.odometer_km);
+    }
+
+    #[test]
+    fn normal_odometer_values_are_preserved() {
+        // Verify that normal odometer values still pass through correctly
+        // base_odometer = 0x00001234 = 4660 km at positions 48-55
+        let payload = "AA330008A5022C1970009B4ED70003232A1800000063800000001234010000000025EA0E13";
+        let frame = parse_frame(payload).expect("frame with normal odometer should parse");
+        
+        assert_eq!(frame.odometer_km, 0x1234, 
+            "Normal odometer value should be preserved, got {}", frame.odometer_km);
     }
 }

@@ -9,6 +9,10 @@ use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 /// Supported protocol headers
 const VALID_HEADERS: [&str; 2] = ["HH", "AA"];
 
+/// GPS firmware sentinel value for "no odometer data available".
+/// 0x0FFFFE = 1048574 — sent by NEMS trackers when FMS/CAN bus odometer is not connected.
+const ODOMETER_SENTINEL: u32 = 0x0F_FF_FE; // 1048574
+
 /// Frame types based on header byte
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AapFrameType {
@@ -276,7 +280,9 @@ impl AapDecoder {
 
         // Decode other fields
         let temperature_raw = u16::from_str_radix(temp_raw, 16)?;
-        let odometer_km = u32::from_str_radix(odo_raw, 16)?;
+        let odometer_km_raw = u32::from_str_radix(odo_raw, 16)?;
+        // Filter GPS sentinel: 0x0FFFFE = "no CAN bus odometer" — treat as 0
+        let odometer_km = if odometer_km_raw == ODOMETER_SENTINEL { 0 } else { odometer_km_raw };
         let send_flag = u8::from_str_radix(send_flag_raw, 16)?;
         let added_info = u32::from_str_radix(added_info_raw, 16)?;
 
@@ -536,9 +542,12 @@ impl AapDecoder {
         }
 
         // FMS Odometer in km (position 74-81, 4 bytes)
+        // Filter sentinel 0x0FFFFE (1048574) = "no CAN bus odometer"
         if payload.len() >= 82 {
             if let Ok(odo) = u32::from_str_radix(&payload[74..82], 16) {
-                fms.odometer_km = Some(odo);
+                if odo > 0 && odo != ODOMETER_SENTINEL {
+                    fms.odometer_km = Some(odo);
+                }
             }
         }
 
