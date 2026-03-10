@@ -272,7 +272,8 @@ async fn handle_device_command(
     };
 
     // Send the command over the TCP socket to the GPS device
-    let command_bytes = format!("{}\r\n", req.command);
+    // V1 sends raw bytes without \r\n terminator
+    let command_bytes = req.command.clone();
     let mut w = writer.lock().await;
     match w.write_all(command_bytes.as_bytes()).await {
         Ok(()) => {
