@@ -262,20 +262,33 @@ export interface CompanyOption {
 
               <div class="form-group">
                 <label for="gpsBrand">Marque GPS</label>
-                <select id="gpsBrand" name="gpsBrand" [(ngModel)]="formData.gpsBrand">
+                <select id="gpsBrand" name="gpsBrand" [(ngModel)]="formData.gpsBrand" (ngModelChange)="onGpsBrandChange($event)">
                   <option value="">Sélectionner</option>
                   <option value="NEMS">NEMS</option>
+                  <option value="NORON">Noron</option>
                   <option value="Other">Autre</option>
                 </select>
               </div>
 
               <div class="form-group">
                 <label for="gpsModel">Version GPS</label>
-                <select id="gpsModel" name="gpsModel" [(ngModel)]="formData.gpsModel">
+                <select id="gpsModel" name="gpsModel" [(ngModel)]="formData.gpsModel" *ngIf="formData.gpsBrand !== 'Other'">
                   <option value="">Sélectionner</option>
-                  <option value="S">NEMS S</option>
-                  <option value="L">NEMS L</option>
+                  <ng-container *ngIf="formData.gpsBrand === 'NEMS'">
+                    <option value="S">NEMS S</option>
+                    <option value="L">NEMS L</option>
+                  </ng-container>
+                  <ng-container *ngIf="formData.gpsBrand === 'NORON'">
+                    <option value="NR024">NR024</option>
+                  </ng-container>
                 </select>
+                <input *ngIf="formData.gpsBrand === 'Other'" type="text" id="gpsModel" name="gpsModel" [(ngModel)]="formData.gpsModel" placeholder="Ex: GT06N" />
+              </div>
+
+              <!-- Noron info note -->
+              <div class="gps-info-note" *ngIf="formData.gpsBrand === 'NORON'">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                <span>Ce tracker fournit uniquement la position GPS et la vitesse. Pas de données carburant, odomètre ou température.</span>
               </div>
 
               <div class="form-group">
@@ -299,7 +312,7 @@ export interface CompanyOption {
                 />
               </div>
 
-              <div class="form-group">
+              <div class="form-group" *ngIf="formData.gpsBrand !== 'NORON'">
                 <label for="gpsFuelSensorMode">Mode capteur carburant</label>
                 <select id="gpsFuelSensorMode" name="gpsFuelSensorMode" [(ngModel)]="formData.gpsFuelSensorMode">
                   <option value="raw_255">Brut 0-255 (défaut)</option>
@@ -567,6 +580,30 @@ export interface CompanyOption {
     .gps-select:focus {
       outline: none;
       border-color: #3b82f6;
+    }
+
+    .gps-info-note {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 10px 12px;
+      background: #fef3c7;
+      border: 1px solid #fde68a;
+      border-radius: 6px;
+      margin-top: 8px;
+      grid-column: 1 / -1;
+    }
+
+    .gps-info-note svg {
+      flex-shrink: 0;
+      color: #d97706;
+      margin-top: 1px;
+    }
+
+    .gps-info-note span {
+      font-size: 11px;
+      color: #92400e;
+      line-height: 1.4;
     }
 
     .help-text {
@@ -838,6 +875,14 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       this.formData.gpsModel = '';
       this.formData.gpsInstallationDate = undefined;
       this.formData.gpsMat = '';
+      this.formData.gpsFuelSensorMode = 'raw_255';
+    }
+  }
+
+  onGpsBrandChange(brand: string) {
+    this.formData.gpsModel = '';
+    if (brand === 'NORON') {
+      this.formData.gpsModel = 'NR024';
       this.formData.gpsFuelSensorMode = 'raw_255';
     }
   }
