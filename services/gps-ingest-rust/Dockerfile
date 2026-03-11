@@ -35,7 +35,7 @@ ENV RUST_LOG=info \
     DATABASE_URL=postgres://postgres:postgres@postgres:5432/gis_v2
 
 # Default ports (override via config/listeners.yaml)
-EXPOSE 6100 6200 6210
+EXPOSE 6100 6200 6210 6300
 
 COPY config ./config
 

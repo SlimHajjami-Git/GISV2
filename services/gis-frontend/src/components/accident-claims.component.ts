@@ -29,6 +29,7 @@ interface AccidentClaim {
   thirdPartyPhone?: string;
   thirdPartyVehicle?: string;
   thirdPartyInsurance?: string;
+  thirdPartyInsuranceNumber?: string;
   policeReportNumber?: string;
   damagedZones?: string[];
   createdAt: Date;
@@ -337,6 +338,10 @@ interface AccidentClaim {
                   <span class="spec-label">Assurance</span>
                   <span class="spec-value">{{ selectedClaim.thirdPartyInsurance }}</span>
                 </div>
+                <div class="spec-item" *ngIf="selectedClaim.thirdPartyInsuranceNumber">
+                  <span class="spec-label">N° Police d'assurance</span>
+                  <span class="spec-value">{{ selectedClaim.thirdPartyInsuranceNumber }}</span>
+                </div>
               </div>
             </div>
 
@@ -608,6 +613,10 @@ interface AccidentClaim {
                     <label>Assurance tiers</label>
                     <input type="text" [(ngModel)]="formData.thirdPartyInsurance" placeholder="Compagnie d'assurance">
                   </div>
+                </div>
+                <div class="form-group">
+                  <label>N° Police d'assurance tiers</label>
+                  <input type="text" [(ngModel)]="formData.thirdPartyInsuranceNumber" placeholder="Ex: POL-2026-XXXXXX">
                 </div>
               </div>
             </div>
@@ -1846,6 +1855,7 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
           thirdPartyPhone: c.thirdPartyPhone,
           thirdPartyVehicle: c.thirdPartyVehicle,
           thirdPartyInsurance: c.thirdPartyInsurance,
+          thirdPartyInsuranceNumber: c.thirdPartyInsuranceNumber || '',
           policeReportNumber: c.policeReportNumber || '',
           damagedZones: c.damagedZones || [],
           createdAt: c.createdAt ? new Date(c.createdAt) : new Date(),
@@ -1956,6 +1966,7 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
       thirdPartyPhone: '',
       thirdPartyVehicle: '',
       thirdPartyInsurance: '',
+      thirdPartyInsuranceNumber: '',
       policeReportNumber: '',
       weatherConditions: '',
       roadConditions: '',
@@ -1995,6 +2006,7 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
       thirdPartyPhone: claim.thirdPartyPhone || '',
       thirdPartyVehicle: claim.thirdPartyVehicle || '',
       thirdPartyInsurance: claim.thirdPartyInsurance || '',
+      thirdPartyInsuranceNumber: claim.thirdPartyInsuranceNumber || '',
       description: claim.description
     };
     this.pendingPhotos = [];
@@ -2067,6 +2079,7 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
       thirdPartyPhone: this.formData.thirdPartyPhone || undefined,
       thirdPartyVehiclePlate: this.formData.thirdPartyVehicle || undefined,
       thirdPartyInsurance: this.formData.thirdPartyInsurance || undefined,
+      thirdPartyInsuranceNumber: this.formData.thirdPartyInsuranceNumber || undefined,
       policeReportNumber: this.formData.policeReportNumber || undefined,
       weatherConditions: this.formData.weatherConditions || undefined,
       roadConditions: this.formData.roadConditions || undefined
@@ -2163,8 +2176,10 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
   }
 
   getPhotoUrl(fileUrl: string): string {
+    if (!fileUrl) return '';
     if (fileUrl.startsWith('http')) return fileUrl;
-    return fileUrl;
+    // Ensure path starts with / for proper nginx proxy resolution
+    return fileUrl.startsWith('/') ? fileUrl : '/' + fileUrl;
   }
 
   openPhotoFullscreen(photo: any) {

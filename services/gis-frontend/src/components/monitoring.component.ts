@@ -52,7 +52,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   playbackToDate = '';
   isPlaybackLoaded = false;
   private monitoringMap: L.Map | null = null; // Saved reference to monitoring map during playback
-  private playbackOverlayMap: L.Map | null = null; // Dedicated playback map
+  playbackOverlayMap: L.Map | null = null; // Dedicated playback map
   playbackCurrentAddress = 'Chargement...'; // Live address in playback overlay
   private playbackAddressCache = new Map<string, string>(); // Cache for playback addresses
   private playbackAddressThrottle = 0; // Throttle counter for address updates
@@ -147,6 +147,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   };
 
   showLayersMenu = false;
+  today = new Date();
+  pendingMapCenter: { lat: number; lng: number; zoom: number } | null = null;
 
   // Address cache for reverse geocoding
   private addressCache = new Map<string, string>();
@@ -208,6 +210,16 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         }
       }
     });
+
+    // Check for query params (lat/lng/zoom) from speed infraction report navigation
+    const qp = this.route.snapshot.queryParams;
+    if (qp['lat'] && qp['lng']) {
+      this.pendingMapCenter = {
+        lat: parseFloat(qp['lat']),
+        lng: parseFloat(qp['lng']),
+        zoom: parseInt(qp['zoom'] || '17', 10)
+      };
+    }
 
     // Initialize state
     this.vehicles = [];
@@ -446,6 +458,21 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         }).addTo(this.map);
 
         this.mapReady = true;
+
+        // If navigated with lat/lng query params (e.g. from speed infraction report), center + mark
+        if (this.pendingMapCenter) {
+          const { lat, lng, zoom } = this.pendingMapCenter;
+          this.map!.setView([lat, lng], zoom);
+          L.marker([lat, lng], {
+            icon: L.divIcon({
+              html: '<div style="background:#dc2626;width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>',
+              className: '',
+              iconSize: [14, 14],
+              iconAnchor: [7, 7]
+            })
+          }).addTo(this.map!).bindPopup(`📍 Point d'infraction<br>${lat.toFixed(5)}, ${lng.toFixed(5)}`).openPopup();
+          this.pendingMapCenter = null;
+        }
 
         // Update markers if data is already loaded
         if (this.vehicles.length > 0) {
@@ -793,6 +820,13 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         filtered = filtered.filter((v: any) => !v.isOnline);
       }
     }
+
+    // Sort consistently by plate/name to prevent order changes on refresh
+    filtered.sort((a: any, b: any) => {
+      const nameA = (a.plate || a.name || '').toLowerCase();
+      const nameB = (b.plate || b.name || '').toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
 
     // Create new array reference to trigger change detection
     this.filteredVehicles = [...filtered];
@@ -3197,6 +3231,20 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.playbackPositions.length < 2) return '0';
     let totalMeters = 0;
     for (let i = 1; i < this.playbackPositions.length; i++) {
+      const prev = this.playbackPositions[i - 1];
+      const curr = this.playbackPositions[i];
+      if (prev.ignitionOn === false) continue;
+      totalMeters += this.calculateDistance(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
+    }
+    const totalKm = totalMeters / 1000;
+    return totalKm < 10 ? totalKm.toFixed(1) : Math.round(totalKm).toString();
+  }
+
+  getPlaybackCurrentKm(): string {
+    const endIndex = Math.min(this.playbackIndex + 1, this.playbackPositions.length);
+    if (endIndex < 2) return '0';
+    let totalMeters = 0;
+    for (let i = 1; i < endIndex; i++) {
       const prev = this.playbackPositions[i - 1];
       const curr = this.playbackPositions[i];
       if (prev.ignitionOn === false) continue;

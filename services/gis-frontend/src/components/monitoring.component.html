@@ -137,27 +137,22 @@
             <div class="vehicle-details-inline" [class.expanded]="selectedVehicle?.id === vehicle.id">
               <div class="inline-panel-content" *ngIf="selectedVehicle?.id === vehicle.id">
                 
-                <!-- Remote Vehicle Commands - Prominent at top -->
-                <div class="remote-commands-top">
-                  <div class="remote-commands-grid-top">
-                    <button class="remote-cmd-btn-top stop" (click)="sendRemoteCommand(vehicle, 'stop'); $event.stopPropagation()" [disabled]="remoteCommandLoading" title="Couper le moteur à distance">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                        <circle cx="12" cy="12" r="10"/>
-                        <rect x="8" y="8" width="8" height="8" rx="1"/>
-                      </svg>
-                      {{ remoteCommandLoading ? 'Envoi...' : 'Arrêt moteur' }}
-                    </button>
-                    <button class="remote-cmd-btn-top resume" (click)="sendRemoteCommand(vehicle, 'resume'); $event.stopPropagation()" [disabled]="remoteCommandLoading" title="Rétablir le moteur à distance">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                        <circle cx="12" cy="12" r="10"/>
-                        <polygon points="10 8 16 12 10 16 10 8"/>
-                      </svg>
-                      {{ remoteCommandLoading ? 'Envoi...' : 'Reprise moteur' }}
-                    </button>
-                  </div>
-                  <div class="remote-cmd-status" *ngIf="remoteCommandMessage">
-                    <span [class.success]="remoteCommandSuccess" [class.error]="!remoteCommandSuccess">{{ remoteCommandMessage }}</span>
-                  </div>
+
+                <!-- Remote Commands Bar - Prominent Red -->
+                <div class="remote-commands-bar">
+                  <button class="remote-cmd-btn danger" (click)="sendRemoteCommand(vehicle, 'stop'); $event.stopPropagation()" [disabled]="remoteCommandLoading" title="Couper le moteur à distance">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <circle cx="12" cy="12" r="10"/><rect x="8" y="8" width="8" height="8" rx="1"/>
+                    </svg>
+                    {{ remoteCommandLoading ? '...' : 'Arrêt moteur' }}
+                  </button>
+                  <button class="remote-cmd-btn success" (click)="sendRemoteCommand(vehicle, 'resume'); $event.stopPropagation()" [disabled]="remoteCommandLoading" title="Rétablir le moteur à distance">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/>
+                    </svg>
+                    {{ remoteCommandLoading ? '...' : 'Reprise moteur' }}
+                  </button>
+                  <span class="remote-cmd-msg" *ngIf="remoteCommandMessage" [class.success]="remoteCommandSuccess" [class.error]="!remoteCommandSuccess">{{ remoteCommandMessage }}</span>
                 </div>
 
                 <!-- === Détails === -->
@@ -208,7 +203,7 @@
                         <span class="sensor-value">{{ getVehicleStats(vehicle)?.batteryLevel != null ? (getVehicleStats(vehicle)?.batteryLevel + '%') : 'N/A' }}</span>
                       </div>
                       <div class="sensor-item">
-                        <span class="sensor-label">📏 Kilométrage</span>
+                        <span class="sensor-label">�️ Kilométrage</span>
                         <span class="sensor-value">{{ vehicle.odometerKm ? (vehicle.odometerKm | number:'1.0-0') + ' km' : (vehicle.mileage ? (vehicle.mileage | number:'1.0-0') + ' km' : 'N/A') }}</span>
                       </div>
                       <div class="sensor-item">
@@ -216,14 +211,6 @@
                         <span class="sensor-value status-value" [ngClass]="getStatusColorClass(vehicle)">
                           {{ getStatusTag(vehicle) }}
                         </span>
-                      </div>
-                      <div class="sensor-item">
-                        <span class="sensor-label">🚦 Temps en circulation</span>
-                        <span class="sensor-value">{{ formatDuration(getVehicleStats(vehicle)?.movingTime) }}</span>
-                      </div>
-                      <div class="sensor-item">
-                        <span class="sensor-label">🅿️ Temps à l'arrêt</span>
-                        <span class="sensor-value">{{ formatDuration(getVehicleStats(vehicle)?.stoppedTime) }}</span>
                       </div>
                     </div>
                   </div>
@@ -387,11 +374,11 @@
           <div class="playback-date-row">
             <div class="playback-date-field">
               <span class="playback-date-label">Début</span>
-              <input type="datetime-local" [(ngModel)]="playbackFromDate" class="playback-date-input">
+              <input type="datetime-local" [(ngModel)]="playbackFromDate" [max]="toLocalDateTimeString(today)" class="playback-date-input">
             </div>
             <div class="playback-date-field">
               <span class="playback-date-label">Fin</span>
-              <input type="datetime-local" [(ngModel)]="playbackToDate" class="playback-date-input">
+              <input type="datetime-local" [(ngModel)]="playbackToDate" [max]="toLocalDateTimeString(today)" class="playback-date-input">
             </div>
           </div>
         </div>
@@ -413,6 +400,17 @@
       <!-- ── Map ── -->
       <div class="pb-map-area">
         <div id="playback-map" class="pb-map"></div>
+        <div class="pb-map-controls">
+          <button class="pb-map-ctrl-btn" title="Zoom +" (click)="playbackOverlayMap?.zoomIn()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button class="pb-map-ctrl-btn" title="Zoom -" (click)="playbackOverlayMap?.zoomOut()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button class="pb-map-ctrl-btn" title="Couches" (click)="changeMapStyle(mapStyle === 'satellite' ? 'streets' : 'satellite')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          </button>
+        </div>
       </div>
 
       <!-- ── Side Panel ── -->
@@ -479,7 +477,7 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L12 22M17 7l-5-5-5 5M7 17l5 5 5-5"/></svg>
             </div>
             <div class="pb-metric-data">
-              <span class="pb-metric-val" style="color:#22c55e">{{ getPlaybackTotalKm() }}</span>
+              <span class="pb-metric-val" style="color:#22c55e">{{ getPlaybackCurrentKm() }}</span>
               <span class="pb-metric-lbl">Km parcourus</span>
             </div>
           </div>

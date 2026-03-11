@@ -252,6 +252,9 @@ spec:
             - containerPort: 6210
               hostPort: 6210
               protocol: TCP
+            - containerPort: 6300
+              hostPort: 6300
+              protocol: TCP
           env:
             - name: POSTGRES_PASSWORD
               valueFrom:
@@ -349,6 +352,15 @@ data:
         location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
             expires 1y;
             add_header Cache-Control "public, immutable";
+        }
+
+        # Uploaded files proxy (photos, documents) to .NET backend
+        location /uploads/ {
+            proxy_pass http://gis-api:5000/uploads/;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         }
 
         # Health check

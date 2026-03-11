@@ -35,7 +35,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
         <!-- Filters -->
         <div class="notif-filters">
           <button class="filter-btn" [class.active]="filterType === ''" (click)="filterType = ''; loadNotifications()">Toutes</button>
-          <button class="filter-btn" [class.active]="filterType === 'geofence'" (click)="filterType = 'geofence'; loadNotifications()">
+          <button class="filter-btn" [class.active]="filterType === 'geofence_event'" (click)="filterType = 'geofence_event'; loadNotifications()">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
             Géofences
           </button>
@@ -64,11 +64,11 @@ import { AppLayoutComponent } from './shared/app-layout.component';
           @for (notif of notifications; track notif.id) {
             <div class="notif-item" [class.unread]="!notif.isRead" (click)="openNotification(notif)">
               <div class="notif-icon" [class]="getNotifIconClass(notif.type)">
-                <svg *ngIf="notif.type === 'geofence'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                <svg *ngIf="notif.type === 'geofence_event' || notif.type === 'geofence'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                 <svg *ngIf="notif.type === 'speed_alert'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 <svg *ngIf="notif.type === 'driving_behavior'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
                 <svg *ngIf="notif.type === 'maintenance_due'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-                <svg *ngIf="!['geofence','speed_alert','driving_behavior','maintenance_due'].includes(notif.type)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                <svg *ngIf="!['geofence','geofence_event','speed_alert','driving_behavior','maintenance_due'].includes(notif.type)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
               </div>
               <div class="notif-content">
                 <div class="notif-title">{{ notif.title }}</div>
@@ -77,6 +77,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                   <span class="notif-type-badge" [class]="notif.type">{{ getTypeLabel(notif.type) }}</span>
                   <span class="notif-priority" [class]="notif.priority" *ngIf="notif.priority === 'high' || notif.priority === 'urgent'">{{ notif.priority === 'high' ? 'Haute' : 'Urgente' }}</span>
                   <span class="notif-time">{{ formatTime(notif.createdAt) }}</span>
+                  <span class="notif-datetime">{{ formatDateTime(notif.createdAt) }}</span>
                 </div>
               </div>
               <div class="notif-actions">
@@ -245,7 +246,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       justify-content: center;
       flex-shrink: 0;
     }
-    .notif-icon.geofence { background: #dbeafe; color: #2563eb; }
+    .notif-icon.geofence, .notif-icon.geofence_event { background: #dbeafe; color: #2563eb; }
     .notif-icon.speed_alert { background: #fef3c7; color: #d97706; }
     .notif-icon.driving_behavior { background: #fee2e2; color: #dc2626; }
     .notif-icon.maintenance_due { background: #e0e7ff; color: #4f46e5; }
@@ -279,7 +280,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       border-radius: 4px;
       font-weight: 500;
     }
-    .notif-type-badge.geofence { background: #dbeafe; color: #2563eb; }
+    .notif-type-badge.geofence, .notif-type-badge.geofence_event { background: #dbeafe; color: #2563eb; }
     .notif-type-badge.speed_alert { background: #fef3c7; color: #d97706; }
     .notif-type-badge.driving_behavior { background: #fee2e2; color: #dc2626; }
     .notif-type-badge.maintenance_due { background: #e0e7ff; color: #4f46e5; }
@@ -296,6 +297,12 @@ import { AppLayoutComponent } from './shared/app-layout.component';
     .notif-time {
       font-size: 10px;
       color: #94a3b8;
+    }
+
+    .notif-datetime {
+      font-size: 10px;
+      color: #94a3b8;
+      font-style: italic;
     }
 
     .notif-actions {
@@ -466,6 +473,7 @@ export class NotificationsComponent implements OnInit, OnDestroy {
   getTypeLabel(type: string): string {
     const labels: Record<string, string> = {
       geofence: 'Géofence',
+      geofence_event: 'Géofence',
       speed_alert: 'Vitesse',
       driving_behavior: 'Conduite',
       maintenance_due: 'Maintenance',
@@ -487,5 +495,11 @@ export class NotificationsComponent implements OnInit, OnDestroy {
     const days = Math.floor(hours / 24);
     if (days < 7) return `Il y a ${days}j`;
     return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+  }
+
+  formatDateTime(dateStr: string): string {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   }
 }

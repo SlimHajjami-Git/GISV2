@@ -170,6 +170,9 @@ async fn handle_tcp_connection(
     let mut buffer = vec![0u8; 8192];
     let mut device_imei: Option<String> = None; // Track IMEI for cleanup on disconnect
 
+    // Noron protocol uses binary framing — handle separately from ASCII protocols
+    let is_noron = cfg.protocol == "noron";
+
     loop {
         let read = reader.read(&mut buffer).await?;
         if read == 0 {
@@ -180,33 +183,87 @@ async fn handle_tcp_connection(
         let hex_dump = hex::encode(payload);
         info!(protocol = %cfg.protocol, port = cfg.port, size = read, payload = %hex_dump, "Received raw payload");
 
-        // ACK mechanism for AAP/ACI protocol (same as GISV1)
-        // When tracker sends "AAAA", respond with "AA06" to keep short interval (1 min)
-        // Without ACK, tracker falls back to degraded mode (3 min interval)
-        if let Ok(ascii) = std::str::from_utf8(payload) {
-            if ascii.contains("AAAA") {
-                let mut w = writer.lock().await;
-                if let Err(e) = w.write_all(b"AA06").await {
-                    warn!(?e, "Failed to send AA06 ACK to tracker");
-                } else {
-                    info!(peer = peer.as_deref().unwrap_or("unknown"), "Sent AA06 ACK to tracker (keepalive)");
+        if is_noron {
+            // ── Noron NR024 binary protocol ──
+            // Decode all packets in buffer (may contain multiple)
+            let results = telemetry::noron::decode_buffer(payload);
+            for result in results {
+                match result {
+                    Ok(telemetry::noron::NoronDecodeResult::Handshake { device_id }) => {
+                        // Store device ID in connection map
+                        if let Some(ref peer_str) = peer {
+                            let mut map = connection_map.lock().await;
+                            map.insert(peer_str.clone(), device_id.clone());
+                        }
+                        // Send handshake ACK (same as GISV1 NR024TrackerShakeHandResp.ToBuffer())
+                        let mut w = writer.lock().await;
+                        if let Err(e) = w.write_all(&telemetry::noron::HANDSHAKE_ACK).await {
+                            warn!(?e, "Failed to send Noron handshake ACK");
+                        } else {
+                            info!(device_id = %device_id, "Sent Noron handshake ACK (13 bytes)");
+                        }
+                    }
+                    Ok(telemetry::noron::NoronDecodeResult::Position { frame, device_id }) => {
+                        // Resolve device UID: prefer connection_map, fallback to packet device_id
+                        let resolved_uid = if let Some(ref peer_str) = peer {
+                            let map = connection_map.lock().await;
+                            map.get(peer_str).cloned().unwrap_or_else(|| device_id.clone())
+                        } else {
+                            device_id.clone()
+                        };
+
+                        // Route through the shared pipeline (same as NEMS frames)
+                        if let Err(err) = route_noron_frame(
+                            &resolved_uid,
+                            frame,
+                            Arc::clone(&database),
+                            publisher.clone(),
+                            Arc::clone(&services),
+                            redis_cache.clone(),
+                        )
+                        .await
+                        {
+                            warn!(?err, device_id = %resolved_uid, "Failed to process Noron position");
+                        }
+                    }
+                    Ok(telemetry::noron::NoronDecodeResult::Unknown { flag }) => {
+                        warn!(flag, "Unknown Noron packet flag, skipping");
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Failed to decode Noron packet");
+                    }
                 }
             }
-        }
+        } else {
+            // ── ASCII protocols (NEMS HH/AA) ──
+            // ACK mechanism for AAP/ACI protocol (same as GISV1)
+            // When tracker sends "AAAA", respond with "AA06" to keep short interval (1 min)
+            // Without ACK, tracker falls back to degraded mode (3 min interval)
+            if let Ok(ascii) = std::str::from_utf8(payload) {
+                if ascii.contains("AAAA") {
+                    let mut w = writer.lock().await;
+                    if let Err(e) = w.write_all(b"AA06").await {
+                        warn!(?e, "Failed to send AA06 ACK to tracker");
+                    } else {
+                        info!(peer = peer.as_deref().unwrap_or("unknown"), "Sent AA06 ACK to tracker (keepalive)");
+                    }
+                }
+            }
 
-        if let Err(err) = route_payload(
-            &cfg.protocol,
-            payload,
-            Arc::clone(&database),
-            peer.as_deref(),
-            Arc::clone(&connection_map),
-            publisher.clone(),
-            Arc::clone(&services),
-            redis_cache.clone(),
-        )
-        .await
-        {
-            warn!(?err, "Failed to process payload");
+            if let Err(err) = route_payload(
+                &cfg.protocol,
+                payload,
+                Arc::clone(&database),
+                peer.as_deref(),
+                Arc::clone(&connection_map),
+                publisher.clone(),
+                Arc::clone(&services),
+                redis_cache.clone(),
+            )
+            .await
+            {
+                warn!(?err, "Failed to process payload");
+            }
         }
 
         // After processing, check if we now know the device IMEI (from connection_map)
@@ -842,6 +899,199 @@ async fn process_single_frame(
         }
         other => {
             warn!(protocol = other, "No decoder registered for protocol");
+        }
+    }
+
+    Ok(())
+}
+
+/// Route a decoded Noron NR024 position frame through the shared ingestion pipeline.
+/// This reuses the same DB/Redis/RabbitMQ/services path as NEMS frames.
+async fn route_noron_frame(
+    device_uid: &str,
+    mut frame: telemetry::model::HhFrame,
+    database: Arc<dyn TelemetryStore>,
+    publisher: Option<Arc<dyn TelemetryEventPublisher>>,
+    services: Arc<TelemetryServices>,
+    redis_cache: Option<Arc<RedisCache>>,
+) -> Result<()> {
+    let protocol = "noron";
+
+    // Get device_id
+    let device_id_opt = database.get_device_id(device_uid).await?;
+
+    // Log device mat if available
+    if let Some(device_id) = device_id_opt {
+        if let Ok(Some(mat)) = database.get_device_mat(device_id).await {
+            info!(mat = %mat, protocol, "Noron trame reçue");
+        }
+    }
+
+    // ── Validation: coordinates must be valid ──
+    if frame.latitude.abs() < 1.0 && frame.longitude.abs() < 2.0 {
+        if let Some(device_id) = device_id_opt {
+            if let Some(last_pos) = database.get_last_position(device_id).await? {
+                frame.latitude = last_pos.latitude;
+                frame.longitude = last_pos.longitude;
+                frame.is_valid = false;
+                info!(device_uid, "Noron GPS no-fix: using last known position");
+            } else {
+                info!(device_uid, "Noron frame skipped: no GPS fix and no previous position");
+                return Ok(());
+            }
+        } else {
+            info!(device_uid, "Noron frame skipped: no GPS fix and device not registered");
+            return Ok(());
+        }
+    }
+
+    if frame.longitude < -180.0 || frame.longitude > 180.0 {
+        warn!(device_uid, lon = frame.longitude, "Noron frame skipped: longitude out of range");
+        return Ok(());
+    }
+    if frame.latitude < -90.0 || frame.latitude > 90.0 {
+        warn!(device_uid, lat = frame.latitude, "Noron frame skipped: latitude out of range");
+        return Ok(());
+    }
+
+    // ── Future date rejection ──
+    let tomorrow = chrono::Utc::now().date_naive() + Duration::days(1);
+    if frame.recorded_at.date() >= tomorrow {
+        warn!(device_uid, date = %frame.recorded_at, "Noron frame skipped: date in future");
+        return Ok(());
+    }
+
+    // ── GPS validation ──
+    if let Some(device_id) = device_id_opt {
+        let validation = services.gps_validator.validate(device_id, &frame).await;
+        if !validation.should_store() {
+            if let crate::services::gps_validator::ValidationResult::Invalid { reason } = &validation {
+                warn!(device_uid, reason = %reason, "Noron frame REJECTED by GPS validator");
+            }
+            return Ok(());
+        }
+    }
+
+    // ── Anti-drift stabilization ──
+    if let Some(device_id) = device_id_opt {
+        let stabilized = services.gps_stabilizer.stabilize(device_id, &frame).await;
+        if stabilized.was_stabilized {
+            frame.latitude = stabilized.latitude;
+            frame.longitude = stabilized.longitude;
+        }
+    }
+
+    // ── Geocoding ──
+    if frame.is_valid {
+        frame.address = services.geocoding.reverse_geocode(frame.latitude, frame.longitude).await;
+    }
+
+    // ── Speed filter ──
+    if let Some(device_id) = device_id_opt {
+        if frame.ignition_on && frame.speed_kph > 0.0 {
+            let result = services.speed_filter.filter(device_id, frame.speed_kph, frame.recorded_at).await;
+            if result.was_filtered {
+                frame.speed_kph = result.corrected_speed;
+            }
+        } else {
+            let _ = services.speed_filter.filter(device_id, 0.0, frame.recorded_at).await;
+        }
+    }
+
+    let event_key = format!(
+        "{}:{}:{:.6}:{:.6}:{:.1}:{}",
+        device_uid, frame.recorded_at, frame.latitude, frame.longitude, frame.speed_kph, frame.send_flag
+    );
+
+    // Get vehicle and company info
+    let (vehicle_id, company_id, _firmware_version) = if let Some(device_id) = device_id_opt {
+        database.get_device_vehicle_info(device_id).await?
+    } else {
+        (None, 1, None)
+    };
+
+    // ── PARALLEL: DB + Redis + RabbitMQ ──
+    let db_future = database.ingest_hh_frame(device_uid, protocol, &frame, &event_key);
+    let redis_future = async {
+        if let Some(ref redis) = redis_cache {
+            if let Err(err) = redis.cache_position(device_uid, vehicle_id, company_id, &frame).await {
+                warn!(?err, "Failed to cache Noron position in Redis");
+            }
+        }
+    };
+    let rabbitmq_future = async {
+        if let Some(ref pub_ref) = publisher {
+            if let Err(err) = pub_ref.publish_hh_frame(device_uid, protocol, &frame).await {
+                warn!(?err, "Failed to publish Noron telemetry event");
+            }
+        }
+    };
+    let (db_result, _, _) = tokio::join!(db_future, redis_future, rabbitmq_future);
+    db_result?;
+
+    info!(
+        device_uid,
+        speed_kph = frame.speed_kph,
+        lat = frame.latitude,
+        lon = frame.longitude,
+        ignition = frame.ignition_on,
+        is_valid = frame.is_valid,
+        protocol,
+        "Noron position ingested successfully"
+    );
+
+    // ── Services: stop detection, trip detection, driving events ──
+    if let Some(device_id) = device_id_opt {
+        if let Some(completed_stop) = services.stop_detector.process_frame(device_id, &frame).await {
+            if let Err(err) = database.insert_vehicle_stop(&completed_stop, vehicle_id, company_id).await {
+                warn!(?err, device_id, "Failed to insert Noron vehicle stop");
+            }
+        }
+
+        if let Some(completed_trip) = services.trip_detector.process_frame(
+            device_id, vehicle_id, company_id, &frame,
+        ).await {
+            if let Err(err) = database.insert_trip(&completed_trip).await {
+                warn!(?err, device_id, "Failed to insert Noron trip");
+            }
+        }
+
+        let driving_events = services.driving_events_detector.process_frame(
+            device_id, vehicle_id, company_id, &frame,
+        ).await;
+        for event in driving_events {
+            if let Err(err) = database.insert_driving_event(&event).await {
+                warn!(?err, device_id, "Failed to insert Noron driving event");
+            }
+        }
+
+        // Geofence detection
+        if frame.is_valid {
+            if services.geofence_detector.needs_refresh().await {
+                if let Ok(geofences) = database.load_geofences().await {
+                    services.geofence_detector.load_geofences(geofences).await;
+                }
+            }
+            if let Some(vid) = vehicle_id {
+                let timestamp = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                    frame.recorded_at, chrono::Utc,
+                );
+                let geofence_events = services.geofence_detector.process_frame(
+                    device_id, vid, company_id, frame.latitude, frame.longitude,
+                    Some(frame.speed_kph), timestamp,
+                ).await;
+                for gf_event in geofence_events {
+                    let duration = if gf_event.event_type == crate::services::geofence_detector::GeofenceEventType::Exit {
+                        services.geofence_detector.get_duration_inside(device_id, gf_event.geofence_id).await
+                            .map(|d| d as i32)
+                    } else {
+                        None
+                    };
+                    if let Err(err) = database.insert_geofence_event(&gf_event, duration).await {
+                        warn!(?err, device_id, "Failed to insert Noron geofence event");
+                    }
+                }
+            }
         }
     }
 

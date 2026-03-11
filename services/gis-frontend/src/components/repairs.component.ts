@@ -242,6 +242,34 @@ interface Vehicle {
               </div>
             </div>
 
+            <!-- Supplier Selection -->
+            <div class="form-section">
+              <h4>Fournisseur / Garage</h4>
+              <div class="supplier-select-row">
+                <select class="form-control" [(ngModel)]="form.supplierId" style="flex:1">
+                  <option value="">-- Aucun fournisseur --</option>
+                  <option *ngFor="let s of suppliers" [value]="s.id">{{ s.name }} <span *ngIf="s.type">({{ s.type }})</span></option>
+                </select>
+                <button class="btn-add-supplier" (click)="showAddSupplier = true" title="Ajouter un fournisseur">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                </button>
+              </div>
+              <!-- Quick add supplier inline -->
+              <div class="quick-add-supplier" *ngIf="showAddSupplier">
+                <input type="text" class="form-control" [(ngModel)]="newSupplierName" placeholder="Nom du fournisseur">
+                <select class="form-control" [(ngModel)]="newSupplierType">
+                  <option value="garage">Garage</option>
+                  <option value="parts">Pièces</option>
+                  <option value="tires">Pneus</option>
+                  <option value="general">Général</option>
+                </select>
+                <button class="btn-save-supplier" (click)="addNewSupplier()" [disabled]="!newSupplierName">Ajouter</button>
+                <button class="btn-cancel-supplier" (click)="showAddSupplier = false">Annuler</button>
+              </div>
+            </div>
+
             <!-- Repair Details -->
             <div class="form-section">
               <h4>Details de la reparation</h4>
@@ -528,6 +556,17 @@ interface Vehicle {
     .btn-action.delete { color:#dc2626; }
     .btn-action.delete:hover { background:#fee2e2; border-color:#dc2626; }
 
+    .supplier-select-row { display:flex; gap:8px; align-items:center; }
+    .btn-add-supplier { width:34px; height:34px; border:1px solid #e2e8f0; border-radius:6px; background:#f0fdf4; color:#16a34a; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; }
+    .btn-add-supplier:hover { background:#dcfce7; border-color:#16a34a; }
+    .quick-add-supplier { display:flex; gap:6px; margin-top:8px; align-items:center; padding:10px; background:#f8fafc; border-radius:6px; border:1px dashed #cbd5e1; flex-wrap:wrap; }
+    .quick-add-supplier .form-control { flex:1; min-width:120px; }
+    .btn-save-supplier { padding:6px 12px; background:#16a34a; color:white; border:none; border-radius:4px; font-size:11px; font-weight:500; cursor:pointer; white-space:nowrap; }
+    .btn-save-supplier:hover { background:#15803d; }
+    .btn-save-supplier:disabled { opacity:0.5; cursor:not-allowed; }
+    .btn-cancel-supplier { padding:6px 12px; background:white; border:1px solid #e2e8f0; border-radius:4px; font-size:11px; color:#64748b; cursor:pointer; white-space:nowrap; }
+    .btn-cancel-supplier:hover { background:#f1f5f9; }
+
     .empty-state { grid-column:1/-1; text-align:center; padding:60px 20px; color:#64748b; }
     .empty-state svg { margin-bottom:16px; opacity:.5; }
     .empty-state h3 { margin:0 0 8px; color:#1e293b; }
@@ -646,16 +685,24 @@ export class RepairsComponent implements OnInit, OnDestroy {
 
   form = this.getEmptyForm();
 
+  // Suppliers
+  suppliers: { id: number; name: string; type: string }[] = [];
+  showAddSupplier = false;
+  newSupplierName = '';
+  newSupplierType = 'garage';
+
   constructor(private apiService: ApiService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit() {
     this.loadVehicles();
     this.loadRepairs();
+    this.loadSuppliers();
   }
 
   getEmptyForm() {
     return {
       vehicleId: '',
+      supplierId: '' as string,
       repairDate: new Date().toISOString().split('T')[0],
       mileageAtRepair: null as number | null,
       description: '',
@@ -684,6 +731,30 @@ export class RepairsComponent implements OnInit, OnDestroy {
           { id: 3, name: 'Citroen Berlingo', plateNumber: '312 TUN 1122', mileage: 125000 }
         ];
       }
+    });
+  }
+
+  loadSuppliers() {
+    this.apiService.getSuppliers({ pageSize: 200, isActive: true }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (result) => {
+        this.suppliers = result.items.map(s => ({ id: s.id, name: s.name, type: s.type }));
+        this.cdr.detectChanges();
+      },
+      error: () => { this.suppliers = []; }
+    });
+  }
+
+  addNewSupplier() {
+    if (!this.newSupplierName) return;
+    this.apiService.createSupplier({ name: this.newSupplierName, type: this.newSupplierType }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (id) => {
+        this.suppliers.push({ id, name: this.newSupplierName, type: this.newSupplierType });
+        this.form.supplierId = id.toString();
+        this.newSupplierName = '';
+        this.showAddSupplier = false;
+        this.cdr.detectChanges();
+      },
+      error: (err) => console.error('Error creating supplier:', err)
     });
   }
 
@@ -780,6 +851,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
     this.editingRepair = repair;
     this.form = {
       vehicleId: repair.vehicleId.toString(),
+      supplierId: repair.supplierId?.toString() || '',
       repairDate: repair.repairDate,
       mileageAtRepair: repair.mileageAtRepair || null,
       description: repair.description,
@@ -859,6 +931,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
     if (this.editingRepair) {
       this.apiService.updateRepair(this.editingRepair.id!, {
         vehicleId: +this.form.vehicleId,
+        supplierId: this.form.supplierId ? +this.form.supplierId : undefined,
         description: this.form.description,
         repairDate: this.form.repairDate,
         mileageAtRepair: this.form.mileageAtRepair || undefined,
@@ -877,6 +950,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
     } else {
       this.apiService.createRepair({
         vehicleId: +this.form.vehicleId,
+        supplierId: this.form.supplierId ? +this.form.supplierId : undefined,
         description: this.form.description,
         repairDate: this.form.repairDate,
         mileageAtRepair: this.form.mileageAtRepair || undefined,

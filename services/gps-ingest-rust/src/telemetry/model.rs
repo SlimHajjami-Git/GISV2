@@ -76,6 +76,11 @@ impl ProtocolMetadata {
                 model_name: Some("NEMS"),
                 firmware_flavor: Some("S"),
             },
+            // noron => Noron NR024 binary protocol tracker
+            "noron" => Self {
+                model_name: Some("NORON"),
+                firmware_flavor: Some("NR024"),
+            },
             // Future types can be added here as soon as new GPS models are supported
             _ => Self::default(),
         }

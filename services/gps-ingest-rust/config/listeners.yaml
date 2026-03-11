@@ -1,6 +1,7 @@
 listeners:
   # NOTE: protocol controls which decoder AND which GPS model metadata we infer.
   # gps_type_1 => NEMS model (legacy "L" firmware), gps_type_2 => NEMS "S" firmware.
+  # noron => Noron NR024 binary protocol tracker.
   # Add new entries for future trackers to automatically tag the devices.
   - port: 6100
     protocol: gps_type_1
@@ -10,4 +11,7 @@ listeners:
     transport: tcp
   - port: 6210
     protocol: gps_type_2_1
+    transport: tcp
+  - port: 6300
+    protocol: noron
     transport: tcp

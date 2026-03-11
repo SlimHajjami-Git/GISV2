@@ -1550,7 +1550,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   viewInfractionOnMap(row: any) {
     if (row.latitude && row.longitude) {
-      window.open(`/monitoring?lat=${row.latitude}&lng=${row.longitude}&zoom=17`, '_blank');
+      this.router.navigate(['/monitoring'], { queryParams: { lat: row.latitude, lng: row.longitude, zoom: 17 } });
     }
   }
 
@@ -2889,10 +2889,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
         scales: {
           y: {
             beginAtZero: true,
-            title: {
-              display: true,
-              text: 'Distance (km)'
-            },
             grid: {
               color: 'rgba(0, 0, 0, 0.05)'
             }

@@ -114,9 +114,10 @@ services:
       RUST_LOG: info
     ports:
       - "3000:3000"   # HTTP API
-      - "6100:6100"   # GPS type 1 (TCP)
-      - "6200:6200"   # GPS type 2 (TCP)
-      - "6210:6210"   # GPS type 2.1 (TCP)
+      - "6100:6100"   # GPS type 1 (TCP) - NEMS L
+      - "6200:6200"   # GPS type 2 (TCP) - NEMS S
+      - "6210:6210"   # GPS type 2.1 (TCP) - NEMS S variant
+      - "6300:6300"   # Noron NR024 (TCP)
     restart: unless-stopped
 
   frontend:

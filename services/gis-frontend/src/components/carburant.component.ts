@@ -670,6 +670,8 @@ export class CarburantComponent implements OnInit, OnDestroy {
       if (e.pricePerLiter <= 0) { e.errors!.push('Prix'); e.isValid = false; }
       if (!e.invoiceDate) { e.errors!.push('Date'); e.isValid = false; }
       if (e.fuelTypeName) { const ft = this.fuelTypes.find(t => t.code.toLowerCase() === e.fuelTypeName.toLowerCase() || t.name.toLowerCase() === e.fuelTypeName.toLowerCase()); if (ft) e.fuelTypeId = ft.id; }
+      // Default to first fuel type if none mapped/matched
+      if (!e.fuelTypeId && this.fuelTypes.length > 0) { e.fuelTypeId = this.fuelTypes[0].id; }
       this.importEntries.push(e);
     }
     this.showPreview = true;
@@ -678,42 +680,48 @@ export class CarburantComponent implements OnInit, OnDestroy {
   parseNumber(v: any): number { if (typeof v === 'number') return v; if (!v) return 0; return parseFloat(String(v).replace(/[^\d.,\-]/g, '').replace(',', '.')) || 0; }
   parseDate(v: any): string {
     if (!v) return '';
+    // XLSX may return a JS Date object directly
+    if (v instanceof Date) {
+      if (!isNaN(v.getTime())) return v.toISOString().split('T')[0];
+      return '';
+    }
     // Excel serial number
     if (typeof v === 'number') {
       const d = new Date(Date.UTC(1899, 11, 30) + v * 86400000);
-      return d.toISOString().split('T')[0];
+      if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+      return '';
     }
     const s = String(v).trim();
+    if (!s) return '';
     // Try YYYY-MM-DD or YYYY/MM/DD (ISO format) first
-    const isoMatch = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+    const isoMatch = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
     if (isoMatch) {
       const [, year, month, day] = isoMatch;
       const d = new Date(Date.UTC(+year, +month - 1, +day));
       if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
     }
-    // Try DD/MM/YYYY, DD-MM-YYYY, or MM/DD/YYYY
-    // Always interpret as DD/MM/YYYY (French/Tunisian format)
-    // If first number > 12, it must be a day; if second > 12, first must be month (American)
-    const slashMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    // Try DD/MM/YYYY, DD-MM-YYYY, DD/MM/YY, or MM/DD/YYYY
+    const slashMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
     if (slashMatch) {
-      let [, p1, p2, year] = slashMatch;
+      let [, p1, p2, yearStr] = slashMatch;
+      let year = +yearStr;
+      if (year < 100) year += year < 50 ? 2000 : 1900;
       let day: number, month: number;
       if (+p1 > 12) {
-        // First part > 12, must be day (DD/MM/YYYY)
         day = +p1; month = +p2;
       } else if (+p2 > 12) {
-        // Second part > 12, must be day → first is month (MM/DD/YYYY American)
         month = +p1; day = +p2;
       } else {
-        // Both <= 12, ambiguous → default to DD/MM/YYYY (French format)
         day = +p1; month = +p2;
       }
       if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
-        const d = new Date(Date.UTC(+year, month - 1, day));
+        const d = new Date(Date.UTC(year, month - 1, day));
         if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
       }
     }
-    // No fallback to native Date() to avoid American format misinterpretation
+    // Last resort: try native Date parsing
+    const fallback = new Date(s);
+    if (!isNaN(fallback.getTime())) return fallback.toISOString().split('T')[0];
     return '';
   }
   getValidEntries() { return this.importEntries.filter(e => e.isValid); }
@@ -732,11 +740,17 @@ export class CarburantComponent implements OnInit, OnDestroy {
     this.apiService.bulkCreateFuelEntries(requests).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {
         console.log(`Import carburant: ${result.success}/${result.total} réussis`);
+        if (result.failed > 0) {
+          alert(`Import terminé: ${result.success} réussis, ${result.failed} échoués sur ${result.total}`);
+        } else {
+          alert(`Import réussi: ${result.success} entrées importées`);
+        }
         this.isSaving = false; this.resetImport(); this.loadHistory(); this.activeTab = 'history';
         this.cdr.detectChanges();
       },
       error: (err) => {
         console.error('Bulk import error:', err);
+        alert('Erreur lors de l\'import: ' + (err.error?.message || err.message || 'Erreur inconnue'));
         this.isSaving = false; this.cdr.detectChanges();
       }
     });
