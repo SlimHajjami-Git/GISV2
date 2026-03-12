@@ -355,7 +355,8 @@ data:
         }
 
         # Uploaded files proxy (photos, documents) to .NET backend
-        location /uploads/ {
+        # ^~ ensures this takes precedence over regex location for static assets (.jpg, .png, etc.)
+        location ^~ /uploads/ {
             proxy_pass http://gis-api:5000/uploads/;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
