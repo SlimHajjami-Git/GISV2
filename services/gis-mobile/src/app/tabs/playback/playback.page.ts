@@ -369,12 +369,12 @@ export class PlaybackPage implements OnInit, OnDestroy {
     const to = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59).toISOString();
 
     this.api.getVehicleHistory(this.selectedVehicleId.toString(), from, to, 10000).subscribe({
-      next: (data) => {
+      next: (data: any) => {
         this.zone.run(() => {
           this.loadingTrack = false;
           this.trackLoaded = true;
 
-          const positions = Array.isArray(data) ? data : [];
+          const positions = Array.isArray(data) ? data : (Array.isArray(data?.positions) ? data.positions : []);
           if (positions.length === 0) {
             this.points = [];
             return;

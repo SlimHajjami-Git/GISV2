@@ -35,12 +35,12 @@ export class ApiService {
     return this.http.get<any[]>(`${this.API}/gps/positions/realtime`);
   }
 
-  getVehicleHistory(vehicleId: string, from: string, to: string, limit: number = 5000): Observable<any[]> {
+  getVehicleHistory(vehicleId: string, from: string, to: string, maxPoints: number = 5000): Observable<any> {
     const params = new HttpParams()
       .set('from', from)
       .set('to', to)
-      .set('limit', limit.toString());
-    return this.http.get<any[]>(`${this.API}/gps/vehicles/${vehicleId}/history`, { params });
+      .set('maxPoints', maxPoints.toString());
+    return this.http.get<any>(`${this.API}/gps/vehicles/${vehicleId}/history`, { params });
   }
 
   getLastPositions(): Observable<any[]> {
