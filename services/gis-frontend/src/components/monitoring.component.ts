@@ -516,6 +516,14 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
             odometerKm: v.lastPosition?.odometerKm ?? v.mileage ?? null
           }));
           
+          // Sort source array consistently to prevent order changes on refresh
+          mappedVehicles.sort((a: any, b: any) => {
+            const nameA = (a.plate || a.name || '').toLowerCase();
+            const nameB = (b.plate || b.name || '').toLowerCase();
+            const cmp = nameA.localeCompare(nameB, 'fr', { numeric: true });
+            return cmp !== 0 ? cmp : (a.id || 0) - (b.id || 0);
+          });
+
           // Assign to trigger change detection
           this.vehicles = [...mappedVehicles];
           this.loading = false;
@@ -827,7 +835,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     filtered.sort((a: any, b: any) => {
       const nameA = (a.plate || a.name || '').toLowerCase();
       const nameB = (b.plate || b.name || '').toLowerCase();
-      return nameA.localeCompare(nameB);
+      const cmp = nameA.localeCompare(nameB, 'fr', { numeric: true });
+      return cmp !== 0 ? cmp : (a.id || 0) - (b.id || 0);
     });
 
     // Create new array reference to trigger change detection
