@@ -404,11 +404,11 @@
           <div class="playback-date-row">
             <div class="playback-date-field">
               <span class="playback-date-label">Début</span>
-              <input type="datetime-local" [(ngModel)]="playbackFromDate" [max]="toLocalDateTimeString(today)" class="playback-date-input">
+              <input type="datetime-local" [(ngModel)]="playbackFromDate" [max]="playbackToDate || toLocalDateTimeString(today)" class="playback-date-input">
             </div>
             <div class="playback-date-field">
               <span class="playback-date-label">Fin</span>
-              <input type="datetime-local" [(ngModel)]="playbackToDate" [max]="toLocalDateTimeString(today)" class="playback-date-input">
+              <input type="datetime-local" [(ngModel)]="playbackToDate" [min]="playbackFromDate" [max]="toLocalDateTimeString(today)" class="playback-date-input">
             </div>
           </div>
         </div>

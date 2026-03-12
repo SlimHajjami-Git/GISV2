@@ -137,11 +137,11 @@
         <!-- Daily: Date range picker -->
         <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'mileage-period' && selectedMileagePeriodType === 'day'">
           <label class="field-label">Date début</label>
-          <input type="date" class="field-input" [(ngModel)]="mileagePeriodStartDate" [max]="todayStr">
+          <input type="date" class="field-input" [(ngModel)]="mileagePeriodStartDate" [max]="mileagePeriodEndDate || todayStr">
         </div>
         <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'mileage-period' && selectedMileagePeriodType === 'day'">
           <label class="field-label">Date fin</label>
-          <input type="date" class="field-input" [(ngModel)]="mileagePeriodEndDate" [max]="todayStr">
+          <input type="date" class="field-input" [(ngModel)]="mileagePeriodEndDate" [min]="mileagePeriodStartDate" [max]="todayStr">
         </div>
 
         <!-- Monthly: Month/Year selector -->
@@ -194,11 +194,11 @@
         <!-- ===== CUSTOM DATE RANGE (when Personnalisé selected) ===== -->
         <div class="sidebar-row" *ngIf="(selectedStandardPeriod === 'custom' && selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance') || (selectedCostPeriod === 'custom' && (selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance'))">
           <label class="field-label">Date début</label>
-          <input type="date" class="field-input" [(ngModel)]="customStartDate" [max]="todayStr">
+          <input type="date" class="field-input" [(ngModel)]="customStartDate" [max]="customEndDate || todayStr">
         </div>
         <div class="sidebar-row" *ngIf="(selectedStandardPeriod === 'custom' && selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance') || (selectedCostPeriod === 'custom' && (selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance'))">
           <label class="field-label">Date fin</label>
-          <input type="date" class="field-input" [(ngModel)]="customEndDate" [max]="todayStr">
+          <input type="date" class="field-input" [(ngModel)]="customEndDate" [min]="customStartDate" [max]="todayStr">
         </div>
 
         <!-- ===== SPEED LIMIT INPUT (for speed & speed-infraction) ===== -->
