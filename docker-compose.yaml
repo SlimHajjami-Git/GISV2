@@ -87,7 +87,7 @@ services:
       - "6100:6100"      # GPS TCP listener (NEMS L)
       - "6200:6200"      # GPS TCP listener (NEMS S)
       - "6210:6210"      # GPS TCP listener (NEMS S variant)
-      - "6300:6300"      # GPS TCP listener (Noron NR024)
+      - "6300:6300/udp"   # GPS UDP listener (Noron NR024)
     volumes:
       - ./services/gps-ingest-rust/config:/app/config:ro
 

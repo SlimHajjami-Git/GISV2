@@ -14,4 +14,4 @@ listeners:
     transport: tcp
   - port: 6300
     protocol: noron
-    transport: tcp
+    transport: udp

@@ -200,7 +200,7 @@ spec:
 
 ---
 # -----------------------------------------------------------------------------
-# GPS Ingest (Rust) — single replica, needs host TCP ports for trackers
+# GPS Ingest (Rust) — single replica, needs host TCP/UDP ports for trackers
 # -----------------------------------------------------------------------------
 apiVersion: v1
 kind: Service
@@ -254,7 +254,7 @@ spec:
               protocol: TCP
             - containerPort: 6300
               hostPort: 6300
-              protocol: TCP
+              protocol: UDP
           env:
             - name: POSTGRES_PASSWORD
               valueFrom:

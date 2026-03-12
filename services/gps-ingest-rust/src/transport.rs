@@ -4,7 +4,7 @@ use anyhow::{anyhow, Context, Result};
 use chrono::Duration;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::{tcp::OwnedWriteHalf, TcpListener, TcpStream},
+    net::{tcp::OwnedWriteHalf, TcpListener, TcpStream, UdpSocket},
     signal,
     sync::Mutex,
 };
@@ -103,7 +103,16 @@ pub async fn run_listeners(
                 }));
             }
             TransportKind::Udp => {
-                warn!(port = listener.port, "UDP transport not implemented yet");
+                let cfg = listener.clone();
+                let db = Arc::clone(&database);
+                let publisher_clone = publisher.clone();
+                let services_clone = Arc::clone(&services);
+                let redis_clone = redis_cache.clone();
+                handles.push(tokio::spawn(async move {
+                    if let Err(err) = run_udp_listener(cfg, db, publisher_clone, services_clone, redis_clone).await {
+                        error!(?err, "UDP listener terminated unexpectedly");
+                    }
+                }));
             }
         }
     }
@@ -148,6 +157,88 @@ async fn run_tcp_listener(
             }
         });
         info!(protocol = %cfg.protocol, peer = %peer_addr, "Accepted TCP connection");
+    }
+}
+
+async fn run_udp_listener(
+    cfg: ListenerConfig,
+    database: Arc<dyn TelemetryStore>,
+    publisher: Option<Arc<dyn TelemetryEventPublisher>>,
+    services: Arc<TelemetryServices>,
+    redis_cache: Option<Arc<RedisCache>>,
+) -> Result<()> {
+    let bind_addr = format!("0.0.0.0:{}", cfg.port);
+    let socket = UdpSocket::bind(&bind_addr).await?;
+    info!(port = cfg.port, protocol = %cfg.protocol, "UDP listener started");
+
+    // Track device IDs by source address (like connection_map for TCP)
+    let peer_device_map: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
+
+    let mut buf = vec![0u8; 4096];
+    loop {
+        let (len, src_addr) = socket.recv_from(&mut buf).await?;
+        let payload = buf[..len].to_vec();
+        let hex_dump = hex::encode(&payload);
+        let peer_str = src_addr.to_string();
+
+        info!(
+            protocol = %cfg.protocol,
+            port = cfg.port,
+            size = len,
+            peer = %peer_str,
+            payload = %hex_dump,
+            "Received UDP payload"
+        );
+
+        // Only Noron protocol is supported via UDP for now
+        if cfg.protocol == "noron" {
+            let results = telemetry::noron::decode_buffer(&payload);
+            for result in results {
+                match result {
+                    Ok(telemetry::noron::NoronDecodeResult::Handshake { device_id }) => {
+                        // Store device ID in peer map
+                        {
+                            let mut map = peer_device_map.lock().await;
+                            map.insert(peer_str.clone(), device_id.clone());
+                        }
+                        // Send handshake ACK back via UDP
+                        if let Err(e) = socket.send_to(&telemetry::noron::HANDSHAKE_ACK, src_addr).await {
+                            warn!(?e, "Failed to send Noron UDP handshake ACK");
+                        } else {
+                            info!(device_id = %device_id, peer = %peer_str, "Sent Noron UDP handshake ACK");
+                        }
+                    }
+                    Ok(telemetry::noron::NoronDecodeResult::Position { frame, device_id }) => {
+                        // Resolve device UID: prefer peer_device_map, fallback to packet device_id
+                        let resolved_uid = {
+                            let map = peer_device_map.lock().await;
+                            map.get(&peer_str).cloned().unwrap_or_else(|| device_id.clone())
+                        };
+
+                        if let Err(err) = route_noron_frame(
+                            &resolved_uid,
+                            frame,
+                            Arc::clone(&database),
+                            publisher.clone(),
+                            Arc::clone(&services),
+                            redis_cache.clone(),
+                        )
+                        .await
+                        {
+                            warn!(?err, device_id = %resolved_uid, "Failed to process Noron UDP position");
+                        }
+                    }
+                    Ok(telemetry::noron::NoronDecodeResult::Unknown { flag }) => {
+                        warn!(flag, peer = %peer_str, "Unknown Noron UDP packet flag, skipping");
+                    }
+                    Err(e) => {
+                        warn!(error = %e, peer = %peer_str, "Failed to decode Noron UDP packet");
+                    }
+                }
+            }
+        } else {
+            warn!(protocol = %cfg.protocol, "UDP not supported for this protocol");
+        }
     }
 }
 
