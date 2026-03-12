@@ -45,7 +45,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   monitoringView: 'live' | 'playback' = 'live';
   playbackVehicleSelect: string | null = null;
   playbackVehicleSearch = '';
-  private playbackSetupMap: L.Map | null = null;
+  playbackSetupMap: L.Map | null = null;
+  private setupMapTileLayer: L.TileLayer | null = null;
+  playbackVehicleDropdownOpen = true;
 
   // Playback (default: last 24 hours)
   playbackFromDate = '';
@@ -860,9 +862,24 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.mapStyle = style;
     this.showLayersMenu = false;
 
+    const mapUrls: Record<string, string> = {
+      streets: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      terrain: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'
+    };
+
     // During playback overlay: just swap tiles, don't destroy map
     if (this.playbackOverlayMap && this.map === this.playbackOverlayMap) {
       this.applyTileLayer(this.playbackOverlayMap);
+      return;
+    }
+
+    // Playback setup map: swap tiles in-place
+    if (this.playbackSetupMap) {
+      if (this.setupMapTileLayer) {
+        this.playbackSetupMap.removeLayer(this.setupMapTileLayer);
+      }
+      this.setupMapTileLayer = L.tileLayer(mapUrls[style], { maxZoom: 19 }).addTo(this.playbackSetupMap);
       return;
     }
 
@@ -990,6 +1007,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return '?';
   }
 
+  getPlaybackSelectedVehicleName(): string {
+    if (!this.playbackVehicleSelect) return '';
+    const v = this.vehicles.find(v => v.id === this.playbackVehicleSelect);
+    return v ? (v.plate || v.name || '') : '';
+  }
+
   // Filter vehicles for the playback setup panel search
   getPlaybackFilteredVehicles(): Vehicle[] {
     if (!this.playbackVehicleSearch || this.playbackVehicleSearch.trim() === '') {
@@ -1017,12 +1040,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.playbackSetupMap = L.map(container, {
         center: [36.8, 10.18],
         zoom: 12,
-        zoomControl: true,
+        zoomControl: false,
         attributionControl: false
       });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19
-      }).addTo(this.playbackSetupMap);
+      const mapUrls: Record<string, string> = {
+        streets: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        terrain: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'
+      };
+      this.setupMapTileLayer = L.tileLayer(mapUrls[this.mapStyle], { maxZoom: 19 }).addTo(this.playbackSetupMap);
 
       // Show vehicle positions on the setup map if available
       this.vehicles.forEach(v => {

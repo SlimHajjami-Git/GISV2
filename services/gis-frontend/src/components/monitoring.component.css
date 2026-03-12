@@ -18,6 +18,83 @@
   inset: 0;
   z-index: 0;
 }
+
+/* Setup map controls (zoom + layers) */
+.setup-map-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: white;
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+}
+.setup-map-ctrl-btn {
+  width: 34px;
+  height: 34px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  transition: all 0.15s;
+}
+.setup-map-ctrl-btn:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+.setup-map-ctrl-btn.active {
+  background: #eef2ff;
+  color: #6366f1;
+}
+.setup-map-ctrl-sep {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 2px 4px;
+}
+
+/* Collapsible vehicle dropdown */
+.playback-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 2px 0;
+}
+.playback-dropdown-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.playback-selected-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6366f1;
+  background: #eef2ff;
+  padding: 3px 8px;
+  border-radius: 4px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.playback-dropdown-arrow {
+  transition: transform 0.2s;
+}
+.playback-dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+.playback-vehicle-dropdown-body {
+  margin-top: 8px;
+}
+
 .playback-panel {
   position: relative;
   z-index: 10;
