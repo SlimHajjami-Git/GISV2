@@ -781,22 +781,23 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 .behavior-cards-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  width: 340px;
+  gap: 16px;
+  width: 480px;
   flex-shrink: 0;
   align-self: stretch;
 }
 
 .behavior-card {
   background: white;
-  border-radius: 8px;
-  padding: 6px 8px;
+  border-radius: 12px;
+  padding: 16px 14px;
   text-align: center;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   border: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  min-height: 100px;
 }
 
 .behavior-card:hover {
@@ -805,44 +806,45 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .behavior-card-icon {
-  font-size: 14px;
-  margin-bottom: 0;
+  font-size: 22px;
+  margin-bottom: 4px;
 }
 
 .behavior-card-icon.score-circle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: #3B82F6;
   color: white;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
-  margin-bottom: 0;
+  margin-bottom: 4px;
 }
 
 .behavior-card-label {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   color: #94a3b8;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
-  margin-bottom: 0;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
 }
 
 .behavior-card-value {
-  font-size: 16px;
+  font-size: 22px;
   font-weight: 800;
   color: #1e293b;
-  line-height: 1.1;
+  line-height: 1.2;
 }
 
 .behavior-card-unit {
-  font-size: 9px;
+  font-size: 11px;
   color: #64748b;
   font-weight: 500;
+  margin-top: 2px;
 }
 
 .rpm-card {
