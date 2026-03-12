@@ -9,7 +9,7 @@ use super::model::{FrameKind, FrameVersion, HhFrame};
 // ============================================================================
 //
 // Protocol: Binary, Little-Endian
-// Original transport: UDP (GISV1), now TCP (GISV2)
+// Transport: UDP (same as GISV1)
 //
 // Packet structure:
 //   [nPackLen: u16 LE] [nFlag: u16 LE] [body: variable]
@@ -461,6 +461,10 @@ fn noron_position_to_hh_frame(pos: &NoronPosition, flag: NoronFlag) -> HhFrame {
     // Temperature
     let temperature_raw = pos.temperature.map(|t| t as u16).unwrap_or(0);
 
+    // Use V3 for extended packets (0x0032) so has_fms=true and odometer/temperature
+    // get stored in DB — matching GISV1 SaveDynData behavior
+    let version = if flag.has_extended_data() { FrameVersion::V3 } else { FrameVersion::V1 };
+
     // Build raw_payload hex string for logging
     let raw_payload = format!(
         "NORON:{} lat={:.6} lon={:.6} spd={} hdg={} alarm={} io={} vol={}",
@@ -470,7 +474,7 @@ fn noron_position_to_hh_frame(pos: &NoronPosition, flag: NoronFlag) -> HhFrame {
 
     HhFrame {
         kind: FrameKind::RealTime,
-        version: FrameVersion::V1, // Noron has no version concept
+        version,
         recorded_at: pos.recorded_at,
         latitude: pos.latitude as f64,
         longitude: pos.longitude as f64,
