@@ -187,10 +187,15 @@ app.UseResponseCompression();
 // Static file serving for uploads (photos, documents)
 var uploadsPath = Path.Combine(app.Environment.ContentRootPath, "uploads");
 if (!Directory.Exists(uploadsPath)) Directory.CreateDirectory(uploadsPath);
+var contentTypeProvider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+contentTypeProvider.Mappings[".webp"] = "image/webp";
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsPath),
-    RequestPath = "/uploads"
+    RequestPath = "/uploads",
+    ContentTypeProvider = contentTypeProvider,
+    ServeUnknownFileTypes = true,
+    DefaultContentType = "application/octet-stream"
 });
 
 app.UseCors();
