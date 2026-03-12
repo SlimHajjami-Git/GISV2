@@ -760,7 +760,7 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 
 .chart-area {
   flex: 1;
-  height: 200px;
+  height: 100px;
   overflow: hidden;
   background: #f8fafc;
   border-radius: 8px;
@@ -780,8 +780,8 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 .behavior-cards-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  width: 220px;
+  gap: 10px;
+  width: 340px;
   flex-shrink: 0;
   align-self: stretch;
 }
