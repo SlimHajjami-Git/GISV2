@@ -26,10 +26,6 @@ const routes: Routes = [
         loadChildren: () => import('./alerts/alerts.module').then(m => m.AlertsPageModule)
       },
       {
-        path: 'reports',
-        loadChildren: () => import('./reports/reports.module').then(m => m.ReportsPageModule)
-      },
-      {
         path: 'playback',
         loadChildren: () => import('./playback/playback.module').then(m => m.PlaybackPageModule)
       },
