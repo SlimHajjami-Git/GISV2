@@ -654,11 +654,8 @@
                 </div>
               </div>
               <div class="charts-container">
-                <div class="chart-area">
-                  <canvas #chartCanvas></canvas>
-                </div>
                 @if (selectedTemplate?.type === 'driving-behavior') {
-                  <div class="behavior-cards-grid">
+                  <div class="behavior-cards-row">
                     <div class="behavior-card rpm-card">
                       <div class="behavior-card-icon">🔧</div>
                       <div class="behavior-card-label">RPM MAX.</div>
@@ -686,10 +683,15 @@
                       <div class="behavior-card-unit">L/100 km</div>
                     </div>
                   </div>
-                } @else if (secondaryChartData && secondaryChartData.length > 0) {
-                  <div class="chart-area secondary-chart">
-                    <canvas #secondaryChartCanvas></canvas>
+                } @else {
+                  <div class="chart-area">
+                    <canvas #chartCanvas></canvas>
                   </div>
+                  @if (secondaryChartData && secondaryChartData.length > 0) {
+                    <div class="chart-area secondary-chart">
+                      <canvas #secondaryChartCanvas></canvas>
+                    </div>
+                  }
                 }
               </div>
             </div>

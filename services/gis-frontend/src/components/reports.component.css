@@ -777,6 +777,17 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 }
 
 /* Driving Behavior Metric Cards */
+.behavior-cards-row {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+  justify-content: stretch;
+}
+
+.behavior-cards-row .behavior-card {
+  flex: 1;
+}
+
 .behavior-cards-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
