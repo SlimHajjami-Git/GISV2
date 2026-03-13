@@ -759,8 +759,7 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .chart-area {
-  flex: 1 1 0;
-  max-width: 50%;
+  flex: 1;
   height: 200px;
   overflow: hidden;
   background: #f8fafc;

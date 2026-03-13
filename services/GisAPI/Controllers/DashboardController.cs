@@ -413,15 +413,15 @@ public class DashboardController : ControllerBase
                 .Any(p => p.DeviceId == v.GpsDeviceId!.Value && p.RecordedAt > cutoffTime))
             .CountAsync();
 
-        // Employee stats - server-side counts
+        // Employee stats - server-side counts (use DB column EmployeeRole, not computed Roles/UserType)
         var totalDrivers = await _context.Users
             .AsNoTracking()
-            .Where(e => e.CompanyId == companyId && (e.Roles.Contains("driver") || e.UserType == "employee"))
+            .Where(e => e.CompanyId == companyId && (e.EmployeeRole == "driver" || e.EmployeeRole == "employee"))
             .CountAsync();
 
         var activeDrivers = await _context.Users
             .AsNoTracking()
-            .Where(e => e.CompanyId == companyId && (e.Roles.Contains("driver") || e.UserType == "employee") && e.Status == "active")
+            .Where(e => e.CompanyId == companyId && (e.EmployeeRole == "driver" || e.EmployeeRole == "employee") && e.Status == "active")
             .CountAsync();
 
         // Alert stats - server-side counts with subquery

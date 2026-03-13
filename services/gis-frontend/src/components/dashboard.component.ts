@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -399,7 +399,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   recentTrips: { plate: string; distance: string; duration: string; date: string }[] = [];
   drivers: { name: string; initials: string; vehicle: string; active: boolean }[] = [];
 
-  constructor(private router: Router, private apiService: ApiService) {}
+  constructor(private router: Router, private apiService: ApiService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit() {
     if (!this.apiService.isAuthenticated()) { this.router.navigate(['/login']); return; }
@@ -438,7 +438,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.buildMotionData();
         this.buildHealthData();
         this.buildTopUnits();
-        this.buildVehicleFuelStats();
+        this.loadFuelDataFromTrips();
+        this.cdr.detectChanges();
       },
       error: (err) => console.error('Error loading vehicles:', err)
     });
@@ -455,6 +456,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         }
         const c = stats?.Costs || stats?.costs;
         if (c) this.totalFuelConsumed = c.FuelThisMonth || c.fuelThisMonth || 0;
+        this.cdr.detectChanges();
       },
       error: (err) => console.error('Error loading stats:', err)
     });
@@ -468,6 +470,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           name: g.name || g.Name || 'Geozone', color: colors[i % colors.length],
           count: g.assignedVehicleCount || g.vehicleCount || g.assignedVehicles?.length || 0
         }));
+        this.cdr.detectChanges();
       },
       error: (err) => console.error('Error loading geofences:', err)
     });
@@ -479,6 +482,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.fuelCost = s?.fuelCost || 0; this.maintenanceCost = s?.maintenanceCost || 0;
         this.repairCost = s?.repairCost || 0; this.otherCost = s?.otherCost || 0;
         this.totalCost = s?.totalCost || (this.fuelCost + this.maintenanceCost + this.repairCost + this.otherCost);
+        this.cdr.detectChanges();
       },
       error: () => this.loadCostDataFallback()
     });
@@ -494,6 +498,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.repairCost = costs.filter((c: any) => c.type === 'insurance' || c.type === 'fine').reduce((s: number, c: any) => s + (c.amount || 0), 0);
         this.otherCost = costs.filter((c: any) => !['fuel','maintenance','insurance','fine'].includes(c.type)).reduce((s: number, c: any) => s + (c.amount || 0), 0);
         this.totalCost = this.fuelCost + this.maintenanceCost + this.repairCost + this.otherCost;
+        this.cdr.detectChanges();
       }
     });
   }
@@ -517,6 +522,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           }));
           this.maxFuelConsumption = Math.max(...this.vehicleFuelStats.map(v => v.consumption), 1);
         }
+        this.cdr.detectChanges();
       },
       error: (err) => console.error('Error loading widget data:', err)
     });
@@ -542,14 +548,54 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.maxMileage = Math.max(...this.topUnits.map(u => u.mileage), 1);
   }
 
-  buildVehicleFuelStats() {
+  loadFuelDataFromTrips() {
     if (this.vehicleFuelStats.length > 0) return;
-    this.vehicleFuelStats = this.vehicles.filter(v => (v.mileage || 0) > 100).slice(0, 10).map(v => {
-      const km = Math.round(v.mileage || 0);
-      const c = 5.5 + Math.random() * 3;
-      return { plate: v.plate, consumption: Math.round(c * 10) / 10, totalLiters: Math.round(km * c / 100), totalKm: km };
+    const today = new Date();
+    const weekAgo = new Date(today.getTime() - 7 * 86400000);
+    this.apiService.getTrips({ startDate: weekAgo, endDate: today, limit: 500 }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (trips: any[]) => {
+        if (!trips || trips.length === 0) return;
+        // Per-vehicle fuel stats
+        const byVehicle: Record<string, { fuel: number; km: number }> = {};
+        // Per-day fuel for chart
+        const byDay: Record<string, number> = {};
+        for (const t of trips) {
+          const plate = t.vehicle?.plate || t.vehicle?.name || t.plate || 'Inconnu';
+          const fuel = Number(t.fuelConsumedLiters || t.FuelConsumedLiters || 0);
+          const km = Number(t.distanceKm || t.DistanceKm || 0);
+          if (!byVehicle[plate]) byVehicle[plate] = { fuel: 0, km: 0 };
+          byVehicle[plate].fuel += fuel;
+          byVehicle[plate].km += km;
+          const day = (t.startTime || t.StartTime || '').toString().split('T')[0];
+          if (day) byDay[day] = (byDay[day] || 0) + fuel;
+        }
+        // Build per-vehicle stats
+        this.vehicleFuelStats = Object.entries(byVehicle)
+          .filter(([, v]) => v.km > 0)
+          .map(([plate, v]) => ({
+            plate, consumption: Math.round((v.fuel / v.km) * 1000) / 10,
+            totalLiters: Math.round(v.fuel), totalKm: Math.round(v.km)
+          }))
+          .sort((a, b) => b.consumption - a.consumption)
+          .slice(0, 10);
+        this.maxFuelConsumption = Math.max(...this.vehicleFuelStats.map(v => v.consumption), 1);
+        // Build fleet chart from daily fuel
+        this.totalFuelConsumed = Object.values(byDay).reduce((s, v) => s + v, 0) || this.totalFuelConsumed;
+        const dayKeys = Array.from({length: 7}, (_, i) => {
+          const d = new Date(today.getTime() - (6 - i) * 86400000);
+          return d.toISOString().split('T')[0];
+        });
+        const dailyValues = dayKeys.map(k => byDay[k] || 0);
+        const maxVal = Math.max(...dailyValues, 1);
+        this.fuelChartPoints = dailyValues.map((v, i) => {
+          const x = (i / 6) * 500;
+          const y = 155 - (v / maxVal) * 150;
+          return `${x.toFixed(0)},${y.toFixed(0)}`;
+        }).join(' ');
+        this.cdr.detectChanges();
+      },
+      error: () => {}
     });
-    this.maxFuelConsumption = Math.max(...this.vehicleFuelStats.map(v => v.consumption), 1);
   }
 
   get totalMotion(): number {
@@ -615,6 +661,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       .sort((a, b) => b.ts - a.ts)
       .slice(0, 8)
       .map(({ message, severity, time }) => ({ message, severity, time }));
+    this.cdr.detectChanges();
   }
 
   loadTrips() {
@@ -635,6 +682,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
             date: startTime ? new Date(startTime).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''
           };
         });
+        this.cdr.detectChanges();
       },
       error: (err) => console.error('Error loading trips:', err)
     });
@@ -653,6 +701,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
             active: d.isActive !== false
           };
         });
+        this.cdr.detectChanges();
       },
       error: () => {}
     });
