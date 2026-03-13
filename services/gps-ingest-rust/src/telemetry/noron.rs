@@ -446,11 +446,14 @@ fn noron_position_to_hh_frame(pos: &NoronPosition, flag: NoronFlag) -> HhFrame {
     // alarm 0 = normal (periodic), alarm > 0 = alert
     let send_flag = if pos.alarm > 0 { 11 } else { 1 }; // 11 = ALERT, 1 = SENDP
 
-    // IoValue interpretation: bit 0 typically represents ignition
-    let ignition_on = (pos.io_value & 0x01) != 0;
+    // Speed: always use raw speed from tracker (matching GISV1 SaveUdpData behavior)
+    // GISV1 never forced speed to 0 — it stored nSpeed as-is
+    let speed_kph = pos.speed as f64;
 
-    // Speed: force to 0 when ignition is off (same as NEMS behavior)
-    let speed_kph = if !ignition_on { 0.0 } else { pos.speed as f64 };
+    // Ignition: derive from speed + IoValue
+    // If vehicle is moving (speed > 0), ignition MUST be on regardless of IoValue
+    // IoValue bit 0 may not reliably represent ignition on all Noron models
+    let ignition_on = speed_kph > 0.0 || (pos.io_value & 0x01) != 0;
 
     // Heading: clamp to 0-360
     let heading_deg = (pos.heading as f64).clamp(0.0, 360.0);
@@ -694,17 +697,35 @@ mod tests {
     }
 
     #[test]
-    fn test_speed_zero_when_ignition_off() {
+    fn test_speed_preserved_and_ignition_derived_from_speed() {
         let mut packet = build_position_packet("DEV001", 36.8, 10.2, 60);
-        // Set IoValue to 0 (ignition off) - it's the second-to-last byte
+        // Set IoValue to 0 (IoValue bit 0 = 0) - it's the second-to-last byte
         let len = packet.len();
-        packet[len - 2] = 0; // IoValue = 0 (ignition off)
+        packet[len - 2] = 0; // IoValue = 0
         
         let results = decode_buffer(&packet);
         match results[0].as_ref().unwrap() {
             NoronDecodeResult::Position { frame, .. } => {
-                assert!(!frame.ignition_on);
-                assert_eq!(frame.speed_kph, 0.0); // Speed forced to 0 when ignition off
+                // Speed preserved as-is (matching GISV1 behavior)
+                assert_eq!(frame.speed_kph, 60.0);
+                // Ignition derived from speed: speed > 0 → ignition on
+                assert!(frame.ignition_on);
+            }
+            other => panic!("Expected Position, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ignition_off_when_stationary() {
+        let mut packet = build_position_packet("DEV001", 36.8, 10.2, 0);
+        let len = packet.len();
+        packet[len - 2] = 0; // IoValue = 0, speed = 0
+        
+        let results = decode_buffer(&packet);
+        match results[0].as_ref().unwrap() {
+            NoronDecodeResult::Position { frame, .. } => {
+                assert_eq!(frame.speed_kph, 0.0);
+                assert!(!frame.ignition_on); // speed=0 AND IoValue bit0=0 → off
             }
             other => panic!("Expected Position, got {:?}", other),
         }
