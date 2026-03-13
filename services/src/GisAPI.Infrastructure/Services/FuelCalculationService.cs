@@ -54,6 +54,14 @@ public class FuelCalculationService : IFuelCalculationService
         var startDateUtc = startDate.Kind == DateTimeKind.Utc ? startDate : startDate.ToUniversalTime();
         var endDateUtc = endDate.Kind == DateTimeKind.Utc ? endDate : endDate.ToUniversalTime();
 
+        // ===== 0. Query FMS CAN bus FuelRateLPer100Km (most accurate source) =====
+        var fmsRates = await _context.GpsPositions
+            .Where(p => p.DeviceId == vehicle.GpsDeviceId.Value &&
+                        p.RecordedAt >= startDateUtc && p.RecordedAt <= endDateUtc &&
+                        p.FuelRateLPer100Km != null && p.FuelRateLPer100Km > 0 && p.FuelRateLPer100Km < 80)
+            .Select(p => (double)p.FuelRateLPer100Km!.Value)
+            .ToListAsync(cancellationToken);
+
         // ===== 1. Get GPS positions with fuel data (primary source — granular per-position) =====
         // fuel_records table only has significant events (refuels, theft, spikes).
         // gps_positions.fuelRaw has every 1% change — much more accurate for consumption.
@@ -121,55 +129,68 @@ public class FuelCalculationService : IFuelCalculationService
         // ===== 3. Spike filter: remove isolated sensor glitches =====
         var positions = FilterFuelSpikes(rawPositions);
 
-        // ===== 3b. Median smooth: remove small oscillations that survive spike filter =====
-        positions = MedianSmoothFuel(positions, 7);
-
         // ===== 4. Calculate distance from GPS positions =====
         int totalDistance = positions.Count >= 2
             ? CalculateDistanceFromPositions(positions, startDateUtc, endDateUtc)
             : await CalculateDistanceFromGps(vehicle.GpsDeviceId.Value, startDateUtc, endDateUtc, true, cancellationToken);
 
-        // ===== 5. Walk through fuel level changes → consumption + refuels =====
-        // Uses ENVELOPE approach: track peak fuel level per segment, count consumption
-        // as (peak - trough) between refuels. This prevents oscillation double-counting.
-        // Example: [50,48,50,47,50,45] → old: 2+3+5=10%, new: 50-45=5% (correct)
-        decimal totalFuelConsumedPercent = 0;
+        // ===== 5. Calculate fuel consumption =====
+        // Priority: 1) FMS CAN bus  2) FuelRaw % drops (ratchet)  3) Vehicle-type default
+        // Ratchet pattern from monthly fleet report: lastFuel only updated on drops & refuels,
+        // NOT on positive noise → prevents oscillation double-counting.
+        decimal totalFuelConsumedLiters = 0;
+        decimal avgConsumption = 0;
+        bool useEstimation = false;
         bool hasFuelData = false;
         var dailyConsumption = new Dictionary<DateTime, (decimal fuelPercent, int distance)>();
         var refuels = new List<FuelRefillEventDto>();
 
-        // Collapse consecutive positions with same fuel level (keep first and last)
-        var fuelChanges = CollapseFuelReadings(positions);
-
-        if (fuelChanges.Count >= 2)
+        // Sanity thresholds by vehicle type
+        var maxReasonable = vehicleType switch
         {
-            int segPeak = fuelChanges[0].FuelPercent;
-            DateTime segStartDate = fuelChanges[0].RecordedAt;
+            "camion" or "bus" => 50m,
+            "camionnette" or "fourgon" or "utilitaire" or "minibus" => 25m,
+            _ => 20m
+        };
 
-            for (int i = 1; i < fuelChanges.Count; i++)
+        // === SOURCE 1: FMS CAN bus FuelRateLPer100Km (most accurate) ===
+        if (fmsRates.Count >= 5 && totalDistance > 0)
+        {
+            // Trimmed mean: exclude top/bottom 10% outliers
+            var sorted = fmsRates.OrderBy(r => r).ToList();
+            var trimCount = Math.Max(1, sorted.Count / 10);
+            var trimmed = sorted.Skip(trimCount).Take(sorted.Count - 2 * trimCount).ToList();
+            var fmsRate = (decimal)(trimmed.Any() ? trimmed.Average() : sorted.Average());
+
+            // Sanity check: reject if result is clearly wrong (< 2 or > max L/100km)
+            if (fmsRate >= 2m && fmsRate <= maxReasonable)
             {
-                var prev = fuelChanges[i - 1];
-                var curr = fuelChanges[i];
-                var fuelDelta = curr.FuelPercent - prev.FuelPercent;
+                avgConsumption = fmsRate;
+                totalFuelConsumedLiters = (avgConsumption / 100m) * totalDistance;
+                hasFuelData = true;
 
-                // Detect refuel: fuel went up >= 10%
-                if (fuelDelta >= 10)
+                dailyConsumption = await BuildDailyFromGps(
+                    vehicle.GpsDeviceId.Value, startDateUtc, endDateUtc, avgConsumption, cancellationToken);
+            }
+        }
+
+        // === SOURCE 2: FuelRaw sensor % drops (ratchet pattern) ===
+        if (!hasFuelData && positions.Count >= 3)
+        {
+            var tankCap = (decimal)tankCapacity;
+            int lastFuel = positions[0].FuelPercent;
+            decimal totalDropPercent = 0;
+
+            for (int i = 1; i < positions.Count; i++)
+            {
+                var curr = positions[i];
+                var currFuel = curr.FuelPercent;
+                var delta = currFuel - lastFuel;
+
+                // Detect refuel: fuel went up >= 10% from last low
+                if (delta >= 10)
                 {
-                    // Close current segment: consumption = peak - level before refuel
-                    var segDrop = segPeak - prev.FuelPercent;
-                    if (segDrop > 0 && segDrop < 50)
-                    {
-                        totalFuelConsumedPercent += segDrop;
-                        hasFuelData = true;
-                        var date = prev.RecordedAt.Date;
-                        if (!dailyConsumption.ContainsKey(date))
-                            dailyConsumption[date] = (0, 0);
-                        var (ep, ed) = dailyConsumption[date];
-                        dailyConsumption[date] = (ep + segDrop, ed);
-                    }
-
-                    // Record refuel event
-                    var addedLiters = (fuelDelta / 100m) * tankCapacity;
+                    var addedLiters = (delta / 100m) * tankCap;
                     var priceForRefuel = fuelPrices.GetValueOrDefault(fuelType, 0);
                     refuels.Add(new FuelRefillEventDto(
                         Timestamp: curr.RecordedAt,
@@ -179,115 +200,58 @@ public class FuelCalculationService : IFuelCalculationService
                         Latitude: curr.Latitude,
                         Longitude: curr.Longitude
                     ));
-
-                    // Start new segment at refuel level
-                    segPeak = curr.FuelPercent;
-                    segStartDate = curr.RecordedAt;
+                    lastFuel = currFuel;
                     continue;
                 }
 
-                // Track segment peak (fuel can go up slightly due to sensor noise)
-                if (curr.FuelPercent > segPeak)
-                    segPeak = curr.FuelPercent;
-            }
+                // Small positive change: sensor noise — do NOT update lastFuel
+                if (delta > 0)
+                    continue;
 
-            // Close final segment
-            var last = fuelChanges[fuelChanges.Count - 1];
-            var finalDrop = segPeak - last.FuelPercent;
-            if (finalDrop > 0 && finalDrop < 50)
-            {
-                totalFuelConsumedPercent += finalDrop;
-                hasFuelData = true;
-                var date = last.RecordedAt.Date;
-                if (!dailyConsumption.ContainsKey(date))
-                    dailyConsumption[date] = (0, 0);
-                var (ep, ed) = dailyConsumption[date];
-                dailyConsumption[date] = (ep + finalDrop, ed);
-            }
-        }
-
-        // Build daily distance from positions (for daily breakdown)
-        if (hasFuelData && positions.Count >= 2)
-        {
-            for (int i = 1; i < positions.Count; i++)
-            {
-                var prev = positions[i - 1];
-                var curr = positions[i];
-                var date = curr.RecordedAt.Date;
-                if (!dailyConsumption.ContainsKey(date))
-                    dailyConsumption[date] = (0, 0);
-
-                int segDist = 0;
-                if (prev.OdometerKm.HasValue && curr.OdometerKm.HasValue &&
-                    curr.OdometerKm.Value > prev.OdometerKm.Value)
+                // Fuel drop: count it and update lastFuel
+                var drop = -delta;
+                if (drop > 0 && drop < 50)
                 {
-                    segDist = (int)(curr.OdometerKm.Value - prev.OdometerKm.Value);
-                }
-                else
-                {
-                    var h = HaversineKm(prev.Latitude, prev.Longitude, curr.Latitude, curr.Longitude);
-                    if (h > 0.01 && h < 5 && curr.SpeedKph > 2)
-                        segDist = (int)Math.Round(h);
-                }
+                    totalDropPercent += drop;
 
-                if (segDist > 0)
-                {
+                    // Track daily consumption
+                    var date = curr.RecordedAt.Date;
+                    if (!dailyConsumption.ContainsKey(date))
+                        dailyConsumption[date] = (0, 0);
+
+                    var prev = positions[i - 1];
+                    int segDist = 0;
+                    if (prev.OdometerKm.HasValue && curr.OdometerKm.HasValue &&
+                        curr.OdometerKm.Value > prev.OdometerKm.Value)
+                        segDist = (int)(curr.OdometerKm.Value - prev.OdometerKm.Value);
+
                     var (ep, ed) = dailyConsumption[date];
-                    dailyConsumption[date] = (ep, ed + segDist);
+                    dailyConsumption[date] = (ep + drop, ed + segDist);
                 }
+                lastFuel = currFuel;
             }
 
-            // Distribute total consumption across days proportionally by distance
-            var totalDailyDist = dailyConsumption.Values.Sum(v => v.distance);
-            if (totalDailyDist > 0)
+            if (totalDropPercent > 0)
             {
-                var newDaily = new Dictionary<DateTime, (decimal fuelPercent, int distance)>();
-                foreach (var kv in dailyConsumption)
+                totalFuelConsumedLiters = (totalDropPercent / 100m) * tankCap;
+                avgConsumption = totalDistance > 0
+                    ? (totalFuelConsumedLiters / totalDistance) * 100
+                    : 0;
+
+                // Sanity check: reject if result is clearly wrong
+                if (avgConsumption >= 2m && avgConsumption <= maxReasonable)
                 {
-                    var proportion = (decimal)kv.Value.distance / totalDailyDist;
-                    var dayFuelPct = totalFuelConsumedPercent * proportion;
-                    newDaily[kv.Key] = (dayFuelPct, kv.Value.distance);
+                    hasFuelData = true;
                 }
-                dailyConsumption = newDaily;
             }
         }
 
-        // Convert percent consumed to liters
-        decimal totalFuelConsumedLiters = (totalFuelConsumedPercent / 100m) * tankCapacity;
-        decimal avgConsumption = 0;
-        bool useEstimation = false;
-
-        if (hasFuelData && totalFuelConsumedLiters > 0)
+        // === SOURCE 3: Estimation fallback (no reliable fuel data) ===
+        if (!hasFuelData)
         {
-            // Real fuel sensor data → use actual consumption
-            avgConsumption = totalDistance > 0
-                ? (totalFuelConsumedLiters / totalDistance) * 100
-                : 0;
-
-            // Sanity cap: if consumption is unrealistically high, sensor data is unreliable
-            var maxReasonable = vehicleType switch
-            {
-                "camion" or "bus" => 50m,
-                "camionnette" or "fourgon" or "utilitaire" or "minibus" => 25m,
-                _ => 20m
-            };
-            if (avgConsumption > maxReasonable && totalDistance > 50)
-            {
-                // Fall back to estimation
-                hasFuelData = false;
-                useEstimation = true;
-                avgConsumption = DefaultConsumptionRates.GetValueOrDefault(vehicleType, 8.0m);
-                totalFuelConsumedLiters = (avgConsumption / 100m) * totalDistance;
-                dailyConsumption = await BuildDailyFromGps(
-                    vehicle.GpsDeviceId.Value, startDateUtc, endDateUtc, avgConsumption, cancellationToken);
-            }
-        }
-        else if (totalDistance > 0)
-        {
-            // No fuel data → estimate from distance + default L/100km rate
             useEstimation = true;
             avgConsumption = DefaultConsumptionRates.GetValueOrDefault(vehicleType, 8.0m);
-            totalFuelConsumedLiters = (avgConsumption / 100m) * totalDistance;
+            totalFuelConsumedLiters = totalDistance > 0 ? (avgConsumption / 100m) * totalDistance : 0;
 
             dailyConsumption = await BuildDailyFromGps(
                 vehicle.GpsDeviceId.Value, startDateUtc, endDateUtc, avgConsumption, cancellationToken);
