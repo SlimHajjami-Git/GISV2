@@ -383,6 +383,25 @@ fn parse_position(buffer: &[u8], flag: NoronFlag) -> Result<NoronPosition> {
         (None, None)
     };
 
+    info!(
+        device_id = %device_id,
+        flag = %flag,
+        gps_valid,
+        alarm,
+        speed,
+        heading,
+        lon = format_args!("{:.6}", longitude),
+        lat = format_args!("{:.6}", latitude),
+        datetime = %recorded_at,
+        io_value = format_args!("0x{:02X}", io_value),
+        vol_value,
+        temp = ?temperature,
+        mileage = ?mileage,
+        raw_speed_byte = format_args!("0x{:02X}", buffer[if flag.has_ip_prefix() { 10 } else { 6 }]),
+        raw_enable_byte = format_args!("0x{:02X}", buffer[if flag.has_ip_prefix() { 8 } else { 4 }]),
+        "NORON DECODED POSITION"
+    );
+
     Ok(NoronPosition {
         gps_valid,
         alarm,
@@ -473,6 +492,15 @@ fn noron_position_to_hh_frame(pos: &NoronPosition, flag: NoronFlag) -> HhFrame {
         "NORON:{} lat={:.6} lon={:.6} spd={} hdg={} alarm={} io={} vol={}",
         flag, pos.latitude, pos.longitude, pos.speed, pos.heading,
         pos.alarm, pos.io_value, pos.vol_value
+    );
+
+    info!(
+        device_id = %pos.device_id,
+        speed_kph,
+        ignition_on,
+        heading_deg,
+        is_valid = pos.gps_valid,
+        "NORON FRAME → pipeline"
     );
 
     HhFrame {
