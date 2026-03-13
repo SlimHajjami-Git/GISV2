@@ -420,6 +420,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.loadGeofences();
     this.loadCostData();
     this.loadWidgetData();
+    this.loadFuelConsumption();
     this.loadAlerts();
     this.loadTrips();
     this.loadDrivers();
@@ -438,7 +439,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.buildMotionData();
         this.buildHealthData();
         this.buildTopUnits();
-        this.loadFuelDataFromTrips();
         this.cdr.detectChanges();
       },
       error: (err) => console.error('Error loading vehicles:', err)
@@ -514,14 +514,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
           });
           this.drivingScores = flat.sort((a, b) => b.score - a.score);
         }
-        if (data.topFuelConsumers?.length) {
-          this.vehicleFuelStats = data.topFuelConsumers.map((v: any) => ({
-            plate: v.plate, consumption: v.consumption || 0,
-            totalLiters: v.totalLiters || Math.round(v.consumption * 10),
-            totalKm: v.totalKm || Math.round((v.consumption * 10) / v.consumption * 100)
-          }));
-          this.maxFuelConsumption = Math.max(...this.vehicleFuelStats.map(v => v.consumption), 1);
-        }
         this.cdr.detectChanges();
       },
       error: (err) => console.error('Error loading widget data:', err)
@@ -548,53 +540,45 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.maxMileage = Math.max(...this.topUnits.map(u => u.mileage), 1);
   }
 
-  loadFuelDataFromTrips() {
-    if (this.vehicleFuelStats.length > 0) return;
-    const today = new Date();
-    const weekAgo = new Date(today.getTime() - 7 * 86400000);
-    this.apiService.getTrips({ startDate: weekAgo, endDate: today, limit: 500 }).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (trips: any[]) => {
-        if (!trips || trips.length === 0) return;
-        // Per-vehicle fuel stats
-        const byVehicle: Record<string, { fuel: number; km: number }> = {};
-        // Per-day fuel for chart
-        const byDay: Record<string, number> = {};
-        for (const t of trips) {
-          const plate = t.vehicle?.plate || t.vehicle?.name || t.plate || 'Inconnu';
-          const fuel = Number(t.fuelConsumedLiters || t.FuelConsumedLiters || 0);
-          const km = Number(t.distanceKm || t.DistanceKm || 0);
-          if (!byVehicle[plate]) byVehicle[plate] = { fuel: 0, km: 0 };
-          byVehicle[plate].fuel += fuel;
-          byVehicle[plate].km += km;
-          const day = (t.startTime || t.StartTime || '').toString().split('T')[0];
-          if (day) byDay[day] = (byDay[day] || 0) + fuel;
+  loadFuelConsumption() {
+    this.apiService.getDashboardFuelConsumption(30).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (data: any) => {
+        if (!data) return;
+        // Per-vehicle fuel stats from real FuelCalculationService
+        if (data.vehicleStats?.length) {
+          this.vehicleFuelStats = data.vehicleStats.map((v: any) => ({
+            plate: v.plate || 'Inconnu',
+            consumption: Number(v.consumption) || 0,
+            totalLiters: Math.round(Number(v.totalLiters) || 0),
+            totalKm: Math.round(Number(v.totalKm) || 0)
+          }));
+          this.maxFuelConsumption = Math.max(...this.vehicleFuelStats.map(v => v.consumption), 1);
         }
-        // Build per-vehicle stats
-        this.vehicleFuelStats = Object.entries(byVehicle)
-          .filter(([, v]) => v.km > 0)
-          .map(([plate, v]) => ({
-            plate, consumption: Math.round((v.fuel / v.km) * 1000) / 10,
-            totalLiters: Math.round(v.fuel), totalKm: Math.round(v.km)
-          }))
-          .sort((a, b) => b.consumption - a.consumption)
-          .slice(0, 10);
-        this.maxFuelConsumption = Math.max(...this.vehicleFuelStats.map(v => v.consumption), 1);
-        // Build fleet chart from daily fuel
-        this.totalFuelConsumed = Object.values(byDay).reduce((s, v) => s + v, 0) || this.totalFuelConsumed;
-        const dayKeys = Array.from({length: 7}, (_, i) => {
-          const d = new Date(today.getTime() - (6 - i) * 86400000);
-          return d.toISOString().split('T')[0];
-        });
-        const dailyValues = dayKeys.map(k => byDay[k] || 0);
-        const maxVal = Math.max(...dailyValues, 1);
-        this.fuelChartPoints = dailyValues.map((v, i) => {
-          const x = (i / 6) * 500;
-          const y = 155 - (v / maxVal) * 150;
-          return `${x.toFixed(0)},${y.toFixed(0)}`;
-        }).join(' ');
+        // Fleet totals
+        if (data.fleetTotalLiters > 0) this.totalFuelConsumed = Math.round(data.fleetTotalLiters);
+        // Build fleet chart from real daily data
+        if (data.chartValues?.length) {
+          const values = data.chartValues as number[];
+          const maxVal = Math.max(...values, 0.1);
+          this.fuelChartPoints = values.map((v: number, i: number) => {
+            const x = values.length > 1 ? (i / (values.length - 1)) * 500 : 250;
+            const y = 155 - (v / maxVal) * 150;
+            return `${x.toFixed(0)},${y.toFixed(0)}`;
+          }).join(' ');
+          // Update labels to match chart days
+          if (data.chartDays?.length) {
+            const step = Math.max(1, Math.floor(data.chartDays.length / 7));
+            this.fuelChartLabels = (data.chartDays as string[])
+              .filter((_: string, i: number) => i % step === 0 || i === data.chartDays.length - 1)
+              .map((d: string) => {
+                const parts = d.split('-');
+                return parts.length >= 3 ? `${parts[2]}/${parts[1]}` : d;
+              });
+          }
+        }
         this.cdr.detectChanges();
       },
-      error: () => {}
+      error: (err) => console.error('Error loading fuel consumption:', err)
     });
   }
 

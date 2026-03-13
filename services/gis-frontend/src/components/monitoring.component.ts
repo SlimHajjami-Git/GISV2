@@ -265,10 +265,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.loadDataController.abort();
     }
     // Clean up all maps defensively (try/catch to avoid "container already in use" errors)
-    if (this.playbackOverlayMap) {
+    // playbackOverlayMap may be the same instance as playbackSetupMap, avoid double-remove
+    if (this.playbackOverlayMap && this.playbackOverlayMap !== this.playbackSetupMap) {
       try { this.playbackOverlayMap.remove(); } catch(e) {}
-      this.playbackOverlayMap = null;
     }
+    this.playbackOverlayMap = null;
     if (this.playbackSetupMap) {
       try { this.playbackSetupMap.remove(); } catch(e) {}
       this.playbackSetupMap = null;
@@ -3100,23 +3101,28 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // ═══════ PLAYBACK OVERLAY MAP ═══════
 
   initPlaybackOverlayMap() {
-    const mapEl = document.getElementById('playback-map');
-    if (!mapEl) { console.error('[Playback] playback-map element not found'); return; }
+    // Reuse the setup map for playback instead of creating a separate overlay
+    if (!this.playbackSetupMap) {
+      console.error('[Playback] playbackSetupMap not available');
+      return;
+    }
 
-    const startPos = this.playbackPositions[0];
-    const center: L.LatLngExpression = startPos ? [startPos.latitude, startPos.longitude] : [36.8, 10.18];
-
-    this.playbackOverlayMap = L.map(mapEl, {
-      center,
-      zoom: 15,
-      zoomControl: false,
-      attributionControl: false
+    // Clear existing markers (vehicle dots) from setup map
+    this.playbackSetupMap.eachLayer((layer: L.Layer) => {
+      if (layer instanceof L.CircleMarker || layer instanceof L.Marker) {
+        this.playbackSetupMap!.removeLayer(layer);
+      }
     });
 
-    // Apply current map style
-    this.applyTileLayer(this.playbackOverlayMap);
+    // Center on first position
+    const startPos = this.playbackPositions[0];
+    if (startPos) {
+      this.playbackSetupMap.setView([startPos.latitude, startPos.longitude], 15);
+    }
 
-    // Swap this.map to overlay map so all existing playback methods work
+    // Store as overlay map reference and swap this.map
+    this.playbackOverlayMap = this.playbackSetupMap;
+    this.monitoringMap = this.map;
     this.map = this.playbackOverlayMap;
   }
 
@@ -3336,7 +3342,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // Reset stop marker counter
     this.stopMarkerCount = 0;
 
-    // Clear route display on overlay map before destroying it
+    // Clear route display on the map
     this.clearRouteDisplay();
     
     if (this.playbackMarker) {
@@ -3344,9 +3350,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.playbackMarker = null;
     }
 
-    // Destroy overlay map and restore monitoring map
+    // Don't destroy overlay map - it's the same as setup map now
+    // Just clear the reference and restore monitoring map
     if (this.playbackOverlayMap) {
-      this.playbackOverlayMap.remove();
+      // Clear all non-tile layers (route, markers, etc.)
+      this.playbackOverlayMap.eachLayer((layer: L.Layer) => {
+        if (!(layer instanceof L.TileLayer)) {
+          this.playbackOverlayMap!.removeLayer(layer);
+        }
+      });
       this.playbackOverlayMap = null;
     }
     if (this.monitoringMap) {

@@ -8,6 +8,7 @@ using GisAPI.Domain.Entities;
 using GisAPI.Application.Features.Dashboard.Queries.GetDashboardKpis;
 using GisAPI.Application.Features.Dashboard.Queries.GetDashboardCharts;
 using GisAPI.Application.Features.Dashboard.Queries.GetFleetStatistics;
+using GisAPI.Application.Common.Interfaces;
 using GisAPI.Services;
 
 namespace GisAPI.Controllers;
@@ -26,14 +27,16 @@ public class DashboardController : ControllerBase
     private readonly IMediator _mediator;
     private readonly IMemoryCache _cache;
     private readonly IVehicleHealthScoreService _healthService;
+    private readonly IFuelCalculationService _fuelCalcService;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
 
-    public DashboardController(GisDbContext context, IMediator mediator, IMemoryCache cache, IVehicleHealthScoreService healthService)
+    public DashboardController(GisDbContext context, IMediator mediator, IMemoryCache cache, IVehicleHealthScoreService healthService, IFuelCalculationService fuelCalcService)
     {
         _context = context;
         _mediator = mediator;
         _cache = cache;
         _healthService = healthService;
+        _fuelCalcService = fuelCalcService;
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
@@ -380,6 +383,101 @@ public class DashboardController : ControllerBase
                 break;
         }
         return (start, end, prevStart, prevEnd);
+    }
+
+    /// <summary>
+    /// Get real fuel consumption data per vehicle using FuelCalculationService
+    /// Uses GPS fuel sensor data (fuel_records + gps_positions.FuelRaw) with sensor mode logic
+    /// </summary>
+    [HttpGet("fuel-consumption")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult> GetFuelConsumption([FromQuery] int days = 30)
+    {
+        var companyId = GetCompanyId();
+        var cacheKey = $"dashboard_fuel_{companyId}_{days}";
+        if (_cache.TryGetValue(cacheKey, out object? cached) && cached != null)
+            return Ok(cached);
+
+        var endDate = DateTime.UtcNow;
+        var startDate = endDate.AddDays(-days);
+
+        // Get fuel prices for this company
+        var now = DateTime.UtcNow;
+        var fuelPrices = await _context.FuelPricings
+            .Where(fp => fp.CompanyId == companyId && fp.IsActive &&
+                         fp.EffectiveFrom <= now &&
+                         (fp.EffectiveTo == null || fp.EffectiveTo > now))
+            .Join(_context.FuelTypes, fp => fp.FuelTypeId, ft => ft.Id,
+                  (fp, ft) => new { ft.Code, fp.PricePerLiter })
+            .ToListAsync();
+        var priceDict = fuelPrices.ToDictionary(p => p.Code.ToLower(), p => p.PricePerLiter);
+
+        // Get all vehicles with GPS devices
+        var vehicles = await _context.Vehicles.AsNoTracking()
+            .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue)
+            .Include(v => v.GpsDevice)
+            .ToListAsync();
+
+        var vehicleStats = new List<object>();
+        decimal fleetTotalLiters = 0;
+        int fleetTotalKm = 0;
+        var dailyFleetFuel = new Dictionary<string, decimal>();
+
+        foreach (var vehicle in vehicles)
+        {
+            try
+            {
+                var expense = await _fuelCalcService.CalculateVehicleFuelExpenseAsync(
+                    vehicle, startDate, endDate, priceDict);
+                if (expense == null) continue;
+
+                vehicleStats.Add(new
+                {
+                    plate = expense.Plate ?? expense.VehicleName,
+                    consumption = expense.AverageConsumptionPer100Km,
+                    totalLiters = expense.TotalFuelConsumedLiters,
+                    totalKm = expense.TotalDistanceKm,
+                    isEstimated = expense.IsEstimated
+                });
+
+                fleetTotalLiters += expense.TotalFuelConsumedLiters;
+                fleetTotalKm += expense.TotalDistanceKm;
+
+                // Aggregate daily fuel for fleet chart
+                foreach (var d in expense.DailyConsumption)
+                {
+                    var dayKey = d.Date.ToString("yyyy-MM-dd");
+                    dailyFleetFuel[dayKey] = dailyFleetFuel.GetValueOrDefault(dayKey) + d.FuelConsumedLiters;
+                }
+            }
+            catch { /* skip vehicles with errors */ }
+        }
+
+        // Sort by consumption desc
+        vehicleStats = vehicleStats
+            .OrderByDescending(v => ((dynamic)v).consumption)
+            .ToList();
+
+        // Build daily chart data (last N days)
+        var chartDays = Enumerable.Range(0, Math.Min(days, 30))
+            .Select(i => endDate.AddDays(-((Math.Min(days, 30) - 1) - i)).ToString("yyyy-MM-dd"))
+            .ToList();
+        var chartValues = chartDays.Select(d => Math.Round(dailyFleetFuel.GetValueOrDefault(d), 2)).ToList();
+
+        var result = new
+        {
+            vehicleStats,
+            fleetTotalLiters = Math.Round(fleetTotalLiters, 2),
+            fleetTotalKm,
+            fleetAvgConsumption = fleetTotalKm > 0
+                ? Math.Round((fleetTotalLiters / fleetTotalKm) * 100, 2)
+                : 0m,
+            chartDays,
+            chartValues
+        };
+
+        _cache.Set(cacheKey, result, CacheDuration);
+        return Ok(result);
     }
 
     #endregion
