@@ -49,6 +49,7 @@ public class FuelCalculationService : IFuelCalculationService
         var tankCapacity = vehicle.FuelTankCapacity ?? 60;
         var fuelType = vehicle.FuelType?.ToLower() ?? "diesel";
         var vehicleType = vehicle.Type?.ToLower() ?? "berline";
+        var sensorMode = vehicle.GpsDevice.FuelSensorMode?.ToLower() ?? "percent";
 
         var startDateUtc = startDate.Kind == DateTimeKind.Utc ? startDate : startDate.ToUniversalTime();
         var endDateUtc = endDate.Kind == DateTimeKind.Utc ? endDate : endDate.ToUniversalTime();
@@ -56,22 +57,46 @@ public class FuelCalculationService : IFuelCalculationService
         // ===== 1. Get GPS positions with fuel data (primary source — granular per-position) =====
         // fuel_records table only has significant events (refuels, theft, spikes).
         // gps_positions.fuelRaw has every 1% change — much more accurate for consumption.
+        // Filter range depends on sensor mode:
+        //   percent  → 0-100  (FuelRaw is 0-100%)
+        //   raw_255  → 0-255  (FuelRaw is 0-255 raw ADC value)
+        //   liters   → 0-tank (FuelRaw is actual liters)
+        int maxRawValue = sensorMode switch
+        {
+            "raw_255" => 255,
+            "liters" => (int)(tankCapacity * 1.2m), // Allow slight overfill
+            _ => 100 // percent
+        };
+
         var rawPositions = await _context.GpsPositions
             .Where(p => p.DeviceId == vehicle.GpsDeviceId.Value &&
                         p.RecordedAt >= startDateUtc &&
                         p.RecordedAt <= endDateUtc &&
-                        p.FuelRaw != null && p.FuelRaw >= 0 && p.FuelRaw <= 100)
+                        p.FuelRaw != null && p.FuelRaw >= 0 && p.FuelRaw <= maxRawValue)
             .OrderBy(p => p.RecordedAt)
             .Select(p => new FuelPositionSlim
             {
                 RecordedAt = p.RecordedAt,
-                FuelPercent = p.FuelRaw!.Value,
+                FuelPercent = p.FuelRaw!.Value, // Will be converted to actual % below
                 OdometerKm = p.OdometerKm,
                 Latitude = p.Latitude,
                 Longitude = p.Longitude,
                 SpeedKph = p.SpeedKph ?? 0
             })
             .ToListAsync(cancellationToken);
+
+        // Convert raw sensor values to actual percent (0-100) based on sensor mode
+        if (sensorMode == "raw_255")
+        {
+            foreach (var pos in rawPositions)
+                pos.FuelPercent = (int)Math.Round(pos.FuelPercent / 255.0 * 100.0);
+        }
+        else if (sensorMode == "liters")
+        {
+            foreach (var pos in rawPositions)
+                pos.FuelPercent = (int)Math.Round((double)pos.FuelPercent / (double)tankCapacity * 100.0);
+        }
+        // For "percent" mode, FuelRaw is already 0-100 — no conversion needed
 
         // ===== 2. Binary oscillation detection: broken sensors that only report 0 and 100 =====
         if (rawPositions.Count >= 4)

@@ -1025,11 +1025,13 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Filter vehicles for the playback setup panel search
   getPlaybackFilteredVehicles(): Vehicle[] {
+    // Filter out vehicles with no plate and no name (would show as empty in dropdown)
+    const valid = this.vehicles.filter(v => v.plate?.trim() || v.name?.trim());
     if (!this.playbackVehicleSearch || this.playbackVehicleSearch.trim() === '') {
-      return this.vehicles;
+      return valid;
     }
     const q = this.playbackVehicleSearch.toLowerCase().trim();
-    return this.vehicles.filter(v =>
+    return valid.filter(v =>
       (v.plate && v.plate.toLowerCase().includes(q)) ||
       (v.name && v.name.toLowerCase().includes(q)) ||
       (v.brand && v.brand.toLowerCase().includes(q)) ||

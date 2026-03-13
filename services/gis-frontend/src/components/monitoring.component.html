@@ -359,43 +359,15 @@
           <span class="playback-panel-subtitle">Historique des déplacements</span>
         </div>
 
-        <!-- Vehicle search -->
+        <!-- Vehicle dropdown -->
         <div class="playback-panel-section" *ngIf="!isPlaybackLoaded">
-          <div class="playback-dropdown-header" (click)="playbackVehicleDropdownOpen = !playbackVehicleDropdownOpen">
-            <label class="playback-label" style="margin-bottom:0;cursor:pointer">Véhicule</label>
-            <div class="playback-dropdown-right">
-              <span class="playback-selected-badge" *ngIf="playbackVehicleSelect && !playbackVehicleDropdownOpen">
-                {{ getPlaybackSelectedVehicleName() }}
-              </span>
-              <svg class="playback-dropdown-arrow" [class.open]="playbackVehicleDropdownOpen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-            </div>
-          </div>
-          <div class="playback-vehicle-dropdown-body" *ngIf="playbackVehicleDropdownOpen">
-            <div class="playback-vehicle-search">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-              <input type="text" placeholder="Rechercher un véhicule..." [(ngModel)]="playbackVehicleSearch" class="playback-search-input">
-            </div>
-            <div class="playback-vehicle-list">
-              <div class="playback-vehicle-card"
-                   *ngFor="let v of getPlaybackFilteredVehicles()"
-                   [class.selected]="playbackVehicleSelect === v.id"
-                   (click)="playbackVehicleSelect = v.id; playbackVehicleDropdownOpen = false">
-                <div class="playback-vehicle-icon" [ngClass]="getStatusColorClass(v)">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><polygon points="16 8 20 12 16 16"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="13.5" cy="18.5" r="2.5"/></svg>
-                </div>
-                <div class="playback-vehicle-info">
-                  <span class="playback-vehicle-plate">{{ v.plate || v.name }}</span>
-                  <span class="playback-vehicle-model">{{ v.brand }} {{ v.model }}</span>
-                </div>
-                <div class="playback-vehicle-check" *ngIf="playbackVehicleSelect === v.id">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                </div>
-              </div>
-              <div class="playback-vehicle-empty" *ngIf="getPlaybackFilteredVehicles().length === 0">
-                Aucun véhicule trouvé
-              </div>
-            </div>
-          </div>
+          <label class="playback-label">Véhicule</label>
+          <select class="playback-vehicle-select" [(ngModel)]="playbackVehicleSelect">
+            <option [ngValue]="null" disabled>-- Choisir un véhicule --</option>
+            <option *ngFor="let v of getPlaybackFilteredVehicles()" [ngValue]="v.id">
+              {{ v.plate || v.name }}{{ v.brand ? ' - ' + v.brand : '' }}{{ v.model ? ' ' + v.model : '' }}
+            </option>
+          </select>
         </div>
 
         <!-- Date range -->

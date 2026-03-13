@@ -60,39 +60,28 @@
   margin: 2px 4px;
 }
 
-/* Collapsible vehicle dropdown */
-.playback-dropdown-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-  padding: 2px 0;
-}
-.playback-dropdown-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.playback-selected-badge {
-  font-size: 11px;
+/* Vehicle dropdown select */
+.playback-vehicle-select {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 13px;
   font-weight: 600;
-  color: #6366f1;
-  background: #eef2ff;
-  padding: 3px 8px;
-  border-radius: 4px;
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: #1e293b;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  appearance: auto;
+  transition: border-color 0.15s;
 }
-.playback-dropdown-arrow {
-  transition: transform 0.2s;
+.playback-vehicle-select:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
 }
-.playback-dropdown-arrow.open {
-  transform: rotate(180deg);
-}
-.playback-vehicle-dropdown-body {
-  margin-top: 8px;
+.playback-vehicle-select option {
+  padding: 8px;
+  font-size: 13px;
 }
 
 .playback-panel {
