@@ -1559,15 +1559,19 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         while (i < positions.length && positions[i].ignitionOn === false) i++;
         const endIdx = Math.max(startIdx, i - 1);
         const startTime = new Date(positions[startIdx].recordedAt);
-        const endTime = new Date(positions[endIdx].recordedAt);
+        // Use the NEXT point's time (first ON point) as the real stop end,
+        // because the vehicle is still stopped during any data gap
+        const realEndTime = (i < positions.length)
+          ? new Date(positions[i].recordedAt)
+          : new Date(positions[endIdx].recordedAt);
         this.playbackTimeline.push({
           type: 'stop',
           startIndex: startIdx,
           endIndex: endIdx,
           startTime,
-          endTime,
+          endTime: realEndTime,
           distance: 0,
-          durationMs: endTime.getTime() - startTime.getTime()
+          durationMs: realEndTime.getTime() - startTime.getTime()
         });
       } else {
         // Trip period (ignition ON)
