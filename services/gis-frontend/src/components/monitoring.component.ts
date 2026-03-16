@@ -10,6 +10,7 @@ import { Vehicle } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { AdminService } from '../admin/services/admin.service';
 import { getVehicleIcon } from './shared/vehicle-icons';
+import { PlaybackStateService, PlaybackTimelineEntry } from '../services/playback-state.service';
 import * as L from 'leaflet';
 import 'leaflet-routing-machine';
 
@@ -155,12 +156,17 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Address cache for reverse geocoding
   private addressCache = new Map<string, string>();
 
+  // Trip/stop timeline for progressive display in the panel
+  playbackTimeline: PlaybackTimelineEntry[] = [];
+  private _pendingPlaybackRestore = false;
+
   constructor(
     private router: Router,
     private route: ActivatedRoute,
     private apiService: ApiService,
     private signalRService: SignalRService,
     private geocodingService: GeocodingService,
+    private playbackStateService: PlaybackStateService,
     private cdr: ChangeDetectorRef,
     private ngZone: NgZone,
     private appRef: ApplicationRef,
@@ -178,6 +184,29 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // Detect if we're on the /playback route
     if (this.route.snapshot.data['view'] === 'playback') {
       this.monitoringView = 'playback';
+    }
+
+    // Restore saved playback state if returning to playback page
+    if (this.monitoringView === 'playback' && this.playbackStateService.hasState()) {
+      const saved = this.playbackStateService.restore();
+      if (saved) {
+        this.playbackVehicleSelect = saved.vehicleId;
+        this.playbackFromDate = saved.fromDate;
+        this.playbackToDate = saved.toDate;
+        this.playbackPositions = saved.positions;
+        this.playbackIndex = saved.index;
+        this.playbackProgress = saved.progress;
+        this.playbackSpeed = saved.speed;
+        this.playbackTimeline = saved.timeline;
+        this.matchedRouteCoords = saved.matchedRouteCoords.map(c => L.latLng(c.lat, c.lng));
+        this.segmentBoundaries = saved.segmentBoundaries;
+        this.playbackDataGaps = new Set(saved.dataGaps);
+        this.stopMarkerCount = saved.stopMarkerCount;
+        this.isPlaybackLoaded = true;
+        this.playbackStateService.clear();
+        // selectedVehicle will be set after vehicles load
+        this._pendingPlaybackRestore = true;
+      }
     }
 
     // Set default playback dates to last 24 hours
@@ -240,12 +269,53 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   ngAfterViewInit() {
     if (this.monitoringView === 'playback') {
       this.initPlaybackSetupMap();
+      // If restoring saved state, redraw the route after map is ready
+      if (this._pendingPlaybackRestore) {
+        this._pendingPlaybackRestore = false;
+        setTimeout(() => {
+          this.initPlaybackOverlayMap();
+          this.drawPlaybackRoute();
+          // Redraw the progress trace up to saved index
+          this.redrawProgressToCurrentIndex();
+          // Place stop markers up to current index
+          this.placeStopMarkersUpToIndex(this.playbackIndex);
+          this.updatePlaybackMarker();
+          this.updatePlaybackAddress();
+          // Set selectedVehicle from loaded vehicles
+          if (this.playbackVehicleSelect) {
+            const v = this.vehicles.find(v => v.id === this.playbackVehicleSelect);
+            if (v) this.selectedVehicle = v;
+          }
+          this.cdr.detectChanges();
+        }, 200);
+      }
     } else {
       this.initializeMap();
     }
   }
 
   ngOnDestroy() {
+    // Save playback state if active so it can be restored on return
+    if (this.monitoringView === 'playback' && this.isPlaybackLoaded && this.playbackPositions.length > 0) {
+      this.stopPlaybackAnimation();
+      this.isPlaying = false;
+      this.playbackStateService.save({
+        vehicleId: this.playbackVehicleSelect || '',
+        vehiclePlate: this.selectedVehicle?.plate || this.selectedVehicle?.name || '',
+        fromDate: this.playbackFromDate,
+        toDate: this.playbackToDate,
+        positions: this.playbackPositions,
+        index: this.playbackIndex,
+        progress: this.playbackProgress,
+        speed: this.playbackSpeed,
+        isLoaded: true,
+        timeline: this.playbackTimeline,
+        matchedRouteCoords: this.matchedRouteCoords.map(c => ({ lat: c.lat, lng: c.lng })),
+        segmentBoundaries: this.segmentBoundaries,
+        dataGaps: Array.from(this.playbackDataGaps),
+        stopMarkerCount: this.stopMarkerCount
+      });
+    }
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
     }
@@ -1166,6 +1236,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           // Pre-process: consolidate rapid ignition ON/OFF toggles
           this.smoothIgnitionData();
 
+          // Build trip/stop timeline for panel display
+          this.buildPlaybackTimeline();
+
           // Process route: batch road correction via Valhalla
           this.processPlaybackRoute().then(() => {
             this.playbackLoading = false;
@@ -1470,6 +1543,139 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     }
     console.log(`[Playback] Ignition smoothing: ${offPeriods.length} raw OFF periods → ${finalOffPeriods.length} consolidated stops`);
+  }
+
+  // Build a timeline of trips and stops from playbackPositions for progressive panel display
+  private buildPlaybackTimeline() {
+    this.playbackTimeline = [];
+    const positions = this.playbackPositions;
+    if (positions.length < 2) return;
+
+    let i = 0;
+    while (i < positions.length) {
+      if (positions[i].ignitionOn === false) {
+        // Stop period
+        const startIdx = i;
+        while (i < positions.length && positions[i].ignitionOn === false) i++;
+        const endIdx = Math.max(startIdx, i - 1);
+        const startTime = new Date(positions[startIdx].recordedAt);
+        const endTime = new Date(positions[endIdx].recordedAt);
+        this.playbackTimeline.push({
+          type: 'stop',
+          startIndex: startIdx,
+          endIndex: endIdx,
+          startTime,
+          endTime,
+          distance: 0,
+          durationMs: endTime.getTime() - startTime.getTime()
+        });
+      } else {
+        // Trip period (ignition ON)
+        const startIdx = i;
+        let dist = 0;
+        while (i < positions.length && positions[i].ignitionOn !== false) {
+          if (i > startIdx) {
+            dist += this.calculateDistance(
+              positions[i - 1].latitude, positions[i - 1].longitude,
+              positions[i].latitude, positions[i].longitude
+            );
+          }
+          i++;
+        }
+        const endIdx = Math.max(startIdx, i - 1);
+        const startTime = new Date(positions[startIdx].recordedAt);
+        const endTime = new Date(positions[endIdx].recordedAt);
+        // Only add as trip if there's meaningful movement (> 50m)
+        if (dist > 50) {
+          this.playbackTimeline.push({
+            type: 'trip',
+            startIndex: startIdx,
+            endIndex: endIdx,
+            startTime,
+            endTime,
+            distance: dist,
+            durationMs: endTime.getTime() - startTime.getTime()
+          });
+        }
+      }
+    }
+    console.log(`[Playback] Timeline: ${this.playbackTimeline.length} entries (${this.playbackTimeline.filter(e => e.type === 'trip').length} trips, ${this.playbackTimeline.filter(e => e.type === 'stop').length} stops)`);
+  }
+
+  // Get timeline entries visible at current playback index
+  getVisibleTimeline(): PlaybackTimelineEntry[] {
+    return this.playbackTimeline.filter(e => e.startIndex <= this.playbackIndex);
+  }
+
+  // Format timeline duration
+  formatTimelineDuration(ms: number): string {
+    const min = Math.round(ms / 60000);
+    if (min < 60) return `${min}min`;
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return `${h}h${m > 0 ? m + 'min' : ''}`;
+  }
+
+  // Format timeline distance
+  formatTimelineDistance(meters: number): string {
+    const km = meters / 1000;
+    return km < 10 ? km.toFixed(1) : Math.round(km).toString();
+  }
+
+  // Format timeline time
+  formatTimelineTime(date: Date): string {
+    return date.toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // Redraw the progress polyline up to the current playbackIndex (used for state restore)
+  private redrawProgressToCurrentIndex() {
+    if (!this.map || this.matchedRouteCoords.length === 0) return;
+    // Determine how far into matchedRouteCoords we need to draw
+    let endRouteIdx = 0;
+    if (this.segmentBoundaries.length > 0 && this.playbackIndex < this.segmentBoundaries.length) {
+      endRouteIdx = this.segmentBoundaries[this.playbackIndex] || 0;
+    } else {
+      endRouteIdx = Math.min(this.playbackIndex, this.matchedRouteCoords.length - 1);
+    }
+    this.progressCoords = this.matchedRouteCoords.slice(0, endRouteIdx + 1);
+    if (this.progressPolyline) this.progressPolyline.remove();
+    this.progressPolyline = L.polyline(this.progressCoords, {
+      color: '#6366f1', weight: 4, opacity: 0.9
+    }).addTo(this.map);
+    this.matchedRouteIndex = endRouteIdx;
+    this.traceDrawnUpToIndex = this.playbackIndex;
+  }
+
+  // Place stop markers for all ignition OFF periods up to a given index (used for state restore)
+  private placeStopMarkersUpToIndex(maxIndex: number) {
+    if (!this.map || this.playbackPositions.length < 2) return;
+    this.stationaryMarkers.forEach(m => m.remove());
+    this.stationaryMarkers = [];
+    this.stopMarkerCount = 0;
+    let i = 0;
+    while (i < this.playbackPositions.length && i <= maxIndex) {
+      const pos = this.playbackPositions[i];
+      if (pos.ignitionOn === false) {
+        const startIdx = i;
+        while (i < this.playbackPositions.length - 1 && this.playbackPositions[i + 1].ignitionOn === false) {
+          i++;
+        }
+        if (startIdx <= maxIndex) {
+          const startTime = new Date(this.playbackPositions[startIdx].recordedAt);
+          const endTime = new Date(this.playbackPositions[i].recordedAt);
+          let fuel: number | null = null;
+          for (let j = startIdx; j <= i; j++) {
+            if (this.playbackPositions[j].fuelRaw != null) fuel = this.playbackPositions[j].fuelRaw;
+          }
+          this.placeStopMarker(
+            this.playbackPositions[startIdx].latitude,
+            this.playbackPositions[startIdx].longitude,
+            startTime, endTime, fuel
+          );
+        }
+      }
+      i++;
+    }
   }
 
   // Place stop markers for ALL ignition OFF periods at once (used by skipToEnd)
@@ -3415,6 +3621,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.isPlaybackLoaded = false;
     this.playbackPositions = [];
     this.playbackDataGaps = new Set<number>();
+    this.playbackTimeline = [];
     this.playbackIndex = 0;
     this.playbackProgress = 0;
     this.playbackCurrentAddress = '';

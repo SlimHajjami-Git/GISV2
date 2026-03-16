@@ -720,6 +720,119 @@
   color: #6366f1;
 }
 
+/* ═══════ TRIP/STOP TIMELINE ═══════ */
+.pb-timeline {
+  border-top: 1px solid #f1f5f9;
+  padding: 10px 12px 14px;
+}
+.pb-tl-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6366f1;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 8px;
+  padding: 0 2px;
+}
+.pb-tl-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 180px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99,102,241,0.15) transparent;
+}
+.pb-tl-list::-webkit-scrollbar { width: 3px; }
+.pb-tl-list::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.15); border-radius: 3px; }
+.pb-tl-item {
+  display: flex;
+  gap: 10px;
+  padding: 0;
+  min-height: 38px;
+}
+.pb-tl-dot-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 14px;
+  flex-shrink: 0;
+  padding-top: 4px;
+}
+.pb-tl-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px #e2e8f0;
+  flex-shrink: 0;
+  z-index: 1;
+}
+.pb-tl-dot.trip { background: #22c55e; box-shadow: 0 0 0 1px #bbf7d0; }
+.pb-tl-dot.stop { background: #ef4444; box-shadow: 0 0 0 1px #fecaca; }
+.pb-tl-line {
+  width: 2px;
+  flex: 1;
+  background: #e2e8f0;
+  min-height: 12px;
+}
+.pb-tl-content {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 8px;
+}
+.pb-tl-row1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.pb-tl-type {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.pb-tl-trip .pb-tl-type { color: #16a34a; }
+.pb-tl-stop .pb-tl-type { color: #dc2626; }
+.pb-tl-time {
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.pb-tl-row2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 1px;
+}
+.pb-tl-dur {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e293b;
+}
+.pb-tl-dist {
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.pb-tl-active {
+  background: #fafafe;
+  border-radius: 8px;
+  padding: 4px 6px;
+  margin: -4px -6px;
+}
+.pb-tl-active .pb-tl-dot.trip { box-shadow: 0 0 0 3px rgba(34,197,94,0.2); }
+.pb-tl-active .pb-tl-dot.stop { box-shadow: 0 0 0 3px rgba(239,68,68,0.2); }
+
 .monitoring-container {
   display: flex;
   flex: 1;

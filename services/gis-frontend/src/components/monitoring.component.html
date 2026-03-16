@@ -492,6 +492,41 @@
             <div class="pb-speeds">
               <button *ngFor="let s of playbackSpeeds" [class.active]="playbackSpeed === s" (click)="onPlaybackSpeedChange(s)">{{ s }}x</button>
             </div>
+
+            <!-- Trip/Stop timeline -->
+            <div class="pb-timeline" *ngIf="getVisibleTimeline().length > 0">
+              <div class="pb-tl-header">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span>Historique</span>
+              </div>
+              <div class="pb-tl-list">
+                <div *ngFor="let entry of getVisibleTimeline(); let idx = index"
+                     class="pb-tl-item" [class.pb-tl-trip]="entry.type === 'trip'" [class.pb-tl-stop]="entry.type === 'stop'"
+                     [class.pb-tl-active]="playbackIndex >= entry.startIndex && playbackIndex <= entry.endIndex">
+                  <div class="pb-tl-dot-col">
+                    <span class="pb-tl-dot" [class.trip]="entry.type === 'trip'" [class.stop]="entry.type === 'stop'"></span>
+                    <span class="pb-tl-line" *ngIf="idx < getVisibleTimeline().length - 1"></span>
+                  </div>
+                  <div class="pb-tl-content">
+                    <div class="pb-tl-row1">
+                      <span class="pb-tl-type" *ngIf="entry.type === 'trip'">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 17h14v-5l-2-5H7L5 12z"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>
+                        Trajet
+                      </span>
+                      <span class="pb-tl-type" *ngIf="entry.type === 'stop'">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        Arrêt
+                      </span>
+                      <span class="pb-tl-time">{{ formatTimelineTime(entry.startTime) }} — {{ formatTimelineTime(entry.endTime) }}</span>
+                    </div>
+                    <div class="pb-tl-row2">
+                      <span class="pb-tl-dur">{{ formatTimelineDuration(entry.durationMs) }}</span>
+                      <span class="pb-tl-dist" *ngIf="entry.type === 'trip'">{{ formatTimelineDistance(entry.distance) }} km</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </ng-container>
       </div>

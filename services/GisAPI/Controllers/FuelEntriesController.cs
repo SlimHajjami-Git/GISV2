@@ -13,10 +13,12 @@ namespace GisAPI.Controllers;
 public class FuelEntriesController : ControllerBase
 {
     private readonly IMediator _mediator;
+    private readonly ILogger<FuelEntriesController> _logger;
 
-    public FuelEntriesController(IMediator mediator)
+    public FuelEntriesController(IMediator mediator, ILogger<FuelEntriesController> logger)
     {
         _mediator = mediator;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -77,6 +79,8 @@ public class FuelEntriesController : ControllerBase
             }
             catch (Exception ex)
             {
+                _logger.LogWarning("BulkImport failed for plate={Plate}, fuelTypeId={FuelTypeId}, volume={Volume}, date={Date}: {Error}",
+                    request.VehiclePlate, request.FuelTypeId, request.Volume, request.InvoiceDate, ex.Message);
                 results.Add(new { Id = 0, Success = false, Error = ex.Message });
             }
         }
