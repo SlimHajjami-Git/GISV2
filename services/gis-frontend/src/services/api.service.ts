@@ -937,11 +937,12 @@ export class ApiService {
     return this.http.get<any>(`${this.API_URL}/dashboard/stats`, { headers: this.getHeaders() });
   }
 
-  getDashboardCostSummary(): Observable<any> {
+  getDashboardCostSummary(period: string = 'month'): Observable<any> {
     if (this.isMockUser()) {
       return of({ fuelCost: 0, maintenanceCost: 0, repairCost: 0, otherCost: 0, totalCost: 0 });
     }
-    return this.http.get<any>(`${this.API_URL}/dashboard/cost-summary`, { headers: this.getHeaders() });
+    const params = new HttpParams().set('period', period);
+    return this.http.get<any>(`${this.API_URL}/dashboard/cost-summary`, { headers: this.getHeaders(), params });
   }
 
   getDashboardFuelConsumption(days: number = 30): Observable<any> {

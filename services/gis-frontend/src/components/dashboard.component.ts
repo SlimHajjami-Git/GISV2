@@ -116,12 +116,13 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
           <div class="panel w1">
             <h3>Scores de conduite</h3>
             <div class="score-list" *ngIf="drivingScores.length > 0">
-              <div *ngFor="let s of drivingScores; let i = index" class="score-row">
-                <span class="score-rank">{{ i + 1 }}</span>
+              <div *ngFor="let s of pagedScores; let i = index" class="score-row">
+                <span class="score-rank">{{ scoresPage * 5 + i + 1 }}</span>
                 <span class="score-plate">{{ s.plate }}</span>
                 <div class="score-track"><div class="score-fill" [style.width.%]="s.score" [style.background]="getScoreColor(s.score)"></div></div>
                 <b [style.color]="getScoreColor(s.score)">{{ s.score }}</b>
               </div>
+              <div class="pager" *ngIf="drivingScores.length > 5"><button (click)="scoresPage=scoresPage-1" [disabled]="scoresPage===0">&lsaquo;</button><span>{{scoresPage+1}}/{{Math.ceil(drivingScores.length/5)}}</span><button (click)="scoresPage=scoresPage+1" [disabled]="(scoresPage+1)*5>=drivingScores.length">&rsaquo;</button></div>
             </div>
             <div class="empty" *ngIf="drivingScores.length === 0">Aucun score</div>
           </div>
@@ -129,12 +130,13 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
           <div class="panel w2">
             <h3>Kilometrage par vehicule</h3>
             <div class="km-list">
-              <div *ngFor="let u of topUnits" class="km-row">
+              <div *ngFor="let u of pagedUnits" class="km-row">
                 <span class="km-dot" [style.background]="u.color"></span>
                 <span class="km-name">{{ u.name }}</span>
                 <div class="km-track"><div class="km-fill" [style.width.%]="(u.mileage / maxMileage) * 100" [style.background]="u.color"></div></div>
                 <span class="km-val">{{ u.mileage | number:'1.0-0' }} km</span>
               </div>
+              <div class="pager" *ngIf="topUnits.length > 5"><button (click)="unitsPage=unitsPage-1" [disabled]="unitsPage===0">&lsaquo;</button><span>{{unitsPage+1}}/{{Math.ceil(topUnits.length/5)}}</span><button (click)="unitsPage=unitsPage+1" [disabled]="(unitsPage+1)*5>=topUnits.length">&rsaquo;</button></div>
             </div>
           </div>
         </div>
@@ -144,13 +146,14 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
           <div class="panel w2">
             <h3>Consommation par vehicule <span class="tag-muted">(L/100 km)</span></h3>
             <div class="fv-grid" *ngIf="vehicleFuelStats.length > 0">
-              <div *ngFor="let v of vehicleFuelStats" class="fv-row">
+              <div *ngFor="let v of pagedFuelStats" class="fv-row">
                 <span class="fv-plate">{{ v.plate }}</span>
                 <div class="fv-track"><div class="fv-fill" [style.width.%]="(v.consumption / maxFuelConsumption) * 100" [style.background]="getFuelColor(v.consumption)"></div></div>
                 <b class="fv-val">{{ v.consumption | number:'1.1-1' }}</b>
                 <span class="fv-extra">{{ v.totalLiters | number:'1.0-0' }} L</span>
                 <span class="fv-extra">{{ v.totalKm | number:'1.0-0' }} km</span>
               </div>
+              <div class="pager" *ngIf="vehicleFuelStats.length > 5"><button (click)="fuelPage=fuelPage-1" [disabled]="fuelPage===0">&lsaquo;</button><span>{{fuelPage+1}}/{{Math.ceil(vehicleFuelStats.length/5)}}</span><button (click)="fuelPage=fuelPage+1" [disabled]="(fuelPage+1)*5>=vehicleFuelStats.length">&rsaquo;</button></div>
             </div>
             <div class="empty" *ngIf="vehicleFuelStats.length === 0">Aucune donnee</div>
           </div>
@@ -158,13 +161,14 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
           <div class="panel w1">
             <h3>Alertes recentes <span class="badge-alert">{{ alerts.length }}</span></h3>
             <div class="alert-list" *ngIf="alerts.length > 0">
-              <div *ngFor="let a of alerts" class="alert-row">
+              <div *ngFor="let a of pagedAlerts" class="alert-row">
                 <span class="alert-icon" [class.alert-warn]="a.severity === 'warning'" [class.alert-danger]="a.severity === 'danger'" [class.alert-info]="a.severity === 'info'">&#9679;</span>
                 <div class="alert-body">
                   <span class="alert-msg">{{ a.message }}</span>
                   <span class="alert-time">{{ a.time }}</span>
                 </div>
               </div>
+              <div class="pager" *ngIf="alerts.length > 5"><button (click)="alertsPage=alertsPage-1" [disabled]="alertsPage===0">&lsaquo;</button><span>{{alertsPage+1}}/{{Math.ceil(alerts.length/5)}}</span><button (click)="alertsPage=alertsPage+1" [disabled]="(alertsPage+1)*5>=alerts.length">&rsaquo;</button></div>
             </div>
             <div class="empty" *ngIf="alerts.length === 0">Aucune alerte</div>
           </div>
@@ -175,7 +179,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
           <div class="panel w2">
             <h3>Derniers trajets</h3>
             <div class="trip-list" *ngIf="recentTrips.length > 0">
-              <div *ngFor="let t of recentTrips" class="trip-row">
+              <div *ngFor="let t of pagedTrips" class="trip-row">
                 <span class="trip-icon">&#9654;</span>
                 <div class="trip-body">
                   <span class="trip-plate">{{ t.plate }}</span>
@@ -183,6 +187,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
                 </div>
                 <span class="trip-date">{{ t.date }}</span>
               </div>
+              <div class="pager" *ngIf="recentTrips.length > 5"><button (click)="tripsPage=tripsPage-1" [disabled]="tripsPage===0">&lsaquo;</button><span>{{tripsPage+1}}/{{Math.ceil(recentTrips.length/5)}}</span><button (click)="tripsPage=tripsPage+1" [disabled]="(tripsPage+1)*5>=recentTrips.length">&rsaquo;</button></div>
             </div>
             <div class="empty" *ngIf="recentTrips.length === 0">Aucun trajet</div>
           </div>
@@ -190,7 +195,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
           <div class="panel w1">
             <h3>Conducteurs <span class="tag-muted">{{ drivers.length }} actifs</span></h3>
             <div class="driver-list" *ngIf="drivers.length > 0">
-              <div *ngFor="let d of drivers" class="driver-row">
+              <div *ngFor="let d of pagedDrivers" class="driver-row">
                 <span class="driver-avatar">{{ d.initials }}</span>
                 <div class="driver-body">
                   <span class="driver-name">{{ d.name }}</span>
@@ -198,6 +203,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
                 </div>
                 <span class="driver-status" [class.active]="d.active">{{ d.active ? 'Actif' : 'Inactif' }}</span>
               </div>
+              <div class="pager" *ngIf="drivers.length > 5"><button (click)="driversPage=driversPage-1" [disabled]="driversPage===0">&lsaquo;</button><span>{{driversPage+1}}/{{Math.ceil(drivers.length/5)}}</span><button (click)="driversPage=driversPage+1" [disabled]="(driversPage+1)*5>=drivers.length">&rsaquo;</button></div>
             </div>
             <div class="empty" *ngIf="drivers.length === 0">Aucun conducteur</div>
           </div>
@@ -368,6 +374,20 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     }
     .driver-status.active { background: #f0fdf4; color: #22c55e; }
 
+    /* Pagination */
+    .pager {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      margin-top: 6px; padding-top: 6px; border-top: 1px solid #f1f5f9;
+    }
+    .pager button {
+      width: 24px; height: 24px; border: 1px solid #e2e8f0; border-radius: 4px;
+      background: #fff; color: #3b82f6; font-size: 14px; font-weight: 700;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    .pager button:disabled { color: #cbd5e1; cursor: default; }
+    .pager button:hover:not(:disabled) { background: #f8fafc; }
+    .pager span { font-size: 11px; color: #64748b; }
+
     /* Responsive */
     @media (max-width: 1000px) {
       .row { flex-direction: column; }
@@ -383,6 +403,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   fromDate = '';
   toDate = '';
 
+  Math = Math;
   motionData = { stationary: 0, ignitionOn: 0, moving: 0, movingIgnition: 0, lbs: 0, wifi: 0, noState: 0, noCoords: 0 };
   healthData = { healthy: 0, attention: 0, unhealthy: 0 };
   geofences: { name: string; color: string; count: number }[] = [];
@@ -398,6 +419,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   alerts: { message: string; severity: string; time: string }[] = [];
   recentTrips: { plate: string; distance: string; duration: string; date: string }[] = [];
   drivers: { name: string; initials: string; vehicle: string; active: boolean }[] = [];
+
+  scoresPage = 0; unitsPage = 0; fuelPage = 0; alertsPage = 0; tripsPage = 0; driversPage = 0;
+  get pagedScores() { return this.drivingScores.slice(this.scoresPage * 5, this.scoresPage * 5 + 5); }
+  get pagedUnits() { return this.topUnits.slice(this.unitsPage * 5, this.unitsPage * 5 + 5); }
+  get pagedFuelStats() { return this.vehicleFuelStats.slice(this.fuelPage * 5, this.fuelPage * 5 + 5); }
+  get pagedAlerts() { return this.alerts.slice(this.alertsPage * 5, this.alertsPage * 5 + 5); }
+  get pagedTrips() { return this.recentTrips.slice(this.tripsPage * 5, this.tripsPage * 5 + 5); }
+  get pagedDrivers() { return this.drivers.slice(this.driversPage * 5, this.driversPage * 5 + 5); }
 
   constructor(private router: Router, private apiService: ApiService, private cdr: ChangeDetectorRef) {}
 
@@ -450,12 +479,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
       next: (stats) => {
         const v = stats?.Vehicles || stats?.vehicles;
         if (v) {
-          this.motionData.movingIgnition = v.Online || v.online || 0;
-          this.motionData.stationary = v.Offline || v.offline || 0;
-          this.motionData.noCoords = (v.Total || v.total || 0) - (v.WithGps || v.withGps || 0);
+          this.motionData = {
+            stationary: v.Stopped ?? v.stopped ?? 0,
+            ignitionOn: v.IgnitionOn ?? v.ignitionOn ?? 0,
+            moving: 0,
+            movingIgnition: v.Moving ?? v.moving ?? 0,
+            lbs: 0, wifi: 0,
+            noState: v.Maintenance ?? v.maintenance ?? 0,
+            noCoords: v.NoGps ?? v.noGps ?? 0
+          };
         }
-        const c = stats?.Costs || stats?.costs;
-        if (c) this.totalFuelConsumed = c.FuelThisMonth || c.fuelThisMonth || 0;
         this.cdr.detectChanges();
       },
       error: (err) => console.error('Error loading stats:', err)
@@ -477,7 +510,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   loadCostData() {
-    this.apiService.getDashboardCostSummary().pipe(takeUntil(this.destroy$)).subscribe({
+    this.apiService.getDashboardCostSummary(this.selectedPeriod).pipe(takeUntil(this.destroy$)).subscribe({
       next: (s) => {
         this.fuelCost = s?.fuelCost || 0; this.maintenanceCost = s?.maintenanceCost || 0;
         this.repairCost = s?.repairCost || 0; this.otherCost = s?.otherCost || 0;
@@ -696,6 +729,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   onPeriodChange(p: string) { this.selectedPeriod = p; }
   onDateRangeChange(r: { from: string; to: string }) { this.fromDate = r.from; this.toDate = r.to; }
-  applyFilter() { this.loadVehicles(); this.loadDashboardStats(); this.loadWidgetData(); }
+  applyFilter() {
+    this.scoresPage = 0; this.unitsPage = 0; this.fuelPage = 0; this.alertsPage = 0; this.tripsPage = 0; this.driversPage = 0;
+    this.loadVehicles(); this.loadDashboardStats(); this.loadCostData(); this.loadWidgetData(); this.loadFuelConsumption(); this.loadAlerts(); this.loadTrips(); this.loadDrivers();
+  }
   ngOnDestroy() { this.destroy$.next(); this.destroy$.complete(); }
 }

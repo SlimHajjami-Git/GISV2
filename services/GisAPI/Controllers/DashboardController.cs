@@ -361,6 +361,18 @@ public class DashboardController : ControllerBase
         DateTime start, end, prevStart, prevEnd;
         switch (period)
         {
+            case "today":
+                start = DateTime.SpecifyKind(now.Date, DateTimeKind.Utc);
+                end = DateTime.SpecifyKind(now.Date.AddDays(1).AddSeconds(-1), DateTimeKind.Utc);
+                prevStart = DateTime.SpecifyKind(now.Date.AddDays(-1), DateTimeKind.Utc);
+                prevEnd = DateTime.SpecifyKind(now.Date.AddSeconds(-1), DateTimeKind.Utc);
+                break;
+            case "yesterday":
+                start = DateTime.SpecifyKind(now.Date.AddDays(-1), DateTimeKind.Utc);
+                end = DateTime.SpecifyKind(now.Date.AddSeconds(-1), DateTimeKind.Utc);
+                prevStart = DateTime.SpecifyKind(now.Date.AddDays(-2), DateTimeKind.Utc);
+                prevEnd = DateTime.SpecifyKind(start.AddSeconds(-1), DateTimeKind.Utc);
+                break;
             case "week":
                 var dayOfWeek = (int)now.DayOfWeek;
                 start = DateTime.SpecifyKind(now.Date.AddDays(-dayOfWeek), DateTimeKind.Utc);
@@ -490,26 +502,52 @@ public class DashboardController : ControllerBase
         var companyId = GetCompanyId();
         var today = DateTime.UtcNow.Date;
         var thisMonth = DateTime.SpecifyKind(new DateTime(today.Year, today.Month, 1), DateTimeKind.Utc);
-        var cutoffTime = DateTime.UtcNow.AddMinutes(-5);
 
-        // Vehicle stats - server-side counts
-        var totalVehicles = await _context.Vehicles
+        // Vehicle stats with real-time GPS classification
+        var vehicles = await _context.Vehicles
             .AsNoTracking()
             .Where(v => v.CompanyId == companyId)
-            .CountAsync();
+            .ToListAsync();
 
-        var vehiclesWithGps = await _context.Vehicles
-            .AsNoTracking()
-            .Where(v => v.CompanyId == companyId && v.HasGps)
-            .CountAsync();
+        var totalVehicles = vehicles.Count;
+        var vehiclesWithGps = vehicles.Count(v => v.GpsDeviceId.HasValue);
+        var maintenanceVehicles = vehicles.Count(v => v.Status == "maintenance");
+        var noGpsVehicles = vehicles.Count(v => !v.GpsDeviceId.HasValue);
 
-        // Get online vehicles (those with recent GPS positions)
-        var onlineDevices = await _context.Vehicles
-            .AsNoTracking()
-            .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue)
-            .Where(v => _context.GpsPositions
-                .Any(p => p.DeviceId == v.GpsDeviceId!.Value && p.RecordedAt > cutoffTime))
-            .CountAsync();
+        // Classify vehicles by last GPS position (speed + ignition)
+        int movingCount = 0, ignitionOnCount = 0, stoppedCount = 0;
+        var gpsVehicles = vehicles.Where(v => v.GpsDeviceId.HasValue && v.Status != "maintenance").ToList();
+        var gpsDeviceIds = gpsVehicles.Select(v => v.GpsDeviceId!.Value).ToList();
+
+        if (gpsDeviceIds.Any())
+        {
+            var latestPosIds = await _context.GpsPositions
+                .AsNoTracking()
+                .Where(p => gpsDeviceIds.Contains(p.DeviceId))
+                .GroupBy(p => p.DeviceId)
+                .Select(g => g.Max(p => p.Id))
+                .ToListAsync();
+
+            var latestPositions = await _context.GpsPositions
+                .AsNoTracking()
+                .Where(p => latestPosIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.DeviceId);
+
+            foreach (var v in gpsVehicles)
+            {
+                if (latestPositions.TryGetValue(v.GpsDeviceId!.Value, out var pos))
+                {
+                    var speed = pos.SpeedKph ?? 0;
+                    var ignition = pos.IgnitionOn ?? false;
+                    if (speed > 3) movingCount++;
+                    else if (ignition) ignitionOnCount++;
+                    else stoppedCount++;
+                }
+                else stoppedCount++;
+            }
+        }
+
+        var onlineDevices = movingCount + ignitionOnCount;
 
         // Employee stats - server-side counts (use DB column EmployeeRole, not computed Roles/UserType)
         var totalDrivers = await _context.Users
@@ -590,7 +628,12 @@ public class DashboardController : ControllerBase
                 Total = totalVehicles,
                 WithGps = vehiclesWithGps,
                 Online = onlineDevices,
-                Offline = vehiclesWithGps - onlineDevices
+                Offline = vehiclesWithGps - onlineDevices,
+                Moving = movingCount,
+                IgnitionOn = ignitionOnCount,
+                Stopped = stoppedCount,
+                Maintenance = maintenanceVehicles,
+                NoGps = noGpsVehicles
             },
             Drivers = new
             {
@@ -626,46 +669,46 @@ public class DashboardController : ControllerBase
     }
 
     [HttpGet("cost-summary")]
-    public async Task<ActionResult> GetCostSummary()
+    public async Task<ActionResult> GetCostSummary([FromQuery] string period = "month")
     {
         var companyId = GetCompanyId();
         var now = DateTime.UtcNow;
-        var thisMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var (periodStart, periodEnd, _, _) = GetPeriodRange(now, period);
 
         // 1. Carburant: from FuelEntries (manual fuel invoices/fill-ups)
         var fuelCost = await _context.FuelEntries
             .AsNoTracking()
-            .Where(f => f.CompanyId == companyId && f.InvoiceDate >= thisMonth)
+            .Where(f => f.CompanyId == companyId && f.InvoiceDate >= periodStart && f.InvoiceDate <= periodEnd)
             .SumAsync(f => f.TotalAmount);
 
         // Also add VehicleCosts type='fuel' (legacy manual cost entries)
         fuelCost += await _context.VehicleCosts
             .AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= thisMonth)
+            .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= periodStart && c.Date <= periodEnd)
             .SumAsync(c => c.Amount);
 
         // 2. Entretiens: from MaintenanceLogs (completed scheduled maintenance)
         var maintenanceCost = await _context.MaintenanceLogs
             .AsNoTracking()
-            .Where(m => m.CompanyId == companyId && m.DoneDate >= thisMonth && m.ActualCost > 0)
+            .Where(m => m.CompanyId == companyId && m.DoneDate >= periodStart && m.DoneDate <= periodEnd && m.ActualCost > 0)
             .SumAsync(m => m.ActualCost);
 
         // Also add VehicleCosts type='maintenance'
         maintenanceCost += await _context.VehicleCosts
             .AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Type == "maintenance" && c.Date >= thisMonth)
+            .Where(c => c.CompanyId == companyId && c.Type == "maintenance" && c.Date >= periodStart && c.Date <= periodEnd)
             .SumAsync(c => c.Amount);
 
         // 3. Réparations: from Repairs table (SocieteId = companyId)
         var repairCost = await _context.Repairs
             .AsNoTracking()
-            .Where(r => r.SocieteId == companyId && r.RepairDate >= thisMonth)
+            .Where(r => r.SocieteId == companyId && r.RepairDate >= periodStart && r.RepairDate <= periodEnd)
             .SumAsync(r => r.TotalCost);
 
         // 4. Autres: remaining VehicleCosts (insurance, tax, toll, parking, fine, other)
         var otherCost = await _context.VehicleCosts
             .AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Date >= thisMonth
+            .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd
                 && c.Type != "fuel" && c.Type != "maintenance")
             .SumAsync(c => c.Amount);
 

@@ -157,6 +157,7 @@ export class DateFilterBarComponent {
     
     this.periodChange.emit(period);
     this.dateRangeChange.emit({ from: this.fromDate, to: this.toDate });
+    this.applyFilter.emit();
   }
 
   onDateChange() {
