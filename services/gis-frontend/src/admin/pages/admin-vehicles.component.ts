@@ -13,24 +13,26 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
   standalone: true,
   imports: [CommonModule, FormsModule, AdminLayoutComponent, VehiclePopupComponent],
   template: `
-    <admin-layout pageTitle="Vehicle Management">
+    <admin-layout pageTitle="Gestion des Vehicules">
       <div class="vehicles-page">
+
+        <!-- Header: search + filters + add button -->
         <div class="page-header">
           <div class="header-left">
             <div class="search-box">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
-              <input type="text" [(ngModel)]="searchQuery" (input)="filterVehicles()" placeholder="Search vehicles..." />
+              <input type="text" [(ngModel)]="searchQuery" (input)="filterVehicles()" placeholder="Rechercher par matricule, MAT, nom..." />
             </div>
             <select class="filter-select" [(ngModel)]="statusFilter" (change)="filterVehicles()">
-              <option value="all">All Status</option>
-              <option value="available">Available</option>
-              <option value="in_use">In Use</option>
+              <option value="all">Tous les statuts</option>
+              <option value="available">Disponible</option>
+              <option value="in_use">En service</option>
               <option value="maintenance">Maintenance</option>
             </select>
             <select class="filter-select" [(ngModel)]="companyFilter" (change)="filterVehicles()">
-              <option value="all">All Companies</option>
+              <option value="all">Toutes les societes</option>
               <option *ngFor="let company of companies" [value]="company.id">{{ company.name }}</option>
             </select>
           </div>
@@ -38,109 +40,131 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            Add Vehicle
+            Ajouter Vehicule
           </button>
         </div>
 
-        <div class="vehicles-grid">
-          <div class="vehicle-card" *ngFor="let vehicle of filteredVehicles" [class]="vehicle.status">
-            <div class="card-header">
-              <div class="vehicle-avatar">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="1" y="3" width="15" height="13" rx="2"/>
-                  <path d="M16 8h4l3 3v5a2 2 0 0 1-2 2h-5"/>
-                  <circle cx="5.5" cy="18.5" r="2.5"/>
-                  <circle cx="18.5" cy="18.5" r="2.5"/>
-                </svg>
-              </div>
-              <div class="vehicle-info">
-                <h3>{{ vehicle.name }}</h3>
-                <span class="vehicle-plate">{{ vehicle.plate || 'N/A' }}</span>
-                <span class="company-badge" *ngIf="vehicle.companyName">{{ vehicle.companyName }}</span>
-              </div>
-              <div class="status-badge" [class]="vehicle.status">{{ getStatusLabel(vehicle.status) }}</div>
-            </div>
-
-            <div class="card-body">
-              <div class="info-row" *ngIf="vehicle.brand || vehicle.model">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M12 6v6l4 2"/>
-                </svg>
-                <span>{{ vehicle.brand }} {{ vehicle.model }} {{ vehicle.year ? '(' + vehicle.year + ')' : '' }}</span>
-              </div>
-
-              <div class="stats-row">
-                <div class="stat">
-                  <span class="stat-value">{{ vehicle.type | titlecase }}</span>
-                  <span class="stat-label">Type</span>
-                </div>
-                <div class="stat">
-                  <span class="stat-value">{{ vehicle.mileage | number }} km</span>
-                  <span class="stat-label">Mileage</span>
-                </div>
-                <div class="stat">
-                  <span class="stat-value gps-status" [class.active]="vehicle.hasGps">{{ vehicle.hasGps ? 'Yes' : 'No' }}</span>
-                  <span class="stat-label">GPS</span>
-                </div>
-              </div>
-
-              <div class="gps-info" *ngIf="vehicle.hasGps && (vehicle.gpsImei || vehicle.gpsDeviceId || vehicle.gpsModel || vehicle.gpsFirmwareVersion)">
-                <div class="gps-row" *ngIf="vehicle.gpsImei">
-                  <span class="gps-label">IMEI:</span>
-                  <span class="gps-value">{{ vehicle.gpsImei }}</span>
-                </div>
-                <div class="gps-row" *ngIf="vehicle.gpsDeviceId">
-                  <span class="gps-label">Device ID:</span>
-                  <span class="gps-value">{{ vehicle.gpsDeviceId }}</span>
-                </div>
-                <div class="gps-row" *ngIf="vehicle.gpsModel">
-                  <span class="gps-label">Model:</span>
-                  <span class="gps-value">
-                    {{ vehicle.gpsModel }}
-                    <span *ngIf="vehicle.gpsFirmwareVersion">({{ vehicle.gpsFirmwareVersion }})</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div class="card-footer">
-              <span class="created-date">Created {{ formatDate(vehicle.createdAt) }}</span>
-              <div class="actions">
-                <button class="action-btn edit" (click)="editVehicle(vehicle)" title="Edit">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                </button>
-                <button class="action-btn view" (click)="viewVehicle(vehicle)" title="View Details">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                  </svg>
-                </button>
-                <button class="action-btn delete" (click)="confirmDelete(vehicle)" title="Delete">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="3,6 5,6 21,6"/>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
+        <!-- Stats bar -->
+        <div class="stats-bar">
+          <div class="stat-card">
+            <span class="stat-number">{{ vehicles.length }}</span>
+            <span class="stat-text">Total</span>
+          </div>
+          <div class="stat-card available">
+            <span class="stat-number">{{ countByStatus('available') }}</span>
+            <span class="stat-text">Disponibles</span>
+          </div>
+          <div class="stat-card in-use">
+            <span class="stat-number">{{ countByStatus('in_use') }}</span>
+            <span class="stat-text">En service</span>
+          </div>
+          <div class="stat-card maintenance">
+            <span class="stat-number">{{ countByStatus('maintenance') }}</span>
+            <span class="stat-text">Maintenance</span>
+          </div>
+          <div class="stat-card gps">
+            <span class="stat-number">{{ countWithGps() }}</span>
+            <span class="stat-text">Avec GPS</span>
           </div>
         </div>
 
-        <div class="empty-state" *ngIf="filteredVehicles.length === 0">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="1" y="3" width="15" height="13" rx="2"/>
-            <path d="M16 8h4l3 3v5a2 2 0 0 1-2 2h-5"/>
-            <circle cx="5.5" cy="18.5" r="2.5"/>
-            <circle cx="18.5" cy="18.5" r="2.5"/>
-          </svg>
-          <h3>No vehicles found</h3>
-          <p>Try adjusting your search or filters</p>
+        <!-- Table -->
+        <div class="table-container">
+          <table class="vehicles-table" *ngIf="filteredVehicles.length > 0">
+            <thead>
+              <tr>
+                <th class="th-sortable" (click)="toggleSort('plate')">
+                  Matricule
+                  <span class="sort-icon" *ngIf="sortColumn === 'plate'">{{ sortDirection === 'asc' ? '&#9650;' : '&#9660;' }}</span>
+                </th>
+                <th class="th-sortable" (click)="toggleSort('gpsMat')">
+                  MAT
+                  <span class="sort-icon" *ngIf="sortColumn === 'gpsMat'">{{ sortDirection === 'asc' ? '&#9650;' : '&#9660;' }}</span>
+                </th>
+                <th class="th-sortable" (click)="toggleSort('name')">
+                  Nom
+                  <span class="sort-icon" *ngIf="sortColumn === 'name'">{{ sortDirection === 'asc' ? '&#9650;' : '&#9660;' }}</span>
+                </th>
+                <th class="th-sortable" (click)="toggleSort('mileage')">
+                  Kilometrage
+                  <span class="sort-icon" *ngIf="sortColumn === 'mileage'">{{ sortDirection === 'asc' ? '&#9650;' : '&#9660;' }}</span>
+                </th>
+                <th>Telephone</th>
+                <th class="th-sortable" (click)="toggleSort('companyName')">
+                  Societe
+                  <span class="sort-icon" *ngIf="sortColumn === 'companyName'">{{ sortDirection === 'asc' ? '&#9650;' : '&#9660;' }}</span>
+                </th>
+                <th>Statut</th>
+                <th class="th-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let vehicle of filteredVehicles; trackBy: trackById">
+                <td class="td-plate">
+                  <span class="plate-badge">{{ vehicle.plate || '-' }}</span>
+                </td>
+                <td class="td-mat">
+                  <span class="mat-badge" *ngIf="vehicle.gpsMat">{{ vehicle.gpsMat }}</span>
+                  <span class="text-muted" *ngIf="!vehicle.gpsMat">-</span>
+                </td>
+                <td>
+                  <div class="cell-name">
+                    <span class="vehicle-name">{{ vehicle.name }}</span>
+                    <span class="vehicle-sub" *ngIf="vehicle.brand || vehicle.model">{{ vehicle.brand }} {{ vehicle.model }}</span>
+                  </div>
+                </td>
+                <td class="td-km">{{ vehicle.mileage | number }} km</td>
+                <td class="td-phone">
+                  <span *ngIf="vehicle.gpsSimNumber">{{ vehicle.gpsSimNumber }}</span>
+                  <span class="text-muted" *ngIf="!vehicle.gpsSimNumber">-</span>
+                </td>
+                <td>
+                  <span class="company-badge" *ngIf="vehicle.companyName">{{ vehicle.companyName }}</span>
+                  <span class="text-muted" *ngIf="!vehicle.companyName">-</span>
+                </td>
+                <td>
+                  <span class="status-badge" [class]="vehicle.status">{{ getStatusLabel(vehicle.status) }}</span>
+                </td>
+                <td class="td-actions">
+                  <button class="action-btn detail" (click)="viewVehicle(vehicle)" title="Detail">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  </button>
+                  <button class="action-btn edit" (click)="editVehicle(vehicle)" title="Modifier">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  </button>
+                  <button class="action-btn delete" (click)="confirmDelete(vehicle)" title="Supprimer">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3,6 5,6 21,6"/>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="table-footer" *ngIf="filteredVehicles.length > 0">
+            <span class="result-count">{{ filteredVehicles.length }} vehicule(s) sur {{ vehicles.length }}</span>
+          </div>
+
+          <div class="empty-state" *ngIf="filteredVehicles.length === 0">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="1" y="3" width="15" height="13" rx="2"/>
+              <path d="M16 8h4l3 3v5a2 2 0 0 1-2 2h-5"/>
+              <circle cx="5.5" cy="18.5" r="2.5"/>
+              <circle cx="18.5" cy="18.5" r="2.5"/>
+            </svg>
+            <h3>Aucun vehicule trouve</h3>
+            <p>Essayez de modifier vos filtres ou votre recherche</p>
+          </div>
         </div>
 
-        <!-- Vehicle Add/Edit Popup (reused from /vehicule) -->
+        <!-- Vehicle Add/Edit Popup -->
         <app-vehicle-popup
           [isOpen]="showAddModal || showEditModal"
           [vehicle]="selectedVehicleForPopup"
@@ -150,11 +174,14 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
           (saved)="onVehicleSaved($event)">
         </app-vehicle-popup>
 
-        <!-- View Modal (kept for viewing details) -->
+        <!-- Detail Modal -->
         <div class="modal-overlay" *ngIf="showViewModal" (click)="closeModals()">
-          <div class="modal" (click)="$event.stopPropagation()">
+          <div class="modal detail-modal" (click)="$event.stopPropagation()">
             <div class="modal-header">
-              <h2>Vehicle Details</h2>
+              <div class="modal-title-row">
+                <h2>Detail Vehicule</h2>
+                <span class="status-badge" [class]="selectedVehicle?.status || ''">{{ getStatusLabel(selectedVehicle?.status || '') }}</span>
+              </div>
               <button class="close-btn" (click)="closeModals()">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -162,71 +189,87 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
               </button>
             </div>
 
-            <div class="modal-body view-mode" *ngIf="selectedVehicle">
-              <div class="view-header">
-                <div class="vehicle-avatar large">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="1" y="3" width="15" height="13" rx="2"/>
-                    <path d="M16 8h4l3 3v5a2 2 0 0 1-2 2h-5"/>
-                    <circle cx="5.5" cy="18.5" r="2.5"/>
-                    <circle cx="18.5" cy="18.5" r="2.5"/>
-                  </svg>
-                </div>
-                <div>
-                  <h3>{{ selectedVehicle.name }}</h3>
-                  <span class="status-badge" [class]="selectedVehicle.status">{{ getStatusLabel(selectedVehicle.status) }}</span>
-                </div>
-              </div>
-
-              <div class="view-section">
-                <h4>Vehicle Information</h4>
-                <div class="view-row"><span>Plate:</span><span>{{ selectedVehicle.plate || 'N/A' }}</span></div>
-                <div class="view-row"><span>Type:</span><span>{{ selectedVehicle.type | titlecase }}</span></div>
-                <div class="view-row"><span>Brand:</span><span>{{ selectedVehicle.brand || 'N/A' }}</span></div>
-                <div class="view-row"><span>Model:</span><span>{{ selectedVehicle.model || 'N/A' }}</span></div>
-                <div class="view-row"><span>Year:</span><span>{{ selectedVehicle.year || 'N/A' }}</span></div>
-                <div class="view-row"><span>Color:</span><span>{{ selectedVehicle.color || 'N/A' }}</span></div>
-                <div class="view-row"><span>Mileage:</span><span>{{ selectedVehicle.mileage | number }} km</span></div>
-                <div class="view-row"><span>Fuel Tank:</span><span>{{ selectedVehicle.fuelTankCapacity ? selectedVehicle.fuelTankCapacity + ' L' : 'N/A' }}</span></div>
-              </div>
-
-              <div class="view-section">
-                <h4>Company</h4>
-                <div class="view-row"><span>Company:</span><span>{{ selectedVehicle.companyName || 'N/A' }}</span></div>
-              </div>
-
-              <div class="view-section" *ngIf="selectedVehicle.hasGps">
-                <h4>GPS Information</h4>
-                <div class="view-row"><span>IMEI:</span><span>{{ selectedVehicle.gpsImei || 'N/A' }}</span></div>
-                <div class="view-row"><span>MAT:</span><span>{{ selectedVehicle.gpsMat || 'N/A' }}</span></div>
-                <div class="view-row"><span>Device ID:</span><span>{{ selectedVehicle.gpsDeviceId || 'N/A' }}</span></div>
-                <div class="view-row" *ngIf="selectedVehicle.gpsModel || selectedVehicle.gpsFirmwareVersion">
-                  <span>Model / Firmware:</span>
-                  <span>
-                    {{ selectedVehicle.gpsModel || 'Unknown' }}
-                    <span *ngIf="selectedVehicle.gpsFirmwareVersion">({{ selectedVehicle.gpsFirmwareVersion }})</span>
-                  </span>
+            <div class="modal-body-scroll" *ngIf="selectedVehicle">
+              <!-- Vehicle identity -->
+              <div class="detail-section">
+                <h4>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5a2 2 0 0 1-2 2h-5"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                  Informations Vehicule
+                </h4>
+                <div class="detail-grid">
+                  <div class="detail-item"><span class="detail-label">Nom</span><span class="detail-value">{{ selectedVehicle.name }}</span></div>
+                  <div class="detail-item"><span class="detail-label">Matricule</span><span class="detail-value mono">{{ selectedVehicle.plate || '-' }}</span></div>
+                  <div class="detail-item"><span class="detail-label">Type</span><span class="detail-value">{{ selectedVehicle.type | titlecase }}</span></div>
+                  <div class="detail-item"><span class="detail-label">Marque</span><span class="detail-value">{{ selectedVehicle.brand || '-' }}</span></div>
+                  <div class="detail-item"><span class="detail-label">Modele</span><span class="detail-value">{{ selectedVehicle.model || '-' }}</span></div>
+                  <div class="detail-item"><span class="detail-label">Annee</span><span class="detail-value">{{ selectedVehicle.year || '-' }}</span></div>
+                  <div class="detail-item"><span class="detail-label">Couleur</span><span class="detail-value">{{ selectedVehicle.color || '-' }}</span></div>
+                  <div class="detail-item"><span class="detail-label">Kilometrage</span><span class="detail-value highlight">{{ selectedVehicle.mileage | number }} km</span></div>
+                  <div class="detail-item"><span class="detail-label">Carburant</span><span class="detail-value">{{ selectedVehicle.fuelType || '-' }}</span></div>
+                  <div class="detail-item"><span class="detail-label">Reservoir</span><span class="detail-value">{{ selectedVehicle.fuelTankCapacity ? selectedVehicle.fuelTankCapacity + ' L' : '-' }}</span></div>
                 </div>
               </div>
 
-              <div class="view-section">
-                <h4>Timestamps</h4>
-                <div class="view-row"><span>Created:</span><span>{{ formatDate(selectedVehicle.createdAt) }}</span></div>
-                <div class="view-row"><span>Updated:</span><span>{{ formatDate(selectedVehicle.updatedAt) }}</span></div>
+              <!-- Company -->
+              <div class="detail-section">
+                <h4>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                  Societe
+                </h4>
+                <div class="detail-grid">
+                  <div class="detail-item"><span class="detail-label">Nom</span><span class="detail-value">{{ selectedVehicle.companyName || '-' }}</span></div>
+                  <div class="detail-item"><span class="detail-label">ID Societe</span><span class="detail-value mono">{{ selectedVehicle.companyId }}</span></div>
+                </div>
+              </div>
+
+              <!-- GPS -->
+              <div class="detail-section">
+                <h4>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+                  GPS
+                </h4>
+                <div class="detail-grid" *ngIf="selectedVehicle.hasGps">
+                  <div class="detail-item"><span class="detail-label">Statut GPS</span><span class="detail-value gps-on">Actif</span></div>
+                  <div class="detail-item"><span class="detail-label">IMEI</span><span class="detail-value mono">{{ selectedVehicle.gpsImei || '-' }}</span></div>
+                  <div class="detail-item"><span class="detail-label">MAT</span><span class="detail-value mono">{{ selectedVehicle.gpsMat || '-' }}</span></div>
+                  <div class="detail-item"><span class="detail-label">Device ID</span><span class="detail-value mono">{{ selectedVehicle.gpsDeviceId || '-' }}</span></div>
+                  <div class="detail-item"><span class="detail-label">Marque GPS</span><span class="detail-value">{{ selectedVehicle.gpsBrand || '-' }}</span></div>
+                  <div class="detail-item"><span class="detail-label">Modele GPS</span><span class="detail-value">{{ selectedVehicle.gpsModel || '-' }}</span></div>
+                  <div class="detail-item"><span class="detail-label">Firmware</span><span class="detail-value mono">{{ selectedVehicle.gpsFirmwareVersion || '-' }}</span></div>
+                  <div class="detail-item"><span class="detail-label">Mode Carburant</span><span class="detail-value">{{ selectedVehicle.gpsFuelSensorMode || '-' }}</span></div>
+                  <div class="detail-item"><span class="detail-label">N SIM</span><span class="detail-value mono">{{ selectedVehicle.gpsSimNumber || '-' }}</span></div>
+                  <div class="detail-item"><span class="detail-label">Operateur</span><span class="detail-value">{{ selectedVehicle.gpsSimOperator || '-' }}</span></div>
+                </div>
+                <div class="no-gps" *ngIf="!selectedVehicle.hasGps">
+                  <span>Aucun GPS associe</span>
+                </div>
+              </div>
+
+              <!-- Timestamps -->
+              <div class="detail-section">
+                <h4>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                  Historique
+                </h4>
+                <div class="detail-grid">
+                  <div class="detail-item"><span class="detail-label">Cree le</span><span class="detail-value">{{ formatDate(selectedVehicle.createdAt) }}</span></div>
+                  <div class="detail-item"><span class="detail-label">Mis a jour</span><span class="detail-value">{{ formatDate(selectedVehicle.updatedAt) }}</span></div>
+                </div>
               </div>
             </div>
 
             <div class="modal-footer">
-              <button class="btn-secondary" (click)="closeModals()">Close</button>
-              <button class="btn-primary" (click)="editVehicle(selectedVehicle!)">Edit Vehicle</button>
+              <button class="btn-secondary" (click)="closeModals()">Fermer</button>
+              <button class="btn-primary" (click)="editVehicle(selectedVehicle!)">Modifier</button>
             </div>
           </div>
         </div>
 
+        <!-- Delete Confirmation Modal -->
         <div class="modal-overlay" *ngIf="showDeleteModal" (click)="closeDeleteModal()">
           <div class="modal delete-modal" (click)="$event.stopPropagation()">
-            <div class="modal-header">
-              <h2>Delete Vehicle</h2>
+            <div class="modal-header delete-header">
+              <h2>Supprimer le vehicule</h2>
               <button class="close-btn" (click)="closeDeleteModal()">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -235,637 +278,170 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
             </div>
             <div class="modal-body">
               <div class="delete-warning">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="12" y1="8" x2="12" y2="12"/>
-                  <line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-                <p>Are you sure you want to delete <strong>{{ vehicleToDelete?.name }}</strong>?</p>
-                <p class="warning-text">This action cannot be undone.</p>
+                <div class="delete-icon-circle">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3,6 5,6 21,6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    <line x1="10" y1="11" x2="10" y2="17"/>
+                    <line x1="14" y1="11" x2="14" y2="17"/>
+                  </svg>
+                </div>
+                <p class="delete-title">Etes-vous sur de vouloir supprimer ce vehicule ?</p>
+                <div class="delete-vehicle-info" *ngIf="vehicleToDelete">
+                  <span class="delete-vehicle-name">{{ vehicleToDelete.name }}</span>
+                  <span class="delete-vehicle-plate" *ngIf="vehicleToDelete.plate">{{ vehicleToDelete.plate }}</span>
+                  <span class="delete-vehicle-mat" *ngIf="vehicleToDelete.gpsMat">MAT: {{ vehicleToDelete.gpsMat }}</span>
+                </div>
+                <p class="warning-text">Cette action est irreversible. Toutes les donnees associees seront perdues.</p>
               </div>
             </div>
             <div class="modal-footer">
-              <button class="btn-secondary" (click)="closeDeleteModal()">Cancel</button>
-              <button class="btn-danger" (click)="deleteVehicle()">Delete Vehicle</button>
+              <button class="btn-secondary" (click)="closeDeleteModal()">Annuler</button>
+              <button class="btn-danger" (click)="deleteVehicle()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3,6 5,6 21,6"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+                Supprimer
+              </button>
             </div>
           </div>
         </div>
+
       </div>
     </admin-layout>
   `,
   styles: [`
-    .vehicles-page {
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
+    .vehicles-page { display: flex; flex-direction: column; gap: 20px; }
+
+    /* Header */
+    .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    .header-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .search-box { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 9px 14px; width: 320px; }
+    .search-box svg { color: #94a3b8; flex-shrink: 0; }
+    .search-box input { flex: 1; border: none; background: transparent; color: #1f2937; font-size: 13px; outline: none; }
+    .filter-select { padding: 9px 14px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; color: #1f2937; font-size: 13px; outline: none; cursor: pointer; }
+    .add-btn { display: flex; align-items: center; gap: 8px; padding: 9px 20px; background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%); border: none; border-radius: 10px; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    .add-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,212,170,0.3); }
+
+    /* Stats bar */
+    .stats-bar { display: flex; gap: 12px; flex-wrap: wrap; }
+    .stat-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 20px; display: flex; flex-direction: column; align-items: center; min-width: 100px; flex: 1; }
+    .stat-number { font-size: 22px; font-weight: 700; color: #1f2937; }
+    .stat-text { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+    .stat-card.available { border-left: 3px solid #22c55e; }
+    .stat-card.in-use { border-left: 3px solid #3b82f6; }
+    .stat-card.maintenance { border-left: 3px solid #f97316; }
+    .stat-card.gps { border-left: 3px solid #8b5cf6; }
+
+    /* Table container */
+    .table-container { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; }
+    .vehicles-table { width: 100%; border-collapse: collapse; }
+    .vehicles-table thead { background: #f8fafc; }
+    .vehicles-table th { padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0; white-space: nowrap; user-select: none; }
+    .th-sortable { cursor: pointer; transition: color 0.15s; }
+    .th-sortable:hover { color: #1f2937; }
+    .sort-icon { font-size: 10px; margin-left: 4px; color: #00a388; }
+    .th-actions { text-align: center; width: 130px; }
+
+    .vehicles-table td { padding: 12px 16px; font-size: 13px; color: #374151; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+    .vehicles-table tbody tr { transition: background 0.15s; }
+    .vehicles-table tbody tr:hover { background: #f8fafc; }
+    .vehicles-table tbody tr:last-child td { border-bottom: none; }
+
+    /* Cell styles */
+    .td-plate { font-family: 'Courier New', monospace; font-weight: 600; }
+    .plate-badge { background: #f1f5f9; padding: 4px 10px; border-radius: 6px; font-size: 13px; color: #1e293b; letter-spacing: 0.5px; }
+    .td-mat { font-family: 'Courier New', monospace; }
+    .mat-badge { background: rgba(139,92,246,0.1); color: #7c3aed; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+    .td-km { font-weight: 600; color: #1f2937; white-space: nowrap; }
+    .td-phone { font-family: 'Courier New', monospace; font-size: 12px; }
+    .text-muted { color: #cbd5e1; }
+    .cell-name { display: flex; flex-direction: column; }
+    .vehicle-name { font-weight: 500; color: #1f2937; }
+    .vehicle-sub { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+    .company-badge { display: inline-block; padding: 3px 10px; background: rgba(59,130,246,0.1); color: #3b82f6; border-radius: 8px; font-size: 12px; font-weight: 500; }
+
+    .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .status-badge.available { background: rgba(34,197,94,0.12); color: #16a34a; }
+    .status-badge.in_use { background: rgba(59,130,246,0.12); color: #2563eb; }
+    .status-badge.maintenance { background: rgba(249,115,22,0.12); color: #ea580c; }
+
+    /* Action buttons */
+    .td-actions { text-align: center; white-space: nowrap; }
+    .action-btn { width: 32px; height: 32px; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: all 0.15s; margin: 0 2px; }
+    .action-btn.detail { background: rgba(139,92,246,0.1); color: #7c3aed; }
+    .action-btn.detail:hover { background: rgba(139,92,246,0.2); }
+    .action-btn.edit { background: rgba(59,130,246,0.1); color: #3b82f6; }
+    .action-btn.edit:hover { background: rgba(59,130,246,0.2); }
+    .action-btn.delete { background: rgba(239,68,68,0.1); color: #ef4444; }
+    .action-btn.delete:hover { background: rgba(239,68,68,0.2); }
+
+    .table-footer { padding: 12px 16px; border-top: 1px solid #e2e8f0; background: #f8fafc; }
+    .result-count { font-size: 12px; color: #64748b; }
+
+    /* Empty state */
+    .empty-state { display: flex; flex-direction: column; align-items: center; padding: 60px 20px; color: #94a3b8; }
+    .empty-state svg { margin-bottom: 16px; opacity: 0.4; }
+    .empty-state h3 { margin: 0 0 6px; font-size: 16px; color: #64748b; font-weight: 600; }
+    .empty-state p { margin: 0; font-size: 13px; }
+
+    /* Modals shared */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+    .modal { background: #fff; border-radius: 16px; max-width: 96vw; max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 24px 48px rgba(15,23,42,0.2); }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid #e2e8f0; }
+    .modal-header h2 { margin: 0; font-size: 17px; font-weight: 600; color: #1f2937; }
+    .modal-title-row { display: flex; align-items: center; gap: 12px; }
+    .close-btn { width: 34px; height: 34px; border: none; background: #f1f5f9; border-radius: 10px; color: #64748b; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+    .close-btn:hover { background: #e2e8f0; color: #1f2937; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid #e2e8f0; }
+    .btn-secondary { padding: 9px 20px; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 10px; color: #374151; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+    .btn-secondary:hover { background: #e2e8f0; }
+    .btn-primary { padding: 9px 20px; background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%); border: none; border-radius: 10px; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .btn-primary:hover { box-shadow: 0 4px 14px rgba(0,212,170,0.3); }
+    .btn-danger { padding: 9px 20px; background: #ef4444; border: none; border-radius: 10px; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 6px; }
+    .btn-danger:hover { background: #dc2626; }
+
+    /* Detail Modal */
+    .detail-modal { width: 720px; }
+    .modal-body-scroll { padding: 20px 24px; overflow-y: auto; max-height: calc(92vh - 140px); display: flex; flex-direction: column; gap: 4px; }
+    .detail-section { padding: 16px 0; border-bottom: 1px solid #f1f5f9; }
+    .detail-section:last-child { border-bottom: none; }
+    .detail-section h4 { margin: 0 0 14px; font-size: 13px; font-weight: 600; color: #00a388; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px; }
+    .detail-section h4 svg { color: #00a388; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 24px; }
+    .detail-item { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; background: #f8fafc; border-radius: 8px; }
+    .detail-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.3px; }
+    .detail-value { font-size: 14px; color: #1f2937; font-weight: 500; }
+    .detail-value.mono { font-family: 'Courier New', monospace; letter-spacing: 0.5px; }
+    .detail-value.highlight { color: #00a388; font-weight: 700; }
+    .detail-value.gps-on { color: #16a34a; font-weight: 600; }
+    .no-gps { text-align: center; padding: 20px; color: #94a3b8; font-size: 13px; background: #f8fafc; border-radius: 8px; }
+
+    /* Delete Modal */
+    .delete-modal { max-width: 440px; }
+    .delete-header h2 { color: #ef4444; }
+    .modal-body { padding: 24px; }
+    .delete-warning { text-align: center; }
+    .delete-icon-circle { width: 64px; height: 64px; background: rgba(239,68,68,0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: #ef4444; }
+    .delete-title { font-size: 16px; font-weight: 600; color: #1f2937; margin: 0 0 12px; }
+    .delete-vehicle-info { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px; background: #f8fafc; border-radius: 10px; margin-bottom: 12px; }
+    .delete-vehicle-name { font-size: 15px; font-weight: 600; color: #1f2937; }
+    .delete-vehicle-plate { font-family: monospace; font-size: 13px; color: #64748b; }
+    .delete-vehicle-mat { font-size: 12px; color: #7c3aed; font-weight: 500; }
+    .warning-text { font-size: 13px; color: #94a3b8; margin: 0; }
+
+    @media (max-width: 900px) {
+      .table-container { overflow-x: auto; }
+      .vehicles-table { min-width: 800px; }
+      .stats-bar { gap: 8px; }
+      .stat-card { min-width: 80px; padding: 10px 14px; }
+      .stat-number { font-size: 18px; }
+      .detail-grid { grid-template-columns: 1fr; }
     }
-
-    .page-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 16px;
-    }
-
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .search-box {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      padding: 10px 14px;
-      width: 280px;
-    }
-
-    .search-box svg { color: #64748b; }
-
-    .search-box input {
-      flex: 1;
-      border: none;
-      background: transparent;
-      color: #1f2937;
-      font-size: 14px;
-      outline: none;
-    }
-
-    .filter-select {
-      padding: 10px 14px;
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      color: #1f2937;
-      font-size: 14px;
-      outline: none;
-      cursor: pointer;
-    }
-
-    .add-btn {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 20px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
-      border: none;
-      border-radius: 10px;
-      color: #fff;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .add-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 16px rgba(0, 212, 170, 0.3);
-    }
-
-    .vehicles-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-      gap: 20px;
-    }
-
-    .vehicle-card {
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: 16px;
-      overflow: hidden;
-      transition: all 0.3s;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    }
-
-    .vehicle-card:hover {
-      border-color: #cbd5e1;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-      transform: translateY(-2px);
-    }
-
-    .vehicle-card.maintenance {
-      border-left: 4px solid #f97316;
-    }
-
-    .card-header {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding: 20px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-
-    .vehicle-avatar {
-      width: 48px;
-      height: 48px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #fff;
-    }
-
-    .vehicle-avatar.large {
-      width: 64px;
-      height: 64px;
-    }
-
-    .vehicle-info {
-      flex: 1;
-    }
-
-    .vehicle-info h3 {
-      margin: 0 0 4px 0;
-      font-size: 16px;
-      font-weight: 600;
-      color: #1f2937;
-    }
-
-    .vehicle-plate {
-      font-size: 13px;
-      color: #64748b;
-      font-family: monospace;
-    }
-
-    .company-badge {
-      display: inline-block;
-      padding: 2px 8px;
-      background: rgba(59, 130, 246, 0.12);
-      color: #3b82f6;
-      border-radius: 10px;
-      font-size: 11px;
-      font-weight: 500;
-      margin-top: 4px;
-    }
-
-    .status-badge {
-      padding: 4px 10px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 500;
-    }
-
-    .status-badge.available {
-      background: rgba(34, 197, 94, 0.15);
-      color: #22c55e;
-    }
-
-    .status-badge.in_use {
-      background: rgba(59, 130, 246, 0.15);
-      color: #3b82f6;
-    }
-
-    .status-badge.maintenance {
-      background: rgba(249, 115, 22, 0.15);
-      color: #f97316;
-    }
-
-    .card-body {
-      padding: 20px;
-    }
-
-    .info-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 12px;
-      font-size: 13px;
-      color: #64748b;
-    }
-
-    .info-row svg {
-      color: #64748b;
-      flex-shrink: 0;
-    }
-
-    .stats-row {
-      display: flex;
-      gap: 20px;
-      margin-top: 16px;
-      padding-top: 16px;
-      border-top: 1px solid #e2e8f0;
-    }
-
-    .stat {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .stat-value {
-      font-size: 14px;
-      font-weight: 600;
-      color: #1f2937;
-    }
-
-    .stat-value.gps-status.active {
-      color: #22c55e;
-    }
-
-    .stat-label {
-      font-size: 11px;
-      color: #64748b;
-      text-transform: uppercase;
-    }
-
-    .gps-info {
-      margin-top: 12px;
-      padding: 12px;
-      background: #f8fafc;
-      border-radius: 8px;
-      border: 1px solid #e2e8f0;
-    }
-
-    .gps-row {
-      display: flex;
-      justify-content: space-between;
-      font-size: 12px;
-      padding: 4px 0;
-    }
-
-    .gps-label {
-      color: #64748b;
-    }
-
-    .gps-value {
-      color: #1f2937;
-      font-family: monospace;
-    }
-
-    .card-footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px 20px;
-      background: #f8fafc;
-      border-top: 1px solid #e2e8f0;
-    }
-
-    .created-date {
-      font-size: 12px;
-      color: #6b7280;
-    }
-
-    .actions {
-      display: flex;
-      gap: 8px;
-    }
-
-    .action-btn {
-      width: 32px;
-      height: 32px;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-    }
-
-    .action-btn.edit {
-      background: rgba(59, 130, 246, 0.15);
-      color: #3b82f6;
-    }
-
-    .action-btn.view {
-      background: #f1f5f9;
-      color: #64748b;
-    }
-
-    .action-btn.delete {
-      background: rgba(239, 68, 68, 0.15);
-      color: #ef4444;
-    }
-
-    .action-btn:hover {
-      transform: scale(1.1);
-    }
-
-    .empty-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 60px 20px;
-      color: #64748b;
-    }
-
-    .empty-state svg {
-      margin-bottom: 16px;
-      opacity: 0.5;
-    }
-
-    .empty-state h3 {
-      margin: 0 0 8px 0;
-      font-size: 18px;
-      color: #1f2937;
-    }
-
-    .empty-state p {
-      margin: 0;
-      font-size: 14px;
-    }
-
-    .modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.7);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-      padding: 20px;
-    }
-
-    .modal {
-      background: white;
-      border-radius: 18px;
-      width: 760px;
-      max-width: 96vw;
-      max-height: 92vh;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
-      transform: translateY(0);
-      transition: transform 0.3s ease, opacity 0.3s ease;
-    }
-
-    .modal.delete-modal {
-      max-width: 420px;
-    }
-
-    .modal-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 20px 24px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-
-    .modal-header h2 {
-      margin: 0;
-      font-size: 18px;
-      font-weight: 600;
-      color: #1f2937;
-    }
-
-    .close-btn {
-      width: 36px;
-      height: 36px;
-      border: none;
-      background: #f1f5f9;
-      border-radius: 10px;
-      color: #64748b;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-    }
-
-    .close-btn:hover {
-      background: #e2e8f0;
-      color: #1f2937;
-    }
-
-    .modal-body {
-      padding: 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
-
-    .section-title {
-      margin: 0 0 8px 0;
-      font-size: 14px;
-      font-weight: 600;
-      color: #00a388;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-
-    .form-group {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .form-group label {
-      font-size: 14px;
-      font-weight: 500;
-      color: #374151;
-    }
-
-    .form-group input, .form-group select {
-      padding: 12px 14px;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      color: #1f2937;
-      font-size: 14px;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-
-    .form-group input:focus, .form-group select:focus {
-      border-color: #00d4aa;
-    }
-
-    .form-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-    }
-
-    .checkbox-group {
-      flex-direction: row;
-      align-items: center;
-    }
-
-    .checkbox-label {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      cursor: pointer;
-      font-size: 14px;
-      color: #374151;
-    }
-
-    .checkbox-label input[type="checkbox"] {
-      width: 18px;
-      height: 18px;
-      accent-color: #00d4aa;
-    }
-
-    .gps-fields {
-      padding: 16px;
-      background: #f8fafc;
-      border-radius: 10px;
-      border: 1px solid #e2e8f0;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    .view-header {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      padding-bottom: 20px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-
-    .view-header h3 {
-      margin: 0 0 8px 0;
-      font-size: 20px;
-      color: #1f2937;
-    }
-
-    .view-section {
-      padding: 16px 0;
-      border-bottom: 1px solid #e2e8f0;
-    }
-
-    .view-section:last-child {
-      border-bottom: none;
-    }
-
-    .view-section h4 {
-      margin: 0 0 12px 0;
-      font-size: 14px;
-      font-weight: 600;
-      color: #00a388;
-    }
-
-    .view-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 8px 0;
-      font-size: 14px;
-    }
-
-    .view-row span:first-child {
-      color: #64748b;
-    }
-
-    .view-row span:last-child {
-      color: #1f2937;
-      font-weight: 500;
-    }
-
-    .gps-active {
-      color: #22c55e !important;
-    }
-
-    .delete-warning {
-      text-align: center;
-      padding: 20px;
-    }
-
-    .delete-warning svg {
-      color: #ef4444;
-      margin-bottom: 16px;
-    }
-
-    .delete-warning p {
-      margin: 0 0 8px 0;
-      font-size: 16px;
-      color: #1f2937;
-    }
-
-    .delete-warning .warning-text {
-      font-size: 14px;
-      color: #64748b;
-    }
-
-    .modal-footer {
-      display: flex;
-      justify-content: flex-end;
-      gap: 12px;
-      padding: 20px 24px;
-      border-top: 1px solid #e2e8f0;
-    }
-
-    .btn-secondary {
-      padding: 10px 20px;
-      background: #f1f5f9;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      color: #1f2937;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .btn-secondary:hover {
-      background: #e2e8f0;
-    }
-
-    .btn-primary {
-      padding: 10px 20px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
-      border: none;
-      border-radius: 10px;
-      color: #fff;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .btn-primary:hover {
-      box-shadow: 0 4px 16px rgba(0, 212, 170, 0.3);
-    }
-
-    .btn-primary:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    .btn-danger {
-      padding: 10px 20px;
-      background: #ef4444;
-      border: none;
-      border-radius: 10px;
-      color: #fff;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .btn-danger:hover {
-      background: #dc2626;
-    }
-
     @media (max-width: 640px) {
-      .form-row {
-        grid-template-columns: 1fr;
-      }
-
-      .vehicles-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .header-left {
-        width: 100%;
-      }
-
-      .search-box {
-        width: 100%;
-      }
+      .header-left { width: 100%; }
+      .search-box { width: 100%; }
     }
   `]
 })
@@ -878,6 +454,8 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
   searchQuery = '';
   statusFilter = 'all';
   companyFilter = 'all';
+  sortColumn = 'gpsMat';
+  sortDirection: 'asc' | 'desc' = 'asc';
 
   showAddModal = false;
   showEditModal = false;
@@ -981,11 +559,15 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
   }
 
   filterVehicles() {
-    this.filteredVehicles = this.vehicles.filter(vehicle => {
-      const matchesSearch = !this.searchQuery ||
-        vehicle.name.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
-        (vehicle.plate && vehicle.plate.toLowerCase().includes(this.searchQuery.toLowerCase())) ||
-        (vehicle.brand && vehicle.brand.toLowerCase().includes(this.searchQuery.toLowerCase()));
+    const q = this.searchQuery.toLowerCase();
+    let result = this.vehicles.filter(vehicle => {
+      const matchesSearch = !q ||
+        vehicle.name.toLowerCase().includes(q) ||
+        (vehicle.plate && vehicle.plate.toLowerCase().includes(q)) ||
+        (vehicle.gpsMat && vehicle.gpsMat.toLowerCase().includes(q)) ||
+        (vehicle.gpsSimNumber && vehicle.gpsSimNumber.toLowerCase().includes(q)) ||
+        (vehicle.companyName && vehicle.companyName.toLowerCase().includes(q)) ||
+        (vehicle.brand && vehicle.brand.toLowerCase().includes(q));
 
       const matchesStatus = this.statusFilter === 'all' || vehicle.status === this.statusFilter;
 
@@ -994,12 +576,46 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
 
       return matchesSearch && matchesStatus && matchesCompany;
     });
+
+    // Sort
+    const col = this.sortColumn as keyof AdminVehicle;
+    const dir = this.sortDirection === 'asc' ? 1 : -1;
+    result.sort((a, b) => {
+      const va = a[col] ?? '';
+      const vb = b[col] ?? '';
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+      return String(va).localeCompare(String(vb)) * dir;
+    });
+
+    this.filteredVehicles = result;
+  }
+
+  toggleSort(column: string) {
+    if (this.sortColumn === column) {
+      this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+      this.sortColumn = column;
+      this.sortDirection = 'asc';
+    }
+    this.filterVehicles();
+  }
+
+  trackById(index: number, vehicle: AdminVehicle): number {
+    return vehicle.id;
+  }
+
+  countByStatus(status: string): number {
+    return this.vehicles.filter(v => v.status === status).length;
+  }
+
+  countWithGps(): number {
+    return this.vehicles.filter(v => v.hasGps).length;
   }
 
   getStatusLabel(status: string): string {
     const labels: Record<string, string> = {
-      'available': 'Available',
-      'in_use': 'In Use',
+      'available': 'Disponible',
+      'in_use': 'En service',
       'maintenance': 'Maintenance'
     };
     return labels[status] || status;

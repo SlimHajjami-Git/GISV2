@@ -740,7 +740,7 @@
 .pb-tl-list {
   display: flex;
   flex-direction: column;
-  max-height: 180px;
+  max-height: 260px;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(99,102,241,0.15) transparent;
