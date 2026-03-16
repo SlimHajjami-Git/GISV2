@@ -283,14 +283,14 @@ public class GetTripsReportAllVehiclesQueryHandler : IRequestHandler<GetTripsRep
 
         var vehicleIds = await vehiclesQuery.Select(v => v.Id).ToListAsync(ct);
 
-        // Parallel: process all vehicles concurrently
-        var tasks = vehicleIds.Select(vehicleId =>
-            _mediator.Send(new GetTripsReportQuery(
-                vehicleId,
-                request.StartDate,
-                request.EndDate), ct));
-
-        var results = await Task.WhenAll(tasks);
-        return results.ToList();
+        // Sequential: DbContext is not thread-safe, process one vehicle at a time
+        var results = new List<TripsReportDto>(vehicleIds.Count);
+        foreach (var vehicleId in vehicleIds)
+        {
+            var report = await _mediator.Send(new GetTripsReportQuery(
+                vehicleId, request.StartDate, request.EndDate), ct);
+            results.Add(report);
+        }
+        return results;
     }
 }

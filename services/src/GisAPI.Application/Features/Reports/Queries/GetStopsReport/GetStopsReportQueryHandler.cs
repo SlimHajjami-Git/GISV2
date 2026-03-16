@@ -261,17 +261,16 @@ public class GetStopsReportAllVehiclesQueryHandler : IRequestHandler<GetStopsRep
             vehiclesQuery = vehiclesQuery.Where(v => request.VehicleIds.Contains(v.Id));
 
         var vehicleIds = await vehiclesQuery.Select(v => v.Id).ToListAsync(ct);
-        var reports = new List<StopsReportDto>();
 
-        // Parallel: process all vehicles concurrently
-        var tasks = vehicleIds.Select(vehicleId =>
-            _mediator.Send(new GetStopsReportQuery(
-                vehicleId,
-                request.StartDate,
-                request.EndDate,
-                request.MinStopDurationSeconds), ct));
-
-        var results = await Task.WhenAll(tasks);
-        return results.ToList();
+        // Sequential: DbContext is not thread-safe, process one vehicle at a time
+        var results = new List<StopsReportDto>(vehicleIds.Count);
+        foreach (var vehicleId in vehicleIds)
+        {
+            var report = await _mediator.Send(new GetStopsReportQuery(
+                vehicleId, request.StartDate, request.EndDate,
+                request.MinStopDurationSeconds), ct);
+            results.Add(report);
+        }
+        return results;
     }
 }

@@ -377,9 +377,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.initializeMileagePeriodDates();
 
     this.ngZone.run(() => {
-      this.loadData();
       this.initializeDates();
-      this.restoreState();
+      this.loadData(() => this.restoreState());
     });
   }
 
@@ -418,9 +417,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
       : this.apiService.getVehicleHistory(vehicleId, from, to, maxPoints);
   }
 
-  loadData() {
+  loadData(onVehiclesReady?: () => void) {
     this.getVehiclesObs().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (vehicles) => this.vehicles = vehicles,
+      next: (vehicles) => { this.vehicles = vehicles; if (onVehiclesReady) onVehiclesReady(); },
       error: (err) => console.error('Error loading vehicles:', err)
     });
     this.apiService.getDrivers().pipe(takeUntil(this.destroy$)).subscribe({
@@ -5762,7 +5761,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Auto re-execute the report if one was previously generated
     if (state.reportGenerated && this.selectedTemplate) {
       this.cdr.detectChanges();
-      setTimeout(() => this.executeReport(), 100);
+      // Small delay to let Angular digest the restored bindings
+      setTimeout(() => {
+        if (this.selectedTemplate) this.executeReport();
+      }, 200);
     }
   }
 
