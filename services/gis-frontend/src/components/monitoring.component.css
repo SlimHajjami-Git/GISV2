@@ -340,14 +340,83 @@
   transition: all 0.15s;
 }
 .pb-close:hover { background: rgba(255,255,255,0.3); color: #fff; }
-.pb-header-date {
+/* Vehicle select inside header */
+.pb-vehicle-select {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(4px);
+  border: 1.5px solid rgba(255,255,255,0.4);
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  appearance: auto;
+  transition: border-color 0.15s;
+}
+.pb-vehicle-select:focus {
+  border-color: #fff;
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.2);
+}
+/* Date row inside header */
+.pb-date-row {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   margin-top: 8px;
+}
+.pb-date-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
   font-size: 11px;
-  color: rgba(255,255,255,0.75);
-  font-weight: 500;
+  color: #1e293b;
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(4px);
+  border: 1.5px solid rgba(255,255,255,0.4);
+  border-radius: 8px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.pb-date-input:focus {
+  border-color: #fff;
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.2);
+}
+.pb-date-sep {
+  color: rgba(255,255,255,0.5);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+/* Launch button inside header */
+.pb-launch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 16px;
+  background: rgba(255,255,255,0.2);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  border: 1.5px solid rgba(255,255,255,0.3);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.pb-launch:hover:not(:disabled) {
+  background: rgba(255,255,255,0.3);
+  border-color: rgba(255,255,255,0.5);
+}
+.pb-launch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Loading */

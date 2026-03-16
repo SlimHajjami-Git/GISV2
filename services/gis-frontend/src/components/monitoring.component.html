@@ -350,71 +350,41 @@
 
       <!-- Floating left panel -->
       <div class="playback-panel" [class.playback-active]="isPlaybackLoaded">
-        <!-- Panel header -->
-        <div class="playback-panel-header">
-          <div class="playback-panel-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            <span>Tracer Playback</span>
-          </div>
-          <span class="playback-panel-subtitle">Historique des déplacements</span>
-        </div>
 
-        <!-- Vehicle dropdown -->
-        <div class="playback-panel-section" *ngIf="!isPlaybackLoaded">
-          <label class="playback-label">Véhicule</label>
-          <select class="playback-vehicle-select" [(ngModel)]="playbackVehicleSelect">
+        <!-- ═══════ SETUP: always visible ═══════ -->
+        <!-- Header gradient -->
+        <div class="pb-header">
+          <div class="pb-header-top">
+            <div class="pb-vehicle-chip">
+              <div class="pb-vehicle-avatar">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              </div>
+              <span>Tracer Playback</span>
+            </div>
+          </div>
+          <!-- Vehicle selector inline -->
+          <select class="pb-vehicle-select" [(ngModel)]="playbackVehicleSelect">
             <option [ngValue]="null" disabled>-- Choisir un véhicule --</option>
             <option *ngFor="let v of getPlaybackFilteredVehicles()" [ngValue]="v.id">
               {{ v.plate || v.name }}{{ v.brand ? ' - ' + v.brand : '' }}{{ v.model ? ' ' + v.model : '' }}
             </option>
           </select>
-        </div>
-
-        <!-- Date range -->
-        <div class="playback-panel-section" *ngIf="!isPlaybackLoaded">
-          <label class="playback-label">Période</label>
-          <div class="playback-date-row">
-            <div class="playback-date-field">
-              <span class="playback-date-label">Début</span>
-              <input type="datetime-local" [(ngModel)]="playbackFromDate" [max]="playbackToDate || toLocalDateTimeString(today)" class="playback-date-input">
-            </div>
-            <div class="playback-date-field">
-              <span class="playback-date-label">Fin</span>
-              <input type="datetime-local" [(ngModel)]="playbackToDate" [min]="playbackFromDate" [max]="toLocalDateTimeString(today)" class="playback-date-input">
-            </div>
+          <!-- Date range inline -->
+          <div class="pb-date-row">
+            <input type="datetime-local" [(ngModel)]="playbackFromDate" [max]="playbackToDate || toLocalDateTimeString(today)" class="pb-date-input">
+            <span class="pb-date-sep">—</span>
+            <input type="datetime-local" [(ngModel)]="playbackToDate" [min]="playbackFromDate" [max]="toLocalDateTimeString(today)" class="pb-date-input">
           </div>
-        </div>
-
-        <!-- Launch button -->
-        <div class="playback-panel-footer" *ngIf="!isPlaybackLoaded">
-          <button class="playback-launch-btn" (click)="launchPlaybackFromTab()" [disabled]="playbackLoading || !playbackVehicleSelect">
-            <svg *ngIf="!playbackLoading" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            <span *ngIf="playbackLoading" class="playback-spinner"></span>
-            {{ playbackLoading ? 'Chargement en cours...' : 'Lancer le tracé' }}
+          <!-- Launch button -->
+          <button class="pb-launch" (click)="launchPlaybackFromTab()" [disabled]="playbackLoading || !playbackVehicleSelect">
+            <svg *ngIf="!playbackLoading" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span *ngIf="playbackLoading" class="playback-spinner" style="width:14px;height:14px;border-width:2px;"></span>
+            {{ playbackLoading ? 'Chargement...' : (isPlaybackLoaded ? 'Relancer' : 'Lancer le tracé') }}
           </button>
         </div>
 
-        <!-- ═══════ INLINE PLAYBACK RESULTS ═══════ -->
+        <!-- ═══════ PLAYBACK RESULTS: shown when loaded ═══════ -->
         <ng-container *ngIf="isPlaybackLoaded">
-
-          <!-- Header with gradient + vehicle + close -->
-          <div class="pb-header">
-            <div class="pb-header-top">
-              <div class="pb-vehicle-chip">
-                <div class="pb-vehicle-avatar">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 17h14v-5l-2-5H7L5 12z"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>
-                </div>
-                <span>{{ selectedVehicle?.plate || selectedVehicle?.name }}</span>
-              </div>
-              <button class="pb-close" (click)="endPlayback()" title="Fermer">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-            <div class="pb-header-date">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              {{ formatPlaybackDate(playbackFromDate) }} — {{ formatPlaybackDate(playbackToDate) }}
-            </div>
-          </div>
 
           <!-- Loading indicator -->
           <div class="pbi-loading" *ngIf="playbackLoading">
@@ -438,7 +408,7 @@
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
                 </div>
                 <div class="pb-kpi-data">
-                  <span class="pb-kpi-val">{{ getPlaybackTotalKm() }}</span>
+                  <span class="pb-kpi-val">{{ getPlaybackCurrentKm() }}</span>
                   <span class="pb-kpi-unit">km</span>
                 </div>
                 <span class="pb-kpi-lbl">Distance</span>
@@ -455,12 +425,13 @@
               </div>
               <div class="pb-kpi pb-kpi-amber">
                 <div class="pb-kpi-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12m-10 0a10 10 0 1 0 20 0 10 10 0 1 0 -20 0"/><path d="M12 8v4l3 3"/></svg>
                 </div>
                 <div class="pb-kpi-data">
-                  <span class="pb-kpi-val">{{ getPlaybackStopCount() }}</span>
+                  <span class="pb-kpi-val" [style.color]="getPlaybackSpeedColor()">{{ getPlaybackCurrentSpeed() }}</span>
+                  <span class="pb-kpi-unit">km/h</span>
                 </div>
-                <span class="pb-kpi-lbl">Arrêts</span>
+                <span class="pb-kpi-lbl">Vitesse</span>
               </div>
               <div class="pb-kpi pb-kpi-green">
                 <div class="pb-kpi-icon">
@@ -478,10 +449,6 @@
               <div class="pb-live-item">
                 <span class="pb-live-dot" [ngClass]="getPlaybackStatusClass()"></span>
                 <span class="pb-live-label">{{ getPlaybackStatusLabel() }}</span>
-              </div>
-              <div class="pb-live-item">
-                <span class="pb-live-speed" [style.color]="getPlaybackSpeedColor()">{{ getPlaybackCurrentSpeed() }}</span>
-                <span class="pb-live-speed-unit">km/h</span>
               </div>
               <div class="pb-live-item pb-live-pts">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="#94a3b8"><circle cx="12" cy="12" r="3"/><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z"/></svg>
