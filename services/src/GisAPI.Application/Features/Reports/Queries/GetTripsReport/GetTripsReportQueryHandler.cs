@@ -165,8 +165,8 @@ public class GetTripsReportQueryHandler : IRequestHandler<GetTripsReportQuery, T
             ));
         }
 
-        // Step 2: Merge adjacent trips separated by < 60s gap (noisy ignition debounce)
-        const int MERGE_GAP_SECONDS = 60;
+        // Step 2: Merge adjacent trips separated by < 180s gap (noisy ignition debounce + parking maneuvers)
+        const int MERGE_GAP_SECONDS = 180;
         var merged = new List<(DateTime Start, DateTime End, List<TripPositionSlim> Positions)>();
 
         foreach (var trip in rawTrips)
@@ -193,7 +193,7 @@ public class GetTripsReportQueryHandler : IRequestHandler<GetTripsReportQuery, T
             if (durationSeconds < 60) continue; // Skip micro-trips < 1 min
 
             var distanceKm = CalculateDistance(trip.Positions);
-            if (distanceKm < 0.1) continue; // Skip trips with no real movement
+            if (distanceKm < 0.2) continue; // Skip trips with no real movement
 
             var speedPositions = trip.Positions.Where(p => (p.SpeedKph ?? 0) > 0).ToList();
             var maxSpeed = trip.Positions.Count > 0 ? trip.Positions.Max(p => p.SpeedKph ?? 0) : 0;

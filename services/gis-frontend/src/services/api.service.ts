@@ -1808,7 +1808,7 @@ export interface DailyEndEvent {
 }
 
 export interface ActivitySegment {
-  type: 'drive' | 'stop';
+  type: 'drive' | 'stop' | 'pause';
   sequenceNumber: number;
   startTime: string;
   endTime?: string;

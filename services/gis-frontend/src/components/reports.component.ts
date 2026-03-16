@@ -2062,6 +2062,25 @@ export class ReportsComponent implements OnInit, OnDestroy {
         });
         lastEndTime = activity.endTime || activity.startTime;
         lastEndLocation = activity.endLocation || activity.startLocation;
+      } else if (activity.type === 'pause') {
+        events.push({
+          eventNumber,
+          time: `${this.formatDateTime(activity.startTime)} → ${activity.endTime ? this.formatDateTime(activity.endTime) : '...'}`,
+          type: 'pause',
+          typeIcon: '⏸️',
+          typeLabel: 'Pause',
+          description: activity.startLocation.address || 'Manoeuvre / stationnement',
+          address: activity.startLocation.address || `${activity.startLocation.latitude.toFixed(4)}°, ${activity.startLocation.longitude.toFixed(4)}°`,
+          latitude: activity.startLocation.latitude,
+          longitude: activity.startLocation.longitude,
+          duration: activity.durationFormatted,
+          distance: activity.distanceKm ? `${activity.distanceKm.toFixed(1)} km` : '-',
+          speed: '-',
+          durationSeconds: activity.durationSeconds,
+          _sortTime: new Date(activity.startTime).getTime()
+        });
+        lastEndTime = activity.endTime || activity.startTime;
+        lastEndLocation = activity.endLocation || activity.startLocation;
       } else {
         stopNumber++;
         events.push({
@@ -2146,23 +2165,27 @@ export class ReportsComponent implements OnInit, OnDestroy {
     });
 
     // Merge consecutive stops after sorting (implicit stops may be adjacent to backend stops)
+    // Also merge consecutive pauses
     const mergedEvents: any[] = [];
     for (const evt of events) {
-      if (evt.type === 'stop' && mergedEvents.length > 0 && mergedEvents[mergedEvents.length - 1].type === 'stop') {
-        const prev = mergedEvents[mergedEvents.length - 1];
-        // Extend previous stop to cover this one
-        const prevEnd = prev._sortTime + (prev.durationSeconds || 0) * 1000;
+      const prevEvt = mergedEvents.length > 0 ? mergedEvents[mergedEvents.length - 1] : null;
+      if (prevEvt && (
+        (evt.type === 'stop' && prevEvt.type === 'stop') ||
+        (evt.type === 'pause' && prevEvt.type === 'pause')
+      )) {
+        // Extend previous event to cover this one
+        const prevEnd = prevEvt._sortTime + (prevEvt.durationSeconds || 0) * 1000;
         const currEnd = evt._sortTime + (evt.durationSeconds || 0) * 1000;
         const mergedEnd = Math.max(prevEnd, currEnd);
-        prev.durationSeconds = Math.round((mergedEnd - prev._sortTime) / 1000);
-        const totalSecs = prev.durationSeconds;
-        prev.duration = totalSecs >= 3600
+        prevEvt.durationSeconds = Math.round((mergedEnd - prevEvt._sortTime) / 1000);
+        const totalSecs = prevEvt.durationSeconds;
+        prevEvt.duration = totalSecs >= 3600
           ? `${Math.floor(totalSecs / 3600)}h ${Math.floor((totalSecs % 3600) / 60)}m`
           : `${Math.floor(totalSecs / 60)}m`;
         // Update time range display
-        const endDate = new Date(prev._sortTime + totalSecs * 1000);
-        const startStr = prev.time.split(' → ')[0];
-        prev.time = `${startStr} → ${this.formatDateTime(endDate.toISOString())}`;
+        const endDate = new Date(prevEvt._sortTime + totalSecs * 1000);
+        const startStr = prevEvt.time.split(' → ')[0];
+        prevEvt.time = `${startStr} → ${this.formatDateTime(endDate.toISOString())}`;
         continue;
       }
       mergedEvents.push(evt);

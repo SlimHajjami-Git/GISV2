@@ -188,8 +188,8 @@ public class GetStopsReportQueryHandler : IRequestHandler<GetStopsReportQuery, S
             rawStops.Add((stopStart.Value, stopEnd, stopLat, stopLon));
         }
 
-        // Step 2: Merge adjacent stops separated by < 60s gap (noisy ignition debounce)
-        const int MERGE_GAP_SECONDS = 60;
+        // Step 2: Merge adjacent stops separated by < 180s gap (noisy ignition debounce + parking maneuvers)
+        const int MERGE_GAP_SECONDS = 180;
         var merged = new List<(DateTime Start, DateTime End, double Lat, double Lon)>();
 
         foreach (var stop in rawStops)
