@@ -245,7 +245,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
                 if (shouldNotify)
                 {
                     _speedAlertCooldown[vehicleId] = now;
-                    _ = _publisher.Publish(new SpeedAlertNotificationEvent(
+                    await _publisher.Publish(new SpeedAlertNotificationEvent(
                         cached.CompanyId, cached.VehicleId, cached.VehicleName, cached.Plate,
                         speed, request.Latitude, request.Longitude, request.RecordedAt
                     ), ct);
@@ -266,7 +266,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
                 if (shouldNotifyBehavior)
                 {
                     _behaviorCooldown[cooldownKey] = now;
-                    _ = _publisher.Publish(new DrivingBehaviorNotificationEvent(
+                    await _publisher.Publish(new DrivingBehaviorNotificationEvent(
                         cached.CompanyId, cached.VehicleId, cached.VehicleName, cached.Plate,
                         request.AlertType, speed, request.Latitude, request.Longitude, request.RecordedAt
                     ), ct);

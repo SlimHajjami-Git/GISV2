@@ -94,7 +94,7 @@ public class CreateAccidentClaimCommandHandler : IRequestHandler<CreateAccidentC
         var vehicle = await _context.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken);
         if (actor != null)
         {
-            _ = _publisher.Publish(new AdminActionNotificationEvent(
+            await _publisher.Publish(new AdminActionNotificationEvent(
                 companyId, actorId, actor.FullName,
                 "accident_created", vehicle?.Name ?? vehicle?.Plate ?? $"Sinistre {claimNumber}", claim.Id, "accident"
             ), cancellationToken);

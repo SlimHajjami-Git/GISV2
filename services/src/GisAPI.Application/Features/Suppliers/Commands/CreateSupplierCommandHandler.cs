@@ -70,7 +70,7 @@ public class CreateSupplierCommandHandler : IRequestHandler<CreateSupplierComman
         var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId, cancellationToken);
         if (actor != null && companyId > 0)
         {
-            _ = _publisher.Publish(new AdminActionNotificationEvent(
+            await _publisher.Publish(new AdminActionNotificationEvent(
                 companyId, actorId, actor.FullName,
                 "supplier_created", supplier.Name, supplier.Id, "supplier"
             ), cancellationToken);

@@ -57,12 +57,12 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
         _context.FuelEntries.Add(entry);
         await _context.SaveChangesAsync(cancellationToken);
 
-        // Notify company admins
+        // Notify company admins (must be awaited to avoid DbContext concurrency issues in bulk scenarios)
         var actorId = _tenantService.UserId ?? 0;
         var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId, cancellationToken);
         if (actor != null)
         {
-            _ = _publisher.Publish(new AdminActionNotificationEvent(
+            await _publisher.Publish(new AdminActionNotificationEvent(
                 companyId, actorId, actor.FullName,
                 "cost_created", request.VehiclePlate ?? $"Carburant #{entry.Id}", entry.Id, "cost"
             ), cancellationToken);

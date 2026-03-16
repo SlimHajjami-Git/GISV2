@@ -112,7 +112,7 @@ public class CreateDriverCommandHandler : IRequestHandler<CreateDriverCommand, D
         var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId, ct);
         if (actor != null)
         {
-            _ = _publisher.Publish(new AdminActionNotificationEvent(
+            await _publisher.Publish(new AdminActionNotificationEvent(
                 companyId, actorId, actor.FullName,
                 "driver_created", $"{request.FirstName} {request.LastName}", driver.Id, "driver"
             ), ct);

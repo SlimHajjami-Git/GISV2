@@ -23,7 +23,10 @@ public record CreateAdminVehicleCommand(
     string? GpsBrand,
     string? GpsModel,
     string? GpsFirmwareVersion,
-    string? GpsFuelSensorMode
+    string? GpsFuelSensorMode,
+    string? GpsSimNumber,
+    string? GpsSimOperator,
+    DateTime? GpsInstallationDate
 ) : IRequest<CreateAdminVehicleResult>;
 
 public record CreateAdminVehicleResult(bool Success, string? Error = null, AdminVehicleDto? Vehicle = null);

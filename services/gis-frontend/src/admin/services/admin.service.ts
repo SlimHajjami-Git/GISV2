@@ -94,6 +94,9 @@ export interface AdminVehicle {
   gpsModel?: string;
   gpsFirmwareVersion?: string;
   gpsFuelSensorMode?: string;
+  gpsSimNumber?: string;
+  gpsSimOperator?: string;
+  gpsInstallationDate?: Date;
   assignedDriverId?: number;
   assignedDriverName?: string;
   createdAt: Date;

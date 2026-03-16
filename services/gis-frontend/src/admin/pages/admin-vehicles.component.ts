@@ -1080,7 +1080,10 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
       gpsBrand: formData.hasGPS ? formData.gpsBrand || undefined : undefined,
       gpsModel: formData.hasGPS ? formData.gpsModel || undefined : undefined,
       gpsFirmwareVersion: formData.hasGPS ? formData.gpsFirmwareVersion || undefined : undefined,
-      gpsFuelSensorMode: formData.hasGPS ? formData.gpsFuelSensorMode || undefined : undefined
+      gpsFuelSensorMode: formData.hasGPS ? formData.gpsFuelSensorMode || undefined : undefined,
+      gpsSimNumber: formData.hasGPS ? formData.gpsSimNumber || undefined : undefined,
+      gpsSimOperator: formData.hasGPS ? formData.gpsSimOperator || undefined : undefined,
+      gpsInstallationDate: formData.hasGPS ? formData.gpsInstallationDate || undefined : undefined
     };
 
     if (this.showEditModal && this.selectedVehicle) {

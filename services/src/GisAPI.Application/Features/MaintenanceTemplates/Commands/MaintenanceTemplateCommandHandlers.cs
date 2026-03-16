@@ -47,7 +47,7 @@ public class CreateMaintenanceTemplateCommandHandler : IRequestHandler<CreateMai
         var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId, cancellationToken);
         if (actor != null && companyId > 0)
         {
-            _ = _publisher.Publish(new AdminActionNotificationEvent(
+            await _publisher.Publish(new AdminActionNotificationEvent(
                 companyId, actorId, actor.FullName,
                 "maintenance_created", template.Name, template.Id, "maintenance"
             ), cancellationToken);

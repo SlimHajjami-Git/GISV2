@@ -82,7 +82,7 @@ public class CreateVehicleCommandHandler : IRequestHandler<CreateVehicleCommand,
         var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId, ct);
         if (actor != null && companyId > 0)
         {
-            _ = _publisher.Publish(new AdminActionNotificationEvent(
+            await _publisher.Publish(new AdminActionNotificationEvent(
                 companyId, actorId, actor.FullName,
                 "vehicle_created", vehicle.Name ?? vehicle.Plate, vehicle.Id, "vehicle"
             ), ct);

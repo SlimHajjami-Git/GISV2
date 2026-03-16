@@ -2244,10 +2244,64 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     this.selectedVehicle = null;
   }
 
-  saveVehicle(vehicleData: Partial<Vehicle>) {
+  saveVehicle(vehicleData: any) {
     console.log('Saving vehicle:', vehicleData);
-    this.closePopup();
-    this.loadVehicles();
+
+    // Build payload matching backend CreateVehicleCommand / UpdateVehicleCommand
+    const payload: any = {
+      name: vehicleData.name,
+      type: vehicleData.type || 'citadine',
+      brand: vehicleData.brand || null,
+      model: vehicleData.model || null,
+      plate: vehicleData.plate || null,
+      year: vehicleData.year || null,
+      color: vehicleData.color || null,
+      mileage: vehicleData.mileage || 0,
+      fuelType: vehicleData.fuelType || null,
+      fuelTankCapacity: vehicleData.fuelTankCapacity || null,
+      status: vehicleData.status || 'available'
+    };
+
+    // GPS device handling
+    if (vehicleData.hasGPS) {
+      if (vehicleData.gpsDeviceId) {
+        payload.gpsDeviceId = parseInt(vehicleData.gpsDeviceId, 10);
+      } else if (vehicleData.gpsImei) {
+        payload.newGpsDevice = {
+          deviceUid: vehicleData.gpsImei,
+          simNumber: vehicleData.gpsSimNumber || null,
+          simOperator: vehicleData.gpsSimOperator || null,
+          brand: vehicleData.gpsBrand || null,
+          model: vehicleData.gpsModel || null,
+          installationDate: vehicleData.gpsInstallationDate || null
+        };
+      }
+    }
+
+    if (this.selectedVehicle && this.selectedVehicle.id) {
+      payload.id = parseInt(this.selectedVehicle.id, 10);
+      this.apiService.updateVehicle(payload.id, payload).pipe(takeUntil(this.destroy$)).subscribe({
+        next: () => {
+          this.closePopup();
+          this.loadVehicles();
+        },
+        error: (err) => {
+          console.error('Error updating vehicle:', err);
+          alert('Erreur lors de la mise à jour du véhicule');
+        }
+      });
+    } else {
+      this.apiService.createVehicle(payload).pipe(takeUntil(this.destroy$)).subscribe({
+        next: () => {
+          this.closePopup();
+          this.loadVehicles();
+        },
+        error: (err) => {
+          console.error('Error creating vehicle:', err);
+          alert('Erreur lors de la création du véhicule');
+        }
+      });
+    }
   }
 
   openCostsPopup(vehicle: Vehicle) {

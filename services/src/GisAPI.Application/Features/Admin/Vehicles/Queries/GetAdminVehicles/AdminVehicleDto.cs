@@ -26,6 +26,9 @@ public class AdminVehicleDto
     public string? GpsModel { get; set; }
     public string? GpsFirmwareVersion { get; set; }
     public string? GpsFuelSensorMode { get; set; }
+    public string? GpsSimNumber { get; set; }
+    public string? GpsSimOperator { get; set; }
+    public DateTime? GpsInstallationDate { get; set; }
     public int? AssignedDriverId { get; set; }
     public string? AssignedDriverName { get; set; }
     public DateTime CreatedAt { get; set; }

@@ -24,7 +24,10 @@ public record UpdateAdminVehicleCommand(
     string? GpsBrand,
     string? GpsModel,
     string? GpsFirmwareVersion,
-    string? GpsFuelSensorMode
+    string? GpsFuelSensorMode,
+    string? GpsSimNumber,
+    string? GpsSimOperator,
+    DateTime? GpsInstallationDate
 ) : IRequest<UpdateAdminVehicleResult>;
 
 public record UpdateAdminVehicleResult(bool Success, string? Error = null, AdminVehicleDto? Vehicle = null);

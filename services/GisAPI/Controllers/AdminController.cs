@@ -243,7 +243,8 @@ public class AdminController : ControllerBase
             request.Year, request.Color, request.Status, request.HasGps, request.Mileage,
             request.FuelType, request.FuelTankCapacity, request.CompanyId,
             request.GpsDeviceId, request.GpsImei, request.GpsMat,
-            request.GpsBrand, request.GpsModel, request.GpsFirmwareVersion, request.GpsFuelSensorMode
+            request.GpsBrand, request.GpsModel, request.GpsFirmwareVersion, request.GpsFuelSensorMode,
+            request.GpsSimNumber, request.GpsSimOperator, request.GpsInstallationDate
         ));
         if (!result.Success) return BadRequest(new { message = result.Error });
         return CreatedAtAction(nameof(GetVehicle), new { id = result.Vehicle!.Id }, result.Vehicle);
@@ -257,7 +258,8 @@ public class AdminController : ControllerBase
             request.Year, request.Color, request.Status, request.HasGps, request.Mileage,
             request.FuelType, request.FuelTankCapacity, request.CompanyId,
             request.GpsDeviceId, request.GpsImei, request.GpsMat,
-            request.GpsBrand, request.GpsModel, request.GpsFirmwareVersion, request.GpsFuelSensorMode
+            request.GpsBrand, request.GpsModel, request.GpsFirmwareVersion, request.GpsFuelSensorMode,
+            request.GpsSimNumber, request.GpsSimOperator, request.GpsInstallationDate
         ));
         if (!result.Success && result.Error == "not_found") return NotFound();
         if (!result.Success) return BadRequest(new { message = result.Error });
@@ -1133,6 +1135,9 @@ public class CreateAdminVehicleRequest
     public string? GpsModel { get; set; }
     public string? GpsFirmwareVersion { get; set; }
     public string? GpsFuelSensorMode { get; set; }
+    public string? GpsSimNumber { get; set; }
+    public string? GpsSimOperator { get; set; }
+    public DateTime? GpsInstallationDate { get; set; }
 }
 
 public class UpdateAdminVehicleRequest
@@ -1157,6 +1162,9 @@ public class UpdateAdminVehicleRequest
     public string? GpsModel { get; set; }
     public string? GpsFirmwareVersion { get; set; }
     public string? GpsFuelSensorMode { get; set; }
+    public string? GpsSimNumber { get; set; }
+    public string? GpsSimOperator { get; set; }
+    public DateTime? GpsInstallationDate { get; set; }
 }
 
 public class SendTestNotificationRequest

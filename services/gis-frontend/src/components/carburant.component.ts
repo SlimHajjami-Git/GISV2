@@ -740,7 +740,19 @@ export class CarburantComponent implements OnInit, OnDestroy {
     this.apiService.bulkCreateFuelEntries(requests).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {
         console.log(`Import carburant: ${result.success}/${result.total} réussis`);
-        if (result.failed > 0) {
+        if (result.results) {
+          const failed = result.results.filter((r: any) => !r.success);
+          if (failed.length > 0) {
+            console.warn('Entrées échouées:', failed);
+            const errorDetails = failed.map((r: any, i: number) => {
+              const req = requests[result.results.indexOf(r)];
+              return `• ${req?.vehiclePlate || '?'}: ${r.error}`;
+            }).join('\n');
+            alert(`Import terminé: ${result.success} réussis, ${result.failed} échoués sur ${result.total}\n\nDétails des erreurs:\n${errorDetails}`);
+          } else {
+            alert(`Import réussi: ${result.success} entrées importées`);
+          }
+        } else if (result.failed > 0) {
           alert(`Import terminé: ${result.success} réussis, ${result.failed} échoués sur ${result.total}`);
         } else {
           alert(`Import réussi: ${result.success} entrées importées`);

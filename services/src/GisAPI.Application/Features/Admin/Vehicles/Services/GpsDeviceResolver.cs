@@ -89,6 +89,9 @@ public static class GpsDeviceResolver
             GpsBrand = v.GpsDevice?.Brand, GpsModel = v.GpsDevice?.Model,
             GpsFirmwareVersion = v.GpsDevice?.FirmwareVersion,
             GpsFuelSensorMode = v.GpsDevice?.FuelSensorMode,
+            GpsSimNumber = v.GpsDevice?.SimNumber,
+            GpsSimOperator = v.GpsDevice?.SimOperator,
+            GpsInstallationDate = v.GpsDevice?.InstallationDate,
             AssignedDriverId = v.AssignedDriverId,
             AssignedDriverName = v.AssignedDriver?.Name,
             CreatedAt = v.CreatedAt, UpdatedAt = v.UpdatedAt

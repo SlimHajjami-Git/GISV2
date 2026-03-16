@@ -150,7 +150,7 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
         var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == currentUserId, ct);
         if (actor != null)
         {
-            _ = _publisher.Publish(new AdminActionNotificationEvent(
+            await _publisher.Publish(new AdminActionNotificationEvent(
                 companyId, currentUserId, actor.FullName,
                 "user_created", user.FullName, user.Id, "user"
             ), ct);
