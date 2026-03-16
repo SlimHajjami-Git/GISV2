@@ -2014,7 +2014,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       if (lastEndTime && activity.startTime) {
         const gapMs = new Date(activity.startTime).getTime() - new Date(lastEndTime).getTime();
         const gapSeconds = Math.floor(gapMs / 1000);
-        if (gapSeconds > 300) { // Gap > 5 minutes → insert implicit stop (matches backend MIN_REAL_STOP_SECONDS)
+        if (gapSeconds > 0) { // Any gap between activities → insert implicit stop
           stopNumber++;
           eventNumber++;
           const gapFormatted = gapSeconds >= 3600

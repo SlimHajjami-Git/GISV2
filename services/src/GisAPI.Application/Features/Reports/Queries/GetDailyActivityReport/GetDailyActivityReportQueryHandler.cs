@@ -47,9 +47,9 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
             };
         }
 
-        // DB stores local time directly (no timezone offset)
-        var dayStart = DateTime.SpecifyKind(request.Date.Date, DateTimeKind.Utc);
-        var dayEnd = DateTime.SpecifyKind(request.Date.Date.AddDays(1), DateTimeKind.Utc);
+        // GPS stores UTC+1 (Tunisia local) as UTC. Shift query window: [J-1 23:00 → J 23:00]
+        var dayStart = DateTime.SpecifyKind(request.Date.Date.AddHours(-1), DateTimeKind.Utc);
+        var dayEnd = DateTime.SpecifyKind(request.Date.Date.AddDays(1).AddHours(-1), DateTimeKind.Utc);
 
         var positions = await _context.GpsPositions
             .AsNoTracking()
@@ -369,70 +369,57 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
             }
         }
 
-        // === POST-MERGE: INSERT PAUSES ===
-        // Between consecutive drives that have a gap (ignition OFF), insert a "pause" segment
-        // so the user sees the address where the driver briefly stopped.
-        var withPauses = new List<ActivitySegmentDto>();
+        // === POST-MERGE: INSERT STOPS BETWEEN CONSECUTIVE DRIVES ===
+        // Between consecutive drives, insert a proper "stop" segment with geocoded address
+        // so the user always sees where the driver stopped between trips.
+        var withStops = new List<ActivitySegmentDto>();
         for (int m = 0; m < merged.Count; m++)
         {
             var seg = merged[m];
 
-            if (seg.Type == "drive" && withPauses.Count > 0 && withPauses[^1].Type == "drive")
+            if (seg.Type == "drive" && withStops.Count > 0 && withStops[^1].Type == "drive")
             {
-                var prev = withPauses[^1];
+                var prev = withStops[^1];
                 if (prev.EndTime.HasValue)
                 {
                     var gapSeconds = (int)(seg.StartTime - prev.EndTime.Value).TotalSeconds;
-                    if (gapSeconds > 0)
+                    if (gapSeconds >= 0)
                     {
-                        // Find the position closest to the gap start for the address
                         var gapPos = activePositions
                             .Where(p => p.RecordedAt >= prev.EndTime.Value && p.RecordedAt <= seg.StartTime)
                             .FirstOrDefault();
-                        var pauseLat = gapPos?.Latitude ?? prev.EndLocation?.Latitude ?? 0;
-                        var pauseLon = gapPos?.Longitude ?? prev.EndLocation?.Longitude ?? 0;
-                        var pauseAddr = gapPos?.Address ?? prev.EndLocation?.Address;
+                        var stopLat = gapPos?.Latitude ?? prev.EndLocation?.Latitude ?? 0;
+                        var stopLon = gapPos?.Longitude ?? prev.EndLocation?.Longitude ?? 0;
+                        var stopAddr = gapPos?.Address ?? prev.EndLocation?.Address;
 
-                        withPauses.Add(new ActivitySegmentDto
+                        withStops.Add(new ActivitySegmentDto
                         {
-                            Type = "pause",
+                            Type = "stop",
                             StartTime = prev.EndTime.Value,
                             EndTime = seg.StartTime,
-                            DurationSeconds = gapSeconds,
-                            DurationFormatted = FormatDuration(gapSeconds),
+                            DurationSeconds = Math.Max(gapSeconds, 0),
+                            DurationFormatted = FormatDuration(Math.Max(gapSeconds, 0)),
                             StartLocation = new LocationDto
                             {
-                                Latitude = pauseLat,
-                                Longitude = pauseLon,
-                                Address = pauseAddr
+                                Latitude = stopLat,
+                                Longitude = stopLon,
+                                Address = stopAddr
                             }
                         });
                     }
                 }
             }
 
-            withPauses.Add(seg);
+            withStops.Add(seg);
         }
-        merged = withPauses;
+        merged = withStops;
 
         // === TRAILING CLEANUP ===
         // The last activity before "Fin de journée" must always be a drive.
-        // Absorb trailing pauses/stops into the last drive (extend its end time).
+        // Remove trailing stops/pauses without altering the last drive's duration.
         while (merged.Count > 0 && merged[^1].Type != "drive")
         {
-            var trailing = merged[^1];
             merged.RemoveAt(merged.Count - 1);
-
-            // Find last drive to absorb into
-            var lastDrive = merged.FindLast(s => s.Type == "drive");
-            if (lastDrive != null)
-            {
-                lastDrive.EndTime = trailing.EndTime ?? trailing.StartTime;
-                lastDrive.EndLocation = trailing.EndLocation ?? trailing.StartLocation;
-                lastDrive.DurationSeconds = (int)(lastDrive.EndTime!.Value - lastDrive.StartTime).TotalSeconds;
-                lastDrive.DurationFormatted = FormatDuration(lastDrive.DurationSeconds);
-                lastDrive.DistanceKm = (lastDrive.DistanceKm ?? 0) + (trailing.DistanceKm ?? 0);
-            }
         }
 
         // Re-number sequences
