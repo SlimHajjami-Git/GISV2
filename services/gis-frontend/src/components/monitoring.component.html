@@ -396,21 +396,24 @@
 
         <!-- ═══════ INLINE PLAYBACK RESULTS ═══════ -->
         <ng-container *ngIf="isPlaybackLoaded">
-          <!-- Vehicle info + close -->
-          <div class="pbi-vehicle-bar">
-            <div class="pbi-vehicle-info">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><polygon points="16 8 20 12 16 16"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="13.5" cy="18.5" r="2.5"/></svg>
-              <span>{{ selectedVehicle?.plate || selectedVehicle?.name }}</span>
-            </div>
-            <button class="pbi-close-btn" (click)="endPlayback()" title="Fermer">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
 
-          <!-- Date range display -->
-          <div class="pbi-date-range">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            {{ formatPlaybackDate(playbackFromDate) }} — {{ formatPlaybackDate(playbackToDate) }}
+          <!-- Header with gradient + vehicle + close -->
+          <div class="pb-header">
+            <div class="pb-header-top">
+              <div class="pb-vehicle-chip">
+                <div class="pb-vehicle-avatar">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 17h14v-5l-2-5H7L5 12z"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>
+                </div>
+                <span>{{ selectedVehicle?.plate || selectedVehicle?.name }}</span>
+              </div>
+              <button class="pb-close" (click)="endPlayback()" title="Fermer">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <div class="pb-header-date">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              {{ formatPlaybackDate(playbackFromDate) }} — {{ formatPlaybackDate(playbackToDate) }}
+            </div>
           </div>
 
           <!-- Loading indicator -->
@@ -419,74 +422,107 @@
             <span>Chargement...</span>
           </div>
 
-          <!-- Live address -->
-          <div class="pbi-address" *ngIf="!playbackLoading" title="{{ playbackCurrentAddress }}">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            <span>{{ playbackCurrentAddress || 'Chargement...' }}</span>
-          </div>
+          <!-- Body content when loaded -->
+          <div class="pb-body" *ngIf="!playbackLoading">
 
-          <!-- Metrics 2x2 grid -->
-          <div class="pbi-metrics" *ngIf="!playbackLoading">
-            <div class="pbi-metric">
-              <span class="pbi-metric-val" style="color:#3b82f6">{{ getPlaybackDepartureTime() }}</span>
-              <span class="pbi-metric-lbl">Heure de départ</span>
+            <!-- Live address pill -->
+            <div class="pb-address">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <span>{{ playbackCurrentAddress || 'Chargement...' }}</span>
             </div>
-            <div class="pbi-metric">
-              <span class="pbi-metric-val" style="color:#8b5cf6">{{ getPlaybackArrivalTime() }}</span>
-              <span class="pbi-metric-lbl">Heure d'arrivée</span>
-            </div>
-            <div class="pbi-metric">
-              <span class="pbi-metric-val" style="color:#ef4444">{{ getPlaybackTotalStopDuration() }}</span>
-              <span class="pbi-metric-lbl">Durée d'arrêt</span>
-            </div>
-            <div class="pbi-metric">
-              <span class="pbi-metric-val" style="color:#22c55e">{{ getPlaybackCurrentKm() }}</span>
-              <span class="pbi-metric-lbl">Km parcourus</span>
-            </div>
-          </div>
 
-          <!-- Status -->
-          <div class="pbi-status-row" *ngIf="!playbackLoading">
-            <div class="pbi-status" [ngClass]="getPlaybackStatusClass()">
-              <span class="pbi-status-dot"></span>
-              {{ getPlaybackStatusLabel() }}
+            <!-- KPI cards -->
+            <div class="pb-kpis">
+              <div class="pb-kpi pb-kpi-blue">
+                <div class="pb-kpi-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+                </div>
+                <div class="pb-kpi-data">
+                  <span class="pb-kpi-val">{{ getPlaybackTotalKm() }}</span>
+                  <span class="pb-kpi-unit">km</span>
+                </div>
+                <span class="pb-kpi-lbl">Distance</span>
+              </div>
+              <div class="pb-kpi pb-kpi-red">
+                <div class="pb-kpi-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>
+                </div>
+                <div class="pb-kpi-data">
+                  <span class="pb-kpi-val">{{ getPlaybackMaxSpeed() }}</span>
+                  <span class="pb-kpi-unit">km/h</span>
+                </div>
+                <span class="pb-kpi-lbl">V. max</span>
+              </div>
+              <div class="pb-kpi pb-kpi-amber">
+                <div class="pb-kpi-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </div>
+                <div class="pb-kpi-data">
+                  <span class="pb-kpi-val">{{ getPlaybackStopCount() }}</span>
+                </div>
+                <span class="pb-kpi-lbl">Arrêts</span>
+              </div>
+              <div class="pb-kpi pb-kpi-green">
+                <div class="pb-kpi-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </div>
+                <div class="pb-kpi-data">
+                  <span class="pb-kpi-val">{{ getPlaybackDrivingTime() }}</span>
+                </div>
+                <span class="pb-kpi-lbl">Conduite</span>
+              </div>
             </div>
-            <span class="pbi-gps-count">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="3"/><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z"/></svg>
-              {{ playbackPositions.length }} pts
-            </span>
-          </div>
 
-          <!-- Progress bar -->
-          <div class="pbi-progress" *ngIf="!playbackLoading">
-            <input type="range" class="pbi-slider" [min]="0" [max]="100" [ngModel]="playbackProgress" (ngModelChange)="onPlaybackProgressChange($event)">
-            <div class="pbi-progress-labels">
-              <span>{{ playbackIndex + 1 }} / {{ playbackPositions.length }}</span>
-              <span>{{ playbackProgress | number:'1.0-0' }}%</span>
+            <!-- Live info bar -->
+            <div class="pb-live-bar">
+              <div class="pb-live-item">
+                <span class="pb-live-dot" [ngClass]="getPlaybackStatusClass()"></span>
+                <span class="pb-live-label">{{ getPlaybackStatusLabel() }}</span>
+              </div>
+              <div class="pb-live-item">
+                <span class="pb-live-speed" [style.color]="getPlaybackSpeedColor()">{{ getPlaybackCurrentSpeed() }}</span>
+                <span class="pb-live-speed-unit">km/h</span>
+              </div>
+              <div class="pb-live-item pb-live-pts">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="#94a3b8"><circle cx="12" cy="12" r="3"/><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z"/></svg>
+                {{ playbackPositions.length }} pts
+              </div>
             </div>
-          </div>
 
-          <!-- Transport controls -->
-          <div class="pbi-controls" *ngIf="!playbackLoading">
-            <div class="pbi-transport-row">
-              <button class="pbi-btn-sm" (click)="resetPlayback()" title="Début">
+            <!-- Progress section -->
+            <div class="pb-progress">
+              <div class="pb-progress-track">
+                <div class="pb-progress-fill" [style.width.%]="playbackProgress"></div>
+                <input type="range" class="pb-progress-input" [min]="0" [max]="100" [ngModel]="playbackProgress" (ngModelChange)="onPlaybackProgressChange($event)">
+              </div>
+              <div class="pb-progress-info">
+                <span>{{ getPlaybackCurrentTime() }}</span>
+                <span>{{ playbackIndex + 1 }}/{{ playbackPositions.length }}</span>
+              </div>
+            </div>
+
+            <!-- Transport controls -->
+            <div class="pb-transport">
+              <button class="pb-ctrl" (click)="resetPlayback()" title="Début">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="19 20 9 12 19 4"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
               </button>
-              <button class="pbi-btn-sm" (click)="previousPoint()" title="Précédent">
+              <button class="pb-ctrl" (click)="previousPoint()" title="Précédent">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
               </button>
-              <button class="pbi-btn-play" (click)="togglePlayback()">
-                <svg *ngIf="!isPlaying" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg>
-                <svg *ngIf="isPlaying" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+              <button class="pb-play" [class.playing]="isPlaying" (click)="togglePlayback()">
+                <svg *ngIf="!isPlaying" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"/></svg>
+                <svg *ngIf="isPlaying" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
               </button>
-              <button class="pbi-btn-sm" (click)="nextPoint()" title="Suivant">
+              <button class="pb-ctrl" (click)="nextPoint()" title="Suivant">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
               </button>
-              <button class="pbi-btn-sm" (click)="skipToEnd()" title="Fin">
+              <button class="pb-ctrl" (click)="skipToEnd()" title="Fin">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 4 15 12 5 20"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
               </button>
             </div>
-            <div class="pbi-speed-row">
+
+            <!-- Speed selector -->
+            <div class="pb-speeds">
               <button *ngFor="let s of playbackSpeeds" [class.active]="playbackSpeed === s" (click)="onPlaybackSpeedChange(s)">{{ s }}x</button>
             </div>
           </div>

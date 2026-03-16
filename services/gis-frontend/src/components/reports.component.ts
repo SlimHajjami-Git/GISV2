@@ -8,6 +8,7 @@ import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { AdminService } from '../admin/services/admin.service';
 import { PdfExportService } from '../services/pdf-export.service';
+import { ReportStateService } from '../services/report-state.service';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
@@ -352,7 +353,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     private appRef: ApplicationRef,
     private adminService: AdminService,
     private pdfExportService: PdfExportService,
-    private sanitizer: DomSanitizer
+    private sanitizer: DomSanitizer,
+    private reportStateService: ReportStateService
   ) {}
 
   ngOnInit() {
@@ -377,6 +379,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.ngZone.run(() => {
       this.loadData();
       this.initializeDates();
+      this.restoreState();
     });
   }
 
@@ -632,6 +635,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.chartData = [];
     this.secondaryChartData = [];
     this.statisticsData = {};
+    this.reportStateService.clear();
   }
 
   destroyAllCharts() {
@@ -5683,7 +5687,87 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
   }
 
+  private saveState(): void {
+    this.reportStateService.save({
+      selectedTemplateId: this.selectedTemplateId,
+      selectedVehicleId: this.selectedVehicleId,
+      selectedDriverId: this.selectedDriverId,
+      selectedDepartmentId: this.selectedDepartmentId,
+      selectedVehicleIds: this.selectedVehicleIds,
+      filterByVehicle: this.filterByVehicle,
+      filterByDriver: this.filterByDriver,
+      filterByDepartment: this.filterByDepartment,
+      selectedStandardPeriod: this.selectedStandardPeriod,
+      selectedCostPeriod: this.selectedCostPeriod,
+      customStartDate: this.customStartDate,
+      customEndDate: this.customEndDate,
+      dailyReportDate: this.dailyReportDate,
+      speedLimit: this.speedLimit,
+      selectedMileagePeriodType: this.selectedMileagePeriodType,
+      mileagePeriodDate: this.mileagePeriodDate,
+      mileagePeriodStartDate: this.mileagePeriodStartDate,
+      mileagePeriodEndDate: this.mileagePeriodEndDate,
+      mileagePeriodMonth: this.mileagePeriodMonth,
+      mileagePeriodYear: this.mileagePeriodYear,
+      selectedMonthlyYear: this.selectedMonthlyYear,
+      selectedMonthlyMonth: this.selectedMonthlyMonth,
+      reportGenerated: this.reportGenerated,
+      activeTab: this.activeTab,
+      expandedSections: { ...this.expandedSections },
+      drivingBehaviorFilters: { ...this.drivingBehaviorFilters },
+      aiFleetPeriod: this.aiFleetPeriod
+    });
+  }
+
+  private restoreState(): void {
+    const state = this.reportStateService.restore();
+    if (!state || !state.selectedTemplateId) return;
+
+    this.selectedTemplateId = state.selectedTemplateId;
+    this.selectedTemplate = this.templates.find(t => t.id === this.selectedTemplateId) || null;
+    this.selectedVehicleId = state.selectedVehicleId;
+    this.selectedDriverId = state.selectedDriverId;
+    this.selectedDepartmentId = state.selectedDepartmentId;
+    this.selectedVehicleIds = state.selectedVehicleIds || [];
+    this.filterByVehicle = state.filterByVehicle;
+    this.filterByDriver = state.filterByDriver;
+    this.filterByDepartment = state.filterByDepartment;
+    this.selectedStandardPeriod = state.selectedStandardPeriod;
+    this.selectedCostPeriod = state.selectedCostPeriod;
+    this.customStartDate = state.customStartDate;
+    this.customEndDate = state.customEndDate;
+    this.dailyReportDate = state.dailyReportDate;
+    this.speedLimit = state.speedLimit;
+    this.selectedMileagePeriodType = state.selectedMileagePeriodType as any;
+    this.mileagePeriodDate = state.mileagePeriodDate;
+    this.mileagePeriodStartDate = state.mileagePeriodStartDate;
+    this.mileagePeriodEndDate = state.mileagePeriodEndDate;
+    this.mileagePeriodMonth = state.mileagePeriodMonth;
+    this.mileagePeriodYear = state.mileagePeriodYear;
+    this.selectedMonthlyYear = state.selectedMonthlyYear;
+    this.selectedMonthlyMonth = state.selectedMonthlyMonth;
+    this.activeTab = state.activeTab;
+    this.expandedSections = state.expandedSections || this.expandedSections;
+    this.drivingBehaviorFilters = state.drivingBehaviorFilters || this.drivingBehaviorFilters;
+    this.aiFleetPeriod = state.aiFleetPeriod;
+
+    // Re-compute fromDate/toDate from the restored period
+    if (this.selectedStandardPeriod !== 'custom') {
+      this.selectStandardPeriod(this.selectedStandardPeriod);
+    } else if (this.customStartDate && this.customEndDate) {
+      this.fromDate = this.toDateTime(new Date(this.customStartDate + 'T00:00:00'));
+      this.toDate = this.toDateTime(new Date(this.customEndDate + 'T23:59:59'));
+    }
+
+    // Auto re-execute the report if one was previously generated
+    if (state.reportGenerated && this.selectedTemplate) {
+      this.cdr.detectChanges();
+      setTimeout(() => this.executeReport(), 100);
+    }
+  }
+
   ngOnDestroy() {
+    this.saveState();
     this.destroy$.next();
     this.destroy$.complete();
   }

@@ -3248,6 +3248,49 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return new Date(first.recordedAt).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   }
 
+  // Vitesse max durant le playback
+  getPlaybackMaxSpeed(): string {
+    if (this.playbackPositions.length === 0) return '0';
+    let max = 0;
+    for (const pos of this.playbackPositions) {
+      if ((pos.speedKph || 0) > max) max = pos.speedKph;
+    }
+    return Math.round(max).toString();
+  }
+
+  // Nombre d'arrêts (périodes ignition OFF)
+  getPlaybackStopCount(): number {
+    let count = 0;
+    let i = 0;
+    while (i < this.playbackPositions.length) {
+      if (this.playbackPositions[i].ignitionOn === false) {
+        count++;
+        while (i < this.playbackPositions.length && this.playbackPositions[i].ignitionOn === false) i++;
+      } else {
+        i++;
+      }
+    }
+    return count;
+  }
+
+  // Durée de conduite effective (ignition ON + speed > 0)
+  getPlaybackDrivingTime(): string {
+    if (this.playbackPositions.length < 2) return '0min';
+    let totalMs = 0;
+    for (let i = 1; i < this.playbackPositions.length; i++) {
+      const prev = this.playbackPositions[i - 1];
+      const curr = this.playbackPositions[i];
+      if (prev.ignitionOn !== false && (prev.speedKph || 0) > 0) {
+        totalMs += Math.abs(new Date(curr.recordedAt).getTime() - new Date(prev.recordedAt).getTime());
+      }
+    }
+    const diffMin = Math.round(totalMs / 60000);
+    if (diffMin < 60) return `${diffMin}min`;
+    const h = Math.floor(diffMin / 60);
+    const m = diffMin % 60;
+    return `${h}h${m > 0 ? m + 'min' : ''}`;
+  }
+
   // Durée de l'arrêt: total time with ignition OFF
   getPlaybackTotalStopDuration(): string {
     if (this.playbackPositions.length < 2) return '0min';
