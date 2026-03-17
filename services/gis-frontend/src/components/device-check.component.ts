@@ -24,17 +24,23 @@ import { environment } from '../environments/environment';
 
         <!-- Search -->
         <div class="search-box">
-          <div class="input-group">
-            <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input
-              type="text"
-              [(ngModel)]="query"
-              (keyup.enter)="search()"
-              placeholder="Entrez un IMEI ou une MAT (ex: 860012345678901 ou 220TU1234)"
-              class="search-input"
-              [disabled]="loading"
-            />
+          <div class="input-row">
+            <div class="input-group">
+              <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input
+                type="text"
+                [(ngModel)]="query"
+                (keyup.enter)="search()"
+                placeholder="IMEI ou Matricule..."
+                class="search-input"
+                [disabled]="loading"
+                autocomplete="off"
+                autocapitalize="characters"
+                spellcheck="false"
+              />
+            </div>
             <button (click)="search()" class="search-btn" [disabled]="loading || !query.trim()">
+              <svg *ngIf="!loading" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <span *ngIf="!loading">Rechercher</span>
               <span *ngIf="loading" class="spinner"></span>
             </button>

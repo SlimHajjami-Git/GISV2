@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using GisAPI.Infrastructure.Persistence;
@@ -7,6 +8,7 @@ namespace GisAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[AllowAnonymous]
 public class DeviceCheckController : ControllerBase
 {
     private readonly GisDbContext _context;
@@ -29,31 +31,31 @@ public class DeviceCheckController : ControllerBase
         var query = q.Trim();
 
         // Try to find by IMEI (DeviceUid) first, then by MAT (plate)
-        var device = await _context.GpsDevices.AsNoTracking()
+        var device = await _context.GpsDevices.IgnoreQueryFilters().AsNoTracking()
             .FirstOrDefaultAsync(d => d.DeviceUid == query);
 
         Vehicle? vehicle = null;
 
         if (device != null)
         {
-            vehicle = await _context.Vehicles.AsNoTracking()
+            vehicle = await _context.Vehicles.IgnoreQueryFilters().AsNoTracking()
                 .FirstOrDefaultAsync(v => v.GpsDeviceId == device.Id);
         }
         else
         {
             // Try by MAT on device
-            device = await _context.GpsDevices.AsNoTracking()
+            device = await _context.GpsDevices.IgnoreQueryFilters().AsNoTracking()
                 .FirstOrDefaultAsync(d => d.Mat != null && d.Mat.ToLower() == query.ToLower());
 
             if (device != null)
             {
-                vehicle = await _context.Vehicles.AsNoTracking()
+                vehicle = await _context.Vehicles.IgnoreQueryFilters().AsNoTracking()
                     .FirstOrDefaultAsync(v => v.GpsDeviceId == device.Id);
             }
             else
             {
                 // Try by vehicle plate
-                vehicle = await _context.Vehicles.AsNoTracking()
+                vehicle = await _context.Vehicles.IgnoreQueryFilters().AsNoTracking()
                     .Include(v => v.GpsDevice)
                     .FirstOrDefaultAsync(v => v.Plate != null && v.Plate.ToLower() == query.ToLower());
 
@@ -76,7 +78,7 @@ public class DeviceCheckController : ControllerBase
             });
 
         // Get last GPS position
-        var lastPosition = await _context.GpsPositions.AsNoTracking()
+        var lastPosition = await _context.GpsPositions.IgnoreQueryFilters().AsNoTracking()
             .Where(p => p.DeviceId == device.Id)
             .OrderByDescending(p => p.Id)
             .FirstOrDefaultAsync();
