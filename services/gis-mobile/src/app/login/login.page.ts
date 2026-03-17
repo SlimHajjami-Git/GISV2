@@ -12,9 +12,10 @@ import { AuthService } from '../core/services/auth.service';
         <!-- Logo & Branding -->
         <div class="logo-section">
           <div class="logo-icon">
-            <ion-icon name="navigate-circle" color="primary"></ion-icon>
+            <img src="assets/icon/calypso-logo.png" alt="Calypso" class="calypso-logo"
+                 onerror="this.src='assets/icon/calypso-logo.svg'" />
           </div>
-          <h1>GIS Fleet</h1>
+          <h1>Calypso</h1>
           <p class="subtitle">Gestion de Flotte Intelligente</p>
         </div>
 
@@ -99,8 +100,10 @@ import { AuthService } from '../core/services/auth.service';
       text-align: center;
       margin-bottom: 40px;
     }
-    .logo-icon ion-icon {
-      font-size: 72px;
+    .calypso-logo {
+      width: 120px;
+      height: 120px;
+      object-fit: contain;
     }
     .logo-section h1 {
       color: #fff;
@@ -169,7 +172,9 @@ export class LoginPage {
     private loadingCtrl: LoadingController,
     private toastCtrl: ToastController,
     private alertCtrl: AlertController
-  ) {}
+  ) {
+    this.authService.getServerUrl().then(url => this.serverUrl = url);
+  }
 
   async onLogin() {
     if (!this.email || !this.password) return;
@@ -212,12 +217,15 @@ export class LoginPage {
 
   async saveServerUrl() {
     if (this.serverUrl) {
-      const alert = await this.alertCtrl.create({
-        header: 'Serveur configuré',
-        message: `URL: ${this.serverUrl}`,
-        buttons: ['OK']
+      await this.authService.setServerUrl(this.serverUrl);
+      const toast = await this.toastCtrl.create({
+        message: `Serveur configuré: ${this.serverUrl}`,
+        duration: 2000,
+        color: 'success',
+        position: 'top',
+        icon: 'checkmark-circle-outline'
       });
-      await alert.present();
+      await toast.present();
       this.showServerConfig = false;
     }
   }

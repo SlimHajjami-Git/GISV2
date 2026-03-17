@@ -86,7 +86,7 @@ import { SignalRService } from '../../core/services/signalr.service';
       </div>
 
       <div class="version-text">
-        GIS Fleet Mobile v1.0.0
+        Calypso v1.0.0
       </div>
     </ion-content>
   `,
@@ -154,12 +154,13 @@ export class ProfilePage implements OnInit {
 
   async showAbout() {
     const alert = await this.alertCtrl.create({
-      header: 'GIS Fleet Mobile',
+      header: 'Calypso',
       message: `
         <p><strong>Version:</strong> 1.0.0</p>
         <p><strong>Plateforme:</strong> Ionic + Angular + Capacitor</p>
         <p><strong>Backend:</strong> .NET 8 API</p>
         <p><strong>GPS:</strong> Temps réel via SignalR</p>
+        <p>Gestion de Flotte Intelligente</p>
         <p>&copy; 2026 Belive</p>
       `,
       buttons: ['OK']

@@ -1,5 +1,5 @@
 export const environment = {
   production: true,
-  apiUrl: '/api',
-  signalrUrl: '/hubs/gps'
+  apiUrl: 'http://41.231.5.146/api',
+  signalrUrl: 'http://41.231.5.146/hubs/gps'
 };

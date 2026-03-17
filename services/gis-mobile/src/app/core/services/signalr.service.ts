@@ -109,7 +109,7 @@ export class SignalRService implements OnDestroy {
 
     try {
       this.hubConnection = new signalR.HubConnectionBuilder()
-        .withUrl(environment.signalrUrl, {
+        .withUrl(this.authService.getSignalrUrl(), {
           accessTokenFactory: () => this.authService.getToken() || '',
           skipNegotiation: true,
           transport: signalR.HttpTransportType.WebSockets

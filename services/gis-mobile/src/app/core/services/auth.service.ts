@@ -95,7 +95,7 @@ export interface AuthResponse {
   providedIn: 'root'
 })
 export class AuthService {
-  private readonly API_URL = environment.apiUrl;
+  private apiUrl = environment.apiUrl;
   private currentUser$ = new BehaviorSubject<AuthUser | null>(null);
   private token: string | null = null;
   private refreshTokenValue: string | null = null;
@@ -104,8 +104,32 @@ export class AuthService {
     this.loadStoredAuth();
   }
 
+  get API_URL(): string {
+    return this.apiUrl;
+  }
+
+  async setServerUrl(url: string) {
+    const baseUrl = url.replace(/\/+$/, '');
+    this.apiUrl = `${baseUrl}/api`;
+    await Preferences.set({ key: 'server_url', value: baseUrl });
+  }
+
+  async getServerUrl(): Promise<string> {
+    const { value } = await Preferences.get({ key: 'server_url' });
+    return value || environment.apiUrl.replace('/api', '');
+  }
+
+  getSignalrUrl(): string {
+    return this.apiUrl.replace('/api', '/hubs/gps');
+  }
+
   private async loadStoredAuth() {
     try {
+      const { value: serverUrl } = await Preferences.get({ key: 'server_url' });
+      if (serverUrl) {
+        this.apiUrl = `${serverUrl}/api`;
+      }
+
       const { value: token } = await Preferences.get({ key: 'auth_token' });
       const { value: userData } = await Preferences.get({ key: 'auth_user' });
       const { value: refreshToken } = await Preferences.get({ key: 'refresh_token' });
@@ -123,7 +147,7 @@ export class AuthService {
   }
 
   login(email: string, password: string): Observable<AuthUser | null> {
-    return this.http.post<AuthResponse>(`${this.API_URL}/auth/login`, { email, password }).pipe(
+    return this.http.post<AuthResponse>(`${this.apiUrl}/auth/login`, { email, password }).pipe(
       switchMap(response => {
         const user: AuthUser = {
           id: response.user.id?.toString() || '',
@@ -202,7 +226,7 @@ export class AuthService {
   refreshAccessToken(): Observable<AuthResponse | null> {
     if (!this.token || !this.refreshTokenValue) return of(null);
 
-    return this.http.post<AuthResponse>(`${this.API_URL}/auth/refresh`, {
+    return this.http.post<AuthResponse>(`${this.apiUrl}/auth/refresh`, {
       token: this.token,
       refreshToken: this.refreshTokenValue
     }).pipe(

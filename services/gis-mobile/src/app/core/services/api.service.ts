@@ -1,16 +1,18 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { environment } from '../../../environments/environment';
 import { Vehicle, Geofence, VehicleTrip, DashboardStats, Notification } from '../models/types';
+import { AuthService } from './auth.service';
 
 @Injectable({
   providedIn: 'root'
 })
 export class ApiService {
-  private readonly API = environment.apiUrl;
+  private get API(): string {
+    return this.authService.API_URL;
+  }
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient, private authService: AuthService) {}
 
   // ─── Dashboard ───────────────────────────────────────────
   getDashboardStats(): Observable<DashboardStats> {

@@ -26,6 +26,7 @@ import { RepairsComponent } from './components/repairs.component';
 import { ExpensesComponent } from './components/expenses.component';
 import { CarburantComponent } from './components/carburant.component';
 import { ToursComponent } from './components/tours.component';
+import { DeviceCheckComponent } from './components/device-check.component';
 import { adminRoutes } from './admin/admin.routes';
 import { AuthGuard } from './guards/auth.guard';
 import { FeatureGuard } from './guards/feature.guard';
@@ -35,6 +36,7 @@ export const routes: Routes = [
   // Public routes (no auth required)
   { path: '', component: LandingComponent },
   { path: 'login', component: LoginComponent },
+  { path: 'device-check', component: DeviceCheckComponent },
   // Protected routes - Dashboard (always accessible when logged in)
   { path: 'dashboard', component: DashboardComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'dashboard' } },
   

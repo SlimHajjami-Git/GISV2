@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'tn.belive.gisv2',
-  appName: 'GIS Fleet',
+  appName: 'Calypso',
   webDir: 'www',
   server: {
     // For dev: proxy to local API. Remove in production.
