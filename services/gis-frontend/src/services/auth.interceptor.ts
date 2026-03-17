@@ -10,8 +10,8 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
   const router = inject(Router);
 
-  // Skip auth header for auth endpoints (login, register, refresh)
-  if (req.url.includes('/auth/login') || req.url.includes('/auth/register') || req.url.includes('/auth/refresh')) {
+  // Skip auth header for public endpoints (login, register, refresh, device-check)
+  if (req.url.includes('/auth/login') || req.url.includes('/auth/register') || req.url.includes('/auth/refresh') || req.url.includes('/devicecheck/')) {
     return next(req);
   }
 
