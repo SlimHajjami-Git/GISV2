@@ -1,6 +1,7 @@
-import { Component, NgZone } from '@angular/core';
+import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { HttpClient, HttpBackend } from '@angular/common/http';
 import { environment } from '../environments/environment';
 
 @Component({
@@ -355,7 +356,11 @@ export class DeviceCheckComponent {
   result: any = null;
   error = '';
 
-  constructor(private zone: NgZone) {}
+  private http: HttpClient;
+
+  constructor(handler: HttpBackend) {
+    this.http = new HttpClient(handler);
+  }
 
   search() {
     const q = this.query.trim();
@@ -364,25 +369,16 @@ export class DeviceCheckComponent {
     this.result = null;
     this.error = '';
 
-    const url = `${environment.apiUrl}/devicecheck/lookup?q=${encodeURIComponent(q)}`;
-
-    fetch(url)
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then(data => {
-        this.zone.run(() => {
-          this.result = data;
-          this.loading = false;
-        });
-      })
-      .catch(err => {
-        this.zone.run(() => {
-          this.error = err?.message || 'Erreur de connexion au serveur.';
-          this.loading = false;
-        });
-      });
+    this.http.get(`${environment.apiUrl}/devicecheck/lookup`, { params: { q } }).subscribe({
+      next: (data: any) => {
+        this.result = data;
+        this.loading = false;
+      },
+      error: (err) => {
+        this.error = err?.error?.error || err?.message || 'Erreur de connexion au serveur.';
+        this.loading = false;
+      }
+    });
   }
 
   formatDate(iso: string): string {
