@@ -47,6 +47,13 @@ import { environment } from '../environments/environment';
           </div>
         </div>
 
+        <!-- DEBUG -->
+        <div style="color:#0f0;background:#111;padding:12px;border-radius:8px;margin-bottom:12px;font-family:monospace;font-size:12px;word-break:break-all;">
+          <div>loading: {{ loading }}</div>
+          <div>error: {{ error }}</div>
+          <div>result: {{ result | json }}</div>
+        </div>
+
         <!-- Result -->
         <div *ngIf="result" class="result-card" [class.stale]="result.isStale" [class.offline]="!result.connected && result.hasGps" [class.no-gps]="!result.hasGps || !result.found">
 
