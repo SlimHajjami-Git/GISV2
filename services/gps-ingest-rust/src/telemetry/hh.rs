@@ -344,16 +344,14 @@ fn decode_timestamp(hour_raw: &str, date_raw: &str) -> Result<(NaiveDateTime, bo
 }
 
 fn decode_coordinate(raw: &str, flags_raw: &str, bit_mask: u8, _is_lat: bool) -> Result<f64> {
-    let value = i64::from_str_radix(raw, 16)?;
+    let raw_int = i64::from_str_radix(raw, 16)?;
     
-    // GISV1 formula: String.Format("{0:D2}", raw / 1000000) + "." + String.Format("{0:D6}", (raw % 1000000) * 100 / 60)
-    // The D6 format means ALWAYS 6 digits, so divisor is always 1,000,000
-    let degrees = value / 1_000_000;  // Integer division
-    let minutes_part = value % 1_000_000;
-    let decimal_int = (minutes_part * 100) / 60;  // Integer division like C#
-    
-    // IMPORTANT: GISV1 uses D6 format = always 6 digits, so always divide by 1,000,000
-    let mut coord = degrees as f64 + (decimal_int as f64 / 1_000_000.0);
+    // Hex value represents NMEA DDMM.MMMM * 10000
+    // Example: 0x022C3288 = 36450952 → NMEA 3645.0952 → 36° 45.0952' → 36.751587°
+    let nmea_value = raw_int as f64 / 10_000.0;       // 3645.0952
+    let degrees = (nmea_value / 100.0).floor();        // 36.0
+    let minutes = nmea_value - degrees * 100.0;        // 45.0952
+    let mut coord = degrees + minutes / 60.0;          // 36.751587
 
     let flags = u8::from_str_radix(flags_raw, 16)?;
     let is_positive = (flags & bit_mask) != 0;
@@ -630,6 +628,22 @@ mod tests {
         assert_eq!(frame.odometer_km, 0, 
             "Sentinel value 0x0FFFFE (1048574) should be filtered to 0, got {}", 
             frame.odometer_km);
+    }
+
+    #[test]
+    fn coordinate_nmea_conversion_precision() {
+        // Verify the exact NMEA conversion: hex → NMEA DDMM.MMMM → decimal degrees
+        // lat 022C3288 => NMEA 3645.0952 => 36.751587°
+        // lon 009A43B5 => NMEA 1010.9877 => 10.183128°
+        let flags_raw = "03"; // bit 0 = north, bit 1 = east
+        
+        let lat = decode_coordinate("022C3288", flags_raw, 0x01, true).unwrap();
+        assert!((lat - 36.751587).abs() < 0.000001, 
+            "lat 022C3288 should be ~36.751587, got {:.6}", lat);
+        
+        let lon = decode_coordinate("009A43B5", flags_raw, 0x02, false).unwrap();
+        assert!((lon - 10.183128).abs() < 0.000001, 
+            "lon 009A43B5 should be ~10.183128, got {:.6}", lon);
     }
 
     #[test]

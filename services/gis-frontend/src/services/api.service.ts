@@ -937,6 +937,20 @@ export class ApiService {
     return this.http.get<any>(`${this.API_URL}/dashboard/stats`, { headers: this.getHeaders() });
   }
 
+  getDashboardAll(period: string = 'week'): Observable<any> {
+    if (this.isMockUser()) {
+      return of({
+        vehicleStatus: { stopped: 0, ignitionOn: 0, moving: 0, maintenance: 0, noGps: 0 },
+        expenses: { fuelCost: 0, maintenanceCost: 0, repairCost: 0, otherCost: 0, totalCost: 0 },
+        fuelConsumption: { vehicleStats: [], fleetTotalLiters: 0, fleetTotalKm: 0, chartDays: [], chartValues: [] },
+        drivingScores: [], healthData: { healthy: 0, attention: 0, unhealthy: 0 },
+        topUnits: [], geofences: [], alerts: [], recentTrips: [], drivers: []
+      });
+    }
+    const params = new HttpParams().set('period', period);
+    return this.http.get<any>(`${this.API_URL}/dashboard/all`, { headers: this.getHeaders(), params });
+  }
+
   getDashboardCostSummary(period: string = 'month'): Observable<any> {
     if (this.isMockUser()) {
       return of({ fuelCost: 0, maintenanceCost: 0, repairCost: 0, otherCost: 0, totalCost: 0 });

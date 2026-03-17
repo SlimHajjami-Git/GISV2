@@ -444,174 +444,78 @@ export class DashboardComponent implements OnInit, OnDestroy {
       const d = new Date(today.getTime() - (6 - i) * 86400000);
       return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
     });
-    this.loadVehicles();
-    this.loadDashboardStats();
-    this.loadGeofences();
-    this.loadCostData();
-    this.loadWidgetData();
-    this.loadFuelConsumption();
-    this.loadAlerts();
-    this.loadTrips();
-    this.loadDrivers();
+    this.loadAll();
   }
 
-  loadVehicles() {
-    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (vehicles) => {
-        this.vehicles = vehicles.map(v => ({
-          id: v.id?.toString() || '', companyId: v.companyId?.toString() || '',
-          name: v.name, type: v.type, brand: v.brand, model: v.model,
-          plate: v.plate, year: v.year, color: v.color,
-          status: v.status as 'available' | 'in_use' | 'maintenance',
-          hasGPS: v.hasGps, mileage: v.mileage
-        })) as Vehicle[];
-        this.buildMotionData();
-        this.buildHealthData();
-        this.buildTopUnits();
-        this.cdr.detectChanges();
-      },
-      error: (err) => console.error('Error loading vehicles:', err)
-    });
-  }
-
-  loadDashboardStats() {
-    this.apiService.getDashboardStats().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (stats) => {
-        const v = stats?.Vehicles || stats?.vehicles;
-        if (v) {
+  loadAll() {
+    this.apiService.getDashboardAll(this.selectedPeriod).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (d) => {
+        // Vehicle status
+        const vs = d.vehicleStatus;
+        if (vs) {
           this.motionData = {
-            stationary: v.Stopped ?? v.stopped ?? 0,
-            ignitionOn: v.IgnitionOn ?? v.ignitionOn ?? 0,
-            moving: 0,
-            movingIgnition: v.Moving ?? v.moving ?? 0,
-            lbs: 0, wifi: 0,
-            noState: v.Maintenance ?? v.maintenance ?? 0,
-            noCoords: v.NoGps ?? v.noGps ?? 0
+            stationary: vs.stopped ?? 0, ignitionOn: vs.ignitionOn ?? 0, moving: 0,
+            movingIgnition: vs.moving ?? 0, lbs: 0, wifi: 0,
+            noState: vs.maintenance ?? 0, noCoords: vs.noGps ?? 0
           };
         }
-        this.cdr.detectChanges();
-      },
-      error: (err) => console.error('Error loading stats:', err)
-    });
-  }
-
-  loadGeofences() {
-    this.apiService.getGeofences().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (geos: any[]) => {
-        const colors = ['#22c55e','#3b82f6','#f97316','#06b6d4','#8b5cf6','#ec4899','#eab308','#14b8a6'];
-        this.geofences = (geos || []).slice(0, 8).map((g: any, i: number) => ({
-          name: g.name || g.Name || 'Geozone', color: colors[i % colors.length],
-          count: g.assignedVehicleCount || g.vehicleCount || g.assignedVehicles?.length || 0
-        }));
-        this.cdr.detectChanges();
-      },
-      error: (err) => console.error('Error loading geofences:', err)
-    });
-  }
-
-  loadCostData() {
-    this.apiService.getDashboardCostSummary(this.selectedPeriod).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (s) => {
-        this.fuelCost = s?.fuelCost || 0; this.maintenanceCost = s?.maintenanceCost || 0;
-        this.repairCost = s?.repairCost || 0; this.otherCost = s?.otherCost || 0;
-        this.totalCost = s?.totalCost || (this.fuelCost + this.maintenanceCost + this.repairCost + this.otherCost);
-        this.cdr.detectChanges();
-      },
-      error: () => this.loadCostDataFallback()
-    });
-  }
-
-  private loadCostDataFallback() {
-    const now = new Date();
-    this.apiService.getCosts({ startDate: new Date(now.getFullYear(), now.getMonth(), 1) }).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (costs) => {
-        if (!Array.isArray(costs)) return;
-        this.fuelCost = costs.filter((c: any) => c.type === 'fuel').reduce((s: number, c: any) => s + (c.amount || 0), 0);
-        this.maintenanceCost = costs.filter((c: any) => c.type === 'maintenance').reduce((s: number, c: any) => s + (c.amount || 0), 0);
-        this.repairCost = costs.filter((c: any) => c.type === 'insurance' || c.type === 'fine').reduce((s: number, c: any) => s + (c.amount || 0), 0);
-        this.otherCost = costs.filter((c: any) => !['fuel','maintenance','insurance','fine'].includes(c.type)).reduce((s: number, c: any) => s + (c.amount || 0), 0);
-        this.totalCost = this.fuelCost + this.maintenanceCost + this.repairCost + this.otherCost;
-        this.cdr.detectChanges();
-      }
-    });
-  }
-
-  loadWidgetData() {
-    this.apiService.getDashboardWidgetData(this.selectedPeriod).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (data) => {
-        if (data.drivingScores?.length) {
-          const flat: { plate: string; score: number }[] = [];
-          data.drivingScores.forEach((g: any) => {
-            if (g.vehicles) g.vehicles.forEach((v: string) => flat.push({ plate: v, score: g.score }));
-            else if (g.plate) flat.push({ plate: g.plate, score: g.score });
-          });
-          this.drivingScores = flat.sort((a, b) => b.score - a.score);
+        // Expenses
+        const ex = d.expenses;
+        if (ex) {
+          this.fuelCost = ex.fuelCost ?? 0; this.maintenanceCost = ex.maintenanceCost ?? 0;
+          this.repairCost = ex.repairCost ?? 0; this.otherCost = ex.otherCost ?? 0;
+          this.totalCost = ex.totalCost ?? (this.fuelCost + this.maintenanceCost + this.repairCost + this.otherCost);
         }
-        this.cdr.detectChanges();
-      },
-      error: (err) => console.error('Error loading widget data:', err)
-    });
-  }
-
-  buildMotionData() {
-    const inUse = this.vehicles.filter(v => v.status === 'in_use').length;
-    const maint = this.vehicles.filter(v => v.status === 'maintenance').length;
-    const avail = this.vehicles.filter(v => v.status === 'available').length;
-    const noGps = this.vehicles.length - this.vehicles.filter(v => v.hasGPS).length;
-    this.motionData = { stationary: avail, ignitionOn: 0, moving: 0, movingIgnition: inUse, lbs: 0, wifi: 0, noState: maint, noCoords: noGps };
-  }
-
-  buildHealthData() {
-    const m = this.vehicles.filter(v => v.status === 'maintenance').length;
-    this.healthData = { healthy: this.vehicles.length - m, attention: Math.min(m, 1), unhealthy: Math.max(m - 1, 0) };
-  }
-
-  buildTopUnits() {
-    const colors = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#06b6d4','#ec4899','#eab308','#14b8a6'];
-    const sorted = [...this.vehicles].filter(v => (v.mileage || 0) > 0).sort((a, b) => (b.mileage || 0) - (a.mileage || 0));
-    this.topUnits = sorted.slice(0, 8).map((v, i) => ({ name: v.plate || v.name, color: colors[i % colors.length], mileage: Math.round(v.mileage || 0) }));
-    this.maxMileage = Math.max(...this.topUnits.map(u => u.mileage), 1);
-  }
-
-  loadFuelConsumption() {
-    this.apiService.getDashboardFuelConsumption(30).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (data: any) => {
-        if (!data) return;
-        // Per-vehicle fuel stats from real FuelCalculationService
-        if (data.vehicleStats?.length) {
-          this.vehicleFuelStats = data.vehicleStats.map((v: any) => ({
-            plate: v.plate || 'Inconnu',
-            consumption: Number(v.consumption) || 0,
-            totalLiters: Math.round(Number(v.totalLiters) || 0),
-            totalKm: Math.round(Number(v.totalKm) || 0)
-          }));
-          this.maxFuelConsumption = Math.max(...this.vehicleFuelStats.map(v => v.consumption), 1);
+        // Driving scores
+        if (d.drivingScores?.length) {
+          this.drivingScores = d.drivingScores.map((s: any) => ({ plate: s.plate, score: s.score }))
+            .sort((a: any, b: any) => b.score - a.score);
         }
-        // Fleet totals
-        if (data.fleetTotalLiters > 0) this.totalFuelConsumed = Math.round(data.fleetTotalLiters);
-        // Build fleet chart from real daily data
-        if (data.chartValues?.length) {
-          const values = data.chartValues as number[];
-          const maxVal = Math.max(...values, 0.1);
-          this.fuelChartPoints = values.map((v: number, i: number) => {
-            const x = values.length > 1 ? (i / (values.length - 1)) * 500 : 250;
-            const y = 155 - (v / maxVal) * 150;
-            return `${x.toFixed(0)},${y.toFixed(0)}`;
-          }).join(' ');
-          // Update labels to match chart days
-          if (data.chartDays?.length) {
-            const step = Math.max(1, Math.floor(data.chartDays.length / 7));
-            this.fuelChartLabels = (data.chartDays as string[])
-              .filter((_: string, i: number) => i % step === 0 || i === data.chartDays.length - 1)
-              .map((d: string) => {
-                const parts = d.split('-');
-                return parts.length >= 3 ? `${parts[2]}/${parts[1]}` : d;
-              });
+        // Health
+        if (d.healthData) this.healthData = { healthy: d.healthData.healthy ?? 0, attention: d.healthData.attention ?? 0, unhealthy: d.healthData.unhealthy ?? 0 };
+        // Top km units
+        if (d.topUnits?.length) {
+          this.topUnits = d.topUnits.map((u: any) => ({ name: u.name, color: u.color, mileage: Math.round(u.mileage ?? 0) }));
+          this.maxMileage = Math.max(...this.topUnits.map(u => u.mileage), 1);
+        }
+        // Geofences
+        if (d.geofences) this.geofences = d.geofences.map((g: any) => ({ name: g.name, color: g.color, count: g.count ?? 0 }));
+        // Alerts
+        if (d.alerts) this.alerts = d.alerts.map((a: any) => ({ message: a.message, severity: a.severity, time: a.time }));
+        // Trips
+        if (d.recentTrips) this.recentTrips = d.recentTrips.map((t: any) => ({ plate: t.plate, distance: t.distance, duration: t.duration, date: t.date }));
+        // Drivers
+        if (d.drivers) this.drivers = d.drivers.map((dr: any) => ({ name: dr.name, initials: dr.initials, vehicle: dr.vehicle, active: dr.active }));
+        // Fuel consumption
+        const fc = d.fuelConsumption;
+        if (fc) {
+          if (fc.vehicleStats?.length) {
+            this.vehicleFuelStats = fc.vehicleStats.map((v: any) => ({
+              plate: v.plate || 'Inconnu', consumption: Number(v.consumption) || 0,
+              totalLiters: Math.round(Number(v.totalLiters) || 0), totalKm: Math.round(Number(v.totalKm) || 0)
+            }));
+            this.maxFuelConsumption = Math.max(...this.vehicleFuelStats.map(v => v.consumption), 1);
+          }
+          if (fc.fleetTotalLiters > 0) this.totalFuelConsumed = Math.round(fc.fleetTotalLiters);
+          if (fc.chartValues?.length) {
+            const values = fc.chartValues as number[];
+            const maxVal = Math.max(...values, 0.1);
+            this.fuelChartPoints = values.map((v: number, i: number) => {
+              const x = values.length > 1 ? (i / (values.length - 1)) * 500 : 250;
+              const y = 155 - (v / maxVal) * 150;
+              return `${x.toFixed(0)},${y.toFixed(0)}`;
+            }).join(' ');
+            if (fc.chartDays?.length) {
+              const step = Math.max(1, Math.floor(fc.chartDays.length / 7));
+              this.fuelChartLabels = (fc.chartDays as string[])
+                .filter((_: string, i: number) => i % step === 0 || i === fc.chartDays.length - 1)
+                .map((dd: string) => { const p = dd.split('-'); return p.length >= 3 ? `${p[2]}/${p[1]}` : dd; });
+            }
           }
         }
         this.cdr.detectChanges();
       },
-      error: (err) => console.error('Error loading fuel consumption:', err)
+      error: (err) => console.error('Error loading dashboard:', err)
     });
   }
 
@@ -637,93 +541,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
   }
 
-  loadAlerts() {
-    // Load from GpsAlerts
-    this.apiService.getAlerts(undefined, undefined, 8).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (data: any[]) => {
-        const mapped = (data || []).slice(0, 8).map((a: any) => ({
-          message: a.message || a.Message || a.type || a.Type || 'Alerte',
-          severity: (a.severity || a.Severity) === 'critical' ? 'danger' :
-                   (a.severity || a.Severity) === 'warning' ? 'warning' : 'info',
-          time: (a.createdAt || a.CreatedAt || a.timestamp || a.Timestamp) ?
-            new Date(a.createdAt || a.CreatedAt || a.timestamp || a.Timestamp).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '',
-          ts: new Date(a.createdAt || a.CreatedAt || a.timestamp || a.Timestamp || 0).getTime()
-        }));
-        this.mergeAlerts(mapped);
-      },
-      error: () => {}
-    });
-    // Load from Notifications
-    this.apiService.getNotifications(undefined, undefined, 8).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (resp: any) => {
-        const items = Array.isArray(resp) ? resp : (resp?.items || resp?.Items || []);
-        const mapped = (items || []).slice(0, 8).map((n: any) => ({
-          message: n.title || n.Title || n.message || n.Message || 'Notification',
-          severity: (n.priority || n.Priority) === 'high' || (n.priority || n.Priority) === 'critical' ? 'danger' :
-                   (n.priority || n.Priority) === 'medium' ? 'warning' : 'info',
-          time: (n.createdAt || n.CreatedAt) ?
-            new Date(n.createdAt || n.CreatedAt).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '',
-          ts: new Date(n.createdAt || n.CreatedAt || 0).getTime()
-        }));
-        this.mergeAlerts(mapped);
-      },
-      error: () => {}
-    });
-  }
-
-  private pendingAlerts: { message: string; severity: string; time: string; ts: number }[] = [];
-  private mergeAlerts(items: { message: string; severity: string; time: string; ts: number }[]) {
-    this.pendingAlerts = [...this.pendingAlerts, ...items];
-    this.alerts = this.pendingAlerts
-      .sort((a, b) => b.ts - a.ts)
-      .slice(0, 8)
-      .map(({ message, severity, time }) => ({ message, severity, time }));
-    this.cdr.detectChanges();
-  }
-
-  loadTrips() {
-    this.apiService.getTrips({ limit: 8 }).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (data: any[]) => {
-        this.recentTrips = (data || []).slice(0, 8).map((t: any) => {
-          const distKm = t.distanceKm || t.DistanceKm || t.distance || 0;
-          const dist = Number(distKm).toFixed(1);
-          const mins = t.durationMinutes || t.DurationMinutes || t.duration || 0;
-          const dur = mins >= 60 ? `${Math.floor(mins/60)}h${(mins%60).toString().padStart(2,'0')}` : `${mins} min`;
-          const plate = t.vehicle?.plate || t.vehicle?.Plate || t.vehicle?.name || t.vehicle?.Name
-            || t.vehiclePlate || t.VehiclePlate || t.plate || t.Plate || 'Vehicule';
-          const startTime = t.startTime || t.StartTime;
-          return {
-            plate,
-            distance: dist,
-            duration: dur,
-            date: startTime ? new Date(startTime).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''
-          };
-        });
-        this.cdr.detectChanges();
-      },
-      error: (err) => console.error('Error loading trips:', err)
-    });
-  }
-
-  loadDrivers() {
-    this.apiService.getDrivers().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (data: any[]) => {
-        this.drivers = (data || []).slice(0, 8).map((d: any) => {
-          const name = d.fullName || d.name || `${d.firstName || ''} ${d.lastName || ''}`.trim() || 'Conducteur';
-          const initials = name.split(' ').map((w: string) => w[0]?.toUpperCase()).join('').slice(0, 2);
-          return {
-            name,
-            initials,
-            vehicle: d.assignedVehiclePlate || d.vehiclePlate || '',
-            active: d.isActive !== false
-          };
-        });
-        this.cdr.detectChanges();
-      },
-      error: () => {}
-    });
-  }
-
   getScoreColor(s: number): string { return s >= 80 ? '#22c55e' : s >= 60 ? '#f59e0b' : '#ef4444'; }
   getFuelColor(c: number): string { return c <= 6 ? '#22c55e' : c <= 8 ? '#f59e0b' : '#ef4444'; }
 
@@ -731,7 +548,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   onDateRangeChange(r: { from: string; to: string }) { this.fromDate = r.from; this.toDate = r.to; }
   applyFilter() {
     this.scoresPage = 0; this.unitsPage = 0; this.fuelPage = 0; this.alertsPage = 0; this.tripsPage = 0; this.driversPage = 0;
-    this.loadVehicles(); this.loadDashboardStats(); this.loadCostData(); this.loadWidgetData(); this.loadFuelConsumption(); this.loadAlerts(); this.loadTrips(); this.loadDrivers();
+    this.loadAll();
   }
   ngOnDestroy() { this.destroy$.next(); this.destroy$.complete(); }
 }

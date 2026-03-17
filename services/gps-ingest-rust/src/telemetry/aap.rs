@@ -354,22 +354,16 @@ impl AapDecoder {
     }
 
     /// Decode coordinate from AAP protocol format
-    /// GISV1 formula: String.Format("{0:D2}", raw / 1000000) + "." + String.Format("{0:D6}", (raw % 1000000) * 100 / 60)
-    /// Uses INTEGER arithmetic to match GISV1 exactly
-    /// 
-    /// CRITICAL FIX: GISV1 uses {0:D6} format which ALWAYS pads to 6 digits
-    /// So we must ALWAYS divide by 1,000,000 regardless of decimal_int length!
+    /// Hex value represents NMEA DDMM.MMMM * 10000
+    /// Example: 0x022C3288 = 36450952 → NMEA 3645.0952 → 36° 45.0952' → 36.751587°
     fn decode_coordinate(raw: &str, is_positive: bool) -> Result<f64> {
-        let value = i64::from_str_radix(raw, 16)?;
+        let raw_int = i64::from_str_radix(raw, 16)?;
         
-        // GISV1 uses INTEGER division - we must match exactly
-        let degrees = value / 1_000_000;  // Integer division
-        let minutes_part = value % 1_000_000;
-        let decimal_int = (minutes_part * 100) / 60;  // Integer division like C#
-        
-        // CRITICAL: GISV1 uses D6 format = ALWAYS 6 digits, so ALWAYS divide by 1,000,000
-        // This matches hh.rs implementation and fixes precision bug
-        let mut coord = degrees as f64 + (decimal_int as f64 / 1_000_000.0);
+        // Hex value represents NMEA DDMM.MMMM * 10000
+        let nmea_value = raw_int as f64 / 10_000.0;       // 3645.0952
+        let degrees = (nmea_value / 100.0).floor();        // 36.0
+        let minutes = nmea_value - degrees * 100.0;        // 45.0952
+        let mut coord = degrees + minutes / 60.0;          // 36.751587
 
         if !is_positive {
             coord = -coord;
@@ -867,6 +861,20 @@ mod tests {
         assert!((fuel_rate - 50.0).abs() < 0.1, "Fuel rate should be ~50 L/100km");
         assert_eq!(fms.total_fuel_used_liters, Some(10000), "Total fuel should be 10000 L");
         assert!(fms.has_data, "has_data should be true");
+    }
+
+    #[test]
+    fn test_coordinate_nmea_conversion_precision() {
+        // Verify the exact NMEA conversion: hex → NMEA DDMM.MMMM → decimal degrees
+        // lat 022C3288 => NMEA 3645.0952 => 36.751587°
+        // lon 009A43B5 => NMEA 1010.9877 => 10.183128°
+        let lat = AapDecoder::decode_coordinate("022C3288", true).unwrap();
+        assert!((lat - 36.751587).abs() < 0.000001,
+            "lat 022C3288 should be ~36.751587, got {:.6}", lat);
+
+        let lon = AapDecoder::decode_coordinate("009A43B5", true).unwrap();
+        assert!((lon - 10.183128).abs() < 0.000001,
+            "lon 009A43B5 should be ~10.183128, got {:.6}", lon);
     }
 
     #[test]

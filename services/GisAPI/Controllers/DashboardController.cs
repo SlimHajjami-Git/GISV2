@@ -492,6 +492,312 @@ public class DashboardController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// Unified dashboard endpoint — returns ALL data in a single call.
+    /// Replaces 9+ separate HTTP requests for much faster dashboard loading.
+    /// </summary>
+    [HttpGet("all")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult> GetDashboardAll([FromQuery] string period = "week")
+    {
+        var companyId = GetCompanyId();
+        var cacheKey = $"dashboard_all_{companyId}_{period}";
+        if (_cache.TryGetValue(cacheKey, out object? cached) && cached != null)
+            return Ok(cached);
+
+        var now = DateTime.UtcNow;
+        var today = now.Date;
+        var (periodStart, periodEnd, prevStart, prevEnd) = GetPeriodRange(now, period);
+
+        // ── 1. Load vehicles once (shared across sections) ──
+        var vehicles = await _context.Vehicles
+            .AsNoTracking()
+            .Include(v => v.GpsDevice)
+            .Where(v => v.CompanyId == companyId)
+            .ToListAsync();
+
+        var maintenanceVehicles = vehicles.Count(v => v.Status == "maintenance");
+        var noGpsVehicles = vehicles.Count(v => !v.GpsDeviceId.HasValue);
+        var deviceMap = vehicles.Where(v => v.GpsDeviceId.HasValue)
+            .ToDictionary(v => v.GpsDeviceId!.Value, v => v);
+
+        // ── 2. Vehicle status from last GPS position ──
+        int movingCount = 0, ignitionOnCount = 0, stoppedCount = 0;
+        var gpsVehicles = vehicles.Where(v => v.GpsDeviceId.HasValue && v.Status != "maintenance").ToList();
+        var gpsDeviceIds = gpsVehicles.Select(v => v.GpsDeviceId!.Value).ToList();
+        var latestPositions = new Dictionary<int, GpsPosition>();
+
+        if (gpsDeviceIds.Any())
+        {
+            var latestPosIds = await _context.GpsPositions
+                .AsNoTracking()
+                .Where(p => gpsDeviceIds.Contains(p.DeviceId))
+                .GroupBy(p => p.DeviceId)
+                .Select(g => g.Max(p => p.Id))
+                .ToListAsync();
+
+            latestPositions = await _context.GpsPositions
+                .AsNoTracking()
+                .Where(p => latestPosIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.DeviceId);
+
+            foreach (var v in gpsVehicles)
+            {
+                if (latestPositions.TryGetValue(v.GpsDeviceId!.Value, out var pos))
+                {
+                    var speed = pos.SpeedKph ?? 0;
+                    var ignition = pos.IgnitionOn ?? false;
+                    if (speed > 3) movingCount++;
+                    else if (ignition) ignitionOnCount++;
+                    else stoppedCount++;
+                }
+                else stoppedCount++;
+            }
+        }
+
+        // ── 3. Expenses ──
+        var fuelCost = await _context.FuelEntries.AsNoTracking()
+            .Where(f => f.CompanyId == companyId && f.InvoiceDate >= periodStart && f.InvoiceDate <= periodEnd)
+            .SumAsync(f => f.TotalAmount);
+        fuelCost += await _context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= periodStart && c.Date <= periodEnd)
+            .SumAsync(c => c.Amount);
+
+        var maintenanceCost = await _context.MaintenanceLogs.AsNoTracking()
+            .Where(m => m.CompanyId == companyId && m.DoneDate >= periodStart && m.DoneDate <= periodEnd && m.ActualCost > 0)
+            .SumAsync(m => m.ActualCost);
+        maintenanceCost += await _context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Type == "maintenance" && c.Date >= periodStart && c.Date <= periodEnd)
+            .SumAsync(c => c.Amount);
+
+        var repairCost = await _context.Repairs.AsNoTracking()
+            .Where(r => r.SocieteId == companyId && r.RepairDate >= periodStart && r.RepairDate <= periodEnd)
+            .SumAsync(r => r.TotalCost);
+
+        var otherCost = await _context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd
+                && c.Type != "fuel" && c.Type != "maintenance")
+            .SumAsync(c => c.Amount);
+
+        // ── 4. Driving scores (alerts per vehicle in period) ──
+        var alertsByVehicle = await _context.GpsAlerts.AsNoTracking()
+            .Where(a => a.VehicleId.HasValue && a.Vehicle!.CompanyId == companyId &&
+                        a.Timestamp >= periodStart && a.Timestamp <= periodEnd)
+            .GroupBy(a => a.VehicleId!.Value)
+            .Select(g => new { VehicleId = g.Key, AlertCount = g.Count() })
+            .ToListAsync();
+
+        var drivingScores = vehicles
+            .Select(v =>
+            {
+                var alerts = alertsByVehicle.FirstOrDefault(a => a.VehicleId == v.Id)?.AlertCount ?? 0;
+                var score = Math.Max(0, 100 - (alerts * 5));
+                return new { plate = v.Plate ?? v.Name, score };
+            })
+            .OrderByDescending(x => x.score)
+            .ToList();
+
+        // ── 5. Vehicle health ──
+        var healthResults = await _healthService.CalculateAllScoresAsync(companyId);
+        var healthy = healthResults.Count(h => h.Score >= 80);
+        var attention = healthResults.Count(h => h.Score >= 40 && h.Score < 80);
+        var unhealthy = healthResults.Count(h => h.Score < 40);
+
+        // ── 6. Top km units (OdometerKm from GPS if firmware != L, else Vehicle.Mileage) ──
+        var topUnitsColors = new[] { "#3b82f6", "#22c55e", "#f97316", "#8b5cf6", "#06b6d4", "#ec4899", "#eab308", "#14b8a6" };
+        var vehicleMileages = vehicles.Select(v =>
+        {
+            double km = v.Mileage;
+            if (v.GpsDeviceId.HasValue && v.GpsDevice != null)
+            {
+                var fw = v.GpsDevice.FirmwareVersion ?? "";
+                if (!fw.StartsWith("L", StringComparison.OrdinalIgnoreCase)
+                    && latestPositions.TryGetValue(v.GpsDeviceId.Value, out var pos)
+                    && pos.OdometerKm.HasValue && pos.OdometerKm.Value > 0)
+                {
+                    km = (double)pos.OdometerKm.Value;
+                }
+            }
+            return new { v, km };
+        }).ToList();
+
+        var topUnits = vehicleMileages
+            .Where(x => x.km > 0)
+            .OrderByDescending(x => x.km)
+            .Take(20)
+            .Select((x, i) => new { name = x.v.Plate ?? x.v.Name, color = topUnitsColors[i % topUnitsColors.Length], mileage = Math.Round(x.km) })
+            .ToList();
+
+        // ── 7. Geofences ──
+        var geoColors = new[] { "#22c55e", "#3b82f6", "#f97316", "#06b6d4", "#8b5cf6", "#ec4899", "#eab308", "#14b8a6" };
+        var geofences = await _context.Geofences.AsNoTracking()
+            .Where(g => g.CompanyId == companyId && g.IsActive)
+            .Select(g => new { g.Name, Count = g.AssignedVehicles.Count })
+            .ToListAsync();
+        var geofencesList = geofences.Select((g, i) => new { name = g.Name, color = geoColors[i % geoColors.Length], count = g.Count }).ToList();
+
+        // ── 8. Alerts (GpsAlerts + Notifications merged) ──
+        var gpsAlerts = await _context.GpsAlerts.AsNoTracking()
+            .Where(a => a.VehicleId.HasValue && a.Vehicle!.CompanyId == companyId)
+            .OrderByDescending(a => a.Timestamp)
+            .Take(20)
+            .Select(a => new { message = a.Message ?? "Alerte", severity = a.Severity ?? "info", ts = a.Timestamp })
+            .ToListAsync();
+
+        var notifications = await _context.Notifications.AsNoTracking()
+            .Where(n => n.CompanyId == companyId)
+            .OrderByDescending(n => n.CreatedAt)
+            .Take(20)
+            .Select(n => new { message = n.Title ?? "Notification", severity = n.Priority, ts = n.CreatedAt })
+            .ToListAsync();
+
+        var mergedAlerts = gpsAlerts
+            .Select(a => new
+            {
+                a.message,
+                severity = a.severity == "critical" ? "danger" : a.severity == "warning" ? "warning" : "info",
+                time = a.ts.ToString("dd/MM HH:mm"),
+                a.ts
+            })
+            .Concat(notifications.Select(n => new
+            {
+                message = n.message,
+                severity = n.severity == "high" || n.severity == "critical" ? "danger" : n.severity == "medium" ? "warning" : "info",
+                time = n.ts.ToString("dd/MM HH:mm"),
+                ts = n.ts
+            }))
+            .OrderByDescending(a => a.ts)
+            .Take(20)
+            .Select(a => new { a.message, a.severity, a.time })
+            .ToList();
+
+        // ── 9. Recent trips ──
+        var trips = await _context.Trips.AsNoTracking()
+            .Where(t => t.CompanyId == companyId)
+            .OrderByDescending(t => t.StartTime)
+            .Take(20)
+            .Include(t => t.Vehicle)
+            .ToListAsync();
+
+        var tripsList = trips.Select(t =>
+        {
+            var dist = (t.DistanceKm).ToString("F1");
+            var mins = t.DurationMinutes;
+            var dur = mins >= 60 ? $"{mins / 60}h{(mins % 60).ToString().PadLeft(2, '0')}" : $"{mins} min";
+            var plate = t.Vehicle?.Plate ?? t.Vehicle?.Name ?? "Vehicule";
+            return new { plate, distance = dist, duration = dur, date = t.StartTime.ToString("dd/MM HH:mm") };
+        }).ToList();
+
+        // ── 10. Drivers ──
+        var drivers = await _context.Drivers.AsNoTracking()
+            .Where(d => d.CompanyId == companyId)
+            .Include(d => d.User)
+            .Include(d => d.AssignedVehicle)
+            .Take(20)
+            .ToListAsync();
+
+        var driversList = drivers.Select(d =>
+        {
+            var name = d.User?.FullName ?? "Conducteur";
+            if (string.IsNullOrWhiteSpace(name)) name = "Conducteur";
+            var initials = string.Join("", name.Split(' ').Where(w => w.Length > 0).Select(w => w[0].ToString().ToUpper()));
+            if (initials.Length > 2) initials = initials[..2];
+            return new
+            {
+                name,
+                initials,
+                vehicle = d.AssignedVehicle?.Plate ?? "",
+                active = d.Status != "inactive"
+            };
+        }).ToList();
+
+        // ── 11. Fuel consumption (FuelCalculationService) ──
+        var fuelDays = period switch { "today" => 1, "yesterday" => 1, "week" => 7, "quarter" => 90, _ => 30 };
+        var fuelStartDate = now.AddDays(-fuelDays);
+
+        var fuelPrices = await _context.FuelPricings
+            .Where(fp => fp.CompanyId == companyId && fp.IsActive &&
+                         fp.EffectiveFrom <= now && (fp.EffectiveTo == null || fp.EffectiveTo > now))
+            .Join(_context.FuelTypes, fp => fp.FuelTypeId, ft => ft.Id,
+                  (fp, ft) => new { ft.Code, fp.PricePerLiter })
+            .ToListAsync();
+        var priceDict = fuelPrices.ToDictionary(p => p.Code.ToLower(), p => p.PricePerLiter);
+
+        var vehicleFuelStats = new List<object>();
+        decimal fleetTotalLiters = 0;
+        int fleetTotalKm = 0;
+        var dailyFleetFuel = new Dictionary<string, decimal>();
+
+        foreach (var vehicle in vehicles.Where(v => v.GpsDeviceId.HasValue))
+        {
+            try
+            {
+                var expense = await _fuelCalcService.CalculateVehicleFuelExpenseAsync(vehicle, fuelStartDate, now, priceDict);
+                if (expense == null) continue;
+                vehicleFuelStats.Add(new
+                {
+                    plate = expense.Plate ?? expense.VehicleName,
+                    consumption = expense.AverageConsumptionPer100Km,
+                    totalLiters = expense.TotalFuelConsumedLiters,
+                    totalKm = expense.TotalDistanceKm
+                });
+                fleetTotalLiters += expense.TotalFuelConsumedLiters;
+                fleetTotalKm += expense.TotalDistanceKm;
+                foreach (var d in expense.DailyConsumption)
+                {
+                    var dayKey = d.Date.ToString("yyyy-MM-dd");
+                    dailyFleetFuel[dayKey] = dailyFleetFuel.GetValueOrDefault(dayKey) + d.FuelConsumedLiters;
+                }
+            }
+            catch { }
+        }
+        vehicleFuelStats = vehicleFuelStats.OrderByDescending(v => ((dynamic)v).consumption).ToList();
+
+        var chartDays = Enumerable.Range(0, Math.Min(fuelDays, 30))
+            .Select(i => now.AddDays(-((Math.Min(fuelDays, 30) - 1) - i)).ToString("yyyy-MM-dd"))
+            .ToList();
+        var chartValues = chartDays.Select(d => Math.Round(dailyFleetFuel.GetValueOrDefault(d), 2)).ToList();
+
+        // ── Build response ──
+        var result = new
+        {
+            vehicleStatus = new
+            {
+                stopped = stoppedCount,
+                ignitionOn = ignitionOnCount,
+                moving = movingCount,
+                maintenance = maintenanceVehicles,
+                noGps = noGpsVehicles
+            },
+            expenses = new
+            {
+                fuelCost,
+                maintenanceCost,
+                repairCost,
+                otherCost,
+                totalCost = fuelCost + maintenanceCost + repairCost + otherCost
+            },
+            fuelConsumption = new
+            {
+                vehicleStats = vehicleFuelStats,
+                fleetTotalLiters = Math.Round(fleetTotalLiters, 2),
+                fleetTotalKm,
+                chartDays,
+                chartValues
+            },
+            drivingScores,
+            healthData = new { healthy, attention, unhealthy },
+            topUnits,
+            geofences = geofencesList,
+            alerts = mergedAlerts,
+            recentTrips = tripsList,
+            drivers = driversList
+        };
+
+        _cache.Set(cacheKey, result, TimeSpan.FromMinutes(2));
+        return Ok(result);
+    }
+
     #endregion
 
     #region LEGACY ENDPOINTS (kept for backward compatibility)
