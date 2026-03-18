@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { environment } from '../environments/environment';
@@ -46,14 +46,6 @@ import { environment } from '../environments/environment';
           </div>
         </div>
 
-        <!-- DEBUG -->
-        <div style="color:#0f0;background:#111;padding:12px;border-radius:8px;margin-bottom:12px;font-family:monospace;font-size:12px;word-break:break-all;">
-          <div>loading: {{ loading }}</div>
-          <div>error: {{ error }}</div>
-          <div>result: {{ result | json }}</div>
-          <button (click)="testRaw()" style="margin-top:8px;background:#ef4444;color:white;border:none;padding:10px 16px;border-radius:8px;font-size:14px;cursor:pointer;">TEST FETCH BRUT</button>
-          <div style="margin-top:6px;color:#fbbf24;">testResult: {{ testResult }}</div>
-        </div>
 
         <!-- Result -->
         <div *ngIf="result" class="result-card" [class.stale]="result.isStale" [class.offline]="!result.connected && result.hasGps" [class.no-gps]="!result.hasGps || !result.found">
@@ -364,26 +356,7 @@ export class DeviceCheckComponent {
   result: any = null;
   error = '';
 
-  testResult = '';
-
-  testRaw() {
-    this.testResult = 'Calling fetch...';
-    const url = '/api/devicecheck/lookup?q=860141071579602';
-    alert('fetch URL: ' + url);
-    window.fetch(url)
-      .then(r => {
-        alert('Status: ' + r.status);
-        return r.text();
-      })
-      .then(t => {
-        alert('Response: ' + t.substring(0, 300));
-        setTimeout(() => { this.testResult = t.substring(0, 500); });
-      })
-      .catch(e => {
-        alert('Error: ' + e.message);
-        setTimeout(() => { this.testResult = 'ERR: ' + e.message; });
-      });
-  }
+  constructor(private cdr: ChangeDetectorRef) {}
 
   search() {
     const q = this.query.trim();
@@ -394,22 +367,20 @@ export class DeviceCheckComponent {
 
     const url = `${environment.apiUrl}/devicecheck/lookup?q=${encodeURIComponent(q)}`;
 
-    fetch(url)
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
+    window.fetch(url)
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
       })
       .then(data => {
-        setTimeout(() => {
-          this.result = data;
-          this.loading = false;
-        });
+        this.result = data;
+        this.loading = false;
+        this.cdr.detectChanges();
       })
       .catch(err => {
-        setTimeout(() => {
-          this.error = err?.message || 'Erreur de connexion au serveur.';
-          this.loading = false;
-        });
+        this.error = err?.message || 'Erreur de connexion au serveur.';
+        this.loading = false;
+        this.cdr.detectChanges();
       });
   }
 
