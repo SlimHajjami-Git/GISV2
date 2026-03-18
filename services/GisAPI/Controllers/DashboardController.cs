@@ -319,19 +319,19 @@ public class DashboardController : ControllerBase
         // Mileage trend: compare current vs previous period trip distances
         var currentMileage = await _context.Trips.AsNoTracking()
             .Where(t => t.CompanyId == companyId && t.StartTime >= periodStart && t.StartTime <= periodEnd && t.Status == "completed")
-            .SumAsync(t => t.DistanceKm);
+            .Select(t => (decimal?)t.DistanceKm).SumAsync() ?? 0m;
         var prevMileage = await _context.Trips.AsNoTracking()
             .Where(t => t.CompanyId == companyId && t.StartTime >= prevStart && t.StartTime <= prevEnd && t.Status == "completed")
-            .SumAsync(t => t.DistanceKm);
+            .Select(t => (decimal?)t.DistanceKm).SumAsync() ?? 0m;
         var mileageTrend = prevMileage > 0 ? Math.Round((double)(currentMileage - prevMileage) / (double)prevMileage * 100, 1) : 0;
 
         // Cost trend: compare current vs previous period costs
         var currentCost = await _context.VehicleCosts.AsNoTracking()
             .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd)
-            .SumAsync(c => c.Amount);
+            .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
         var prevCost = await _context.VehicleCosts.AsNoTracking()
             .Where(c => c.CompanyId == companyId && c.Date >= prevStart && c.Date <= prevEnd)
-            .SumAsync(c => c.Amount);
+            .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
         var costTrend = prevCost > 0 ? Math.Round((double)(currentCost - prevCost) / (double)prevCost * 100, 1) : 0;
 
         var result = new
@@ -555,29 +555,37 @@ public class DashboardController : ControllerBase
             }
         }
 
-        // ── 3. Expenses ──
-        var fuelCost = await _context.FuelEntries.AsNoTracking()
-            .Where(f => f.CompanyId == companyId && f.InvoiceDate >= periodStart && f.InvoiceDate <= periodEnd)
-            .SumAsync(f => f.TotalAmount);
-        fuelCost += await _context.VehicleCosts.AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= periodStart && c.Date <= periodEnd)
-            .SumAsync(c => c.Amount);
+        // ── 3. Expenses (use nullable Sum to safely handle empty result sets) ──
+        decimal fuelCost = 0, maintenanceCost = 0, repairCost = 0, otherCost = 0;
+        try
+        {
+            fuelCost = await _context.FuelEntries.AsNoTracking()
+                .Where(f => f.CompanyId == companyId && f.InvoiceDate >= periodStart && f.InvoiceDate <= periodEnd)
+                .Select(f => (decimal?)f.TotalAmount).SumAsync() ?? 0m;
+            fuelCost += await _context.VehicleCosts.AsNoTracking()
+                .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= periodStart && c.Date <= periodEnd)
+                .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
 
-        var maintenanceCost = await _context.MaintenanceLogs.AsNoTracking()
-            .Where(m => m.CompanyId == companyId && m.DoneDate >= periodStart && m.DoneDate <= periodEnd && m.ActualCost > 0)
-            .SumAsync(m => m.ActualCost);
-        maintenanceCost += await _context.VehicleCosts.AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Type == "maintenance" && c.Date >= periodStart && c.Date <= periodEnd)
-            .SumAsync(c => c.Amount);
+            maintenanceCost = await _context.MaintenanceLogs.AsNoTracking()
+                .Where(m => m.Vehicle!.CompanyId == companyId && m.DoneDate >= periodStart && m.DoneDate <= periodEnd && m.ActualCost > 0)
+                .Select(m => (decimal?)m.ActualCost).SumAsync() ?? 0m;
+            maintenanceCost += await _context.VehicleCosts.AsNoTracking()
+                .Where(c => c.CompanyId == companyId && c.Type == "maintenance" && c.Date >= periodStart && c.Date <= periodEnd)
+                .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
 
-        var repairCost = await _context.Repairs.AsNoTracking()
-            .Where(r => r.SocieteId == companyId && r.RepairDate >= periodStart && r.RepairDate <= periodEnd)
-            .SumAsync(r => r.TotalCost);
+            repairCost = await _context.Repairs.AsNoTracking()
+                .Where(r => r.SocieteId == companyId && r.RepairDate >= periodStart && r.RepairDate <= periodEnd)
+                .Select(r => (decimal?)r.TotalCost).SumAsync() ?? 0m;
 
-        var otherCost = await _context.VehicleCosts.AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd
-                && c.Type != "fuel" && c.Type != "maintenance")
-            .SumAsync(c => c.Amount);
+            otherCost = await _context.VehicleCosts.AsNoTracking()
+                .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd
+                    && c.Type != "fuel" && c.Type != "maintenance")
+                .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Dashboard] Error calculating expenses for company {companyId}: {ex.Message}");
+        }
 
         // ── 4. Driving scores (alerts per vehicle in period) ──
         var alertsByVehicle = await _context.GpsAlerts.AsNoTracking()
@@ -985,38 +993,38 @@ public class DashboardController : ControllerBase
         var fuelCost = await _context.FuelEntries
             .AsNoTracking()
             .Where(f => f.CompanyId == companyId && f.InvoiceDate >= periodStart && f.InvoiceDate <= periodEnd)
-            .SumAsync(f => f.TotalAmount);
+            .Select(f => (decimal?)f.TotalAmount).SumAsync() ?? 0m;
 
         // Also add VehicleCosts type='fuel' (legacy manual cost entries)
         fuelCost += await _context.VehicleCosts
             .AsNoTracking()
             .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= periodStart && c.Date <= periodEnd)
-            .SumAsync(c => c.Amount);
+            .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
 
         // 2. Entretiens: from MaintenanceLogs (completed scheduled maintenance)
         var maintenanceCost = await _context.MaintenanceLogs
             .AsNoTracking()
-            .Where(m => m.CompanyId == companyId && m.DoneDate >= periodStart && m.DoneDate <= periodEnd && m.ActualCost > 0)
-            .SumAsync(m => m.ActualCost);
+            .Where(m => m.Vehicle!.CompanyId == companyId && m.DoneDate >= periodStart && m.DoneDate <= periodEnd && m.ActualCost > 0)
+            .Select(m => (decimal?)m.ActualCost).SumAsync() ?? 0m;
 
         // Also add VehicleCosts type='maintenance'
         maintenanceCost += await _context.VehicleCosts
             .AsNoTracking()
             .Where(c => c.CompanyId == companyId && c.Type == "maintenance" && c.Date >= periodStart && c.Date <= periodEnd)
-            .SumAsync(c => c.Amount);
+            .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
 
         // 3. Réparations: from Repairs table (SocieteId = companyId)
         var repairCost = await _context.Repairs
             .AsNoTracking()
             .Where(r => r.SocieteId == companyId && r.RepairDate >= periodStart && r.RepairDate <= periodEnd)
-            .SumAsync(r => r.TotalCost);
+            .Select(r => (decimal?)r.TotalCost).SumAsync() ?? 0m;
 
         // 4. Autres: remaining VehicleCosts (insurance, tax, toll, parking, fine, other)
         var otherCost = await _context.VehicleCosts
             .AsNoTracking()
             .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd
                 && c.Type != "fuel" && c.Type != "maintenance")
-            .SumAsync(c => c.Amount);
+            .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
 
         var grandTotal = fuelCost + maintenanceCost + repairCost + otherCost;
 
