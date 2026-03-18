@@ -223,7 +223,7 @@ import { ChatComponent } from './chat.component';
                       <div class="notif-content">
                         <span class="notif-title">{{ notif.title }}</span>
                         <span class="notif-message">{{ notif.message }}</span>
-                        <span class="notif-time">{{ formatNotifTime(notif.createdAt) }}</span>
+                        <span class="notif-time">{{ formatNotifTime(notif.createdAt) }} · {{ formatNotifDate(notif.createdAt) }}</span>
                       </div>
                       <div class="notif-unread-dot" *ngIf="!notif.isRead"></div>
                     </div>
@@ -1168,13 +1168,28 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     }
     this.showNotifications = false;
 
-    // Navigate based on actionUrl or type
-    if (notif.actionUrl) {
+    // Navigate based on type with specific handling
+    if (notif.type === 'geofence_event' || notif.type === 'geofence') {
+      const meta = notif.metadata;
+      if (meta?.latitude && meta?.longitude) {
+        this.router.navigate(['/monitoring'], {
+          queryParams: {
+            lat: meta.latitude,
+            lng: meta.longitude,
+            zoom: 17,
+            geofenceId: meta.geofenceId || notif.referenceId,
+            vehicleId: meta.vehicleId
+          }
+        });
+      } else if (notif.actionUrl) {
+        this.router.navigateByUrl(notif.actionUrl);
+      } else {
+        this.router.navigate(['/monitoring']);
+      }
+    } else if (notif.actionUrl) {
       this.router.navigateByUrl(notif.actionUrl);
     } else if (notif.type === 'maintenance_due') {
       this.router.navigate(['/entretien-programmable']);
-    } else if (notif.type === 'geofence_event') {
-      this.router.navigate(['/geofences']);
     } else if (notif.type === 'speed_alert') {
       this.router.navigate(['/monitoring']);
     } else {
@@ -1218,6 +1233,13 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     if (diffHours < 24) return `Il y a ${diffHours}h`;
     if (diffDays < 7) return `Il y a ${diffDays}j`;
     return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  }
+
+  formatNotifDate(timestamp: string | Date): string {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      + ' ' + date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   }
 
   getUserName(): string {

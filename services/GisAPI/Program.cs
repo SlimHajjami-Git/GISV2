@@ -130,7 +130,8 @@ builder.Services.AddControllers(options =>
 
 // CORS - Restrict origins in production, allow all in development
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-    ?? new[] { "http://localhost:4200", "http://localhost:4201", "http://frontend:80" };
+    ?? new[] { "http://localhost:4200", "http://localhost:4201", "http://frontend:80",
+               "http://localhost", "capacitor://localhost", "https://localhost" };
 
 builder.Services.AddCors(options =>
 {

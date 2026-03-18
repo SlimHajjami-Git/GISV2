@@ -152,6 +152,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   showLayersMenu = false;
   today = new Date();
   pendingMapCenter: { lat: number; lng: number; zoom: number } | null = null;
+  pendingGeofenceEvent: { geofenceId: number; vehicleId: number } | null = null;
 
   // Address cache for reverse geocoding
   private addressCache = new Map<string, string>();
@@ -242,13 +243,19 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     });
 
-    // Check for query params (lat/lng/zoom) from speed infraction report navigation
+    // Check for query params (lat/lng/zoom) from notification or report navigation
     const qp = this.route.snapshot.queryParams;
     if (qp['lat'] && qp['lng']) {
       this.pendingMapCenter = {
         lat: parseFloat(qp['lat']),
         lng: parseFloat(qp['lng']),
         zoom: parseInt(qp['zoom'] || '17', 10)
+      };
+    }
+    if (qp['geofenceId']) {
+      this.pendingGeofenceEvent = {
+        geofenceId: parseInt(qp['geofenceId'], 10),
+        vehicleId: qp['vehicleId'] ? parseInt(qp['vehicleId'], 10) : 0
       };
     }
 
@@ -532,18 +539,46 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
         this.mapReady = true;
 
-        // If navigated with lat/lng query params (e.g. from speed infraction report), center + mark
+        // If navigated with lat/lng query params (e.g. from notification or report), center + mark
         if (this.pendingMapCenter) {
           const { lat, lng, zoom } = this.pendingMapCenter;
           this.map!.setView([lat, lng], zoom);
-          L.marker([lat, lng], {
-            icon: L.divIcon({
-              html: '<div style="background:#dc2626;width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>',
-              className: '',
-              iconSize: [14, 14],
-              iconAnchor: [7, 7]
-            })
-          }).addTo(this.map!).bindPopup(`📍 Point d'infraction<br>${lat.toFixed(5)}, ${lng.toFixed(5)}`).openPopup();
+
+          if (this.pendingGeofenceEvent) {
+            // Geofence notification: show event marker + load geofence zone
+            const evtMarker = L.marker([lat, lng], {
+              icon: L.divIcon({
+                html: '<div style="background:#f59e0b;width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);animation:pulse 1.5s infinite;"></div>',
+                className: '',
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+              })
+            }).addTo(this.map!);
+            evtMarker.bindPopup(`📍 Événement géofence<br>${lat.toFixed(5)}, ${lng.toFixed(5)}`).openPopup();
+
+            // Load and draw the geofence zone
+            this.apiService.getGeofence(this.pendingGeofenceEvent.geofenceId).subscribe({
+              next: (gf: any) => {
+                if (gf && this.map) {
+                  this.drawGeofenceHighlight(gf);
+                  evtMarker.setPopupContent(this.buildGeofencePopup(gf, lat, lng));
+                  evtMarker.openPopup();
+                }
+              },
+              error: () => {}
+            });
+            this.pendingGeofenceEvent = null;
+          } else {
+            // Generic point (speed infraction, etc.)
+            L.marker([lat, lng], {
+              icon: L.divIcon({
+                html: '<div style="background:#dc2626;width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>',
+                className: '',
+                iconSize: [14, 14],
+                iconAnchor: [7, 7]
+              })
+            }).addTo(this.map!).bindPopup(`📍 Point d'infraction<br>${lat.toFixed(5)}, ${lng.toFixed(5)}`).openPopup();
+          }
           this.pendingMapCenter = null;
         }
 
@@ -3895,5 +3930,59 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     
     return '0h 0m';
+  }
+
+  /** Draw a geofence zone (polygon or circle) on the map with highlight styling */
+  drawGeofenceHighlight(gf: any) {
+    if (!this.map) return;
+    try {
+      if (gf.type === 'circle' && gf.center) {
+        const center = gf.center;
+        L.circle([center.lat || center.latitude, center.lng || center.longitude], {
+          radius: gf.radius || 200,
+          color: '#f59e0b',
+          weight: 3,
+          fillColor: '#fbbf24',
+          fillOpacity: 0.15,
+          dashArray: '8, 4'
+        }).addTo(this.map).bindTooltip(gf.name || 'Géofence', { permanent: true, direction: 'top', className: 'geofence-label' });
+      } else if (gf.coordinates && gf.coordinates.length > 0) {
+        const coords = gf.coordinates.map((c: any) =>
+          [c.lat || c.latitude || c[0], c.lng || c.longitude || c[1]] as L.LatLngExpression
+        );
+        L.polygon(coords, {
+          color: '#f59e0b',
+          weight: 3,
+          fillColor: '#fbbf24',
+          fillOpacity: 0.15,
+          dashArray: '8, 4'
+        }).addTo(this.map).bindTooltip(gf.name || 'Géofence', { permanent: true, direction: 'center', className: 'geofence-label' });
+      }
+    } catch (e) {
+      console.warn('Failed to draw geofence highlight:', e);
+    }
+  }
+
+  /** Build a rich popup for a geofence event marker */
+  buildGeofencePopup(gf: any, lat: number, lng: number): string {
+    const qp = this.route.snapshot.queryParams;
+    const vehicleId = qp['vehicleId'];
+    const vehicle = vehicleId ? this.vehicles.find((v: any) => v.id === parseInt(vehicleId, 10)) : null;
+    const vehicleName = vehicle ? (vehicle.plate || vehicle.name) : '';
+
+    return `
+      <div style="font-family:Inter,system-ui,sans-serif;min-width:220px;">
+        <div style="font-weight:600;font-size:14px;margin-bottom:6px;color:#1e293b;">
+          📍 ${gf.name || 'Géofence'}
+        </div>
+        ${vehicleName ? `<div style="font-size:12px;color:#475569;margin-bottom:4px;">🚗 ${vehicleName}</div>` : ''}
+        <div style="font-size:12px;color:#64748b;margin-bottom:2px;">
+          📌 Position: ${lat.toFixed(5)}, ${lng.toFixed(5)}
+        </div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:6px;padding-top:6px;border-top:1px solid #e2e8f0;">
+          Cliquez sur la notification pour plus de détails
+        </div>
+      </div>
+    `;
   }
 }

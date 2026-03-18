@@ -41,6 +41,18 @@ public class GeofenceNotificationHandler : INotificationHandler<GeofenceNotifica
 
             foreach (var userId in adminUsers)
             {
+                var metadata = new Dictionary<string, object>
+                {
+                    ["eventType"] = e.EventType,
+                    ["latitude"] = e.Latitude,
+                    ["longitude"] = e.Longitude,
+                    ["vehicleId"] = e.VehicleId ?? 0,
+                    ["vehicleName"] = vehicleLabel,
+                    ["geofenceName"] = e.GeofenceName,
+                    ["geofenceId"] = e.GeofenceId,
+                    ["timestamp"] = e.Timestamp.ToString("o")
+                };
+
                 await _notificationService.CreateAndSendAsync(
                     companyId: e.CompanyId,
                     userId: userId,
@@ -50,7 +62,8 @@ public class GeofenceNotificationHandler : INotificationHandler<GeofenceNotifica
                     priority: "normal",
                     referenceType: "geofence",
                     referenceId: e.GeofenceId,
-                    actionUrl: "/geofences",
+                    actionUrl: $"/monitoring?lat={e.Latitude}&lng={e.Longitude}&zoom=17&geofenceId={e.GeofenceId}&vehicleId={e.VehicleId}",
+                    metadata: metadata,
                     ct: ct
                 );
             }
