@@ -203,12 +203,20 @@ export class LoginPage {
       },
       error: async (err) => {
         await loading.dismiss();
+        let message = 'Erreur de connexion au serveur';
+        if (err.status === 401 || err.status === 400) {
+          message = err.error?.message || 'Email ou mot de passe incorrect';
+        } else if (err.status === 0) {
+          message = `Serveur injoignable (${this.authService.API_URL}). Vérifiez la configuration serveur.`;
+        } else if (err.status) {
+          message = `Erreur serveur (${err.status}): ${err.error?.message || err.statusText}`;
+        }
         const toast = await this.toastCtrl.create({
-          message: 'Erreur de connexion au serveur',
-          duration: 3000,
+          message,
+          duration: 5000,
           color: 'danger',
           position: 'top',
-          icon: 'cloud-offline-outline'
+          icon: err.status === 0 ? 'cloud-offline-outline' : 'alert-circle-outline'
         });
         await toast.present();
       }

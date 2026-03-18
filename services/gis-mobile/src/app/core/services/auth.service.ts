@@ -178,7 +178,7 @@ export class AuthService {
       }),
       catchError(err => {
         console.error('Login failed:', err);
-        return of(null);
+        throw err;
       })
     );
   }
