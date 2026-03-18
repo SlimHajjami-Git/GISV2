@@ -51,6 +51,8 @@ import { environment } from '../environments/environment';
           <div>loading: {{ loading }}</div>
           <div>error: {{ error }}</div>
           <div>result: {{ result | json }}</div>
+          <button (click)="testRaw()" style="margin-top:8px;background:#ef4444;color:white;border:none;padding:10px 16px;border-radius:8px;font-size:14px;cursor:pointer;">TEST FETCH BRUT</button>
+          <div style="margin-top:6px;color:#fbbf24;">testResult: {{ testResult }}</div>
         </div>
 
         <!-- Result -->
@@ -361,6 +363,27 @@ export class DeviceCheckComponent {
   loading = false;
   result: any = null;
   error = '';
+
+  testResult = '';
+
+  testRaw() {
+    this.testResult = 'Calling fetch...';
+    const url = '/api/devicecheck/lookup?q=860141071579602';
+    alert('fetch URL: ' + url);
+    window.fetch(url)
+      .then(r => {
+        alert('Status: ' + r.status);
+        return r.text();
+      })
+      .then(t => {
+        alert('Response: ' + t.substring(0, 300));
+        setTimeout(() => { this.testResult = t.substring(0, 500); });
+      })
+      .catch(e => {
+        alert('Error: ' + e.message);
+        setTimeout(() => { this.testResult = 'ERR: ' + e.message; });
+      });
+  }
 
   search() {
     const q = this.query.trim();
