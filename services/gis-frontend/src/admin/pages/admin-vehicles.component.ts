@@ -674,6 +674,13 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
 
   // Handler for VehiclePopupComponent saved event
   onVehicleSaved(formData: any) {
+    console.log('[AdminVehicles] onVehicleSaved received formData:', JSON.stringify({
+      hasGPS: formData.hasGPS,
+      gpsSimNumber: formData.gpsSimNumber,
+      gpsSimOperator: formData.gpsSimOperator,
+      gpsImei: formData.gpsImei,
+      gpsDeviceId: formData.gpsDeviceId
+    }));
     // Use selected companyId from form, fallback to first company or 1
     const selectedCompanyId = formData.companyId 
       ? parseInt(formData.companyId, 10) 

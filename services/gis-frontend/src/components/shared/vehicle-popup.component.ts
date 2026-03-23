@@ -223,6 +223,30 @@ export interface CompanyOption {
               <p class="help-text">Définit comment interpréter les données carburant du GPS</p>
             </div>
 
+            <!-- SIM Number for existing device -->
+            <div class="form-grid" *ngIf="gpsMode === 'existing' && formData.gpsDeviceId">
+              <div class="form-group">
+                <label for="gpsSimNumberExisting">Numéro SIM (Téléphone)</label>
+                <input
+                  type="text"
+                  id="gpsSimNumberExisting"
+                  name="gpsSimNumberExisting"
+                  [(ngModel)]="formData.gpsSimNumber"
+                  placeholder="Ex: +216 50 123 456"
+                />
+              </div>
+              <div class="form-group">
+                <label for="gpsSimOperatorExisting">Opérateur SIM</label>
+                <select id="gpsSimOperatorExisting" name="gpsSimOperatorExisting" [(ngModel)]="formData.gpsSimOperator">
+                  <option value="">Sélectionner</option>
+                  <option value="ooredoo">Ooredoo</option>
+                  <option value="orange_tunisie">Orange Tunisie</option>
+                  <option value="tunisie_telecom">Tunisie Telecom</option>
+                  <option value="other">Autre</option>
+                </select>
+              </div>
+            </div>
+
             <!-- New GPS Device Form -->
             <div class="form-grid" *ngIf="gpsMode === 'new'">
               <div class="form-group">
@@ -523,6 +547,13 @@ export interface CompanyOption {
       outline: none;
       border-color: #2563eb;
       box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 12px;
     }
 
     .gps-section {
@@ -912,11 +943,15 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
         this.formData.gpsImei = selectedDevice.deviceUid || '';
         this.formData.gpsMat = selectedDevice.mat || '';
         this.formData.gpsFuelSensorMode = selectedDevice.fuelSensorMode || 'raw_255';
+        this.formData.gpsSimNumber = selectedDevice.simNumber || '';
+        this.formData.gpsSimOperator = selectedDevice.simOperator || '';
       }
     } else {
       this.formData.gpsImei = '';
       this.formData.gpsMat = '';
       this.formData.gpsFuelSensorMode = 'raw_255';
+      this.formData.gpsSimNumber = '';
+      this.formData.gpsSimOperator = '';
     }
   }
 
@@ -966,6 +1001,14 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   }
 
   onSubmit() {
+    console.log('[VehiclePopup] onSubmit formData:', JSON.stringify({
+      hasGPS: this.formData.hasGPS,
+      gpsImei: this.formData.gpsImei,
+      gpsSimNumber: this.formData.gpsSimNumber,
+      gpsSimOperator: this.formData.gpsSimOperator,
+      gpsDeviceId: this.formData.gpsDeviceId,
+      gpsMode: this.gpsMode
+    }));
     this.saved.emit(this.formData);
   }
 }
