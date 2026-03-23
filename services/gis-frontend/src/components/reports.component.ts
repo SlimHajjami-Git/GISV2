@@ -2600,10 +2600,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            display: true,
-            position: 'top'
-          },
+          legend: { display: false },
           title: { display: true, text: '📏 Distance journalière', font: { size: 14, weight: 'bold' } },
           // No dataset label needed
           tooltip: {
@@ -2925,7 +2922,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const periodType = this.mileagePeriodReport?.periodType || 'day';
+    const periodType = (this.mileagePeriodReport?.periodType || 'day').toString().toLowerCase() as MileagePeriodType;
     const chartConfig = this.getMileagePeriodChartConfig(periodType);
 
     this.mileagePeriodChart = new Chart(ctx, chartConfig);
@@ -2936,8 +2933,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const labels = this.chartData.map(d => d.label);
     const data = this.chartData.map(d => d.value);
     
-    const xAxisLabel = periodType === 'hour' ? 'Heure' : periodType === 'day' ? 'Date' : 'Mois';
-    const chartType = periodType === 'hour' ? 'line' : 'bar';
+    const pt = periodType.toString().toLowerCase();
+    const xAxisLabel = pt === 'hour' ? 'Heure' : pt === 'day' ? 'Jour' : 'Mois';
+    const chartType = pt === 'hour' ? 'line' : 'bar';
     
     return {
       type: chartType as any,
@@ -2965,10 +2963,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         maintainAspectRatio: false,
         indexAxis: 'x',
         plugins: {
-          legend: {
-            display: true,
-            position: 'top'
-          },
+          legend: { display: false },
           tooltip: {
             callbacks: {
               label: (context) => {
@@ -3344,7 +3339,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { display: true, position: 'top' }
+          legend: { display: false }
         },
         scales: {
           y: { beginAtZero: true, title: { display: true, text: 'Distance (km)' } },
@@ -4116,7 +4111,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           maintainAspectRatio: false,
           interaction: { mode: 'index', intersect: false },
           plugins: {
-            legend: { position: 'top', labels: { usePointStyle: true, font: { size: 11 } } },
+            legend: { display: false },
             title: { display: true, text: '📊 Distance par trajet', font: { size: 14, weight: 'bold' } },
             tooltip: {
               callbacks: {
@@ -4155,7 +4150,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15, font: { size: 12 } } },
+            legend: { display: false },
             title: { display: true, text: '🅿️ Répartition du temps d\'arrêt', font: { size: 14, weight: 'bold' } },
             tooltip: {
               callbacks: {
@@ -4350,7 +4345,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           maintainAspectRatio: false,
           interaction: { mode: 'index', intersect: false },
           plugins: {
-            legend: { display: true, position: 'top' },
+            legend: { display: false },
             title: { display: true, text: '⛽ Évolution du niveau de carburant', font: { size: 14, weight: 'bold' } }
           },
           scales: {
@@ -4377,7 +4372,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { position: 'bottom' as const, labels: { usePointStyle: true, padding: 12, font: { size: 11 } } },
+            legend: { display: false },
             title: { display: true, text: 'Répartition conduite / arrêts', font: { size: 14, weight: 'bold' } }
           }
         }
@@ -4400,7 +4395,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15, font: { size: 12 } } },
+            legend: { display: false },
             title: { display: true, text: '🔩 Réparations par statut', font: { size: 14, weight: 'bold' } }
           }
         }
@@ -4423,7 +4418,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15, font: { size: 12 } } },
+            legend: { display: false },
             title: { display: true, text: '🔧 Maintenances par type', font: { size: 14, weight: 'bold' } }
           }
         }
@@ -4492,7 +4487,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { position: 'top' },
+            legend: { display: false },
             title: { display: true, text: this.selectedTemplate?.name || 'Données', font: { size: 14, weight: 'bold' } }
           },
           scales: {
@@ -4539,7 +4534,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { position: 'bottom' as const, labels: { usePointStyle: true, padding: 10, font: { size: 10 } } },
+            legend: { display: false },
             title: { display: true, text: '⏱️ Répartition par durée de trajet', font: { size: 12, weight: 'bold' } }
           }
         }
@@ -4630,7 +4625,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-              legend: { position: 'bottom' as const, labels: { usePointStyle: true } },
+              legend: { display: false },
               title: { display: true, text: '🎯 Gravité des infractions', font: { size: 12, weight: 'bold' } }
             }
           }
@@ -4797,7 +4792,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { display: true, position: 'top' as const },
+            legend: { display: false },
             title: { display: true, text: '📈 Distance cumulée', font: { size: 12, weight: 'bold' } },
             tooltip: {
               callbacks: {
@@ -5135,7 +5130,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             plugins: {
-              legend: { position: 'top', labels: { usePointStyle: true, font: { size: 11 } } },
+              legend: { display: false },
               title: {
                 display: true,
                 text: 'Consommation & Coût par véhicule',
@@ -5195,7 +5190,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-              legend: { position: 'right', labels: { font: { size: 11 } } },
+              legend: { display: false },
               title: {
                 display: true,
                 text: 'Répartition coûts par type de carburant',
@@ -5258,7 +5253,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: 'top' },
+          legend: { display: false },
           title: {
             display: true,
             text: 'Tendances mensuelles',
