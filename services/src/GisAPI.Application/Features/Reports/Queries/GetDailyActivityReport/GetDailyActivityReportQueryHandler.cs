@@ -422,6 +422,24 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
             merged.RemoveAt(merged.Count - 1);
         }
 
+        // Update LastPosition to the end of the last drive so "Fin de journée"
+        // shows right after the last trip, not hours later from a periodic heartbeat.
+        if (merged.Count > 0 && merged[^1].Type == "drive" && merged[^1].EndTime.HasValue)
+        {
+            var lastDrive = merged[^1];
+            var endLat = lastDrive.EndLocation?.Latitude ?? lastPos.Latitude;
+            var endLon = lastDrive.EndLocation?.Longitude ?? lastPos.Longitude;
+            var endAddr = await _geocodingService.ReverseGeocodeAsync(endLat, endLon);
+            report.LastPosition = new DailyEndEventDto
+            {
+                Timestamp = lastDrive.EndTime.Value,
+                Latitude = endLat,
+                Longitude = endLon,
+                Address = endAddr ?? lastDrive.EndLocation?.Address,
+                IgnitionOn = false
+            };
+        }
+
         // Re-number sequences
         for (int m = 0; m < merged.Count; m++)
             merged[m].SequenceNumber = m + 1;
