@@ -44,6 +44,7 @@ public class TestGisDbContext : DbContext, IGisDbContext
     public DbSet<VehicleStop> VehicleStops => Set<VehicleStop>();
     public DbSet<FuelRecord> FuelRecords => Set<FuelRecord>();
     public DbSet<VehicleAssignment> VehicleAssignments => Set<VehicleAssignment>();
+    public DbSet<UserVehicle> UserVehicles => Set<UserVehicle>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
     public DbSet<SupplierService> SupplierServices => Set<SupplierService>();
     public DbSet<AccidentClaim> AccidentClaims => Set<AccidentClaim>();
@@ -52,12 +53,17 @@ public class TestGisDbContext : DbContext, IGisDbContext
     public DbSet<MaintenanceTemplate> MaintenanceTemplates => Set<MaintenanceTemplate>();
     public DbSet<VehicleMaintenanceSchedule> VehicleMaintenanceSchedules => Set<VehicleMaintenanceSchedule>();
     public DbSet<MaintenanceLog> MaintenanceLogs => Set<MaintenanceLog>();
+    public DbSet<MaintenanceTemplatePart> MaintenanceTemplateParts => Set<MaintenanceTemplatePart>();
+    public DbSet<MaintenanceNotification> MaintenanceNotifications => Set<MaintenanceNotification>();
+    public DbSet<MaintenanceAlertSettings> MaintenanceAlertSettings => Set<MaintenanceAlertSettings>();
     
     // Fleet Management
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<FuelType> FuelTypes => Set<FuelType>();
     public DbSet<FuelPricing> FuelPricings => Set<FuelPricing>();
+    public DbSet<FuelEntry> FuelEntries => Set<FuelEntry>();
     public DbSet<SpeedLimitAlert> SpeedLimitAlerts => Set<SpeedLimitAlert>();
+    public DbSet<Driver> Drivers => Set<Driver>();
     
     // Brands & Models
     public DbSet<Brand> Brands => Set<Brand>();
@@ -66,24 +72,43 @@ public class TestGisDbContext : DbContext, IGisDbContext
     public DbSet<VehiclePart> VehicleParts => Set<VehiclePart>();
     public DbSet<PartPricing> PartPricings => Set<PartPricing>();
 
+    // Repairs
+    public DbSet<Repair> Repairs => Set<Repair>();
+    public DbSet<RepairPart> RepairParts => Set<RepairPart>();
+
+    // Notifications
+    public DbSet<Notification> Notifications => Set<Notification>();
+
+    // Tours
+    public DbSet<Tour> Tours => Set<Tour>();
+    public DbSet<TourWaypoint> TourWaypoints => Set<TourWaypoint>();
+    public DbSet<TourPause> TourPauses => Set<TourPause>();
+
+    // Trips
+    public DbSet<Trip> Trips => Set<Trip>();
+
+    // Chat
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<AiChatMessage> AiChatMessages => Set<AiChatMessage>();
+
+    // Auth
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        // Minimal configuration for testing - ignore complex types
+        // Ignore computed properties (not stored in DB)
         modelBuilder.Entity<User>().Ignore(u => u.FullName).Ignore(u => u.IsCompanyAdmin);
+
+        // Ignore complex/owned types that SQLite can't handle natively
         modelBuilder.Entity<Geofence>().Ignore(g => g.Coordinates);
         modelBuilder.Entity<Societe>().Ignore(c => c.Settings);
-        
-        // Configure owned types as ignored for InMemory
-        modelBuilder.Entity<MaintenanceRecord>().Ignore(m => m.Parts);
-        modelBuilder.Entity<GpsDevice>().Ignore(d => d.Positions).Ignore(d => d.Alerts);
-        modelBuilder.Entity<Geofence>().Ignore(g => g.Events);
-        modelBuilder.Entity<Vehicle>().Ignore(v => v.Documents);
-        
-        // Ignore navigation collections that cause InMemory issues
-        modelBuilder.Entity<AccidentClaim>().Ignore(a => a.ThirdParties).Ignore(a => a.Documents);
         modelBuilder.Entity<GpsPosition>().Ignore(p => p.Metadata);
+        modelBuilder.Entity<Notification>().Ignore(n => n.Metadata);
+        modelBuilder.Entity<GpsDevice>().Ignore(d => d.Metadata);
+        modelBuilder.Entity<Role>().Ignore(r => r.Permissions);
+        modelBuilder.Entity<SubscriptionType>().Ignore(s => s.AccessRights);
     }
 
     public override async Task<int> SaveChangesAsync(CancellationToken ct = default)

@@ -2,6 +2,8 @@ using FluentAssertions;
 using GisAPI.Application.Features.AccidentClaims.Commands;
 using GisAPI.Domain.Entities;
 using GisAPI.Tests.Common;
+using MediatR;
+using Moq;
 using Xunit;
 
 namespace GisAPI.Tests.Application.AccidentClaims;
@@ -18,7 +20,7 @@ public class AccidentClaimCommandsTests
         context.Vehicles.Add(new Vehicle { Id = 1, Name = "Test Vehicle", CompanyId = 1 });
         await context.SaveChangesAsync();
 
-        var handler = new CreateAccidentClaimCommandHandler(context, tenantService.Object);
+        var handler = new CreateAccidentClaimCommandHandler(context, tenantService.Object, new Mock<IPublisher>().Object);
         var command = new CreateAccidentClaimCommand(
             VehicleId: 1,
             DriverId: null,
@@ -66,7 +68,7 @@ public class AccidentClaimCommandsTests
         context.Vehicles.Add(new Vehicle { Id = 1, Name = "Test Vehicle", CompanyId = 1 });
         await context.SaveChangesAsync();
 
-        var handler = new CreateAccidentClaimCommandHandler(context, tenantService.Object);
+        var handler = new CreateAccidentClaimCommandHandler(context, tenantService.Object, new Mock<IPublisher>().Object);
         var command = new CreateAccidentClaimCommand(
             VehicleId: 1,
             DriverId: null,

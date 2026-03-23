@@ -2,6 +2,8 @@ using FluentAssertions;
 using GisAPI.Application.Features.Suppliers.Commands;
 using GisAPI.Domain.Entities;
 using GisAPI.Tests.Common;
+using MediatR;
+using Moq;
 using Xunit;
 
 namespace GisAPI.Tests.Application.Suppliers;
@@ -14,7 +16,7 @@ public class SupplierCommandsTests
         // Arrange
         using var context = TestDbContextFactory.Create();
         var tenantService = TestDbContextFactory.CreateMockTenantService(companyId: 1);
-        var handler = new CreateSupplierCommandHandler(context, tenantService.Object);
+        var handler = new CreateSupplierCommandHandler(context, tenantService.Object, new Mock<IPublisher>().Object);
 
         var command = new CreateSupplierCommand(
             "Test Garage",
@@ -48,7 +50,7 @@ public class SupplierCommandsTests
         // Arrange
         using var context = TestDbContextFactory.Create();
         var tenantService = TestDbContextFactory.CreateMockTenantService(companyId: 1);
-        var handler = new CreateSupplierCommandHandler(context, tenantService.Object);
+        var handler = new CreateSupplierCommandHandler(context, tenantService.Object, new Mock<IPublisher>().Object);
 
         var command = new CreateSupplierCommand(
             "Multi-Service Garage",

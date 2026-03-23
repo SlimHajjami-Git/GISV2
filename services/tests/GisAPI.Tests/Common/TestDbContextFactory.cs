@@ -1,7 +1,7 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Interfaces;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Moq;
 
 namespace GisAPI.Tests.Common;
@@ -10,28 +10,25 @@ public static class TestDbContextFactory
 {
     public static TestGisDbContext Create(int? tenantId = null)
     {
-        var serviceProvider = new ServiceCollection()
-            .AddEntityFrameworkInMemoryDatabase()
-            .BuildServiceProvider();
+        var connection = new SqliteConnection("DataSource=:memory:");
+        connection.Open();
 
         var options = new DbContextOptionsBuilder<TestGisDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-            .UseInternalServiceProvider(serviceProvider)
+            .UseSqlite(connection)
             .Options;
 
         var context = new TestGisDbContext(options);
+        context.Database.EnsureCreated();
         return context;
     }
 
     public static TestGisDbContext CreateWithTenant(int companyId, int userId = 1)
     {
-        var serviceProvider = new ServiceCollection()
-            .AddEntityFrameworkInMemoryDatabase()
-            .BuildServiceProvider();
+        var connection = new SqliteConnection("DataSource=:memory:");
+        connection.Open();
 
         var options = new DbContextOptionsBuilder<TestGisDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-            .UseInternalServiceProvider(serviceProvider)
+            .UseSqlite(connection)
             .Options;
 
         var tenantService = new Mock<ICurrentTenantService>();
@@ -39,7 +36,9 @@ public static class TestDbContextFactory
         tenantService.Setup(x => x.UserId).Returns(userId);
         tenantService.Setup(x => x.IsAuthenticated).Returns(true);
 
-        return new TestGisDbContext(options, tenantService.Object);
+        var context = new TestGisDbContext(options, tenantService.Object);
+        context.Database.EnsureCreated();
+        return context;
     }
 
     public static Mock<ICurrentTenantService> CreateMockTenantService(int companyId = 1, int userId = 1)
@@ -53,5 +52,3 @@ public static class TestDbContextFactory
         return mock;
     }
 }
-
-

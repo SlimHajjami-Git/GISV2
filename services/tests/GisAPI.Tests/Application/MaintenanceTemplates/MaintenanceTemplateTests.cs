@@ -3,6 +3,8 @@ using GisAPI.Application.Features.MaintenanceTemplates.Commands;
 using GisAPI.Application.Features.MaintenanceTemplates.Queries;
 using GisAPI.Domain.Entities;
 using GisAPI.Tests.Common;
+using MediatR;
+using Moq;
 using Xunit;
 
 namespace GisAPI.Tests.Application.MaintenanceTemplates;
@@ -15,7 +17,7 @@ public class MaintenanceTemplateTests
         // Arrange
         using var context = TestDbContextFactory.Create();
         var tenantService = TestDbContextFactory.CreateMockTenantService(companyId: 1);
-        var handler = new CreateMaintenanceTemplateCommandHandler(context, tenantService.Object);
+        var handler = new CreateMaintenanceTemplateCommandHandler(context, tenantService.Object, new Mock<IPublisher>().Object);
 
         var command = new CreateMaintenanceTemplateCommand(
             Name: "Vidange huile moteur",
@@ -45,7 +47,7 @@ public class MaintenanceTemplateTests
         // Arrange
         using var context = TestDbContextFactory.Create();
         var tenantService = TestDbContextFactory.CreateMockTenantService(companyId: 1);
-        var handler = new CreateMaintenanceTemplateCommandHandler(context, tenantService.Object);
+        var handler = new CreateMaintenanceTemplateCommandHandler(context, tenantService.Object, new Mock<IPublisher>().Object);
 
         var command = new CreateMaintenanceTemplateCommand(
             Name: "Invalid Template",

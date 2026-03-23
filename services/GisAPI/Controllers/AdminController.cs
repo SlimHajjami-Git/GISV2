@@ -238,6 +238,7 @@ public class AdminController : ControllerBase
     [HttpPost("vehicles")]
     public async Task<ActionResult<AdminVehicleDto>> CreateVehicle([FromBody] CreateAdminVehicleRequest request)
     {
+        Console.WriteLine($"[AdminController.CreateVehicle] HasGps={request.HasGps}, GpsDeviceId={request.GpsDeviceId}, GpsImei={request.GpsImei}, GpsSimNumber='{request.GpsSimNumber}', GpsSimOperator='{request.GpsSimOperator}'");
         var result = await _mediator.Send(new CreateAdminVehicleCommand(
             request.Name, request.Type, request.Brand, request.Model, request.Plate,
             request.Year, request.Color, request.Status, request.HasGps, request.Mileage,
@@ -253,6 +254,7 @@ public class AdminController : ControllerBase
     [HttpPut("vehicles/{id}")]
     public async Task<ActionResult<AdminVehicleDto>> UpdateVehicle(int id, [FromBody] UpdateAdminVehicleRequest request)
     {
+        Console.WriteLine($"[AdminController.UpdateVehicle] Id={id}, HasGps={request.HasGps}, GpsDeviceId={request.GpsDeviceId}, GpsSimNumber='{request.GpsSimNumber}', GpsSimOperator='{request.GpsSimOperator}'");
         var result = await _mediator.Send(new UpdateAdminVehicleCommand(
             id, request.Name, request.Type, request.Brand, request.Model, request.Plate,
             request.Year, request.Color, request.Status, request.HasGps, request.Mileage,
