@@ -118,10 +118,6 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Live marker visibility during playback
   hiddenLiveMarkers: Map<string, L.Marker> = new Map(); // Store ALL hidden live markers during playback
 
-  // Remote commands
-  remoteCommandLoading = false;
-  remoteCommandMessage = '';
-  remoteCommandSuccess = false;
 
   // Message
   driverMessage = '';
@@ -3669,35 +3665,6 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.cdr.detectChanges();
   }
 
-  // Remote vehicle commands (stop/resume engine)
-  sendRemoteCommand(vehicle: Vehicle, command: 'stop' | 'resume') {
-    if (this.remoteCommandLoading) return;
-    
-    const actionLabel = command === 'stop' ? "ARRÊTER" : "REMETTRE EN MARCHE";
-    const password = prompt(`Pour ${actionLabel} le moteur du véhicule "${vehicle.name || vehicle.plate}", veuillez entrer votre mot de passe :`);
-    if (!password) return;
-
-    this.remoteCommandLoading = true;
-    this.remoteCommandMessage = '';
-    this.remoteCommandSuccess = false;
-
-    this.apiService.sendVehicleCommand(parseInt(vehicle.id), command).subscribe({
-      next: (response) => {
-        this.remoteCommandLoading = false;
-        this.remoteCommandSuccess = response.success;
-        this.remoteCommandMessage = response.message;
-        this.cdr.detectChanges();
-        setTimeout(() => { this.remoteCommandMessage = ''; this.cdr.detectChanges(); }, 8000);
-      },
-      error: (err) => {
-        this.remoteCommandLoading = false;
-        this.remoteCommandSuccess = false;
-        this.remoteCommandMessage = err.error?.message || 'Erreur lors de l\'envoi de la commande';
-        this.cdr.detectChanges();
-        setTimeout(() => { this.remoteCommandMessage = ''; this.cdr.detectChanges(); }, 8000);
-      }
-    });
-  }
 
   // Message
   sendMessageToDriver() {
