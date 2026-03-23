@@ -2320,8 +2320,21 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
       type: vehicle.type,
       status: vehicle.status,
       mileage: vehicle.mileage,
+      fuelTankCapacity: vehicle.fuelTankCapacity,
+      color: vehicle.color,
+      fuelType: vehicle.fuelType,
+      companyId: vehicle.companyId,
       hasGPS: vehicle.hasGps,
-      gpsDeviceId: vehicle.gpsDeviceId
+      gpsDeviceId: vehicle.gpsDeviceId,
+      gpsImei: vehicle.gpsImei,
+      gpsMat: vehicle.gpsMat,
+      gpsBrand: vehicle.gpsBrand,
+      gpsModel: vehicle.gpsModel,
+      gpsFirmwareVersion: vehicle.gpsFirmwareVersion,
+      gpsFuelSensorMode: vehicle.gpsFuelSensorMode,
+      gpsSimNumber: vehicle.gpsSimNumber,
+      gpsSimOperator: vehicle.gpsSimOperator,
+      gpsInstallationDate: vehicle.gpsInstallationDate
     };
     this.showVehiclePopup = true;
   }
@@ -2349,7 +2362,13 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
       gpsDeviceId: formData.hasGPS ? formData.gpsDeviceId : undefined,
       gpsImei: formData.hasGPS ? formData.gpsImei || undefined : undefined,
       gpsMat: formData.hasGPS ? formData.gpsMat || undefined : undefined,
-      gpsFuelSensorMode: formData.hasGPS ? formData.gpsFuelSensorMode || undefined : undefined
+      gpsBrand: formData.hasGPS ? formData.gpsBrand || undefined : undefined,
+      gpsModel: formData.hasGPS ? formData.gpsModel || undefined : undefined,
+      gpsFirmwareVersion: formData.hasGPS ? formData.gpsFirmwareVersion || undefined : undefined,
+      gpsFuelSensorMode: formData.hasGPS ? formData.gpsFuelSensorMode || undefined : undefined,
+      gpsSimNumber: formData.hasGPS ? formData.gpsSimNumber || undefined : undefined,
+      gpsSimOperator: formData.hasGPS ? formData.gpsSimOperator || undefined : undefined,
+      gpsInstallationDate: formData.hasGPS ? formData.gpsInstallationDate || undefined : undefined
     };
 
     if (this.selectedVehicle?.id) {

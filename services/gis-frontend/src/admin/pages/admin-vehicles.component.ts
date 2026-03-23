@@ -488,7 +488,10 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
       gpsBrand: this.selectedVehicle.gpsBrand,
       gpsModel: this.selectedVehicle.gpsModel,
       gpsFirmwareVersion: this.selectedVehicle.gpsFirmwareVersion,
-      gpsFuelSensorMode: this.selectedVehicle.gpsFuelSensorMode
+      gpsFuelSensorMode: this.selectedVehicle.gpsFuelSensorMode,
+      gpsSimNumber: this.selectedVehicle.gpsSimNumber,
+      gpsSimOperator: this.selectedVehicle.gpsSimOperator,
+      gpsInstallationDate: this.selectedVehicle.gpsInstallationDate
     };
   }
 
