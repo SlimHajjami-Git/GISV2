@@ -999,4 +999,33 @@
       </main>
     </div>
   </div>
+
+  <!-- Map Popup Modal for Speed Infractions -->
+  @if (showMapPopup && mapPopupData) {
+    <div class="map-popup-overlay" (click)="closeMapPopup()">
+      <div class="map-popup-modal" (click)="$event.stopPropagation()">
+        <div class="map-popup-header">
+          <div class="map-popup-title">
+            <span class="map-popup-icon">📍</span>
+            <span>{{ mapPopupData.vehicle }}</span>
+          </div>
+          <div class="map-popup-info">
+            <span class="map-popup-speed">{{ mapPopupData.speed }}</span>
+            <span class="map-popup-separator">|</span>
+            <span class="map-popup-limit">Limite: {{ mapPopupData.limit }}</span>
+            <span class="map-popup-separator">|</span>
+            <span class="map-popup-severity">{{ mapPopupData.severityLabel }}</span>
+          </div>
+          <button class="map-popup-close" (click)="closeMapPopup()" title="Fermer">✕</button>
+        </div>
+        <div class="map-popup-body">
+          <div #mapPopupContainer class="map-popup-map"></div>
+        </div>
+        <div class="map-popup-footer">
+          <span class="map-popup-address">{{ mapPopupData.address }}</span>
+          <span class="map-popup-time">{{ mapPopupData.time }}</span>
+        </div>
+      </div>
+    </div>
+  }
 </ng-template>

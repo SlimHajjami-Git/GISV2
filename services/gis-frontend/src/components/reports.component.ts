@@ -13,6 +13,7 @@ import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui'
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked } from 'marked';
+import * as L from 'leaflet';
 
 Chart.register(...registerables);
 
@@ -32,7 +33,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
   @ViewChild('fuelPieChart') fuelPieChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('maintenanceAreaChart') maintenanceAreaChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('mileagePeriodChart') mileagePeriodChartRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('mapPopupContainer') mapPopupContainer?: ElementRef<HTMLDivElement>;
   
+  // Map popup state
+  showMapPopup = false;
+  mapPopupData: { latitude: number; longitude: number; vehicle: string; speed: string; limit: string; time: string; address: string; severityLabel: string } | null = null;
+  private popupMap?: L.Map;
+
   // Chart instances for monthly report
   private kmBarChart?: Chart;
   private fuelPieChart?: Chart;
@@ -1553,8 +1560,76 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   viewInfractionOnMap(row: any) {
     if (row.latitude && row.longitude) {
-      this.router.navigate(['/monitoring'], { queryParams: { lat: row.latitude, lng: row.longitude, zoom: 17 } });
+      this.mapPopupData = {
+        latitude: row.latitude,
+        longitude: row.longitude,
+        vehicle: row.vehicle || '',
+        speed: row.speed || '',
+        limit: row.limit || '',
+        time: row.time || '',
+        address: row.address || '',
+        severityLabel: row.severityLabel || ''
+      };
+      this.showMapPopup = true;
+      this.cdr.detectChanges();
+
+      // Initialize Leaflet map after DOM renders
+      setTimeout(() => this.initPopupMap(), 50);
     }
+  }
+
+  closeMapPopup() {
+    this.showMapPopup = false;
+    this.mapPopupData = null;
+    if (this.popupMap) {
+      this.popupMap.remove();
+      this.popupMap = undefined;
+    }
+  }
+
+  private initPopupMap() {
+    if (!this.mapPopupContainer?.nativeElement || !this.mapPopupData) return;
+
+    // Clean up previous map
+    if (this.popupMap) {
+      this.popupMap.remove();
+      this.popupMap = undefined;
+    }
+
+    const { latitude, longitude } = this.mapPopupData;
+
+    this.popupMap = L.map(this.mapPopupContainer.nativeElement, {
+      center: [latitude, longitude],
+      zoom: 17,
+      zoomControl: true,
+      attributionControl: false
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(this.popupMap);
+
+    // Custom red marker for infraction location
+    const icon = L.divIcon({
+      className: 'infraction-marker',
+      html: `<div style="background:#EF4444;width:32px;height:32px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:bold;">⚠️</div>`,
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
+    });
+
+    const marker = L.marker([latitude, longitude], { icon }).addTo(this.popupMap);
+    marker.bindPopup(
+      `<div style="font-family:system-ui;min-width:180px;">
+        <div style="font-weight:700;font-size:14px;margin-bottom:6px;">${this.mapPopupData.vehicle}</div>
+        <div style="color:#EF4444;font-weight:700;font-size:16px;">${this.mapPopupData.speed}</div>
+        <div style="color:#64748b;font-size:12px;margin-top:4px;">Limite: ${this.mapPopupData.limit}</div>
+        <div style="color:#64748b;font-size:12px;margin-top:2px;">${this.mapPopupData.time}</div>
+        <div style="color:#334155;font-size:12px;margin-top:4px;">${this.mapPopupData.address}</div>
+      </div>`
+    ).openPopup();
+
+    // Force map resize
+    setTimeout(() => this.popupMap?.invalidateSize(), 100);
   }
 
   enrichSpeedInfractionAddresses() {
@@ -5793,6 +5868,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.saveState();
+    if (this.popupMap) {
+      this.popupMap.remove();
+      this.popupMap = undefined;
+    }
     this.destroy$.next();
     this.destroy$.complete();
   }
