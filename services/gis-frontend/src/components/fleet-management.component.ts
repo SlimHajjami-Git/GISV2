@@ -2070,30 +2070,53 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
     if (vehicle.commandLoading) return;
 
     const actionLabel = command === 'stop' ? 'ARRÊTER' : 'REDÉMARRER';
-    const confirmed = confirm(
-      `Êtes-vous sûr de vouloir ${actionLabel} le moteur du véhicule "${vehicle.name}" ?`
+    const password = prompt(
+      `Pour ${actionLabel} le moteur du véhicule "${vehicle.name}", veuillez entrer votre mot de passe :`
     );
-    if (!confirmed) return;
+    if (!password) return;
 
     vehicle.commandLoading = true;
     vehicle.commandMessage = '';
     vehicle.commandSuccess = false;
     this.cdr.detectChanges();
 
-    this.apiService.sendVehicleCommand(vehicle.id, command).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (response: any) => {
-        vehicle.commandLoading = false;
-        vehicle.commandSuccess = response.success;
-        vehicle.commandMessage = response.message || (command === 'stop' ? 'Commande d\'arrêt envoyée' : 'Commande de redémarrage envoyée');
-        this.cdr.detectChanges();
-        setTimeout(() => { vehicle.commandMessage = ''; this.cdr.detectChanges(); }, 8000);
+    // Verify password first via login API
+    const currentUser = this.apiService.getCurrentUserSync();
+    if (!currentUser?.email) {
+      vehicle.commandLoading = false;
+      vehicle.commandMessage = 'Impossible de vérifier l\'utilisateur';
+      vehicle.commandSuccess = false;
+      this.cdr.detectChanges();
+      setTimeout(() => { vehicle.commandMessage = ''; this.cdr.detectChanges(); }, 5000);
+      return;
+    }
+
+    this.apiService.login({ email: currentUser.email, password }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        // Password correct — send the command
+        this.apiService.sendVehicleCommand(vehicle.id, command).pipe(takeUntil(this.destroy$)).subscribe({
+          next: (response: any) => {
+            vehicle.commandLoading = false;
+            vehicle.commandSuccess = response.success;
+            vehicle.commandMessage = response.message || (command === 'stop' ? 'Commande d\'arrêt envoyée' : 'Commande de redémarrage envoyée');
+            this.cdr.detectChanges();
+            setTimeout(() => { vehicle.commandMessage = ''; this.cdr.detectChanges(); }, 8000);
+          },
+          error: (err: any) => {
+            vehicle.commandLoading = false;
+            vehicle.commandSuccess = false;
+            vehicle.commandMessage = err.error?.message || 'Erreur lors de l\'envoi de la commande';
+            this.cdr.detectChanges();
+            setTimeout(() => { vehicle.commandMessage = ''; this.cdr.detectChanges(); }, 8000);
+          }
+        });
       },
-      error: (err: any) => {
+      error: () => {
         vehicle.commandLoading = false;
         vehicle.commandSuccess = false;
-        vehicle.commandMessage = err.error?.message || 'Erreur lors de l\'envoi de la commande';
+        vehicle.commandMessage = 'Mot de passe incorrect';
         this.cdr.detectChanges();
-        setTimeout(() => { vehicle.commandMessage = ''; this.cdr.detectChanges(); }, 8000);
+        setTimeout(() => { vehicle.commandMessage = ''; this.cdr.detectChanges(); }, 5000);
       }
     });
   }
