@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -805,7 +805,8 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
 
   constructor(
     private router: Router,
-    private apiService: ApiService
+    private apiService: ApiService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit() {
@@ -823,12 +824,13 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
         this.allCosts = costs;
         this.costs = [...this.allCosts];
         this.calculateSummaries();
+        this.cdr.detectChanges();
       },
       error: (err) => console.error('Error loading costs:', err)
     });
 
     this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (vehicles) => this.vehicles = vehicles,
+      next: (vehicles) => { this.vehicles = vehicles; this.cdr.detectChanges(); },
       error: (err) => console.error('Error loading vehicles:', err)
     });
   }

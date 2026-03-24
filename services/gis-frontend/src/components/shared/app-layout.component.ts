@@ -349,7 +349,7 @@ import { ChatComponent } from './chat.component';
       padding: 0 12px;
       position: sticky;
       top: 0;
-      z-index: 10000;
+      z-index: 100;
       transition: background 0.3s, border-color 0.3s;
     }
 
@@ -977,7 +977,6 @@ import { ChatComponent } from './chat.component';
       display: flex;
       flex-direction: column;
       position: relative;
-      z-index: 1;
     }
 
     /* ===== RESPONSIVE ===== */

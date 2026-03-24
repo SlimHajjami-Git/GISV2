@@ -116,11 +116,6 @@ export class PermissionService {
     // System admins have access to everything
     if (user.isSystemAdmin) return true;
     
-    // Step 0: Restrict employees module for car rental companies (location)
-    if (module === 'employees' && user.companyType === 'location') {
-      return false;
-    }
-
     // Step 1: Check subscription features (company-level limit)
     const features = user.subscriptionFeatures;
     if (features) {
