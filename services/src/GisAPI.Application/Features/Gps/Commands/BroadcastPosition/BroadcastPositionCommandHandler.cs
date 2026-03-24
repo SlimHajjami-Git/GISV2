@@ -19,6 +19,7 @@ public record DeviceCacheEntry(
     string? Plate,
     string FuelSensorMode,
     int FuelTankCapacity,
+    int? SpeedLimit,
     DateTime CachedAt
 );
 
@@ -112,6 +113,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
                 device.Vehicle?.Id, device.Vehicle?.Name, device.Vehicle?.Plate,
                 device.FuelSensorMode ?? "raw_255",
                 device.Vehicle?.FuelTankCapacity ?? 60,
+                device.Vehicle?.SpeedLimit,
                 DateTime.UtcNow);
             _deviceCache[request.DeviceUid] = cached;
         }
@@ -269,6 +271,36 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
                     await _publisher.Publish(new DrivingBehaviorNotificationEvent(
                         cached.CompanyId, cached.VehicleId, cached.VehicleName, cached.Plate,
                         request.AlertType, speed, request.Latitude, request.Longitude, request.RecordedAt
+                    ), ct);
+                }
+            }
+        }
+
+        // Speed limit check: notify if speed > (vehicle speed limit + 20 km/h)
+        if (cached.VehicleId.HasValue && cached.SpeedLimit.HasValue && speed > 0 && ignitionOn)
+        {
+            var vehicleSpeedLimit = cached.SpeedLimit.Value;
+            var threshold = vehicleSpeedLimit + 20;
+            if (speed > threshold)
+            {
+                var vehicleId = cached.VehicleId.Value;
+                var shouldNotifySpeedLimit = true;
+                if (_speedAlertCooldown.TryGetValue(vehicleId, out var lastSpeedAlert))
+                {
+                    shouldNotifySpeedLimit = (now - lastSpeedAlert) > _speedAlertCooldownPeriod;
+                }
+
+                if (shouldNotifySpeedLimit)
+                {
+                    _speedAlertCooldown[vehicleId] = now;
+                    _logger.LogInformation(
+                        "🚨 Speed limit exceeded: Vehicle {Vehicle} at {Speed:F0} km/h (limit: {Limit} km/h, threshold: {Threshold} km/h)",
+                        cached.VehicleName ?? cached.Plate, speed, vehicleSpeedLimit, threshold);
+
+                    await _publisher.Publish(new SpeedAlertNotificationEvent(
+                        cached.CompanyId, cached.VehicleId, cached.VehicleName, cached.Plate,
+                        speed, request.Latitude, request.Longitude, request.RecordedAt,
+                        vehicleSpeedLimit
                     ), ct);
                 }
             }

@@ -36,8 +36,10 @@ public class SpeedAlertNotificationHandler : INotificationHandler<SpeedAlertNoti
             if (adminUsers.Count == 0) return;
 
             var vehicleLabel = e.VehicleName ?? e.Plate ?? $"Véhicule #{e.VehicleId}";
-            var title = $"Excès de vitesse — {vehicleLabel}";
-            var message = $"{vehicleLabel} roule à {e.SpeedKph:F0} km/h";
+            var title = $"⚠️ Excès de vitesse — {vehicleLabel}";
+            var message = e.SpeedLimitKph.HasValue
+                ? $"{vehicleLabel} roule à {e.SpeedKph:F0} km/h (limite: {e.SpeedLimitKph} km/h)"
+                : $"{vehicleLabel} roule à {e.SpeedKph:F0} km/h";
 
             foreach (var userId in adminUsers)
             {
@@ -47,7 +49,8 @@ public class SpeedAlertNotificationHandler : INotificationHandler<SpeedAlertNoti
                     type: "speed_alert",
                     title: title,
                     message: message,
-                    priority: e.SpeedKph > 140 ? "high" : "normal",
+                    priority: e.SpeedLimitKph.HasValue && e.SpeedKph > e.SpeedLimitKph.Value + 40 ? "high" 
+                        : e.SpeedKph > 140 ? "high" : "normal",
                     referenceType: "vehicle",
                     referenceId: e.VehicleId,
                     actionUrl: "/monitoring",

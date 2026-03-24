@@ -13,5 +13,6 @@ public record SpeedAlertNotificationEvent(
     double SpeedKph,
     double Latitude,
     double Longitude,
-    DateTime Timestamp
+    DateTime Timestamp,
+    int? SpeedLimitKph = null
 ) : INotification;

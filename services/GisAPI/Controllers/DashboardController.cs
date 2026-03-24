@@ -611,7 +611,7 @@ public class DashboardController : ControllerBase
         var attention = healthResults.Count(h => h.Score >= 40 && h.Score < 80);
         var unhealthy = healthResults.Count(h => h.Score < 40);
 
-        // ── 6. Top km units (OdometerKm from GPS if firmware != L, else Vehicle.Mileage) ──
+        // ── 6. Top km units (OdometerKm from GPS if firmware starts with L, else Vehicle.Mileage) ──
         var topUnitsColors = new[] { "#3b82f6", "#22c55e", "#f97316", "#8b5cf6", "#06b6d4", "#ec4899", "#eab308", "#14b8a6" };
         var vehicleMileages = vehicles.Select(v =>
         {
@@ -619,7 +619,7 @@ public class DashboardController : ControllerBase
             if (v.GpsDeviceId.HasValue && v.GpsDevice != null)
             {
                 var fw = v.GpsDevice.FirmwareVersion ?? "";
-                if (!fw.StartsWith("L", StringComparison.OrdinalIgnoreCase)
+                if (fw.StartsWith("L", StringComparison.OrdinalIgnoreCase)
                     && latestPositions.TryGetValue(v.GpsDeviceId.Value, out var pos)
                     && pos.OdometerKm.HasValue && pos.OdometerKm.Value > 0)
                 {
