@@ -39,6 +39,10 @@ public class UpdateAdminVehicleCommandHandler : IRequestHandler<UpdateAdminVehic
 
         var targetCompanyId = r.CompanyId ?? vehicle.CompanyId;
 
+        // When changing company, move the existing GPS device to the new company too
+        if (r.CompanyId.HasValue && vehicle.GpsDevice != null)
+            vehicle.GpsDevice.CompanyId = r.CompanyId.Value;
+
         if (r.HasGps == false)
         {
             await GpsDeviceResolver.ReleaseAsync(_context, vehicle.GpsDeviceId);
@@ -53,12 +57,24 @@ public class UpdateAdminVehicleCommandHandler : IRequestHandler<UpdateAdminVehic
         {
             GpsDevice? gpsDevice = null;
 
-            if (!r.GpsDeviceId.HasValue &&
+            // Use existing device if the sent GPS identifiers match the current device
+            var existingDevice = vehicle.GpsDevice;
+            var isSameDevice = vehicle.GpsDeviceId.HasValue && existingDevice != null && (
+                (r.GpsDeviceId.HasValue && r.GpsDeviceId.Value == existingDevice.Id) ||
+                (!r.GpsDeviceId.HasValue &&
+                    (string.IsNullOrWhiteSpace(r.GpsImei) || r.GpsImei.Trim() == existingDevice.DeviceUid) &&
+                    (string.IsNullOrWhiteSpace(r.GpsMat) || r.GpsMat.Trim() == existingDevice.Mat)));
+
+            if (isSameDevice)
+            {
+                gpsDevice = existingDevice;
+            }
+            else if (!r.GpsDeviceId.HasValue &&
                 string.IsNullOrWhiteSpace(r.GpsImei) &&
                 string.IsNullOrWhiteSpace(r.GpsMat) &&
                 vehicle.GpsDeviceId.HasValue)
             {
-                gpsDevice = vehicle.GpsDevice;
+                gpsDevice = existingDevice;
             }
             else
             {

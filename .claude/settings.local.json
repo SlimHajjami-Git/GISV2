@@ -32,7 +32,8 @@
       "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJhZG1pbkBiZWxpdmUudG4iLCJuYW1lIjoiQWRtaW4gQmVsaXZlIiwiY29tcGFueUlkIjoiMSIsInJvbGVJZCI6IjEiLCJqdGkiOiJkNmNjYmNiNy03YWRjLTQzMmYtOWQyMy1jMWEyMGRmMWZiMjkiLCJodHRwOi8vc2NoZW1hcy5taWNyb3NvZnQuY29tL3dzLzIwMDgvMDYvaWRlbnRpdHkvY2xhaW1zL3JvbGUiOlsiQWRtaW5pc3RyYXRldXIiLCJjb21wYW55X2FkbWluIiwic3lzdGVtX2FkbWluIl0sImV4cCI6MTc3NDU0NDA2NSwiaXNzIjoiR2lzQVBJIiwiYXVkIjoiR2lzQVBJIn0.9028x9Z995aIm7uMwECrJcxtRc93JivsmkuxxHl90rU\" __NEW_LINE_6de0214d0e4e8ee3__ curl -s \"http://localhost:5000/api/gps/vehicles/1/history?from=2026-03-01T00:00:00Z&to=2026-03-25T23:59:59Z&maxPoints=5\" -H \"Authorization: Bearer $TOKEN\")",
       "Bash(git status:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }

@@ -54,11 +54,18 @@ public static class GpsDeviceResolver
         var normalizedMat = gpsMat?.Trim();
         if (!string.IsNullOrEmpty(normalizedMat))
         {
-            var device = await context.GpsDevices.FirstOrDefaultAsync(d => d.Mat == normalizedMat);
+            var device = await context.GpsDevices
+                .Include(d => d.Vehicle)
+                .FirstOrDefaultAsync(d => d.Mat == normalizedMat);
             if (device != null)
             {
-                if (device.CompanyId != companyId)
-                    return (null, "Un appareil avec ce MAT appartient déjà à une autre société.");
+                if (device.CompanyId != companyId) device.CompanyId = companyId;
+                if (device.Vehicle != null)
+                {
+                    device.Vehicle.GpsDeviceId = null;
+                    device.Vehicle.HasGps = false;
+                }
+                device.UpdatedAt = DateTime.UtcNow;
                 return (device, null);
             }
         }
