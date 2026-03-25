@@ -49,7 +49,7 @@
       </div>
     </div>
   <!-- Slide-in Panel -->
-  <div class="slide-panel-overlay" *ngIf="showAddForm" (click)="closeAddForm()"></div>
+  <div class="slide-panel-overlay" *ngIf="showAddForm" (mousedown)="closeAddForm()"></div>
   <div class="slide-panel" [class.open]="showAddForm">
     <div class="slide-panel-header">
       <h2>Nouvelle dépense</h2>

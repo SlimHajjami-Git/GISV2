@@ -225,8 +225,8 @@ interface BrandDetail {
         </div>
 
         <!-- Model Edit Modal -->
-        <div class="modal-overlay" *ngIf="editingModel" (click)="closeModelEdit()">
-          <div class="modal" (click)="$event.stopPropagation()">
+        <div class="modal-overlay" *ngIf="editingModel" (mousedown)="closeModelEdit()">
+          <div class="modal" (mousedown)="$event.stopPropagation()">
             <div class="modal-header">
               <h2>Modifier le modèle</h2>
               <button class="close-btn" (click)="closeModelEdit()">

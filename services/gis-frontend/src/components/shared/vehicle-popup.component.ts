@@ -43,8 +43,8 @@ export interface CompanyOption {
     ])
   ],
   template: `
-    <div class="panel-overlay" *ngIf="isOpen" @fadeIn (click)="onOverlayClick($event)">
-      <div class="slide-panel" @slideIn (click)="$event.stopPropagation()">
+    <div class="panel-overlay" *ngIf="isOpen" @fadeIn (mousedown)="onOverlayClick($event)">
+      <div class="slide-panel" @slideIn (mousedown)="$event.stopPropagation()">
         <!-- Panel Header -->
         <div class="panel-header">
           <div class="panel-header-content">

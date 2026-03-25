@@ -313,7 +313,8 @@ public class GpsController : ControllerBase
                     IsRealTime = p.IsRealTime,
                     TemperatureC = p.TemperatureC,
                     CreatedAt = p.CreatedAt,
-                    Rpm = p.Rpm
+                    Rpm = p.Rpm,
+                    FuelRateLPer100Km = p.FuelRateLPer100Km
                 })
                 .ToListAsync();
         }
@@ -367,7 +368,8 @@ public class GpsController : ControllerBase
                     IsRealTime = p.IsRealTime,
                     TemperatureC = p.TemperatureC,
                     CreatedAt = p.CreatedAt,
-                    Rpm = p.Rpm
+                    Rpm = p.Rpm,
+                    FuelRateLPer100Km = p.FuelRateLPer100Km
                 })
                 .ToListAsync();
         }
@@ -493,7 +495,8 @@ public class GpsController : ControllerBase
                     OdometerKm = p.OdometerKm,
                     IsRealTime = p.IsRealTime,
                     TemperatureC = p.TemperatureC,
-                    CreatedAt = p.CreatedAt
+                    CreatedAt = p.CreatedAt,
+                    FuelRateLPer100Km = p.FuelRateLPer100Km
                 })
                 .ToListAsync();
         }
@@ -544,7 +547,8 @@ public class GpsController : ControllerBase
                     OdometerKm = p.OdometerKm,
                     IsRealTime = p.IsRealTime,
                     TemperatureC = p.TemperatureC,
-                    CreatedAt = p.CreatedAt
+                    CreatedAt = p.CreatedAt,
+                    FuelRateLPer100Km = p.FuelRateLPer100Km
                 })
                 .ToListAsync();
         }
@@ -1028,6 +1032,7 @@ public class PositionDto
     public int? TemperatureC { get; set; }
     public DateTime CreatedAt { get; set; }
     public short? Rpm { get; set; }
+    public decimal? FuelRateLPer100Km { get; set; }
 }
 
 public class GeocodeResultDto

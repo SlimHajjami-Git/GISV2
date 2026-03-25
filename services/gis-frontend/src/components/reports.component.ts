@@ -1653,6 +1653,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         const allIncidents: any[] = [];
         let maxSpeedKph = 0;
         let maxRpm = 0;
+        const allFuelRates: number[] = [];
         let completedRequests = 0;
         const totalVehicles = targetVehicles.length;
         
@@ -1673,16 +1674,19 @@ export class ReportsComponent implements OnInit, OnDestroy {
             next: (positions) => {
               const incidents = this.detectDrivingIncidents(positions, vehicle);
               allIncidents.push(...incidents);
-              // Track max speed and RPM across all positions
+              // Track max speed, RPM, and fuel consumption across all positions
               positions.forEach((p: any) => {
                 if ((p.speedKph || 0) > maxSpeedKph) maxSpeedKph = p.speedKph || 0;
                 if ((p.rpm || 0) > maxRpm) maxRpm = p.rpm || 0;
+                if (p.fuelRateLPer100Km != null && p.fuelRateLPer100Km > 0 && p.fuelRateLPer100Km < 100) {
+                  allFuelRates.push(p.fuelRateLPer100Km);
+                }
               });
               completedRequests++;
               
               if (completedRequests === totalVehicles) {
                 this.ngZone.run(() => {
-                  this.processDrivingBehaviorReport(allIncidents, maxSpeedKph, maxRpm);
+                  this.processDrivingBehaviorReport(allIncidents, maxSpeedKph, maxRpm, allFuelRates);
                   this.reportGenerated = true;
                   this.loading = false;
                   this.activeTab = 'table';
@@ -1697,7 +1701,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
               completedRequests++;
               if (completedRequests === totalVehicles) {
                 this.ngZone.run(() => {
-                  this.processDrivingBehaviorReport(allIncidents, maxSpeedKph, maxRpm);
+                  this.processDrivingBehaviorReport(allIncidents, maxSpeedKph, maxRpm, allFuelRates);
                   this.reportGenerated = true;
                   this.loading = false;
                   this.activeTab = 'table';
@@ -1888,7 +1892,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return Array.from(deduped.values());
   }
 
-  processDrivingBehaviorReport(incidents: any[], maxSpeedKph: number = 0, maxRpm: number = 0) {
+  processDrivingBehaviorReport(incidents: any[], maxSpeedKph: number = 0, maxRpm: number = 0, fuelRates: number[] = []) {
     // Sort by time descending
     incidents.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
     
@@ -1900,11 +1904,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
       else if (inc.severity === 'medium') score -= 3;
       else score -= 1;
     });
+    const avgFuel = fuelRates.length > 0
+      ? Math.round((fuelRates.reduce((a, b) => a + b, 0) / fuelRates.length) * 10) / 10
+      : null;
     this.drivingBehaviorCards = {
       rpmMax: Math.round(maxRpm),
       vitesseMax: Math.round(maxSpeedKph),
       scoreConduite: Math.max(0, Math.min(100, score)),
-      consommation: null
+      consommation: avgFuel
     };
 
     if (incidents.length === 0) {

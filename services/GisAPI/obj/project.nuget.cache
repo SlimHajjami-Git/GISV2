@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "f5ah17RXLPQ=",
+  "dgSpecHash": "1ILCpxaMdpE=",
   "success": true,
-  "projectFilePath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\GisAPI\\GisAPI.csproj",
+  "projectFilePath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\.claude\\worktrees\\sad-cori\\services\\GisAPI\\GisAPI.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Mega-PC\\.nuget\\packages\\bcrypt.net-next\\4.0.3\\bcrypt.net-next.4.0.3.nupkg.sha512",
     "C:\\Users\\Mega-PC\\.nuget\\packages\\closedxml\\0.102.3\\closedxml.0.102.3.nupkg.sha512",

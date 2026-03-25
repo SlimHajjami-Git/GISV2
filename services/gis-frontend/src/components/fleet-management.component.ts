@@ -461,8 +461,8 @@ interface PartPricing {
       </div>
 
       <!-- Department Modal -->
-      <div class="modal-overlay" *ngIf="showDepartmentModal" (click)="closeDepartmentModal()">
-        <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-overlay" *ngIf="showDepartmentModal" (mousedown)="closeDepartmentModal()">
+        <div class="modal" (mousedown)="$event.stopPropagation()">
           <div class="modal-header">
             <h3>{{ editingDepartment ? 'Modifier' : 'Nouveau' }} département</h3>
             <button class="close-btn" (click)="closeDepartmentModal()">×</button>
@@ -495,8 +495,8 @@ interface PartPricing {
       </div>
 
       <!-- Vehicle Assignment Modal -->
-      <div class="modal-overlay" *ngIf="showVehicleAssignmentModal" (click)="closeVehicleAssignmentModal()">
-        <div class="modal modal-large" (click)="$event.stopPropagation()">
+      <div class="modal-overlay" *ngIf="showVehicleAssignmentModal" (mousedown)="closeVehicleAssignmentModal()">
+        <div class="modal modal-large" (mousedown)="$event.stopPropagation()">
           <div class="modal-header">
             <h3>Affecter des véhicules à "{{ assigningDepartment?.name }}"</h3>
             <button class="close-btn" (click)="closeVehicleAssignmentModal()">×</button>
@@ -561,8 +561,8 @@ interface PartPricing {
       </div>
 
       <!-- Part Pricing Modal -->
-      <div class="modal-overlay" *ngIf="showPartPricingModal" (click)="closePartPricingModal()">
-        <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-overlay" *ngIf="showPartPricingModal" (mousedown)="closePartPricingModal()">
+        <div class="modal" (mousedown)="$event.stopPropagation()">
           <div class="modal-header">
             <h3>Prix de "{{ selectedPart?.name }}"</h3>
             <button class="close-btn" (click)="closePartPricingModal()">×</button>

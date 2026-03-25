@@ -9428,11 +9428,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\GisAPI\\GisAPI.csproj",
+      "projectUniqueName": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\.claude\\worktrees\\sad-cori\\services\\GisAPI\\GisAPI.csproj",
       "projectName": "GisAPI",
-      "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\GisAPI\\GisAPI.csproj",
+      "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\.claude\\worktrees\\sad-cori\\services\\GisAPI\\GisAPI.csproj",
       "packagesPath": "C:\\Users\\Mega-PC\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\GisAPI\\obj\\",
+      "outputPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\.claude\\worktrees\\sad-cori\\services\\GisAPI\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -9453,17 +9453,17 @@
         "net9.0": {
           "targetAlias": "net9.0",
           "projectReferences": {
-            "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Application\\GisAPI.Application.csproj": {
-              "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Application\\GisAPI.Application.csproj"
+            "C:\\Users\\Mega-PC\\Desktop\\GISV2\\.claude\\worktrees\\sad-cori\\services\\src\\GisAPI.Application\\GisAPI.Application.csproj": {
+              "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\.claude\\worktrees\\sad-cori\\services\\src\\GisAPI.Application\\GisAPI.Application.csproj"
             },
-            "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Domain\\GisAPI.Domain.csproj": {
-              "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Domain\\GisAPI.Domain.csproj"
+            "C:\\Users\\Mega-PC\\Desktop\\GISV2\\.claude\\worktrees\\sad-cori\\services\\src\\GisAPI.Domain\\GisAPI.Domain.csproj": {
+              "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\.claude\\worktrees\\sad-cori\\services\\src\\GisAPI.Domain\\GisAPI.Domain.csproj"
             },
-            "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Infrastructure\\GisAPI.Infrastructure.csproj": {
-              "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Infrastructure\\GisAPI.Infrastructure.csproj"
+            "C:\\Users\\Mega-PC\\Desktop\\GISV2\\.claude\\worktrees\\sad-cori\\services\\src\\GisAPI.Infrastructure\\GisAPI.Infrastructure.csproj": {
+              "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\.claude\\worktrees\\sad-cori\\services\\src\\GisAPI.Infrastructure\\GisAPI.Infrastructure.csproj"
             },
-            "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Shared\\GisAPI.Shared.csproj": {
-              "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Shared\\GisAPI.Shared.csproj"
+            "C:\\Users\\Mega-PC\\Desktop\\GISV2\\.claude\\worktrees\\sad-cori\\services\\src\\GisAPI.Shared\\GisAPI.Shared.csproj": {
+              "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\.claude\\worktrees\\sad-cori\\services\\src\\GisAPI.Shared\\GisAPI.Shared.csproj"
             }
           }
         }

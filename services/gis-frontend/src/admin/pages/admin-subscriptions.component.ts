@@ -90,8 +90,8 @@ import { AdminService, SubscriptionType } from '../services/admin.service';
         </div>
 
         <!-- Create/Edit Modal -->
-        <div class="modal-overlay" *ngIf="showModal" (click)="closeModal()">
-          <div class="modal modal-large" (click)="$event.stopPropagation()">
+        <div class="modal-overlay" *ngIf="showModal" (mousedown)="closeModal()">
+          <div class="modal modal-large" (mousedown)="$event.stopPropagation()">
             <div class="modal-header">
               <h3>{{ editingType ? 'Modifier l\\'abonnement' : 'Nouvel abonnement' }}</h3>
               <button class="btn-close" (click)="closeModal()">×</button>

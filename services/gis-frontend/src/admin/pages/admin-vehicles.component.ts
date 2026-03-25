@@ -175,8 +175,8 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
         </app-vehicle-popup>
 
         <!-- Detail Modal -->
-        <div class="modal-overlay" *ngIf="showViewModal" (click)="closeModals()">
-          <div class="modal detail-modal" (click)="$event.stopPropagation()">
+        <div class="modal-overlay" *ngIf="showViewModal" (mousedown)="closeModals()">
+          <div class="modal detail-modal" (mousedown)="$event.stopPropagation()">
             <div class="modal-header">
               <div class="modal-title-row">
                 <h2>Detail Vehicule</h2>
@@ -266,8 +266,8 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
         </div>
 
         <!-- Delete Confirmation Modal -->
-        <div class="modal-overlay" *ngIf="showDeleteModal" (click)="closeDeleteModal()">
-          <div class="modal delete-modal" (click)="$event.stopPropagation()">
+        <div class="modal-overlay" *ngIf="showDeleteModal" (mousedown)="closeDeleteModal()">
+          <div class="modal delete-modal" (mousedown)="$event.stopPropagation()">
             <div class="modal-header delete-header">
               <h2>Supprimer le vehicule</h2>
               <button class="close-btn" (click)="closeDeleteModal()">

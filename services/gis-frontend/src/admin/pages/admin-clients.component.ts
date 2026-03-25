@@ -230,8 +230,8 @@ import { AdminService, Client, SubscriptionType } from '../services/admin.servic
         </div>
 
         <!-- ========== WIZARD MULTI-ÉTAPES ========== -->
-        <div class="modal-overlay" *ngIf="showWizard" (click)="closeWizard()">
-          <div class="modal wizard-modal" (click)="$event.stopPropagation()">
+        <div class="modal-overlay" *ngIf="showWizard" (mousedown)="closeWizard()">
+          <div class="modal wizard-modal" (mousedown)="$event.stopPropagation()">
             
             <!-- Progress Steps -->
             <div class="wizard-progress">

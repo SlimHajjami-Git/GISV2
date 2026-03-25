@@ -204,8 +204,8 @@ interface VehicleOption {
         </div>
 
         <!-- User Modal -->
-        <div class="modal-overlay" *ngIf="showUserModal" (click)="closeUserModal()">
-          <div class="modal-content" (click)="$event.stopPropagation()">
+        <div class="modal-overlay" *ngIf="showUserModal" (mousedown)="closeUserModal()">
+          <div class="modal-content" (mousedown)="$event.stopPropagation()">
             <div class="modal-header">
               <h2>{{ editingUser ? 'Modifier' : 'Nouvel' }} Utilisateur</h2>
               <button class="btn-close" (click)="closeUserModal()">

@@ -111,8 +111,8 @@ import { AdminService, Estimate, EstimateItem, Client } from '../services/admin.
           </div>
         </div>
 
-        <div class="modal-overlay" *ngIf="showCreateModal" (click)="closeModal()">
-          <div class="modal estimate-modal" (click)="$event.stopPropagation()">
+        <div class="modal-overlay" *ngIf="showCreateModal" (mousedown)="closeModal()">
+          <div class="modal estimate-modal" (mousedown)="$event.stopPropagation()">
             <div class="modal-header">
               <h2>Create New Estimate</h2>
               <button class="close-btn" (click)="closeModal()">

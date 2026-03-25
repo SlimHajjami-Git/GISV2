@@ -1,0 +1,33 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "gis-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "port": 4200,
+      "autoPort": true,
+      "cwd": "services/gis-frontend"
+    },
+    {
+      "name": "gis-mobile",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "port": 4200,
+      "cwd": "services/gis-mobile"
+    },
+    {
+      "name": "gis-api",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "services/GisAPI/GisAPI.csproj"],
+      "port": 5020
+    },
+    {
+      "name": "gps-ingest-rust",
+      "runtimeExecutable": "cargo",
+      "runtimeArgs": ["run"],
+      "port": 3000,
+      "cwd": "services/gps-ingest-rust"
+    }
+  ]
+}

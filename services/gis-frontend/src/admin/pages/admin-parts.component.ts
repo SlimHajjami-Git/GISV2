@@ -133,8 +133,8 @@ interface VehiclePart {
       </div>
 
       <!-- Category Modal -->
-      <div class="modal-overlay" *ngIf="showCategoryModal" (click)="closeCategoryModal()">
-        <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-overlay" *ngIf="showCategoryModal" (mousedown)="closeCategoryModal()">
+        <div class="modal-content" (mousedown)="$event.stopPropagation()">
           <div class="modal-header">
             <h3>{{ editingCategory ? 'Modifier la catégorie' : 'Nouvelle catégorie' }}</h3>
             <button class="btn-close" (click)="closeCategoryModal()">×</button>
@@ -168,8 +168,8 @@ interface VehiclePart {
       </div>
 
       <!-- Part Modal -->
-      <div class="modal-overlay" *ngIf="showPartModal" (click)="closePartModal()">
-        <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-overlay" *ngIf="showPartModal" (mousedown)="closePartModal()">
+        <div class="modal-content" (mousedown)="$event.stopPropagation()">
           <div class="modal-header">
             <h3>{{ editingPart ? 'Modifier la pièce' : 'Nouvelle pièce' }}</h3>
             <button class="btn-close" (click)="closePartModal()">×</button>
