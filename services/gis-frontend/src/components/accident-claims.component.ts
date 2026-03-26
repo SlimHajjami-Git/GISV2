@@ -955,7 +955,7 @@ interface AccidentClaim {
       background: rgba(0, 0, 0, 0.5);
       display: flex;
       justify-content: flex-end;
-      z-index: 1000;
+      z-index: 1200;
     }
 
     .detail-panel {
@@ -1299,7 +1299,7 @@ interface AccidentClaim {
       background: rgba(0, 0, 0, 0.5);
       display: flex;
       justify-content: flex-end;
-      z-index: 1001;
+      z-index: 1200;
     }
 
     .form-panel {
