@@ -349,7 +349,7 @@ import { ChatComponent } from './chat.component';
       padding: 0 12px;
       position: sticky;
       top: 0;
-      z-index: 100;
+      z-index: 1100;
       transition: background 0.3s, border-color 0.3s;
     }
 

@@ -56,7 +56,7 @@ export class EmployeesComponent implements OnInit, OnDestroy {
     this.apiService.getDrivers().pipe(takeUntil(this.destroy$)).subscribe({
       next: (drivers) => {
         this.ngZone.run(() => {
-          this.allDrivers = drivers;
+          this.allDrivers = drivers.filter((d: any) => d.employeeRole === 'driver');
           this.drivers = [...this.allDrivers];
           this.cdr.detectChanges();
         });
