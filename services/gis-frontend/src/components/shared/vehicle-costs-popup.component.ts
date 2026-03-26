@@ -205,7 +205,7 @@ import { MockDataService } from '../../services/mock-data.service';
   styles: [`
     .popup-overlay {
       position: fixed;
-      top: 0;
+      top: 42px; /* Below navbar */
       left: 0;
       right: 0;
       bottom: 0;
@@ -213,7 +213,7 @@ import { MockDataService } from '../../services/mock-data.service';
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
+      z-index: 1050;
       backdrop-filter: blur(2px);
     }
 

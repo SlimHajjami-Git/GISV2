@@ -467,7 +467,7 @@ interface ThirdParty {
   styles: [`
     .form-overlay {
       position: fixed;
-      top: 0;
+      top: 42px; /* Below navbar */
       left: 0;
       right: 0;
       bottom: 0;
@@ -475,7 +475,7 @@ interface ThirdParty {
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
+      z-index: 1050;
       padding: 20px;
     }
 

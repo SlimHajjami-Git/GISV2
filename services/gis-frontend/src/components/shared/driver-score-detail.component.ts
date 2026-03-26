@@ -221,15 +221,15 @@ import { DateFilterBarComponent } from './ui/date-filter-bar.component';
   `,
   styles: [`
     .overlay {
-      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      position: fixed; top: 42px; left: 0; right: 0; bottom: 0; /* top: 42px = below navbar */
       background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px);
-      display: flex; justify-content: flex-end; z-index: 1000;
+      display: flex; justify-content: flex-end; z-index: 1050;
       animation: fadeIn 0.2s ease;
     }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
     .detail-panel {
-      background: #fff; width: 520px; max-width: 100vw; height: 100vh;
+      background: #fff; width: 520px; max-width: 100vw; height: 100%;
       display: flex; flex-direction: column; animation: slideIn 0.3s ease;
       box-shadow: -8px 0 30px rgba(0,0,0,0.15);
     }

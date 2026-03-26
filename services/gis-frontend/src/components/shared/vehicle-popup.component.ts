@@ -366,9 +366,12 @@ export interface CompanyOption {
   styles: [`
     .panel-overlay {
       position: fixed;
-      inset: 0;
+      top: 42px; /* Start below navbar (42px height) so navbar stays accessible */
+      left: 0;
+      right: 0;
+      bottom: 0;
       background: rgba(0, 0, 0, 0.5);
-      z-index: 1000;
+      z-index: 1050; /* Above page content, below navbar (1100) */
       display: flex;
       justify-content: flex-end;
     }

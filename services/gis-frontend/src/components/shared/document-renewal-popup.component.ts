@@ -307,18 +307,21 @@ export interface RenewalFormData {
     /* ===== OVERLAY ===== */
     .popup-overlay {
       position: fixed;
-      inset: 0;
+      top: 42px; /* Below navbar */
+      left: 0;
+      right: 0;
+      bottom: 0;
       background: rgba(0, 0, 0, 0.5);
       display: flex;
       justify-content: flex-end;
-      z-index: 1000;
+      z-index: 1050;
     }
 
     /* ===== CONTAINER ===== */
     .popup-container {
       width: 100%;
       max-width: 500px;
-      height: 100vh;
+      height: 100%;
       background: white;
       display: flex;
       flex-direction: column;

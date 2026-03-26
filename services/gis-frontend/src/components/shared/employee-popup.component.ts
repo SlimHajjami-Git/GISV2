@@ -154,12 +154,12 @@ import { Vehicle } from '../../models/types';
   styles: [`
     .popup-overlay {
       position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
+      top: 42px; left: 0; right: 0; bottom: 0; /* top: 42px = below navbar */
       background: rgba(15, 23, 42, 0.6);
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
+      z-index: 1050;
       padding: 20px;
       animation: fadeIn 0.2s ease-out;
     }
