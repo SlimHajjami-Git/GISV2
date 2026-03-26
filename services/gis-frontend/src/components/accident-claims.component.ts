@@ -1820,10 +1820,16 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
     });
     this.apiService.getDrivers().pipe(takeUntil(this.destroy$)).subscribe({
       next: (drivers: any[]) => {
-        this.drivers = drivers.map(d => ({
-          id: d.id?.toString() || '',
-          name: d.fullName || d.name || `${d.firstName || ''} ${d.lastName || ''}`.trim()
-        }));
+        this.drivers = drivers
+          .filter(d => d.id)
+          .map(d => ({
+            id: d.id?.toString() || '',
+            name: d.fullName || d.name || `${d.firstName || ''} ${d.lastName || ''}`.trim() || `Chauffeur #${d.id}`
+          }));
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('[Sinistres] Erreur chargement chauffeurs:', err);
         this.cdr.detectChanges();
       }
     });
