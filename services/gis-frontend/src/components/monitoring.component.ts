@@ -171,6 +171,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   ) {}
 
   private routeSub: Subscription | null = null;
+  private queryParamsSub: Subscription | null = null;
+  private geofenceHighlightLayers: L.Layer[] = [];
 
   ngOnInit() {
     if (!this.embedded && !this.apiService.isAuthenticated()) {
@@ -239,21 +241,31 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     });
 
-    // Check for query params (lat/lng/zoom) from notification or report navigation
-    const qp = this.route.snapshot.queryParams;
-    if (qp['lat'] && qp['lng']) {
-      this.pendingMapCenter = {
-        lat: parseFloat(qp['lat']),
-        lng: parseFloat(qp['lng']),
-        zoom: parseInt(qp['zoom'] || '17', 10)
-      };
-    }
-    if (qp['geofenceId']) {
-      this.pendingGeofenceEvent = {
-        geofenceId: parseInt(qp['geofenceId'], 10),
-        vehicleId: qp['vehicleId'] ? parseInt(qp['vehicleId'], 10) : 0
-      };
-    }
+    // React to query params (lat/lng/zoom) from notification or report navigation.
+    // Uses the observable (not snapshot) so that navigating to /monitoring?lat=...
+    // while already on /monitoring still triggers the zoom.
+    this.queryParamsSub = this.route.queryParams.subscribe(qp => {
+      if (qp['lat'] && qp['lng']) {
+        const center = {
+          lat: parseFloat(qp['lat']),
+          lng: parseFloat(qp['lng']),
+          zoom: parseInt(qp['zoom'] || '17', 10)
+        };
+        const gfEvent = qp['geofenceId'] ? {
+          geofenceId: parseInt(qp['geofenceId'], 10),
+          vehicleId: qp['vehicleId'] ? parseInt(qp['vehicleId'], 10) : 0
+        } : null;
+
+        if (this.map && this.mapReady) {
+          // Map already initialized — zoom immediately
+          this.flyToNotificationPoint(center, gfEvent);
+        } else {
+          // Map not ready yet — store for initializeMap() to pick up
+          this.pendingMapCenter = center;
+          this.pendingGeofenceEvent = gfEvent;
+        }
+      }
+    });
 
     // Initialize state
     this.vehicles = [];
@@ -333,6 +345,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     if (this.routeSub) {
       this.routeSub.unsubscribe();
+    }
+    if (this.queryParamsSub) {
+      this.queryParamsSub.unsubscribe();
     }
     if (this.loadDataController) {
       this.loadDataController.abort();
@@ -586,6 +601,80 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }, 50);
   }
 
+  /** Zoom the already-initialised map to a notification point and optionally draw the geofence zone */
+  private flyToNotificationPoint(
+    center: { lat: number; lng: number; zoom: number },
+    gfEvent: { geofenceId: number; vehicleId: number } | null
+  ) {
+    if (!this.map) return;
+
+    // Clear any previous notification highlight layers
+    this.geofenceHighlightLayers.forEach(l => { try { this.map!.removeLayer(l); } catch(e) {} });
+    this.geofenceHighlightLayers = [];
+
+    const { lat, lng, zoom } = center;
+    this.map.flyTo([lat, lng], zoom, { duration: 1.2 });
+
+    if (gfEvent) {
+      const evtMarker = L.marker([lat, lng], {
+        icon: L.divIcon({
+          html: '<div style="background:#f59e0b;width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);animation:pulse 1.5s infinite;"></div>',
+          className: '',
+          iconSize: [16, 16],
+          iconAnchor: [8, 8]
+        })
+      }).addTo(this.map);
+      evtMarker.bindPopup(`📍 Événement géofence<br>${lat.toFixed(5)}, ${lng.toFixed(5)}`).openPopup();
+      this.geofenceHighlightLayers.push(evtMarker);
+
+      this.apiService.getGeofence(gfEvent.geofenceId).subscribe({
+        next: (gf: any) => {
+          if (gf && this.map) {
+            this.drawGeofenceHighlightTracked(gf);
+            evtMarker.setPopupContent(this.buildGeofencePopup(gf, lat, lng));
+            evtMarker.openPopup();
+          }
+        },
+        error: () => {}
+      });
+    } else {
+      const marker = L.marker([lat, lng], {
+        icon: L.divIcon({
+          html: '<div style="background:#dc2626;width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>',
+          className: '',
+          iconSize: [14, 14],
+          iconAnchor: [7, 7]
+        })
+      }).addTo(this.map).bindPopup(`📍 Point d'infraction<br>${lat.toFixed(5)}, ${lng.toFixed(5)}`).openPopup();
+      this.geofenceHighlightLayers.push(marker);
+    }
+  }
+
+  /** Draw geofence zone and track the layer for cleanup */
+  private drawGeofenceHighlightTracked(gf: any) {
+    if (!this.map) return;
+    try {
+      let layer: L.Layer | null = null;
+      if (gf.type === 'circle' && gf.center) {
+        const c = gf.center;
+        layer = L.circle([c.lat || c.latitude, c.lng || c.longitude], {
+          radius: gf.radius || 200,
+          color: '#f59e0b', weight: 3, fillColor: '#fbbf24', fillOpacity: 0.15, dashArray: '8, 4'
+        }).addTo(this.map).bindTooltip(gf.name || 'Géofence', { permanent: true, direction: 'top', className: 'geofence-label' });
+      } else if (gf.coordinates && gf.coordinates.length > 0) {
+        const coords = gf.coordinates.map((c: any) =>
+          [c.lat || c.latitude || c[0], c.lng || c.longitude || c[1]] as L.LatLngExpression
+        );
+        layer = L.polygon(coords, {
+          color: '#f59e0b', weight: 3, fillColor: '#fbbf24', fillOpacity: 0.15, dashArray: '8, 4'
+        }).addTo(this.map).bindTooltip(gf.name || 'Géofence', { permanent: true, direction: 'center', className: 'geofence-label' });
+      }
+      if (layer) this.geofenceHighlightLayers.push(layer);
+    } catch (e) {
+      console.warn('Failed to draw geofence highlight:', e);
+    }
+  }
+
   loadData() {
     this.loading = true;
     this.cdr.detectChanges();
@@ -798,7 +887,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           <span style="font-size: 11px; color: #64748b; line-height: 1.4;">${address}</span>
         </div>
         <div style="padding: 7px 14px; background: #f8fafc; border-radius: 0 0 8px 8px; display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 10px; color: #94a3b8;">${odometer ? Number(odometer).toLocaleString() + ' km' : ''}</span>
+          <span style="font-size: 10px; color: #94a3b8; display: flex; align-items: center; gap: 3px;">${odometer ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="12" y1="8" x2="12" y2="8.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><path d="M9 2h6v4H9z"/></svg> ' + Number(odometer).toLocaleString() + ' km' : ''}</span>
           <span style="font-size: 10px; color: #94a3b8; font-family: 'SF Mono', Monaco, monospace;">${vehicle.currentLocation ? vehicle.currentLocation.lat.toFixed(5) + ', ' + vehicle.currentLocation.lng.toFixed(5) : ''}</span>
         </div>
       </div>
