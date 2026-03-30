@@ -837,6 +837,8 @@
   display: flex;
   flex: 1;
   overflow: hidden;
+  position: relative;
+  z-index: 1;
 }
 
 .vehicles-sidebar {
