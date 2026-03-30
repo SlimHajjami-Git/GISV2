@@ -758,6 +758,36 @@ impl TelemetryStore for Database {
         Ok(row.get::<i64, _>("id"))
     }
 
+    async fn insert_device_event(&self, event: &crate::services::device_event::DeviceEventRecord) -> Result<i64> {
+        let row = sqlx::query(
+            r#"
+            INSERT INTO device_events (
+                device_id, vehicle_id, company_id, event_type, event_at,
+                offline_duration_secs, last_known_lat, last_known_lon,
+                last_known_address, was_moving, details, created_at
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW()
+            )
+            RETURNING id
+            "#,
+        )
+        .bind(event.device_id)
+        .bind(event.vehicle_id)
+        .bind(event.company_id)
+        .bind(event.event_type.as_str())
+        .bind(event.event_at)
+        .bind(event.offline_duration_secs)
+        .bind(event.last_known_lat)
+        .bind(event.last_known_lon)
+        .bind(&event.last_known_address)
+        .bind(event.was_moving)
+        .bind(&event.details)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.get::<i64, _>("id"))
+    }
+
     async fn insert_trip(&self, trip: &crate::services::trip_detector::CompletedTrip) -> Result<i64> {
         let row = sqlx::query(
             r#"

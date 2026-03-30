@@ -56,6 +56,7 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<TripWaypoint> TripWaypoints => Set<TripWaypoint>();
     public DbSet<DrivingEvent> DrivingEvents => Set<DrivingEvent>();
     public DbSet<DailyStatistics> DailyStatistics => Set<DailyStatistics>();
+    public DbSet<DeviceEvent> DeviceEvents => Set<DeviceEvent>();
 
     // Geofences & POI
     public DbSet<Geofence> Geofences => Set<Geofence>();
@@ -144,6 +145,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<VehicleCost>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<Trip>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<DrivingEvent>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<DeviceEvent>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<DailyStatistics>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<DriverAssignment>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<DriverScore>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
@@ -175,6 +177,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<Trip>().ToTable("trips");
         modelBuilder.Entity<TripWaypoint>().ToTable("trip_waypoints");
         modelBuilder.Entity<DrivingEvent>().ToTable("driving_events");
+        modelBuilder.Entity<DeviceEvent>().ToTable("device_events");
         modelBuilder.Entity<DailyStatistics>().ToTable("daily_statistics");
         modelBuilder.Entity<Driver>().ToTable("drivers");
         modelBuilder.Entity<DriverAssignment>().ToTable("driver_assignments");

@@ -62,6 +62,9 @@ pub trait TelemetryStore: Send + Sync {
 
     /// Load the last fuel record for a device (used to restore fuel_tracker state after restart)
     async fn get_last_fuel_record(&self, device_id: i32) -> anyhow::Result<Option<(i16, u32, chrono::DateTime<chrono::Utc>)>>;
+
+    /// Insert a device lifecycle event (restart, disconnect, tamper)
+    async fn insert_device_event(&self, event: &crate::services::device_event::DeviceEventRecord) -> anyhow::Result<i64>;
 }
 
 #[async_trait]
