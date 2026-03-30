@@ -91,7 +91,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
         </div>
       </section>
 
-      <!-- MILEAGE (prioritized — visible at top) -->
+      <!-- ROW 2: Mileage(2) + Expenses(1) = 3 -->
       <section class="B B-km an" style="--i:4">
         <div class="B-h"><h3>Kilométrage</h3></div>
         <div class="rws" *ngIf="topUnits.length">
@@ -106,7 +106,6 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
         <div class="mt" *ngIf="!topUnits.length">Aucune donnée</div>
       </section>
 
-      <!-- EXPENSES -->
       <section class="B B-exp an" style="--i:5">
         <div class="B-h"><h3>Dépenses</h3><span class="B-tag amber">{{ totalCost|number:'1.0-0' }} DT</span></div>
         <div class="exp-bars">
@@ -117,7 +116,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
         </div>
       </section>
 
-      <!-- HEALTH — redesigned with large gauge -->
+      <!-- ROW 3: Health(2) + Geozones(1) = 3 -->
       <section class="B B-health an" style="--i:6">
         <div class="B-h"><h3>Santé véhicules</h3></div>
         <div class="h-layout">
@@ -138,8 +137,16 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
         </div>
       </section>
 
-      <!-- SCORES -->
-      <section class="B B-scores an" style="--i:7">
+      <section class="B B-geo an" style="--i:7">
+        <div class="B-h"><h3>Géozones</h3></div>
+        <div class="geo-l" *ngIf="geofences.length">
+          <div *ngFor="let g of geofences" class="gi"><span class="gd" [style.background]="g.color"></span><span class="gn">{{ g.name }}</span><b class="gc">{{ g.count }}</b></div>
+        </div>
+        <div class="mt" *ngIf="!geofences.length">Aucune géozone</div>
+      </section>
+
+      <!-- ROW 4: Scores(2) + Alerts(1) = 3 -->
+      <section class="B B-scores an" style="--i:8">
         <div class="B-h"><h3>Scores de conduite</h3></div>
         <div class="rws" *ngIf="drivingScores.length">
           <div *ngFor="let s of pScores;let i=index" class="rw">
@@ -153,8 +160,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
         <div class="mt" *ngIf="!drivingScores.length">Aucun score</div>
       </section>
 
-      <!-- ALERTS -->
-      <section class="B B-alerts an" style="--i:8">
+      <section class="B B-alerts an" style="--i:9">
         <div class="B-h"><h3>Alertes récentes</h3><span class="alert-ct" *ngIf="alerts.length">{{ alerts.length }}</span></div>
         <div class="tl" *ngIf="alerts.length">
           <div *ngFor="let a of pagedAlerts" class="tl-i" [class.tl-new]="a._isNew">
@@ -164,15 +170,6 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
           <div class="pgr" *ngIf="alerts.length>6"><button (click)="alertsP=alertsP-1" [disabled]="alertsP===0">‹</button><span>{{ alertsP+1 }}/{{ Math.ceil(alerts.length/6) }}</span><button (click)="alertsP=alertsP+1" [disabled]="(alertsP+1)*6>=alerts.length">›</button></div>
         </div>
         <div class="mt" *ngIf="!alerts.length">Aucune alerte</div>
-      </section>
-
-      <!-- GEOZONES -->
-      <section class="B B-geo an" style="--i:9">
-        <div class="B-h"><h3>Géozones</h3></div>
-        <div class="geo-l" *ngIf="geofences.length">
-          <div *ngFor="let g of geofences" class="gi"><span class="gd" [style.background]="g.color"></span><span class="gn">{{ g.name }}</span><b class="gc">{{ g.count }}</b></div>
-        </div>
-        <div class="mt" *ngIf="!geofences.length">Aucune géozone</div>
       </section>
 
       <!-- FUEL/VEH -->
