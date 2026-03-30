@@ -40,6 +40,11 @@ pub struct LastKnownPosition {
 /// At 250 km/h for 30 min = 125 km max. Use 1000 km as generous threshold.
 const MAX_ODOMETER_JUMP_KM: i64 = 1000;
 
+/// Absolute maximum realistic odometer for fleet vehicles (km).
+/// Any value above this is GPS noise / firmware artifact — reject unconditionally.
+/// No fleet vehicle can realistically reach 2,000,000 km.
+const MAX_ABSOLUTE_ODOMETER_KM: i64 = 2_000_000;
+
 /// Minimum interval (in seconds) between position recordings for stopped vehicles (ignition OFF)
 const STOPPED_VEHICLE_INTERVAL_SECS: i64 = 30; // 30 seconds when ignition OFF
 
@@ -140,11 +145,13 @@ impl Database {
         }
         */
 
-        let position_id = self.insert_position(device_id, frame, event_key, has_fms, &last_pos).await?;
+        let (position_id, filtered_odometer) = self.insert_position(device_id, frame, event_key, has_fms, &last_pos).await?;
 
         // Update last position cache for next frame's stopped-vehicle check
+        // IMPORTANT: use filtered_odometer (not raw frame.odometer_km) to prevent
+        // caching erroneous spikes that would poison subsequent comparisons
         if position_id > 0 {
-            self.update_last_position_cache(device_id, frame);
+            self.update_last_position_cache_filtered(device_id, frame, filtered_odometer);
         }
         
         if position_id == 0 {
@@ -239,15 +246,17 @@ impl Database {
         Ok(result)
     }
 
-    /// Update the last position cache after a successful insert
-    fn update_last_position_cache(&self, device_id: i32, frame: &HhFrame) {
+    /// Update the last position cache after a successful insert.
+    /// Uses the FILTERED odometer (from spike filter) instead of raw frame value
+    /// to prevent caching erroneous spikes that would poison subsequent comparisons.
+    fn update_last_position_cache_filtered(&self, device_id: i32, frame: &HhFrame, filtered_odometer: Option<i64>) {
         let mut cache = self.last_position_cache.lock().unwrap();
         cache.insert(device_id, LastKnownPosition {
             latitude: frame.latitude,
             longitude: frame.longitude,
             recorded_at: frame.recorded_at,
             ignition_on: frame.ignition_on,
-            odometer_km: if frame.odometer_km > 0 { Some(frame.odometer_km as i64) } else { None },
+            odometer_km: filtered_odometer,
         });
     }
 
@@ -899,7 +908,8 @@ impl Database {
         Ok((id, fw))
     }
 
-    async fn insert_position(&self, device_id: i32, frame: &HhFrame, event_key: &str, has_fms: bool, last_pos: &Option<LastKnownPosition>) -> Result<i64> {
+    /// Returns (position_id, filtered_odometer_km)
+    async fn insert_position(&self, device_id: i32, frame: &HhFrame, event_key: &str, has_fms: bool, last_pos: &Option<LastKnownPosition>) -> Result<(i64, Option<i64>)> {
         // Metadata for additional fields not in dedicated columns
         let metadata = json!({
             "power_source_rescue": frame.power_source_rescue,
@@ -930,24 +940,60 @@ impl Database {
         let last_valid_odo = last_pos.as_ref().and_then(|p| p.odometer_km);
         let odometer_km: Option<i64> = if has_fms && frame.odometer_km > 0 && frame.odometer_km != 1048574 {
             let new_odo = frame.odometer_km as i64;
-            // Check for spike: compare with last known odometer
-            if let Some(prev_odo) = last_valid_odo {
-                let jump = (new_odo - prev_odo).abs();
-                if jump > MAX_ODOMETER_JUMP_KM {
-                    tracing::warn!(
-                        device_id,
-                        previous_km = prev_odo,
-                        received_km = new_odo,
-                        jump_km = jump,
-                        "Odometer spike detected! Jump of {}km exceeds {}km threshold — using last valid value",
-                        jump, MAX_ODOMETER_JUMP_KM
-                    );
-                    Some(prev_odo) // Use last valid odometer instead of erroneous value
-                } else {
-                    Some(new_odo)
-                }
+
+            // Absolute max: reject impossible values regardless of history
+            if new_odo > MAX_ABSOLUTE_ODOMETER_KM {
+                tracing::warn!(
+                    device_id,
+                    received_km = new_odo,
+                    max_km = MAX_ABSOLUTE_ODOMETER_KM,
+                    "Odometer REJECTED: {}km exceeds absolute maximum {}km — GPS noise",
+                    new_odo, MAX_ABSOLUTE_ODOMETER_KM
+                );
+                // Use last valid odometer (cache → DB fallback)
+                let fallback = last_valid_odo.or_else(|| {
+                    // Synchronous fallback not possible — already covered by DB query below
+                    None
+                });
+                fallback
             } else {
-                Some(new_odo) // No previous value to compare — accept as-is
+                // Check for spike: compare with last known odometer
+                // Resolve prev_odo: prefer cache, fallback to DB query
+                let prev_odo = if let Some(cached) = last_valid_odo {
+                    Some(cached)
+                } else {
+                    // Cache miss (pod restart) — query DB for last valid odometer
+                    sqlx::query_scalar::<_, i64>(
+                        r#"SELECT odometer_km FROM gps_positions
+                           WHERE device_id = $1 AND odometer_km IS NOT NULL AND odometer_km > 0
+                             AND odometer_km != 1048574 AND odometer_km < $2
+                           ORDER BY recorded_at DESC LIMIT 1"#,
+                    )
+                    .bind(device_id)
+                    .bind(MAX_ABSOLUTE_ODOMETER_KM)
+                    .fetch_optional(&self.pool)
+                    .await
+                    .unwrap_or(None)
+                };
+
+                if let Some(prev) = prev_odo {
+                    let jump = (new_odo - prev).abs();
+                    if jump > MAX_ODOMETER_JUMP_KM {
+                        tracing::warn!(
+                            device_id,
+                            previous_km = prev,
+                            received_km = new_odo,
+                            jump_km = jump,
+                            "Odometer spike detected! Jump of {}km exceeds {}km threshold — using last valid value",
+                            jump, MAX_ODOMETER_JUMP_KM
+                        );
+                        Some(prev) // Use last valid odometer instead of erroneous value
+                    } else {
+                        Some(new_odo)
+                    }
+                } else {
+                    Some(new_odo) // No previous value anywhere — accept as-is
+                }
             }
         } else if has_fms && frame.odometer_km == 1048574 {
             // GPS protocol artifact: replace with last valid odometer_km
@@ -1070,7 +1116,8 @@ impl Database {
             }
         }
 
-        Ok(row.map(|r| r.get::<i64, _>("id")).unwrap_or(0))
+        let position_id = row.map(|r| r.get::<i64, _>("id")).unwrap_or(0);
+        Ok((position_id, odometer_km))
     }
 
     /// Accumulate GPS-calculated distance and flush to DB when >= 1 km

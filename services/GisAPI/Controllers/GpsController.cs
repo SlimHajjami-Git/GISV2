@@ -934,10 +934,10 @@ public class GpsController : ControllerBase
         var now = DateTime.UtcNow;
         var protocolType = vehicle.GpsDevice.ProtocolType?.ToLower() ?? "";
 
-        if (protocolType.Contains("aap") || protocolType.Contains("aci") || deviceUid.Contains("NR08"))
+        if (protocolType.Contains("gps_type") || protocolType.Contains("aap") || protocolType.Contains("aci") || deviceUid.Contains("NR08"))
         {
-            // AAP/ACI protocol: AJ+STOP#9999 / AJ+GO#9999 (with PIN code)
-            gpsCommand = command == "stop" ? "AJ+STOP" : "AJ+GO";
+            // NEMS L/S and AAP/ACI protocols: AJ+STOP#9999\n / AJ+START#9999\n (with PIN code + newline terminator)
+            gpsCommand = command == "stop" ? "AJ+STOP#9999\n" : "AJ+START#9999\n";
         }
         else
         {
