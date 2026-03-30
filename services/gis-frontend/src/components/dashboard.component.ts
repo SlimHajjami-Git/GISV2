@@ -91,8 +91,23 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
         </div>
       </section>
 
+      <!-- MILEAGE (prioritized — visible at top) -->
+      <section class="B B-km an" style="--i:4">
+        <div class="B-h"><h3>Kilométrage</h3></div>
+        <div class="rws" *ngIf="topUnits.length">
+          <div *ngFor="let u of pUnits" class="rw">
+            <i class="rw-dot" [style.background]="u.color"></i>
+            <span class="rw-plate" style="width:100px">{{ u.name }}</span>
+            <div class="bar tall"><div class="bar-f" [style.width.%]="(u.mileage/maxMileage)*100" [style.background]="u.color"></div></div>
+            <span class="rw-km">{{ u.mileage|number:'1.0-0' }} km</span>
+          </div>
+          <div class="pgr" *ngIf="topUnits.length>5"><button (click)="unP=unP-1" [disabled]="unP===0">‹</button><span>{{ unP+1 }}/{{ Math.ceil(topUnits.length/5) }}</span><button (click)="unP=unP+1" [disabled]="(unP+1)*5>=topUnits.length">›</button></div>
+        </div>
+        <div class="mt" *ngIf="!topUnits.length">Aucune donnée</div>
+      </section>
+
       <!-- EXPENSES -->
-      <section class="B B-exp an" style="--i:4">
+      <section class="B B-exp an" style="--i:5">
         <div class="B-h"><h3>Dépenses</h3><span class="B-tag amber">{{ totalCost|number:'1.0-0' }} DT</span></div>
         <div class="exp-bars">
           <div *ngFor="let e of expItems" class="eb">
@@ -102,43 +117,29 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
         </div>
       </section>
 
-      <!-- HEALTH -->
-      <section class="B B-health an" style="--i:5">
-        <div class="B-h"><h3>Santé</h3></div>
-        <div class="h-gauge-w">
-          <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="none" stroke="var(--border-color)" stroke-width="7" opacity=".1"/>
-            <circle cx="50" cy="50" r="40" fill="none" stroke="#22c55e" stroke-width="7" stroke-linecap="round" stroke-dasharray="251" [attr.stroke-dashoffset]="251-(hPct/100)*251" class="h-arc"/></svg>
-          <div class="h-mid"><span class="h-pct" [style.color]="hColor">{{ hPct }}%</span><span class="h-lbl">OK</span></div>
-        </div>
-        <div class="h-items">
-          <div *ngFor="let h of hItems" class="hi"><i [style.background]="h.color"></i><span>{{ h.name }}</span><b>{{ h.value }}</b></div>
-        </div>
-      </section>
-
-      <!-- ALERTS -->
-      <section class="B B-alerts an" style="--i:6">
-        <div class="B-h"><h3>Alertes récentes</h3><span class="alert-ct" *ngIf="alerts.length">{{ alerts.length }}</span></div>
-        <div class="tl" *ngIf="alerts.length">
-          <div *ngFor="let a of pagedAlerts" class="tl-i" [class.tl-new]="a._isNew">
-            <div class="tl-dot" [class.tw]="a.severity==='warning'" [class.td]="a.severity==='danger'" [class.ti]="a.severity==='info'"></div>
-            <div class="tl-body"><span class="tl-msg">{{ a.message }}</span><span class="tl-time">{{ a.time }}</span></div>
+      <!-- HEALTH — redesigned with large gauge -->
+      <section class="B B-health an" style="--i:6">
+        <div class="B-h"><h3>Santé véhicules</h3></div>
+        <div class="h-layout">
+          <div class="h-gauge-w">
+            <svg viewBox="0 0 140 140">
+              <circle cx="70" cy="70" r="58" fill="none" stroke="var(--border-color)" stroke-width="10" opacity=".1"/>
+              <circle cx="70" cy="70" r="58" fill="none" stroke="#22c55e" stroke-width="10" stroke-linecap="round" stroke-dasharray="364" [attr.stroke-dashoffset]="364-(hPct/100)*364" class="h-arc"/>
+            </svg>
+            <div class="h-mid"><span class="h-pct" [style.color]="hColor">{{ hPct }}%</span><span class="h-lbl">en bon état</span></div>
           </div>
-          <div class="pgr" *ngIf="alerts.length>6"><button (click)="alertsP=alertsP-1" [disabled]="alertsP===0">‹</button><span>{{ alertsP+1 }}/{{ Math.ceil(alerts.length/6) }}</span><button (click)="alertsP=alertsP+1" [disabled]="(alertsP+1)*6>=alerts.length">›</button></div>
+          <div class="h-items-col">
+            <div *ngFor="let h of hItems" class="hi-card" [style.--hc]="h.color">
+              <b>{{ h.value }}</b>
+              <span>{{ h.name }}</span>
+              <div class="hi-bar"><div class="hi-fill" [style.width.%]="totalHealth?(h.value/totalHealth)*100:0" [style.background]="h.color"></div></div>
+            </div>
+          </div>
         </div>
-        <div class="mt" *ngIf="!alerts.length">Aucune alerte</div>
-      </section>
-
-      <!-- GEOZONES -->
-      <section class="B B-geo an" style="--i:7">
-        <div class="B-h"><h3>Géozones</h3></div>
-        <div class="geo-l" *ngIf="geofences.length">
-          <div *ngFor="let g of geofences" class="gi"><span class="gd" [style.background]="g.color"></span><span class="gn">{{ g.name }}</span><b class="gc">{{ g.count }}</b></div>
-        </div>
-        <div class="mt" *ngIf="!geofences.length">Aucune géozone</div>
       </section>
 
       <!-- SCORES -->
-      <section class="B B-scores an" style="--i:8">
+      <section class="B B-scores an" style="--i:7">
         <div class="B-h"><h3>Scores de conduite</h3></div>
         <div class="rws" *ngIf="drivingScores.length">
           <div *ngFor="let s of pScores;let i=index" class="rw">
@@ -152,19 +153,26 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
         <div class="mt" *ngIf="!drivingScores.length">Aucun score</div>
       </section>
 
-      <!-- MILEAGE -->
-      <section class="B B-km an" style="--i:9">
-        <div class="B-h"><h3>Kilométrage</h3></div>
-        <div class="rws" *ngIf="topUnits.length">
-          <div *ngFor="let u of pUnits" class="rw">
-            <i class="rw-dot" [style.background]="u.color"></i>
-            <span class="rw-plate" style="width:100px">{{ u.name }}</span>
-            <div class="bar tall"><div class="bar-f" [style.width.%]="(u.mileage/maxMileage)*100" [style.background]="u.color"></div></div>
-            <span class="rw-km">{{ u.mileage|number:'1.0-0' }} km</span>
+      <!-- ALERTS -->
+      <section class="B B-alerts an" style="--i:8">
+        <div class="B-h"><h3>Alertes récentes</h3><span class="alert-ct" *ngIf="alerts.length">{{ alerts.length }}</span></div>
+        <div class="tl" *ngIf="alerts.length">
+          <div *ngFor="let a of pagedAlerts" class="tl-i" [class.tl-new]="a._isNew">
+            <div class="tl-dot" [class.tw]="a.severity==='warning'" [class.td]="a.severity==='danger'" [class.ti]="a.severity==='info'"></div>
+            <div class="tl-body"><span class="tl-msg">{{ a.message }}</span><span class="tl-time">{{ a.time }}</span></div>
           </div>
-          <div class="pgr" *ngIf="topUnits.length>5"><button (click)="unP=unP-1" [disabled]="unP===0">‹</button><span>{{ unP+1 }}/{{ Math.ceil(topUnits.length/5) }}</span><button (click)="unP=unP+1" [disabled]="(unP+1)*5>=topUnits.length">›</button></div>
+          <div class="pgr" *ngIf="alerts.length>6"><button (click)="alertsP=alertsP-1" [disabled]="alertsP===0">‹</button><span>{{ alertsP+1 }}/{{ Math.ceil(alerts.length/6) }}</span><button (click)="alertsP=alertsP+1" [disabled]="(alertsP+1)*6>=alerts.length">›</button></div>
         </div>
-        <div class="mt" *ngIf="!topUnits.length">Aucune donnée</div>
+        <div class="mt" *ngIf="!alerts.length">Aucune alerte</div>
+      </section>
+
+      <!-- GEOZONES -->
+      <section class="B B-geo an" style="--i:9">
+        <div class="B-h"><h3>Géozones</h3></div>
+        <div class="geo-l" *ngIf="geofences.length">
+          <div *ngFor="let g of geofences" class="gi"><span class="gd" [style.background]="g.color"></span><span class="gn">{{ g.name }}</span><b class="gc">{{ g.count }}</b></div>
+        </div>
+        <div class="mt" *ngIf="!geofences.length">Aucune géozone</div>
       </section>
 
       <!-- FUEL/VEH -->
@@ -261,7 +269,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     .B-fleet { grid-column:span 1; grid-row:span 1; }
     .B-chart { grid-column:span 2; }
     .B-exp { grid-column:span 1; }
-    .B-health { grid-column:span 1; }
+    .B-health { grid-column:span 2; }
     .B-alerts { grid-column:span 1; }
     .B-geo { grid-column:span 1; }
     .B-scores { grid-column:span 2; }
@@ -318,17 +326,20 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     .eb-track { height:8px; background:var(--bg-tertiary); border-radius:5px; overflow:hidden; }
     .eb-fill { height:100%; border-radius:5px; transition:width .7s cubic-bezier(.4,0,.2,1); }
 
-    /* HEALTH */
-    .h-gauge-w { position:relative; width:90px; height:90px; margin:0 auto 10px; }
+    /* HEALTH — redesigned */
+    .h-layout { display:flex; gap:24px; align-items:center; }
+    .h-gauge-w { position:relative; width:140px; height:140px; flex-shrink:0; }
     .h-gauge-w svg { width:100%; height:100%; transform:rotate(-90deg); }
     .h-arc { transition:stroke-dashoffset 1s ease; filter:drop-shadow(0 0 4px rgba(34,197,94,.3)); }
     .h-mid { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
-    .h-pct { font-size:22px; font-weight:900; line-height:1; }
-    .h-lbl { font-size:9px; color:var(--text-muted); }
-    .h-items { display:flex; flex-direction:column; gap:6px; }
-    .hi { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); }
-    .hi i { width:8px; height:8px; border-radius:3px; flex-shrink:0; }
-    .hi b { margin-left:auto; font-weight:700; color:var(--text-primary); }
+    .h-pct { font-size:28px; font-weight:900; line-height:1; }
+    .h-lbl { font-size:10px; color:var(--text-muted); margin-top:2px; }
+    .h-items-col { display:flex; flex-direction:column; gap:12px; flex:1; }
+    .hi-card { display:flex; flex-direction:column; gap:4px; padding:10px 14px; border-radius:10px; background:var(--bg-secondary); border-left:3px solid var(--hc); }
+    .hi-card b { font-size:18px; font-weight:800; color:var(--text-primary); line-height:1; }
+    .hi-card span { font-size:11px; color:var(--text-muted); font-weight:500; }
+    .hi-bar { height:4px; background:var(--bg-tertiary); border-radius:3px; overflow:hidden; margin-top:2px; }
+    .hi-fill { height:100%; border-radius:3px; transition:width .7s ease; }
 
     /* ALERTS TIMELINE */
     .tl { display:flex; flex-direction:column; gap:0; }
