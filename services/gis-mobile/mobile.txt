@@ -1,0 +1,171 @@
+================================================================================
+                    CALYPSO - Application Mobile (APK Android)
+                    Documentation des modifications effectuées
+================================================================================
+
+1. REBRANDING : GIS Fleet → Calypso
+--------------------------------------------------------------------------------
+- Renommé l'application de "GIS Fleet" à "Calypso" partout :
+  - capacitor.config.ts : appName → "Calypso"
+  - src/index.html : <title> → "Calypso"
+  - android/app/src/main/res/values/strings.xml : app_name → "Calypso"
+  - src/app/login/login.page.ts : logo, titre, sous-titre "Gestion de Flotte Intelligente"
+  - src/app/tabs/profile/profile.page.ts : texte version et dialog "À propos"
+
+- Intégré le logo Calypso :
+  - src/assets/icon/calypso-logo.png : logo PNG fourni par le client
+  - src/assets/icon/calypso-logo.svg : logo SVG de fallback (créé manuellement)
+  - Généré les icônes Android dans toutes les densités (mdpi → xxxhdpi)
+  - Généré les splash screens (portrait + paysage, toutes densités)
+  - Script : generate-icons.js (utilise sharp pour le redimensionnement)
+
+
+2. CONFIGURATION API PRODUCTION
+--------------------------------------------------------------------------------
+- Fichier : src/environments/environment.prod.ts
+  - apiUrl: 'http://41.231.5.146/api'
+  - signalrUrl: 'http://41.231.5.146/hubs/gps'
+  
+  (Les URLs absolues sont obligatoires car dans une app native Capacitor,
+   les assets web sont servis localement, pas depuis un serveur web)
+
+
+3. URL SERVEUR CONFIGURABLE
+--------------------------------------------------------------------------------
+- Permettre aux clients de changer l'URL du serveur depuis l'écran de login
+- Fichiers modifiés :
+  - src/app/core/services/auth.service.ts :
+    - Méthodes setServerUrl() / getServerUrl()
+    - Sauvegarde dans Capacitor Preferences (persistant)
+    - L'API URL est reconstruite dynamiquement
+  - src/app/core/services/api.service.ts :
+    - Utilise l'URL dynamique depuis AuthService au lieu de environment
+  - src/app/core/services/signalr.service.ts :
+    - Utilise l'URL dynamique depuis AuthService
+  - src/app/login/login.page.ts :
+    - Bouton "Configuration serveur" pour afficher/masquer le champ URL
+    - Chargement de l'URL sauvegardée au démarrage
+    - Bouton "Enregistrer" pour persister la nouvelle URL
+
+
+4. PLATEFORME ANDROID (Capacitor)
+--------------------------------------------------------------------------------
+- Ajouté @capacitor/android@8.1.0 (compatible avec @capacitor/core@8.1.0)
+- Commande : npx cap add android
+- Le dossier android/ est gitignored (généré automatiquement par cap sync)
+
+- AndroidManifest.xml - Permissions ajoutées :
+  - INTERNET, ACCESS_NETWORK_STATE
+  - ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION
+  - CAMERA
+  - READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE
+  - VIBRATE
+  - POST_NOTIFICATIONS
+  - FOREGROUND_SERVICE
+
+- AndroidManifest.xml - Configuration réseau :
+  - android:usesCleartextTraffic="true"
+  - android:networkSecurityConfig="@xml/network_security_config"
+
+- android/app/src/main/res/xml/network_security_config.xml :
+  - Autorise le trafic HTTP (cleartext) vers 41.231.5.146
+
+
+5. CAPACITOR HTTP NATIF
+--------------------------------------------------------------------------------
+- Fichier : capacitor.config.ts
+- Ajouté : CapacitorHttp: { enabled: true }
+
+  POURQUOI : Sans cette option, les requêtes HTTP Angular passent par le WebView
+  (XMLHttpRequest), qui est soumis aux restrictions Android (cleartext HTTP bloqué)
+  et au CORS. Avec CapacitorHttp activé, toutes les requêtes sont routées via
+  la couche native Android, ce qui bypasse CORS et les restrictions cleartext.
+
+
+6. FIX CORS BACKEND
+--------------------------------------------------------------------------------
+- Fichier : services/GisAPI/Program.cs
+- Ajouté aux origines CORS autorisées :
+  - "http://localhost"
+  - "capacitor://localhost"
+  - "https://localhost"
+  
+  (Le WebView Capacitor envoie les requêtes depuis ces origines)
+
+
+7. GESTION D'ERREURS LOGIN
+--------------------------------------------------------------------------------
+- Fichier : src/app/core/services/auth.service.ts
+  - Le catchError propage maintenant l'erreur au lieu de la masquer
+  
+- Fichier : src/app/login/login.page.ts
+  - Messages d'erreur spécifiques selon le type d'erreur :
+    - Status 401/400 : "Email ou mot de passe incorrect"
+    - Status 0 : "Serveur injoignable (URL). Vérifiez la configuration serveur."
+    - Autre : "Erreur serveur (code): message détaillé"
+
+
+8. SIGNATURE APK (Release)
+--------------------------------------------------------------------------------
+- Keystore : calypso-release.keystore
+  - Algorithme : RSA 2048-bit
+  - Alias : calypso
+  - Mot de passe : Calypso2026!
+  - Validité : 10 000 jours (~27 ans)
+  - DN : CN=Calypso, OU=Mobile, O=Belive, L=Tunis, ST=Tunis, C=TN
+
+- Fichier : android/app/build.gradle
+  - signingConfigs.release configuré avec le keystore
+  - buildTypes.release utilise signingConfig signingConfigs.release
+
+- IMPORTANT : Ne jamais perdre le keystore ! Toute mise à jour future
+  de l'APK DOIT être signée avec le même keystore, sinon les utilisateurs
+  devront désinstaller et réinstaller l'application.
+
+
+9. BUILD APK
+--------------------------------------------------------------------------------
+Prérequis installés sur la machine de développement :
+- JDK 21 (Microsoft OpenJDK 21.0.10)
+- Android SDK (command-line tools + platform 35 + build-tools 35.0.0)
+
+Commandes pour rebuild l'APK :
+  1. npm run build -- --configuration=production
+  2. npx cap sync android
+  3. cd android && .\gradlew.bat assembleRelease
+
+L'APK signée se trouve dans :
+  android/app/build/outputs/apk/release/app-release.apk
+
+
+10. FICHIERS MODIFIÉS (RÉSUMÉ)
+--------------------------------------------------------------------------------
+Fichiers modifiés :
+  - capacitor.config.ts
+  - src/index.html
+  - src/environments/environment.prod.ts
+  - src/app/core/services/auth.service.ts
+  - src/app/core/services/api.service.ts
+  - src/app/core/services/signalr.service.ts
+  - src/app/login/login.page.ts
+  - src/app/tabs/profile/profile.page.ts
+  - services/GisAPI/Program.cs (CORS fix - côté backend)
+
+Fichiers créés :
+  - src/assets/icon/calypso-logo.png
+  - src/assets/icon/calypso-logo.svg
+  - calypso-release.keystore
+  - generate-icons.js
+
+Fichiers Android (gitignored, générés par cap sync + modifiés) :
+  - android/app/src/main/AndroidManifest.xml
+  - android/app/src/main/res/values/strings.xml
+  - android/app/src/main/res/xml/network_security_config.xml
+  - android/app/build.gradle
+  - android/app/src/main/res/mipmap-*/ic_launcher*.png
+  - android/app/src/main/res/drawable-*/splash.png
+
+
+================================================================================
+                         Belive © 2026 - Calypso v1.0
+================================================================================
