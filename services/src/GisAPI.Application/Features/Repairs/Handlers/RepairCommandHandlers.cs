@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.Repairs.Commands;
+using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -11,11 +12,13 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
 {
     private readonly IGisDbContext _context;
     private readonly ICurrentTenantService _tenantService;
+    private readonly IPublisher _publisher;
 
-    public CreateRepairCommandHandler(IGisDbContext context, ICurrentTenantService tenantService)
+    public CreateRepairCommandHandler(IGisDbContext context, ICurrentTenantService tenantService, IPublisher publisher)
     {
         _context = context;
         _tenantService = tenantService;
+        _publisher = publisher;
     }
 
     public async Task<int> Handle(CreateRepairCommand request, CancellationToken cancellationToken)
@@ -77,6 +80,27 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
         }
 
         await _context.SaveChangesAsync(cancellationToken);
+
+        // Send notification to admins
+        try
+        {
+            var actorId = _tenantService.UserId ?? 0;
+            var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId, cancellationToken);
+            if (actor != null)
+            {
+                var vehicle = await _context.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken);
+                var vehicleLabel = vehicle?.Plate ?? vehicle?.Name ?? "";
+                var expenseLabel = !string.IsNullOrEmpty(request.Description)
+                    ? request.Description
+                    : $"Réparation - {vehicleLabel}";
+                await _publisher.Publish(new AdminActionNotificationEvent(
+                    societeId, actorId, actor.FullName,
+                    "cost_created", expenseLabel, repair.Id, "repair"
+                ), cancellationToken);
+            }
+        }
+        catch { /* Don't fail if notification fails */ }
+
         return repair.Id;
     }
 }

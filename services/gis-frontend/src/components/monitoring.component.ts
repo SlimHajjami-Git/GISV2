@@ -148,7 +148,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   showLayersMenu = false;
   today = new Date();
   pendingMapCenter: { lat: number; lng: number; zoom: number } | null = null;
-  pendingGeofenceEvent: { geofenceId: number; vehicleId: number } | null = null;
+  pendingGeofenceEvent: { geofenceId: number; vehicleId: number; timestamp?: string } | null = null;
 
   // Address cache for reverse geocoding
   private addressCache = new Map<string, string>();
@@ -251,7 +251,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (qp['geofenceId']) {
       this.pendingGeofenceEvent = {
         geofenceId: parseInt(qp['geofenceId'], 10),
-        vehicleId: qp['vehicleId'] ? parseInt(qp['vehicleId'], 10) : 0
+        vehicleId: qp['vehicleId'] ? parseInt(qp['vehicleId'], 10) : 0,
+        timestamp: qp['timestamp'] || undefined
       };
     }
 
@@ -542,6 +543,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
           if (this.pendingGeofenceEvent) {
             // Geofence notification: show event marker + load geofence zone
+            const geofenceEvt = { ...this.pendingGeofenceEvent };
             const evtMarker = L.marker([lat, lng], {
               icon: L.divIcon({
                 html: '<div style="background:#f59e0b;width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);animation:pulse 1.5s infinite;"></div>',
@@ -550,15 +552,34 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
                 iconAnchor: [8, 8]
               })
             }).addTo(this.map!);
-            evtMarker.bindPopup(`📍 Événement géofence<br>${lat.toFixed(5)}, ${lng.toFixed(5)}`).openPopup();
+            evtMarker.bindPopup(`📍 Événement géofence<br>Chargement...`).openPopup();
 
             // Load and draw the geofence zone
-            this.apiService.getGeofence(this.pendingGeofenceEvent.geofenceId).subscribe({
+            this.apiService.getGeofence(geofenceEvt.geofenceId).subscribe({
               next: (gf: any) => {
                 if (gf && this.map) {
                   this.drawGeofenceHighlight(gf);
-                  evtMarker.setPopupContent(this.buildGeofencePopup(gf, lat, lng));
-                  evtMarker.openPopup();
+                  // Fit bounds to show both the point and the geofence zone
+                  try {
+                    const bounds = L.latLngBounds([L.latLng(lat, lng)]);
+                    if (gf.type === 'circle' && gf.center) {
+                      const c = gf.center;
+                      const cLat = c.lat || c.latitude;
+                      const cLng = c.lng || c.longitude;
+                      const r = gf.radius || 200;
+                      bounds.extend(L.latLng(cLat, cLng));
+                      bounds.extend(L.latLng(cLat + r / 111320, cLng));
+                      bounds.extend(L.latLng(cLat - r / 111320, cLng));
+                    } else if (gf.coordinates?.length > 0) {
+                      gf.coordinates.forEach((c: any) => bounds.extend(L.latLng(c.lat || c.latitude || c[0], c.lng || c.longitude || c[1])));
+                    }
+                    this.map!.fitBounds(bounds.pad(0.3));
+                  } catch (_) {}
+                  // Build popup with reverse geocoding
+                  this.buildGeofencePopupAsync(gf, lat, lng, geofenceEvt.timestamp).then(html => {
+                    evtMarker.setPopupContent(html);
+                    evtMarker.openPopup();
+                  });
                 }
               },
               error: () => {}
@@ -3930,26 +3951,68 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  /** Build a rich popup for a geofence event marker */
+  /** Build a rich popup for a geofence event marker (sync fallback) */
   buildGeofencePopup(gf: any, lat: number, lng: number): string {
+    return this.buildGeofencePopupHtml(gf, lat, lng);
+  }
+
+  /** Build popup HTML with optional address and timestamp */
+  private buildGeofencePopupHtml(gf: any, lat: number, lng: number, address?: string, timestamp?: string): string {
     const qp = this.route.snapshot.queryParams;
     const vehicleId = qp['vehicleId'];
     const vehicle = vehicleId ? this.vehicles.find((v: any) => v.id === parseInt(vehicleId, 10)) : null;
     const vehicleName = vehicle ? (vehicle.plate || vehicle.name) : '';
 
+    let dateTimeHtml = '';
+    if (timestamp) {
+      try {
+        const d = new Date(timestamp);
+        const dateStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const timeStr = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        dateTimeHtml = `
+          <div style="font-size:12px;color:#475569;margin-bottom:4px;display:flex;align-items:center;gap:6px;">
+            <span>🕐</span> <strong>${dateStr}</strong> à <strong>${timeStr}</strong>
+          </div>`;
+      } catch (_) {}
+    }
+
+    const addressHtml = address
+      ? `<div style="font-size:12px;color:#475569;margin-bottom:4px;display:flex;align-items:flex-start;gap:6px;">
+           <span>📍</span> <span>${address}</span>
+         </div>`
+      : '';
+
     return `
-      <div style="font-family:Inter,system-ui,sans-serif;min-width:220px;">
-        <div style="font-weight:600;font-size:14px;margin-bottom:6px;color:#1e293b;">
-          📍 ${gf.name || 'Géofence'}
+      <div style="font-family:Inter,system-ui,sans-serif;min-width:260px;max-width:340px;">
+        <div style="font-weight:600;font-size:14px;margin-bottom:8px;color:#1e293b;padding-bottom:6px;border-bottom:2px solid #f59e0b;">
+          🔶 ${gf.name || 'Géofence'}
         </div>
-        ${vehicleName ? `<div style="font-size:12px;color:#475569;margin-bottom:4px;">🚗 ${vehicleName}</div>` : ''}
-        <div style="font-size:12px;color:#64748b;margin-bottom:2px;">
-          📌 Position: ${lat.toFixed(5)}, ${lng.toFixed(5)}
-        </div>
-        <div style="font-size:11px;color:#94a3b8;margin-top:6px;padding-top:6px;border-top:1px solid #e2e8f0;">
-          Cliquez sur la notification pour plus de détails
+        ${vehicleName ? `<div style="font-size:12px;color:#475569;margin-bottom:4px;display:flex;align-items:center;gap:6px;"><span>🚗</span> <strong>${vehicleName}</strong></div>` : ''}
+        ${dateTimeHtml}
+        ${addressHtml}
+        <div style="font-size:11px;color:#94a3b8;margin-top:6px;padding:6px 8px;background:#f8fafc;border-radius:4px;">
+          📌 ${lat.toFixed(5)}, ${lng.toFixed(5)}
         </div>
       </div>
     `;
+  }
+
+  /** Async popup builder: fetches reverse geocoding address then builds full popup */
+  async buildGeofencePopupAsync(gf: any, lat: number, lng: number, timestamp?: string): Promise<string> {
+    let address = '';
+    try {
+      const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+      if (this.addressCache.has(cacheKey)) {
+        address = this.addressCache.get(cacheKey)!;
+      } else {
+        const resp = await fetch(`/nominatim/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
+        if (resp.ok) {
+          const data = await resp.json();
+          address = data.display_name || '';
+          if (address) this.addressCache.set(cacheKey, address);
+        }
+      }
+    } catch (_) {}
+    return this.buildGeofencePopupHtml(gf, lat, lng, address, timestamp);
   }
 }

@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
+using MediatR;
+using GisAPI.Application.Features.Notifications.Events;
 
 namespace GisAPI.Controllers;
 
@@ -13,10 +15,12 @@ namespace GisAPI.Controllers;
 public class CostsController : ControllerBase
 {
     private readonly GisDbContext _context;
+    private readonly IPublisher _publisher;
 
-    public CostsController(GisDbContext context)
+    public CostsController(GisDbContext context, IPublisher publisher)
     {
         _context = context;
+        _publisher = publisher;
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
@@ -150,6 +154,27 @@ public class CostsController : ControllerBase
 
         _context.VehicleCosts.Add(cost);
         await _context.SaveChangesAsync();
+
+        // Send notification to admins
+        try
+        {
+            var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+            if (actor != null)
+            {
+                var vehicle = cost.VehicleId > 0 
+                    ? await _context.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == cost.VehicleId)
+                    : null;
+                var vehicleLabel = vehicle?.Plate ?? vehicle?.Name ?? "";
+                var expenseLabel = !string.IsNullOrEmpty(cost.Description) 
+                    ? cost.Description 
+                    : $"{cost.Type} - {vehicleLabel}";
+                await _publisher.Publish(new AdminActionNotificationEvent(
+                    companyId, userId, actor.FullName,
+                    "cost_created", expenseLabel, cost.Id, "cost"
+                ));
+            }
+        }
+        catch { /* Don't fail the request if notification fails */ }
 
         return CreatedAtAction(nameof(GetCost), new { id = cost.Id }, cost);
     }

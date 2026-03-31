@@ -1,6 +1,7 @@
 ﻿import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { Subject, takeUntil, forkJoin } from 'rxjs';
 import { ApiService, FuelTypeDto, FuelPriceFullDto, MaintenanceTemplateDto, VehiclePartDto } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -101,11 +102,21 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   showDeleteConfirm = false;
   expenseToDelete: Expense | null = null;
 
+  // Detail slide-in
+  showDetailPanel = false;
+  detailExpense: Expense | null = null;
+  private pendingExpenseId: string | null = null;
+
   loading = false;
 
-  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef) {}
+  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef, private route: ActivatedRoute) {}
 
   ngOnInit(): void {
+    // Check for expenseId query param (from notification click)
+    const qp = this.route.snapshot.queryParams;
+    if (qp['expenseId']) {
+      this.pendingExpenseId = qp['expenseId'];
+    }
     this.loadAllData();
   }
 
@@ -210,6 +221,16 @@ export class ExpensesComponent implements OnInit, OnDestroy {
         this.expenses = allExpenses;
         this.filterExpenses();
         this.loading = false;
+
+        // Auto-open detail if navigated from notification
+        if (this.pendingExpenseId) {
+          const found = this.expenses.find(e => e.id === this.pendingExpenseId);
+          if (found) {
+            this.openDetailPanel(found);
+          }
+          this.pendingExpenseId = null;
+        }
+
         this.cdr.detectChanges();
       },
       error: (err) => {
@@ -525,6 +546,16 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       next: () => { this.loadExpenses(); this.cancelDelete(); },
       error: (err) => { console.error('Error deleting:', err); this.cancelDelete(); }
     });
+  }
+
+  openDetailPanel(expense: Expense): void {
+    this.detailExpense = expense;
+    this.showDetailPanel = true;
+  }
+
+  closeDetailPanel(): void {
+    this.showDetailPanel = false;
+    this.detailExpense = null;
   }
 
   getTotalAmount(): number { return this.filteredExpenses.reduce((sum, e) => sum + e.totalAmount, 0); }

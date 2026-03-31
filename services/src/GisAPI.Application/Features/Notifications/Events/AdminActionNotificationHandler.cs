@@ -58,9 +58,9 @@ public class AdminActionNotificationHandler : INotificationHandler<AdminActionNo
                     "/maintenance"
                 ),
                 "cost_created" => (
-                    "Dépense enregistrée",
-                    $"{e.ActorName} a enregistré une dépense pour \"{e.EntityName}\"",
-                    "/costs"
+                    $"Dépense enregistrée : {e.EntityName}",
+                    $"{e.ActorName} a enregistré une dépense : \"{e.EntityName}\"",
+                    $"/expenses?expenseId={e.EntityType}_{e.EntityId}"
                 ),
                 "document_created" => (
                     "Document ajouté",

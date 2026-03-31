@@ -62,7 +62,7 @@ public class GeofenceNotificationHandler : INotificationHandler<GeofenceNotifica
                     priority: "normal",
                     referenceType: "geofence",
                     referenceId: e.GeofenceId,
-                    actionUrl: $"/monitoring?lat={e.Latitude}&lng={e.Longitude}&zoom=17&geofenceId={e.GeofenceId}&vehicleId={e.VehicleId}",
+                    actionUrl: $"/monitoring?lat={e.Latitude}&lng={e.Longitude}&zoom=14&geofenceId={e.GeofenceId}&vehicleId={e.VehicleId}&timestamp={e.Timestamp:o}",
                     metadata: metadata,
                     ct: ct
                 );

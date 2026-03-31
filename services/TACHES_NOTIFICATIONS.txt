@@ -1,0 +1,103 @@
+================================================================================
+  TÂCHES NOTIFICATIONS - GISV2
+  Date: 31/03/2026
+================================================================================
+
+=== TÂCHES FAITES ===
+
+1. SCENARIO 1 - Notification Géofence → Carte avec popup amélioré
+   ✅ Dézoomé lors de la redirection (zoom 14 au lieu de 17) + fitBounds auto
+   ✅ Affichage de l'adresse via reverse geocoding (Nominatim)
+   ✅ Affichage de la date et l'heure dans le popup
+   Fichiers modifiés:
+   - Backend:  src/GisAPI.Application/Features/Notifications/Events/GeofenceNotificationHandler.cs
+     → actionUrl zoom=14, ajout timestamp dans l'URL
+   - Frontend: gis-frontend/src/components/monitoring.component.ts
+     → buildGeofencePopupAsync() avec reverse geocoding + date/heure
+     → fitBounds() pour montrer point + zone géofence
+     → pendingGeofenceEvent type étendu avec timestamp
+
+2. SCENARIO 2 - Notification Dépense → Page dépenses avec détail
+   ✅ Titre notification inclut l'intitulé de la dépense
+     (ex: "Dépense enregistrée : Changement de plaquette de frein")
+   ✅ ActionUrl redirige vers /expenses?expenseId=fuel_123
+   ✅ Bouton "Détail dépense" (icône œil) ajouté dans le tableau
+   ✅ Slide-in panel à droite avec détail complet de la dépense
+   ✅ Auto-ouverture du détail quand on arrive via notification
+   ✅ Notifications ajoutées pour Repairs et VehicleCosts (pas juste FuelEntries)
+   Fichiers modifiés:
+   - Backend:  src/GisAPI.Application/Features/Notifications/Events/AdminActionNotificationHandler.cs
+     → Titre "Dépense enregistrée : {description}", actionUrl /expenses?expenseId=
+   - Backend:  src/GisAPI.Application/Features/FuelEntries/Commands/CreateFuelEntryCommandHandler.cs
+     → Label descriptif "Carburant (Gasoil) - 123TU456", entityType "fuel"
+   - Backend:  src/GisAPI.Application/Features/Repairs/Handlers/RepairCommandHandlers.cs
+     → Ajout IPublisher + notification avec description réparation
+   - Backend:  GisAPI/Controllers/CostsController.cs
+     → Ajout IPublisher + notification lors création coût
+   - Frontend: gis-frontend/src/components/expenses.component.ts
+     → ActivatedRoute, pendingExpenseId, openDetailPanel(), closeDetailPanel()
+   - Frontend: gis-frontend/src/components/expenses.component.html
+     → Bouton détail dans table + slide-in panel complet
+   - Frontend: gis-frontend/src/components/expenses.component.css
+     → Styles detail button, detail panel, amount card, info rows
+
+3. NOTIFICATION PAR EMAIL
+   ✅ Interface IEmailService créée (Application layer)
+   ✅ Implémentation EmailService avec SMTP (System.Net.Mail)
+   ✅ Template HTML responsive pour les emails de notification
+   ✅ Configuration SMTP dans appsettings.json et appsettings.Docker.json
+   ✅ Intégration dans NotificationService.CreateAndSendAsync()
+   ✅ Envoi email en background (fire-and-forget) pour ne pas bloquer
+   Fichiers créés:
+   - src/GisAPI.Application/Common/Interfaces/IEmailService.cs
+   - GisAPI/Services/EmailService.cs
+   Fichiers modifiés:
+   - GisAPI/Services/NotificationService.cs → injection IEmailService, envoi email
+   - GisAPI/Program.cs → registration DI EmailService
+   - GisAPI/appsettings.json → section "Emailer" SMTP config
+   - GisAPI/appsettings.Docker.json → section "Emailer" SMTP config
+
+   Configuration SMTP:
+   - Host: mailing.topnet.tn
+   - User: commercial@belive.tn
+   - Password: belive$2011
+   - From: GPA Belive <contact@belive.tn>
+   - Port: 25
+   - SSL: Non
+
+
+=== TÂCHES RESTANTES / AMÉLIORATIONS POSSIBLES ===
+
+1. Test email SMTP en production
+   → Vérifier la connectivité vers mailing.topnet.tn:25 depuis le serveur K8s
+   → Tester avec un vrai utilisateur ayant un email valide
+   Solution: kubectl exec dans le pod gis-api et tester la connexion SMTP
+
+2. Préférences email par utilisateur
+   → Permettre à chaque utilisateur de désactiver les emails
+   → Ajouter un champ "emailNotificationsEnabled" dans la table users
+   Solution: Migration DB + checkbox dans la page profil + filtre dans NotificationService
+
+3. Throttling / rate limiting des emails
+   → Éviter le spam si beaucoup d'alertes géofence en peu de temps
+   Solution: Ajouter un cooldown par type/utilisateur (ex: max 1 email géofence/10min)
+
+4. Email digest (résumé)
+   → Envoyer un résumé quotidien au lieu d'un email par notification
+   Solution: BackgroundService qui agrège les notifications non-envoyées et envoie un digest
+
+5. Template email personnalisé par type de notification
+   → Emails plus riches pour géofences (avec carte statique)
+   → Emails dépenses avec tableau détaillé
+   Solution: Templates Razor ou HTML par type dans EmailService
+
+6. Nominatim fallback pour le reverse geocoding
+   → Si le Nominatim local ne répond pas, fallback sur un service externe
+   → Ou pré-cacher l'adresse côté backend lors de la création de la notification
+   Solution: Ajouter l'adresse dans les metadata de la notification côté backend
+
+7. Notification push mobile (FCM/APNs)
+   → Envoyer des push notifications sur l'app mobile
+   Solution: Ajouter Firebase Cloud Messaging, stocker les device tokens
+
+================================================================================

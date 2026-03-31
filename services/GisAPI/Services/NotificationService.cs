@@ -2,6 +2,7 @@ using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
 using GisAPI.Hubs;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace GisAPI.Services;
@@ -10,15 +11,18 @@ public class NotificationService : INotificationService
 {
     private readonly IGisDbContext _context;
     private readonly IHubContext<GpsHub> _hubContext;
+    private readonly IEmailService _emailService;
     private readonly ILogger<NotificationService> _logger;
 
     public NotificationService(
         IGisDbContext context,
         IHubContext<GpsHub> hubContext,
+        IEmailService emailService,
         ILogger<NotificationService> logger)
     {
         _context = context;
         _hubContext = hubContext;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -84,6 +88,34 @@ public class NotificationService : INotificationService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to push notification to user_{UserId}", userId);
+        }
+
+        // Send email notification (TEST: forced to hajjami.selim@gmail.com)
+        try
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _emailService.SendNotificationEmailAsync(
+                        "hajjami.selim@gmail.com",
+                        "Selim Hajjami",
+                        type,
+                        title,
+                        message,
+                        actionUrl,
+                        CancellationToken.None
+                    );
+                }
+                catch (Exception emailEx)
+                {
+                    _logger.LogWarning(emailEx, "Failed to send notification email to test address");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send test notification email");
         }
 
         return notification;

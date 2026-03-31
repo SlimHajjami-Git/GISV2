@@ -26,6 +26,7 @@ builder.Services.AddSignalR()
     });
 builder.Services.AddSingleton<IGpsHubService, GpsHubService>();
 builder.Services.AddScoped<INotificationService, GisAPI.Services.NotificationService>();
+builder.Services.AddSingleton<IEmailService, GisAPI.Services.EmailService>();
 builder.Services.AddSingleton<ILlmService, GisAPI.Services.GroqLlmService>();
 builder.Services.AddSingleton<GisAPI.Services.IVehicleHealthScoreService, GisAPI.Services.VehicleHealthScoreService>();
 

@@ -167,6 +167,42 @@ spec:
               value: "https://mobile.calypso.com"
             - name: Cors__AllowedOrigins__3
               value: "http://41.231.5.146"
+            # SMTP Email
+            - name: Emailer__SmtpHost
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: SMTP_HOST
+            - name: Emailer__SmtpPort
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: SMTP_PORT
+            - name: Emailer__Ssl
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: SMTP_SSL
+            - name: Emailer__FromName
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: SMTP_FROM_NAME
+            - name: Emailer__FromEmail
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: SMTP_FROM_EMAIL
+            - name: Emailer__SmtpUser
+              valueFrom:
+                secretKeyRef:
+                  name: gisv2-secrets
+                  key: SMTP_USER
+            - name: Emailer__SmtpPassword
+              valueFrom:
+                secretKeyRef:
+                  name: gisv2-secrets
+                  key: SMTP_PASSWORD
           volumeMounts:
             - name: uploads
               mountPath: /app/uploads
