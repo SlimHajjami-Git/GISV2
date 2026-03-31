@@ -204,7 +204,10 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Permission middleware - checks system admin access for /api/admin routes
+// Subscription expiration middleware - blocks access for expired/suspended subscriptions
+app.UseSubscriptionExpiration();
+
+// Permission middleware - checks subscription module + user-level permissions
 app.UsePermissionMiddleware();
 
 // Multi-tenant middleware - sets tenant context from JWT claims
@@ -309,7 +312,13 @@ static async Task SeedBeliveCompany(GisAPI.Infrastructure.Persistence.GisDbConte
                     PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@2026"),
                     Status = "active",
                     CompanyId = existingCompany.Id,
-                    RoleId = adminRole.Id
+                    RoleId = adminRole.Id,
+                    AccessLevel = "admin",
+                    CanMonitoring = true, CanVehicles = true, CanDrivers = true,
+                    CanReports = true, CanGeofences = true, CanMaintenance = true,
+                    CanCosts = true, CanDocuments = true, CanAccidents = true,
+                    CanUsers = true, CanSettings = true, CanSuppliers = true,
+                    CanFleetManagement = true
                 };
                 context.Users.Add(newAdminUser);
                 await context.SaveChangesAsync();
@@ -335,10 +344,13 @@ static async Task SeedBeliveCompany(GisAPI.Infrastructure.Persistence.GisDbConte
                 YearlyPrice = 999.00m,
                 GpsTracking = true,
                 GpsInstallation = true,
+                RealTimeAlerts = true,
+                HistoryPlayback = true,
                 MaxVehicles = 100,
                 MaxUsers = 20,
                 MaxGpsDevices = 100,
                 MaxGeofences = 50,
+                HistoryRetentionDays = 90,
                 IsActive = true,
                 ModuleEmployees = true,
                 ModuleDashboard = true,
@@ -352,7 +364,16 @@ static async Task SeedBeliveCompany(GisAPI.Infrastructure.Persistence.GisDbConte
                 ModuleMonitoring = true,
                 ModuleGeofences = true,
                 ModuleSuppliers = true,
-                ModuleAccidents = true
+                ModuleAccidents = true,
+                ModuleFleetManagement = true,
+                ReportTrips = true,
+                ReportSpeed = true,
+                ReportStops = true,
+                ReportMileage = true,
+                ReportCosts = true,
+                ReportMaintenance = true,
+                ReportDaily = true,
+                ReportSpeedInfraction = true
             };
             context.SubscriptionTypes.Add(subscriptionType);
             await context.SaveChangesAsync();
@@ -400,7 +421,13 @@ static async Task SeedBeliveCompany(GisAPI.Infrastructure.Persistence.GisDbConte
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@2026"),
             Status = "active",
             CompanyId = company.Id,
-            RoleId = newAdminRole.Id
+            RoleId = newAdminRole.Id,
+            AccessLevel = "admin",
+            CanMonitoring = true, CanVehicles = true, CanDrivers = true,
+            CanReports = true, CanGeofences = true, CanMaintenance = true,
+            CanCosts = true, CanDocuments = true, CanAccidents = true,
+            CanUsers = true, CanSettings = true, CanSuppliers = true,
+            CanFleetManagement = true
         };
         context.Users.Add(newAdmin);
         await context.SaveChangesAsync();

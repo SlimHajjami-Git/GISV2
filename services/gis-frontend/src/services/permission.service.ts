@@ -191,7 +191,7 @@ export class PermissionService {
     if (user.isSystemAdmin) return true;
 
     const features = user.subscriptionFeatures;
-    if (!features) return true; // No subscription = allow all
+    if (!features) return false; // No subscription data = deny by default
 
     const reportMapping: Record<string, keyof SubscriptionFeatures> = {
       'trips': 'reportTrips',
