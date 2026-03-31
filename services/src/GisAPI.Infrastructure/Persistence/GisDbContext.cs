@@ -178,6 +178,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<TripWaypoint>().ToTable("trip_waypoints");
         modelBuilder.Entity<DrivingEvent>().ToTable("driving_events");
         modelBuilder.Entity<DeviceEvent>().ToTable("device_events");
+        modelBuilder.Entity<DeviceEvent>().Property(e => e.Details).HasColumnType("jsonb");
         modelBuilder.Entity<DailyStatistics>().ToTable("daily_statistics");
         modelBuilder.Entity<Driver>().ToTable("drivers");
         modelBuilder.Entity<DriverAssignment>().ToTable("driver_assignments");
