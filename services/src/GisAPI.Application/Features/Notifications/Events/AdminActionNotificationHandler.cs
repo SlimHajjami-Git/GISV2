@@ -60,7 +60,7 @@ public class AdminActionNotificationHandler : INotificationHandler<AdminActionNo
                 "cost_created" => (
                     $"Dépense enregistrée : {e.EntityName}",
                     $"{e.ActorName} a enregistré une dépense : \"{e.EntityName}\"",
-                    $"/expenses?expenseId={e.EntityType}_{e.EntityId}"
+                    "/costs"
                 ),
                 "document_created" => (
                     "Document ajouté",
