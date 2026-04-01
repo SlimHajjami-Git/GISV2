@@ -122,7 +122,7 @@
         <!-- Mileage Period Type Selector -->
         <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'mileage-period'">
           <label class="field-label">Type de période</label>
-          <select class="field-select" [(ngModel)]="selectedMileagePeriodType">
+          <select class="field-select" [(ngModel)]="selectedMileagePeriodType" (ngModelChange)="onMileagePeriodTypeChange()">
             <option *ngFor="let pt of mileagePeriodTypes" [value]="pt.value">{{ pt.label }}</option>
           </select>
         </div>
