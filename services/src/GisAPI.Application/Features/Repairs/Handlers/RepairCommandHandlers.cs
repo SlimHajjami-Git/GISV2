@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Application.Features.Repairs.Commands;
 using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Domain.Entities;
@@ -81,25 +82,25 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
 
         await _context.SaveChangesAsync(cancellationToken);
 
-        // Send notification to admins
+        // Notify company admins
         try
         {
             var actorId = _tenantService.UserId ?? 0;
             var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId, cancellationToken);
+            var vehicle = await _context.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken);
             if (actor != null)
             {
-                var vehicle = await _context.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken);
-                var vehicleLabel = vehicle?.Plate ?? vehicle?.Name ?? "";
-                var expenseLabel = !string.IsNullOrEmpty(request.Description)
+                var repairLabel = !string.IsNullOrEmpty(request.Description)
                     ? request.Description
-                    : $"Réparation - {vehicleLabel}";
+                    : vehicle?.Name ?? vehicle?.Plate ?? "Véhicule";
+
                 await _publisher.Publish(new AdminActionNotificationEvent(
                     societeId, actorId, actor.FullName,
-                    "cost_created", expenseLabel, repair.Id, "repair"
+                    "repair_created", repairLabel, repair.Id, "repair"
                 ), cancellationToken);
             }
         }
-        catch { /* Don't fail if notification fails */ }
+        catch { }
 
         return repair.Id;
     }
