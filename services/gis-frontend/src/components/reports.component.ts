@@ -4041,11 +4041,36 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.enrichAllAddresses();
 
     // Chart data - distance per trip (oldest left → newest right)
-    this.chartData = [...this.tableData].filter((t: any) => t.isTrip).reverse().map((t: any) => ({
-      label: `T${t.tripNumber}`,
-      value: t.distanceKm,
-      duration: t.durationMin
-    }));
+    const tripRows = [...this.tableData].filter((t: any) => t.isTrip).reverse();
+
+    if (tripRows.length > 30) {
+      // Too many trips: aggregate by day for readability
+      const dailyMap = new Map<string, { distance: number; trips: number; duration: number }>();
+      for (const t of tripRows) {
+        const rawTs = t._startTimeSort;
+        const dayKey = rawTs ? new Date(rawTs).toISOString().split('T')[0] : 'unknown';
+        const entry = dailyMap.get(dayKey) || { distance: 0, trips: 0, duration: 0 };
+        entry.distance += t.distanceKm || 0;
+        entry.trips += 1;
+        entry.duration += t.durationMin || 0;
+        dailyMap.set(dayKey, entry);
+      }
+      const sortedDays = [...dailyMap.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+      this.chartData = sortedDays.map(([day, data]) => ({
+        label: day !== 'unknown' ? new Date(day).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) : day,
+        value: Math.round(data.distance * 10) / 10,
+        trips: data.trips,
+        duration: data.duration,
+        _isDailyAggregation: true
+      }));
+    } else {
+      this.chartData = tripRows.map((t: any) => ({
+        label: `T${t.tripNumber}`,
+        value: t.distanceKm,
+        duration: t.durationMin,
+        _isDailyAggregation: false
+      }));
+    }
 
     // Statistics from backend summary (single vehicle) or computed (multi)
     if (reports.length === 1 && reports[0].summary) {
@@ -4115,51 +4140,116 @@ export class ReportsComponent implements OnInit, OnDestroy {
     let config: ChartConfiguration;
 
     if (type === 'trips') {
-      // Bar chart: Distance per trip
+      const isDailyAgg = this.chartData.length > 0 && this.chartData[0]._isDailyAggregation;
       const distances = this.chartData.map(d => d.value);
-      const durations = this.chartData.map(d => d.duration || 0);
-      
-      config = {
-        type: 'bar',
-        data: {
-          labels: this.chartData.map(d => d.label),
-          datasets: [
-            {
-              type: 'bar',
-              label: 'Distance (km)',
-              data: distances,
-              backgroundColor: this.chartColors.map(c => c + 'CC'),
-              borderColor: this.chartColors,
-              borderWidth: 1,
-              borderRadius: 6
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: { mode: 'index', intersect: false },
-          plugins: {
-            legend: { display: false },
-            title: { display: true, text: '📊 Distance par trajet', font: { size: 14, weight: 'bold' } },
-            tooltip: {
-              callbacks: {
-                afterBody: (context: any) => {
-                  const idx = context[0]?.dataIndex;
-                  if (idx !== undefined) {
-                    const dur = durations[idx];
-                    return dur ? `⏱️ Durée: ${Math.round(dur)} min` : '';
+      const labels = this.chartData.map(d => d.label);
+
+      if (isDailyAgg) {
+        // Daily aggregation: clean area chart with trip count on secondary axis
+        const tripCounts = this.chartData.map(d => d.trips || 0);
+        config = {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [
+              {
+                type: 'bar',
+                label: 'Distance (km)',
+                data: distances,
+                backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                borderColor: 'rgba(59, 130, 246, 1)',
+                borderWidth: 1,
+                borderRadius: 4,
+                yAxisID: 'y'
+              },
+              {
+                type: 'line',
+                label: 'Trajets',
+                data: tripCounts,
+                borderColor: '#F59E0B',
+                backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                borderWidth: 2,
+                pointRadius: 3,
+                pointBackgroundColor: '#F59E0B',
+                tension: 0.3,
+                fill: false,
+                yAxisID: 'y1'
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { display: true, position: 'top', labels: { usePointStyle: true, padding: 16, font: { size: 12 } } },
+              title: { display: true, text: 'Distance et trajets par jour', font: { size: 14, weight: 'bold' }, padding: { bottom: 16 } },
+              tooltip: {
+                callbacks: {
+                  afterBody: (context: any) => {
+                    const idx = context[0]?.dataIndex;
+                    if (idx !== undefined) {
+                      const d = this.chartData[idx];
+                      return d?.duration ? `⏱️ Conduite: ${Math.round(d.duration)} min` : '';
+                    }
+                    return '';
                   }
-                  return '';
                 }
               }
+            },
+            scales: {
+              y: { type: 'linear', position: 'left', title: { display: true, text: 'Distance (km)' }, beginAtZero: true, grid: { color: 'rgba(0,0,0,0.06)' } },
+              y1: { type: 'linear', position: 'right', title: { display: true, text: 'Nb trajets' }, beginAtZero: true, grid: { drawOnChartArea: false } },
+              x: { grid: { display: false } }
             }
-          },
-          scales: {
-            y: { type: 'linear', position: 'left', title: { display: true, text: 'Distance (km)' }, beginAtZero: true }
           }
-        }
-      };
+        };
+      } else {
+        // Few trips: individual bar chart with consistent color
+        const durations = this.chartData.map(d => d.duration || 0);
+        config = {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [
+              {
+                type: 'bar',
+                label: 'Distance (km)',
+                data: distances,
+                backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                borderColor: 'rgba(59, 130, 246, 1)',
+                borderWidth: 1,
+                borderRadius: 6
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { display: false },
+              title: { display: true, text: 'Distance par trajet', font: { size: 14, weight: 'bold' } },
+              tooltip: {
+                callbacks: {
+                  afterBody: (context: any) => {
+                    const idx = context[0]?.dataIndex;
+                    if (idx !== undefined) {
+                      const dur = durations[idx];
+                      return dur ? `⏱️ Durée: ${Math.round(dur)} min` : '';
+                    }
+                    return '';
+                  }
+                }
+              }
+            },
+            scales: {
+              y: { type: 'linear', position: 'left', title: { display: true, text: 'Distance (km)' }, beginAtZero: true },
+              x: { grid: { display: false } }
+            }
+          }
+        };
+      }
     } else if (type === 'stops') {
       // Dual charts: Donut for type distribution + Horizontal bar for duration
       const totalMinutes = this.chartData.reduce((sum, d) => sum + d.value, 0);
