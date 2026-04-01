@@ -550,15 +550,24 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
                 iconAnchor: [8, 8]
               })
             }).addTo(this.map!);
-            evtMarker.bindPopup(`📍 Événement géofence<br>${lat.toFixed(5)}, ${lng.toFixed(5)}`).openPopup();
+            evtMarker.bindPopup(`📍 Événement géofence<br>Chargement de l'adresse...`).openPopup();
 
             // Load and draw the geofence zone
             this.apiService.getGeofence(this.pendingGeofenceEvent.geofenceId).subscribe({
               next: (gf: any) => {
                 if (gf && this.map) {
                   this.drawGeofenceHighlight(gf);
-                  evtMarker.setPopupContent(this.buildGeofencePopup(gf, lat, lng));
-                  evtMarker.openPopup();
+                  // Reverse geocode to get address, then update popup
+                  this.geocodingService.reverseGeocode(lat, lng).subscribe({
+                    next: (address: string) => {
+                      evtMarker.setPopupContent(this.buildGeofencePopup(gf, lat, lng, address));
+                      evtMarker.openPopup();
+                    },
+                    error: () => {
+                      evtMarker.setPopupContent(this.buildGeofencePopup(gf, lat, lng));
+                      evtMarker.openPopup();
+                    }
+                  });
                 }
               },
               error: () => {}
@@ -3931,11 +3940,24 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   /** Build a rich popup for a geofence event marker */
-  buildGeofencePopup(gf: any, lat: number, lng: number): string {
+  buildGeofencePopup(gf: any, lat: number, lng: number, address?: string): string {
     const qp = this.route.snapshot.queryParams;
     const vehicleId = qp['vehicleId'];
     const vehicle = vehicleId ? this.vehicles.find((v: any) => v.id === parseInt(vehicleId, 10)) : null;
     const vehicleName = vehicle ? (vehicle.plate || vehicle.name) : '';
+
+    // Format timestamp from query params
+    const timestamp = qp['timestamp'];
+    let dateStr = '';
+    if (timestamp) {
+      const d = new Date(timestamp);
+      if (!isNaN(d.getTime())) {
+        dateStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+          + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      }
+    }
+
+    const locationDisplay = address || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 
     return `
       <div style="font-family:Inter,system-ui,sans-serif;min-width:220px;">
@@ -3944,11 +3966,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         </div>
         ${vehicleName ? `<div style="font-size:12px;color:#475569;margin-bottom:4px;">🚗 ${vehicleName}</div>` : ''}
         <div style="font-size:12px;color:#64748b;margin-bottom:2px;">
-          📌 Position: ${lat.toFixed(5)}, ${lng.toFixed(5)}
+          📌 ${locationDisplay}
         </div>
-        <div style="font-size:11px;color:#94a3b8;margin-top:6px;padding-top:6px;border-top:1px solid #e2e8f0;">
-          Cliquez sur la notification pour plus de détails
-        </div>
+        ${dateStr ? `<div style="font-size:12px;color:#64748b;margin-bottom:2px;">🕐 ${dateStr}</div>` : ''}
       </div>
     `;
   }
