@@ -674,8 +674,18 @@
                     </div>
                   </div>
                 } @else {
-                  <div class="chart-area">
-                    <canvas #chartCanvas></canvas>
+                  <div class="chart-scroll-wrapper">
+                    @if (chartData.length > 20) {
+                      <button class="chart-scroll-btn left" (click)="scrollChart('left')">&lsaquo;</button>
+                    }
+                    <div class="chart-scroll-container" #chartScrollContainer>
+                      <div class="chart-area" [style.min-width]="chartData.length > 20 ? (chartData.length * 40) + 'px' : 'auto'">
+                        <canvas #chartCanvas></canvas>
+                      </div>
+                    </div>
+                    @if (chartData.length > 20) {
+                      <button class="chart-scroll-btn right" (click)="scrollChart('right')">&rsaquo;</button>
+                    }
                   </div>
                   @if (secondaryChartData && secondaryChartData.length > 0) {
                     <div class="chart-area secondary-chart">

@@ -28,6 +28,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   @Input() embedded = false;
   private destroy$ = new Subject<void>();
   @ViewChild('chartCanvas') chartCanvas?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('chartScrollContainer') chartScrollContainer?: ElementRef<HTMLDivElement>;
   @ViewChild('secondaryChartCanvas') secondaryChartCanvas?: ElementRef<HTMLCanvasElement>;
   @ViewChild('kmBarChart') kmBarChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('fuelPieChart') fuelPieChartRef?: ElementRef<HTMLCanvasElement>;
@@ -718,6 +719,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
   getSortIcon(column: string): string {
     if (this.sortColumn !== column) return '↕';
     return this.sortDirection === 'asc' ? '▲' : '▼';
+  }
+
+  scrollChart(direction: 'left' | 'right') {
+    const container = this.chartScrollContainer?.nativeElement;
+    if (!container) return;
+    const scrollAmount = container.clientWidth * 0.6;
+    container.scrollBy({ left: direction === 'right' ? scrollAmount : -scrollAmount, behavior: 'smooth' });
   }
 
   executeReport() {
