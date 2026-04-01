@@ -149,7 +149,7 @@ interface AccidentClaim {
               <tr>
                 <th>N° Sinistre</th>
                 <th>Véhicule</th>
-                <th>Conducteur</th>
+                <th>Chauffeur</th>
                 <th>Date</th>
                 <th>Gravité</th>
                 <th>Montant</th>
@@ -283,7 +283,7 @@ interface AccidentClaim {
               </div>
             </div>
 
-            <!-- Véhicule & Conducteur -->
+            <!-- Véhicule & Chauffeur -->
             <div class="info-section">
               <h3 class="section-title">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -292,7 +292,7 @@ interface AccidentClaim {
                   <circle cx="5.5" cy="18.5" r="2.5"/>
                   <circle cx="18.5" cy="18.5" r="2.5"/>
                 </svg>
-                Véhicule & Conducteur
+                Véhicule & Chauffeur
               </h3>
               <div class="specs-grid">
                 <div class="spec-item">
@@ -304,7 +304,7 @@ interface AccidentClaim {
                   <span class="spec-value plate">{{ selectedClaim.vehiclePlate }}</span>
                 </div>
                 <div class="spec-item full">
-                  <span class="spec-label">Conducteur</span>
+                  <span class="spec-label">Chauffeur</span>
                   <span class="spec-value">{{ selectedClaim.driverName }}</span>
                 </div>
               </div>
@@ -479,9 +479,9 @@ interface AccidentClaim {
 
           <!-- Form Body -->
           <div class="form-body">
-            <!-- Véhicule & Conducteur -->
+            <!-- Véhicule & Chauffeur -->
             <div class="form-section">
-              <h3 class="form-section-title">🚗 Véhicule & Conducteur</h3>
+              <h3 class="form-section-title">🚗 Véhicule & Chauffeur</h3>
               <div class="form-row">
                 <div class="form-group">
                   <label>Véhicule *</label>
@@ -491,9 +491,9 @@ interface AccidentClaim {
                   </select>
                 </div>
                 <div class="form-group">
-                  <label>Conducteur *</label>
+                  <label>Chauffeur *</label>
                   <select [(ngModel)]="formData.driverId" (ngModelChange)="onDriverChange($event)" required>
-                    <option value="">Sélectionner un conducteur</option>
+                    <option value="">Sélectionner un chauffeur</option>
                     <option *ngFor="let d of drivers" [value]="d.id">{{ d.name }}</option>
                   </select>
                 </div>
@@ -955,7 +955,7 @@ interface AccidentClaim {
       background: rgba(0, 0, 0, 0.5);
       display: flex;
       justify-content: flex-end;
-      z-index: 1000;
+      z-index: 1200;
     }
 
     .detail-panel {
@@ -1299,7 +1299,7 @@ interface AccidentClaim {
       background: rgba(0, 0, 0, 0.5);
       display: flex;
       justify-content: flex-end;
-      z-index: 1001;
+      z-index: 1200;
     }
 
     .form-panel {
@@ -1818,12 +1818,18 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
         this.cdr.detectChanges();
       }
     });
-    this.apiService.getUsers().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (users: any[]) => {
-        this.drivers = users.map(u => ({
-          id: u.id?.toString() || '',
-          name: u.fullName || u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim()
-        }));
+    this.apiService.getDrivers().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (drivers: any[]) => {
+        this.drivers = drivers
+          .filter(d => d.id)
+          .map(d => ({
+            id: d.id?.toString() || '',
+            name: d.fullName || d.name || `${d.firstName || ''} ${d.lastName || ''}`.trim() || `Chauffeur #${d.id}`
+          }));
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('[Sinistres] Erreur chargement chauffeurs:', err);
         this.cdr.detectChanges();
       }
     });

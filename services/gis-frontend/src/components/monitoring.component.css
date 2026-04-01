@@ -4,6 +4,10 @@
   height: calc(100vh - 42px);
   background: #1a1f2e;
   overflow: hidden;
+  /* Contain Leaflet's high z-index values within this stacking context
+     so they cannot overlap the navbar (z-index: 1100) */
+  position: relative;
+  z-index: 0;
 }
 
 /* ═══════ PLAYBACK SETUP PAGE ═══════ */

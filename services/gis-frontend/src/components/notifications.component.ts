@@ -116,42 +116,6 @@ import { AppLayoutComponent } from './shared/app-layout.component';
         </div>
       </div>
 
-      <!-- Notification Detail Popup -->
-      <div class="notif-popup-overlay" *ngIf="selectedNotif" (click)="selectedNotif = null">
-        <div class="notif-popup" (click)="$event.stopPropagation()">
-          <div class="notif-popup-header">
-            <div class="notif-popup-icon" [class]="selectedNotif.type">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            </div>
-            <h3>{{ selectedNotif.title }}</h3>
-            <button class="notif-popup-close" (click)="selectedNotif = null">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
-          <div class="notif-popup-body">
-            <div class="notif-popup-meta">
-              <div class="notif-popup-meta-item">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                <span>{{ formatDateTime(selectedNotif.createdAt) }}</span>
-              </div>
-              <div class="notif-popup-meta-item">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                <span>{{ formatTime(selectedNotif.createdAt) }}</span>
-              </div>
-              <span class="notif-type-badge" [class]="selectedNotif.type" style="font-size:12px;padding:4px 10px;">{{ getTypeLabel(selectedNotif.type) }}</span>
-              <span class="notif-priority" [class]="selectedNotif.priority" *ngIf="selectedNotif.priority === 'high' || selectedNotif.priority === 'urgent'" style="font-size:12px;padding:4px 10px;">{{ selectedNotif.priority === 'high' ? 'Haute' : 'Urgente' }}</span>
-            </div>
-            <div class="notif-popup-message">{{ selectedNotif.message }}</div>
-            <div class="notif-popup-ref" *ngIf="selectedNotif.referenceId">
-              <span>Référence: {{ selectedNotif.referenceType }} #{{ selectedNotif.referenceId }}</span>
-            </div>
-          </div>
-          <div class="notif-popup-footer">
-            <button class="notif-popup-btn secondary" (click)="selectedNotif = null">Fermer</button>
-            <button class="notif-popup-btn primary" *ngIf="selectedNotif.actionUrl" (click)="goToAction(selectedNotif)">Voir détails</button>
-          </div>
-        </div>
-      </div>
     </app-layout>
   `,
   styles: [`
@@ -407,116 +371,6 @@ import { AppLayoutComponent } from './shared/app-layout.component';
     }
     .btn-load-more:hover { background: #eff6ff; }
 
-    /* Notification Detail Popup */
-    .notif-popup-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.4);
-      z-index: 1000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .notif-popup {
-      background: white;
-      border-radius: 12px;
-      width: 460px;
-      max-width: 90vw;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-      overflow: hidden;
-    }
-    .notif-popup-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 16px 20px;
-      background: #f8fafc;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .notif-popup-header h3 {
-      margin: 0;
-      flex: 1;
-      font-size: 15px;
-      font-weight: 600;
-      color: #1e293b;
-    }
-    .notif-popup-icon {
-      width: 36px;
-      height: 36px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      background: #dbeafe;
-      color: #2563eb;
-    }
-    .notif-popup-icon.speed_alert { background: #fef3c7; color: #d97706; }
-    .notif-popup-icon.driving_behavior { background: #fee2e2; color: #dc2626; }
-    .notif-popup-icon.maintenance_due { background: #f3e8ff; color: #7c3aed; }
-    .notif-popup-icon.geofence_event, .notif-popup-icon.geofence { background: #dbeafe; color: #2563eb; }
-    .notif-popup-close {
-      width: 30px;
-      height: 30px;
-      border: none;
-      background: transparent;
-      color: #94a3b8;
-      cursor: pointer;
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .notif-popup-close:hover { background: #f1f5f9; color: #1e293b; }
-    .notif-popup-body { padding: 20px; }
-    .notif-popup-meta {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 16px;
-    }
-    .notif-popup-meta-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 13px;
-      color: #64748b;
-    }
-    .notif-popup-message {
-      font-size: 14px;
-      color: #334155;
-      line-height: 1.6;
-      padding: 14px;
-      background: #f8fafc;
-      border-radius: 8px;
-      border: 1px solid #f1f5f9;
-    }
-    .notif-popup-ref {
-      margin-top: 12px;
-      font-size: 11px;
-      color: #94a3b8;
-    }
-    .notif-popup-footer {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      padding: 14px 20px;
-      border-top: 1px solid #e2e8f0;
-      background: #f8fafc;
-    }
-    .notif-popup-btn {
-      padding: 8px 16px;
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      border: none;
-    }
-    .notif-popup-btn.secondary { background: white; border: 1px solid #e2e8f0; color: #64748b; }
-    .notif-popup-btn.secondary:hover { background: #f1f5f9; }
-    .notif-popup-btn.primary { background: #3b82f6; color: white; }
-    .notif-popup-btn.primary:hover { background: #2563eb; }
   `]
 })
 export class NotificationsComponent implements OnInit, OnDestroy {
@@ -609,15 +463,8 @@ export class NotificationsComponent implements OnInit, OnDestroy {
     this.notificationService.delete(notif.id).subscribe();
   }
 
-  selectedNotif: Notification | null = null;
-
   openNotification(notif: Notification) {
     if (!notif.isRead) this.markRead(notif);
-    this.selectedNotif = notif;
-  }
-
-  goToAction(notif: Notification) {
-    this.selectedNotif = null;
     if (notif.actionUrl) this.router.navigateByUrl(notif.actionUrl);
   }
 

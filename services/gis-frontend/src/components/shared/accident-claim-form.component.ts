@@ -136,7 +136,7 @@ interface ThirdParty {
 
           <!-- Step 2: Vehicle & Driver -->
           <div class="step-content" *ngIf="currentStep === 2" @slideIn>
-            <h3>🚗 Véhicule & Conducteur</h3>
+            <h3>🚗 Véhicule & Chauffeur</h3>
 
             <div class="form-group">
               <label>Véhicule impliqué *</label>
@@ -158,9 +158,9 @@ interface ThirdParty {
             </div>
 
             <div class="form-group">
-              <label>Conducteur au moment de l'accident *</label>
+              <label>Chauffeur au moment de l'accident *</label>
               <select [(ngModel)]="formData.driverId" (ngModelChange)="onDriverChange($event)" required>
-                <option value="">Sélectionner un conducteur</option>
+                <option value="">Sélectionner un chauffeur</option>
                 <option *ngFor="let d of drivers" [value]="d.id">{{ d.name }}</option>
               </select>
             </div>
@@ -376,7 +376,7 @@ interface ThirdParty {
                     <span>{{ selectedVehicle?.name }} ({{ selectedVehicle?.plate }})</span>
                   </div>
                   <div class="review-item">
-                    <label>Conducteur</label>
+                    <label>Chauffeur</label>
                     <span>{{ selectedDriver?.name }}</span>
                   </div>
                 </div>
@@ -467,7 +467,7 @@ interface ThirdParty {
   styles: [`
     .form-overlay {
       position: fixed;
-      top: 0;
+      top: 42px; /* Below navbar */
       left: 0;
       right: 0;
       bottom: 0;
@@ -475,7 +475,7 @@ interface ThirdParty {
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
+      z-index: 1050;
       padding: 20px;
     }
 

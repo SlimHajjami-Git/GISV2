@@ -187,7 +187,7 @@
                         <span class="sensor-value">{{ getVehicleStats(vehicle)?.batteryLevel != null ? (getVehicleStats(vehicle)?.batteryLevel + '%') : 'N/A' }}</span>
                       </div>
                       <div class="sensor-item">
-                        <span class="sensor-label">�️ Kilométrage</span>
+                        <span class="sensor-label"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px; margin-right: 2px;"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="12" y1="8" x2="12" y2="8.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><path d="M9 2h6v4H9z"/></svg> Kilométrage</span>
                         <span class="sensor-value">{{ vehicle.odometerKm ? (vehicle.odometerKm | number:'1.0-0') + ' km' : (vehicle.mileage ? (vehicle.mileage | number:'1.0-0') + ' km' : 'N/A') }}</span>
                       </div>
                       <div class="sensor-item">
