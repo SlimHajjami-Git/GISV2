@@ -1259,8 +1259,8 @@ export class ApiService {
     endDate?: Date
   ): Observable<MileagePeriodReport> {
     let params = new HttpParams().set('periodType', periodType);
-    if (startDate) params = params.set('startDate', startDate.toISOString().split('T')[0]);
-    if (endDate) params = params.set('endDate', endDate.toISOString().split('T')[0]);
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate).split('T')[0]);
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate).split('T')[0]);
     return this.http.get<MileagePeriodReport>(`${this.API_URL}/reports/mileage-period/${vehicleId}`, { headers: this.getHeaders(), params });
   }
 
