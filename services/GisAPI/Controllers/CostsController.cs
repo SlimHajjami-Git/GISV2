@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
+using GisAPI.Application.Features.Notifications.Events;
+using MediatR;
 
 namespace GisAPI.Controllers;
 
@@ -13,10 +15,12 @@ namespace GisAPI.Controllers;
 public class CostsController : ControllerBase
 {
     private readonly GisDbContext _context;
+    private readonly IPublisher _publisher;
 
-    public CostsController(GisDbContext context)
+    public CostsController(GisDbContext context, IPublisher publisher)
     {
         _context = context;
+        _publisher = publisher;
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
@@ -150,6 +154,25 @@ public class CostsController : ControllerBase
 
         _context.VehicleCosts.Add(cost);
         await _context.SaveChangesAsync();
+
+        // Send notification to company admins
+        try
+        {
+            var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+            var vehicle = await _context.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == cost.VehicleId && v.CompanyId == companyId);
+            if (actor != null)
+            {
+                var entityName = !string.IsNullOrEmpty(cost.Description)
+                    ? cost.Description
+                    : vehicle?.Name ?? vehicle?.Plate ?? "Véhicule";
+
+                await _publisher.Publish(new AdminActionNotificationEvent(
+                    companyId, userId, actor.FullName,
+                    "cost_created", entityName, cost.Id, "cost"
+                ));
+            }
+        }
+        catch { /* Don't fail the request if notification fails */ }
 
         return CreatedAtAction(nameof(GetCost), new { id = cost.Id }, cost);
     }
