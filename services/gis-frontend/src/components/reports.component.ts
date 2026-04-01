@@ -510,8 +510,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
         this.toDate = this.toDateTime(now);
         break;
       case 'month':
-        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-        this.fromDate = this.toDateTime(monthStart);
+        const thirtyDaysAgo = new Date(today);
+        thirtyDaysAgo.setDate(today.getDate() - 30);
+        this.fromDate = this.toDateTime(thirtyDaysAgo);
         this.toDate = this.toDateTime(now);
         break;
       case 'custom':
