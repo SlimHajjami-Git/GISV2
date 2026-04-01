@@ -689,9 +689,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
       this.sortDirection = 'asc';
     }
     const dir = this.sortDirection === 'asc' ? 1 : -1;
+    // Columns that have a dedicated numeric sort key (e.g. 'period' → '_periodSort')
+    const sortKeyColumn = `_${column}Sort`;
     this.tableData = [...this.tableData].sort((a: any, b: any) => {
-      let valA = a[column];
-      let valB = b[column];
+      // Use dedicated sort key if available (for dates/periods stored as display strings)
+      let valA = a[sortKeyColumn] !== undefined ? a[sortKeyColumn] : a[column];
+      let valB = b[sortKeyColumn] !== undefined ? b[sortKeyColumn] : b[column];
       // Handle null/undefined
       if (valA == null && valB == null) return 0;
       if (valA == null) return 1;
@@ -958,6 +961,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       this.tableData = positions.slice(0, 100).map(p => ({
         vehicleName: p.vehicleName,
         time: this.formatDateTime(p.recordedAt),
+        _timeSort: new Date(p.recordedAt).getTime(),
         speed: `${(p.speedKph || 0).toFixed(0)} km/h`,
         address: p.address || `${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)}`
       }));
@@ -1186,6 +1190,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return {
         vehicleName: p.vehicleName,
         time: this.formatDateTime(p.recordedAt),
+        _timeSort: new Date(p.recordedAt).getTime(),
         speed: `${speed.toFixed(0)} km/h`,
         speedValue: speed,
         vehicleLimit: `${vehicleLimit} km/h`,
@@ -1484,6 +1489,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return {
         vehicle: inf.vehicleName || inf.vehiclePlate,
         time: this.formatDateTime(inf.time),
+        _timeSort: new Date(inf.time).getTime(),
         address: inf.address || `${inf.latitude.toFixed(5)}, ${inf.longitude.toFixed(5)}`,
         latitude: inf.latitude,
         longitude: inf.longitude,
@@ -1935,6 +1941,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           day: '2-digit', month: '2-digit', year: 'numeric',
           hour: '2-digit', minute: '2-digit'
         }),
+        _timeSort: new Date(inc.time).getTime(),
         incidentType: info.label,
         incidentIcon: info.icon,
         incidentColor: info.color,
@@ -2441,6 +2448,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     this.tableData = daysWithActivity.map((day: DailyMileage) => ({
       date: new Date(day.date).toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit', year: '2-digit' }),
+      _dateSort: new Date(day.date).getTime(),
       dayOfWeek: day.dayOfWeek,
       distance: `${day.distanceKm.toFixed(1)} km`,
       distanceValue: day.distanceKm,
@@ -2850,6 +2858,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           .filter((h: HourlyMileagePeriod) => h.distanceKm > 0)
           .map((h: HourlyMileagePeriod) => ({
             period: h.hourLabel || `${String(h.hour).padStart(2, '0')}:00 - ${String(h.hour + 1).padStart(2, '0')}:00`,
+            _periodSort: h.hour,
             distance: `${h.distanceKm.toFixed(1)} km`,
             distanceValue: h.distanceKm,
             tripCount: h.tripCount,
@@ -2864,6 +2873,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           .filter((d: DailyMileagePeriod) => d.distanceKm > 0)
           .map((d: DailyMileagePeriod) => ({
             period: d.dateLabel,
+            _periodSort: new Date(d.date).getTime(),
             dayOfWeek: d.dayOfWeek,
             distance: `${d.distanceKm.toFixed(1)} km`,
             distanceValue: d.distanceKm,
@@ -2879,6 +2889,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           .filter((m: MonthlyMileagePeriod) => m.distanceKm > 0)
           .map((m: MonthlyMileagePeriod) => ({
             period: m.monthLabel,
+            _periodSort: m.year * 100 + m.month,
             distance: `${m.distanceKm.toFixed(1)} km`,
             distanceValue: m.distanceKm,
             avgDaily: `${m.averageDailyKm.toFixed(1)} km/jour`,
@@ -3684,6 +3695,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return {
         vehicleName: vehicleName,
         time: this.formatDateTime(pos.recordedAt),
+        _timeSort: new Date(pos.recordedAt).getTime(),
         speed: `${speed.toFixed(0)} km/h`,
         speedValue: speed,
         vehicleLimit: `${vehicleLimit} km/h`,
@@ -3809,7 +3821,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const durationMinutes = stop.durationSeconds / 60;
       return {
         time: this.formatDateTime(stop.startTime),
+        _timeSort: new Date(stop.startTime).getTime(),
         endTime: this.formatDateTime(stop.endTime),
+        _endTimeSort: new Date(stop.endTime).getTime(),
         duration: stop.durationFormatted || formatDuration(stop.durationSeconds),
         durationSeconds: stop.durationSeconds,
         address: stop.address || `${stop.latitude?.toFixed(5)}, ${stop.longitude?.toFixed(5)}`,
@@ -4003,7 +4017,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
         isTrip: true,
         tripNumber,
         startTime: this.formatDateTime(trip.startTime),
+        _startTimeSort: new Date(trip.startTime).getTime(),
         endTime: this.formatDateTime(trip.endTime),
+        _endTimeSort: new Date(trip.endTime).getTime(),
         duration: trip.durationFormatted || formatDuration(trip.durationSeconds),
         durationMin,
         distance: `${trip.distanceKm.toFixed(1)} km`,
