@@ -517,3 +517,67 @@
     </div>
   </div>
 </ng-template>
+
+<!-- Geofence Event Modal -->
+@if (showGeofenceModal) {
+<div class="geofence-modal-overlay" (click)="closeGeofenceModal()">
+  <div class="geofence-modal" (click)="$event.stopPropagation()">
+    <div class="geofence-modal-header">
+      <h3>{{ geofenceModalData?.geofenceName || 'Géofence' }}</h3>
+      <button class="geofence-modal-close" (click)="closeGeofenceModal()">&times;</button>
+    </div>
+    <div class="geofence-modal-body">
+      <div class="geofence-modal-map" id="geofenceModalMap"></div>
+      <div class="geofence-modal-info">
+        <div class="geofence-info-row">
+          <span class="info-icon">🚗</span>
+          <span class="info-label">Véhicule</span>
+          <span class="info-value">{{ geofenceModalData?.vehicleName }}</span>
+        </div>
+        <div class="geofence-info-row">
+          <span class="info-icon">📍</span>
+          <span class="info-label">Adresse</span>
+          <span class="info-value">{{ geofenceModalData?.address || 'Chargement...' }}</span>
+        </div>
+        <div class="geofence-info-row">
+          <span class="info-icon">🕐</span>
+          <span class="info-label">Date / Heure</span>
+          <span class="info-value">{{ geofenceModalData?.timestamp }}</span>
+        </div>
+        <div class="geofence-info-row">
+          <span class="info-icon">{{ geofenceModalData?.eventType === 'entry' ? '🟢' : '🔴' }}</span>
+          <span class="info-label">Événement</span>
+          <span class="info-value">{{ geofenceModalData?.eventType === 'entry' ? 'Entrée dans la zone' : 'Sortie de la zone' }}</span>
+        </div>
+      </div>
+      @if (geofenceHistory.length > 0) {
+      <div class="geofence-history">
+        <h4>Historique des passages</h4>
+        <table class="geofence-history-table">
+          <thead>
+            <tr>
+              <th>Date / Heure</th>
+              <th>Véhicule</th>
+              <th>Événement</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (evt of geofenceHistory; track evt.id) {
+            <tr>
+              <td>{{ evt.timestamp | date:'dd/MM/yyyy HH:mm' }}</td>
+              <td>{{ evt.vehicleName }}</td>
+              <td>
+                <span class="event-badge" [class.entry]="evt.type === 'entry'" [class.exit]="evt.type === 'exit'">
+                  {{ evt.type === 'entry' ? 'Entrée' : 'Sortie' }}
+                </span>
+              </td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      }
+    </div>
+  </div>
+</div>
+}

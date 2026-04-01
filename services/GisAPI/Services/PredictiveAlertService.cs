@@ -117,7 +117,7 @@ public class PredictiveAlertService : BackgroundService
                 {
                     await SendToCompanyAdmins(context, notifService, companyId,
                         "document_expiry", $"Document: {name}", message,
-                        priority, "vehicle", vehicle.Id, "/vehicules", ct);
+                        priority, "vehicle", vehicle.Id, "/echeances", ct);
                 }
             }
         }
