@@ -22,20 +22,15 @@ export class PdfExportService {
 
   private sanitizeText(text: string): string {
     if (!text) return '';
+    // Normalize to NFC (composed form) — keeps é, è, ê, à, ç etc. as single characters
+    // Helvetica in jsPDF supports Latin-1 (U+00A0–U+00FF) which includes all French accents
     return text
       .normalize('NFC')
-      .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^\x20-\x7E\xA0-\xFF]/g, (ch) => {
         const map: Record<string, string> = {
           '\u2019': "'", '\u2018': "'", '\u201C': '"', '\u201D': '"',
-          '\u2013': '-', '\u2014': '-', '\u2026': '...', '\u00E9': 'e',
-          '\u00E8': 'e', '\u00EA': 'e', '\u00EB': 'e', '\u00E0': 'a',
-          '\u00E2': 'a', '\u00E4': 'a', '\u00F4': 'o', '\u00F6': 'o',
-          '\u00FB': 'u', '\u00FC': 'u', '\u00F9': 'u', '\u00EE': 'i',
-          '\u00EF': 'i', '\u00E7': 'c', '\u00C9': 'E', '\u00C8': 'E',
-          '\u00CA': 'E', '\u00CB': 'E', '\u00C0': 'A', '\u00C2': 'A',
-          '\u00D4': 'O', '\u00DB': 'U', '\u00CE': 'I', '\u00C7': 'C',
-          '\u0152': 'OE', '\u0153': 'oe', '\u00B0': 'o',
+          '\u2013': '-', '\u2014': '-', '\u2026': '...',
+          '\u0152': 'OE', '\u0153': 'oe',
         };
         return map[ch] || '';
       });
@@ -58,9 +53,9 @@ export class PdfExportService {
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     const meta: string[] = [];
-    if (config.vehicleName) meta.push(`Vehicule: ${this.sanitizeText(config.vehicleName)}`);
-    if (config.dateRange) meta.push(`Periode: ${this.sanitizeText(config.dateRange)}`);
-    meta.push(`Genere le: ${new Date().toLocaleDateString('fr-FR')} a ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
+    if (config.vehicleName) meta.push(`V\u00e9hicule: ${this.sanitizeText(config.vehicleName)}`);
+    if (config.dateRange) meta.push(`P\u00e9riode: ${this.sanitizeText(config.dateRange)}`);
+    meta.push(`G\u00e9n\u00e9r\u00e9 le: ${new Date().toLocaleDateString('fr-FR')} \u00e0 ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
     doc.text(meta.join('  |  '), 14, 22);
 
     if (config.subtitle) {
@@ -120,8 +115,8 @@ export class PdfExportService {
       startY: y,
       theme: 'grid',
       styles: {
-        fontSize: 8,
-        cellPadding: 3,
+        fontSize: 7,
+        cellPadding: 2.5,
         lineColor: [226, 232, 240],
         lineWidth: 0.2,
         textColor: [30, 41, 59],
@@ -132,8 +127,8 @@ export class PdfExportService {
         fillColor: this.primaryColor,
         textColor: [255, 255, 255],
         fontStyle: 'bold',
-        fontSize: 8.5,
-        cellPadding: 3
+        fontSize: 7.5,
+        cellPadding: 2.5
       },
       alternateRowStyles: {
         fillColor: [248, 250, 252]
@@ -193,13 +188,12 @@ export class PdfExportService {
     switch (type) {
       case 'trips':
         return [
-          ...(options?.allVehicles ? [{ header: 'Véhicule', dataKey: 'vehicleName' }] : []),
+          ...(options?.allVehicles ? [{ header: 'V\u00e9hicule', dataKey: 'vehicleName' }] : []),
           { header: 'Type', dataKey: '_type' },
-          { header: 'Début', dataKey: 'startTime' },
+          { header: 'D\u00e9but', dataKey: 'startTime' },
           { header: 'Fin', dataKey: 'endTime' },
-          { header: 'Durée', dataKey: 'duration' },
+          { header: 'Dur\u00e9e', dataKey: 'duration' },
           { header: 'Distance', dataKey: 'distance' },
-          { header: 'Vit. moy', dataKey: 'avgSpeed' },
           { header: 'Vit. max', dataKey: 'maxSpeed' },
           { header: 'Lieu', dataKey: '_address' }
         ];
@@ -218,9 +212,8 @@ export class PdfExportService {
           { header: 'Distance', dataKey: 'distance' },
           { header: 'Trajets', dataKey: 'tripCount' },
           { header: 'Temps conduite', dataKey: 'drivingTime' },
-          { header: 'Vit. moy', dataKey: 'avgSpeed' },
           { header: 'Vit. max', dataKey: 'maxSpeed' },
-          { header: 'Odomètre', dataKey: 'odometer' }
+          { header: 'Odom\u00e8tre', dataKey: 'odometer' }
         ];
       case 'mileage-period':
         const cols = [{ header: 'Période', dataKey: 'period' }];
@@ -233,7 +226,6 @@ export class PdfExportService {
         cols.push({ header: 'Trajets', dataKey: 'tripCount' });
         cols.push({ header: 'Temps conduite', dataKey: 'drivingTime' });
         if (options?.periodType !== 'month') {
-          cols.push({ header: 'Vit. moy', dataKey: 'avgSpeed' });
           cols.push({ header: 'Vit. max', dataKey: 'maxSpeed' });
         }
         return cols;

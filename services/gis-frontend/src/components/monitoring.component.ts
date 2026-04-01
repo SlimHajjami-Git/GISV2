@@ -150,6 +150,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   pendingMapCenter: { lat: number; lng: number; zoom: number } | null = null;
   pendingGeofenceEvent: { geofenceId: number; vehicleId: number; timestamp?: string } | null = null;
 
+  // Geofence event modal
+  showGeofenceModal = false;
+  geofenceModalData: {
+    geofenceName: string; vehicleName: string; address: string;
+    timestamp: string; eventType: string; lat: number; lng: number;
+  } | null = null;
+  geofenceHistory: any[] = [];
+  private geofenceModalMap?: L.Map;
+
   // Address cache for reverse geocoding
   private addressCache = new Map<string, string>();
 
@@ -557,49 +566,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           this.map!.setView([lat, lng], zoom);
 
           if (this.pendingGeofenceEvent) {
-            // Geofence notification: show event marker + load geofence zone
-            const geofenceEvt = { ...this.pendingGeofenceEvent };
-            const evtMarker = L.marker([lat, lng], {
-              icon: L.divIcon({
-                html: '<div style="background:#f59e0b;width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);animation:pulse 1.5s infinite;"></div>',
-                className: '',
-                iconSize: [16, 16],
-                iconAnchor: [8, 8]
-              })
-            }).addTo(this.map!);
-            evtMarker.bindPopup(`📍 Événement géofence<br>Chargement de l'adresse...`).openPopup();
-
-            // Load and draw the geofence zone
-            this.apiService.getGeofence(geofenceEvt.geofenceId).subscribe({
-              next: (gf: any) => {
-                if (gf && this.map) {
-                  this.drawGeofenceHighlight(gf);
-                  // Fit bounds to show both the point and the geofence zone
-                  try {
-                    const bounds = L.latLngBounds([L.latLng(lat, lng)]);
-                    if (gf.type === 'circle' && gf.center) {
-                      const c = gf.center;
-                      const cLat = c.lat || c.latitude;
-                      const cLng = c.lng || c.longitude;
-                      const r = gf.radius || 200;
-                      bounds.extend(L.latLng(cLat, cLng));
-                      bounds.extend(L.latLng(cLat + r / 111320, cLng));
-                      bounds.extend(L.latLng(cLat - r / 111320, cLng));
-                    } else if (gf.coordinates?.length > 0) {
-                      gf.coordinates.forEach((c: any) => bounds.extend(L.latLng(c.lat || c.latitude || c[0], c.lng || c.longitude || c[1])));
-                    }
-                    this.map!.fitBounds(bounds.pad(0.3));
-                  } catch (_) {}
-                  // Build popup with reverse geocoding
-                  this.buildGeofencePopupAsync(gf, lat, lng, geofenceEvt.timestamp).then(html => {
-                    evtMarker.setPopupContent(html);
-                    evtMarker.openPopup();
-                  });
-                }
-              },
-              error: () => {}
-            });
+            const geofenceId = this.pendingGeofenceEvent.geofenceId;
+            const vehicleId = this.pendingGeofenceEvent.vehicleId;
+            const timestamp = this.pendingGeofenceEvent.timestamp;
             this.pendingGeofenceEvent = null;
+            this.openGeofenceModal(geofenceId, vehicleId, lat, lng, timestamp);
           } else {
             // Generic point (speed infraction, etc.)
             L.marker([lat, lng], {
@@ -4086,22 +4057,116 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     `;
   }
 
-  /** Async popup builder: fetches reverse geocoding address then builds full popup */
-  async buildGeofencePopupAsync(gf: any, lat: number, lng: number, timestamp?: string): Promise<string> {
-    let address = '';
-    try {
-      const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
-      if (this.addressCache.has(cacheKey)) {
-        address = this.addressCache.get(cacheKey)!;
-      } else {
-        const resp = await fetch(`/nominatim/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
-        if (resp.ok) {
-          const data = await resp.json();
-          address = data.display_name || '';
-          if (address) this.addressCache.set(cacheKey, address);
+  openGeofenceModal(geofenceId: number, vehicleId: number, lat: number, lng: number, timestamp?: string) {
+    const vehicle = this.vehicles.find((v: any) => v.id === vehicleId);
+    const vehicleName = vehicle ? (vehicle.plate || vehicle.name) : `Véhicule #${vehicleId}`;
+
+    // Format timestamp
+    let formattedTime = '';
+    if (timestamp) {
+      const d = new Date(timestamp);
+      if (!isNaN(d.getTime())) {
+        formattedTime = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+          + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      }
+    }
+
+    // Determine event type from query params
+    const qp = this.route.snapshot.queryParams;
+    const eventType = qp['eventType'] || 'entry';
+
+    this.geofenceModalData = {
+      geofenceName: 'Chargement...',
+      vehicleName,
+      address: 'Chargement...',
+      timestamp: formattedTime || new Date().toLocaleString('fr-FR'),
+      eventType,
+      lat, lng
+    };
+    this.geofenceHistory = [];
+    this.showGeofenceModal = true;
+
+    // Load geofence details
+    this.apiService.getGeofence(geofenceId).subscribe({
+      next: (gf: any) => {
+        if (gf) {
+          this.geofenceModalData = { ...this.geofenceModalData!, geofenceName: gf.name || 'Géofence' };
+          // Initialize modal map after DOM renders
+          setTimeout(() => this.initGeofenceModalMap(gf, lat, lng), 100);
         }
       }
-    } catch (_) {}
-    return this.buildGeofencePopupHtml(gf, lat, lng, address, timestamp);
+    });
+
+    // Reverse geocode
+    this.geocodingService.reverseGeocode(lat, lng).subscribe({
+      next: (address: string) => {
+        if (this.geofenceModalData) {
+          this.geofenceModalData = { ...this.geofenceModalData, address };
+        }
+      }
+    });
+
+    // Load geofence history
+    this.apiService.getGeofenceEventsByGeofence(geofenceId, 50).subscribe({
+      next: (events: any[]) => {
+        this.geofenceHistory = events || [];
+      }
+    });
+  }
+
+  private initGeofenceModalMap(gf: any, lat: number, lng: number) {
+    const container = document.getElementById('geofenceModalMap');
+    if (!container) return;
+
+    if (this.geofenceModalMap) {
+      this.geofenceModalMap.remove();
+    }
+
+    this.geofenceModalMap = L.map(container).setView([lat, lng], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OSM',
+      maxZoom: 19
+    }).addTo(this.geofenceModalMap);
+
+    // Vehicle marker
+    L.marker([lat, lng], {
+      icon: L.divIcon({
+        html: '<div style="background:#f59e0b;width:20px;height:20px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:12px;">🚗</div>',
+        className: '',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+      })
+    }).addTo(this.geofenceModalMap);
+
+    // Draw geofence zone
+    this.drawGeofenceOnMap(this.geofenceModalMap, gf);
+
+    setTimeout(() => this.geofenceModalMap?.invalidateSize(), 200);
+  }
+
+  private drawGeofenceOnMap(map: L.Map, gf: any) {
+    if (gf.type === 'circle' && gf.center) {
+      const cLat = gf.center.lat || gf.center.latitude;
+      const cLng = gf.center.lng || gf.center.longitude;
+      L.circle([cLat, cLng], {
+        radius: gf.radius || 200,
+        color: '#3B82F6', weight: 2, fillColor: '#3B82F6', fillOpacity: 0.15
+      }).addTo(map);
+    } else if (gf.coordinates?.length > 0) {
+      const coords = gf.coordinates.map((c: any) => [c.lat || c.latitude || c[0], c.lng || c.longitude || c[1]] as [number, number]);
+      L.polygon(coords, {
+        color: '#3B82F6', weight: 2, fillColor: '#3B82F6', fillOpacity: 0.15
+      }).addTo(map);
+    }
+  }
+
+  closeGeofenceModal() {
+    this.showGeofenceModal = false;
+    this.geofenceModalData = null;
+    this.geofenceHistory = [];
+    if (this.geofenceModalMap) {
+      this.geofenceModalMap.remove();
+      this.geofenceModalMap = undefined;
+    }
   }
 }

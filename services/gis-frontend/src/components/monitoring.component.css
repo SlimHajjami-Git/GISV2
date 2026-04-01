@@ -3205,3 +3205,123 @@
 .pb-map-area {
   position: relative;
 }
+
+/* Geofence Event Modal */
+.geofence-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+}
+.geofence-modal {
+  background: white;
+  border-radius: 12px;
+  width: 700px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  display: flex;
+  flex-direction: column;
+}
+.geofence-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: #1e3a8a;
+  color: white;
+}
+.geofence-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.geofence-modal-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.8;
+}
+.geofence-modal-close:hover { opacity: 1; }
+.geofence-modal-body {
+  overflow-y: auto;
+  flex: 1;
+}
+.geofence-modal-map {
+  height: 280px;
+  width: 100%;
+}
+.geofence-modal-info {
+  padding: 16px 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.geofence-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.info-icon { font-size: 16px; }
+.info-label {
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  min-width: 70px;
+}
+.info-value {
+  font-size: 13px;
+  color: #1e293b;
+  font-weight: 500;
+}
+.geofence-history {
+  padding: 16px 20px;
+}
+.geofence-history h4 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: #334155;
+}
+.geofence-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.geofence-history-table th {
+  text-align: left;
+  padding: 8px 12px;
+  background: #f8fafc;
+  color: #64748b;
+  font-weight: 600;
+  border-bottom: 2px solid #e2e8f0;
+}
+.geofence-history-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+}
+.event-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.event-badge.entry {
+  background: #dcfce7;
+  color: #166534;
+}
+.event-badge.exit {
+  background: #fee2e2;
+  color: #991b1b;
+}

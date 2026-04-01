@@ -28,6 +28,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   @Input() embedded = false;
   private destroy$ = new Subject<void>();
   @ViewChild('chartCanvas') chartCanvas?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('chartScrollContainer') chartScrollContainer?: ElementRef<HTMLDivElement>;
   @ViewChild('secondaryChartCanvas') secondaryChartCanvas?: ElementRef<HTMLCanvasElement>;
   @ViewChild('kmBarChart') kmBarChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('fuelPieChart') fuelPieChartRef?: ElementRef<HTMLCanvasElement>;
@@ -718,6 +719,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
   getSortIcon(column: string): string {
     if (this.sortColumn !== column) return '↕';
     return this.sortDirection === 'asc' ? '▲' : '▼';
+  }
+
+  scrollChart(direction: 'left' | 'right') {
+    const container = this.chartScrollContainer?.nativeElement;
+    if (!container) return;
+    const scrollAmount = container.clientWidth * 0.6;
+    container.scrollBy({ left: direction === 'right' ? scrollAmount : -scrollAmount, behavior: 'smooth' });
   }
 
   executeReport() {
@@ -2453,8 +2461,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
       distanceValue: day.distanceKm,
       tripCount: day.tripCount,
       drivingTime: this.formatMinutes(day.drivingMinutes),
-      avgSpeed: `${day.avgSpeedKph.toFixed(1)} km/h`,
+      _drivingTimeSecondsSort: day.drivingMinutes,
       maxSpeed: `${day.maxSpeedKph.toFixed(1)} km/h`,
+      _maxSpeedValueSort: day.maxSpeedKph,
       odometer: day.endOdometerKm ? `${day.endOdometerKm.toFixed(0)} km` : '-'
     }));
 
@@ -2477,7 +2486,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
       'Nombre de trajets': report.summary.totalTripCount.toString(),
       'Temps de conduite': report.summary.totalDrivingFormatted,
       'Vitesse max': `${report.summary.maxSpeedKph.toFixed(1)} km/h`,
-      'Vitesse moyenne': `${report.summary.avgSpeedKph.toFixed(1)} km/h`,
       'Jours actifs': `${report.summary.daysWithActivity}/${report.summary.totalDays} (${report.summary.activityPercentage.toFixed(0)}%)`
     };
 
@@ -2625,12 +2633,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
         },
         scales: {
           y: {
-            beginAtZero: true
+            beginAtZero: true,
+            title: { display: true, text: 'Distance (Km)' }
           },
           x: {
-            title: {
-              display: false
-            }
+            title: { display: true, text: 'Jour' }
           }
         }
       }
@@ -2862,8 +2869,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
             distanceValue: h.distanceKm,
             tripCount: h.tripCount,
             drivingTime: this.formatMinutes(h.drivingMinutes),
-            avgSpeed: `${h.avgSpeedKph.toFixed(1)} km/h`,
-            maxSpeed: `${h.maxSpeedKph.toFixed(1)} km/h`
+            _drivingTimeSecondsSort: h.drivingMinutes,
+            maxSpeed: `${h.maxSpeedKph.toFixed(1)} km/h`,
+            _maxSpeedValueSort: h.maxSpeedKph
           }));
         break;
       case 'day':
@@ -2878,8 +2886,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
             distanceValue: d.distanceKm,
             tripCount: d.tripCount,
             drivingTime: this.formatMinutes(d.drivingMinutes),
-            avgSpeed: `${d.avgSpeedKph.toFixed(1)} km/h`,
-            maxSpeed: `${d.maxSpeedKph.toFixed(1)} km/h`
+            _drivingTimeSecondsSort: d.drivingMinutes,
+            maxSpeed: `${d.maxSpeedKph.toFixed(1)} km/h`,
+            _maxSpeedValueSort: d.maxSpeedKph
           }));
         break;
       case 'month':
@@ -3729,7 +3738,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.statisticsData = {
       '🚗 Véhicule': `${vehicleName} (limite: ${vehicleLimit} km/h)`,
       'Points analysés': movingPositions.length.toString(),
-      'Vitesse moyenne': `${avgSpeed.toFixed(0)} km/h`,
       'Vitesse max': `${maxSpeed.toFixed(0)} km/h`,
       '🔴 Dépassements limite': `${infractions.length} (${vehicleLimit} km/h)`,
       '⚠️ >90 km/h': `${highSpeedCount} (${highSpeedPct}%)`
@@ -4680,7 +4688,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
             title: { display: true, text: 'Répartition par durée d\'arrêt', font: { size: 12, weight: 'bold' } }
           },
           scales: {
-            x: { beginAtZero: true, title: { display: true, text: 'Nombre d\'arrêts' } }
+            y: { beginAtZero: true, title: { display: true, text: 'Nombre d\'arrêts' } },
+            x: { grid: { display: false } }
           }
         }
       });
