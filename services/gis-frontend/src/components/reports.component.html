@@ -647,19 +647,25 @@
                 @if (selectedTemplate?.type === 'driving-behavior') {
                   <div class="behavior-cards-row">
                     <div class="behavior-card rpm-card">
-                      <div class="behavior-card-icon">🔧</div>
+                      <div class="behavior-card-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2m-3.3-6.7-1.4 1.4M5.7 18.3l-1.4 1.4M18.3 18.3l1.4 1.4M5.7 5.7 4.3 4.3"/></svg>
+                      </div>
                       <div class="behavior-card-label">RPM MAX.</div>
                       <div class="behavior-card-value">{{ drivingBehaviorCards.rpmMax > 0 ? drivingBehaviorCards.rpmMax.toLocaleString('fr-FR') : '-' }}</div>
                       <div class="behavior-card-unit">tr/min</div>
                     </div>
                     <div class="behavior-card speed-card">
-                      <div class="behavior-card-icon">🏁</div>
+                      <div class="behavior-card-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12l4-8"/><path d="M4.93 4.93A10 10 0 0 0 2 12c0 5.52 4.48 10 10 10s10-4.48 10-10a10 10 0 0 0-2.93-7.07"/></svg>
+                      </div>
                       <div class="behavior-card-label">VITESSE MAX.</div>
                       <div class="behavior-card-value">{{ drivingBehaviorCards.vitesseMax > 0 ? drivingBehaviorCards.vitesseMax : '-' }}</div>
                       <div class="behavior-card-unit">km/h</div>
                     </div>
                     <div class="behavior-card score-card">
-                      <div class="behavior-card-icon">🏆</div>
+                      <div class="behavior-card-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14 2 9.27l6.91-1.01z"/></svg>
+                      </div>
                       <div class="behavior-card-label">SCORE CONDUCTEUR</div>
                       <div class="behavior-card-value">{{ drivingBehaviorCards.scoreConduite }} / 100</div>
                       <div class="behavior-card-unit" [style.color]="drivingBehaviorCards.scoreConduite >= 80 ? '#22C55E' : drivingBehaviorCards.scoreConduite >= 50 ? '#F59E0B' : '#EF4444'">
@@ -667,7 +673,9 @@
                       </div>
                     </div>
                     <div class="behavior-card consumption-card">
-                      <div class="behavior-card-icon">⛽</div>
+                      <div class="behavior-card-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 22V6l4-4h4l4 4v16"/><path d="M7 2v4h4"/><path d="M15 22V12l4-2v12"/><path d="M3 14h12"/></svg>
+                      </div>
                       <div class="behavior-card-label">CONSOMMATION</div>
                       <div class="behavior-card-value">{{ drivingBehaviorCards.consommation !== null ? drivingBehaviorCards.consommation : '-' }}</div>
                       <div class="behavior-card-unit">L/100 km</div>

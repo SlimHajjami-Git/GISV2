@@ -874,6 +874,14 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 .behavior-card-icon {
   font-size: 22px;
   margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.behavior-card-icon svg {
+  width: 28px;
+  height: 28px;
 }
 
 .behavior-card-icon.score-circle {
@@ -917,29 +925,28 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   border-left: 4px solid #EF4444;
 }
 
-.rpm-card .behavior-card-value {
-  color: #EF4444;
-}
+.rpm-card .behavior-card-icon svg { stroke: #EF4444; }
+.rpm-card .behavior-card-value { color: #EF4444; }
 
 .speed-card {
   border-left: 4px solid #3B82F6;
 }
 
-.speed-card .behavior-card-value {
-  color: #3B82F6;
-}
+.speed-card .behavior-card-icon svg { stroke: #3B82F6; }
+.speed-card .behavior-card-value { color: #3B82F6; }
 
 .score-card {
   border-left: 4px solid #22C55E;
 }
 
+.score-card .behavior-card-icon svg { stroke: #22C55E; }
+
 .consumption-card {
   border-left: 4px solid #F59E0B;
 }
 
-.consumption-card .behavior-card-value {
-  color: #F59E0B;
-}
+.consumption-card .behavior-card-icon svg { stroke: #F59E0B; }
+.consumption-card .behavior-card-value { color: #F59E0B; }
 
 /* Table Section */
 .table-section {
