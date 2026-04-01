@@ -2635,6 +2635,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   // ==================== MILEAGE PERIOD REPORT (Hour/Day/Month) ====================
 
+  onMileagePeriodTypeChange() {
+    if (this.reportGenerated) {
+      this.executeReport();
+    }
+  }
+
   executeMileagePeriodReport(vehicleId: number, startDate?: Date, endDate?: Date) {
     let start: Date;
     let end: Date;
