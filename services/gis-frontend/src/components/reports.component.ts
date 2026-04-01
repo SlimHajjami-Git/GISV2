@@ -404,9 +404,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.mileagePeriodStartDate = weekAgo.toISOString().split('T')[0];
     this.mileagePeriodEndDate = today.toISOString().split('T')[0];
     
-    // Monthly: default to current month/year
-    this.mileagePeriodMonth = today.getMonth() + 1;
-    this.mileagePeriodYear = today.getFullYear();
+    // Monthly: default to previous month (current month often has no data yet)
+    const prevMonth = new Date(today);
+    prevMonth.setMonth(today.getMonth() - 1);
+    this.mileagePeriodMonth = prevMonth.getMonth() + 1;
+    this.mileagePeriodYear = prevMonth.getFullYear();
     
     
     // Initialize custom date range + daily report date
@@ -2955,7 +2957,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const periodType = (this.mileagePeriodReport?.periodType || 'day').toString().toLowerCase() as MileagePeriodType;
+    const periodType = this.selectedMileagePeriodType || (this.mileagePeriodReport?.periodType || 'day').toString().toLowerCase() as MileagePeriodType;
     const chartConfig = this.getMileagePeriodChartConfig(periodType);
 
     this.mileagePeriodChart = new Chart(ctx, chartConfig);
