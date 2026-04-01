@@ -62,9 +62,10 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
         var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId, cancellationToken);
         if (actor != null)
         {
+            var fuelLabel = $"{request.Volume:0.#}L — {request.VehiclePlate ?? vehicle?.Name ?? "Véhicule"}";
             await _publisher.Publish(new AdminActionNotificationEvent(
                 companyId, actorId, actor.FullName,
-                "cost_created", request.VehiclePlate ?? $"Carburant #{entry.Id}", entry.Id, "cost"
+                "fuel_created", fuelLabel, entry.Id, "fuel_entry"
             ), cancellationToken);
         }
 

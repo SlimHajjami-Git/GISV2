@@ -60,7 +60,17 @@ public class AdminActionNotificationHandler : INotificationHandler<AdminActionNo
                 "cost_created" => (
                     $"Dépense enregistrée : {e.EntityName}",
                     $"{e.ActorName} a enregistré une dépense : \"{e.EntityName}\"",
-                    "/costs"
+                    "/depenses"
+                ),
+                "fuel_created" => (
+                    $"Carburant enregistré : {e.EntityName}",
+                    $"{e.ActorName} a enregistré un plein de carburant : \"{e.EntityName}\"",
+                    "/depenses"
+                ),
+                "repair_created" => (
+                    $"Réparation enregistrée : {e.EntityName}",
+                    $"{e.ActorName} a enregistré une réparation : \"{e.EntityName}\"",
+                    "/depenses"
                 ),
                 "document_created" => (
                     "Document ajouté",

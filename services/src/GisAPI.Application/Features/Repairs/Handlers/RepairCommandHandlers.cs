@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Application.Features.Repairs.Commands;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
@@ -11,11 +12,13 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
 {
     private readonly IGisDbContext _context;
     private readonly ICurrentTenantService _tenantService;
+    private readonly IPublisher _publisher;
 
-    public CreateRepairCommandHandler(IGisDbContext context, ICurrentTenantService tenantService)
+    public CreateRepairCommandHandler(IGisDbContext context, ICurrentTenantService tenantService, IPublisher publisher)
     {
         _context = context;
         _tenantService = tenantService;
+        _publisher = publisher;
     }
 
     public async Task<int> Handle(CreateRepairCommand request, CancellationToken cancellationToken)
@@ -77,6 +80,27 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
         }
 
         await _context.SaveChangesAsync(cancellationToken);
+
+        // Notify company admins
+        try
+        {
+            var actorId = _tenantService.UserId ?? 0;
+            var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId, cancellationToken);
+            var vehicle = await _context.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken);
+            if (actor != null)
+            {
+                var repairLabel = !string.IsNullOrEmpty(request.Description)
+                    ? request.Description
+                    : vehicle?.Name ?? vehicle?.Plate ?? "Véhicule";
+
+                await _publisher.Publish(new AdminActionNotificationEvent(
+                    societeId, actorId, actor.FullName,
+                    "repair_created", repairLabel, repair.Id, "repair"
+                ), cancellationToken);
+            }
+        }
+        catch { }
+
         return repair.Id;
     }
 }
