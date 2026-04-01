@@ -552,7 +552,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
                 iconAnchor: [8, 8]
               })
             }).addTo(this.map!);
-            evtMarker.bindPopup(`📍 Événement géofence<br>Chargement...`).openPopup();
+            evtMarker.bindPopup(`📍 Événement géofence<br>Chargement de l'adresse...`).openPopup();
 
             // Load and draw the geofence zone
             this.apiService.getGeofence(geofenceEvt.geofenceId).subscribe({
