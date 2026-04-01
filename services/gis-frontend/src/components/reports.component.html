@@ -640,18 +640,8 @@
                     </svg>
                   </button>
                 </div>
-                <div class="toolbar-center">
-                  <span class="section-title">Graphique</span>
-                </div>
-                <div class="toolbar-right">
-                  <button class="export-btn-sm" (click)="exportReport('pdf')">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                      <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                    Télécharger PDF
-                  </button>
-                </div>
+                <div class="toolbar-center"></div>
+                <div class="toolbar-right"></div>
               </div>
               <div class="charts-container">
                 @if (selectedTemplate?.type === 'driving-behavior') {
@@ -751,7 +741,6 @@
                         <th class="sortable" (click)="sortBy('distanceValue')">Distance <span class="sort-icon">{{ getSortIcon('distanceValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('tripCount')">Trajets <span class="sort-icon">{{ getSortIcon('tripCount') }}</span></th>
                         <th class="sortable" (click)="sortBy('drivingTimeSeconds')">Temps de conduite <span class="sort-icon">{{ getSortIcon('drivingTimeSeconds') }}</span></th>
-                        <th class="sortable" (click)="sortBy('avgSpeedValue')">Vitesse moy. <span class="sort-icon">{{ getSortIcon('avgSpeedValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('maxSpeedValue')">Vitesse max <span class="sort-icon">{{ getSortIcon('maxSpeedValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('odometerValue')">Odomètre <span class="sort-icon">{{ getSortIcon('odometerValue') }}</span></th>
                       } @else if (selectedTemplate?.type === 'mileage-period') {
@@ -767,7 +756,6 @@
                         <th class="sortable text-center" (click)="sortBy('tripCount')">Trajets <span class="sort-icon">{{ getSortIcon('tripCount') }}</span></th>
                         <th class="sortable text-center" (click)="sortBy('drivingTimeSeconds')">Temps de conduite <span class="sort-icon">{{ getSortIcon('drivingTimeSeconds') }}</span></th>
                         @if (selectedMileagePeriodType !== 'month') {
-                          <th class="sortable" (click)="sortBy('avgSpeedValue')">Vitesse moy. <span class="sort-icon">{{ getSortIcon('avgSpeedValue') }}</span></th>
                           <th class="sortable" (click)="sortBy('maxSpeedValue')">Vitesse max <span class="sort-icon">{{ getSortIcon('maxSpeedValue') }}</span></th>
                         }
                       } @else if (selectedTemplate?.type === 'trips') {
@@ -875,7 +863,6 @@
                           <td class="distance-cell" [class.high-mileage]="row.distanceValue > 100">{{ row.distance }}</td>
                           <td class="trips-cell">{{ row.tripCount }}</td>
                           <td class="duration-cell">{{ row.drivingTime }}</td>
-                          <td class="speed-cell">{{ row.avgSpeed }}</td>
                           <td class="speed-cell">{{ row.maxSpeed }}</td>
                           <td class="odometer-cell">{{ row.odometer }}</td>
                         } @else if (selectedTemplate?.type === 'mileage-period') {
@@ -891,7 +878,6 @@
                           <td class="trips-cell text-center">{{ row.tripCount }}</td>
                           <td class="duration-cell text-center">{{ row.drivingTime }}</td>
                           @if (selectedMileagePeriodType !== 'month') {
-                            <td class="speed-cell">{{ row.avgSpeed }}</td>
                             <td class="speed-cell">{{ row.maxSpeed }}</td>
                           }
                         } @else if (selectedTemplate?.type === 'trips') {
