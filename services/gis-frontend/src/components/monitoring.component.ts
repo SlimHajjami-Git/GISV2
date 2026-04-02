@@ -181,7 +181,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private routeSub: Subscription | null = null;
   private queryParamsSub: Subscription | null = null;
-  private geofenceHighlightLayers: L.Layer[] = [];
+  // Geofence history event selection (for clickable history rows in modal)
+  selectedHistoryEventId: number | null = null;
+  private historyEventMarker?: L.Marker;
 
   ngOnInit() {
     if (!this.embedded && !this.apiService.isAuthenticated()) {
@@ -267,8 +269,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         } : null;
 
         if (this.map && this.mapReady) {
-          // Map already initialized — zoom immediately
-          this.flyToNotificationPoint(center, gfEvent);
+          // Map already initialized — zoom and open modal
+          this.map.flyTo([center.lat, center.lng], center.zoom, { duration: 1.2 });
+          if (gfEvent) {
+            this.openGeofenceModal(gfEvent.geofenceId, gfEvent.vehicleId, center.lat, center.lng, gfEvent.timestamp);
+          }
         } else {
           // Map not ready yet — store for initializeMap() to pick up
           this.pendingMapCenter = center;
@@ -593,79 +598,6 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }, 50);
   }
 
-  /** Zoom the already-initialised map to a notification point and optionally draw the geofence zone */
-  private flyToNotificationPoint(
-    center: { lat: number; lng: number; zoom: number },
-    gfEvent: { geofenceId: number; vehicleId: number } | null
-  ) {
-    if (!this.map) return;
-
-    // Clear any previous notification highlight layers
-    this.geofenceHighlightLayers.forEach(l => { try { this.map!.removeLayer(l); } catch(e) {} });
-    this.geofenceHighlightLayers = [];
-
-    const { lat, lng, zoom } = center;
-    this.map.flyTo([lat, lng], zoom, { duration: 1.2 });
-
-    if (gfEvent) {
-      const evtMarker = L.marker([lat, lng], {
-        icon: L.divIcon({
-          html: '<div style="background:#f59e0b;width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);animation:pulse 1.5s infinite;"></div>',
-          className: '',
-          iconSize: [16, 16],
-          iconAnchor: [8, 8]
-        })
-      }).addTo(this.map);
-      evtMarker.bindPopup(`📍 Événement géofence<br>${lat.toFixed(5)}, ${lng.toFixed(5)}`).openPopup();
-      this.geofenceHighlightLayers.push(evtMarker);
-
-      this.apiService.getGeofence(gfEvent.geofenceId).subscribe({
-        next: (gf: any) => {
-          if (gf && this.map) {
-            this.drawGeofenceHighlightTracked(gf);
-            evtMarker.setPopupContent(this.buildGeofencePopup(gf, lat, lng));
-            evtMarker.openPopup();
-          }
-        },
-        error: () => {}
-      });
-    } else {
-      const marker = L.marker([lat, lng], {
-        icon: L.divIcon({
-          html: '<div style="background:#dc2626;width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>',
-          className: '',
-          iconSize: [14, 14],
-          iconAnchor: [7, 7]
-        })
-      }).addTo(this.map).bindPopup(`📍 Point d'infraction<br>${lat.toFixed(5)}, ${lng.toFixed(5)}`).openPopup();
-      this.geofenceHighlightLayers.push(marker);
-    }
-  }
-
-  /** Draw geofence zone and track the layer for cleanup */
-  private drawGeofenceHighlightTracked(gf: any) {
-    if (!this.map) return;
-    try {
-      let layer: L.Layer | null = null;
-      if (gf.type === 'circle' && gf.center) {
-        const c = gf.center;
-        layer = L.circle([c.lat || c.latitude, c.lng || c.longitude], {
-          radius: gf.radius || 200,
-          color: '#f59e0b', weight: 3, fillColor: '#fbbf24', fillOpacity: 0.15, dashArray: '8, 4'
-        }).addTo(this.map).bindTooltip(gf.name || 'Géofence', { permanent: true, direction: 'top', className: 'geofence-label' });
-      } else if (gf.coordinates && gf.coordinates.length > 0) {
-        const coords = gf.coordinates.map((c: any) =>
-          [c.lat || c.latitude || c[0], c.lng || c.longitude || c[1]] as L.LatLngExpression
-        );
-        layer = L.polygon(coords, {
-          color: '#f59e0b', weight: 3, fillColor: '#fbbf24', fillOpacity: 0.15, dashArray: '8, 4'
-        }).addTo(this.map).bindTooltip(gf.name || 'Géofence', { permanent: true, direction: 'center', className: 'geofence-label' });
-      }
-      if (layer) this.geofenceHighlightLayers.push(layer);
-    } catch (e) {
-      console.warn('Failed to draw geofence highlight:', e);
-    }
-  }
 
   loadData() {
     this.loading = true;
@@ -3980,83 +3912,6 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return '0h 0m';
   }
 
-  /** Draw a geofence zone (polygon or circle) on the map with highlight styling */
-  drawGeofenceHighlight(gf: any) {
-    if (!this.map) return;
-    try {
-      if (gf.type === 'circle' && gf.center) {
-        const center = gf.center;
-        L.circle([center.lat || center.latitude, center.lng || center.longitude], {
-          radius: gf.radius || 200,
-          color: '#f59e0b',
-          weight: 3,
-          fillColor: '#fbbf24',
-          fillOpacity: 0.15,
-          dashArray: '8, 4'
-        }).addTo(this.map).bindTooltip(gf.name || 'Géofence', { permanent: true, direction: 'top', className: 'geofence-label' });
-      } else if (gf.coordinates && gf.coordinates.length > 0) {
-        const coords = gf.coordinates.map((c: any) =>
-          [c.lat || c.latitude || c[0], c.lng || c.longitude || c[1]] as L.LatLngExpression
-        );
-        L.polygon(coords, {
-          color: '#f59e0b',
-          weight: 3,
-          fillColor: '#fbbf24',
-          fillOpacity: 0.15,
-          dashArray: '8, 4'
-        }).addTo(this.map).bindTooltip(gf.name || 'Géofence', { permanent: true, direction: 'center', className: 'geofence-label' });
-      }
-    } catch (e) {
-      console.warn('Failed to draw geofence highlight:', e);
-    }
-  }
-
-  /** Build a rich popup for a geofence event marker (sync fallback) */
-  buildGeofencePopup(gf: any, lat: number, lng: number): string {
-    return this.buildGeofencePopupHtml(gf, lat, lng);
-  }
-
-  /** Build popup HTML with optional address and timestamp */
-  private buildGeofencePopupHtml(gf: any, lat: number, lng: number, address?: string, timestamp?: string): string {
-    const qp = this.route.snapshot.queryParams;
-    const vehicleId = qp['vehicleId'];
-    const vehicle = vehicleId ? this.vehicles.find((v: any) => v.id === parseInt(vehicleId, 10)) : null;
-    const vehicleName = vehicle ? (vehicle.plate || vehicle.name) : '';
-
-    let dateTimeHtml = '';
-    if (timestamp) {
-      try {
-        const d = new Date(timestamp);
-        const dateStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        const timeStr = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        dateTimeHtml = `
-          <div style="font-size:12px;color:#475569;margin-bottom:4px;display:flex;align-items:center;gap:6px;">
-            <span>🕐</span> <strong>${dateStr}</strong> à <strong>${timeStr}</strong>
-          </div>`;
-      } catch (_) {}
-    }
-
-    const addressHtml = address
-      ? `<div style="font-size:12px;color:#475569;margin-bottom:4px;display:flex;align-items:flex-start;gap:6px;">
-           <span>📍</span> <span>${address}</span>
-         </div>`
-      : '';
-
-    return `
-      <div style="font-family:Inter,system-ui,sans-serif;min-width:260px;max-width:340px;">
-        <div style="font-weight:600;font-size:14px;margin-bottom:8px;color:#1e293b;padding-bottom:6px;border-bottom:2px solid #f59e0b;">
-          🔶 ${gf.name || 'Géofence'}
-        </div>
-        ${vehicleName ? `<div style="font-size:12px;color:#475569;margin-bottom:4px;display:flex;align-items:center;gap:6px;"><span>🚗</span> <strong>${vehicleName}</strong></div>` : ''}
-        ${dateTimeHtml}
-        ${addressHtml}
-        <div style="font-size:11px;color:#94a3b8;margin-top:6px;padding:6px 8px;background:#f8fafc;border-radius:4px;">
-          📌 ${lat.toFixed(5)}, ${lng.toFixed(5)}
-        </div>
-      </div>
-    `;
-  }
-
   openGeofenceModal(geofenceId: number, vehicleId: number, lat: number, lng: number, timestamp?: string) {
     const vehicle = this.vehicles.find((v: any) => v.id === vehicleId);
     const vehicleName = vehicle ? (vehicle.plate || vehicle.name) : `Véhicule #${vehicleId}`;
@@ -4141,7 +3996,46 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // Draw geofence zone
     this.drawGeofenceOnMap(this.geofenceModalMap, gf);
 
-    setTimeout(() => this.geofenceModalMap?.invalidateSize(), 200);
+    // Multiple invalidateSize calls to ensure map renders correctly as modal transitions
+    setTimeout(() => this.geofenceModalMap?.invalidateSize(), 100);
+    setTimeout(() => this.geofenceModalMap?.invalidateSize(), 300);
+    setTimeout(() => this.geofenceModalMap?.invalidateSize(), 600);
+  }
+
+  /** Click a history event row to show its location on the modal map */
+  onHistoryEventClick(evt: any) {
+    if (!this.geofenceModalMap || !evt.latitude || !evt.longitude) return;
+    this.selectedHistoryEventId = evt.id;
+
+    // Remove previous history marker
+    if (this.historyEventMarker) {
+      this.geofenceModalMap.removeLayer(this.historyEventMarker);
+    }
+
+    // Add marker at event location
+    this.historyEventMarker = L.marker([evt.latitude, evt.longitude], {
+      icon: L.divIcon({
+        html: `<div style="background:${evt.type === 'entry' ? '#22c55e' : '#ef4444'};width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:bold;">${evt.type === 'entry' ? 'E' : 'S'}</div>`,
+        className: '',
+        iconSize: [18, 18],
+        iconAnchor: [9, 9]
+      })
+    }).addTo(this.geofenceModalMap);
+
+    this.geofenceModalMap.flyTo([evt.latitude, evt.longitude], 15, { duration: 0.5 });
+
+    // Update info panel with clicked event details
+    if (this.geofenceModalData) {
+      const d = new Date(evt.timestamp);
+      const formattedTime = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      this.geofenceModalData = {
+        ...this.geofenceModalData,
+        vehicleName: evt.vehicleName || this.geofenceModalData.vehicleName,
+        eventType: evt.type || this.geofenceModalData.eventType,
+        timestamp: formattedTime
+      };
+    }
   }
 
   private drawGeofenceOnMap(map: L.Map, gf: any) {
@@ -4164,6 +4058,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.showGeofenceModal = false;
     this.geofenceModalData = null;
     this.geofenceHistory = [];
+    this.selectedHistoryEventId = null;
+    this.historyEventMarker = undefined;
     if (this.geofenceModalMap) {
       this.geofenceModalMap.remove();
       this.geofenceModalMap = undefined;

@@ -8,7 +8,9 @@ import { ThemeService } from '../../services/theme.service';
 import { PermissionService, ModuleKey } from '../../services/permission.service';
 import { NotificationService, Notification } from '../../services/notification.service';
 import { SignalRService } from '../../services/signalr.service';
+import { GeocodingService } from '../../services/geocoding.service';
 import { ChatComponent } from './chat.component';
+import * as L from 'leaflet';
 
 @Component({
   selector: 'app-layout',
@@ -329,6 +331,66 @@ import { ChatComponent } from './chat.component';
 
       <!-- Chat Widget -->
       <app-chat></app-chat>
+
+      <!-- Global Geofence Event Modal (opens from notification click on any page) -->
+      <div class="gf-modal-overlay" *ngIf="showGeofenceModal" (click)="closeGeofenceModal()">
+        <div class="gf-modal" (click)="$event.stopPropagation()">
+          <div class="gf-modal-header">
+            <h3>{{ gfModalData?.geofenceName || 'Géofence' }}</h3>
+            <button class="gf-modal-close" (click)="closeGeofenceModal()">&times;</button>
+          </div>
+          <div class="gf-modal-body">
+            <div class="gf-modal-map" id="gfModalMap"></div>
+            <div class="gf-modal-info">
+              <div class="gf-info-row">
+                <span class="gf-icon">&#128663;</span>
+                <span class="gf-label">Véhicule</span>
+                <span class="gf-value">{{ gfModalData?.vehicleName }}</span>
+              </div>
+              <div class="gf-info-row">
+                <span class="gf-icon">&#128205;</span>
+                <span class="gf-label">Adresse</span>
+                <span class="gf-value">{{ gfModalData?.address || 'Chargement...' }}</span>
+              </div>
+              <div class="gf-info-row">
+                <span class="gf-icon">&#128336;</span>
+                <span class="gf-label">Date / Heure</span>
+                <span class="gf-value">{{ gfModalData?.timestamp }}</span>
+              </div>
+              <div class="gf-info-row">
+                <span class="gf-icon">{{ gfModalData?.eventType === 'entry' ? '&#9989;' : '&#10060;' }}</span>
+                <span class="gf-label">Événement</span>
+                <span class="gf-value">{{ gfModalData?.eventType === 'entry' ? 'Entrée dans la zone' : 'Sortie de la zone' }}</span>
+              </div>
+            </div>
+            <div class="gf-history" *ngIf="gfHistory.length > 0">
+              <h4>Historique des passages</h4>
+              <table class="gf-history-table">
+                <thead>
+                  <tr>
+                    <th>Date / Heure</th>
+                    <th>Véhicule</th>
+                    <th>Événement</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let evt of gfHistory" (click)="onGfHistoryClick(evt)"
+                      [class.selected]="selectedGfHistoryId === evt.id"
+                      style="cursor: pointer;" title="Voir sur la carte">
+                    <td>{{ formatDate(evt.timestamp) }}</td>
+                    <td>{{ evt.vehicleName }}</td>
+                    <td>
+                      <span class="gf-event-badge" [class.entry]="evt.type === 'entry'" [class.exit]="evt.type === 'exit'">
+                        {{ evt.type === 'entry' ? 'Entrée' : 'Sortie' }}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   `,
   styles: [`
@@ -1025,6 +1087,64 @@ import { ChatComponent } from './chat.component';
         margin-right: 0;
       }
     }
+
+    /* Geofence Event Modal (global, in app-layout) */
+    .gf-modal-overlay {
+      position: fixed; inset: 0; z-index: 10000;
+      background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+      animation: gfFadeIn 0.2s ease-out;
+    }
+    @keyframes gfFadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .gf-modal {
+      background: #fff; border-radius: 12px; width: 700px; max-width: 95vw;
+      max-height: 85vh; overflow: hidden; box-shadow: 0 25px 60px rgba(0,0,0,0.3);
+      display: flex; flex-direction: column;
+    }
+    .gf-modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; background: #1e3a8a; color: #fff;
+    }
+    .gf-modal-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
+    .gf-modal-close {
+      background: none; border: none; color: #fff; font-size: 24px;
+      cursor: pointer; line-height: 1; padding: 0 4px; opacity: 0.8;
+    }
+    .gf-modal-close:hover { opacity: 1; }
+    .gf-modal-body {
+      padding: 16px 20px; overflow-y: auto; flex: 1;
+    }
+    .gf-modal-map {
+      height: 280px; border-radius: 8px; overflow: hidden;
+      margin-bottom: 16px; border: 1px solid #e2e8f0;
+    }
+    .gf-modal-info {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+      margin-bottom: 16px;
+    }
+    .gf-info-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px; background: #f8fafc; border-radius: 8px;
+    }
+    .gf-icon { font-size: 16px; flex-shrink: 0; }
+    .gf-label { font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; }
+    .gf-value { font-size: 13px; color: #1e293b; font-weight: 500; margin-left: auto; text-align: right; }
+    .gf-history h4 { font-size: 14px; color: #1e293b; margin: 0 0 10px; }
+    .gf-history-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .gf-history-table th {
+      text-align: left; padding: 8px 12px; background: #f8fafc;
+      color: #64748b; font-weight: 600; border-bottom: 2px solid #e2e8f0;
+    }
+    .gf-history-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+    .gf-history-table tbody tr { cursor: pointer; transition: background 0.15s; }
+    .gf-history-table tbody tr:hover { background: #f1f5f9; }
+    .gf-history-table tbody tr.selected { background: #dbeafe; }
+    .gf-event-badge {
+      display: inline-block; padding: 2px 10px; border-radius: 12px;
+      font-size: 11px; font-weight: 600;
+    }
+    .gf-event-badge.entry { background: #dcfce7; color: #166534; }
+    .gf-event-badge.exit { background: #fee2e2; color: #991b1b; }
   `]
 })
 export class AppLayoutComponent implements OnInit, OnDestroy {
@@ -1035,6 +1155,17 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   unreadCount = 0;
   private subs: Subscription[] = [];
 
+  // Geofence event modal (global, available on any page)
+  showGeofenceModal = false;
+  gfModalData: {
+    geofenceName: string; vehicleName: string; address: string;
+    timestamp: string; eventType: string; lat: number; lng: number;
+  } | null = null;
+  gfHistory: any[] = [];
+  selectedGfHistoryId: number | null = null;
+  private gfModalMap?: L.Map;
+  private gfHistoryMarker?: L.Marker;
+
   constructor(
     private router: Router,
     private apiService: ApiService,
@@ -1042,7 +1173,8 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     private themeService: ThemeService,
     private permissionService: PermissionService,
     private notificationService: NotificationService,
-    private signalR: SignalRService
+    private signalR: SignalRService,
+    private geocodingService: GeocodingService
   ) {}
 
   get isDarkMode(): boolean {
@@ -1169,21 +1301,18 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
 
     // Navigate based on type with specific handling
     if (notif.type === 'geofence_event' || notif.type === 'geofence') {
+      // Open geofence modal in-place (no page navigation)
       const meta = notif.metadata;
       if (meta?.latitude && meta?.longitude) {
-        this.router.navigate(['/monitoring'], {
-          queryParams: {
-            lat: meta.latitude,
-            lng: meta.longitude,
-            zoom: 17,
-            geofenceId: meta.geofenceId || notif.referenceId,
-            vehicleId: meta.vehicleId
-          }
-        });
+        const geofenceId = meta.geofenceId || notif.referenceId;
+        const vehicleId = meta.vehicleId;
+        const lat = parseFloat(meta.latitude);
+        const lng = parseFloat(meta.longitude);
+        const timestamp = meta.timestamp;
+        const eventType = meta.eventType || 'entry';
+        this.openGeofenceEventModal(geofenceId, vehicleId, lat, lng, timestamp, eventType);
       } else if (notif.actionUrl) {
         this.router.navigateByUrl(notif.actionUrl);
-      } else {
-        this.router.navigate(['/monitoring']);
       }
     } else if (notif.actionUrl) {
       this.router.navigateByUrl(notif.actionUrl);
@@ -1264,5 +1393,153 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   logout() {
     this.apiService.logout();
     this.router.navigate(['/login']);
+  }
+
+  // ─── Geofence Event Modal (global, opens from notification on any page) ───
+
+  openGeofenceEventModal(geofenceId: number, vehicleId: number, lat: number, lng: number, timestamp?: string, eventType?: string) {
+    // Format timestamp
+    let formattedTime = '';
+    if (timestamp) {
+      const d = new Date(timestamp);
+      if (!isNaN(d.getTime())) {
+        formattedTime = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+          + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      }
+    }
+
+    this.gfModalData = {
+      geofenceName: 'Chargement...',
+      vehicleName: `Véhicule #${vehicleId}`,
+      address: 'Chargement...',
+      timestamp: formattedTime || new Date().toLocaleString('fr-FR'),
+      eventType: eventType || 'entry',
+      lat, lng
+    };
+    this.gfHistory = [];
+    this.selectedGfHistoryId = null;
+    this.showGeofenceModal = true;
+
+    // Load vehicle name
+    this.apiService.getVehicles().subscribe({
+      next: (vehicles: any[]) => {
+        const vehicle = vehicles.find((v: any) => v.id === vehicleId);
+        if (vehicle && this.gfModalData) {
+          this.gfModalData = { ...this.gfModalData, vehicleName: vehicle.plate || vehicle.name || `Véhicule #${vehicleId}` };
+        }
+      }
+    });
+
+    // Load geofence details
+    this.apiService.getGeofence(geofenceId).subscribe({
+      next: (gf: any) => {
+        if (gf && this.gfModalData) {
+          this.gfModalData = { ...this.gfModalData, geofenceName: gf.name || 'Géofence' };
+          setTimeout(() => this.initGfModalMap(gf, lat, lng), 100);
+        }
+      }
+    });
+
+    // Reverse geocode
+    this.geocodingService.reverseGeocode(lat, lng).subscribe({
+      next: (address: string) => {
+        if (this.gfModalData) {
+          this.gfModalData = { ...this.gfModalData, address };
+        }
+      }
+    });
+
+    // Load history
+    this.apiService.getGeofenceEventsByGeofence(geofenceId, 50).subscribe({
+      next: (events: any[]) => { this.gfHistory = events || []; }
+    });
+  }
+
+  closeGeofenceModal() {
+    this.showGeofenceModal = false;
+    this.gfModalData = null;
+    this.gfHistory = [];
+    this.selectedGfHistoryId = null;
+    this.gfHistoryMarker = undefined;
+    if (this.gfModalMap) {
+      this.gfModalMap.remove();
+      this.gfModalMap = undefined;
+    }
+  }
+
+  private initGfModalMap(gf: any, lat: number, lng: number) {
+    const container = document.getElementById('gfModalMap');
+    if (!container) return;
+    if (this.gfModalMap) { this.gfModalMap.remove(); }
+
+    this.gfModalMap = L.map(container).setView([lat, lng], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OSM', maxZoom: 19
+    }).addTo(this.gfModalMap);
+
+    // Vehicle marker
+    L.marker([lat, lng], {
+      icon: L.divIcon({
+        html: '<div style="background:#f59e0b;width:20px;height:20px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:12px;">&#128663;</div>',
+        className: '', iconSize: [20, 20], iconAnchor: [10, 10]
+      })
+    }).addTo(this.gfModalMap);
+
+    // Draw geofence zone
+    if (gf.type === 'circle' && gf.center) {
+      const cLat = gf.center.lat || gf.center.latitude;
+      const cLng = gf.center.lng || gf.center.longitude;
+      L.circle([cLat, cLng], {
+        radius: gf.radius || 200, color: '#3B82F6', weight: 2, fillColor: '#3B82F6', fillOpacity: 0.15
+      }).addTo(this.gfModalMap);
+    } else if (gf.coordinates?.length > 0) {
+      const coords = gf.coordinates.map((c: any) => [c.lat || c.latitude || c[0], c.lng || c.longitude || c[1]] as [number, number]);
+      L.polygon(coords, {
+        color: '#3B82F6', weight: 2, fillColor: '#3B82F6', fillOpacity: 0.15
+      }).addTo(this.gfModalMap);
+    }
+
+    // Multiple invalidateSize to ensure map renders as modal transitions
+    setTimeout(() => this.gfModalMap?.invalidateSize(), 100);
+    setTimeout(() => this.gfModalMap?.invalidateSize(), 300);
+    setTimeout(() => this.gfModalMap?.invalidateSize(), 600);
+  }
+
+  onGfHistoryClick(evt: any) {
+    if (!this.gfModalMap || !evt.latitude || !evt.longitude) return;
+    this.selectedGfHistoryId = evt.id;
+
+    if (this.gfHistoryMarker) {
+      this.gfModalMap.removeLayer(this.gfHistoryMarker);
+    }
+
+    this.gfHistoryMarker = L.marker([evt.latitude, evt.longitude], {
+      icon: L.divIcon({
+        html: `<div style="background:${evt.type === 'entry' ? '#22c55e' : '#ef4444'};width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:bold;">${evt.type === 'entry' ? 'E' : 'S'}</div>`,
+        className: '', iconSize: [18, 18], iconAnchor: [9, 9]
+      })
+    }).addTo(this.gfModalMap);
+
+    this.gfModalMap.flyTo([evt.latitude, evt.longitude], 15, { duration: 0.5 });
+
+    if (this.gfModalData) {
+      const d = new Date(evt.timestamp);
+      const formattedTime = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      this.gfModalData = {
+        ...this.gfModalData,
+        vehicleName: evt.vehicleName || this.gfModalData.vehicleName,
+        eventType: evt.type || this.gfModalData.eventType,
+        timestamp: formattedTime
+      };
+    }
+  }
+
+  formatDate(ts: string): string {
+    try {
+      const d = new Date(ts);
+      return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    } catch { return ts; }
   }
 }
