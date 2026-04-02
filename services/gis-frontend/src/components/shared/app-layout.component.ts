@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, HostListener } from '@angular/core';
+import { Component, OnInit, OnDestroy, HostListener, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { Subscription } from 'rxjs';
@@ -1174,7 +1174,8 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     private permissionService: PermissionService,
     private notificationService: NotificationService,
     private signalR: SignalRService,
-    private geocodingService: GeocodingService
+    private geocodingService: GeocodingService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   get isDarkMode(): boolean {
@@ -1419,6 +1420,10 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     this.gfHistory = [];
     this.selectedGfHistoryId = null;
     this.showGeofenceModal = true;
+    this.cdr.detectChanges(); // Force Angular to render the modal DOM immediately
+
+    // Init map right away (modal DOM is now guaranteed to exist)
+    setTimeout(() => this.initGfModalMap(null, lat, lng), 50);
 
     // Load vehicle name
     this.apiService.getVehicles().subscribe({
@@ -1430,13 +1435,15 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
       }
     });
 
-    // Load geofence details
+    // Load geofence details — draw geofence zone on map when it arrives
     this.apiService.getGeofence(geofenceId).subscribe({
       next: (gf: any) => {
         if (gf && this.gfModalData) {
           this.gfModalData = { ...this.gfModalData, geofenceName: gf.name || 'Géofence' };
-          // Delay map init to ensure modal DOM is fully rendered and has dimensions
-          setTimeout(() => this.initGfModalMap(gf, lat, lng), 350);
+          // Draw geofence zone on the already-initialized map
+          if (this.gfModalMap) {
+            this.drawGeofenceZoneOnMap(gf);
+          }
         }
       }
     });
@@ -1462,20 +1469,20 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     this.gfHistory = [];
     this.selectedGfHistoryId = null;
     this.gfHistoryMarker = undefined;
+    if (this.gfMapResizeObserver) { this.gfMapResizeObserver.disconnect(); this.gfMapResizeObserver = undefined; }
     if (this.gfModalMap) {
       this.gfModalMap.remove();
       this.gfModalMap = undefined;
     }
   }
 
-  private initGfModalMap(gf: any, lat: number, lng: number) {
+  private gfMapResizeObserver?: ResizeObserver;
+
+  private initGfModalMap(gf: any | null, lat: number, lng: number) {
     const container = document.getElementById('gfModalMap');
     if (!container) return;
     if (this.gfModalMap) { this.gfModalMap.remove(); }
-
-    // Force container to have explicit dimensions before Leaflet measures it
-    container.style.width = '100%';
-    container.style.height = '280px';
+    if (this.gfMapResizeObserver) { this.gfMapResizeObserver.disconnect(); }
 
     this.gfModalMap = L.map(container, { zoomControl: true }).setView([lat, lng], 14);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -1490,7 +1497,22 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
       })
     }).addTo(this.gfModalMap);
 
-    // Draw geofence zone
+    // Draw geofence zone if data is already available
+    if (gf) { this.drawGeofenceZoneOnMap(gf); }
+
+    // Use ResizeObserver for bulletproof invalidateSize
+    const map = this.gfModalMap;
+    this.gfMapResizeObserver = new ResizeObserver(() => {
+      map?.invalidateSize();
+    });
+    this.gfMapResizeObserver.observe(container);
+    // Also call it on next frames as fallback
+    requestAnimationFrame(() => map?.invalidateSize());
+    setTimeout(() => map?.invalidateSize(), 300);
+  }
+
+  private drawGeofenceZoneOnMap(gf: any) {
+    if (!this.gfModalMap) return;
     if (gf.type === 'circle' && gf.center) {
       const cLat = gf.center.lat || gf.center.latitude;
       const cLng = gf.center.lng || gf.center.longitude;
@@ -1503,15 +1525,6 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
         color: '#3B82F6', weight: 2, fillColor: '#3B82F6', fillOpacity: 0.15
       }).addTo(this.gfModalMap);
     }
-
-    // Aggressive invalidateSize — Leaflet needs to know the container's final size
-    const map = this.gfModalMap;
-    requestAnimationFrame(() => {
-      map?.invalidateSize();
-      setTimeout(() => map?.invalidateSize(), 200);
-      setTimeout(() => map?.invalidateSize(), 500);
-      setTimeout(() => map?.invalidateSize(), 1000);
-    });
   }
 
   onGfHistoryClick(evt: any) {

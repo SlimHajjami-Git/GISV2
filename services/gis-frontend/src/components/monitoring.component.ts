@@ -158,6 +158,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   } | null = null;
   geofenceHistory: any[] = [];
   private geofenceModalMap?: L.Map;
+  private gfMapResizeObserver?: ResizeObserver;
 
   // Address cache for reverse geocoding
   private addressCache = new Map<string, string>();
@@ -3940,14 +3941,19 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     };
     this.geofenceHistory = [];
     this.showGeofenceModal = true;
+    this.cdr.detectChanges(); // Force DOM render immediately
 
-    // Load geofence details
+    // Init map right away (modal DOM is now guaranteed to exist)
+    setTimeout(() => this.initGeofenceModalMap(null, lat, lng), 50);
+
+    // Load geofence details — draw zone on map when data arrives
     this.apiService.getGeofence(geofenceId).subscribe({
       next: (gf: any) => {
         if (gf) {
           this.geofenceModalData = { ...this.geofenceModalData!, geofenceName: gf.name || 'Géofence' };
-          // Delay map init to ensure modal DOM is fully rendered
-          setTimeout(() => this.initGeofenceModalMap(gf, lat, lng), 350);
+          if (this.geofenceModalMap) {
+            this.drawGeofenceOnMap(this.geofenceModalMap, gf);
+          }
         }
       }
     });
@@ -3969,17 +3975,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
-  private initGeofenceModalMap(gf: any, lat: number, lng: number) {
+  private initGeofenceModalMap(gf: any | null, lat: number, lng: number) {
     const container = document.getElementById('geofenceModalMap');
     if (!container) return;
 
-    if (this.geofenceModalMap) {
-      this.geofenceModalMap.remove();
-    }
-
-    // Force container to have explicit dimensions before Leaflet measures it
-    container.style.width = '100%';
-    container.style.height = '280px';
+    if (this.geofenceModalMap) { this.geofenceModalMap.remove(); }
+    if (this.gfMapResizeObserver) { this.gfMapResizeObserver.disconnect(); }
 
     this.geofenceModalMap = L.map(container, { zoomControl: true }).setView([lat, lng], 14);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -3997,17 +3998,17 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       })
     }).addTo(this.geofenceModalMap);
 
-    // Draw geofence zone
-    this.drawGeofenceOnMap(this.geofenceModalMap, gf);
+    // Draw geofence zone if data is already available
+    if (gf) { this.drawGeofenceOnMap(this.geofenceModalMap, gf); }
 
-    // Aggressive invalidateSize — Leaflet needs to know the container's final size
+    // Use ResizeObserver for bulletproof invalidateSize
     const map = this.geofenceModalMap;
-    requestAnimationFrame(() => {
+    this.gfMapResizeObserver = new ResizeObserver(() => {
       map?.invalidateSize();
-      setTimeout(() => map?.invalidateSize(), 200);
-      setTimeout(() => map?.invalidateSize(), 500);
-      setTimeout(() => map?.invalidateSize(), 1000);
     });
+    this.gfMapResizeObserver.observe(container);
+    requestAnimationFrame(() => map?.invalidateSize());
+    setTimeout(() => map?.invalidateSize(), 300);
   }
 
   /** Click a history event row to show its location on the modal map */
@@ -4068,6 +4069,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.geofenceHistory = [];
     this.selectedHistoryEventId = null;
     this.historyEventMarker = undefined;
+    if (this.gfMapResizeObserver) { this.gfMapResizeObserver.disconnect(); this.gfMapResizeObserver = undefined; }
     if (this.geofenceModalMap) {
       this.geofenceModalMap.remove();
       this.geofenceModalMap = undefined;

@@ -1400,6 +1400,7 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
   historyLoading = false;
   selectedHistoryEventId: number | null = null;
   private historyModalMap?: L.Map;
+  private histMapResizeObserver?: ResizeObserver;
   private historyEventMarker?: L.Marker;
 
   colors = ['#22c55e', '#3b82f6', '#f97316', '#8b5cf6', '#06b6d4', '#ec4899', '#eab308', '#ef4444'];
@@ -2056,9 +2057,10 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     this.historyLoading = true;
     this.selectedHistoryEventId = null;
     this.showHistoryModal = true;
+    this.cdr.detectChanges(); // Force DOM render immediately
 
-    // Initialize map after DOM renders
-    setTimeout(() => this.initHistoryMap(geofence), 350);
+    // Init map right away (modal DOM is now guaranteed to exist)
+    setTimeout(() => this.initHistoryMap(geofence), 50);
 
     // Load events
     this.apiService.getGeofenceEventsByGeofence(parseInt(geofence.id), 100).subscribe({
@@ -2080,6 +2082,7 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     this.historyEvents = [];
     this.selectedHistoryEventId = null;
     this.historyEventMarker = undefined;
+    if (this.histMapResizeObserver) { this.histMapResizeObserver.disconnect(); this.histMapResizeObserver = undefined; }
     if (this.historyModalMap) {
       this.historyModalMap.remove();
       this.historyModalMap = undefined;
@@ -2090,10 +2093,7 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     const container = document.getElementById('gfHistoryMap');
     if (!container) return;
     if (this.historyModalMap) { this.historyModalMap.remove(); }
-
-    // Force container to have explicit dimensions before Leaflet measures it
-    container.style.width = '100%';
-    container.style.height = '280px';
+    if (this.histMapResizeObserver) { this.histMapResizeObserver.disconnect(); }
 
     // Determine center from geofence
     let centerLat = 34.0;
@@ -2127,13 +2127,14 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       }).addTo(this.historyModalMap);
     }
 
+    // Use ResizeObserver for bulletproof invalidateSize
     const map = this.historyModalMap;
-    requestAnimationFrame(() => {
+    this.histMapResizeObserver = new ResizeObserver(() => {
       map?.invalidateSize();
-      setTimeout(() => map?.invalidateSize(), 200);
-      setTimeout(() => map?.invalidateSize(), 500);
-      setTimeout(() => map?.invalidateSize(), 1000);
     });
+    this.histMapResizeObserver.observe(container);
+    requestAnimationFrame(() => map?.invalidateSize());
+    setTimeout(() => map?.invalidateSize(), 300);
   }
 
   onHistoryEventClick(evt: any) {
