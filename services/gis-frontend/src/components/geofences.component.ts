@@ -2058,7 +2058,7 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     this.showHistoryModal = true;
 
     // Initialize map after DOM renders
-    setTimeout(() => this.initHistoryMap(geofence), 150);
+    setTimeout(() => this.initHistoryMap(geofence), 350);
 
     // Load events
     this.apiService.getGeofenceEventsByGeofence(parseInt(geofence.id), 100).subscribe({
@@ -2091,6 +2091,10 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     if (!container) return;
     if (this.historyModalMap) { this.historyModalMap.remove(); }
 
+    // Force container to have explicit dimensions before Leaflet measures it
+    container.style.width = '100%';
+    container.style.height = '280px';
+
     // Determine center from geofence
     let centerLat = 34.0;
     let centerLng = 9.0;
@@ -2106,7 +2110,7 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
     }
 
-    this.historyModalMap = L.map(container).setView([centerLat, centerLng], zoom);
+    this.historyModalMap = L.map(container, { zoomControl: true }).setView([centerLat, centerLng], zoom);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OSM', maxZoom: 19
     }).addTo(this.historyModalMap);
@@ -2123,9 +2127,13 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       }).addTo(this.historyModalMap);
     }
 
-    setTimeout(() => this.historyModalMap?.invalidateSize(), 100);
-    setTimeout(() => this.historyModalMap?.invalidateSize(), 300);
-    setTimeout(() => this.historyModalMap?.invalidateSize(), 600);
+    const map = this.historyModalMap;
+    requestAnimationFrame(() => {
+      map?.invalidateSize();
+      setTimeout(() => map?.invalidateSize(), 200);
+      setTimeout(() => map?.invalidateSize(), 500);
+      setTimeout(() => map?.invalidateSize(), 1000);
+    });
   }
 
   onHistoryEventClick(evt: any) {

@@ -3946,8 +3946,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       next: (gf: any) => {
         if (gf) {
           this.geofenceModalData = { ...this.geofenceModalData!, geofenceName: gf.name || 'Géofence' };
-          // Initialize modal map after DOM renders
-          setTimeout(() => this.initGeofenceModalMap(gf, lat, lng), 100);
+          // Delay map init to ensure modal DOM is fully rendered
+          setTimeout(() => this.initGeofenceModalMap(gf, lat, lng), 350);
         }
       }
     });
@@ -3977,7 +3977,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.geofenceModalMap.remove();
     }
 
-    this.geofenceModalMap = L.map(container).setView([lat, lng], 14);
+    // Force container to have explicit dimensions before Leaflet measures it
+    container.style.width = '100%';
+    container.style.height = '280px';
+
+    this.geofenceModalMap = L.map(container, { zoomControl: true }).setView([lat, lng], 14);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OSM',
       maxZoom: 19
@@ -3996,10 +4000,14 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // Draw geofence zone
     this.drawGeofenceOnMap(this.geofenceModalMap, gf);
 
-    // Multiple invalidateSize calls to ensure map renders correctly as modal transitions
-    setTimeout(() => this.geofenceModalMap?.invalidateSize(), 100);
-    setTimeout(() => this.geofenceModalMap?.invalidateSize(), 300);
-    setTimeout(() => this.geofenceModalMap?.invalidateSize(), 600);
+    // Aggressive invalidateSize — Leaflet needs to know the container's final size
+    const map = this.geofenceModalMap;
+    requestAnimationFrame(() => {
+      map?.invalidateSize();
+      setTimeout(() => map?.invalidateSize(), 200);
+      setTimeout(() => map?.invalidateSize(), 500);
+      setTimeout(() => map?.invalidateSize(), 1000);
+    });
   }
 
   /** Click a history event row to show its location on the modal map */
