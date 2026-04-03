@@ -33,7 +33,9 @@ export class PdfExportService {
           '\u0152': 'OE', '\u0153': 'oe',
         };
         return map[ch] || '';
-      });
+      })
+      .replace(/^\s+/, '')   // trim leading spaces left by stripped emojis
+      .replace(/\s{2,}/g, ' '); // collapse multiple spaces into one
   }
 
   exportReport(config: PdfReportConfig): void {
@@ -135,7 +137,7 @@ export class PdfExportService {
       },
       columnStyles: this.getColumnStyles(config.columns),
       margin: { left: 10, right: 10 },
-      tableWidth: 'auto',
+      tableWidth: pageWidth - 20,
       didDrawPage: (data: any) => {
         // Re-draw header on subsequent pages
         const pageNum = (doc as any).internal.getCurrentPageInfo().pageNumber;
@@ -166,11 +168,40 @@ export class PdfExportService {
 
   private getColumnStyles(columns: { header: string; dataKey: string }[]): Record<number, any> {
     const styles: Record<number, any> = {};
-    columns.forEach((col, i) => {
-      if (['address', '_address', 'startAddress', 'location', 'description'].includes(col.dataKey)) {
-        styles[i] = { cellWidth: 50 };
-      }
+    const tableWidth = 190; // A4 (210mm) - 10mm margins each side
+
+    // Assign proportional weight to each column based on content type
+    const widthWeights: Record<string, number> = {
+      // Wide columns — addresses, descriptions, multi-value text
+      'address': 3, '_address': 3.5, 'startAddress': 3, 'location': 2.5,
+      'description': 3, 'incidentType': 2.5,
+      // Medium columns — names, dates, formatted values
+      'vehicleName': 2, 'vehicle': 2, 'supplierName': 2,
+      'startTime': 1.8, 'endTime': 1.8, 'time': 1.8, 'date': 1.5,
+      'period': 1.8, 'dayOfWeek': 1.2,
+      'duration': 1.2, 'drivingTime': 1.5,
+      'reference': 1.5, 'typeLabel': 1.5, '_typeLabel': 1.5,
+      'severityLabel': 1.3, 'status': 1.2, 'eventType': 1.3,
+      // Narrow columns — numbers, short values
+      'distance': 1.2, 'speed': 1, 'maxSpeed': 1, 'limit': 1,
+      'fuelPercent': 1, 'fuelChange': 1, 'odometer': 1.2, 'mileage': 1.2,
+      'tripCount': 0.8, 'eventNumber': 0.6, 'score': 0.8,
+      'avgDaily': 1.2, 'activeDays': 1,
+      'laborCostFormatted': 1.2, 'partsCostFormatted': 1.2,
+      'totalCostFormatted': 1.2, 'costFormatted': 1.2,
+      'fuelEstimated': 1.2, 'costEstimated': 1.2, 'avgConsumption': 1.2,
+      'consumption': 1, 'plate': 1.2, 'fuel': 1, 'cost': 1,
+      '_type': 1, 'type': 1, 'value': 1, 'trips': 0.8, 'stops': 0.8,
+    };
+
+    const defaultWeight = 1.2;
+    const weights = columns.map(col => widthWeights[col.dataKey] || defaultWeight);
+    const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+
+    columns.forEach((_col, i) => {
+      styles[i] = { cellWidth: (weights[i] / totalWeight) * tableWidth };
     });
+
     return styles;
   }
 
