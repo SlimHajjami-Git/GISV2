@@ -13,6 +13,20 @@ use crate::{
     telemetry::model::{HhFrame, HhInfoFrame, ProtocolMetadata},
 };
 
+/// Number of consecutive rejected odometer values before we trust the new stream.
+/// If the GPS sends N coherent values in a row that all differ from our cached reference,
+/// the cache is likely poisoned (bad historical data) — reset and trust the device.
+const ODOMETER_RESET_THRESHOLD: u32 = 5;
+
+/// Tracks consecutive odometer rejections for poisoned-cache detection
+#[derive(Debug, Clone, Default)]
+struct OdometerRejectTracker {
+    /// Number of consecutive rejections
+    count: u32,
+    /// Last rejected value (to check if the new stream is coherent with itself)
+    last_rejected_value: Option<i64>,
+}
+
 pub struct Database {
     pool: PgPool,
     gap_filler: GapFiller,
@@ -25,6 +39,9 @@ pub struct Database {
     /// In-memory cache: device_id -> last known position
     /// Avoids ORDER BY recorded_at DESC query on every frame
     last_position_cache: Mutex<HashMap<i32, LastKnownPosition>>,
+    /// Tracks consecutive odometer spike rejections per device.
+    /// Used to detect poisoned cache and auto-recover.
+    odometer_reject_tracker: Mutex<HashMap<i32, OdometerRejectTracker>>,
 }
 
 pub struct LastKnownPosition {
@@ -37,13 +54,18 @@ pub struct LastKnownPosition {
 
 /// Maximum allowed odometer jump between two consecutive frames (km).
 /// GPS sends every 1 min (moving) or 30 min (stopped).
-/// At 250 km/h for 30 min = 125 km max. Use 1000 km as generous threshold.
-const MAX_ODOMETER_JUMP_KM: i64 = 1000;
+/// At 250 km/h for 30 min = 125 km max. Use 200 km as reasonable threshold.
+const MAX_ODOMETER_JUMP_KM: i64 = 200;
 
 /// Absolute maximum realistic odometer for fleet vehicles (km).
 /// Any value above this is GPS noise / firmware artifact — reject unconditionally.
 /// No fleet vehicle can realistically reach 2,000,000 km.
 const MAX_ABSOLUTE_ODOMETER_KM: i64 = 2_000_000;
+
+/// Maximum allowed odometer value for the auto-update to vehicles.mileage (km).
+/// Last line of defense: even if odometer passes spike filter,
+/// the UPDATE query itself refuses values above this cap.
+const MAX_VEHICLE_MILEAGE_KM: i64 = 2_000_000;
 
 /// Minimum interval (in seconds) between position recordings for stopped vehicles (ignition OFF)
 const STOPPED_VEHICLE_INTERVAL_SECS: i64 = 30; // 30 seconds when ignition OFF
@@ -106,6 +128,12 @@ impl Database {
         // V1 frames (payload < 100 chars) are GPS-only (no FMS)
         let has_fms = matches!(frame.version, crate::telemetry::model::FrameVersion::V3);
 
+        // NEMS L devices (gps_type_1) have CAN bus odometer — their mileage comes from
+        // odometer_km, NOT from Haversine GPS distance. Even when a NEMS L sends a V1 frame
+        // (no FMS data in that particular frame), we must NOT accumulate Haversine mileage
+        // to avoid double-counting on top of the FMS odometer auto-update.
+        let is_fms_device = protocol_type == "gps_type_1";
+
         // Gap filling: DISABLED - Store raw GPS positions only (like GISV1)
         // The interpolated positions were causing less accurate playback compared to raw data
         // To re-enable, uncomment the code below
@@ -164,9 +192,11 @@ impl Database {
             );
         }
 
-        // GPS-based mileage calculation for V1 frames (no FMS odometer)
-        // Accumulate Haversine distance between consecutive positions
-        if !has_fms && position_id > 0 && frame.speed_kph > 0.0 && frame.is_valid {
+        // GPS-based mileage calculation for non-FMS devices (NEMS S, Noron)
+        // Accumulate Haversine distance between consecutive positions.
+        // NEMS L (is_fms_device) is excluded: its mileage comes from CAN bus odometer_km,
+        // even when it occasionally sends V1 frames without FMS data.
+        if !is_fms_device && !has_fms && position_id > 0 && frame.speed_kph > 0.0 && frame.is_valid {
             if let Some(ref last) = last_pos {
                 let distance_km = haversine_distance_km(
                     last.latitude, last.longitude,
@@ -870,12 +900,13 @@ impl TelemetryStore for Database {
 
 impl Database {
     pub fn new(pool: PgPool, osrm_base_url: String) -> Self {
-        Self { 
+        Self {
             pool,
             gap_filler: GapFiller::new(osrm_base_url),
             mileage_accumulator: Mutex::new(HashMap::new()),
             device_cache: Mutex::new(HashMap::new()),
             last_position_cache: Mutex::new(HashMap::new()),
+            odometer_reject_tracker: Mutex::new(HashMap::new()),
         }
     }
 
@@ -1009,20 +1040,87 @@ impl Database {
                 if let Some(prev) = prev_odo {
                     let jump = (new_odo - prev).abs();
                     if jump > MAX_ODOMETER_JUMP_KM {
-                        tracing::warn!(
-                            device_id,
-                            previous_km = prev,
-                            received_km = new_odo,
-                            jump_km = jump,
-                            "Odometer spike detected! Jump of {}km exceeds {}km threshold — using last valid value",
-                            jump, MAX_ODOMETER_JUMP_KM
-                        );
-                        Some(prev) // Use last valid odometer instead of erroneous value
+                        // Check for poisoned cache: if we've been rejecting consecutive values
+                        // that are coherent with each other, the cache is wrong — trust the device
+                        let should_reset = {
+                            let mut tracker = self.odometer_reject_tracker.lock().unwrap();
+                            let entry = tracker.entry(device_id).or_default();
+                            let coherent_with_previous_reject = entry.last_rejected_value
+                                .map(|prev_rejected| (new_odo - prev_rejected).abs() <= MAX_ODOMETER_JUMP_KM)
+                                .unwrap_or(true);
+
+                            if coherent_with_previous_reject {
+                                entry.count += 1;
+                                entry.last_rejected_value = Some(new_odo);
+                            } else {
+                                // New value is also incoherent with previous rejections — true noise
+                                entry.count = 1;
+                                entry.last_rejected_value = Some(new_odo);
+                            }
+                            entry.count >= ODOMETER_RESET_THRESHOLD
+                        };
+
+                        if should_reset {
+                            // Cache was poisoned — the device has been sending coherent values
+                            // that we kept rejecting. Trust the new stream.
+                            tracing::warn!(
+                                device_id,
+                                previous_km = prev,
+                                received_km = new_odo,
+                                consecutive_rejects = ODOMETER_RESET_THRESHOLD,
+                                "Odometer cache RESET: {} consecutive coherent values rejected — cache was poisoned, trusting device",
+                                ODOMETER_RESET_THRESHOLD
+                            );
+                            self.odometer_reject_tracker.lock().unwrap().remove(&device_id);
+                            Some(new_odo)
+                        } else {
+                            tracing::warn!(
+                                device_id,
+                                previous_km = prev,
+                                received_km = new_odo,
+                                jump_km = jump,
+                                "Odometer spike detected! Jump of {}km exceeds {}km threshold — using last valid value",
+                                jump, MAX_ODOMETER_JUMP_KM
+                            );
+                            Some(prev) // Use last valid odometer instead of erroneous value
+                        }
                     } else {
+                        // Good value — clear any rejection streak
+                        self.odometer_reject_tracker.lock().unwrap().remove(&device_id);
                         Some(new_odo)
                     }
                 } else {
-                    Some(new_odo) // No previous value anywhere — accept as-is
+                    // No previous odometer from positions — cross-check against vehicle's current mileage
+                    // to prevent first-boot garbage values from being accepted blindly
+                    let vehicle_mileage: Option<i64> = sqlx::query_scalar::<_, i64>(
+                        r#"SELECT mileage FROM vehicles
+                           WHERE gps_device_id = (SELECT id FROM gps_devices WHERE id = $1)
+                             AND mileage > 0"#,
+                    )
+                    .bind(device_id)
+                    .fetch_optional(&self.pool)
+                    .await
+                    .unwrap_or(None);
+
+                    if let Some(current_mileage) = vehicle_mileage {
+                        let jump = (new_odo - current_mileage).abs();
+                        if jump > MAX_ODOMETER_JUMP_KM {
+                            tracing::warn!(
+                                device_id,
+                                vehicle_mileage = current_mileage,
+                                received_km = new_odo,
+                                jump_km = jump,
+                                "Odometer spike on first frame! Jump of {}km from vehicle mileage {}km — rejecting",
+                                jump, current_mileage
+                            );
+                            Some(current_mileage) // Use vehicle's known mileage
+                        } else {
+                            Some(new_odo)
+                        }
+                    } else {
+                        // Truly new vehicle with no mileage at all — accept
+                        Some(new_odo)
+                    }
                 }
             }
         } else if has_fms && frame.odometer_km == 1048574 {
@@ -1118,19 +1216,24 @@ impl Database {
         .await?;
 
         // Auto-update vehicle mileage from GPS odometer (NEMS L sends odometer, NEMS S does not)
-        // Only update if odometer > 0 and only increase (never decrease)
+        // Only update if odometer > 0, only increase (never decrease),
+        // and enforce absolute cap + max jump as last line of defense
         if let Some(odo) = odometer_km {
-            if odo > 0 {
+            if odo > 0 && odo < MAX_VEHICLE_MILEAGE_KM {
                 let updated = sqlx::query(
                     r#"
                     UPDATE vehicles
                     SET mileage = $1, updated_at = NOW()
                     WHERE gps_device_id = (SELECT id FROM gps_devices WHERE id = $2)
                       AND mileage < $1
+                      AND $1 < $3
+                      AND ($1 - mileage) < $4
                     "#,
                 )
                 .bind(odo as i32)
                 .bind(device_id)
+                .bind(MAX_VEHICLE_MILEAGE_KM as i32)
+                .bind(MAX_ODOMETER_JUMP_KM as i32)
                 .execute(&self.pool)
                 .await;
 
@@ -1143,6 +1246,14 @@ impl Database {
                         );
                     }
                 }
+            } else if odo >= MAX_VEHICLE_MILEAGE_KM {
+                tracing::warn!(
+                    device_id,
+                    odometer_km = odo,
+                    max = MAX_VEHICLE_MILEAGE_KM,
+                    "Auto-update BLOCKED: odometer {}km exceeds absolute cap {}km",
+                    odo, MAX_VEHICLE_MILEAGE_KM
+                );
             }
         }
 

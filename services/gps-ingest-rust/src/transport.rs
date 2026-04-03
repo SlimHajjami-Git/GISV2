@@ -1414,6 +1414,10 @@ mod tests {
         async fn get_last_fuel_record(&self, _device_id: i32) -> anyhow::Result<Option<(i16, u32, chrono::DateTime<chrono::Utc>)>> {
             Ok(None) // No fuel history for tests
         }
+
+        async fn insert_device_event(&self, _event: &crate::services::device_event::DeviceEventRecord) -> anyhow::Result<i64> {
+            Ok(1) // Mock device_event_id
+        }
     }
 
     struct MockPublisher {
