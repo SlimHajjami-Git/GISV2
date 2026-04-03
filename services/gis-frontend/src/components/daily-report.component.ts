@@ -129,6 +129,15 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                         </div>
                       </div>
                     }
+                    @if (report.summary.fuelStartPercent != null && report.summary.fuelEndPercent != null && report.summary.totalDistanceKm > 0) {
+                      <div class="summary-card consumption">
+                        <div class="summary-icon">📊</div>
+                        <div class="summary-content">
+                          <span class="summary-value">{{ getFuelConsumption(report) }}</span>
+                          <span class="summary-label">Consommation</span>
+                        </div>
+                      </div>
+                    }
                   </div>
 
                   <!-- First Start Info -->
@@ -240,10 +249,29 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                     </div>
                   }
                 } @else {
-                  <!-- No Activity -->
+                  <!-- Vehicle stopped all day -->
+                  <div class="summary-grid">
+                    <div class="summary-card stopped">
+                      <div class="summary-icon">🅿️</div>
+                      <div class="summary-content">
+                        <span class="summary-value">24h 00m</span>
+                        <span class="summary-label">Arrêt continu</span>
+                      </div>
+                    </div>
+                    <div class="summary-card distance">
+                      <div class="summary-icon">📏</div>
+                      <div class="summary-content">
+                        <span class="summary-value">0 km</span>
+                        <span class="summary-label">Distance</span>
+                      </div>
+                    </div>
+                  </div>
                   <div class="no-activity-message">
-                    <div class="no-activity-icon">😴</div>
-                    <p>Aucune activité enregistrée pour cette journée</p>
+                    <div class="no-activity-icon">🅿️</div>
+                    <p>Véhicule à l'arrêt toute la journée</p>
+                    @if (report.lastPosition) {
+                      <p class="stop-location">Dernière position : {{ report.lastPosition.address || 'Adresse non disponible' }}</p>
+                    }
                   </div>
                 }
               </div>
@@ -670,6 +698,12 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       margin-bottom: 12px;
     }
 
+    .stop-location {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+
     .empty-state {
       display: flex;
       flex-direction: column;
@@ -857,6 +891,20 @@ export class DailyReportComponent implements OnInit, OnDestroy {
     }
   }
 
+  getFuelConsumption(report: any): string {
+    const start = report.summary.fuelStartPercent;
+    const end = report.summary.fuelEndPercent;
+    const dist = report.summary.totalDistanceKm;
+    if (start == null || end == null || dist <= 0) return 'N/A';
+    const consumed = start - end;
+    if (consumed <= 0) return 'N/A';
+    // Estimate: assume 60L tank capacity for percentage-based calculation
+    const tankCapacity = 60;
+    const litersConsumed = (consumed / 100) * tankCapacity;
+    const per100km = (litersConsumed / dist) * 100;
+    return `${per100km.toFixed(1)} L/100km`;
+  }
+
   formatDate(dateStr: string): string {
     const date = new Date(dateStr);
     return date.toLocaleDateString('fr-FR', {
@@ -868,10 +916,18 @@ export class DailyReportComponent implements OnInit, OnDestroy {
   }
 
   formatTime(dateStr: string): string {
-    const date = new Date(dateStr);
+    if (!dateStr) return '-';
+    // Ensure UTC timestamps without timezone suffix are treated as UTC
+    let normalized = dateStr;
+    if (normalized.includes('T') && !normalized.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(normalized)) {
+      normalized += 'Z';
+    }
+    const date = new Date(normalized);
+    if (isNaN(date.getTime())) return dateStr;
     return date.toLocaleTimeString('fr-FR', {
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      second: '2-digit'
     });
   }
 

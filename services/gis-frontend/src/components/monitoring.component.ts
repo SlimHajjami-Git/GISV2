@@ -674,20 +674,39 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    this.vehicleMarkers.forEach(marker => marker.remove());
-    this.vehicleMarkers.clear();
+    // Incremental update: update existing markers, add new ones, remove stale ones
+    const currentIds = new Set<string>();
 
     this.filteredVehicles.forEach((vehicle: any) => {
       if (vehicle.currentLocation) {
+        const markerId = vehicle.id?.toString();
+        currentIds.add(markerId);
         const isMoving = vehicle.isMoving ?? (vehicle.currentSpeed || 0) > 3;
         const icon = this.createVehicleIcon(vehicle, isMoving);
+        const existingMarker = this.vehicleMarkers.get(markerId);
 
-        const marker = L.marker([vehicle.currentLocation.lat, vehicle.currentLocation.lng], { icon })
-          .bindPopup(this.createPopupContent(vehicle))
-          .on('click', () => this.selectVehicle(vehicle));
+        if (existingMarker) {
+          // Update existing marker in place (no remove/re-add flicker)
+          existingMarker.setLatLng([vehicle.currentLocation.lat, vehicle.currentLocation.lng]);
+          existingMarker.setIcon(icon);
+          existingMarker.setPopupContent(this.createPopupContent(vehicle));
+        } else {
+          // Create new marker
+          const marker = L.marker([vehicle.currentLocation.lat, vehicle.currentLocation.lng], { icon })
+            .bindPopup(this.createPopupContent(vehicle))
+            .on('click', () => this.selectVehicle(vehicle));
 
-        marker.addTo(this.map!);
-        this.vehicleMarkers.set(vehicle.id?.toString(), marker);
+          marker.addTo(this.map!);
+          this.vehicleMarkers.set(markerId, marker);
+        }
+      }
+    });
+
+    // Remove markers for vehicles no longer in filteredVehicles
+    this.vehicleMarkers.forEach((marker, key) => {
+      if (!currentIds.has(key)) {
+        marker.remove();
+        this.vehicleMarkers.delete(key);
       }
     });
 
@@ -851,6 +870,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
     if (this.map && vehicle.currentLocation) {
       this.map.setView([vehicle.currentLocation.lat, vehicle.currentLocation.lng], 12);
+      // Invalidate size after sidebar detail panel expands to ensure correct rendering
+      setTimeout(() => this.map?.invalidateSize(), 150);
     }
   }
 
@@ -3834,7 +3855,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     
     // Set temporary placeholder and fetch address
-    this.addressCache.set(cacheKey, `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`);
+    this.addressCache.set(cacheKey, 'Chargement de l\'adresse...');
     
     // Async reverse geocoding
     this.geocodingService.reverseGeocode(lat, lng).subscribe({
@@ -4048,18 +4069,23 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private drawGeofenceOnMap(map: L.Map, gf: any) {
+    let layer: any;
     if (gf.type === 'circle' && gf.center) {
       const cLat = gf.center.lat || gf.center.latitude;
       const cLng = gf.center.lng || gf.center.longitude;
-      L.circle([cLat, cLng], {
+      layer = L.circle([cLat, cLng], {
         radius: gf.radius || 200,
         color: '#3B82F6', weight: 2, fillColor: '#3B82F6', fillOpacity: 0.15
       }).addTo(map);
     } else if (gf.coordinates?.length > 0) {
       const coords = gf.coordinates.map((c: any) => [c.lat || c.latitude || c[0], c.lng || c.longitude || c[1]] as [number, number]);
-      L.polygon(coords, {
+      layer = L.polygon(coords, {
         color: '#3B82F6', weight: 2, fillColor: '#3B82F6', fillOpacity: 0.15
       }).addTo(map);
+    }
+    // Auto-zoom to fit the entire geofence zone
+    if (layer) {
+      setTimeout(() => map?.fitBounds(layer.getBounds(), { padding: [30, 30], maxZoom: 16 }), 200);
     }
   }
 

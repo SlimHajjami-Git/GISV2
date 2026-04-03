@@ -517,7 +517,26 @@ export class MaintenanceComponent implements OnInit, OnDestroy {
     this.apiService.getMaintenanceRecords().pipe(takeUntil(this.destroy$)).subscribe({
       next: (records) => {
         this.ngZone.run(() => {
-          this.allRecords = records;
+          // Map API response (MaintenanceLogReportDto) to MaintenanceRecord fields
+          this.allRecords = (records || []).map((r: any) => ({
+            id: r.id?.toString() || '',
+            vehicleId: r.vehicleId?.toString() || '',
+            companyId: r.companyId?.toString() || '',
+            type: r.category || r.type || 'other',
+            description: r.templateName || r.description || r.notes || '',
+            mileageAtService: r.doneKm || r.mileageAtService || 0,
+            date: r.doneDate || r.date,
+            nextServiceDate: r.nextServiceDate,
+            nextServiceMileage: r.nextServiceMileage,
+            status: r.status || 'completed',
+            laborCost: Number(r.laborCost) || 0,
+            partsCost: Number(r.partsCost) || 0,
+            totalCost: Number(r.actualCost) || Number(r.totalCost) || (Number(r.laborCost) || 0) + (Number(r.partsCost) || 0),
+            serviceProvider: r.supplierName || r.serviceProvider || '',
+            notes: r.notes || '',
+            vehicleName: r.vehicleName || '',
+            vehiclePlate: r.plate || r.vehiclePlate || ''
+          }));
           this.records = [...this.allRecords];
           this.cdr.detectChanges();
           this.appRef.tick();
@@ -541,8 +560,9 @@ export class MaintenanceComponent implements OnInit, OnDestroy {
   filterRecords() {
     this.records = this.allRecords.filter(r => {
       const matchesSearch = !this.searchQuery ||
-        r.description.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
-        (r.serviceProvider || '').toLowerCase().includes(this.searchQuery.toLowerCase());
+        (r.description || '').toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+        (r.serviceProvider || '').toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+        ((r as any).vehicleName || '').toLowerCase().includes(this.searchQuery.toLowerCase());
       const matchesStatus = !this.filterStatus || r.status === this.filterStatus;
       const matchesType = !this.filterType || r.type === this.filterType;
       const matchesVehicle = !this.filterVehicle || r.vehicleId?.toString() === this.filterVehicle;

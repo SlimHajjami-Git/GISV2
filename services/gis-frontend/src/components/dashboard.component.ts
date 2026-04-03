@@ -735,6 +735,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   recentTrips:{plate:string;distance:string;duration:string;date:string}[]=[];
   drivers:{name:string;initials:string;vehicle:string;active:boolean}[]=[];
 
+  private refreshPending=false;
+
   // Display values for animated counting
   dVehicles=0; dMoving=0; dStopped=0; dAlerts=0; dFuel=0; dCost=0;
 
@@ -823,6 +825,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.signalrService.geofenceEvent$.pipe(takeUntil(this.destroy$)).subscribe((ev:any)=>{
       const gf=this.geofences.find(g=>g.name===ev.geofenceName);
       if(gf){if(ev.eventType==='entry')gf.count++;else if(ev.eventType==='exit'&&gf.count>0)gf.count--;this.cdr.detectChanges();}
+    });
+    // Refresh dashboard data every 30s to keep vehicle counts in sync with monitoring
+    this.signalrService.positionUpdate$.pipe(takeUntil(this.destroy$)).subscribe(()=>{
+      if(!this.refreshPending){
+        this.refreshPending=true;
+        setTimeout(()=>{this.refreshPending=false;this.loadAll();},30000);
+      }
     });
   }
 

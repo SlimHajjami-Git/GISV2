@@ -1315,6 +1315,14 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
       } else if (notif.actionUrl) {
         this.router.navigateByUrl(notif.actionUrl);
       }
+    } else if (notif.type === 'expense' || notif.type === 'expense_created' || (notif.title && notif.title.includes('Dépense'))) {
+      // Navigate to specific expense
+      const expenseId = notif.metadata?.expenseId || notif.referenceId;
+      if (expenseId) {
+        this.router.navigate(['/depenses'], { queryParams: { expenseId } });
+      } else {
+        this.router.navigate(['/depenses']);
+      }
     } else if (notif.actionUrl) {
       this.router.navigateByUrl(notif.actionUrl);
     } else if (notif.type === 'maintenance_due') {
@@ -1513,17 +1521,22 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
 
   private drawGeofenceZoneOnMap(gf: any) {
     if (!this.gfModalMap) return;
+    let layer: any;
     if (gf.type === 'circle' && gf.center) {
       const cLat = gf.center.lat || gf.center.latitude;
       const cLng = gf.center.lng || gf.center.longitude;
-      L.circle([cLat, cLng], {
+      layer = L.circle([cLat, cLng], {
         radius: gf.radius || 200, color: '#3B82F6', weight: 2, fillColor: '#3B82F6', fillOpacity: 0.15
       }).addTo(this.gfModalMap);
     } else if (gf.coordinates?.length > 0) {
       const coords = gf.coordinates.map((c: any) => [c.lat || c.latitude || c[0], c.lng || c.longitude || c[1]] as [number, number]);
-      L.polygon(coords, {
+      layer = L.polygon(coords, {
         color: '#3B82F6', weight: 2, fillColor: '#3B82F6', fillOpacity: 0.15
       }).addTo(this.gfModalMap);
+    }
+    // Auto-zoom to fit the entire geofence zone
+    if (layer && this.gfModalMap) {
+      setTimeout(() => this.gfModalMap?.fitBounds(layer.getBounds(), { padding: [30, 30], maxZoom: 16 }), 200);
     }
   }
 

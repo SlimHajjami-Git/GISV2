@@ -747,7 +747,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
 
     // Reports that require a single vehicle
-    const singleVehicleReports = ['fuel', 'daily', 'mileage'];
+    const singleVehicleReports = ['fuel', 'daily'];
     if (!this.selectedVehicleId && singleVehicleReports.includes(this.selectedTemplate.type)) {
       console.warn('No vehicle selected for single-vehicle report');
       this.tableData = [];
@@ -1746,24 +1746,24 @@ export class ReportsComponent implements OnInit, OnDestroy {
   getSpeedLimitFromAddress(address: string): number {
     if (!address) return 90;
     const addr = address.toLowerCase();
-    // Autoroute → 110 km/h (A1, A3, A4, etc.)
-    if (addr.includes('autoroute') || /\ba\d+\b/.test(addr)) {
-      return 110;
+    // Autoroute → 120 km/h (explicit "autoroute" keyword only, not loose A+digit patterns)
+    if (addr.includes('autoroute')) {
+      return 120;
     }
-    // Route nationale / route principale / GP → 90 km/h
-    if (addr.includes('route nationale') || /\brn\d*\b/.test(addr) || /\bgp\d*\b/.test(addr) || addr.includes('route principale')) {
-      return 90;
+    // Route nationale / route principale / GP → 100 km/h
+    if (addr.includes('route nationale') || /\brn\s?\d+\b/.test(addr) || /\bgp\s?\d+\b/.test(addr) || addr.includes('route principale')) {
+      return 100;
     }
-    // Route régionale (RR) → 90 km/h
-    if (addr.includes('route régionale') || addr.includes('route regionale') || /\brr\d*\b/.test(addr)) {
-      return 90;
+    // Route régionale (RR) → 80 km/h
+    if (addr.includes('route régionale') || addr.includes('route regionale') || /\brr\s?\d+\b/.test(addr)) {
+      return 80;
     }
-    // Route locale (RL) → 70 km/h
-    if (/\brl\d*\b/.test(addr) || addr.includes('route locale')) {
-      return 70;
+    // Route locale (RL) → 60 km/h
+    if (/\brl\s?\d+\b/.test(addr) || addr.includes('route locale')) {
+      return 60;
     }
-    // MC (chemin municipal) → 50 km/h
-    if (/\bmc\d*\b/.test(addr) || addr.includes('chemin') || addr.includes('rue ') || addr.includes('avenue ')) {
+    // MC (chemin municipal) → 50 km/h — only match explicit MC codes, not generic "rue"/"avenue"
+    if (/\bmc\s?\d+\b/.test(addr) || addr.includes('chemin municipal') || addr.includes('chemin communal')) {
       return 50;
     }
     // Default: hors agglomération → 90 km/h
@@ -1885,7 +1885,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             address: curr.address,
             value: speed,
             valueFormatted: `${Math.round(speed)} km/h (limite ${speedLimit})`,
-            severity: excess > 30 ? 'high' : excess > 15 ? 'medium' : 'low'
+            severity: excess > 40 ? 'high' : excess > 20 ? 'medium' : 'low'
           });
         }
       }
@@ -2007,10 +2007,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Find worst incident type
     const worstType = Object.entries(byType).sort((a, b) => b[1].count - a[1].count)[0];
     
+    // Build per-type count entries
+    const typeCountEntries: { [key: string]: string } = {};
+    for (const [label, data] of Object.entries(byType)) {
+      typeCountEntries[`${data.icon} ${label}`] = data.count.toString();
+    }
+
     this.statisticsData = {
       '🚨 Total incidents': incidents.length.toString(),
       '🏁 Vitesse max': maxSpeedKph > 0 ? `${Math.round(maxSpeedKph)} km/h` : 'N/A',
       '🔧 RPM max': maxRpm > 0 ? `${Math.round(maxRpm)} tr/min` : 'N/A',
+      ...typeCountEntries,
       '🔴 Graves': `${bySeverity.high} (${highPct}%)`,
       '🟡 Modérés': `${bySeverity.medium} (${mediumPct}%)`,
       '🟢 Légers': `${bySeverity.low} (${lowPct}%)`,
@@ -2651,9 +2658,22 @@ export class ReportsComponent implements OnInit, OnDestroy {
   // ==================== MILEAGE PERIOD REPORT (Hour/Day/Month) ====================
 
   onMileagePeriodTypeChange() {
-    if (this.reportGenerated) {
-      this.executeReport();
+    // Ensure date fields have sensible defaults when switching period type
+    if (this.selectedMileagePeriodType === 'hour' && !this.mileagePeriodDate) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      this.mileagePeriodDate = yesterday.toISOString().split('T')[0];
     }
+    if (this.selectedMileagePeriodType === 'day') {
+      if (!this.mileagePeriodStartDate || !this.mileagePeriodEndDate) {
+        const today = new Date();
+        const weekAgo = new Date(today.getTime() - 7 * 86400000);
+        this.mileagePeriodStartDate = weekAgo.toISOString().split('T')[0];
+        this.mileagePeriodEndDate = today.toISOString().split('T')[0];
+      }
+    }
+    // Always re-execute when changing period type (even on first run)
+    this.executeReport();
   }
 
   executeMileagePeriodReport(vehicleId: number, startDate?: Date, endDate?: Date) {
