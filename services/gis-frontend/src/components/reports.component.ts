@@ -1240,7 +1240,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.statisticsData = {
       'Points > 50 km/h': highSpeedPositions.length.toString(),
       'Véhicules': new Set(highSpeedPositions.map(p => p.vehicleId)).size.toString(),
-      'Vitesse moy': `${avgSpeed.toFixed(0)} km/h`,
       'Vitesse max': `${maxSpeed.toFixed(0)} km/h`,
       '🔴 Dépassements limite': infractions.length.toString(),
       'Véhicules en infraction': Object.keys(infractionsByVehicle).length.toString()
@@ -1689,12 +1688,29 @@ export class ReportsComponent implements OnInit, OnDestroy {
               const incidents = this.detectDrivingIncidents(positions, vehicle);
               allIncidents.push(...incidents);
               // Track max speed, RPM, and fuel consumption across all positions
+              let prevFuel: number | null = null;
+              let prevOdo: number | null = null;
               positions.forEach((p: any) => {
                 if ((p.speedKph || 0) > maxSpeedKph) maxSpeedKph = p.speedKph || 0;
                 if ((p.rpm || 0) > maxRpm) maxRpm = p.rpm || 0;
                 if (p.fuelRateLPer100Km != null && p.fuelRateLPer100Km > 0 && p.fuelRateLPer100Km < 100) {
                   allFuelRates.push(p.fuelRateLPer100Km);
                 }
+                // Estimate consumption from fuel level delta when direct rate unavailable
+                const fuelPct = p.fuelRaw ?? p.fuelPercent;
+                const odo = p.odometerKm ?? p.totalOdometerKm;
+                if (fuelPct != null && odo != null && prevFuel != null && prevOdo != null) {
+                  const dFuel = prevFuel - fuelPct;
+                  const dOdo = odo - prevOdo;
+                  if (dFuel > 0 && dOdo > 1) {
+                    const tankCapacity = 60; // liters estimate
+                    const liters = (dFuel / 100) * tankCapacity;
+                    const rate = (liters / dOdo) * 100;
+                    if (rate > 0 && rate < 50) allFuelRates.push(rate);
+                  }
+                }
+                if (fuelPct != null) prevFuel = fuelPct;
+                if (odo != null) prevOdo = odo;
               });
               completedRequests++;
               
@@ -2342,8 +2358,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       '⏸️ Temps arrêt': report.summary.totalStoppedFormatted,
       '📏 Distance': `${report.summary.totalDistanceKm} km`,
       '📊 Trajets/Arrêts': `${report.summary.driveCount} / ${report.summary.stopCount}`,
-      '🏎️ Vitesse max': `${report.summary.maxSpeedKph} km/h`,
-      '⌀ Vitesse moy': `${report.summary.avgSpeedKph} km/h`
+      '🏎️ Vitesse max': `${report.summary.maxSpeedKph} km/h`
     };
 
     // Add fuel info if available
@@ -2568,7 +2583,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
       distanceValue: r.summary.totalDistanceKm,
       tripCount: r.summary.totalTripCount,
       drivingTime: r.summary.totalDrivingFormatted || this.formatMinutes(r.summary.totalDrivingMinutes || 0),
-      avgSpeed: `${r.summary.avgSpeedKph.toFixed(1)} km/h`,
       maxSpeed: `${r.summary.maxSpeedKph.toFixed(1)} km/h`,
       avgDaily: `${r.summary.averageDailyKm.toFixed(1)} km/j`,
       activeDays: `${r.summary.daysWithActivity}/${r.summary.totalDays}`
@@ -2922,9 +2936,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
             distance: `${m.distanceKm.toFixed(1)} km`,
             distanceValue: m.distanceKm,
             avgDaily: `${m.averageDailyKm.toFixed(1)} km/jour`,
-            joursCirculation: `${m.daysWithActivity}`,
+            activeDays: `${m.daysWithActivity}`,
             tripCount: m.tripCount,
-            drivingTime: this.formatMinutes(m.drivingMinutes)
+            drivingTime: this.formatMinutes(m.drivingMinutes),
+            _drivingTimeSecondsSort: m.drivingMinutes
           }));
         break;
       default:
@@ -3038,6 +3053,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
         scales: {
           y: {
             beginAtZero: true,
+            title: {
+              display: true,
+              text: 'Distance (km)'
+            },
             grid: {
               color: 'rgba(0, 0, 0, 0.05)'
             }
@@ -4049,11 +4068,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
         endTime: this.formatDateTime(trip.endTime),
         _endTimeSort: new Date(trip.endTime).getTime(),
         duration: trip.durationFormatted || formatDuration(trip.durationSeconds),
+        durationSeconds: trip.durationSeconds,
         durationMin,
         distance: `${trip.distanceKm.toFixed(1)} km`,
+        distanceValue: trip.distanceKm,
         distanceKm: trip.distanceKm,
         maxSpeed: `${trip.maxSpeedKph.toFixed(0)} km/h`,
-        avgSpeed: `${trip.avgSpeedKph.toFixed(0)} km/h`,
+        maxSpeedValue: trip.maxSpeedKph,
         startAddress: trip.startAddress || `${trip.startLatitude?.toFixed(5)}, ${trip.startLongitude?.toFixed(5)}`,
         endAddress: trip.endAddress || `${trip.endLatitude?.toFixed(5)}, ${trip.endLongitude?.toFixed(5)}`,
         startLat: trip.startLatitude,
@@ -4802,7 +4823,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
               title: { display: true, text: '📊 Répartition par sévérité', font: { size: 12, weight: 'bold' } }
             },
             scales: {
-              y: { beginAtZero: true }
+              y: { beginAtZero: true, title: { display: true, text: 'Nombre d\'incidents' }, ticks: { stepSize: 1 } },
+              x: { grid: { display: false } }
             }
           }
         });
@@ -4959,14 +4981,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   // Helper methods for secondary charts
   getSeverityDistribution(): { label: string; value: number }[] {
-    const light = this.tableData.filter((r: any) => r.excessValue && r.excessValue <= 15).length;
-    const medium = this.tableData.filter((r: any) => r.excessValue && r.excessValue > 15 && r.excessValue <= 30).length;
-    const severe = this.tableData.filter((r: any) => r.excessValue && r.excessValue > 30).length;
+    const light = this.tableData.filter((r: any) => r.excessValue && r.excessValue <= 20).length;
+    const medium = this.tableData.filter((r: any) => r.excessValue && r.excessValue > 20 && r.excessValue <= 40).length;
+    const severe = this.tableData.filter((r: any) => r.excessValue && r.excessValue > 40).length;
     if (light + medium + severe === 0) return [];
     return [
-      { label: '🟢 Léger (≤15 km/h)', value: light },
-      { label: '🟡 Modéré (15-30 km/h)', value: medium },
-      { label: '🔴 Grave (>30 km/h)', value: severe }
+      { label: '🟢 Léger (≤20 km/h)', value: light },
+      { label: '🟡 Modéré (20-40 km/h)', value: medium },
+      { label: '🔴 Grave (>40 km/h)', value: severe }
     ];
   }
 

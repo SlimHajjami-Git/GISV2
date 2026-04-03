@@ -1132,13 +1132,13 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .data-table th {
-  padding: 8px 12px;
+  padding: 6px 10px;
   text-align: left;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   color: #64748b;
   background: #f8fafc;
@@ -1171,9 +1171,12 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .data-table td {
-  padding: 8px 12px;
+  padding: 6px 10px;
   color: #1e293b;
   border-bottom: 1px solid #f1f5f9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .data-table tbody tr:hover {
@@ -1189,7 +1192,27 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .location-cell {
-  max-width: 300px;
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.description-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.incident-type-cell {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.supplier-cell {
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1203,6 +1226,7 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 .time-cell {
   color: #3b82f6;
   white-space: nowrap;
+  font-size: 10.5px;
 }
 
 /* Anomaly rows */
