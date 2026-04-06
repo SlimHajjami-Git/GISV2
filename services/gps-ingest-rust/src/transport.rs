@@ -340,6 +340,41 @@ async fn handle_tcp_connection(
             {
                 warn!(?err, "Failed to process payload");
             }
+
+            // ── Auto-recovery: detect immobilized relay and send AJ+GO ──
+            // Check flags byte (position 42-43 in HH/AA frame) for relay activation
+            // bit5=0 (0x20) means relay/immobilizer is armed (vehicle immobilized)
+            // Normal states: E7 (bit5=1), E3 (bit5=1). Immobilized: C3 (bit5=0)
+            // This sends AJ+GO#9999 to automatically resume the vehicle
+            if let Ok(ascii) = std::str::from_utf8(payload) {
+                let frame_starts: Vec<usize> = ascii.match_indices("AA")
+                    .chain(ascii.match_indices("HH"))
+                    .map(|(pos, _)| pos)
+                    .collect();
+
+                for start in frame_starts {
+                    // Flags byte is at position 42-43 from frame start
+                    if let Some(flags_hex) = ascii.get(start + 42..start + 44) {
+                        if let Ok(flags) = u8::from_str_radix(flags_hex, 16) {
+                            let relay_activated = (flags & 0x20) == 0; // bit5=0 means immobilizer armed
+                            if relay_activated {
+                                let peer_str = peer.as_deref().unwrap_or("unknown");
+                                warn!(
+                                    peer = peer_str,
+                                    flags = format!("0x{:02X}", flags),
+                                    "IMMOBILIZATION DETECTED (bit5=0) — sending AJ+GO#9999 auto-recovery"
+                                );
+                                if let Err(e) = stream.write_all(b"AJ+GO#9999\n").await {
+                                    error!(?e, "Failed to send AJ+GO auto-recovery command");
+                                } else {
+                                    info!(peer = peer_str, "AJ+GO#9999 auto-recovery command SENT successfully");
+                                }
+                                break; // One recovery command per payload batch is enough
+                            }
+                        }
+                    }
+                }
+            }
         }
 
     }
