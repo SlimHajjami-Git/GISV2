@@ -731,14 +731,18 @@ async fn process_single_frame(
                     return Ok(());
                 }
                 
-                // Condition 1: Date must be before tomorrow (not in future)
-                let tomorrow = chrono::Utc::now().date_naive() + chrono::Duration::days(1);
+                // Condition 1: Date must not be too far in the future
+                // Use 2-day margin instead of 1 to account for GPS devices sending
+                // local time (UTC+1/UTC+2) while server runs in UTC.
+                // Without this margin, frames are rejected between 23:00-01:00 UTC
+                // because GPS local date is already "tomorrow" from the server's perspective.
+                let future_cutoff = chrono::Utc::now().date_naive() + chrono::Duration::days(2);
                 let frame_date = frame.recorded_at.date();
-                if frame_date >= tomorrow {
+                if frame_date >= future_cutoff {
                     warn!(
                         imei = %resolved_uid,
                         frame_date = %frame.recorded_at,
-                        "Frame SKIPPED: Date in future (same as GISV1)"
+                        "Frame SKIPPED: Date too far in future (>1 day ahead)"
                     );
                     return Ok(());
                 }
