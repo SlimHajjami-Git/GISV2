@@ -3,12 +3,13 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
+using System.Text.RegularExpressions;
 
 namespace GisAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[AllowAnonymous]
+[Authorize]
 public class DeviceCheckController : ControllerBase
 {
     private readonly GisDbContext _context;
@@ -18,8 +19,11 @@ public class DeviceCheckController : ControllerBase
         _context = context;
     }
 
+    private static string MaskImei(string imei) =>
+        imei.Length > 4 ? new string('*', imei.Length - 4) + imei[^4..] : imei;
+
     /// <summary>
-    /// Public endpoint (no auth) — lookup a GPS device by IMEI or vehicle MAT/plate
+    /// Lookup a GPS device by IMEI or vehicle MAT/plate (requires authentication)
     /// Returns last position info: connection status, ignition, coordinates, odometer, fuel, last frame time
     /// </summary>
     [HttpGet("lookup")]
@@ -90,7 +94,7 @@ public class DeviceCheckController : ControllerBase
                 hasGps = true,
                 connected = false,
                 message = "Aucune trame trouvée pour ce boîtier.",
-                imei = device.DeviceUid,
+                imei = MaskImei(device.DeviceUid),
                 mat = device.Mat,
                 plate = vehicle?.Plate,
                 vehicleName = vehicle?.Name,
@@ -142,7 +146,7 @@ public class DeviceCheckController : ControllerBase
             hasGps = true,
             connected = !isStale,
             isStale,
-            imei = device.DeviceUid,
+            imei = MaskImei(device.DeviceUid),
             mat = device.Mat,
             plate = vehicle?.Plate,
             vehicleName = vehicle?.Name,
