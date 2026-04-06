@@ -326,14 +326,11 @@ async fn handle_tcp_connection(
                 }
 
                 // ── Auto-recovery: detect immobilized relay and send AJ+GO ──
-                // Check flags byte (position 42-43 in HH/AA frame) for relay activation
+                // Check flags byte (position 42-43 in HH/AA position frames) for relay activation
                 // bit5=0 (0x20) means relay/immobilizer is armed (vehicle immobilized)
                 // Normal states: E7 (bit5=1), E3 (bit5=1). Immobilized: C3 (bit5=0)
+                // ONLY check position frames (AA1x/AA2x/AA3x/HH1x/HH2x/HH3x), NOT info frames (AA00/AA01/AA02/AA03/AA07)
                 // Sent IMMEDIATELY after receiving payload, before any DB/processing work
-                let frame_starts: Vec<usize> = ascii.match_indices("AA")
-                    .chain(ascii.match_indices("HH"))
-                    .map(|(pos, _)| pos)
-                    .collect();
 
                 // Resolve IMEI from connection map for logging
                 let resolved_imei = if let Some(ref peer_str) = peer {
@@ -342,6 +339,24 @@ async fn handle_tcp_connection(
                 } else {
                     None
                 };
+
+                // Find position frames only: header byte (pos 2-3) high nibble must be 1/2/3
+                let frame_starts: Vec<usize> = ascii.match_indices("AA")
+                    .chain(ascii.match_indices("HH"))
+                    .filter(|(pos, _)| {
+                        // Must have at least 44 chars after start for flags byte
+                        if *pos + 44 > ascii.len() { return false; }
+                        // Header byte at pos+2..pos+4, high nibble = frame kind (1=RT+hist, 2=hist, 3=RT)
+                        if let Some(header_hex) = ascii.get(pos + 2..pos + 4) {
+                            if let Ok(header) = u8::from_str_radix(header_hex, 16) {
+                                let kind = header >> 4;
+                                return kind >= 1 && kind <= 3;
+                            }
+                        }
+                        false
+                    })
+                    .map(|(pos, _)| pos)
+                    .collect();
 
                 for start in frame_starts {
                     if let Some(flags_hex) = ascii.get(start + 42..start + 44) {
