@@ -364,7 +364,7 @@ async fn handle_tcp_connection(
                                     flags = format!("0x{:02X}", flags),
                                     "IMMOBILIZATION DETECTED (bit5=0) — sending AJ+GO#9999 auto-recovery"
                                 );
-                                if let Err(e) = stream.write_all(b"AJ+GO#9999\n").await {
+                                if let Err(e) = stream.write_all(b"AJ+GO#1311\n").await {
                                     error!(?e, "Failed to send AJ+GO auto-recovery command");
                                 } else {
                                     info!(peer = peer_str, "AJ+GO#9999 auto-recovery command SENT successfully");
