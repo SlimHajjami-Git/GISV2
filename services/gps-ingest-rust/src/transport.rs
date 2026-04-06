@@ -335,21 +335,31 @@ async fn handle_tcp_connection(
                     .map(|(pos, _)| pos)
                     .collect();
 
+                // Resolve IMEI from connection map for logging
+                let resolved_imei = if let Some(ref peer_str) = peer {
+                    let map = connection_map.lock().await;
+                    map.get(peer_str).cloned()
+                } else {
+                    None
+                };
+
                 for start in frame_starts {
                     if let Some(flags_hex) = ascii.get(start + 42..start + 44) {
                         if let Ok(flags) = u8::from_str_radix(flags_hex, 16) {
                             let relay_activated = (flags & 0x20) == 0;
                             if relay_activated {
                                 let peer_str = peer.as_deref().unwrap_or("unknown");
+                                let imei_str = resolved_imei.as_deref().unwrap_or("unknown");
                                 warn!(
                                     peer = peer_str,
+                                    imei = imei_str,
                                     flags = format!("0x{:02X}", flags),
                                     "IMMOBILIZATION DETECTED (bit5=0) — sending AJ+GO#1311 auto-recovery"
                                 );
                                 if let Err(e) = stream.write_all(b"AJ+GO#1311\n").await {
-                                    error!(?e, "Failed to send AJ+GO auto-recovery command");
+                                    error!(?e, imei = imei_str, "Failed to send AJ+GO auto-recovery command");
                                 } else {
-                                    info!(peer = peer_str, "AJ+GO#1311 auto-recovery command SENT successfully");
+                                    info!(peer = peer_str, imei = imei_str, "AJ+GO#1311 auto-recovery command SENT successfully");
                                 }
                                 break;
                             }
