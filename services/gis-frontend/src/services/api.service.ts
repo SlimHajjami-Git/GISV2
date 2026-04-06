@@ -579,12 +579,6 @@ export class ApiService {
     return this.http.get<any>(`${this.getMonitoringApiUrl()}/gps/vehicles/${vehicleId}/position`, { headers: this.getHeaders() });
   }
 
-  // ==================== REMOTE VEHICLE COMMANDS ====================
-
-  sendVehicleCommand(vehicleId: number, command: 'stop' | 'resume'): Observable<any> {
-    return this.http.post<any>(`${this.API_URL}/gps/vehicles/command`, { vehicleId, command }, { headers: this.getHeaders() });
-  }
-
   getVehicleHistory(vehicleId: number, from?: Date, to?: Date, maxPoints = 3000, filterDrift = true): Observable<PositionDto[]> {
     let params = new HttpParams();
     if (from) params = params.set('from', from.toISOString());

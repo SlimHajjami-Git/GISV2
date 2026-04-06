@@ -29,20 +29,6 @@ interface Vehicle {
   speedLimit?: number;
 }
 
-interface RemoteVehicle {
-  id: number;
-  name: string;
-  plate?: string;
-  type?: string;
-  isOnline: boolean;
-  ignitionOn: boolean;
-  speed: number;
-  lastUpdate?: string;
-  commandLoading: boolean;
-  commandMessage: string;
-  commandSuccess: boolean;
-}
-
 interface VehicleForAssignment {
   id: number;
   name: string;
@@ -277,90 +263,6 @@ interface PartPricing {
                 <button class="btn-primary" (click)="applyDefaultSpeed()">
                   Appliquer à tous les véhicules
                 </button>
-              </div>
-            </div>
-
-            <!-- Remote Control -->
-            <div class="panel-section" *ngIf="activeTab === 'remote'">
-              <h2>Contrôle à distance</h2>
-              <p class="section-desc">Arrêtez ou redémarrez le moteur de vos véhicules à distance</p>
-
-              <div class="settings-group">
-                <div class="group-header">
-                  <h3>Véhicules</h3>
-                  <button class="btn-primary-sm" (click)="loadRemoteVehicles()">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-                    </svg>
-                    Actualiser
-                  </button>
-                </div>
-
-                <div class="loading-state" *ngIf="loadingRemote">
-                  <div class="spinner"></div>
-                  <span>Chargement des véhicules...</span>
-                </div>
-
-                <div class="remote-grid" *ngIf="!loadingRemote">
-                  <div class="remote-card" *ngFor="let v of remoteVehicles" [class.online]="v.isOnline" [class.offline]="!v.isOnline">
-                    <div class="remote-card-header">
-                      <div class="remote-card-icon" [class.online]="v.isOnline">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                          <rect x="1" y="3" width="15" height="13" rx="2"/>
-                          <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
-                          <circle cx="5.5" cy="18.5" r="2.5"/>
-                          <circle cx="18.5" cy="18.5" r="2.5"/>
-                        </svg>
-                      </div>
-                      <div class="remote-card-info">
-                        <span class="remote-name">{{ v.name }}</span>
-                        <span class="remote-plate">{{ v.plate || 'Sans immatriculation' }}</span>
-                      </div>
-                      <div class="remote-status-badge" [class.online]="v.isOnline" [class.offline]="!v.isOnline">
-                        {{ v.isOnline ? 'En ligne' : 'Hors ligne' }}
-                      </div>
-                    </div>
-
-                    <div class="remote-card-stats">
-                      <div class="remote-stat">
-                        <div class="remote-stat-icon" [style.color]="v.ignitionOn ? '#10b981' : '#ef4444'">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2m-3.5-7.5-1.4 1.4M6.3 17.7l-1.4 1.4m0-14.2 1.4 1.4m11.4 11.4 1.4 1.4"/></svg>
-                        </div>
-                        <span class="remote-stat-label">Moteur</span>
-                        <span class="remote-stat-value" [style.color]="v.ignitionOn ? '#10b981' : '#ef4444'">{{ v.ignitionOn ? 'Allumé' : 'Éteint' }}</span>
-                      </div>
-                      <div class="remote-stat">
-                        <div class="remote-stat-icon" [style.color]="v.speed > 5 ? '#3b82f6' : '#94a3b8'">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                        </div>
-                        <span class="remote-stat-label">Vitesse</span>
-                        <span class="remote-stat-value">{{ v.speed | number:'1.0-0' }} km/h</span>
-                      </div>
-                    </div>
-
-                    <div class="remote-card-actions" *ngIf="v.isOnline">
-                      <button class="remote-btn stop" (click)="sendRemoteCmd(v, 'stop')" [disabled]="v.commandLoading" title="Arrêter le moteur">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-                        {{ v.commandLoading ? 'Envoi...' : 'Arrêter' }}
-                      </button>
-                      <button class="remote-btn resume" (click)="sendRemoteCmd(v, 'resume')" [disabled]="v.commandLoading" title="Redémarrer le moteur">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                        {{ v.commandLoading ? 'Envoi...' : 'Démarrer' }}
-                      </button>
-                    </div>
-                    <div class="remote-card-offline" *ngIf="!v.isOnline">
-                      <span>Véhicule hors ligne — commande indisponible</span>
-                    </div>
-
-                    <div class="remote-card-msg" *ngIf="v.commandMessage" [class.success]="v.commandSuccess" [class.error]="!v.commandSuccess">
-                      {{ v.commandMessage }}
-                    </div>
-                  </div>
-
-                  <div class="empty-list" *ngIf="remoteVehicles.length === 0">
-                    <p>Aucun véhicule avec GPS</p>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -1431,189 +1333,6 @@ interface PartPricing {
       margin-bottom: 12px;
     }
 
-    /* ===== REMOTE CONTROL ===== */
-    .remote-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 16px;
-    }
-
-    .remote-card {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      overflow: hidden;
-      transition: all 0.2s;
-    }
-
-    .remote-card:hover {
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-    }
-
-    .remote-card.offline {
-      opacity: 0.65;
-    }
-
-    .remote-card-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 14px 16px;
-      border-bottom: 1px solid #f3f4f6;
-    }
-
-    .remote-card-icon {
-      width: 44px;
-      height: 44px;
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #f3f4f6;
-      color: #9ca3af;
-      flex-shrink: 0;
-    }
-
-    .remote-card-icon.online {
-      background: #ecfdf5;
-      color: #10b981;
-    }
-
-    .remote-card-info {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 1px;
-      min-width: 0;
-    }
-
-    .remote-name {
-      font-size: 14px;
-      font-weight: 600;
-      color: #1f2937;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .remote-plate {
-      font-size: 12px;
-      color: #6b7280;
-    }
-
-    .remote-status-badge {
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-size: 11px;
-      font-weight: 600;
-      flex-shrink: 0;
-    }
-
-    .remote-status-badge.online {
-      background: #ecfdf5;
-      color: #059669;
-    }
-
-    .remote-status-badge.offline {
-      background: #f3f4f6;
-      color: #6b7280;
-    }
-
-    .remote-card-stats {
-      display: flex;
-      padding: 12px 16px;
-      gap: 24px;
-      border-bottom: 1px solid #f3f4f6;
-    }
-
-    .remote-stat {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .remote-stat-label {
-      font-size: 11px;
-      color: #9ca3af;
-    }
-
-    .remote-stat-value {
-      font-size: 13px;
-      font-weight: 600;
-      color: #1f2937;
-    }
-
-    .remote-card-actions {
-      display: flex;
-      gap: 8px;
-      padding: 12px 16px;
-    }
-
-    .remote-btn {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 10px 16px;
-      border: none;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .remote-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .remote-btn.stop {
-      background: #fef2f2;
-      color: #dc2626;
-      border: 1px solid #fecaca;
-    }
-
-    .remote-btn.stop:hover:not(:disabled) {
-      background: #fee2e2;
-      border-color: #f87171;
-    }
-
-    .remote-btn.resume {
-      background: #f0fdf4;
-      color: #16a34a;
-      border: 1px solid #bbf7d0;
-    }
-
-    .remote-btn.resume:hover:not(:disabled) {
-      background: #dcfce7;
-      border-color: #4ade80;
-    }
-
-    .remote-card-offline {
-      padding: 12px 16px;
-      text-align: center;
-      font-size: 12px;
-      color: #9ca3af;
-      font-style: italic;
-    }
-
-    .remote-card-msg {
-      padding: 8px 16px 12px;
-      font-size: 12px;
-      font-weight: 500;
-      text-align: center;
-    }
-
-    .remote-card-msg.success {
-      color: #059669;
-    }
-
-    .remote-card-msg.error {
-      color: #dc2626;
-    }
-
     @media (max-width: 768px) {
       .settings-content {
         flex-direction: column;
@@ -1631,9 +1350,6 @@ interface PartPricing {
       }
       .vehicle-cards-grid {
         grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-      }
-      .remote-grid {
-        grid-template-columns: 1fr;
       }
     }
   `]
@@ -1690,16 +1406,7 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
       label: 'Prix pièces',
       icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>'
     },
-    { 
-      id: 'remote', 
-      label: 'Contrôle à distance',
-      icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>'
-    }
   ];
-
-  // Remote control
-  remoteVehicles: RemoteVehicle[] = [];
-  loadingRemote = false;
 
   constructor(private http: HttpClient, private cdr: ChangeDetectorRef, private apiService: ApiService) {}
 
@@ -1723,10 +1430,6 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
       case 'parts':
         this.loadPartCategories();
         this.loadPartPricing();
-        break;
-      case 'remote':
-        this.loading = false;
-        this.loadRemoteVehicles();
         break;
     }
   }
@@ -2027,98 +1730,6 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
 
   getPartPrice(partId: number): PartPricing | undefined {
     return this.partPricing.find(p => p.partId === partId);
-  }
-
-  // ==================== REMOTE CONTROL ====================
-
-  loadRemoteVehicles() {
-    this.loadingRemote = true;
-    this.apiService.getVehiclesWithPositions().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (data: any[]) => {
-        this.remoteVehicles = (data || [])
-          .filter((v: any) => v.hasGps)
-          .map((v: any) => ({
-            id: v.id,
-            name: v.name,
-            plate: v.plate || v.plateNumber,
-            type: v.type,
-            isOnline: v.isOnline ?? false,
-            ignitionOn: v.lastPosition?.ignitionOn ?? false,
-            speed: v.lastPosition?.speedKph ?? 0,
-            lastUpdate: v.lastCommunication,
-            commandLoading: false,
-            commandMessage: '',
-            commandSuccess: false
-          }));
-        // Sort: online first, then by name
-        this.remoteVehicles.sort((a, b) => {
-          if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
-          return a.name.localeCompare(b.name);
-        });
-        this.loadingRemote = false;
-        this.cdr.detectChanges();
-      },
-      error: () => {
-        this.remoteVehicles = [];
-        this.loadingRemote = false;
-        this.cdr.detectChanges();
-      }
-    });
-  }
-
-  sendRemoteCmd(vehicle: RemoteVehicle, command: 'stop' | 'resume') {
-    if (vehicle.commandLoading) return;
-
-    const actionLabel = command === 'stop' ? 'ARRÊTER' : 'REDÉMARRER';
-    const password = prompt(
-      `Pour ${actionLabel} le moteur du véhicule "${vehicle.name}", veuillez entrer votre mot de passe :`
-    );
-    if (!password) return;
-
-    vehicle.commandLoading = true;
-    vehicle.commandMessage = '';
-    vehicle.commandSuccess = false;
-    this.cdr.detectChanges();
-
-    // Verify password first via login API
-    const currentUser = this.apiService.getCurrentUserSync();
-    if (!currentUser?.email) {
-      vehicle.commandLoading = false;
-      vehicle.commandMessage = 'Impossible de vérifier l\'utilisateur';
-      vehicle.commandSuccess = false;
-      this.cdr.detectChanges();
-      setTimeout(() => { vehicle.commandMessage = ''; this.cdr.detectChanges(); }, 5000);
-      return;
-    }
-
-    this.apiService.login({ email: currentUser.email, password }).pipe(takeUntil(this.destroy$)).subscribe({
-      next: () => {
-        // Password correct — send the command
-        this.apiService.sendVehicleCommand(vehicle.id, command).pipe(takeUntil(this.destroy$)).subscribe({
-          next: (response: any) => {
-            vehicle.commandLoading = false;
-            vehicle.commandSuccess = response.success;
-            vehicle.commandMessage = response.message || (command === 'stop' ? 'Commande d\'arrêt envoyée' : 'Commande de redémarrage envoyée');
-            this.cdr.detectChanges();
-            setTimeout(() => { vehicle.commandMessage = ''; this.cdr.detectChanges(); }, 8000);
-          },
-          error: (err: any) => {
-            vehicle.commandLoading = false;
-            vehicle.commandSuccess = false;
-            vehicle.commandMessage = err.error?.message || 'Erreur lors de l\'envoi de la commande';
-            this.cdr.detectChanges();
-            setTimeout(() => { vehicle.commandMessage = ''; this.cdr.detectChanges(); }, 8000);
-          }
-        });
-      },
-      error: () => {
-        vehicle.commandLoading = false;
-        vehicle.commandSuccess = false;
-        vehicle.commandMessage = 'Mot de passe incorrect';
-        this.cdr.detectChanges();
-        setTimeout(() => { vehicle.commandMessage = ''; this.cdr.detectChanges(); }, 5000);
-      }
-    });
   }
 
   ngOnDestroy() {
