@@ -325,10 +325,55 @@ async fn handle_tcp_connection(
                     }
                 }
 
+                // ── AJ+ immobilization auto-recovery ──
+                // Check POSITION frames for bit5=0 (AJ+STOP active) and send AJ+GO to resume.
+                // IMPORTANT: Only check position frames (AA1x/AA2x/AA3x / HH1x/HH2x/HH3x),
+                // NOT info (AA00/AA01) or system (AA02/AA03/AA07) frames.
+                // This runs BEFORE route_payload to ensure immediate response on the TCP stream.
+                // No connection_map lock needed — just raw ASCII parsing.
+                let check_frames = extract_frames_smart(ascii);
+                for frame_str in &check_frames {
+                    let trimmed = frame_str.trim();
+                    // Find position frame header (with optional MAT prefix)
+                    let header_pos = if trimmed.starts_with("AA1") || trimmed.starts_with("AA2") || trimmed.starts_with("AA3")
+                        || trimmed.starts_with("HH1") || trimmed.starts_with("HH2") || trimmed.starts_with("HH3") {
+                        Some(0)
+                    } else if let Some(pos) = trimmed.find(" AA1").or_else(|| trimmed.find(" AA2")).or_else(|| trimmed.find(" AA3"))
+                        .or_else(|| trimmed.find(" HH1")).or_else(|| trimmed.find(" HH2")).or_else(|| trimmed.find(" HH3")) {
+                        Some(pos + 1) // skip the space
+                    } else {
+                        None // Not a position frame (info/system/keepalive) — skip
+                    };
+
+                    if let Some(start) = header_pos {
+                        let actual_frame = &trimmed[start..];
+                        if actual_frame.len() >= 44 {
+                            if let Some(flags_hex) = actual_frame.get(42..44) {
+                                if let Ok(flags) = u8::from_str_radix(flags_hex, 16) {
+                                    if (flags & 0x20) == 0 {
+                                        let peer_str = peer.as_deref().unwrap_or("unknown");
+                                        warn!(
+                                            peer = peer_str,
+                                            flags = format!("0x{:02X}", flags),
+                                            frame_preview = &actual_frame[..std::cmp::min(50, actual_frame.len())],
+                                            "IMMOBILIZATION DETECTED (bit5=0) - sending AJ+GO#1311"
+                                        );
+                                        if let Err(e) = stream.write_all(b"AJ+GO#1311\n").await {
+                                            error!(?e, peer = peer_str, "Failed to send AJ+GO auto-recovery command");
+                                        } else {
+                                            info!(peer = peer_str, "AJ+GO#1311 auto-recovery command SENT successfully");
+                                        }
+                                        break; // One recovery command per payload batch is enough
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
-            // ── Route payload + detect immobilization from parsed frames ──
-            match route_payload(
+            // ── Route payload for normal processing (DB, Redis, RabbitMQ) ──
+            if let Err(err) = route_payload(
                 &cfg.protocol,
                 payload,
                 Arc::clone(&database),
@@ -340,20 +385,7 @@ async fn handle_tcp_connection(
             )
             .await
             {
-                Ok(immobilization_detected) => {
-                    if immobilization_detected {
-                        let peer_str = peer.as_deref().unwrap_or("unknown");
-                        warn!(peer = peer_str, "Sending AJ+GO#1311 auto-recovery command");
-                        if let Err(e) = stream.write_all(b"AJ+GO#1311\n").await {
-                            error!(?e, "Failed to send AJ+GO auto-recovery command");
-                        } else {
-                            info!(peer = peer_str, "AJ+GO#1311 auto-recovery command SENT successfully");
-                        }
-                    }
-                }
-                Err(err) => {
-                    warn!(?err, "Failed to process payload");
-                }
+                warn!(?err, "Failed to process payload");
             }
         }
 
@@ -367,7 +399,6 @@ async fn handle_tcp_connection(
     Ok(())
 }
 
-/// Returns Ok(true) if immobilization was detected (bit5=0 in flags) on any parsed position frame
 async fn route_payload(
     protocol: &str,
     raw_payload: &[u8],
@@ -377,14 +408,14 @@ async fn route_payload(
     publisher: Option<Arc<dyn TelemetryEventPublisher>>,
     services: Arc<TelemetryServices>,
     redis_cache: Option<Arc<RedisCache>>,
-) -> Result<bool> {
+) -> Result<()> {
     let ascii_payload = String::from_utf8(raw_payload.to_vec()).context("payload is not UTF-8")?;
     
     // Ignore keepalive payloads (just newlines/whitespace)
     let trimmed = ascii_payload.trim();
     if trimmed.is_empty() {
         tracing::debug!("Ignoring keepalive payload");
-        return Ok(false);
+        return Ok(());
     }
     
     // Extract frames using smart parsing that handles binary data with embedded newlines
@@ -414,46 +445,7 @@ async fn route_payload(
         );
     }
 
-    let mut immobilization_detected = false;
-
     for frame_str in &frames {
-        // Check for immobilization BEFORE processing: parse flags from position frames
-        // Only check frames that look like position data (AA1x/AA2x/AA3x, length >= 44)
-        let trimmed_frame = frame_str.trim();
-        let actual_frame = if let Some(pos) = trimmed_frame.find("AA1").or_else(|| trimmed_frame.find("AA2")).or_else(|| trimmed_frame.find("AA3"))
-            .or_else(|| trimmed_frame.find("HH1")).or_else(|| trimmed_frame.find("HH2")).or_else(|| trimmed_frame.find("HH3")) {
-            &trimmed_frame[pos..]
-        } else {
-            trimmed_frame
-        };
-
-        if actual_frame.len() >= 44 {
-            let starts_with_pos_header = actual_frame.starts_with("AA1") || actual_frame.starts_with("AA2") || actual_frame.starts_with("AA3")
-                || actual_frame.starts_with("HH1") || actual_frame.starts_with("HH2") || actual_frame.starts_with("HH3");
-            if starts_with_pos_header {
-                if let Some(flags_hex) = actual_frame.get(42..44) {
-                    if let Ok(flags) = u8::from_str_radix(flags_hex, 16) {
-                        if (flags & 0x20) == 0 {
-                            // Resolve IMEI for logging
-                            let imei_str = if let Some(peer) = peer_addr {
-                                let map = connection_map.lock().await;
-                                map.get(peer).cloned().unwrap_or_else(|| "unknown".to_string())
-                            } else {
-                                "unknown".to_string()
-                            };
-                            warn!(
-                                imei = %imei_str,
-                                flags = format!("0x{:02X}", flags),
-                                frame_preview = &actual_frame[..std::cmp::min(50, actual_frame.len())],
-                                "IMMOBILIZATION DETECTED (bit5=0 in parsed position frame)"
-                            );
-                            immobilization_detected = true;
-                        }
-                    }
-                }
-            }
-        }
-
         if let Err(err) = process_single_frame(
             protocol,
             frame_str,
@@ -477,7 +469,7 @@ async fn route_payload(
         }
     }
 
-    Ok(immobilization_detected)
+    Ok(())
 }
 
 async fn process_single_frame(
