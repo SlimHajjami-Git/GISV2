@@ -731,18 +731,18 @@ async fn process_single_frame(
                     return Ok(());
                 }
                 
-                // Condition 1: Date must not be too far in the future
-                // Use 2-day margin instead of 1 to account for GPS devices sending
-                // local time (UTC+1/UTC+2) while server runs in UTC.
-                // Without this margin, frames are rejected between 23:00-01:00 UTC
-                // because GPS local date is already "tomorrow" from the server's perspective.
-                let future_cutoff = chrono::Utc::now().date_naive() + chrono::Duration::days(2);
-                let frame_date = frame.recorded_at.date();
-                if frame_date >= future_cutoff {
+                // Condition 1: Reject frames too far in the future (> 2 hours)
+                // GPS devices may send local time (UTC+1) while server runs UTC,
+                // so up to 1h offset is normal. 2h margin accepts UTC+1 devices
+                // while rejecting corrupted timestamps (seen at 2h+ offset).
+                let now_utc = chrono::Utc::now().naive_utc();
+                let max_future = now_utc + chrono::Duration::hours(2);
+                if frame.recorded_at > max_future {
                     warn!(
                         imei = %resolved_uid,
-                        frame_date = %frame.recorded_at,
-                        "Frame SKIPPED: Date too far in future (>1 day ahead)"
+                        frame_time = %frame.recorded_at,
+                        server_time = %now_utc,
+                        "Frame SKIPPED: timestamp > 4h in the future"
                     );
                     return Ok(());
                 }
