@@ -15,392 +15,701 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
   imports: [CommonModule, FormsModule, AppLayoutComponent, DateFilterBarComponent, CardComponent, LegendItemComponent],
   template: `
 <app-layout>
-<div class="D">
-  <div class="D-inner">
+<div class="dash">
+  <!-- Dot-grid background texture -->
+  <div class="dash-dots"></div>
 
-    <!-- HEADER -->
-    <div class="hd an" style="--i:0">
-      <div><h1 class="hd-t">Tableau de bord</h1><p class="hd-s">{{ totalMotion }} véhicules · {{ drivers.length }} conducteurs</p></div>
-      <div class="hd-r">
-        <span class="conn" [class.on]="isConnected"><b></b>{{ isConnected ? 'Live' : 'Off' }}</span>
+  <div class="dash-inner">
+
+    <!-- ── HEADER ── -->
+    <header class="d-head reveal" style="--i:0">
+      <div class="d-head-left">
+        <h1 class="d-title">Tableau de bord</h1>
+        <div class="d-meta">
+          <span class="live" [class.on]="isConnected">
+            <span class="live-ring"></span>
+            <span class="live-core"></span>
+            {{ isConnected ? 'En direct' : 'Hors ligne' }}
+          </span>
+          <span class="d-chip">{{ totalMotion }} véhicules</span>
+          <span class="d-chip">{{ drivers.length }} conducteurs</span>
+        </div>
+      </div>
+      <div class="d-head-right">
         <ui-date-filter-bar [selectedPeriod]="selectedPeriod" [fromDate]="fromDate" [toDate]="toDate"
-          (periodChange)="onPeriodChange($event)" (dateRangeChange)="onDateRangeChange($event)" (applyFilter)="applyFilter()"></ui-date-filter-bar>
+          (periodChange)="onPeriodChange($event)" (dateRangeChange)="onDateRangeChange($event)" (applyFilter)="applyFilter()">
+        </ui-date-filter-bar>
+      </div>
+    </header>
+
+    <!-- ── KPI CARDS ── -->
+    <div class="kpi-row">
+      <div class="kpi reveal-kpi" style="--kc:#3b82f6;--kg:rgba(59,130,246,0.12);--kd:0">
+        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--kc)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 4v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
+        <span class="kpi-num">{{ dVehicles }}</span>
+        <span class="kpi-lbl">Véhicules</span>
+      </div>
+      <div class="kpi reveal-kpi" style="--kc:#10b981;--kg:rgba(16,185,129,0.12);--kd:1">
+        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--kc)" stroke-width="1.6" stroke-linecap="round" width="20" height="20"><circle cx="12" cy="12" r="3"/><path d="M4.93 19.07A10 10 0 0119.07 4.93"/><path d="M7.76 16.24a6 6 0 018.49-8.49"/></svg></div>
+        <span class="kpi-num">{{ dMoving }}</span>
+        <span class="kpi-lbl">En mouvement</span>
+      </div>
+      <div class="kpi reveal-kpi" style="--kc:#f59e0b;--kg:rgba(245,158,11,0.12);--kd:2">
+        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--kc)" stroke-width="1.6" width="20" height="20"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M9 17V7h4a3 3 0 110 6H9"/></svg></div>
+        <span class="kpi-num">{{ dStopped }}</span>
+        <span class="kpi-lbl">À l'arrêt</span>
+      </div>
+      <div class="kpi reveal-kpi" style="--kc:#ef4444;--kg:rgba(239,68,68,0.12);--kd:3">
+        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--kc)" stroke-width="1.6" stroke-linecap="round" width="20" height="20"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg></div>
+        <span class="kpi-num">{{ dAlerts }}</span>
+        <span class="kpi-lbl">Alertes</span>
+      </div>
+      <div class="kpi reveal-kpi" style="--kc:#8b5cf6;--kg:rgba(139,92,246,0.12);--kd:4">
+        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--kc)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M3 22V5a2 2 0 012-2h8a2 2 0 012 2v17"/><path d="M15 11h2a2 2 0 012 2v4a2 2 0 004 0V9l-3-3"/><path d="M3 22h12"/><rect x="6" y="6" width="6" height="5" rx="1"/></svg></div>
+        <span class="kpi-num">{{ dFuel }}<small>L</small></span>
+        <span class="kpi-lbl">Carburant</span>
+      </div>
+      <div class="kpi reveal-kpi" style="--kc:#06b6d4;--kg:rgba(6,182,212,0.12);--kd:5">
+        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--kc)" stroke-width="1.6" stroke-linecap="round" width="20" height="20"><rect x="2" y="6" width="20" height="14" rx="3"/><path d="M2 10h20"/><circle cx="17" cy="14.5" r="1.5" fill="var(--kc)" stroke="none"/></svg></div>
+        <span class="kpi-num">{{ dCost }}<small>DT</small></span>
+        <span class="kpi-lbl">Coût total</span>
       </div>
     </div>
 
-    <!-- COLORED KPI TILES -->
-    <div class="kpi-band an" style="--i:1">
-      <div class="kt" style="--g1:#3b82f6;--g2:#2563eb"><div class="kt-top"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 4v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div><span class="kt-n">{{ dVehicles }}</span><span class="kt-l">Véhicules</span></div>
-      <div class="kt" style="--g1:#10b981;--g2:#059669"><div class="kt-top"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" width="22" height="22"><circle cx="12" cy="12" r="3"/><path d="M4.93 19.07A10 10 0 0119.07 4.93"/><path d="M7.76 16.24a6 6 0 018.49-8.49"/></svg></div><span class="kt-n">{{ dMoving }}</span><span class="kt-l">En mouvement</span></div>
-      <div class="kt" style="--g1:#f59e0b;--g2:#d97706"><div class="kt-top"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" width="22" height="22"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M9 17V7h4a3 3 0 110 6H9"/></svg></div><span class="kt-n">{{ dStopped }}</span><span class="kt-l">À l'arrêt</span></div>
-      <div class="kt" style="--g1:#ef4444;--g2:#dc2626"><div class="kt-top"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" width="22" height="22"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg></div><span class="kt-n">{{ dAlerts }}</span><span class="kt-l">Alertes</span></div>
-      <div class="kt" style="--g1:#8b5cf6;--g2:#7c3aed"><div class="kt-top"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M3 22V5a2 2 0 012-2h8a2 2 0 012 2v17"/><path d="M15 11h2a2 2 0 012 2v4a2 2 0 004 0V9l-3-3"/><path d="M3 22h12"/><rect x="6" y="6" width="6" height="5" rx="1"/></svg></div><span class="kt-n">{{ dFuel }}<small>L</small></span><span class="kt-l">Carburant</span></div>
-      <div class="kt" style="--g1:#06b6d4;--g2:#0891b2"><div class="kt-top"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" width="22" height="22"><rect x="2" y="6" width="20" height="14" rx="3"/><path d="M2 10h20"/><circle cx="17" cy="14.5" r="1.5" fill="#fff" stroke="none"/></svg></div><span class="kt-n">{{ dCost }}<small>DT</small></span><span class="kt-l">Coût total</span></div>
-    </div>
-
-    <!-- BENTO GRID -->
+    <!-- ── BENTO GRID ── -->
     <div class="bento">
 
-      <!-- FLEET STATUS -->
-      <section class="B B-fleet an" style="--i:2">
-        <div class="B-h"><h3>État flotte</h3></div>
+      <!-- Fleet Status -->
+      <section class="card card--fleet reveal" style="--i:2">
+        <div class="card-head"><h3>État flotte</h3></div>
         <div class="fleet-row">
-          <div class="donut-w">
+          <div class="donut-wrap">
             <svg viewBox="0 0 140 140">
-              <defs><filter id="sg"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
-              <circle cx="70" cy="70" r="56" fill="none" stroke="var(--border-color)" stroke-width="14" opacity=".1"/>
+              <circle cx="70" cy="70" r="56" fill="none" stroke="var(--border-color)" stroke-width="12" opacity=".1"/>
               <circle *ngFor="let s of donutSegs;let si=index" cx="70" cy="70" r="56" fill="none"
-                [attr.stroke]="s.color" [attr.stroke-width]="hSeg===si?20:14" stroke-linecap="round"
+                [attr.stroke]="s.color" [attr.stroke-width]="hSeg===si?18:12" stroke-linecap="round"
                 [attr.stroke-dasharray]="s.da+' '+(circ56-s.da)" [attr.stroke-dashoffset]="s.offset"
-                [attr.filter]="hSeg===si?'url(#sg)':null" class="seg-anim"
+                class="donut-seg"
                 (mouseenter)="hSeg=si" (mouseleave)="hSeg=-1"/>
             </svg>
-            <div class="donut-c"><span class="dc-n">{{ totalMotion }}</span><span class="dc-l">total</span></div>
+            <div class="donut-center">
+              <span class="donut-num">{{ totalMotion }}</span>
+              <span class="donut-lbl">total</span>
+            </div>
           </div>
           <div class="fleet-legend">
-            <div *ngFor="let s of donutSegs;let si=index" class="fl" (mouseenter)="hSeg=si" (mouseleave)="hSeg=-1" [class.fl-hl]="hSeg===si">
-              <i [style.background]="s.color"></i><span>{{ s.name }}</span><b>{{ s.value }}</b>
+            <div *ngFor="let s of donutSegs;let si=index" class="lg-item" (mouseenter)="hSeg=si" (mouseleave)="hSeg=-1" [class.lg-active]="hSeg===si">
+              <span class="lg-bar" [style.background]="s.color"></span>
+              <span class="lg-name">{{ s.name }}</span>
+              <b class="lg-val">{{ s.value }}</b>
             </div>
           </div>
         </div>
-        <!-- Mini strip -->
-        <div class="mini-strip">
-          <div *ngFor="let s of fleetSegs" class="ms" [style.flex]="s.value||0" [style.background]="s.color" [class.ms-hide]="!s.value"></div>
+        <div class="fleet-strip">
+          <div *ngFor="let s of fleetSegs" class="strip-seg" [style.flex]="s.value||0" [style.background]="s.color" [class.strip-hide]="!s.value"></div>
         </div>
       </section>
 
-      <!-- FUEL CHART -->
-      <section class="B B-chart an" style="--i:3">
-        <div class="B-h"><h3>Consommation carburant</h3><span class="B-tag green">{{ totalFuelConsumed | number:'1.0-0' }} L</span></div>
-        <div class="chart-w" (mousemove)="onChartHover($event)" (mouseleave)="cIdx=-1">
-          <svg viewBox="0 0 500 130" preserveAspectRatio="none" class="csv">
+      <!-- Fuel Consumption Chart -->
+      <section class="card card--chart reveal" style="--i:3">
+        <div class="card-head">
+          <h3>Consommation carburant</h3>
+          <span class="badge badge--green">{{ totalFuelConsumed | number:'1.0-0' }} L</span>
+        </div>
+        <div class="chart-wrap" (mousemove)="onChartHover($event)" (mouseleave)="cIdx=-1">
+          <svg viewBox="0 0 500 130" preserveAspectRatio="none" class="chart-svg">
             <defs>
-              <linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#10b981" stop-opacity=".25"/><stop offset="100%" stop-color="#10b981" stop-opacity="0"/></linearGradient>
-              <filter id="lg2"><feGaussianBlur stdDeviation="1.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              <linearGradient id="cGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#10b981" stop-opacity=".18"/>
+                <stop offset="100%" stop-color="#10b981" stop-opacity="0"/>
+              </linearGradient>
+              <filter id="lineGlow"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
             </defs>
-            <line *ngFor="let y of [0,32,65,97,130]" x1="0" [attr.y1]="y" x2="500" [attr.y2]="y" stroke="var(--border-color)" stroke-width=".4" opacity=".2"/>
-            <polygon *ngIf="cPts" [attr.points]="'0,130 '+cPts+' 500,130'" fill="url(#ag)" class="c-area"/>
-            <polyline *ngIf="cPts" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" [attr.points]="cPts" filter="url(#lg2)" class="c-line"/>
+            <line *ngFor="let y of [0,32,65,97,130]" x1="0" [attr.y1]="y" x2="500" [attr.y2]="y" stroke="var(--border-color)" stroke-width=".35" opacity=".25"/>
+            <polygon *ngIf="cPts" [attr.points]="'0,130 '+cPts+' 500,130'" fill="url(#cGrad)" class="chart-area"/>
+            <polyline *ngIf="cPts" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" [attr.points]="cPts" filter="url(#lineGlow)" class="chart-line"/>
             <ng-container *ngFor="let p of cPoints;let pi=index">
-              <circle [attr.cx]="p.x" [attr.cy]="p.y" [attr.r]="cIdx===pi?5:3" fill="var(--bg-card)" stroke="#10b981" [attr.stroke-width]="cIdx===pi?2.5:1.5" class="c-dot"/>
+              <circle [attr.cx]="p.x" [attr.cy]="p.y" [attr.r]="cIdx===pi?5:2.5" [attr.fill]="cIdx===pi?'#10b981':'var(--bg-card)'" stroke="#10b981" [attr.stroke-width]="cIdx===pi?2:1.5" class="chart-dot"/>
             </ng-container>
-            <line *ngIf="cIdx>=0&&cPoints[cIdx]" [attr.x1]="cPoints[cIdx].x" y1="0" [attr.x2]="cPoints[cIdx].x" y2="130" stroke="#10b981" stroke-width="1" opacity=".2" stroke-dasharray="3 3"/>
+            <line *ngIf="cIdx>=0&&cPoints[cIdx]" [attr.x1]="cPoints[cIdx].x" y1="0" [attr.x2]="cPoints[cIdx].x" y2="130" stroke="#10b981" stroke-width=".8" opacity=".2" stroke-dasharray="4 3"/>
           </svg>
-          <div class="c-labels"><span *ngFor="let l of cLabels">{{ l }}</span></div>
-          <div class="c-tt" *ngIf="cIdx>=0&&cVals[cIdx]!==undefined" [style.left.%]="cPoints[cIdx]?(cPoints[cIdx].x/5):0"><b>{{ cVals[cIdx]|number:'1.0-0' }} L</b><span>{{ cLabels[cIdx]||'' }}</span></div>
-        </div>
-      </section>
-
-      <!-- ROW 2: Mileage(2) + Expenses(1) = 3 -->
-      <section class="B B-km an" style="--i:4">
-        <div class="B-h"><h3>Kilométrage</h3></div>
-        <div class="rws" *ngIf="topUnits.length">
-          <div *ngFor="let u of pUnits" class="rw">
-            <i class="rw-dot" [style.background]="u.color"></i>
-            <span class="rw-plate" style="width:100px">{{ u.name }}</span>
-            <div class="bar tall"><div class="bar-f" [style.width.%]="(u.mileage/maxMileage)*100" [style.background]="u.color"></div></div>
-            <span class="rw-km">{{ u.mileage|number:'1.0-0' }} km</span>
-          </div>
-          <div class="pgr" *ngIf="topUnits.length>5"><button (click)="unP=unP-1" [disabled]="unP===0">‹</button><span>{{ unP+1 }}/{{ Math.ceil(topUnits.length/5) }}</span><button (click)="unP=unP+1" [disabled]="(unP+1)*5>=topUnits.length">›</button></div>
-        </div>
-        <div class="mt" *ngIf="!topUnits.length">Aucune donnée</div>
-      </section>
-
-      <section class="B B-exp an" style="--i:5">
-        <div class="B-h"><h3>Dépenses</h3><span class="B-tag amber">{{ totalCost|number:'1.0-0' }} DT</span></div>
-        <div class="exp-bars">
-          <div *ngFor="let e of expItems" class="eb">
-            <div class="eb-info"><i [style.background]="e.color"></i><span>{{ e.name }}</span><b>{{ e.value|number:'1.0-0' }} DT</b></div>
-            <div class="eb-track"><div class="eb-fill" [style.width.%]="totalCost?(e.value/totalCost)*100:0" [style.background]="e.color"></div></div>
+          <div class="chart-labels"><span *ngFor="let l of cLabels">{{ l }}</span></div>
+          <div class="chart-tip" *ngIf="cIdx>=0&&cVals[cIdx]!==undefined" [style.left.%]="cPoints[cIdx]?(cPoints[cIdx].x/5):0">
+            <b>{{ cVals[cIdx]|number:'1.0-0' }} L</b><span>{{ cLabels[cIdx]||'' }}</span>
           </div>
         </div>
       </section>
 
-      <!-- ROW 3: Health(2) + Geozones(1) = 3 -->
-      <section class="B B-health an" style="--i:6">
-        <div class="B-h"><h3>Santé véhicules</h3></div>
-        <div class="h-layout">
-          <div class="h-gauge-w">
+      <!-- Kilométrage -->
+      <section class="card card--km reveal" style="--i:4">
+        <div class="card-head"><h3>Kilométrage</h3></div>
+        <div class="rows" *ngIf="topUnits.length">
+          <div *ngFor="let u of pUnits" class="row-item">
+            <span class="row-accent" [style.background]="u.color"></span>
+            <span class="row-plate" style="min-width:90px">{{ u.name }}</span>
+            <div class="progress progress--lg"><div class="progress-fill" [style.width.%]="(u.mileage/maxMileage)*100" [style.background]="u.color"></div></div>
+            <span class="row-val mono">{{ u.mileage|number:'1.0-0' }} km</span>
+          </div>
+          <div class="pager" *ngIf="topUnits.length>5"><button (click)="unP=unP-1" [disabled]="unP===0">&#8249;</button><span>{{ unP+1 }}/{{ Math.ceil(topUnits.length/5) }}</span><button (click)="unP=unP+1" [disabled]="(unP+1)*5>=topUnits.length">&#8250;</button></div>
+        </div>
+        <div class="empty" *ngIf="!topUnits.length">Aucune donnée</div>
+      </section>
+
+      <!-- Dépenses -->
+      <section class="card card--exp reveal" style="--i:5">
+        <div class="card-head"><h3>Dépenses</h3><span class="badge badge--amber">{{ totalCost|number:'1.0-0' }} DT</span></div>
+        <div class="exp-list">
+          <div *ngFor="let e of expItems" class="exp-item">
+            <div class="exp-header">
+              <span class="exp-dot" [style.background]="e.color"></span>
+              <span class="exp-name">{{ e.name }}</span>
+              <b class="exp-val mono">{{ e.value|number:'1.0-0' }} DT</b>
+            </div>
+            <div class="progress progress--sm"><div class="progress-fill" [style.width.%]="totalCost?(e.value/totalCost)*100:0" [style.background]="e.color"></div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Vehicle Health -->
+      <section class="card card--health reveal" style="--i:6">
+        <div class="card-head"><h3>Santé véhicules</h3></div>
+        <div class="health-layout">
+          <div class="gauge-wrap">
             <svg viewBox="0 0 140 140">
-              <circle cx="70" cy="70" r="58" fill="none" stroke="var(--border-color)" stroke-width="10" opacity=".1"/>
-              <circle cx="70" cy="70" r="58" fill="none" stroke="#22c55e" stroke-width="10" stroke-linecap="round" stroke-dasharray="364" [attr.stroke-dashoffset]="364-(hPct/100)*364" class="h-arc"/>
+              <circle cx="70" cy="70" r="58" fill="none" stroke="var(--border-color)" stroke-width="8" opacity=".1"/>
+              <circle cx="70" cy="70" r="58" fill="none" stroke="#22c55e" stroke-width="8" stroke-linecap="round" stroke-dasharray="364" [attr.stroke-dashoffset]="364-(hPct/100)*364" class="gauge-arc"/>
             </svg>
-            <div class="h-mid"><span class="h-pct" [style.color]="hColor">{{ hPct }}%</span><span class="h-lbl">en bon état</span></div>
+            <div class="gauge-center">
+              <span class="gauge-pct" [style.color]="hColor">{{ hPct }}%</span>
+              <span class="gauge-lbl">en bon état</span>
+            </div>
           </div>
-          <div class="h-items-col">
-            <div *ngFor="let h of hItems" class="hi-card" [style.--hc]="h.color">
+          <div class="health-items">
+            <div *ngFor="let h of hItems" class="health-card" [style.--hc]="h.color">
               <b>{{ h.value }}</b>
               <span>{{ h.name }}</span>
-              <div class="hi-bar"><div class="hi-fill" [style.width.%]="totalHealth?(h.value/totalHealth)*100:0" [style.background]="h.color"></div></div>
+              <div class="progress progress--xs"><div class="progress-fill" [style.width.%]="totalHealth?(h.value/totalHealth)*100:0" [style.background]="h.color"></div></div>
             </div>
           </div>
         </div>
       </section>
 
-      <section class="B B-geo an" style="--i:7">
-        <div class="B-h"><h3>Géozones</h3></div>
-        <div class="geo-l" *ngIf="geofences.length">
-          <div *ngFor="let g of geofences" class="gi"><span class="gd" [style.background]="g.color"></span><span class="gn">{{ g.name }}</span><b class="gc">{{ g.count }}</b></div>
-        </div>
-        <div class="mt" *ngIf="!geofences.length">Aucune géozone</div>
-      </section>
-
-      <!-- ROW 4: Scores(2) + Alerts(1) = 3 -->
-      <section class="B B-scores an" style="--i:8">
-        <div class="B-h"><h3>Scores de conduite</h3></div>
-        <div class="rws" *ngIf="drivingScores.length">
-          <div *ngFor="let s of pScores;let i=index" class="rw">
-            <span class="rk" [class.r1]="scP*5+i<1" [class.r2]="scP*5+i===1" [class.r3]="scP*5+i===2">{{ scP*5+i+1 }}</span>
-            <span class="rw-plate">{{ s.plate }}</span>
-            <div class="bar"><div class="bar-f" [style.width.%]="s.score" [style.background]="'linear-gradient(90deg,'+scoreC(s.score)+','+scoreE(s.score)+')'"></div></div>
-            <b class="rw-v" [style.color]="scoreC(s.score)">{{ s.score }}</b>
+      <!-- Geozones -->
+      <section class="card card--geo reveal" style="--i:7">
+        <div class="card-head"><h3>Géozones</h3></div>
+        <div class="geo-list" *ngIf="geofences.length">
+          <div *ngFor="let g of geofences" class="geo-item">
+            <span class="geo-dot" [style.background]="g.color"></span>
+            <span class="geo-name">{{ g.name }}</span>
+            <b class="geo-count mono">{{ g.count }}</b>
           </div>
-          <div class="pgr" *ngIf="drivingScores.length>5"><button (click)="scP=scP-1" [disabled]="scP===0">‹</button><span>{{ scP+1 }}/{{ Math.ceil(drivingScores.length/5) }}</span><button (click)="scP=scP+1" [disabled]="(scP+1)*5>=drivingScores.length">›</button></div>
         </div>
-        <div class="mt" *ngIf="!drivingScores.length">Aucun score</div>
+        <div class="empty" *ngIf="!geofences.length">Aucune géozone</div>
       </section>
 
-      <section class="B B-alerts an" style="--i:9">
-        <div class="B-h"><h3>Alertes récentes</h3><span class="alert-ct" *ngIf="alerts.length">{{ alerts.length }}</span></div>
-        <div class="tl" *ngIf="alerts.length">
-          <div *ngFor="let a of pagedAlerts" class="tl-i" [class.tl-new]="a._isNew">
-            <div class="tl-dot" [class.tw]="a.severity==='warning'" [class.td]="a.severity==='danger'" [class.ti]="a.severity==='info'"></div>
+      <!-- Driving Scores -->
+      <section class="card card--scores reveal" style="--i:8">
+        <div class="card-head"><h3>Scores de conduite</h3></div>
+        <div class="rows" *ngIf="drivingScores.length">
+          <div *ngFor="let s of pScores;let i=index" class="row-item">
+            <span class="rank" [class.rank-gold]="scP*5+i<1" [class.rank-silver]="scP*5+i===1" [class.rank-bronze]="scP*5+i===2">{{ scP*5+i+1 }}</span>
+            <span class="row-plate">{{ s.plate }}</span>
+            <div class="progress"><div class="progress-fill" [style.width.%]="s.score" [style.background]="'linear-gradient(90deg,'+scoreC(s.score)+','+scoreE(s.score)+')'"></div></div>
+            <b class="row-score mono" [style.color]="scoreC(s.score)">{{ s.score }}</b>
+          </div>
+          <div class="pager" *ngIf="drivingScores.length>5"><button (click)="scP=scP-1" [disabled]="scP===0">&#8249;</button><span>{{ scP+1 }}/{{ Math.ceil(drivingScores.length/5) }}</span><button (click)="scP=scP+1" [disabled]="(scP+1)*5>=drivingScores.length">&#8250;</button></div>
+        </div>
+        <div class="empty" *ngIf="!drivingScores.length">Aucun score</div>
+      </section>
+
+      <!-- Alerts -->
+      <section class="card card--alerts reveal" style="--i:9">
+        <div class="card-head"><h3>Alertes récentes</h3><span class="alert-pill" *ngIf="alerts.length">{{ alerts.length }}</span></div>
+        <div class="timeline" *ngIf="alerts.length">
+          <div *ngFor="let a of pagedAlerts" class="tl-item" [class.tl-new]="a._isNew">
+            <div class="tl-dot" [class.tl-warn]="a.severity==='warning'" [class.tl-danger]="a.severity==='danger'" [class.tl-info]="a.severity==='info'"></div>
             <div class="tl-body"><span class="tl-msg">{{ a.message }}</span><span class="tl-time">{{ a.time }}</span></div>
           </div>
-          <div class="pgr" *ngIf="alerts.length>6"><button (click)="alertsP=alertsP-1" [disabled]="alertsP===0">‹</button><span>{{ alertsP+1 }}/{{ Math.ceil(alerts.length/6) }}</span><button (click)="alertsP=alertsP+1" [disabled]="(alertsP+1)*6>=alerts.length">›</button></div>
+          <div class="pager" *ngIf="alerts.length>6"><button (click)="alertsP=alertsP-1" [disabled]="alertsP===0">&#8249;</button><span>{{ alertsP+1 }}/{{ Math.ceil(alerts.length/6) }}</span><button (click)="alertsP=alertsP+1" [disabled]="(alertsP+1)*6>=alerts.length">&#8250;</button></div>
         </div>
-        <div class="mt" *ngIf="!alerts.length">Aucune alerte</div>
+        <div class="empty" *ngIf="!alerts.length">Aucune alerte</div>
       </section>
 
-      <!-- FUEL/VEH -->
-      <section class="B an" style="--i:10">
-        <div class="B-h"><h3>Conso/Véhicule</h3><span class="B-tag muted">L/100km</span></div>
-        <div class="rws" *ngIf="vehicleFuelStats.length">
-          <div *ngFor="let v of pFuel" class="fv">
-            <div class="fv-t"><span class="rw-plate">{{ v.plate }}</span><b [style.color]="fuelC(v.consumption)">{{ v.consumption|number:'1.1-1' }}</b></div>
-            <div class="bar sm"><div class="bar-f" [style.width.%]="(v.consumption/maxFuelConsumption)*100" [style.background]="fuelC(v.consumption)"></div></div>
-            <span class="rw-sub">{{ v.totalLiters|number:'1.0-0' }}L · {{ v.totalKm|number:'1.0-0' }}km</span>
+      <!-- Fuel per Vehicle -->
+      <section class="card reveal" style="--i:10">
+        <div class="card-head"><h3>Conso / Véhicule</h3><span class="badge badge--muted">L/100km</span></div>
+        <div class="rows" *ngIf="vehicleFuelStats.length">
+          <div *ngFor="let v of pFuel" class="fuel-item">
+            <div class="fuel-top"><span class="row-plate">{{ v.plate }}</span><b class="mono" [style.color]="fuelC(v.consumption)">{{ v.consumption|number:'1.1-1' }}</b></div>
+            <div class="progress progress--sm"><div class="progress-fill" [style.width.%]="(v.consumption/maxFuelConsumption)*100" [style.background]="fuelC(v.consumption)"></div></div>
+            <span class="row-sub">{{ v.totalLiters|number:'1.0-0' }}L · {{ v.totalKm|number:'1.0-0' }}km</span>
           </div>
-          <div class="pgr" *ngIf="vehicleFuelStats.length>5"><button (click)="fuP=fuP-1" [disabled]="fuP===0">‹</button><span>{{ fuP+1 }}/{{ Math.ceil(vehicleFuelStats.length/5) }}</span><button (click)="fuP=fuP+1" [disabled]="(fuP+1)*5>=vehicleFuelStats.length">›</button></div>
+          <div class="pager" *ngIf="vehicleFuelStats.length>5"><button (click)="fuP=fuP-1" [disabled]="fuP===0">&#8249;</button><span>{{ fuP+1 }}/{{ Math.ceil(vehicleFuelStats.length/5) }}</span><button (click)="fuP=fuP+1" [disabled]="(fuP+1)*5>=vehicleFuelStats.length">&#8250;</button></div>
         </div>
-        <div class="mt" *ngIf="!vehicleFuelStats.length">Aucune donnée</div>
+        <div class="empty" *ngIf="!vehicleFuelStats.length">Aucune donnée</div>
       </section>
 
-      <!-- TRIPS -->
-      <section class="B B-trips an" style="--i:11">
-        <div class="B-h"><h3>Derniers trajets</h3></div>
-        <div class="rws" *ngIf="recentTrips.length">
-          <div *ngFor="let t of pTrips" class="rw">
-            <svg viewBox="0 0 20 28" width="14" height="20" fill="none" class="trip-svg"><circle cx="10" cy="5" r="3.5" stroke="#10b981" stroke-width="1.5"/><line x1="10" y1="9" x2="10" y2="19" stroke="#10b981" stroke-width="1.5" stroke-dasharray="2 2"/><circle cx="10" cy="23" r="3.5" stroke="#ef4444" stroke-width="1.5"/></svg>
-            <div class="rw-col"><span class="rw-plate">{{ t.plate }}</span><span class="rw-sub">{{ t.distance }} km · {{ t.duration }}</span></div>
-            <span class="rw-sub" style="margin-left:auto">{{ t.date }}</span>
+      <!-- Recent Trips -->
+      <section class="card card--trips reveal" style="--i:11">
+        <div class="card-head"><h3>Derniers trajets</h3></div>
+        <div class="rows" *ngIf="recentTrips.length">
+          <div *ngFor="let t of pTrips" class="row-item">
+            <svg viewBox="0 0 20 28" width="14" height="20" fill="none" class="trip-icon">
+              <circle cx="10" cy="5" r="3.5" stroke="#10b981" stroke-width="1.5"/>
+              <line x1="10" y1="9" x2="10" y2="19" stroke="var(--text-muted)" stroke-width="1.5" stroke-dasharray="2 2"/>
+              <circle cx="10" cy="23" r="3.5" stroke="#ef4444" stroke-width="1.5"/>
+            </svg>
+            <div class="row-col"><span class="row-plate">{{ t.plate }}</span><span class="row-sub">{{ t.distance }} km · {{ t.duration }}</span></div>
+            <span class="row-sub" style="margin-left:auto">{{ t.date }}</span>
           </div>
-          <div class="pgr" *ngIf="recentTrips.length>5"><button (click)="trP=trP-1" [disabled]="trP===0">‹</button><span>{{ trP+1 }}/{{ Math.ceil(recentTrips.length/5) }}</span><button (click)="trP=trP+1" [disabled]="(trP+1)*5>=recentTrips.length">›</button></div>
+          <div class="pager" *ngIf="recentTrips.length>5"><button (click)="trP=trP-1" [disabled]="trP===0">&#8249;</button><span>{{ trP+1 }}/{{ Math.ceil(recentTrips.length/5) }}</span><button (click)="trP=trP+1" [disabled]="(trP+1)*5>=recentTrips.length">&#8250;</button></div>
         </div>
-        <div class="mt" *ngIf="!recentTrips.length">Aucun trajet</div>
+        <div class="empty" *ngIf="!recentTrips.length">Aucun trajet</div>
       </section>
 
-      <!-- DRIVERS -->
-      <section class="B an" style="--i:12">
-        <div class="B-h"><h3>Conducteurs</h3><span class="B-tag muted">{{ drivers.length }}</span></div>
-        <div class="rws" *ngIf="drivers.length">
-          <div *ngFor="let d of pDrv" class="rw">
-            <div class="av" [class.av-on]="d.active">{{ d.initials }}</div>
-            <div class="rw-col"><span class="rw-plate">{{ d.name }}</span><span class="rw-sub">{{ d.vehicle||'Non assigné' }}</span></div>
-            <span class="st" [class.st-on]="d.active">{{ d.active?'Actif':'—' }}</span>
+      <!-- Drivers -->
+      <section class="card reveal" style="--i:12">
+        <div class="card-head"><h3>Conducteurs</h3><span class="badge badge--muted">{{ drivers.length }}</span></div>
+        <div class="rows" *ngIf="drivers.length">
+          <div *ngFor="let d of pDrv" class="row-item">
+            <div class="avatar" [class.avatar--on]="d.active">{{ d.initials }}</div>
+            <div class="row-col"><span class="row-plate">{{ d.name }}</span><span class="row-sub">{{ d.vehicle||'Non assigné' }}</span></div>
+            <span class="status" [class.status--on]="d.active">{{ d.active?'Actif':'—' }}</span>
           </div>
-          <div class="pgr" *ngIf="drivers.length>5"><button (click)="drP=drP-1" [disabled]="drP===0">‹</button><span>{{ drP+1 }}/{{ Math.ceil(drivers.length/5) }}</span><button (click)="drP=drP+1" [disabled]="(drP+1)*5>=drivers.length">›</button></div>
+          <div class="pager" *ngIf="drivers.length>5"><button (click)="drP=drP-1" [disabled]="drP===0">&#8249;</button><span>{{ drP+1 }}/{{ Math.ceil(drivers.length/5) }}</span><button (click)="drP=drP+1" [disabled]="(drP+1)*5>=drivers.length">&#8250;</button></div>
         </div>
-        <div class="mt" *ngIf="!drivers.length">Aucun conducteur</div>
+        <div class="empty" *ngIf="!drivers.length">Aucun conducteur</div>
       </section>
 
-    </div>
-  </div>
-</div>
+    </div><!-- bento -->
+  </div><!-- dash-inner -->
+</div><!-- dash -->
 </app-layout>
   `,
   styles: [`
-    .D { flex:1; overflow-y:auto; background:var(--bg-page); font-family:'Outfit',sans-serif; min-height:calc(100vh - 42px); }
-    .D-inner { max-width:1440px; margin:0 auto; padding:0 24px 48px; }
+    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
-    /* ANIMATIONS */
-    .an { animation:slideUp .5s cubic-bezier(.22,1,.36,1) both; animation-delay:calc(var(--i,0)*50ms + 60ms); }
-    @keyframes slideUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
-
-    /* HEADER */
-    .hd { display:flex; justify-content:space-between; align-items:flex-end; padding:18px 0 10px; flex-wrap:wrap; gap:12px; }
-    .hd-t { font-size:26px; font-weight:900; color:var(--text-primary); margin:0; letter-spacing:-.6px; }
-    .hd-s { font-size:12px; color:var(--text-muted); margin:2px 0 0; }
-    .hd-r { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-    .conn { font-size:10px; font-weight:700; color:#ef4444; background:rgba(239,68,68,.08); padding:4px 12px; border-radius:16px; display:flex; align-items:center; gap:6px; text-transform:uppercase; letter-spacing:.4px; }
-    .conn.on { color:#10b981; background:rgba(16,185,129,.08); }
-    .conn b { width:7px; height:7px; border-radius:50%; background:currentColor; display:inline-block; }
-
-    /* COLORED KPI TILES */
-    .kpi-band { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin:8px 0 16px; }
-    .kt {
-      background:linear-gradient(135deg,var(--g1),var(--g2));
-      border-radius:16px; padding:16px 14px; color:#fff;
-      display:flex; flex-direction:column; gap:4px;
-      animation:ktPop .5s cubic-bezier(.34,1.56,.64,1) both;
-      animation-delay:calc(var(--i,1)*50ms + 120ms);
-      transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s;
-      box-shadow:0 4px 20px -6px var(--g2);
-      cursor:default;
+    /* ─── FOUNDATION ─── */
+    .dash {
+      flex: 1; min-height: calc(100vh - 42px); overflow-y: auto;
+      background: var(--bg-page); position: relative;
     }
-    .kt:hover { transform:translateY(-4px) scale(1.02); box-shadow:0 12px 28px -6px var(--g2); }
-    @keyframes ktPop { from{opacity:0;transform:translateY(18px) scale(.9)} to{opacity:1;transform:translateY(0) scale(1)} }
-    .kt-top { margin-bottom:4px; opacity:.85; }
-    .kt-n { font-size:28px; font-weight:900; line-height:1; letter-spacing:-.8px; font-variant-numeric:tabular-nums; }
-    .kt-n small { font-size:13px; font-weight:500; opacity:.7; margin-left:2px; }
-    .kt-l { font-size:11px; font-weight:500; opacity:.75; }
-
-    /* BENTO GRID */
-    .bento { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
-    .B {
-      background:var(--bg-card); border-radius:18px; padding:20px;
-      border:1px solid var(--border-color);
-      transition:transform .18s ease,box-shadow .18s;
+    .dash-dots {
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image: radial-gradient(circle, var(--text-muted) 0.4px, transparent 0.4px);
+      background-size: 22px 22px; opacity: 0.06;
     }
-    .B:hover { transform:translateY(-2px); box-shadow:0 12px 32px -10px rgba(0,0,0,.08); }
-    .B-fleet { grid-column:span 1; grid-row:span 1; }
-    .B-chart { grid-column:span 2; }
-    .B-exp { grid-column:span 1; }
-    .B-health { grid-column:span 2; }
-    .B-alerts { grid-column:span 1; }
-    .B-geo { grid-column:span 1; }
-    .B-scores { grid-column:span 2; }
-    .B-km { grid-column:span 2; }
-    .B-trips { grid-column:span 2; }
+    .dash-inner {
+      position: relative; z-index: 1;
+      max-width: 1440px; margin: 0 auto; padding: 0 28px 56px;
+    }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
 
-    .B-h { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
-    .B-h h3 { font-size:14px; font-weight:700; color:var(--text-primary); margin:0; flex:1; }
-    .B-tag { font-size:14px; font-weight:800; }
-    .B-tag.green { color:#10b981; }
-    .B-tag.amber { color:#f59e0b; }
-    .B-tag.muted { font-size:11px; color:var(--text-muted); font-weight:500; }
-    .alert-ct { background:#fef2f2; color:#ef4444; font-size:11px; font-weight:700; padding:2px 10px; border-radius:14px; }
+    /* ─── ANIMATIONS ─── */
+    .reveal {
+      animation: revealUp .55s cubic-bezier(.16,1,.3,1) both;
+      animation-delay: calc(var(--i, 0) * 55ms + 80ms);
+    }
+    @keyframes revealUp {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .reveal-kpi {
+      animation: kpiPop .5s cubic-bezier(.34,1.56,.64,1) both;
+      animation-delay: calc(var(--kd, 0) * 50ms + 140ms);
+    }
+    @keyframes kpiPop {
+      from { opacity: 0; transform: translateY(14px) scale(.94); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
 
-    /* DONUT */
-    .fleet-row { display:flex; gap:16px; align-items:center; }
-    .donut-w { position:relative; width:130px; height:130px; flex-shrink:0; }
-    .donut-w svg { width:100%; height:100%; transform:rotate(-90deg); }
-    .seg-anim { transition:stroke-dasharray .5s ease,stroke-dashoffset .5s ease,stroke-width .15s; }
-    .donut-c { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
-    .dc-n { font-size:28px; font-weight:900; color:var(--text-primary); line-height:1; }
-    .dc-l { font-size:9px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-top:2px; }
-    .fleet-legend { display:flex; flex-direction:column; gap:4px; flex:1; }
-    .fl { display:flex; align-items:center; gap:8px; padding:4px 6px; border-radius:6px; font-size:12px; color:var(--text-secondary); transition:all .12s; cursor:default; }
-    .fl:hover,.fl-hl { background:var(--bg-secondary); transform:translateX(3px); }
-    .fl i { width:4px; height:20px; border-radius:2px; flex-shrink:0; }
-    .fl span { flex:1; font-weight:500; }
-    .fl b { font-weight:800; color:var(--text-primary); font-size:14px; }
-    .mini-strip { display:flex; height:6px; border-radius:4px; overflow:hidden; gap:2px; margin-top:12px; background:var(--bg-tertiary); }
-    .ms { min-width:0; transition:flex .6s ease; border-radius:3px; }
-    .ms-hide { flex:0!important; }
+    /* ─── HEADER ─── */
+    .d-head {
+      display: flex; justify-content: space-between; align-items: flex-end;
+      padding: 22px 0 14px; flex-wrap: wrap; gap: 14px;
+    }
+    .d-title {
+      font-family: 'Sora', sans-serif; font-size: 26px; font-weight: 800;
+      color: var(--text-primary); margin: 0; letter-spacing: -.5px;
+    }
+    .d-meta {
+      display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap;
+    }
+    .d-chip {
+      font-size: 11px; font-weight: 600; color: var(--text-muted);
+      background: var(--bg-secondary); padding: 3px 10px; border-radius: 20px;
+      border: 1px solid var(--border-color); letter-spacing: .01em;
+    }
+    .d-head-right { display: flex; align-items: center; gap: 12px; }
 
-    /* CHART */
-    .chart-w { background:var(--bg-secondary); border-radius:12px; padding:12px 14px 6px; position:relative; cursor:crosshair; }
-    .csv { width:100%; height:110px; display:block; overflow:visible; }
-    .c-line { stroke-dasharray:2000; stroke-dashoffset:2000; animation:draw 1.3s ease forwards .3s; }
-    .c-area { opacity:0; animation:fadein .6s ease forwards .8s; }
-    @keyframes draw { to{stroke-dashoffset:0} }
-    @keyframes fadein { to{opacity:1} }
-    .c-dot { transition:r .12s,stroke-width .12s; }
-    .c-labels { display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-top:6px; }
-    .c-tt { position:absolute; top:4px; transform:translateX(-50%); background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; padding:6px 10px; box-shadow:0 6px 16px -4px rgba(0,0,0,.12); pointer-events:none; z-index:5; display:flex; flex-direction:column; align-items:center; animation:ttpop .1s ease; }
-    .c-tt b { font-size:13px; font-weight:800; color:#10b981; }
-    .c-tt span { font-size:10px; color:var(--text-muted); }
-    @keyframes ttpop { from{opacity:0;transform:translateX(-50%) translateY(4px)} }
+    /* ── Live badge ── */
+    .live {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .6px; padding: 4px 12px 4px 10px; border-radius: 20px;
+      color: #ef4444; background: rgba(239,68,68,.06);
+      border: 1px solid rgba(239,68,68,.12); position: relative;
+    }
+    .live.on {
+      color: #10b981; background: rgba(16,185,129,.06);
+      border-color: rgba(16,185,129,.15);
+    }
+    .live-core {
+      width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+      position: relative; z-index: 1;
+    }
+    .live-ring {
+      position: absolute; left: 10px; width: 6px; height: 6px;
+      border-radius: 50%; background: currentColor; opacity: 0;
+    }
+    .live.on .live-ring {
+      animation: livePulse 2s ease-in-out infinite;
+    }
+    @keyframes livePulse {
+      0%   { transform: scale(1); opacity: .6; }
+      100% { transform: scale(3.5); opacity: 0; }
+    }
 
-    /* EXPENSES */
-    .exp-bars { display:flex; flex-direction:column; gap:12px; }
-    .eb { display:flex; flex-direction:column; gap:4px; }
-    .eb-info { display:flex; align-items:center; gap:8px; font-size:12px; }
-    .eb-info i { width:8px; height:8px; border-radius:3px; flex-shrink:0; }
-    .eb-info span { flex:1; color:var(--text-secondary); font-weight:500; }
-    .eb-info b { color:var(--text-primary); font-weight:700; }
-    .eb-track { height:8px; background:var(--bg-tertiary); border-radius:5px; overflow:hidden; }
-    .eb-fill { height:100%; border-radius:5px; transition:width .7s cubic-bezier(.4,0,.2,1); }
+    /* ─── KPI CARDS ─── */
+    .kpi-row {
+      display: grid; grid-template-columns: repeat(6, 1fr);
+      gap: 12px; margin: 6px 0 18px;
+    }
+    .kpi {
+      background: var(--bg-card); border-radius: 14px;
+      padding: 18px 16px 16px; position: relative; overflow: hidden;
+      border: 1px solid var(--border-color); cursor: default;
+      display: flex; flex-direction: column; gap: 8px;
+      transition: transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease, border-color .25s ease;
+    }
+    .kpi::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, var(--kc), color-mix(in srgb, var(--kc) 30%, transparent));
+    }
+    .kpi:hover {
+      transform: translateY(-4px) scale(1.015);
+      border-color: color-mix(in srgb, var(--kc) 25%, var(--border-color));
+      box-shadow: 0 8px 28px -6px var(--kg), 0 0 0 1px color-mix(in srgb, var(--kc) 10%, transparent);
+    }
+    .kpi-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: var(--kg); display: flex;
+      align-items: center; justify-content: center;
+    }
+    .kpi-num {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 28px; font-weight: 700; line-height: 1;
+      color: var(--text-primary); letter-spacing: -.5px;
+      font-variant-numeric: tabular-nums;
+    }
+    .kpi-num small {
+      font-size: 13px; font-weight: 500; opacity: .45; margin-left: 2px;
+    }
+    .kpi-lbl {
+      font-family: 'Sora', sans-serif;
+      font-size: 11px; font-weight: 500; color: var(--text-muted);
+      letter-spacing: .01em;
+    }
 
-    /* HEALTH — redesigned */
-    .h-layout { display:flex; gap:24px; align-items:center; }
-    .h-gauge-w { position:relative; width:140px; height:140px; flex-shrink:0; }
-    .h-gauge-w svg { width:100%; height:100%; transform:rotate(-90deg); }
-    .h-arc { transition:stroke-dashoffset 1s ease; filter:drop-shadow(0 0 4px rgba(34,197,94,.3)); }
-    .h-mid { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
-    .h-pct { font-size:28px; font-weight:900; line-height:1; }
-    .h-lbl { font-size:10px; color:var(--text-muted); margin-top:2px; }
-    .h-items-col { display:flex; flex-direction:column; gap:12px; flex:1; }
-    .hi-card { display:flex; flex-direction:column; gap:4px; padding:10px 14px; border-radius:10px; background:var(--bg-secondary); border-left:3px solid var(--hc); }
-    .hi-card b { font-size:18px; font-weight:800; color:var(--text-primary); line-height:1; }
-    .hi-card span { font-size:11px; color:var(--text-muted); font-weight:500; }
-    .hi-bar { height:4px; background:var(--bg-tertiary); border-radius:3px; overflow:hidden; margin-top:2px; }
-    .hi-fill { height:100%; border-radius:3px; transition:width .7s ease; }
+    /* ─── BENTO GRID ─── */
+    .bento { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .card--fleet  { grid-column: span 1; }
+    .card--chart  { grid-column: span 2; }
+    .card--km     { grid-column: span 2; }
+    .card--exp    { grid-column: span 1; }
+    .card--health { grid-column: span 2; }
+    .card--geo    { grid-column: span 1; }
+    .card--scores { grid-column: span 2; }
+    .card--alerts { grid-column: span 1; }
+    .card--trips  { grid-column: span 2; }
 
-    /* ALERTS TIMELINE */
-    .tl { display:flex; flex-direction:column; gap:0; }
-    .tl-i { display:flex; gap:10px; padding:6px 0; }
-    .tl-i.tl-new { animation:flash .5s ease; }
-    @keyframes flash { from{background:rgba(99,102,241,.06)} }
-    .tl-dot { width:10px; height:10px; border-radius:50%; background:var(--bg-tertiary); border:2px solid var(--text-muted); flex-shrink:0; margin-top:3px; }
-    .tw { border-color:#f59e0b; background:rgba(245,158,11,.1); }
-    .td { border-color:#ef4444; background:rgba(239,68,68,.1); }
-    .ti { border-color:#3b82f6; background:rgba(59,130,246,.1); }
-    .tl-body { min-width:0; }
-    .tl-msg { font-size:12px; font-weight:500; color:var(--text-primary); line-height:1.35; display:block; }
-    .tl-time { font-size:10px; color:var(--text-muted); display:block; margin-top:1px; }
+    /* ── Card base ── */
+    .card {
+      background: var(--bg-card); border-radius: 16px; padding: 20px;
+      border: 1px solid var(--border-color); position: relative;
+      transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 16px 40px -10px rgba(0,0,0,.06);
+      border-color: var(--border-light);
+    }
+    .card-head {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
+    }
+    .card-head h3 {
+      font-family: 'Sora', sans-serif; font-size: 13px;
+      font-weight: 700; color: var(--text-primary);
+      margin: 0; flex: 1; letter-spacing: -.01em;
+    }
 
-    /* GEOZONES */
-    .geo-l { display:flex; flex-direction:column; gap:2px; }
-    .gi { display:flex; align-items:center; gap:10px; padding:6px; border-radius:6px; transition:background .12s; }
-    .gi:hover { background:var(--bg-secondary); }
-    .gd { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
-    .gn { flex:1; font-size:13px; font-weight:500; color:var(--text-secondary); }
-    .gc { font-size:14px; font-weight:800; color:var(--text-primary); }
+    /* ── Badges ── */
+    .badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px; font-weight: 700; letter-spacing: -.02em;
+    }
+    .badge--green { color: #10b981; }
+    .badge--amber { color: #f59e0b; }
+    .badge--muted { font-size: 11px; color: var(--text-muted); font-weight: 500; font-family: 'Sora', sans-serif; }
+    .alert-pill {
+      background: #fef2f2; color: #ef4444; font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 14px;
+    }
 
-    /* ROWS (scores, mileage, etc) */
-    .rws { display:flex; flex-direction:column; gap:2px; }
-    .rw { display:flex; align-items:center; gap:10px; padding:6px 6px; border-radius:6px; font-size:12px; transition:background .1s; }
-    .rw:hover { background:var(--bg-secondary); }
-    .rk { width:22px; height:22px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:var(--text-muted); background:var(--bg-tertiary); }
-    .r1 { background:linear-gradient(135deg,#fbbf24,#f59e0b)!important; color:#fff!important; }
-    .r2 { background:linear-gradient(135deg,#d1d5db,#9ca3af)!important; color:#fff!important; }
-    .r3 { background:linear-gradient(135deg,#d97706,#92400e)!important; color:#fff!important; }
-    .rw-plate { font-size:12px; font-weight:600; color:var(--text-primary); }
-    .rw-dot { width:4px; height:18px; border-radius:2px; flex-shrink:0; }
-    .rw-v { font-size:14px; font-weight:800; min-width:28px; text-align:right; }
-    .rw-km { font-size:12px; font-weight:700; color:var(--text-primary); min-width:76px; text-align:right; }
-    .rw-sub { font-size:11px; color:var(--text-muted); }
-    .rw-col { display:flex; flex-direction:column; flex:1; min-width:0; }
-    .trip-svg { flex-shrink:0; }
-    .bar { flex:1; height:8px; background:var(--bg-tertiary); border-radius:5px; overflow:hidden; }
-    .bar.tall { height:14px; }
-    .bar.sm { height:6px; }
-    .bar-f { height:100%; border-radius:5px; transition:width .6s cubic-bezier(.4,0,.2,1); }
-    .fv { display:flex; flex-direction:column; gap:3px; padding:5px 0; }
-    .fv-t { display:flex; justify-content:space-between; font-size:12px; }
-    .fv-t b { font-size:13px; font-weight:800; }
+    /* ─── FLEET DONUT ─── */
+    .fleet-row { display: flex; gap: 16px; align-items: center; }
+    .donut-wrap { position: relative; width: 130px; height: 130px; flex-shrink: 0; }
+    .donut-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .donut-seg {
+      transition: stroke-dasharray .6s ease, stroke-dashoffset .6s ease, stroke-width .18s ease;
+    }
+    .donut-center {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .donut-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 26px; font-weight: 700; color: var(--text-primary);
+      line-height: 1; letter-spacing: -.5px;
+    }
+    .donut-lbl {
+      font-size: 9px; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: .6px; margin-top: 2px;
+    }
+    .fleet-legend { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+    .lg-item {
+      display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+      border-radius: 8px; font-size: 12px; color: var(--text-secondary);
+      cursor: default; transition: all .15s ease;
+    }
+    .lg-item:hover, .lg-active {
+      background: var(--bg-secondary); transform: translateX(3px);
+    }
+    .lg-bar { width: 4px; height: 20px; border-radius: 2px; flex-shrink: 0; }
+    .lg-name { flex: 1; font-weight: 500; }
+    .lg-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700; color: var(--text-primary); font-size: 14px;
+    }
+    .fleet-strip {
+      display: flex; height: 5px; border-radius: 100px;
+      overflow: hidden; gap: 2px; margin-top: 14px; background: var(--bg-tertiary);
+    }
+    .strip-seg { min-width: 0; transition: flex .7s ease; border-radius: 100px; }
+    .strip-hide { flex: 0 !important; }
 
-    /* DRIVERS */
-    .av { width:32px; height:32px; border-radius:10px; background:color-mix(in srgb,var(--primary) 10%,transparent); color:var(--primary); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0; border:2px solid transparent; }
-    .av-on { border-color:#22c55e; }
-    .st { font-size:10px; font-weight:600; padding:3px 10px; border-radius:14px; background:var(--bg-tertiary); color:var(--text-muted); }
-    .st-on { background:rgba(16,185,129,.1); color:#10b981; }
+    /* ─── FUEL CHART ─── */
+    .chart-wrap {
+      background: var(--bg-secondary); border-radius: 12px;
+      padding: 14px 16px 8px; position: relative; cursor: crosshair;
+    }
+    .chart-svg { width: 100%; height: 115px; display: block; overflow: visible; }
+    .chart-line {
+      stroke-dasharray: 2000; stroke-dashoffset: 2000;
+      animation: drawLine 1.4s ease forwards .3s;
+    }
+    .chart-area { opacity: 0; animation: fadeIn .5s ease forwards .7s; }
+    @keyframes drawLine { to { stroke-dashoffset: 0; } }
+    @keyframes fadeIn { to { opacity: 1; } }
+    .chart-dot { transition: r .15s ease, fill .15s ease, stroke-width .15s ease; }
+    .chart-labels {
+      display: flex; justify-content: space-between;
+      font-size: 10px; color: var(--text-muted); margin-top: 8px;
+    }
+    .chart-tip {
+      position: absolute; top: 6px; transform: translateX(-50%);
+      background: var(--bg-card); border: 1px solid var(--border-color);
+      border-radius: 10px; padding: 6px 12px;
+      box-shadow: 0 8px 20px -4px rgba(0,0,0,.1);
+      pointer-events: none; z-index: 5;
+      display: flex; flex-direction: column; align-items: center;
+      animation: tipPop .12s ease;
+    }
+    .chart-tip b {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px; font-weight: 700; color: #10b981;
+    }
+    .chart-tip span { font-size: 10px; color: var(--text-muted); }
+    @keyframes tipPop { from { opacity: 0; transform: translateX(-50%) translateY(4px); } }
 
-    /* PAGINATION */
-    .pgr { display:flex; align-items:center; justify-content:center; gap:10px; margin-top:10px; padding-top:10px; border-top:1px solid var(--border-color); }
-    .pgr button { width:26px; height:26px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-card); color:var(--primary); font-size:14px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .12s; }
-    .pgr button:hover:not(:disabled) { background:var(--primary); color:#fff; border-color:var(--primary); }
-    .pgr button:disabled { opacity:.2; cursor:default; }
-    .pgr span { font-size:11px; color:var(--text-muted); }
+    /* ─── PROGRESS BARS ─── */
+    .progress {
+      flex: 1; height: 8px; background: var(--bg-tertiary);
+      border-radius: 100px; overflow: hidden;
+    }
+    .progress--lg { height: 14px; }
+    .progress--sm { height: 6px; }
+    .progress--xs { height: 4px; }
+    .progress-fill {
+      height: 100%; border-radius: 100px;
+      transition: width .8s cubic-bezier(.16,1,.3,1);
+    }
 
-    .mt { padding:24px; text-align:center; color:var(--text-muted); font-size:12px; opacity:.5; }
+    /* ─── ROWS ─── */
+    .rows { display: flex; flex-direction: column; gap: 2px; }
+    .row-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 7px 8px; border-radius: 8px; font-size: 12px;
+      transition: background .12s ease;
+    }
+    .row-item:hover { background: var(--bg-secondary); }
+    .row-accent { width: 4px; height: 20px; border-radius: 2px; flex-shrink: 0; }
+    .row-plate { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+    .row-val {
+      font-size: 12px; font-weight: 700; color: var(--text-primary);
+      min-width: 80px; text-align: right;
+    }
+    .row-sub { font-size: 11px; color: var(--text-muted); }
+    .row-col { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+    .row-score {
+      font-size: 14px; font-weight: 700; min-width: 32px; text-align: right;
+    }
 
-    /* RESPONSIVE */
-    @media(max-width:1200px) { .kpi-band{grid-template-columns:repeat(3,1fr)} }
-    @media(max-width:900px) { .bento{grid-template-columns:repeat(2,1fr)} .B-chart,.B-scores,.B-km,.B-trips{grid-column:span 2} .B-fleet{grid-column:span 1} .kpi-band{grid-template-columns:repeat(3,1fr)} }
-    @media(max-width:600px) { .bento{grid-template-columns:1fr} .B-chart,.B-scores,.B-km,.B-trips,.B-fleet{grid-column:span 1} .kpi-band{grid-template-columns:repeat(2,1fr)} .D-inner{padding:0 14px 32px} .hd{flex-direction:column;align-items:flex-start} .fleet-row{flex-direction:column} }
+    /* ── Ranks ── */
+    .rank {
+      width: 22px; height: 22px; border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px; font-weight: 700;
+      color: var(--text-muted); background: var(--bg-tertiary);
+      flex-shrink: 0;
+    }
+    .rank-gold   { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #fff; }
+    .rank-silver { background: linear-gradient(135deg, #d1d5db, #9ca3af); color: #fff; }
+    .rank-bronze { background: linear-gradient(135deg, #d97706, #92400e); color: #fff; }
+
+    /* ─── EXPENSES ─── */
+    .exp-list { display: flex; flex-direction: column; gap: 14px; }
+    .exp-item { display: flex; flex-direction: column; gap: 6px; }
+    .exp-header { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+    .exp-dot { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
+    .exp-name { flex: 1; color: var(--text-secondary); font-weight: 500; }
+    .exp-val { color: var(--text-primary); font-size: 12px; font-weight: 700; }
+
+    /* ─── HEALTH ─── */
+    .health-layout { display: flex; gap: 24px; align-items: center; }
+    .gauge-wrap { position: relative; width: 130px; height: 130px; flex-shrink: 0; }
+    .gauge-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .gauge-arc {
+      transition: stroke-dashoffset 1.2s cubic-bezier(.16,1,.3,1);
+      filter: drop-shadow(0 0 6px rgba(34,197,94,.25));
+    }
+    .gauge-center {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .gauge-pct {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 26px; font-weight: 700; line-height: 1;
+    }
+    .gauge-lbl { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+    .health-items { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+    .health-card {
+      display: flex; flex-direction: column; gap: 5px;
+      padding: 10px 14px; border-radius: 10px;
+      background: var(--bg-secondary);
+      border-left: 3px solid var(--hc);
+    }
+    .health-card b {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 18px; font-weight: 700; color: var(--text-primary); line-height: 1;
+    }
+    .health-card span { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+
+    /* ─── GEOZONES ─── */
+    .geo-list { display: flex; flex-direction: column; gap: 2px; }
+    .geo-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 7px 8px; border-radius: 8px; transition: background .12s;
+    }
+    .geo-item:hover { background: var(--bg-secondary); }
+    .geo-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .geo-name { flex: 1; font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+    .geo-count { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+
+    /* ─── ALERTS TIMELINE ─── */
+    .timeline { display: flex; flex-direction: column; gap: 0; }
+    .tl-item { display: flex; gap: 10px; padding: 7px 0; }
+    .tl-item.tl-new { animation: alertFlash .5s ease; }
+    @keyframes alertFlash { from { background: rgba(99,102,241,.06); } }
+    .tl-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--bg-tertiary); border: 2px solid var(--text-muted);
+      flex-shrink: 0; margin-top: 3px;
+    }
+    .tl-warn   { border-color: #f59e0b; background: rgba(245,158,11,.12); }
+    .tl-danger { border-color: #ef4444; background: rgba(239,68,68,.12); }
+    .tl-info   { border-color: #3b82f6; background: rgba(59,130,246,.12); }
+    .tl-body { min-width: 0; }
+    .tl-msg { font-size: 12px; font-weight: 500; color: var(--text-primary); line-height: 1.4; display: block; }
+    .tl-time { font-size: 10px; color: var(--text-muted); display: block; margin-top: 1px; }
+
+    /* ─── FUEL PER VEHICLE ─── */
+    .fuel-item { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; }
+    .fuel-top { display: flex; justify-content: space-between; font-size: 12px; }
+    .fuel-top b { font-size: 13px; font-weight: 700; }
+
+    /* ─── DRIVERS ─── */
+    .avatar {
+      width: 32px; height: 32px; border-radius: 10px;
+      background: color-mix(in srgb, var(--primary) 10%, transparent);
+      color: var(--primary); display: flex; align-items: center; justify-content: center;
+      font-family: 'Sora', sans-serif;
+      font-size: 11px; font-weight: 700; flex-shrink: 0;
+      border: 2px solid transparent;
+    }
+    .avatar--on { border-color: #22c55e; }
+    .status {
+      font-size: 10px; font-weight: 600; padding: 3px 10px;
+      border-radius: 14px; background: var(--bg-tertiary); color: var(--text-muted);
+    }
+    .status--on { background: rgba(16,185,129,.08); color: #10b981; }
+    .trip-icon { flex-shrink: 0; }
+
+    /* ─── PAGINATION ─── */
+    .pager {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px; margin-top: 10px; padding-top: 10px;
+      border-top: 1px solid var(--border-color);
+    }
+    .pager button {
+      width: 28px; height: 28px; border: 1px solid var(--border-color);
+      border-radius: 8px; background: var(--bg-card); color: var(--text-secondary);
+      font-size: 15px; font-weight: 700; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .15s ease;
+    }
+    .pager button:hover:not(:disabled) {
+      background: var(--primary); color: #fff; border-color: var(--primary);
+    }
+    .pager button:disabled { opacity: .2; cursor: default; }
+    .pager span { font-size: 11px; color: var(--text-muted); }
+
+    /* ─── EMPTY ─── */
+    .empty {
+      padding: 28px; text-align: center; color: var(--text-muted);
+      font-size: 12px; opacity: .5;
+    }
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 1200px) {
+      .kpi-row { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 900px) {
+      .bento { grid-template-columns: repeat(2, 1fr); }
+      .card--chart, .card--scores, .card--km, .card--trips { grid-column: span 2; }
+      .card--fleet { grid-column: span 1; }
+      .kpi-row { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 600px) {
+      .bento { grid-template-columns: 1fr; }
+      .card--chart, .card--scores, .card--km, .card--trips, .card--fleet { grid-column: span 1; }
+      .kpi-row { grid-template-columns: repeat(2, 1fr); }
+      .dash-inner { padding: 0 14px 36px; }
+      .d-head { flex-direction: column; align-items: flex-start; }
+      .fleet-row { flex-direction: column; }
+      .health-layout { flex-direction: column; }
+    }
   `]
 })
 export class DashboardComponent implements OnInit, OnDestroy {
@@ -425,6 +734,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   alerts:{message:string;severity:string;time:string;_isNew?:boolean}[]=[];
   recentTrips:{plate:string;distance:string;duration:string;date:string}[]=[];
   drivers:{name:string;initials:string;vehicle:string;active:boolean}[]=[];
+
+  private refreshPending=false;
 
   // Display values for animated counting
   dVehicles=0; dMoving=0; dStopped=0; dAlerts=0; dFuel=0; dCost=0;
@@ -515,6 +826,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
       const gf=this.geofences.find(g=>g.name===ev.geofenceName);
       if(gf){if(ev.eventType==='entry')gf.count++;else if(ev.eventType==='exit'&&gf.count>0)gf.count--;this.cdr.detectChanges();}
     });
+    // Refresh dashboard data every 30s to keep vehicle counts in sync with monitoring
+    this.signalrService.positionUpdate$.pipe(takeUntil(this.destroy$)).subscribe(()=>{
+      if(!this.refreshPending){
+        this.refreshPending=true;
+        setTimeout(()=>{this.refreshPending=false;this.loadAll();},30000);
+      }
+    });
   }
 
   loadAll(){
@@ -549,7 +867,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   onChartHover(e:MouseEvent){
     if(!this.cPoints.length)return;
-    const svg=(e.currentTarget as HTMLElement).querySelector('.csv');
+    const svg=(e.currentTarget as HTMLElement).querySelector('.chart-svg');
     if(!svg)return;
     const r=svg.getBoundingClientRect();
     this.cIdx=Math.round(Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*(this.cPoints.length-1));

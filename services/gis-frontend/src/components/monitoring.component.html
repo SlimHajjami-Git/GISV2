@@ -563,7 +563,9 @@
           </thead>
           <tbody>
             @for (evt of geofenceHistory; track evt.id) {
-            <tr>
+            <tr (click)="onHistoryEventClick(evt)"
+                [class.selected]="selectedHistoryEventId === evt.id"
+                style="cursor: pointer;" title="Cliquez pour voir sur la carte">
               <td>{{ evt.timestamp | date:'dd/MM/yyyy HH:mm' }}</td>
               <td>{{ evt.vehicleName }}</td>
               <td>

@@ -202,6 +202,12 @@ import * as L from 'leaflet';
                     </svg>
                     Modifier
                   </button>
+                  <button class="btn-action history" (click)="openHistory(geofence)" title="Historique">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/>
+                      <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                  </button>
                   <button class="btn-action danger" (click)="deleteGeofence(geofence)">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="3 6 5 6 21 6"/>
@@ -452,6 +458,45 @@ import * as L from 'leaflet';
         </div>
       </div>
     </app-layout>
+
+    <!-- Geofence History Modal -->
+    <div class="gf-hist-overlay" *ngIf="showHistoryModal" (click)="closeHistory()">
+      <div class="gf-hist-modal" (click)="$event.stopPropagation()">
+        <div class="gf-hist-header">
+          <h3>Historique — {{ historyGeofence?.name || 'Géofence' }}</h3>
+          <button class="gf-hist-close" (click)="closeHistory()">&times;</button>
+        </div>
+        <div class="gf-hist-body">
+          <div class="gf-hist-map" id="gfHistoryMap"></div>
+          <div *ngIf="historyLoading" class="gf-hist-loading">Chargement...</div>
+          <div *ngIf="!historyLoading && historyEvents.length === 0" class="gf-hist-empty">
+            Aucun événement enregistré pour cette zone.
+          </div>
+          <table class="gf-hist-table" *ngIf="!historyLoading && historyEvents.length > 0">
+            <thead>
+              <tr>
+                <th>Date / Heure</th>
+                <th>Véhicule</th>
+                <th>Événement</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let evt of historyEvents" (click)="onHistoryEventClick(evt)"
+                  [class.selected]="selectedHistoryEventId === evt.id"
+                  style="cursor: pointer;" title="Voir sur la carte">
+                <td>{{ formatEventDate(evt.timestamp) }}</td>
+                <td>{{ evt.vehicleName }}</td>
+                <td>
+                  <span class="gf-evt-badge" [class.entry]="evt.type === 'entry'" [class.exit]="evt.type === 'exit'">
+                    {{ evt.type === 'entry' ? 'Entrée' : 'Sortie' }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   `,
   styles: [`
     .geofences-page {
@@ -1270,9 +1315,57 @@ import * as L from 'leaflet';
       height: 12px;
     }
 
+    .btn-action.history { color: #6366f1; }
+    .btn-action.history:hover { background: #eef2ff; color: #4f46e5; border-color: #c7d2fe; }
+
     @media (max-width: 900px) {
       .events-panel { display: none; }
     }
+
+    /* Geofence History Modal */
+    .gf-hist-overlay {
+      position: fixed; inset: 0; z-index: 10000;
+      background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .gf-hist-modal {
+      background: #fff; border-radius: 12px; width: 700px; max-width: 95vw;
+      max-height: 85vh; overflow: hidden; box-shadow: 0 25px 60px rgba(0,0,0,0.3);
+      display: flex; flex-direction: column;
+    }
+    .gf-hist-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; background: #1e3a8a; color: #fff;
+    }
+    .gf-hist-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
+    .gf-hist-close {
+      background: none; border: none; color: #fff; font-size: 24px;
+      cursor: pointer; line-height: 1; padding: 0 4px; opacity: 0.8;
+    }
+    .gf-hist-close:hover { opacity: 1; }
+    .gf-hist-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+    .gf-hist-map {
+      height: 280px; border-radius: 8px; overflow: hidden;
+      margin-bottom: 16px; border: 1px solid #e2e8f0;
+    }
+    .gf-hist-loading, .gf-hist-empty {
+      text-align: center; padding: 24px; color: #64748b; font-size: 14px;
+    }
+    .gf-hist-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .gf-hist-table th {
+      text-align: left; padding: 8px 12px; background: #f8fafc;
+      color: #64748b; font-weight: 600; border-bottom: 2px solid #e2e8f0;
+    }
+    .gf-hist-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+    .gf-hist-table tbody tr { cursor: pointer; transition: background 0.15s; }
+    .gf-hist-table tbody tr:hover { background: #f1f5f9; }
+    .gf-hist-table tbody tr.selected { background: #dbeafe; }
+    .gf-evt-badge {
+      display: inline-block; padding: 2px 10px; border-radius: 12px;
+      font-size: 11px; font-weight: 600;
+    }
+    .gf-evt-badge.entry { background: #dcfce7; color: #166534; }
+    .gf-evt-badge.exit { background: #fee2e2; color: #991b1b; }
   `]
 })
 export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
@@ -1299,6 +1392,16 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
 
   showPopup = false;
   editingGeofence: Geofence | null = null;
+
+  // History modal state
+  showHistoryModal = false;
+  historyGeofence: Geofence | null = null;
+  historyEvents: any[] = [];
+  historyLoading = false;
+  selectedHistoryEventId: number | null = null;
+  private historyModalMap?: L.Map;
+  private histMapResizeObserver?: ResizeObserver;
+  private historyEventMarker?: L.Marker;
 
   colors = ['#22c55e', '#3b82f6', '#f97316', '#8b5cf6', '#06b6d4', '#ec4899', '#eab308', '#ef4444'];
 
@@ -1944,5 +2047,119 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       },
       error: (err) => console.error('Error refreshing geofences:', err)
     });
+  }
+
+  // ─── History Modal ───
+
+  openHistory(geofence: Geofence) {
+    this.historyGeofence = geofence;
+    this.historyEvents = [];
+    this.historyLoading = true;
+    this.selectedHistoryEventId = null;
+    this.showHistoryModal = true;
+    this.cdr.detectChanges(); // Force DOM render immediately
+
+    // Init map right away (modal DOM is now guaranteed to exist)
+    setTimeout(() => this.initHistoryMap(geofence), 50);
+
+    // Load events
+    this.apiService.getGeofenceEventsByGeofence(parseInt(geofence.id), 100).subscribe({
+      next: (events: any[]) => {
+        this.historyEvents = events || [];
+        this.historyLoading = false;
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.historyLoading = false;
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  closeHistory() {
+    this.showHistoryModal = false;
+    this.historyGeofence = null;
+    this.historyEvents = [];
+    this.selectedHistoryEventId = null;
+    this.historyEventMarker = undefined;
+    if (this.histMapResizeObserver) { this.histMapResizeObserver.disconnect(); this.histMapResizeObserver = undefined; }
+    if (this.historyModalMap) {
+      this.historyModalMap.remove();
+      this.historyModalMap = undefined;
+    }
+  }
+
+  private initHistoryMap(geofence: Geofence) {
+    const container = document.getElementById('gfHistoryMap');
+    if (!container) return;
+    if (this.historyModalMap) { this.historyModalMap.remove(); }
+    if (this.histMapResizeObserver) { this.histMapResizeObserver.disconnect(); }
+
+    // Determine center from geofence
+    let centerLat = 34.0;
+    let centerLng = 9.0;
+    let zoom = 14;
+
+    if (geofence.type === 'circle' && geofence.center) {
+      centerLat = geofence.center.lat;
+      centerLng = geofence.center.lng;
+    } else if (geofence.coordinates?.length) {
+      const lats = geofence.coordinates.map(c => c.lat);
+      const lngs = geofence.coordinates.map(c => c.lng);
+      centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+      centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+    }
+
+    this.historyModalMap = L.map(container, { zoomControl: true }).setView([centerLat, centerLng], zoom);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OSM', maxZoom: 19
+    }).addTo(this.historyModalMap);
+
+    // Draw geofence zone
+    if (geofence.type === 'circle' && geofence.center) {
+      L.circle([geofence.center.lat, geofence.center.lng], {
+        radius: geofence.radius || 200, color: '#3B82F6', weight: 2, fillColor: '#3B82F6', fillOpacity: 0.15
+      }).addTo(this.historyModalMap);
+    } else if (geofence.coordinates?.length) {
+      const coords = geofence.coordinates.map(c => [c.lat, c.lng] as [number, number]);
+      L.polygon(coords, {
+        color: '#3B82F6', weight: 2, fillColor: '#3B82F6', fillOpacity: 0.15
+      }).addTo(this.historyModalMap);
+    }
+
+    // Use ResizeObserver for bulletproof invalidateSize
+    const map = this.historyModalMap;
+    this.histMapResizeObserver = new ResizeObserver(() => {
+      map?.invalidateSize();
+    });
+    this.histMapResizeObserver.observe(container);
+    requestAnimationFrame(() => map?.invalidateSize());
+    setTimeout(() => map?.invalidateSize(), 300);
+  }
+
+  onHistoryEventClick(evt: any) {
+    if (!this.historyModalMap || !evt.latitude || !evt.longitude) return;
+    this.selectedHistoryEventId = evt.id;
+
+    if (this.historyEventMarker) {
+      this.historyModalMap.removeLayer(this.historyEventMarker);
+    }
+
+    this.historyEventMarker = L.marker([evt.latitude, evt.longitude], {
+      icon: L.divIcon({
+        html: `<div style="background:${evt.type === 'entry' ? '#22c55e' : '#ef4444'};width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:bold;">${evt.type === 'entry' ? 'E' : 'S'}</div>`,
+        className: '', iconSize: [18, 18], iconAnchor: [9, 9]
+      })
+    }).addTo(this.historyModalMap);
+
+    this.historyModalMap.flyTo([evt.latitude, evt.longitude], 15, { duration: 0.5 });
+  }
+
+  formatEventDate(ts: string): string {
+    try {
+      const d = new Date(ts);
+      return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    } catch { return ts; }
   }
 }
