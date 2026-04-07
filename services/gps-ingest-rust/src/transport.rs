@@ -362,7 +362,8 @@ async fn handle_tcp_connection(
                                             if let Ok(Some(device_id)) = database.get_device_id(imei).await {
                                                 // Check DB: was this stop requested by an operator?
                                                 match database.get_immobilization_state(device_id).await {
-                                                    Ok((true, _password)) => {
+                                                    Ok((true, _)) => {
+                                                        // Stop was requested by operator → do nothing
                                                         info!(
                                                             peer = peer_str,
                                                             imei = %imei,
@@ -370,20 +371,20 @@ async fn handle_tcp_connection(
                                                             "IMMOBILIZATION DETECTED but REQUESTED by operator - NOT sending AJ+GO"
                                                         );
                                                     }
-                                                    Ok((false, password)) => {
-                                                        let go_cmd = format!("AJ+GO#{}\n", password);
+                                                    Ok((false, command_go)) => {
+                                                        // Unwanted stop → send command_go from DB
                                                         warn!(
                                                             peer = peer_str,
                                                             imei = %imei,
                                                             flags = format!("0x{:02X}", flags),
-                                                            "IMMOBILIZATION DETECTED (unwanted) - sending auto-recovery"
+                                                            command = %command_go.trim(),
+                                                            "IMMOBILIZATION DETECTED (unwanted) - sending auto-recovery from DB"
                                                         );
-                                                        if let Err(e) = stream.write_all(go_cmd.as_bytes()).await {
-                                                            error!(?e, peer = peer_str, "Failed to send AJ+GO auto-recovery");
+                                                        if let Err(e) = stream.write_all(command_go.as_bytes()).await {
+                                                            error!(?e, peer = peer_str, "Failed to send auto-recovery command");
                                                         } else {
-                                                            info!(peer = peer_str, imei = %imei, "AJ+GO auto-recovery SENT");
-                                                            // Log in DB for audit trail
-                                                            let _ = database.log_auto_recovery(device_id, &go_cmd).await;
+                                                            info!(peer = peer_str, imei = %imei, "Auto-recovery command SENT");
+                                                            let _ = database.log_auto_recovery(device_id, &command_go).await;
                                                         }
                                                     }
                                                     Err(e) => {

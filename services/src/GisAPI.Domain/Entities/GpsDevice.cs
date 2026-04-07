@@ -25,16 +25,22 @@ public class GpsDevice : TenantEntity
     public string FuelSensorMode { get; set; } = "raw_255";
 
     /// <summary>
-    /// When true, the immobilization was requested by an operator — auto-recovery (AJ+GO) is disabled.
-    /// When false (default), any detected immobilization (bit5=0) triggers automatic AJ+GO recovery.
+    /// true = an operator requested immobilization → auto-recovery disabled.
+    /// false (default) = if bit5=0 detected, send command_go automatically.
     /// </summary>
-    public bool ImmobilizationRequested { get; set; } = false;
+    public bool ImmobilizationActive { get; set; } = false;
 
     /// <summary>
-    /// Password used for AJ+ commands on this device (default: "1311")
-    /// Stored per-device so different devices can have different passwords.
+    /// Full command to resume the vehicle, sent as-is over TCP (e.g. "AJ+GO#1311\n").
+    /// Changeable per device from the app — nothing hardcoded.
     /// </summary>
-    public string AjPassword { get; set; } = "1311";
+    public string CommandGo { get; set; } = "AJ+GO#1311\n";
+
+    /// <summary>
+    /// Full command to stop the vehicle, sent as-is over TCP (e.g. "AJ+STOP#1311\n").
+    /// Changeable per device from the app.
+    /// </summary>
+    public string CommandStop { get; set; } = "AJ+STOP#1311\n";
 
     public Societe? Societe { get; set; }
     public Vehicle? Vehicle { get; set; }

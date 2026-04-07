@@ -901,8 +901,8 @@ impl TelemetryStore for Database {
         let row = sqlx::query(
             r#"
             SELECT
-                COALESCE(immobilization_requested, false) AS immobilization_requested,
-                COALESCE(aj_password, '1311') AS aj_password
+                COALESCE(immobilization_active, false) AS immobilization_active,
+                COALESCE(command_go, E'AJ+GO#1311\n') AS command_go
             FROM gps_devices
             WHERE id = $1
             "#,
@@ -913,11 +913,11 @@ impl TelemetryStore for Database {
 
         match row {
             Some(r) => {
-                let requested: bool = r.get("immobilization_requested");
-                let password: String = r.get("aj_password");
-                Ok((requested, password))
+                let active: bool = r.get("immobilization_active");
+                let command_go: String = r.get("command_go");
+                Ok((active, command_go))
             }
-            None => Ok((false, "1311".to_string())),
+            None => Ok((false, "AJ+GO#1311\n".to_string())),
         }
     }
 

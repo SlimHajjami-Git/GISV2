@@ -66,9 +66,10 @@ pub trait TelemetryStore: Send + Sync {
     /// Insert a device lifecycle event (restart, disconnect, tamper)
     async fn insert_device_event(&self, event: &crate::services::device_event::DeviceEventRecord) -> anyhow::Result<i64>;
 
-    /// Check if immobilization was explicitly requested by an operator for this device.
-    /// Returns (immobilization_requested, aj_password, go_command_text)
-    /// If immobilization_requested is true, auto-recovery (AJ+GO) should NOT be sent.
+    /// Check immobilization state for a device.
+    /// Returns (immobilization_active, command_go) from gps_devices table.
+    /// If immobilization_active is true, auto-recovery should NOT be sent.
+    /// command_go is the full command from DB (e.g. "AJ+GO#1311\n"), sent as-is.
     async fn get_immobilization_state(&self, device_id: i32) -> anyhow::Result<(bool, String)>;
 
     /// Get the oldest pending command for a device and mark it as 'sent'
