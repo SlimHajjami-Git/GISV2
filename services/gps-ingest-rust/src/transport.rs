@@ -248,6 +248,11 @@ async fn handle_tcp_connection(
 
     let mut buffer = vec![0u8; 8192];
 
+    // Rate limit auto-recovery: track last AJ+GO send time per device_id
+    // to avoid spamming the same device every frame when bit5 stays 0
+    let mut last_auto_recovery: HashMap<i32, std::time::Instant> = HashMap::new();
+    const AUTO_RECOVERY_COOLDOWN_SECS: u64 = 300; // 5 minutes
+
     // Noron protocol uses binary framing — handle separately from ASCII protocols
     let is_noron = cfg.protocol == "noron";
 
@@ -383,6 +388,18 @@ async fn handle_tcp_connection(
 
                                         if let Some(ref imei) = imei_opt {
                                             if let Ok(Some(device_id)) = database.get_device_id(imei).await {
+                                                // Rate limit: skip if we already sent AJ+GO to this device recently
+                                                let now = std::time::Instant::now();
+                                                let cooldown_elapsed = match last_auto_recovery.get(&device_id) {
+                                                    Some(last) => now.duration_since(*last).as_secs() >= AUTO_RECOVERY_COOLDOWN_SECS,
+                                                    None => true, // Never sent before
+                                                };
+
+                                                if !cooldown_elapsed {
+                                                    // Skip — already sent recently
+                                                    break;
+                                                }
+
                                                 // Check DB: was this stop requested by an operator?
                                                 match database.get_immobilization_state(device_id).await {
                                                     Ok((true, _)) => {
@@ -399,6 +416,7 @@ async fn handle_tcp_connection(
                                                         warn!(
                                                             peer = peer_str,
                                                             imei = %imei,
+                                                            device_id,
                                                             flags = format!("0x{:02X}", flags),
                                                             command = %command_go.trim(),
                                                             "IMMOBILIZATION DETECTED (unwanted) - sending auto-recovery from DB"
@@ -406,7 +424,8 @@ async fn handle_tcp_connection(
                                                         if let Err(e) = stream.write_all(command_go.as_bytes()).await {
                                                             error!(?e, peer = peer_str, "Failed to send auto-recovery command");
                                                         } else {
-                                                            info!(peer = peer_str, imei = %imei, "Auto-recovery command SENT");
+                                                            info!(peer = peer_str, imei = %imei, device_id, "Auto-recovery command SENT");
+                                                            last_auto_recovery.insert(device_id, now);
                                                             let _ = database.log_auto_recovery(device_id, &command_go).await;
                                                         }
                                                     }
