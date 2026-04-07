@@ -376,7 +376,9 @@ async fn handle_tcp_connection(
                         if actual_frame.len() >= 44 {
                             if let Some(flags_hex) = actual_frame.get(42..44) {
                                 if let Ok(flags) = u8::from_str_radix(flags_hex, 16) {
-                                    if (flags & 0x20) == 0 {
+                                    // Only check bit5 if GPS is valid (bit6=1).
+                                    // flags=0x00 means corrupted/empty data, NOT real immobilization.
+                                    if (flags & 0x40) != 0 && (flags & 0x20) == 0 {
                                         let peer_str = peer.as_deref().unwrap_or("unknown");
                                         // Resolve device_id from connection_map
                                         let imei_opt = if let Some(ref p) = peer {
