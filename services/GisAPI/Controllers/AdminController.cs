@@ -905,6 +905,42 @@ public class AdminController : ControllerBase
             return StatusCode(500, new { error = ex.Message });
         }
     }
+
+    // ==================== AUTO-RECOVERY LOG ====================
+
+    [HttpGet("auto-recovery")]
+    public async Task<IActionResult> GetAutoRecoveryLog([FromQuery] int limit = 100, [FromQuery] int? companyId = null)
+    {
+        var query = _context.DeviceCommands
+            .AsNoTracking()
+            .Where(c => c.Source == "auto_recovery")
+            .AsQueryable();
+
+        if (companyId.HasValue)
+            query = query.Where(c => c.CompanyId == companyId.Value);
+
+        var commands = await query
+            .OrderByDescending(c => c.CreatedAt)
+            .Take(limit)
+            .Select(c => new {
+                c.Id,
+                c.DeviceId,
+                deviceMat = c.Device != null ? c.Device.Mat : null,
+                deviceUid = c.Device != null ? c.Device.DeviceUid : null,
+                vehicleName = c.Vehicle != null ? c.Vehicle.Name : null,
+                vehiclePlate = c.Vehicle != null ? c.Vehicle.Plate : null,
+                companyName = c.Device != null && c.Device.Societe != null ? c.Device.Societe.Name : null,
+                c.CompanyId,
+                c.CommandType,
+                c.CommandText,
+                c.Status,
+                c.SentAt,
+                c.CreatedAt
+            })
+            .ToListAsync();
+
+        return Ok(commands);
+    }
 }
 
 // DTOs

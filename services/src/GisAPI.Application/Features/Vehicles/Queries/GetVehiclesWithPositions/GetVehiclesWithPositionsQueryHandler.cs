@@ -221,6 +221,7 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                 v.Status,
                 v.HasGps,
                 v.GpsDevice?.DeviceUid,
+                v.GpsDevice?.Id,
                 lastComm,
                 isOnline,
                 position != null ? new PositionDto(

@@ -13,6 +13,13 @@ public static class TestDbContextFactory
         var connection = new SqliteConnection("DataSource=:memory:");
         connection.Open();
 
+        // Disable FK enforcement — tests verify business logic, not DB constraints
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "PRAGMA foreign_keys = OFF;";
+            cmd.ExecuteNonQuery();
+        }
+
         var options = new DbContextOptionsBuilder<TestGisDbContext>()
             .UseSqlite(connection)
             .Options;

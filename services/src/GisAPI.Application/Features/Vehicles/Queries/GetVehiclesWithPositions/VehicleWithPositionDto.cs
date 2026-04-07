@@ -16,6 +16,7 @@ public record VehicleWithPositionDto(
     string Status,
     bool HasGps,
     string? DeviceUid,
+    int? GpsDeviceId,
     DateTime? LastCommunication,
     bool IsOnline,
     PositionDto? LastPosition,

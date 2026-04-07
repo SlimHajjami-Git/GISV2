@@ -579,6 +579,24 @@ export class ApiService {
     return this.http.get<any>(`${this.getMonitoringApiUrl()}/gps/vehicles/${vehicleId}/position`, { headers: this.getHeaders() });
   }
 
+  // ==================== REMOTE IMMOBILIZATION ====================
+
+  getImmobilizationState(deviceId: number): Observable<any> {
+    return this.http.get<any>(`${this.getMonitoringApiUrl()}/gps/devices/${deviceId}/immobilization`, { headers: this.getHeaders() });
+  }
+
+  stopVehicle(deviceId: number): Observable<any> {
+    return this.http.post<any>(`${this.getMonitoringApiUrl()}/gps/devices/${deviceId}/stop`, {}, { headers: this.getHeaders() });
+  }
+
+  goVehicle(deviceId: number): Observable<any> {
+    return this.http.post<any>(`${this.getMonitoringApiUrl()}/gps/devices/${deviceId}/go`, {}, { headers: this.getHeaders() });
+  }
+
+  getDeviceCommandHistory(deviceId: number, limit = 20): Observable<any[]> {
+    return this.http.get<any[]>(`${this.getMonitoringApiUrl()}/gps/devices/${deviceId}/commands?limit=${limit}`, { headers: this.getHeaders() });
+  }
+
   getVehicleHistory(vehicleId: number, from?: Date, to?: Date, maxPoints = 3000, filterDrift = true): Observable<PositionDto[]> {
     let params = new HttpParams();
     if (from) params = params.set('from', from.toISOString());

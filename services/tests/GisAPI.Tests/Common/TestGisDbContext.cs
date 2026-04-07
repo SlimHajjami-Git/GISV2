@@ -94,21 +94,79 @@ public class TestGisDbContext : DbContext, IGisDbContext
     // Auth
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
+    // Device Commands
+    public DbSet<DeviceCommand> DeviceCommands => Set<DeviceCommand>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        // Ignore computed properties (not stored in DB)
-        modelBuilder.Entity<User>().Ignore(u => u.FullName).Ignore(u => u.IsCompanyAdmin);
+        // === User: computed properties + legacy cached fields ===
+        modelBuilder.Entity<User>()
+            .Ignore(u => u.FullName)
+            .Ignore(u => u.IsCompanyAdmin)
+            .Ignore(u => u.IsSystemAdmin)
+            .Ignore(u => u.IsAnyAdmin)
+            .Ignore(u => u.Name)
+            .Ignore(u => u.Roles)
+            .Ignore(u => u.Permissions)
+            .Ignore(u => u.AssignedVehicleIds)
+            .Ignore(u => u.UserType)
+            .Ignore(u => u.IsDriver)
+            .Ignore(u => u.UserVehicles);
+        modelBuilder.Entity<User>().Ignore("_rolesCache");
+        modelBuilder.Entity<User>().Ignore("_permissionsCache");
+        modelBuilder.Entity<User>().Ignore("_assignedVehicleIdsCache");
+        modelBuilder.Entity<User>().Ignore("_userTypeCache");
 
-        // Ignore complex/owned types that SQLite can't handle natively
-        modelBuilder.Entity<Geofence>().Ignore(g => g.Coordinates);
-        modelBuilder.Entity<Societe>().Ignore(c => c.Settings);
+        // === UserVehicle: navigation properties ===
+        modelBuilder.Entity<UserVehicle>()
+            .Ignore(uv => uv.AssignedBy)
+            .Ignore(uv => uv.User)
+            .Ignore(uv => uv.Vehicle);
+
+        // === Role: computed property ===
+        modelBuilder.Entity<Role>()
+            .Ignore(r => r.Permissions)
+            .Ignore(r => r.IsSystemAdmin);
+
+        // === UserSettings: owned JSON types ===
+        modelBuilder.Entity<UserSettings>()
+            .Ignore(us => us.Notifications)
+            .Ignore(us => us.Display);
+
+        // === Societe: complex types + navigations that cascade to problematic entities ===
+        modelBuilder.Entity<Societe>()
+            .Ignore(c => c.Settings)
+            .Ignore(c => c.PointsOfInterest)
+            .Ignore(c => c.Reports)
+            .Ignore(c => c.ReportSchedules);
+
+        // === Composite keys (entities without Id) ===
+        modelBuilder.Entity<GeofenceVehicle>().HasKey(gv => new { gv.GeofenceId, gv.VehicleId });
+
+        // === Geofence: array/complex types + navigation to non-DbSet ===
+        modelBuilder.Entity<Geofence>()
+            .Ignore(g => g.Coordinates)
+            .Ignore(g => g.ActiveDays)
+            .Ignore(g => g.Group);
+
+        // === GPS: JSONB metadata ===
         modelBuilder.Entity<GpsPosition>().Ignore(p => p.Metadata);
         modelBuilder.Entity<Notification>().Ignore(n => n.Metadata);
-        modelBuilder.Entity<GpsDevice>().Ignore(d => d.Metadata);
-        modelBuilder.Entity<Role>().Ignore(r => r.Permissions);
+
+        // === SubscriptionType: JSONB ===
         modelBuilder.Entity<SubscriptionType>().Ignore(s => s.AccessRights);
+
+        // === Maintenance: arrays and complex types ===
+        modelBuilder.Entity<MaintenanceTemplate>().Ignore(mt => mt.AppliesToVehicleTypes);
+        modelBuilder.Entity<MaintenanceLog>()
+            .Ignore(ml => ml.PartsReplaced)
+            .Ignore(ml => ml.Photos);
+        modelBuilder.Entity<MaintenanceNotification>().Ignore(mn => mn.SentChannels);
+        modelBuilder.Entity<MaintenanceAlertSettings>()
+            .Ignore(ma => ma.AdditionalEmails)
+            .Ignore(ma => ma.AdditionalPhones);
     }
 
     public override async Task<int> SaveChangesAsync(CancellationToken ct = default)

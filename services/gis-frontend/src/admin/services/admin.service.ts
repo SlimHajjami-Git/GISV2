@@ -882,6 +882,20 @@ export class AdminService {
     return this.http.get<SubscriptionPermissions>(`${this.apiUrl}/admin/permissions/subscription/${subscriptionId}`, { headers: this.getHeaders() });
   }
 
+  // ==================== AUTO-RECOVERY ====================
+
+  getAutoRecoveryLog(limit = 100, companyId?: number | null): Observable<any[]> {
+    let url = `${this.apiUrl}/admin/auto-recovery?limit=${limit}`;
+    if (companyId) url += `&companyId=${companyId}`;
+    return this.http.get<any[]>(url, { headers: this.getHeaders() }).pipe(
+      catchError(() => of([]))
+    );
+  }
+
+  getCompanies(): Observable<any[]> {
+    return this.getClients();
+  }
+
 }
 
 // Permission interfaces
