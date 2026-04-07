@@ -325,12 +325,35 @@ async fn handle_tcp_connection(
                     }
                 }
 
+                // ── Ensure IMEI is in connection_map (needed for auto-recovery + pending commands) ──
+                // After pod restart, connection_map is empty. Resolve via MAT prefix
+                // so that pending commands can be sent even on the first frame.
+                let check_frames = extract_frames_smart(ascii);
+                if let Some(ref p) = peer {
+                    let has_imei = {
+                        let map = connection_map.lock().await;
+                        map.contains_key(p)
+                    };
+                    if !has_imei {
+                        for frame_str in &check_frames {
+                            let (mat_prefix, _) = extract_mat_prefix(frame_str.trim());
+                            if let Some(ref mat) = mat_prefix {
+                                if let Ok(Some(uid)) = database.get_device_uid_by_mat(mat).await {
+                                    info!(peer = p.as_str(), mat = %mat, imei = %uid, "Resolved IMEI via MAT prefix (connection_map was empty)");
+                                    let mut map = connection_map.lock().await;
+                                    map.insert(p.clone(), uid);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // ── AJ+ immobilization auto-recovery (DB-driven) ──
                 // Check POSITION frames for bit5=0 (AJ+STOP active).
                 // Before sending AJ+GO, check database: if immobilization_requested=true,
                 // the stop was intentional by an operator → do NOT send AJ+GO.
                 // Commands and passwords come from DB — nothing is hardcoded.
-                let check_frames = extract_frames_smart(ascii);
                 for frame_str in &check_frames {
                     let trimmed = frame_str.trim();
                     let header_pos = if trimmed.starts_with("AA1") || trimmed.starts_with("AA2") || trimmed.starts_with("AA3")
