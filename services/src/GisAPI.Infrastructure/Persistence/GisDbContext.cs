@@ -57,6 +57,7 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<DrivingEvent> DrivingEvents => Set<DrivingEvent>();
     public DbSet<DailyStatistics> DailyStatistics => Set<DailyStatistics>();
     public DbSet<DeviceEvent> DeviceEvents => Set<DeviceEvent>();
+    public DbSet<DeviceCommand> DeviceCommands => Set<DeviceCommand>();
 
     // Geofences & POI
     public DbSet<Geofence> Geofences => Set<Geofence>();

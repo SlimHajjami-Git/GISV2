@@ -24,11 +24,24 @@ public class GpsDevice : TenantEntity
     /// </summary>
     public string FuelSensorMode { get; set; } = "raw_255";
 
+    /// <summary>
+    /// When true, the immobilization was requested by an operator — auto-recovery (AJ+GO) is disabled.
+    /// When false (default), any detected immobilization (bit5=0) triggers automatic AJ+GO recovery.
+    /// </summary>
+    public bool ImmobilizationRequested { get; set; } = false;
+
+    /// <summary>
+    /// Password used for AJ+ commands on this device (default: "1311")
+    /// Stored per-device so different devices can have different passwords.
+    /// </summary>
+    public string AjPassword { get; set; } = "1311";
+
     public Societe? Societe { get; set; }
     public Vehicle? Vehicle { get; set; }
-    
+
     public ICollection<GpsPosition> Positions { get; set; } = new List<GpsPosition>();
     public ICollection<GpsAlert> Alerts { get; set; } = new List<GpsAlert>();
+    public ICollection<DeviceCommand> Commands { get; set; } = new List<DeviceCommand>();
 }
 
 public class GpsPosition : Entity

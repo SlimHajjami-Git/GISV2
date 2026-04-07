@@ -325,24 +325,22 @@ async fn handle_tcp_connection(
                     }
                 }
 
-                // ── AJ+ immobilization auto-recovery ──
-                // Check POSITION frames for bit5=0 (AJ+STOP active) and send AJ+GO to resume.
-                // IMPORTANT: Only check position frames (AA1x/AA2x/AA3x / HH1x/HH2x/HH3x),
-                // NOT info (AA00/AA01) or system (AA02/AA03/AA07) frames.
-                // This runs BEFORE route_payload to ensure immediate response on the TCP stream.
-                // No connection_map lock needed — just raw ASCII parsing.
+                // ── AJ+ immobilization auto-recovery (DB-driven) ──
+                // Check POSITION frames for bit5=0 (AJ+STOP active).
+                // Before sending AJ+GO, check database: if immobilization_requested=true,
+                // the stop was intentional by an operator → do NOT send AJ+GO.
+                // Commands and passwords come from DB — nothing is hardcoded.
                 let check_frames = extract_frames_smart(ascii);
                 for frame_str in &check_frames {
                     let trimmed = frame_str.trim();
-                    // Find position frame header (with optional MAT prefix)
                     let header_pos = if trimmed.starts_with("AA1") || trimmed.starts_with("AA2") || trimmed.starts_with("AA3")
                         || trimmed.starts_with("HH1") || trimmed.starts_with("HH2") || trimmed.starts_with("HH3") {
                         Some(0)
                     } else if let Some(pos) = trimmed.find(" AA1").or_else(|| trimmed.find(" AA2")).or_else(|| trimmed.find(" AA3"))
                         .or_else(|| trimmed.find(" HH1")).or_else(|| trimmed.find(" HH2")).or_else(|| trimmed.find(" HH3")) {
-                        Some(pos + 1) // skip the space
+                        Some(pos + 1)
                     } else {
-                        None // Not a position frame (info/system/keepalive) — skip
+                        None
                     };
 
                     if let Some(start) = header_pos {
@@ -352,19 +350,75 @@ async fn handle_tcp_connection(
                                 if let Ok(flags) = u8::from_str_radix(flags_hex, 16) {
                                     if (flags & 0x20) == 0 {
                                         let peer_str = peer.as_deref().unwrap_or("unknown");
-                                        warn!(
-                                            peer = peer_str,
-                                            flags = format!("0x{:02X}", flags),
-                                            frame_preview = &actual_frame[..std::cmp::min(50, actual_frame.len())],
-                                            "IMMOBILIZATION DETECTED (bit5=0) - sending AJ+GO#1311"
-                                        );
-                                        if let Err(e) = stream.write_all(b"AJ+GO#1311\n").await {
-                                            error!(?e, peer = peer_str, "Failed to send AJ+GO auto-recovery command");
+                                        // Resolve device_id from connection_map
+                                        let imei_opt = if let Some(ref p) = peer {
+                                            let map = connection_map.lock().await;
+                                            map.get(p).cloned()
                                         } else {
-                                            info!(peer = peer_str, "AJ+GO#1311 auto-recovery command SENT successfully");
+                                            None
+                                        };
+
+                                        if let Some(ref imei) = imei_opt {
+                                            if let Ok(Some(device_id)) = database.get_device_id(imei).await {
+                                                // Check DB: was this stop requested by an operator?
+                                                match database.get_immobilization_state(device_id).await {
+                                                    Ok((true, _password)) => {
+                                                        info!(
+                                                            peer = peer_str,
+                                                            imei = %imei,
+                                                            flags = format!("0x{:02X}", flags),
+                                                            "IMMOBILIZATION DETECTED but REQUESTED by operator - NOT sending AJ+GO"
+                                                        );
+                                                    }
+                                                    Ok((false, password)) => {
+                                                        let go_cmd = format!("AJ+GO#{}\n", password);
+                                                        warn!(
+                                                            peer = peer_str,
+                                                            imei = %imei,
+                                                            flags = format!("0x{:02X}", flags),
+                                                            "IMMOBILIZATION DETECTED (unwanted) - sending auto-recovery"
+                                                        );
+                                                        if let Err(e) = stream.write_all(go_cmd.as_bytes()).await {
+                                                            error!(?e, peer = peer_str, "Failed to send AJ+GO auto-recovery");
+                                                        } else {
+                                                            info!(peer = peer_str, imei = %imei, "AJ+GO auto-recovery SENT");
+                                                            // Log in DB for audit trail
+                                                            let _ = database.log_auto_recovery(device_id, &go_cmd).await;
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        warn!(?e, "Failed to check immobilization state, skipping auto-recovery");
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            warn!(peer = peer_str, "IMMOBILIZATION DETECTED but no IMEI known yet - skipping");
                                         }
-                                        break; // One recovery command per payload batch is enough
+                                        break;
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Send pending commands from DB (manual STOP/GO from operators) ──
+                if let Some(ref p) = peer {
+                    let imei_opt = {
+                        let map = connection_map.lock().await;
+                        map.get(p).cloned()
+                    };
+                    if let Some(ref imei) = imei_opt {
+                        if let Ok(Some(device_id)) = database.get_device_id(imei).await {
+                            if let Ok(Some((cmd_id, cmd_text))) = database.get_pending_command(device_id).await {
+                                let peer_str = peer.as_deref().unwrap_or("unknown");
+                                info!(peer = peer_str, imei = %imei, cmd_id, cmd = %cmd_text, "Sending pending command from DB");
+                                if let Err(e) = stream.write_all(cmd_text.as_bytes()).await {
+                                    error!(?e, "Failed to send pending command");
+                                    let _ = database.update_command_status(cmd_id, "failed", Some(&e.to_string())).await;
+                                } else {
+                                    info!(peer = peer_str, imei = %imei, cmd_id, "Pending command SENT successfully");
+                                    let _ = database.update_command_status(cmd_id, "sent", None).await;
                                 }
                             }
                         }

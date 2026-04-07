@@ -65,6 +65,21 @@ pub trait TelemetryStore: Send + Sync {
 
     /// Insert a device lifecycle event (restart, disconnect, tamper)
     async fn insert_device_event(&self, event: &crate::services::device_event::DeviceEventRecord) -> anyhow::Result<i64>;
+
+    /// Check if immobilization was explicitly requested by an operator for this device.
+    /// Returns (immobilization_requested, aj_password, go_command_text)
+    /// If immobilization_requested is true, auto-recovery (AJ+GO) should NOT be sent.
+    async fn get_immobilization_state(&self, device_id: i32) -> anyhow::Result<(bool, String)>;
+
+    /// Get the oldest pending command for a device and mark it as 'sent'
+    /// Returns (command_id, command_text) if a pending command exists
+    async fn get_pending_command(&self, device_id: i32) -> anyhow::Result<Option<(i64, String)>>;
+
+    /// Update a command's status after send attempt
+    async fn update_command_status(&self, command_id: i64, status: &str, error: Option<&str>) -> anyhow::Result<()>;
+
+    /// Insert an auto-recovery command log entry
+    async fn log_auto_recovery(&self, device_id: i32, command_text: &str) -> anyhow::Result<()>;
 }
 
 #[async_trait]

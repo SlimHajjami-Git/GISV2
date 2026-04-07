@@ -896,6 +896,94 @@ impl TelemetryStore for Database {
             (fuel_percent, odometer_km as u32, recorded_at)
         }))
     }
+
+    async fn get_immobilization_state(&self, device_id: i32) -> Result<(bool, String)> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                COALESCE(immobilization_requested, false) AS immobilization_requested,
+                COALESCE(aj_password, '1311') AS aj_password
+            FROM gps_devices
+            WHERE id = $1
+            "#,
+        )
+        .bind(device_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        match row {
+            Some(r) => {
+                let requested: bool = r.get("immobilization_requested");
+                let password: String = r.get("aj_password");
+                Ok((requested, password))
+            }
+            None => Ok((false, "1311".to_string())),
+        }
+    }
+
+    async fn get_pending_command(&self, device_id: i32) -> Result<Option<(i64, String)>> {
+        let row = sqlx::query(
+            r#"
+            UPDATE device_commands
+            SET status = 'sent', sent_at = NOW(), attempts = attempts + 1, updated_at = NOW()
+            WHERE id = (
+                SELECT id FROM device_commands
+                WHERE device_id = $1 AND status = 'pending'
+                ORDER BY created_at ASC
+                LIMIT 1
+            )
+            RETURNING id, command_text
+            "#,
+        )
+        .bind(device_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| {
+            let id: i64 = r.get("id");
+            let cmd: String = r.get("command_text");
+            (id, cmd)
+        }))
+    }
+
+    async fn update_command_status(&self, command_id: i64, status: &str, error: Option<&str>) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE device_commands
+            SET status = $2, error_message = $3, updated_at = NOW()
+            WHERE id = $1
+            "#,
+        )
+        .bind(command_id)
+        .bind(status)
+        .bind(error)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn log_auto_recovery(&self, device_id: i32, command_text: &str) -> Result<()> {
+        // Get vehicle_id and company_id for the device
+        let (vehicle_id, company_id, _) = self.get_device_vehicle_info(device_id).await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO device_commands (
+                device_id, vehicle_id, user_id, command_type, command_text,
+                status, sent_at, attempts, source, company_id, created_at, updated_at
+            ) VALUES (
+                $1, $2, 0, 'GO', $3, 'sent', NOW(), 1, 'auto_recovery', $4, NOW(), NOW()
+            )
+            "#,
+        )
+        .bind(device_id)
+        .bind(vehicle_id)
+        .bind(command_text)
+        .bind(company_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
 }
 
 impl Database {
