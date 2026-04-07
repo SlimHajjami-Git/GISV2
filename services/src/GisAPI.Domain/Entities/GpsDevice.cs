@@ -31,6 +31,17 @@ public class GpsDevice : TenantEntity
     public bool ImmobilizationActive { get; set; } = false;
 
     /// <summary>
+    /// User who last changed immobilization_active (operator who clicked stop/go).
+    /// Null if never changed or set by auto-recovery.
+    /// </summary>
+    public int? ImmobilizationBy { get; set; }
+
+    /// <summary>
+    /// When immobilization_active was last changed.
+    /// </summary>
+    public DateTime? ImmobilizationAt { get; set; }
+
+    /// <summary>
     /// Full command to resume the vehicle, sent as-is over TCP (e.g. "AJ+GO#1311\n").
     /// Changeable per device from the app — nothing hardcoded.
     /// </summary>

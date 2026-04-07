@@ -4,6 +4,8 @@
 -- Add immobilization fields to gps_devices
 ALTER TABLE gps_devices
     ADD COLUMN IF NOT EXISTS immobilization_active BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS immobilization_by INTEGER,
+    ADD COLUMN IF NOT EXISTS immobilization_at TIMESTAMP,
     ADD COLUMN IF NOT EXISTS command_go VARCHAR(100) NOT NULL DEFAULT E'AJ+GO#1311\n',
     ADD COLUMN IF NOT EXISTS command_stop VARCHAR(100) NOT NULL DEFAULT E'AJ+STOP#1311\n';
 
