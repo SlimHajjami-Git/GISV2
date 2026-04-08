@@ -25,14 +25,12 @@ public class DrivingBehaviorNotificationHandler : INotificationHandler<DrivingBe
     {
         try
         {
-            var adminUsers = await _context.Users
+            var targetUsers = await _context.Users
                 .Where(u => u.CompanyId == e.CompanyId && u.Status == "active")
-                .Include(u => u.Role)
-                .Where(u => u.Role != null && u.Role.IsCompanyAdmin)
                 .Select(u => u.Id)
                 .ToListAsync(ct);
 
-            if (adminUsers.Count == 0) return;
+            if (targetUsers.Count == 0) return;
 
             var vehicleLabel = e.VehicleName ?? e.Plate ?? $"Véhicule #{e.VehicleId}";
             var (title, message, priority) = e.BehaviorType switch
@@ -69,7 +67,7 @@ public class DrivingBehaviorNotificationHandler : INotificationHandler<DrivingBe
                 )
             };
 
-            foreach (var userId in adminUsers)
+            foreach (var userId in targetUsers)
             {
                 await _notificationService.CreateAndSendAsync(
                     companyId: e.CompanyId,
@@ -92,7 +90,7 @@ public class DrivingBehaviorNotificationHandler : INotificationHandler<DrivingBe
             }
 
             _logger.LogDebug("Driving behavior notification sent to {Count} admins: {Vehicle} — {BehaviorType}",
-                adminUsers.Count, vehicleLabel, e.BehaviorType);
+                targetUsers.Count, vehicleLabel, e.BehaviorType);
         }
         catch (Exception ex)
         {

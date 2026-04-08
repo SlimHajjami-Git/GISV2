@@ -25,15 +25,13 @@ public class SpeedAlertNotificationHandler : INotificationHandler<SpeedAlertNoti
     {
         try
         {
-            // Find company admin users to notify
-            var adminUsers = await _context.Users
+            // Notify all active users in the company
+            var targetUsers = await _context.Users
                 .Where(u => u.CompanyId == e.CompanyId && u.Status == "active")
-                .Include(u => u.Role)
-                .Where(u => u.Role != null && u.Role.IsCompanyAdmin)
                 .Select(u => u.Id)
                 .ToListAsync(ct);
 
-            if (adminUsers.Count == 0) return;
+            if (targetUsers.Count == 0) return;
 
             var vehicleLabel = e.VehicleName ?? e.Plate ?? $"Véhicule #{e.VehicleId}";
             var title = $"⚠️ Excès de vitesse — {vehicleLabel}";
@@ -41,7 +39,7 @@ public class SpeedAlertNotificationHandler : INotificationHandler<SpeedAlertNoti
                 ? $"{vehicleLabel} roule à {e.SpeedKph:F0} km/h (limite: {e.SpeedLimitKph} km/h)"
                 : $"{vehicleLabel} roule à {e.SpeedKph:F0} km/h";
 
-            foreach (var userId in adminUsers)
+            foreach (var userId in targetUsers)
             {
                 await _notificationService.CreateAndSendAsync(
                     companyId: e.CompanyId,
@@ -59,7 +57,7 @@ public class SpeedAlertNotificationHandler : INotificationHandler<SpeedAlertNoti
             }
 
             _logger.LogDebug("Speed alert notification sent to {Count} users for vehicle {Vehicle}",
-                adminUsers.Count, vehicleLabel);
+                targetUsers.Count, vehicleLabel);
         }
         catch (Exception ex)
         {

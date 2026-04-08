@@ -25,21 +25,19 @@ public class GeofenceNotificationHandler : INotificationHandler<GeofenceNotifica
     {
         try
         {
-            var adminUsers = await _context.Users
+            var targetUsers = await _context.Users
                 .Where(u => u.CompanyId == e.CompanyId && u.Status == "active")
-                .Include(u => u.Role)
-                .Where(u => u.Role != null && u.Role.IsCompanyAdmin)
                 .Select(u => u.Id)
                 .ToListAsync(ct);
 
-            if (adminUsers.Count == 0) return;
+            if (targetUsers.Count == 0) return;
 
             var vehicleLabel = e.VehicleName ?? $"Véhicule #{e.VehicleId}";
             var action = e.EventType == "entry" ? "est entré dans" : "a quitté";
             var title = $"Géofence — {vehicleLabel}";
             var message = $"{vehicleLabel} {action} la zone \"{e.GeofenceName}\"";
 
-            foreach (var userId in adminUsers)
+            foreach (var userId in targetUsers)
             {
                 var metadata = new Dictionary<string, object>
                 {
@@ -69,7 +67,7 @@ public class GeofenceNotificationHandler : INotificationHandler<GeofenceNotifica
             }
 
             _logger.LogDebug("Geofence notification sent to {Count} users: {Vehicle} {Action} {Geofence}",
-                adminUsers.Count, vehicleLabel, action, e.GeofenceName);
+                targetUsers.Count, vehicleLabel, action, e.GeofenceName);
         }
         catch (Exception ex)
         {

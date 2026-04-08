@@ -25,14 +25,12 @@ public class MaintenanceDueNotificationHandler : INotificationHandler<Maintenanc
     {
         try
         {
-            var adminUsers = await _context.Users
+            var targetUsers = await _context.Users
                 .Where(u => u.CompanyId == e.CompanyId && u.Status == "active")
-                .Include(u => u.Role)
-                .Where(u => u.Role != null && u.Role.IsCompanyAdmin)
                 .Select(u => u.Id)
                 .ToListAsync(ct);
 
-            if (adminUsers.Count == 0) return;
+            if (targetUsers.Count == 0) return;
 
             var statusLabel = e.Status == "overdue" ? "EN RETARD" : "À faire";
             var detail = e.KmUntilDue.HasValue
@@ -44,7 +42,7 @@ public class MaintenanceDueNotificationHandler : INotificationHandler<Maintenanc
             var title = $"Entretien {statusLabel} — {e.VehicleName}";
             var message = $"{e.TemplateName} pour {e.VehicleName}{detail}";
 
-            foreach (var userId in adminUsers)
+            foreach (var userId in targetUsers)
             {
                 await _notificationService.CreateAndSendAsync(
                     companyId: e.CompanyId,
@@ -61,7 +59,7 @@ public class MaintenanceDueNotificationHandler : INotificationHandler<Maintenanc
             }
 
             _logger.LogDebug("Maintenance notification sent to {Count} users: {Template} for {Vehicle}",
-                adminUsers.Count, e.TemplateName, e.VehicleName);
+                targetUsers.Count, e.TemplateName, e.VehicleName);
         }
         catch (Exception ex)
         {
