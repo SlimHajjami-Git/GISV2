@@ -146,6 +146,22 @@ export class ImmobilizationApprovalService {
     }
   }
 
+  // Called from PushNotificationService when a push arrives (foreground or tap from background)
+  handlePushNotification(data: any): void {
+    this.ngZone.run(() => {
+      const notification = {
+        id: parseInt(data.notificationId || '0'),
+        type: data.type,
+        title: data.title || '',
+        message: data.message || '',
+        priority: data.priority || 'normal',
+        metadata: data,
+        createdAt: new Date().toISOString()
+      };
+      this.handleNotification(notification as any);
+    });
+  }
+
   private playAlertSound(): void {
     try {
       if (this.alertSound) {

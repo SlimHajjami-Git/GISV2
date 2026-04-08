@@ -12,17 +12,20 @@ public class NotificationService : INotificationService
     private readonly IGisDbContext _context;
     private readonly IHubContext<GpsHub> _hubContext;
     private readonly IEmailService _emailService;
+    private readonly IFcmService _fcmService;
     private readonly ILogger<NotificationService> _logger;
 
     public NotificationService(
         IGisDbContext context,
         IHubContext<GpsHub> hubContext,
         IEmailService emailService,
+        IFcmService fcmService,
         ILogger<NotificationService> logger)
     {
         _context = context;
         _hubContext = hubContext;
         _emailService = emailService;
+        _fcmService = fcmService;
         _logger = logger;
     }
 
@@ -88,6 +91,27 @@ public class NotificationService : INotificationService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to push notification to user_{UserId}", userId);
+        }
+
+        // Push via FCM for mobile devices (works even when app is closed)
+        try
+        {
+            var fcmData = new Dictionary<string, string>
+            {
+                ["notificationId"] = notification.Id.ToString(),
+                ["type"] = type,
+                ["click_action"] = "FLUTTER_NOTIFICATION_CLICK"
+            };
+            if (metadata != null)
+            {
+                foreach (var kv in metadata)
+                    fcmData[kv.Key] = kv.Value?.ToString() ?? "";
+            }
+            await _fcmService.SendToUserAsync(userId, title, message, fcmData);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send FCM push to user {UserId}", userId);
         }
 
         // Send email notification (TEST: forced to hajjami.selim@gmail.com)

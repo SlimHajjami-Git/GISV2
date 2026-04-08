@@ -182,4 +182,13 @@ export class ApiService {
   getPendingImmobilizationRequests(): Observable<any[]> {
     return this.http.get<any[]>(`${this.API}/gps/immobilization-requests/pending`);
   }
+
+  // ─── Device Tokens (FCM Push) ──────────────────────────
+  registerDeviceToken(token: string, platform: string): Observable<any> {
+    return this.http.post<any>(`${this.API}/devicetokens`, { token, platform });
+  }
+
+  unregisterDeviceToken(token: string): Observable<any> {
+    return this.http.delete<any>(`${this.API}/devicetokens`, { body: { token } });
+  }
 }

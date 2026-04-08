@@ -58,6 +58,7 @@ public interface IGisDbContext
     
     // Notifications
     DbSet<Notification> Notifications { get; }
+    DbSet<UserDeviceToken> UserDeviceTokens { get; }
 
     // Tours
     DbSet<Tour> Tours { get; }

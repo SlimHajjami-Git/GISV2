@@ -87,6 +87,7 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<ReportSchedule> ReportSchedules => Set<ReportSchedule>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<UserDeviceToken> UserDeviceTokens => Set<UserDeviceToken>();
 
     // Accident Claims
     public DbSet<AccidentClaim> AccidentClaims => Set<AccidentClaim>();

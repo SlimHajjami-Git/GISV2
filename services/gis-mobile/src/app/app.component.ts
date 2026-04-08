@@ -1,5 +1,6 @@
 import { Component } from '@angular/core';
 import { ImmobilizationApprovalService } from './core/services/immobilization-approval.service';
+import { PushNotificationService } from './core/services/push-notification.service';
 import { SignalRService } from './core/services/signalr.service';
 import { AuthService } from './core/services/auth.service';
 
@@ -12,14 +13,16 @@ import { AuthService } from './core/services/auth.service';
 export class AppComponent {
   constructor(
     private immoApproval: ImmobilizationApprovalService,
+    private pushService: PushNotificationService,
     private signalr: SignalRService,
     private authService: AuthService
   ) {
     this.immoApproval.init();
-    // Start SignalR as soon as auth is ready so real-time notifications work on all pages
+    // Start SignalR + FCM push as soon as auth is ready
     this.authService.ready.then(() => {
       if (this.authService.isAuthenticated()) {
         this.signalr.startConnection();
+        this.pushService.init();
       }
     });
   }
