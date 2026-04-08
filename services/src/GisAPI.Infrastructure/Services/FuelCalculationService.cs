@@ -568,6 +568,158 @@ public class FuelCalculationService : IFuelCalculationService
     }
 
     /// <summary>
+    /// Batch-calculate fuel stats for all vehicles in a fleet.
+    /// 3 SQL queries instead of N*4 per-vehicle queries.
+    /// </summary>
+    public async Task<List<VehicleFuelExpenseDto>> CalculateFleetFuelBatchAsync(
+        List<Vehicle> vehicles,
+        DateTime startDate,
+        DateTime endDate,
+        Dictionary<string, decimal> fuelPrices,
+        CancellationToken cancellationToken = default)
+    {
+        var startUtc = startDate.Kind == DateTimeKind.Utc ? startDate : startDate.ToUniversalTime();
+        var endUtc = endDate.Kind == DateTimeKind.Utc ? endDate : endDate.ToUniversalTime();
+
+        var gpsVehicles = vehicles.Where(v => v.GpsDeviceId.HasValue && v.GpsDevice != null).ToList();
+        if (gpsVehicles.Count == 0) return new List<VehicleFuelExpenseDto>();
+
+        var deviceIds = gpsVehicles.Select(v => v.GpsDeviceId!.Value).ToList();
+        var vehicleIds = gpsVehicles.Select(v => v.Id).ToList();
+        var deviceToVehicle = gpsVehicles.ToDictionary(v => v.GpsDeviceId!.Value, v => v);
+
+        // ── Query 1: FMS fuel rates per device (SQL GROUP BY) ──
+        var fmsRatesByDevice = await _context.GpsPositions
+            .AsNoTracking()
+            .Where(p => deviceIds.Contains(p.DeviceId) &&
+                        p.RecordedAt >= startUtc && p.RecordedAt <= endUtc &&
+                        p.FuelRateLPer100Km != null && p.FuelRateLPer100Km > 0 && p.FuelRateLPer100Km < 80)
+            .GroupBy(p => p.DeviceId)
+            .Select(g => new
+            {
+                DeviceId = g.Key,
+                AvgRate = g.Average(p => (double)p.FuelRateLPer100Km!.Value),
+                Count = g.Count()
+            })
+            .ToDictionaryAsync(x => x.DeviceId, x => x, cancellationToken);
+
+        // ── Query 2: Trip distances per vehicle (pre-computed in trips table) ──
+        var tripDistances = await _context.Trips
+            .AsNoTracking()
+            .Where(t => vehicleIds.Contains(t.VehicleId) &&
+                        t.StartTime >= startUtc && t.StartTime <= endUtc &&
+                        t.Status == "completed")
+            .GroupBy(t => t.VehicleId)
+            .Select(g => new
+            {
+                VehicleId = g.Key,
+                TotalKm = (int)g.Sum(t => t.DistanceKm)
+            })
+            .ToDictionaryAsync(x => x.VehicleId, x => x.TotalKm, cancellationToken);
+
+        // ── Query 3: Daily trip distances per vehicle (for chart) ──
+        var dailyDistances = await _context.Trips
+            .AsNoTracking()
+            .Where(t => vehicleIds.Contains(t.VehicleId) &&
+                        t.StartTime >= startUtc && t.StartTime <= endUtc &&
+                        t.Status == "completed")
+            .GroupBy(t => new { t.VehicleId, Date = t.StartTime.Date })
+            .Select(g => new
+            {
+                VehicleId = g.Key.VehicleId,
+                Date = g.Key.Date,
+                DistanceKm = (int)g.Sum(t => t.DistanceKm)
+            })
+            .ToListAsync(cancellationToken);
+
+        var dailyByVehicle = dailyDistances
+            .GroupBy(d => d.VehicleId)
+            .ToDictionary(g => g.Key, g => g.ToDictionary(d => d.Date, d => d.DistanceKm));
+
+        // ── In-memory: compute per-vehicle fuel stats ──
+        var results = new List<VehicleFuelExpenseDto>();
+
+        foreach (var vehicle in gpsVehicles)
+        {
+            var deviceId = vehicle.GpsDeviceId!.Value;
+            var vehicleType = vehicle.Type?.ToLower() ?? "berline";
+            var fuelType = vehicle.FuelType?.ToLower() ?? "diesel";
+            var tankCapacity = vehicle.FuelTankCapacity ?? 60;
+
+            var totalDistance = tripDistances.GetValueOrDefault(vehicle.Id, 0);
+            if (totalDistance <= 0) continue;
+
+            var maxReasonable = vehicleType switch
+            {
+                "camion" or "bus" => 50m,
+                "camionnette" or "fourgon" or "utilitaire" or "minibus" => 25m,
+                _ => 20m
+            };
+
+            // Priority: FMS CAN bus rate → default rate
+            decimal avgConsumption;
+            bool isEstimated;
+
+            if (fmsRatesByDevice.TryGetValue(deviceId, out var fms) && fms.Count >= 5)
+            {
+                avgConsumption = (decimal)fms.AvgRate;
+                if (avgConsumption < 2m || avgConsumption > maxReasonable)
+                {
+                    avgConsumption = DefaultConsumptionRates.GetValueOrDefault(vehicleType, 8.0m);
+                    isEstimated = true;
+                }
+                else
+                {
+                    isEstimated = false;
+                }
+            }
+            else
+            {
+                avgConsumption = DefaultConsumptionRates.GetValueOrDefault(vehicleType, 8.0m);
+                isEstimated = true;
+            }
+
+            var totalFuelLiters = (avgConsumption / 100m) * totalDistance;
+            var pricePerLiter = fuelPrices.GetValueOrDefault(fuelType, 0);
+
+            // Build daily DTOs from pre-aggregated trip data
+            var dailyDtos = new List<DailyFuelConsumptionDto>();
+            if (dailyByVehicle.TryGetValue(vehicle.Id, out var dailyDist))
+            {
+                dailyDtos = dailyDist.OrderBy(kv => kv.Key).Select(kv =>
+                {
+                    var dayFuel = (avgConsumption / 100m) * kv.Value;
+                    return new DailyFuelConsumptionDto(
+                        Date: kv.Key,
+                        FuelConsumedLiters: Math.Round(dayFuel, 2),
+                        FuelCost: Math.Round(dayFuel * pricePerLiter, 2),
+                        DistanceKm: kv.Value,
+                        ConsumptionPer100Km: Math.Round(avgConsumption, 2)
+                    );
+                }).ToList();
+            }
+
+            results.Add(new VehicleFuelExpenseDto(
+                VehicleId: vehicle.Id,
+                VehicleName: vehicle.Name,
+                Plate: vehicle.Plate,
+                FuelType: vehicle.FuelType,
+                FuelTankCapacity: vehicle.FuelTankCapacity,
+                TotalFuelConsumedLiters: Math.Round(totalFuelLiters, 2),
+                TotalFuelCost: Math.Round(totalFuelLiters * pricePerLiter, 2),
+                AverageConsumptionPer100Km: Math.Round(avgConsumption, 2),
+                DeviationFromFleetAverage: 0,
+                TotalDistanceKm: totalDistance,
+                IsEstimated: isEstimated,
+                DailyConsumption: dailyDtos,
+                Refuels: new List<FuelRefillEventDto>()
+            ));
+        }
+
+        return results;
+    }
+
+    /// <summary>
     /// Detect fuel refill events from fuel_records table
     /// </summary>
     public async Task<List<FuelRefillEventDto>> DetectFuelRefillsAsync(

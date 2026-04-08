@@ -740,35 +740,33 @@ public class DashboardController : ControllerBase
             .ToListAsync();
         var priceDict = fuelPrices.ToDictionary(p => p.Code.ToLower(), p => p.PricePerLiter);
 
-        var vehicleFuelStats = new List<object>();
-        decimal fleetTotalLiters = 0;
-        int fleetTotalKm = 0;
-        var dailyFleetFuel = new Dictionary<string, decimal>();
+        // Batch fuel calculation: 3 SQL queries instead of N*4 per-vehicle
+        var batchFuelResults = await _fuelCalcService.CalculateFleetFuelBatchAsync(
+            vehicles.Where(v => v.GpsDeviceId.HasValue).ToList(), fuelStartDate, now, priceDict);
 
-        foreach (var vehicle in vehicles.Where(v => v.GpsDeviceId.HasValue))
-        {
-            try
+        var vehicleFuelStats = batchFuelResults
+            .Select(e => new
             {
-                var expense = await _fuelCalcService.CalculateVehicleFuelExpenseAsync(vehicle, fuelStartDate, now, priceDict);
-                if (expense == null) continue;
-                vehicleFuelStats.Add(new
-                {
-                    plate = expense.Plate ?? expense.VehicleName,
-                    consumption = expense.AverageConsumptionPer100Km,
-                    totalLiters = expense.TotalFuelConsumedLiters,
-                    totalKm = expense.TotalDistanceKm
-                });
-                fleetTotalLiters += expense.TotalFuelConsumedLiters;
-                fleetTotalKm += expense.TotalDistanceKm;
-                foreach (var d in expense.DailyConsumption)
-                {
-                    var dayKey = d.Date.ToString("yyyy-MM-dd");
-                    dailyFleetFuel[dayKey] = dailyFleetFuel.GetValueOrDefault(dayKey) + d.FuelConsumedLiters;
-                }
+                plate = e.Plate ?? e.VehicleName,
+                consumption = e.AverageConsumptionPer100Km,
+                totalLiters = e.TotalFuelConsumedLiters,
+                totalKm = e.TotalDistanceKm
+            })
+            .OrderByDescending(v => v.consumption)
+            .Cast<object>()
+            .ToList();
+
+        decimal fleetTotalLiters = batchFuelResults.Sum(e => e.TotalFuelConsumedLiters);
+        int fleetTotalKm = batchFuelResults.Sum(e => e.TotalDistanceKm);
+        var dailyFleetFuel = new Dictionary<string, decimal>();
+        foreach (var expense in batchFuelResults)
+        {
+            foreach (var d in expense.DailyConsumption)
+            {
+                var dayKey = d.Date.ToString("yyyy-MM-dd");
+                dailyFleetFuel[dayKey] = dailyFleetFuel.GetValueOrDefault(dayKey) + d.FuelConsumedLiters;
             }
-            catch { }
         }
-        vehicleFuelStats = vehicleFuelStats.OrderByDescending(v => ((dynamic)v).consumption).ToList();
 
         var chartDays = Enumerable.Range(0, Math.Min(fuelDays, 30))
             .Select(i => now.AddDays(-((Math.Min(fuelDays, 30) - 1) - i)).ToString("yyyy-MM-dd"))

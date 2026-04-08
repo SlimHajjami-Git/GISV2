@@ -19,6 +19,17 @@ public interface IFuelCalculationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Batch-calculate fuel stats for all vehicles in a fleet (dashboard optimization).
+    /// Uses 3 SQL queries instead of N*4 per-vehicle queries.
+    /// </summary>
+    Task<List<VehicleFuelExpenseDto>> CalculateFleetFuelBatchAsync(
+        List<Vehicle> vehicles,
+        DateTime startDate,
+        DateTime endDate,
+        Dictionary<string, decimal> fuelPrices,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Detect fuel refill events from fuel_records
     /// </summary>
     Task<List<FuelRefillEventDto>> DetectFuelRefillsAsync(
