@@ -148,4 +148,25 @@ export class ApiService {
   changePassword(data: { currentPassword: string; newPassword: string }): Observable<any> {
     return this.http.put(`${this.API}/users/change-password`, data);
   }
+
+  // ─── Immobilization ─────────────────────────────────────
+  getImmobilizationState(deviceId: number): Observable<any> {
+    return this.http.get<any>(`${this.API}/gps/devices/${deviceId}/immobilization`);
+  }
+
+  stopVehicle(deviceId: number): Observable<any> {
+    return this.http.post<any>(`${this.API}/gps/devices/${deviceId}/stop`, {});
+  }
+
+  goVehicle(deviceId: number): Observable<any> {
+    return this.http.post<any>(`${this.API}/gps/devices/${deviceId}/go`, {});
+  }
+
+  getDeviceCommands(deviceId: number, limit: number = 20): Observable<any[]> {
+    return this.http.get<any[]>(`${this.API}/gps/devices/${deviceId}/commands?limit=${limit}`);
+  }
+
+  verifyPassword(password: string): Observable<any> {
+    return this.http.post<any>(`${this.API}/auth/verify-password`, { password });
+  }
 }

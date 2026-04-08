@@ -2,9 +2,10 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
 import { SignalRService, PositionUpdate } from '../../core/services/signalr.service';
 import { Vehicle } from '../../core/models/types';
-import { ModalController } from '@ionic/angular';
+import { ModalController, AlertController, ToastController } from '@ionic/angular';
 
 @Component({
   selector: 'app-vehicles',
@@ -138,6 +139,35 @@ import { ModalController } from '@ionic/angular';
               Playback
             </ion-button>
           </div>
+
+          <!-- Immobilization (user id=1 only) -->
+          <div class="immo-section" *ngIf="canImmobilize && selectedVehicle.gpsDeviceId">
+            <div class="immo-status" *ngIf="immoStates.get(selectedVehicle.gpsDeviceId!)">
+              <ion-icon name="lock-closed" color="danger" *ngIf="immoStates.get(selectedVehicle.gpsDeviceId!)?.immobilizationActive"></ion-icon>
+              <ion-icon name="lock-open" color="success" *ngIf="!immoStates.get(selectedVehicle.gpsDeviceId!)?.immobilizationActive"></ion-icon>
+              <span *ngIf="immoStates.get(selectedVehicle.gpsDeviceId!)?.immobilizationActive">
+                Véhicule immobilisé
+                <span class="immo-by" *ngIf="immoStates.get(selectedVehicle.gpsDeviceId!)?.immobilizationByName">
+                  par {{ immoStates.get(selectedVehicle.gpsDeviceId!)?.immobilizationByName }}
+                </span>
+              </span>
+              <span *ngIf="!immoStates.get(selectedVehicle.gpsDeviceId!)?.immobilizationActive">Véhicule libre</span>
+            </div>
+            <div class="immo-actions">
+              <ion-button expand="block" color="danger" shape="round"
+                          *ngIf="!immoStates.get(selectedVehicle.gpsDeviceId!)?.immobilizationActive"
+                          (click)="onStopVehicle(selectedVehicle)">
+                <ion-icon name="hand-left" slot="start"></ion-icon>
+                Arrêter le véhicule
+              </ion-button>
+              <ion-button expand="block" color="success" shape="round"
+                          *ngIf="immoStates.get(selectedVehicle.gpsDeviceId!)?.immobilizationActive"
+                          (click)="onGoVehicle(selectedVehicle)">
+                <ion-icon name="play" slot="start"></ion-icon>
+                Libérer le véhicule
+              </ion-button>
+            </div>
+          </div>
         </div>
       </div>
     </ion-content>
@@ -212,6 +242,14 @@ import { ModalController } from '@ionic/angular';
     }
     .detail-actions { display: flex; gap: 8px; }
     .detail-actions ion-button { flex: 1; }
+    .immo-section { margin-top: 16px; border-top: 1px solid var(--ion-color-light-shade); padding-top: 16px; }
+    .immo-status {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; background: var(--ion-color-light);
+      border-radius: 10px; margin-bottom: 12px; font-size: 14px; font-weight: 500;
+    }
+    .immo-by { font-weight: 400; font-size: 12px; color: var(--ion-color-medium); }
+    .immo-actions ion-button { font-weight: 700; }
   `]
 })
 export class VehiclesPage implements OnInit, OnDestroy {
@@ -227,17 +265,26 @@ export class VehiclesPage implements OnInit, OnDestroy {
   stoppedCount = 0;
   offlineCount = 0;
 
+  canImmobilize = false;
+  immoStates = new Map<string, any>();
+
   private subs: Subscription[] = [];
   private positionMap = new Map<number, PositionUpdate>();
 
   constructor(
     private api: ApiService,
+    private authService: AuthService,
     private signalr: SignalRService,
     private router: Router,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    private alertCtrl: AlertController,
+    private toastCtrl: ToastController
   ) {}
 
   ngOnInit() {
+    const user = this.authService.getCurrentUserSync();
+    this.canImmobilize = user ? parseInt(user.id) === 1 : false;
+
     this.loadVehicles();
 
     // Update vehicles with real-time positions
@@ -319,6 +366,16 @@ export class VehiclesPage implements OnInit, OnDestroy {
 
   selectVehicle(v: Vehicle) {
     this.selectedVehicle = v;
+    if (this.canImmobilize && v.gpsDeviceId) {
+      this.loadImmoState(v.gpsDeviceId);
+    }
+  }
+
+  private loadImmoState(deviceId: string) {
+    this.api.getImmobilizationState(parseInt(deviceId)).subscribe({
+      next: (state) => this.immoStates.set(deviceId, state),
+      error: () => {}
+    });
   }
 
   closeDetail(event: Event) {
@@ -363,5 +420,119 @@ export class VehiclesPage implements OnInit, OnDestroy {
 
   trackById(_: number, v: Vehicle) {
     return v.id;
+  }
+
+  // ── Immobilization flow ──
+
+  async onStopVehicle(v: Vehicle) {
+    if (!v.gpsDeviceId) return;
+    const deviceId = parseInt(v.gpsDeviceId);
+
+    // Step 1: Password
+    const passwordAlert = await this.alertCtrl.create({
+      header: 'Confirmation requise',
+      message: `Pour arrêter "${v.name}", entrez votre mot de passe`,
+      inputs: [{ name: 'password', type: 'password', placeholder: 'Mot de passe' }],
+      buttons: [
+        { text: 'Annuler', role: 'cancel' },
+        { text: 'Vérifier', handler: (data) => {
+          this.verifyAndConfirmStop(v, deviceId, data.password);
+          return true;
+        }}
+      ]
+    });
+    await passwordAlert.present();
+  }
+
+  private verifyAndConfirmStop(v: Vehicle, deviceId: number, password: string) {
+    this.api.verifyPassword(password).subscribe({
+      next: async () => {
+        // Step 2: Confirmation popup
+        const confirmAlert = await this.alertCtrl.create({
+          header: 'ARRÊT DU VÉHICULE',
+          message: `<strong style="color:#dc2626;font-size:16px">Confirmez-vous l'arrêt immédiat du véhicule "${v.name}" ?</strong><br><br>Le moteur sera coupé à distance.`,
+          cssClass: 'immobilization-alert',
+          buttons: [
+            { text: 'Annuler', role: 'cancel' },
+            { text: 'CONFIRMER L\'ARRÊT', cssClass: 'alert-danger-btn', handler: () => {
+              this.executeStop(v, deviceId);
+              return true;
+            }}
+          ]
+        });
+        await confirmAlert.present();
+      },
+      error: async () => {
+        const toast = await this.toastCtrl.create({
+          message: 'Mot de passe incorrect', duration: 2500, color: 'danger', position: 'top'
+        });
+        await toast.present();
+      }
+    });
+  }
+
+  private executeStop(v: Vehicle, deviceId: number) {
+    this.api.stopVehicle(deviceId).subscribe({
+      next: async () => {
+        if (v.gpsDeviceId) this.loadImmoState(v.gpsDeviceId);
+        const toast = await this.toastCtrl.create({
+          message: `Commande STOP envoyée pour ${v.name}`, duration: 3000, color: 'success', position: 'top'
+        });
+        await toast.present();
+      },
+      error: async () => {
+        const toast = await this.toastCtrl.create({
+          message: 'Erreur lors de l\'envoi de la commande', duration: 3000, color: 'danger', position: 'top'
+        });
+        await toast.present();
+      }
+    });
+  }
+
+  async onGoVehicle(v: Vehicle) {
+    if (!v.gpsDeviceId) return;
+    const deviceId = parseInt(v.gpsDeviceId);
+
+    const passwordAlert = await this.alertCtrl.create({
+      header: 'Libérer le véhicule',
+      message: `Pour libérer "${v.name}", entrez votre mot de passe`,
+      inputs: [{ name: 'password', type: 'password', placeholder: 'Mot de passe' }],
+      buttons: [
+        { text: 'Annuler', role: 'cancel' },
+        { text: 'Vérifier', handler: (data) => {
+          this.verifyAndGo(v, deviceId, data.password);
+          return true;
+        }}
+      ]
+    });
+    await passwordAlert.present();
+  }
+
+  private verifyAndGo(v: Vehicle, deviceId: number, password: string) {
+    this.api.verifyPassword(password).subscribe({
+      next: () => {
+        this.api.goVehicle(deviceId).subscribe({
+          next: async () => {
+            if (v.gpsDeviceId) this.loadImmoState(v.gpsDeviceId);
+            const toast = await this.toastCtrl.create({
+              message: `Commande GO envoyée pour ${v.name}`, duration: 3000, color: 'success', position: 'top'
+            });
+            await toast.present();
+          },
+          error: async () => {
+            const toast = await this.toastCtrl.create({
+              message: 'Erreur lors de l\'envoi de la commande', duration: 3000, color: 'danger', position: 'top'
+            });
+            await toast.present();
+          }
+        });
+      },
+      error: async () => {
+        const toast = await this.toastCtrl.create({
+          message: 'Mot de passe incorrect', duration: 2500, color: 'danger', position: 'top'
+        });
+        await toast.present();
+      }
+    });
   }
 }

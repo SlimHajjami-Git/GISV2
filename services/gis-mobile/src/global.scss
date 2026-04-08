@@ -55,3 +55,14 @@ ion-tab-button {
 .leaflet-pane { z-index: 400 !important; }
 .leaflet-control { z-index: 800 !important; }
 .leaflet-top, .leaflet-bottom { z-index: 900 !important; }
+
+/* Immobilization confirmation alert — very visible */
+.immobilization-alert {
+  .alert-wrapper {
+    border: 3px solid #dc2626 !important;
+    border-radius: 16px !important;
+  }
+  .alert-head { background: #dc2626; }
+  .alert-title { color: #fff !important; font-size: 18px !important; font-weight: 800 !important; }
+  .alert-danger-btn { color: #dc2626 !important; font-weight: 800 !important; }
+}

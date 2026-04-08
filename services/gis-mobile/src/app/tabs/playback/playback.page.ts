@@ -39,13 +39,19 @@ interface PlaybackPoint {
           </ion-label>
           <ion-icon name="chevron-down-outline" slot="end" color="medium"></ion-icon>
         </ion-item>
-        <ion-item lines="none" class="sel-item" (click)="showDatePicker = !showDatePicker">
+        <ion-item lines="none" class="sel-item" (click)="activePickerField = activePickerField === 'start' ? null : 'start'">
           <ion-icon name="calendar-outline" slot="start" color="primary"></ion-icon>
           <ion-label>
-            <p class="sel-hint">Date</p>
-            <h3>{{ selectedDate | date:'dd/MM/yyyy' }}</h3>
+            <p class="sel-hint">Début</p>
+            <h3>{{ startDate | date:'dd/MM HH:mm' }}</h3>
           </ion-label>
-          <ion-icon name="chevron-down-outline" slot="end" color="medium"></ion-icon>
+        </ion-item>
+        <ion-item lines="none" class="sel-item" (click)="activePickerField = activePickerField === 'end' ? null : 'end'">
+          <ion-icon name="calendar-outline" slot="start" color="tertiary"></ion-icon>
+          <ion-label>
+            <p class="sel-hint">Fin</p>
+            <h3>{{ endDate | date:'dd/MM HH:mm' }}</h3>
+          </ion-label>
         </ion-item>
         <ion-button fill="solid" color="primary" size="small" class="load-btn"
                     [disabled]="!selectedVehicleId || loadingTrack" (click)="loadTrack()">
@@ -55,10 +61,18 @@ interface PlaybackPoint {
       </div>
 
       <ion-datetime
-        *ngIf="showDatePicker"
-        presentation="date"
-        [(ngModel)]="datePickerValue"
-        (ionChange)="onDatePicked()"
+        *ngIf="activePickerField === 'start'"
+        presentation="date-time"
+        [(ngModel)]="startDateValue"
+        (ionChange)="onStartDatePicked()"
+        [max]="todayStr"
+        class="date-picker-inline"
+      ></ion-datetime>
+      <ion-datetime
+        *ngIf="activePickerField === 'end'"
+        presentation="date-time"
+        [(ngModel)]="endDateValue"
+        (ionChange)="onEndDatePicked()"
         [max]="todayStr"
         class="date-picker-inline"
       ></ion-datetime>
@@ -224,11 +238,13 @@ export class PlaybackPage implements OnInit, OnDestroy {
   selectedVehicleId: number | null = null;
   selectedVehicleName = '';
 
-  // Date
-  selectedDate = new Date();
-  datePickerValue = new Date().toISOString();
+  // Date range
+  startDate = new Date(new Date().setHours(0, 0, 0, 0));
+  endDate = new Date(new Date().setHours(23, 59, 59, 0));
+  startDateValue = this.startDate.toISOString();
+  endDateValue = this.endDate.toISOString();
   todayStr = new Date().toISOString();
-  showDatePicker = false;
+  activePickerField: 'start' | 'end' | null = null;
 
   // Track data
   points: PlaybackPoint[] = [];
@@ -276,8 +292,19 @@ export class PlaybackPage implements OnInit, OnDestroy {
         }
       }
       if (params['date']) {
-        this.selectedDate = new Date(params['date']);
-        this.datePickerValue = this.selectedDate.toISOString();
+        const d = new Date(params['date']);
+        this.startDate = new Date(d.setHours(0, 0, 0, 0));
+        this.endDate = new Date(d.setHours(23, 59, 59, 0));
+        this.startDateValue = this.startDate.toISOString();
+        this.endDateValue = this.endDate.toISOString();
+      }
+      if (params['startDate']) {
+        this.startDate = new Date(params['startDate']);
+        this.startDateValue = this.startDate.toISOString();
+      }
+      if (params['endDate']) {
+        this.endDate = new Date(params['endDate']);
+        this.endDateValue = this.endDate.toISOString();
       }
     });
   }
@@ -349,9 +376,14 @@ export class PlaybackPage implements OnInit, OnDestroy {
     await sheet.present();
   }
 
-  onDatePicked() {
-    this.selectedDate = new Date(this.datePickerValue);
-    this.showDatePicker = false;
+  onStartDatePicked() {
+    this.startDate = new Date(this.startDateValue);
+    this.activePickerField = null;
+  }
+
+  onEndDatePicked() {
+    this.endDate = new Date(this.endDateValue);
+    this.activePickerField = null;
   }
 
   loadTrack() {
@@ -364,11 +396,10 @@ export class PlaybackPage implements OnInit, OnDestroy {
     this.currentIndex = 0;
     this.clearMapLayers();
 
-    const d = this.selectedDate;
-    const from = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0).toISOString();
-    const to = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59).toISOString();
+    const from = this.startDate.toISOString();
+    const to = this.endDate.toISOString();
 
-    this.api.getVehicleHistory(this.selectedVehicleId.toString(), from, to, 10000).subscribe({
+    this.api.getVehicleHistory(this.selectedVehicleId.toString(), from, to, 2000).subscribe({
       next: (data: any) => {
         this.zone.run(() => {
           this.loadingTrack = false;
@@ -449,11 +480,12 @@ export class PlaybackPage implements OnInit, OnDestroy {
 
     const latlngs: L.LatLngExpression[] = this.points.map(p => [p.lat, p.lng]);
 
-    // Full track (grey)
+    // Full track (grey) — smoothFactor for mobile perf
     this.trackLine = L.polyline(latlngs, {
       color: '#94a3b8',
       weight: 3,
-      opacity: 0.6
+      opacity: 0.6,
+      smoothFactor: 1.5
     }).addTo(this.map);
 
     // Progress line (colored)

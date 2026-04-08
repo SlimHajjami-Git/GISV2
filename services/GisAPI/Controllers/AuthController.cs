@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MediatR;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Application.Features.Auth.Commands.Login;
 using GisAPI.Application.Features.Auth.Commands.RefreshToken;
+using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
 
 namespace GisAPI.Controllers;
@@ -14,11 +16,13 @@ public class AuthController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly GisDbContext _context;
+    private readonly IPasswordHasher _passwordHasher;
 
-    public AuthController(IMediator mediator, GisDbContext context)
+    public AuthController(IMediator mediator, GisDbContext context, IPasswordHasher passwordHasher)
     {
         _mediator = mediator;
         _context = context;
+        _passwordHasher = passwordHasher;
     }
 
     [HttpPost("login")]
@@ -160,8 +164,22 @@ public class AuthController : ControllerBase
             return BadRequest(new { message = "Seeding failed" });
         }
     }
+    [Authorize]
+    [HttpPost("verify-password")]
+    public async Task<IActionResult> VerifyPassword([FromBody] VerifyPasswordRequest request)
+    {
+        var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
+        var user = await _context.Users.FindAsync(userId);
+        if (user == null) return Unauthorized(new { valid = false });
+
+        var valid = _passwordHasher.VerifyPassword(request.Password, user.PasswordHash);
+        if (!valid) return Unauthorized(new { valid = false });
+
+        return Ok(new { valid = true });
+    }
 }
 
 // Request DTOs for AuthController
 public record LoginRequest(string Email, string Password);
 public record RefreshRequest(string Token, string RefreshToken);
+public record VerifyPasswordRequest(string Password);
