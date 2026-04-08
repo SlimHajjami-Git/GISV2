@@ -151,6 +151,29 @@ impl RedisCache {
         Ok(())
     }
 
+    /// Refresh TTL on existing cached position without overwriting data.
+    /// Used for throttled ignition-off frames: keeps the vehicle visible on the map
+    /// without pushing unvalidated odometer/coordinate values.
+    pub async fn refresh_position_ttl(
+        &self,
+        device_uid: &str,
+        company_id: i32,
+    ) -> Result<()> {
+        let mut conn = self.pool.get().await
+            .with_context(|| "Failed to get Redis connection from pool")?;
+
+        let device_key = format!("vehicle:position:{}", device_uid);
+        conn.expire::<_, ()>(&device_key, POSITION_TTL_SECONDS as i64).await?;
+
+        let company_key = format!("company:{}:active_vehicles", company_id);
+        conn.expire::<_, ()>(&company_key, POSITION_TTL_SECONDS as i64).await?;
+
+        let devices_key = format!("company:{}:devices", company_id);
+        conn.expire::<_, ()>(&devices_key, POSITION_TTL_SECONDS as i64).await?;
+
+        Ok(())
+    }
+
     pub async fn get_position(&self, device_uid: &str) -> Result<Option<String>> {
         let mut conn = self.pool.get().await
             .with_context(|| "Failed to get Redis connection from pool")?;

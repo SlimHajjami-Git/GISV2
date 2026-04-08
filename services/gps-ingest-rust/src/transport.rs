@@ -760,11 +760,13 @@ async fn process_single_frame(
                                         min_interval_secs = STOPPED_MIN_INTERVAL_SECS,
                                         "Frame throttled for DB, refreshing Redis only"
                                     );
-                                    // Refresh Redis cache so parked vehicles don't disappear
+                                    // Extend Redis TTL so parked vehicles don't disappear.
+                                    // Do NOT overwrite cached data — throttled frames bypass
+                                    // GPS validation and odometer spike detection.
                                     if let Some(ref redis) = redis_cache {
-                                        let (vehicle_id, company_id, _) = database.get_device_vehicle_info(device_id).await?;
-                                        if let Err(err) = redis.cache_position(&resolved_uid, vehicle_id, company_id, &frame).await {
-                                            warn!(?err, "Failed to refresh Redis on throttled frame");
+                                        let (_, company_id, _) = database.get_device_vehicle_info(device_id).await?;
+                                        if let Err(err) = redis.refresh_position_ttl(&resolved_uid, company_id).await {
+                                            warn!(?err, "Failed to refresh Redis TTL on throttled frame");
                                         }
                                     }
                                     return Ok(());
