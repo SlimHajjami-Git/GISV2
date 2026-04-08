@@ -33,7 +33,7 @@ public class VehiclesController : ControllerBase
         [FromQuery] string? searchTerm = null,
         [FromQuery] string? status = null,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 50)
+        [FromQuery] int pageSize = 500)
     {
         var result = await _mediator.Send(new GetVehiclesQuery(searchTerm, status, page, pageSize));
         return Ok(result.Items);
