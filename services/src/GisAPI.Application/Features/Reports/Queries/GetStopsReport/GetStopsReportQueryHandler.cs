@@ -90,8 +90,42 @@ public class GetStopsReportQueryHandler : IRequestHandler<GetStopsReportQuery, S
             }
         }
 
+        // Split stops that span midnight into per-day segments for correct grouping
+        var splitStops = new List<StopEntryDto>();
+        foreach (var stop in allStops)
+        {
+            var current = stop.StartTime;
+            while (current.Date < stop.EndTime.Date)
+            {
+                var dayEnd = current.Date.AddDays(1); // midnight of next day
+                splitStops.Add(new StopEntryDto
+                {
+                    StartTime = current,
+                    EndTime = dayEnd,
+                    DurationSeconds = (int)(dayEnd - current).TotalSeconds,
+                    DurationFormatted = FormatDuration((int)(dayEnd - current).TotalSeconds),
+                    Latitude = stop.Latitude,
+                    Longitude = stop.Longitude
+                });
+                current = dayEnd;
+            }
+            // Remaining segment (or entire stop if it didn't cross midnight)
+            if (current < stop.EndTime)
+            {
+                splitStops.Add(new StopEntryDto
+                {
+                    StartTime = current,
+                    EndTime = stop.EndTime,
+                    DurationSeconds = (int)(stop.EndTime - current).TotalSeconds,
+                    DurationFormatted = FormatDuration((int)(stop.EndTime - current).TotalSeconds),
+                    Latitude = stop.Latitude,
+                    Longitude = stop.Longitude
+                });
+            }
+        }
+
         // Group stops by day
-        var days = allStops
+        var days = splitStops
             .GroupBy(s => s.StartTime.Date)
             .OrderBy(g => g.Key)
             .Select(g =>
