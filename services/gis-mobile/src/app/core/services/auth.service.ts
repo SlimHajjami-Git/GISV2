@@ -99,9 +99,15 @@ export class AuthService {
   private currentUser$ = new BehaviorSubject<AuthUser | null>(null);
   private token: string | null = null;
   private refreshTokenValue: string | null = null;
+  private _ready: Promise<void>;
 
   constructor(private http: HttpClient) {
-    this.loadStoredAuth();
+    this._ready = this.loadStoredAuth();
+  }
+
+  /** Resolves when stored tokens have been loaded from Preferences */
+  get ready(): Promise<void> {
+    return this._ready;
   }
 
   get API_URL(): string {
