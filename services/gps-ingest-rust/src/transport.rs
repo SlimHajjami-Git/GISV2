@@ -972,22 +972,32 @@ async fn process_single_frame(
                     }
                 }
 
-                // PARALLEL EXECUTION: DB write + Redis cache + RabbitMQ publish
-                // These operations are independent and can run concurrently
+                // Only push to Redis/pub-sub if the frame is recent (< 3 minutes old).
+                // History frames (AA23 batches) have old timestamps and should NOT update
+                // the real-time map — otherwise the vehicle "teleports" across the map
+                // as the frontend receives 50 rapid position updates from a past trip.
+                let frame_age_secs = (chrono::Utc::now().naive_utc() - frame.recorded_at).num_seconds();
+                let is_recent_frame = frame_age_secs < 180; // 3 minutes
+
+                // PARALLEL EXECUTION: DB write + conditional Redis cache + RabbitMQ publish
                 let db_future = database.ingest_hh_frame(&resolved_uid, protocol, &frame, &event_key);
-                
+
                 let redis_future = async {
-                    if let Some(ref redis) = redis_cache {
-                        if let Err(err) = redis.cache_position(&resolved_uid, vehicle_id, company_id, &frame).await {
-                            warn!(?err, "Failed to cache position in Redis");
+                    if is_recent_frame {
+                        if let Some(ref redis) = redis_cache {
+                            if let Err(err) = redis.cache_position(&resolved_uid, vehicle_id, company_id, &frame).await {
+                                warn!(?err, "Failed to cache position in Redis");
+                            }
                         }
                     }
                 };
 
                 let rabbitmq_future = async {
-                    if let Some(ref pub_ref) = publisher {
-                        if let Err(err) = pub_ref.publish_hh_frame(&resolved_uid, protocol, &frame).await {
-                            warn!(?err, "Failed to publish telemetry event");
+                    if is_recent_frame {
+                        if let Some(ref pub_ref) = publisher {
+                            if let Err(err) = pub_ref.publish_hh_frame(&resolved_uid, protocol, &frame).await {
+                                warn!(?err, "Failed to publish telemetry event");
+                            }
                         }
                     }
                 };
