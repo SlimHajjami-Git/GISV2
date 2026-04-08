@@ -749,16 +749,24 @@ async fn process_single_frame(
                                 // Compare GPS frame timestamps (both are in GPS local time, timezone-consistent)
                                 let seconds_since_last_stored =
                                     (frame.recorded_at - last_position.recorded_at).num_seconds();
-                                
-                                // Skip if less than 30 minutes of GPS time since last stored position
+
+                                // Skip DB write if less than 30 minutes, but still update Redis
+                                // so the vehicle stays visible on the real-time monitoring map
                                 if seconds_since_last_stored >= 0 && seconds_since_last_stored < STOPPED_MIN_INTERVAL_SECS {
                                     info!(
                                         device_id,
                                         seconds_since_last = seconds_since_last_stored,
                                         speed_kph = frame.speed_kph,
                                         min_interval_secs = STOPPED_MIN_INTERVAL_SECS,
-                                        "Frame skipped: ignition-off throttling (30 min interval not reached)"
+                                        "Frame throttled for DB, refreshing Redis only"
                                     );
+                                    // Refresh Redis cache so parked vehicles don't disappear
+                                    if let Some(ref redis) = redis_cache {
+                                        let (vehicle_id, company_id, _) = database.get_device_vehicle_info(device_id).await?;
+                                        if let Err(err) = redis.cache_position(&resolved_uid, vehicle_id, company_id, &frame).await {
+                                            warn!(?err, "Failed to refresh Redis on throttled frame");
+                                        }
+                                    }
                                     return Ok(());
                                 }
                             }

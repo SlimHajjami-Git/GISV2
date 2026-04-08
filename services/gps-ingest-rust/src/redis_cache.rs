@@ -7,7 +7,7 @@ use tracing::info;
 
 use crate::telemetry::model::HhFrame;
 
-const POSITION_TTL_SECONDS: u64 = 300; // 5 minutes TTL
+const POSITION_TTL_SECONDS: u64 = 2100; // 35 minutes TTL (covers 30-min ignition-off throttle)
 const POOL_SIZE: usize = 16; // Connection pool size
 
 pub struct RedisCache {

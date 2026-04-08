@@ -129,6 +129,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   refreshInterval: any;
   stalenessInterval: any;
+  timestampRefreshInterval: any;
   signalRSubscription: Subscription | null = null;
   connectionStateSubscription: Subscription | null = null;
   connectionStatus = 'Disconnected';
@@ -294,6 +295,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.initSignalR();
       this.startAutoRefresh();
       this.startStalenessCheck();
+      this.startTimestampRefresh();
     });
   }
 
@@ -352,6 +354,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     if (this.stalenessInterval) {
       clearInterval(this.stalenessInterval);
+    }
+    if (this.timestampRefreshInterval) {
+      clearInterval(this.timestampRefreshInterval);
     }
     if (this.signalRSubscription) {
       this.signalRSubscription.unsubscribe();
@@ -1108,6 +1113,14 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         });
       }
     }, 30000); // Check every 30 seconds
+  }
+
+  startTimestampRefresh() {
+    // Refresh "X s ago" / "X min ago" display every 15 seconds
+    // Without this, the relative time text stays frozen until the next SignalR update
+    this.timestampRefreshInterval = setInterval(() => {
+      this.cdr.detectChanges();
+    }, 15000);
   }
 
   refresh() {
