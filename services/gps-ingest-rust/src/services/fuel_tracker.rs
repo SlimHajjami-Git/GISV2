@@ -10,8 +10,12 @@ use tracing::{info, warn, debug};
 
 use crate::telemetry::model::HhFrame;
 
-/// Minimum fuel change to detect refuel (%)
+/// Minimum fuel change to detect refuel (%) — when ignition is ON or vehicle recently moved
 const REFUEL_THRESHOLD_PERCENT: i16 = 10;
+
+/// Minimum fuel change to detect refuel/theft when parked with ignition OFF
+/// Higher threshold to filter capacitive sensor noise from temperature changes
+const PARKED_THRESHOLD_PERCENT: i16 = 30;
 
 /// Maximum normal consumption per reading (%)
 const MAX_NORMAL_CONSUMPTION_PERCENT: i16 = 5;
@@ -374,13 +378,18 @@ impl FuelTracker {
         ignition_on: bool,
         speed_kph: f64,
     ) -> (FuelEventType, bool, Option<String>) {
+        // When parked (ignition OFF, no movement), use higher threshold
+        // to filter capacitive sensor noise from temperature changes
+        let is_parked = !ignition_on && speed_kph < 1.0;
+        let threshold = if is_parked { PARKED_THRESHOLD_PERCENT } else { REFUEL_THRESHOLD_PERCENT };
+
         // Refuel detection (significant increase)
-        if fuel_change >= REFUEL_THRESHOLD_PERCENT {
+        if fuel_change >= threshold {
             return (FuelEventType::Refuel, false, None);
         }
 
         // Theft detection (significant drop without movement)
-        if fuel_change <= -REFUEL_THRESHOLD_PERCENT && distance_km < 5 && !ignition_on {
+        if fuel_change <= -threshold && distance_km < 5 && !ignition_on {
             return (
                 FuelEventType::TheftAlert,
                 true,
@@ -391,8 +400,8 @@ impl FuelTracker {
             );
         }
 
-        // Consumption spike detection
-        if fuel_change < -MAX_NORMAL_CONSUMPTION_PERCENT {
+        // Consumption spike detection (only when moving)
+        if !is_parked && fuel_change < -MAX_NORMAL_CONSUMPTION_PERCENT {
             // Calculate expected consumption (rough estimate: 10L/100km for 50L tank = 2%/10km)
             let expected_drop = (distance_km as i16) / 5; // ~2% per 10km
             if -fuel_change > expected_drop + 5 {
