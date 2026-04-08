@@ -811,7 +811,7 @@ public class DashboardController : ControllerBase
             drivers = driversList
         };
 
-        _cache.Set(cacheKey, result, TimeSpan.FromMinutes(2));
+        _cache.Set(cacheKey, result, TimeSpan.FromMinutes(10));
         return Ok(result);
     }
 
