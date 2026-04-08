@@ -961,40 +961,18 @@ public class GpsController : ControllerBase
     }
 
     [HttpPost("devices/{deviceId}/stop")]
-    public async Task<IActionResult> StopDevice(int deviceId)
+    public async Task<IActionResult> StopDevice(int deviceId, [FromServices] INotificationService notificationService)
     {
-        var companyId = GetCompanyId();
-        var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
-
-        var device = await _context.GpsDevices
-            .Include(d => d.Vehicle)
-            .FirstOrDefaultAsync(d => d.Id == deviceId && d.CompanyId == companyId);
-
-        if (device == null) return NotFound();
-
-        device.ImmobilizationActive = true;
-        device.ImmobilizationBy = userId;
-        device.ImmobilizationAt = DateTime.UtcNow;
-
-        var cmd = new DeviceCommand
-        {
-            DeviceId = deviceId,
-            VehicleId = device.Vehicle?.Id,
-            UserId = userId,
-            CommandType = "STOP",
-            CommandText = device.CommandStop,
-            Status = "pending",
-            Source = "manual",
-            CompanyId = companyId
-        };
-        _context.DeviceCommands.Add(cmd);
-        await _context.SaveChangesAsync();
-
-        return Ok(new { success = true, message = "Commande STOP enregistrée", commandId = cmd.Id });
+        return await CreateImmobilizationRequest(deviceId, "STOP", notificationService);
     }
 
     [HttpPost("devices/{deviceId}/go")]
-    public async Task<IActionResult> GoDevice(int deviceId)
+    public async Task<IActionResult> GoDevice(int deviceId, [FromServices] INotificationService notificationService)
+    {
+        return await CreateImmobilizationRequest(deviceId, "GO", notificationService);
+    }
+
+    private async Task<IActionResult> CreateImmobilizationRequest(int deviceId, string commandType, INotificationService notificationService)
     {
         var companyId = GetCompanyId();
         var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
@@ -1005,25 +983,54 @@ public class GpsController : ControllerBase
 
         if (device == null) return NotFound();
 
-        device.ImmobilizationActive = false;
-        device.ImmobilizationBy = userId;
-        device.ImmobilizationAt = DateTime.UtcNow;
+        // Check for existing pending request on this device
+        var hasPending = await _context.Notifications
+            .AnyAsync(n => n.Type == "immobilization_request" && n.ReferenceId == deviceId && !n.IsRead);
+        if (hasPending)
+            return Conflict(new { success = false, message = "Une demande est déjà en attente pour ce véhicule" });
 
-        var cmd = new DeviceCommand
+        var requesterName = await _context.Users
+            .Where(u => u.Id == userId)
+            .Select(u => u.FirstName + " " + u.LastName)
+            .FirstOrDefaultAsync() ?? "Utilisateur";
+
+        var vehicleName = device.Vehicle?.Name ?? $"Device #{deviceId}";
+        var plate = device.Vehicle?.Plate ?? "";
+        var isStop = commandType == "STOP";
+
+        var title = isStop
+            ? $"Demande d'arrêt — {vehicleName}"
+            : $"Demande de libération — {vehicleName}";
+        var message = isStop
+            ? $"{requesterName} demande l'arrêt du véhicule {vehicleName}"
+            : $"{requesterName} demande la libération du véhicule {vehicleName}";
+
+        var metadata = new Dictionary<string, object>
         {
-            DeviceId = deviceId,
-            VehicleId = device.Vehicle?.Id,
-            UserId = userId,
-            CommandType = "GO",
-            CommandText = device.CommandGo,
-            Status = "pending",
-            Source = "manual",
-            CompanyId = companyId
+            ["commandType"] = commandType,
+            ["deviceId"] = deviceId,
+            ["vehicleId"] = device.Vehicle?.Id ?? 0,
+            ["vehicleName"] = vehicleName,
+            ["plate"] = plate,
+            ["requestedBy"] = userId,
+            ["requestedByName"] = requesterName
         };
-        _context.DeviceCommands.Add(cmd);
-        await _context.SaveChangesAsync();
 
-        return Ok(new { success = true, message = "Commande GO enregistrée", commandId = cmd.Id });
+        // Send notification to system admin (user id=1) for approval
+        var notification = await notificationService.CreateAndSendAsync(
+            companyId,
+            userId: 1,
+            type: "immobilization_request",
+            title: title,
+            message: message,
+            priority: "urgent",
+            referenceType: "device",
+            referenceId: deviceId,
+            actionUrl: null,
+            metadata: metadata
+        );
+
+        return Ok(new { success = true, message = "Demande envoyée à l'administrateur", requestId = notification.Id });
     }
 
     [HttpGet("devices/{deviceId}/commands")]
@@ -1049,6 +1056,161 @@ public class GpsController : ControllerBase
             .ToListAsync();
 
         return Ok(commands);
+    }
+
+    // ==================== IMMOBILIZATION APPROVAL FLOW ====================
+
+    [HttpPost("immobilization-requests/{requestId}/approve")]
+    public async Task<IActionResult> ApproveImmobilizationRequest(long requestId, [FromServices] INotificationService notificationService)
+    {
+        var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
+        if (userId != 1) return Forbid();
+
+        var companyId = GetCompanyId();
+
+        var notification = await _context.Notifications
+            .FirstOrDefaultAsync(n => n.Id == requestId && n.Type == "immobilization_request" && !n.IsRead);
+        if (notification == null) return NotFound(new { message = "Demande introuvable ou déjà traitée" });
+
+        var metadata = notification.Metadata ?? new Dictionary<string, object>();
+        var deviceId = Convert.ToInt32(metadata.GetValueOrDefault("deviceId", 0));
+        var commandType = metadata.GetValueOrDefault("commandType", "STOP")?.ToString() ?? "STOP";
+        var vehicleId = Convert.ToInt32(metadata.GetValueOrDefault("vehicleId", 0));
+        var vehicleName = metadata.GetValueOrDefault("vehicleName", "")?.ToString() ?? "";
+        var requestedBy = Convert.ToInt32(metadata.GetValueOrDefault("requestedBy", 0));
+
+        var device = await _context.GpsDevices
+            .Include(d => d.Vehicle)
+            .FirstOrDefaultAsync(d => d.Id == deviceId);
+        if (device == null) return NotFound(new { message = "Appareil introuvable" });
+
+        var isStop = commandType == "STOP";
+        device.ImmobilizationActive = isStop;
+        device.ImmobilizationBy = requestedBy;
+        device.ImmobilizationAt = DateTime.UtcNow;
+
+        var cmd = new DeviceCommand
+        {
+            DeviceId = deviceId,
+            VehicleId = vehicleId > 0 ? vehicleId : null,
+            UserId = requestedBy,
+            CommandType = commandType,
+            CommandText = isStop ? device.CommandStop : device.CommandGo,
+            Status = "pending",
+            Source = "manual",
+            CompanyId = device.CompanyId
+        };
+        _context.DeviceCommands.Add(cmd);
+
+        notification.IsRead = true;
+        notification.ReadAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        // Notify the requester that their request was approved
+        if (requestedBy > 0)
+        {
+            var responseTitle = isStop
+                ? $"Arrêt approuvé — {vehicleName}"
+                : $"Libération approuvée — {vehicleName}";
+            var responseMessage = isStop
+                ? $"Votre demande d'arrêt pour {vehicleName} a été approuvée"
+                : $"Votre demande de libération pour {vehicleName} a été approuvée";
+
+            await notificationService.CreateAndSendAsync(
+                companyId, requestedBy,
+                type: "immobilization_response",
+                title: responseTitle,
+                message: responseMessage,
+                priority: "high",
+                referenceType: "device",
+                referenceId: deviceId,
+                metadata: new Dictionary<string, object>
+                {
+                    ["status"] = "approved",
+                    ["commandType"] = commandType,
+                    ["vehicleName"] = vehicleName,
+                    ["deviceId"] = deviceId
+                }
+            );
+        }
+
+        return Ok(new { success = true, message = "Demande approuvée", commandId = cmd.Id });
+    }
+
+    [HttpPost("immobilization-requests/{requestId}/reject")]
+    public async Task<IActionResult> RejectImmobilizationRequest(long requestId, [FromServices] INotificationService notificationService)
+    {
+        var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
+        if (userId != 1) return Forbid();
+
+        var companyId = GetCompanyId();
+
+        var notification = await _context.Notifications
+            .FirstOrDefaultAsync(n => n.Id == requestId && n.Type == "immobilization_request" && !n.IsRead);
+        if (notification == null) return NotFound(new { message = "Demande introuvable ou déjà traitée" });
+
+        var metadata = notification.Metadata ?? new Dictionary<string, object>();
+        var commandType = metadata.GetValueOrDefault("commandType", "STOP")?.ToString() ?? "STOP";
+        var vehicleName = metadata.GetValueOrDefault("vehicleName", "")?.ToString() ?? "";
+        var deviceId = Convert.ToInt32(metadata.GetValueOrDefault("deviceId", 0));
+        var requestedBy = Convert.ToInt32(metadata.GetValueOrDefault("requestedBy", 0));
+
+        notification.IsRead = true;
+        notification.ReadAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        // Notify the requester that their request was rejected
+        if (requestedBy > 0)
+        {
+            var isStop = commandType == "STOP";
+            var responseTitle = isStop
+                ? $"Arrêt refusé — {vehicleName}"
+                : $"Libération refusée — {vehicleName}";
+            var responseMessage = isStop
+                ? $"Votre demande d'arrêt pour {vehicleName} a été refusée"
+                : $"Votre demande de libération pour {vehicleName} a été refusée";
+
+            await notificationService.CreateAndSendAsync(
+                companyId, requestedBy,
+                type: "immobilization_response",
+                title: responseTitle,
+                message: responseMessage,
+                priority: "normal",
+                referenceType: "device",
+                referenceId: deviceId,
+                metadata: new Dictionary<string, object>
+                {
+                    ["status"] = "rejected",
+                    ["commandType"] = commandType,
+                    ["vehicleName"] = vehicleName,
+                    ["deviceId"] = deviceId
+                }
+            );
+        }
+
+        return Ok(new { success = true, message = "Demande refusée" });
+    }
+
+    [HttpGet("immobilization-requests/pending")]
+    public async Task<IActionResult> GetPendingImmobilizationRequests()
+    {
+        var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
+        if (userId != 1) return Forbid();
+
+        var requests = await _context.Notifications
+            .Where(n => n.Type == "immobilization_request" && !n.IsRead)
+            .OrderByDescending(n => n.CreatedAt)
+            .Select(n => new {
+                n.Id,
+                n.Title,
+                n.Message,
+                n.Priority,
+                n.Metadata,
+                n.CreatedAt
+            })
+            .ToListAsync();
+
+        return Ok(requests);
     }
 
 }

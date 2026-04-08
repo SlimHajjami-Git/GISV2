@@ -1,4 +1,5 @@
 import { Component } from '@angular/core';
+import { ImmobilizationApprovalService } from './core/services/immobilization-approval.service';
 
 @Component({
   selector: 'app-root',
@@ -7,5 +8,7 @@ import { Component } from '@angular/core';
   standalone: false,
 })
 export class AppComponent {
-  constructor() {}
+  constructor(private immoApproval: ImmobilizationApprovalService) {
+    this.immoApproval.init();
+  }
 }

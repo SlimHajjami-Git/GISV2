@@ -5,7 +5,7 @@ import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { SignalRService, PositionUpdate } from '../../core/services/signalr.service';
 import { Vehicle } from '../../core/models/types';
-import { ModalController, AlertController, ToastController } from '@ionic/angular';
+import { AlertController, ToastController } from '@ionic/angular';
 
 @Component({
   selector: 'app-vehicles',
@@ -140,7 +140,7 @@ import { ModalController, AlertController, ToastController } from '@ionic/angula
             </ion-button>
           </div>
 
-          <!-- Immobilization (user id=1 only) -->
+          <!-- Immobilization -->
           <div class="immo-section" *ngIf="canImmobilize && selectedVehicle.gpsDeviceId">
             <div class="immo-status" *ngIf="immoStates.get(selectedVehicle.gpsDeviceId!)">
               <ion-icon name="lock-closed" color="danger" *ngIf="immoStates.get(selectedVehicle.gpsDeviceId!)?.immobilizationActive"></ion-icon>
@@ -283,7 +283,7 @@ export class VehiclesPage implements OnInit, OnDestroy {
 
   ngOnInit() {
     const user = this.authService.getCurrentUserSync();
-    this.canImmobilize = user ? parseInt(user.id) === 1 : false;
+    this.canImmobilize = !!user;
 
     this.loadVehicles();
 
@@ -428,15 +428,14 @@ export class VehiclesPage implements OnInit, OnDestroy {
     if (!v.gpsDeviceId) return;
     const deviceId = parseInt(v.gpsDeviceId);
 
-    // Step 1: Password
     const passwordAlert = await this.alertCtrl.create({
       header: 'Confirmation requise',
       message: `Pour arrêter "${v.name}", entrez votre mot de passe`,
       inputs: [{ name: 'password', type: 'password', placeholder: 'Mot de passe' }],
       buttons: [
         { text: 'Annuler', role: 'cancel' },
-        { text: 'Vérifier', handler: (data) => {
-          this.verifyAndConfirmStop(v, deviceId, data.password);
+        { text: 'Envoyer', handler: (data) => {
+          this.verifyAndSendRequest(v, deviceId, data.password, 'stop');
           return true;
         }}
       ]
@@ -444,45 +443,29 @@ export class VehiclesPage implements OnInit, OnDestroy {
     await passwordAlert.present();
   }
 
-  private verifyAndConfirmStop(v: Vehicle, deviceId: number, password: string) {
+  private verifyAndSendRequest(v: Vehicle, deviceId: number, password: string, type: 'stop' | 'go') {
     this.api.verifyPassword(password).subscribe({
-      next: async () => {
-        // Step 2: Confirmation popup
-        const confirmAlert = await this.alertCtrl.create({
-          header: 'ARRÊT DU VÉHICULE',
-          message: `<strong style="color:#dc2626;font-size:16px">Confirmez-vous l'arrêt immédiat du véhicule "${v.name}" ?</strong><br><br>Le moteur sera coupé à distance.`,
-          cssClass: 'immobilization-alert',
-          buttons: [
-            { text: 'Annuler', role: 'cancel' },
-            { text: 'CONFIRMER L\'ARRÊT', cssClass: 'alert-danger-btn', handler: () => {
-              this.executeStop(v, deviceId);
-              return true;
-            }}
-          ]
+      next: () => {
+        const call = type === 'stop' ? this.api.stopVehicle(deviceId) : this.api.goVehicle(deviceId);
+        call.subscribe({
+          next: async () => {
+            const toast = await this.toastCtrl.create({
+              message: 'Demande envoyée à l\'administrateur', duration: 3000, color: 'success', position: 'top'
+            });
+            await toast.present();
+          },
+          error: async (err) => {
+            const msg = err?.error?.message || 'Erreur lors de l\'envoi';
+            const toast = await this.toastCtrl.create({
+              message: msg, duration: 3000, color: 'danger', position: 'top'
+            });
+            await toast.present();
+          }
         });
-        await confirmAlert.present();
       },
       error: async () => {
         const toast = await this.toastCtrl.create({
           message: 'Mot de passe incorrect', duration: 2500, color: 'danger', position: 'top'
-        });
-        await toast.present();
-      }
-    });
-  }
-
-  private executeStop(v: Vehicle, deviceId: number) {
-    this.api.stopVehicle(deviceId).subscribe({
-      next: async () => {
-        if (v.gpsDeviceId) this.loadImmoState(v.gpsDeviceId);
-        const toast = await this.toastCtrl.create({
-          message: `Commande STOP envoyée pour ${v.name}`, duration: 3000, color: 'success', position: 'top'
-        });
-        await toast.present();
-      },
-      error: async () => {
-        const toast = await this.toastCtrl.create({
-          message: 'Erreur lors de l\'envoi de la commande', duration: 3000, color: 'danger', position: 'top'
         });
         await toast.present();
       }
@@ -499,40 +482,12 @@ export class VehiclesPage implements OnInit, OnDestroy {
       inputs: [{ name: 'password', type: 'password', placeholder: 'Mot de passe' }],
       buttons: [
         { text: 'Annuler', role: 'cancel' },
-        { text: 'Vérifier', handler: (data) => {
-          this.verifyAndGo(v, deviceId, data.password);
+        { text: 'Envoyer', handler: (data) => {
+          this.verifyAndSendRequest(v, deviceId, data.password, 'go');
           return true;
         }}
       ]
     });
     await passwordAlert.present();
-  }
-
-  private verifyAndGo(v: Vehicle, deviceId: number, password: string) {
-    this.api.verifyPassword(password).subscribe({
-      next: () => {
-        this.api.goVehicle(deviceId).subscribe({
-          next: async () => {
-            if (v.gpsDeviceId) this.loadImmoState(v.gpsDeviceId);
-            const toast = await this.toastCtrl.create({
-              message: `Commande GO envoyée pour ${v.name}`, duration: 3000, color: 'success', position: 'top'
-            });
-            await toast.present();
-          },
-          error: async () => {
-            const toast = await this.toastCtrl.create({
-              message: 'Erreur lors de l\'envoi de la commande', duration: 3000, color: 'danger', position: 'top'
-            });
-            await toast.present();
-          }
-        });
-      },
-      error: async () => {
-        const toast = await this.toastCtrl.create({
-          message: 'Mot de passe incorrect', duration: 2500, color: 'danger', position: 'top'
-        });
-        await toast.present();
-      }
-    });
   }
 }

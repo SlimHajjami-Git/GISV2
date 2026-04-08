@@ -169,4 +169,17 @@ export class ApiService {
   verifyPassword(password: string): Observable<any> {
     return this.http.post<any>(`${this.API}/auth/verify-password`, { password });
   }
+
+  // ─── Immobilization Approval ────────────────────────────
+  approveImmobilization(requestId: number): Observable<any> {
+    return this.http.post<any>(`${this.API}/gps/immobilization-requests/${requestId}/approve`, {});
+  }
+
+  rejectImmobilization(requestId: number): Observable<any> {
+    return this.http.post<any>(`${this.API}/gps/immobilization-requests/${requestId}/reject`, {});
+  }
+
+  getPendingImmobilizationRequests(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.API}/gps/immobilization-requests/pending`);
+  }
 }
