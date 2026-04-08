@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -48,6 +49,21 @@ public class GpsController : ControllerBase
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
+
+    // Safely extract values from JSONB metadata (values come back as JsonElement after EF Core deserialization)
+    private static int GetMetaInt(Dictionary<string, object> meta, string key)
+    {
+        if (!meta.TryGetValue(key, out var val)) return 0;
+        if (val is JsonElement je) return je.TryGetInt32(out var i) ? i : 0;
+        return Convert.ToInt32(val);
+    }
+
+    private static string GetMetaString(Dictionary<string, object> meta, string key, string fallback = "")
+    {
+        if (!meta.TryGetValue(key, out var val)) return fallback;
+        if (val is JsonElement je) return je.GetString() ?? fallback;
+        return val?.ToString() ?? fallback;
+    }
 
     // ==================== REAL-TIME POSITIONS (REDIS) ====================
 
@@ -1073,11 +1089,11 @@ public class GpsController : ControllerBase
         if (notification == null) return NotFound(new { message = "Demande introuvable ou déjà traitée" });
 
         var metadata = notification.Metadata ?? new Dictionary<string, object>();
-        var deviceId = Convert.ToInt32(metadata.GetValueOrDefault("deviceId", 0));
-        var commandType = metadata.GetValueOrDefault("commandType", "STOP")?.ToString() ?? "STOP";
-        var vehicleId = Convert.ToInt32(metadata.GetValueOrDefault("vehicleId", 0));
-        var vehicleName = metadata.GetValueOrDefault("vehicleName", "")?.ToString() ?? "";
-        var requestedBy = Convert.ToInt32(metadata.GetValueOrDefault("requestedBy", 0));
+        var deviceId = GetMetaInt(metadata, "deviceId");
+        var commandType = GetMetaString(metadata, "commandType", "STOP");
+        var vehicleId = GetMetaInt(metadata, "vehicleId");
+        var vehicleName = GetMetaString(metadata, "vehicleName", "");
+        var requestedBy = GetMetaInt(metadata, "requestedBy");
 
         var device = await _context.GpsDevices
             .Include(d => d.Vehicle)
@@ -1150,10 +1166,10 @@ public class GpsController : ControllerBase
         if (notification == null) return NotFound(new { message = "Demande introuvable ou déjà traitée" });
 
         var metadata = notification.Metadata ?? new Dictionary<string, object>();
-        var commandType = metadata.GetValueOrDefault("commandType", "STOP")?.ToString() ?? "STOP";
-        var vehicleName = metadata.GetValueOrDefault("vehicleName", "")?.ToString() ?? "";
-        var deviceId = Convert.ToInt32(metadata.GetValueOrDefault("deviceId", 0));
-        var requestedBy = Convert.ToInt32(metadata.GetValueOrDefault("requestedBy", 0));
+        var commandType = GetMetaString(metadata, "commandType", "STOP");
+        var vehicleName = GetMetaString(metadata, "vehicleName", "");
+        var deviceId = GetMetaInt(metadata, "deviceId");
+        var requestedBy = GetMetaInt(metadata, "requestedBy");
 
         notification.IsRead = true;
         notification.ReadAt = DateTime.UtcNow;
