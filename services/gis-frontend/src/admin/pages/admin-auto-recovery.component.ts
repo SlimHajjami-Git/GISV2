@@ -64,7 +64,7 @@ import { AdminService } from '../services/admin.service';
                 <th>Véhicule</th>
                 <th>Plaque</th>
                 <th>Société</th>
-                <th>Commande</th>
+                <th>Téléphone</th>
                 <th>Statut</th>
               </tr>
             </thead>
@@ -77,7 +77,7 @@ import { AdminService } from '../services/admin.service';
                 <td>{{ r.vehicleName || '-' }}</td>
                 <td>{{ r.vehiclePlate || '-' }}</td>
                 <td>{{ r.companyName || '-' }}</td>
-                <td class="mono cmd">{{ r.commandText?.trim() }}</td>
+                <td class="mono">{{ r.driverPhone || '-' }}</td>
                 <td>
                   <span class="status-badge" [ngClass]="r.status">{{ r.status }}</span>
                 </td>

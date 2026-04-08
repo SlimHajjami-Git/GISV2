@@ -929,6 +929,7 @@ public class AdminController : ControllerBase
                 deviceUid = c.Device != null ? c.Device.DeviceUid : null,
                 vehicleName = c.Vehicle != null ? c.Vehicle.Name : null,
                 vehiclePlate = c.Vehicle != null ? c.Vehicle.Plate : null,
+                driverPhone = c.Vehicle != null ? c.Vehicle.DriverPhone : null,
                 companyName = c.Device != null && c.Device.Societe != null ? c.Device.Societe.Name : null,
                 c.CompanyId,
                 c.CommandType,
