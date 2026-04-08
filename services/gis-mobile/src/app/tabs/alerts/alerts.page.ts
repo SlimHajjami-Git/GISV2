@@ -247,10 +247,10 @@ export class AlertsPage implements OnInit, OnDestroy {
     const isStop = commandType === 'STOP';
 
     const alert = await this.alertCtrl.create({
-      header: isStop ? "DEMANDE D'ARRÊT" : 'DEMANDE DE LIBÉRATION',
+      header: isStop ? '⛔ DEMANDE D\'ARRÊT' : '✅ DEMANDE DE LIBÉRATION',
       message: isStop
-        ? `<strong>${requestedByName}</strong> demande l'<strong style="color:#dc2626">ARRÊT</strong> du véhicule <strong>"${vehicleName}"</strong>`
-        : `<strong>${requestedByName}</strong> demande la <strong style="color:#16a34a">LIBÉRATION</strong> du véhicule <strong>"${vehicleName}"</strong>`,
+        ? `${requestedByName} demande l'ARRÊT du véhicule "${vehicleName}"`
+        : `${requestedByName} demande la LIBÉRATION du véhicule "${vehicleName}"`,
       cssClass: 'immobilization-alert',
       backdropDismiss: false,
       buttons: [
@@ -267,9 +267,10 @@ export class AlertsPage implements OnInit, OnDestroy {
                 });
                 await toast.present();
               },
-              error: async () => {
+              error: async (err) => {
+                const msg = err?.error?.message || 'Erreur lors du refus';
                 const toast = await this.toastCtrl.create({
-                  message: 'Erreur lors du refus', duration: 3000, color: 'danger', position: 'top'
+                  message: msg, duration: 3000, color: 'danger', position: 'top'
                 });
                 await toast.present();
               }

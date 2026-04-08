@@ -66,10 +66,10 @@ export class ImmobilizationApprovalService {
     this.playAlertSound();
 
     const alert = await this.alertCtrl.create({
-      header: isStop ? 'DEMANDE D\'ARRÊT' : 'DEMANDE DE LIBÉRATION',
+      header: isStop ? '⛔ DEMANDE D\'ARRÊT' : '✅ DEMANDE DE LIBÉRATION',
       message: isStop
-        ? `<strong>${requestedByName}</strong> demande l'<strong style="color:#dc2626">ARRÊT</strong> du véhicule <strong>"${vehicleName}"</strong>`
-        : `<strong>${requestedByName}</strong> demande la <strong style="color:#16a34a">LIBÉRATION</strong> du véhicule <strong>"${vehicleName}"</strong>`,
+        ? `${requestedByName} demande l'ARRÊT du véhicule "${vehicleName}"`
+        : `${requestedByName} demande la LIBÉRATION du véhicule "${vehicleName}"`,
       cssClass: 'immobilization-alert',
       backdropDismiss: false,
       buttons: [
