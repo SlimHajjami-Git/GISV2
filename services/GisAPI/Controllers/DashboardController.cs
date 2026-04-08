@@ -298,20 +298,29 @@ public class DashboardController : ControllerBase
         }
 
         // ── Immobilization history (real monthly counts from maintenance logs) ──
-        var immobHistory = new List<object>();
+        // Single query for all 6 months instead of 6 separate CountAsync calls
         var monthNames = new[] { "Jan", "Fev", "Mar", "Avr", "Mai", "Jun", "Jul", "Aou", "Sep", "Oct", "Nov", "Dec" };
+        var sixMonthsAgo = DateTime.SpecifyKind(new DateTime(now.Year, now.Month, 1).AddMonths(-5), DateTimeKind.Utc);
+        var monthEnd = DateTime.SpecifyKind(new DateTime(now.Year, now.Month, 1).AddMonths(1).AddSeconds(-1), DateTimeKind.Utc);
+
+        var immobRaw = await _context.VehicleMaintenanceSchedules.AsNoTracking()
+            .Where(s => s.CompanyId == companyId &&
+                        (s.Status == "overdue" || s.Status == "critical") &&
+                        s.NextDueDate.HasValue &&
+                        s.NextDueDate.Value >= sixMonthsAgo &&
+                        s.NextDueDate.Value <= monthEnd)
+            .Select(s => new { s.VehicleId, s.NextDueDate!.Value.Year, s.NextDueDate!.Value.Month })
+            .ToListAsync();
+
+        var immobGrouped = immobRaw
+            .GroupBy(s => new { s.Year, s.Month })
+            .ToDictionary(g => g.Key, g => g.Select(s => s.VehicleId).Distinct().Count());
+
+        var immobHistory = new List<object>();
         for (int i = 5; i >= 0; i--)
         {
-            var mStart = DateTime.SpecifyKind(new DateTime(now.Year, now.Month, 1).AddMonths(-i), DateTimeKind.Utc);
-            var mEnd = DateTime.SpecifyKind(mStart.AddMonths(1).AddSeconds(-1), DateTimeKind.Utc);
-            var count = await _context.VehicleMaintenanceSchedules.AsNoTracking()
-                .Where(s => s.CompanyId == companyId &&
-                            (s.Status == "overdue" || s.Status == "critical") &&
-                            (s.NextDueDate.HasValue && s.NextDueDate.Value <= mEnd && s.NextDueDate.Value >= mStart))
-                .Select(s => s.VehicleId)
-                .Distinct()
-                .CountAsync();
-            // Also count vehicles in "maintenance" status (approximate)
+            var mStart = new DateTime(now.Year, now.Month, 1).AddMonths(-i);
+            immobGrouped.TryGetValue(new { mStart.Year, mStart.Month }, out var count);
             immobHistory.Add(new { month = monthNames[mStart.Month - 1], count });
         }
 

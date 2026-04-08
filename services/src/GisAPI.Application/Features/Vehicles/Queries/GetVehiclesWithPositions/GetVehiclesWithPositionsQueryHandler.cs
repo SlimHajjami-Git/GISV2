@@ -73,68 +73,68 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             .Select(v => v.GpsDevice!.Id)
             .ToList();
 
-        // Fetch latest position per device
-        var latestPositions = new Dictionary<int, LatestPositionData>();
-        foreach (var deviceId in deviceIds)
-        {
-            var pos = await _context.GpsPositions
-                .AsNoTracking()
-                .Where(p => p.DeviceId == deviceId)
-                .OrderByDescending(p => p.RecordedAt)
-                .Select(p => new LatestPositionData
-                {
-                    DeviceId = p.DeviceId,
-                    Id = p.Id,
-                    Latitude = p.Latitude,
-                    Longitude = p.Longitude,
-                    SpeedKph = p.SpeedKph,
-                    CourseDeg = p.CourseDeg,
-                    IgnitionOn = p.IgnitionOn,
-                    RecordedAt = p.RecordedAt,
-                    FuelRaw = p.FuelRaw,
-                    TemperatureC = p.TemperatureC,
-                    PowerVoltage = p.PowerVoltage,
-                    Address = p.Address,
-                    OdometerKm = p.OdometerKm
-                })
-                .FirstOrDefaultAsync(ct);
-            if (pos != null) latestPositions[deviceId] = pos;
-        }
+        // Fetch latest position per device — ONE query instead of N
+        // Uses GroupBy to get the max position ID per device, then fetches those positions
+        var latestPosIds = await _context.GpsPositions
+            .AsNoTracking()
+            .Where(p => deviceIds.Contains(p.DeviceId))
+            .GroupBy(p => p.DeviceId)
+            .Select(g => g.OrderByDescending(p => p.RecordedAt).Select(p => p.Id).First())
+            .ToListAsync(ct);
 
-        // Get today's stats per device (last 24 hours) with accurate time calculation
-        var since = DateTime.UtcNow.AddHours(-24);
-        var deviceStats = new Dictionary<int, (double MaxSpeed, double MovingMinutes, double StoppedMinutes, int TotalCount)>();
-        foreach (var deviceId in deviceIds)
-        {
-            // Fetch ordered positions for time-gap based calculation
-            var positions = await _context.GpsPositions
-                .AsNoTracking()
-                .Where(p => p.DeviceId == deviceId && p.RecordedAt >= since)
-                .OrderBy(p => p.RecordedAt)
-                .Select(p => new { p.RecordedAt, p.SpeedKph })
-                .ToListAsync(ct);
-
-            if (positions.Count > 0)
+        var latestPositions = await _context.GpsPositions
+            .AsNoTracking()
+            .Where(p => latestPosIds.Contains(p.Id))
+            .Select(p => new LatestPositionData
             {
-                var maxSpeed = positions.Max(p => p.SpeedKph ?? 0);
-                double movingSeconds = 0;
-                double stoppedSeconds = 0;
+                DeviceId = p.DeviceId,
+                Id = p.Id,
+                Latitude = p.Latitude,
+                Longitude = p.Longitude,
+                SpeedKph = p.SpeedKph,
+                CourseDeg = p.CourseDeg,
+                IgnitionOn = p.IgnitionOn,
+                RecordedAt = p.RecordedAt,
+                FuelRaw = p.FuelRaw,
+                TemperatureC = p.TemperatureC,
+                PowerVoltage = p.PowerVoltage,
+                Address = p.Address,
+                OdometerKm = p.OdometerKm
+            })
+            .ToDictionaryAsync(p => p.DeviceId, ct);
 
-                for (int i = 1; i < positions.Count; i++)
-                {
-                    var gap = (positions[i].RecordedAt - positions[i - 1].RecordedAt).TotalSeconds;
-                    // Cap gap at 10 minutes to avoid counting long offline periods
-                    if (gap > 600) gap = 600;
-                    
-                    // Attribute the gap to moving or stopped based on the previous position's speed
-                    if ((positions[i - 1].SpeedKph ?? 0) > 5)
-                        movingSeconds += gap;
-                    else
-                        stoppedSeconds += gap;
-                }
+        // Get today's stats per device (last 24 hours) — ONE query for all devices
+        // Fetch all positions for all devices at once, then compute stats in-memory
+        var since = DateTime.UtcNow.AddHours(-24);
+        var allRecentPositions = await _context.GpsPositions
+            .AsNoTracking()
+            .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= since)
+            .OrderBy(p => p.RecordedAt)
+            .Select(p => new { p.DeviceId, p.RecordedAt, p.SpeedKph })
+            .ToListAsync(ct);
 
-                deviceStats[deviceId] = (maxSpeed, movingSeconds / 60.0, stoppedSeconds / 60.0, positions.Count);
+        var deviceStats = new Dictionary<int, (double MaxSpeed, double MovingMinutes, double StoppedMinutes, int TotalCount)>();
+        foreach (var group in allRecentPositions.GroupBy(p => p.DeviceId))
+        {
+            var positions = group.ToList();
+            var maxSpeed = positions.Max(p => p.SpeedKph ?? 0);
+            double movingSeconds = 0;
+            double stoppedSeconds = 0;
+
+            for (int i = 1; i < positions.Count; i++)
+            {
+                var gap = (positions[i].RecordedAt - positions[i - 1].RecordedAt).TotalSeconds;
+                // Cap gap at 10 minutes to avoid counting long offline periods
+                if (gap > 600) gap = 600;
+
+                // Attribute the gap to moving or stopped based on the previous position's speed
+                if ((positions[i - 1].SpeedKph ?? 0) > 5)
+                    movingSeconds += gap;
+                else
+                    stoppedSeconds += gap;
             }
+
+            deviceStats[group.Key] = (maxSpeed, movingSeconds / 60.0, stoppedSeconds / 60.0, positions.Count);
         }
 
         var result = vehicles.Select(v =>

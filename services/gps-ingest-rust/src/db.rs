@@ -984,6 +984,40 @@ impl TelemetryStore for Database {
         .await?;
         Ok(())
     }
+
+    async fn log_frame_debug(
+        &self,
+        device_id: Option<i32>,
+        device_uid: Option<&str>,
+        mat: Option<&str>,
+        frame_type: &str,
+        flags_hex: Option<&str>,
+        flags_raw: Option<i16>,
+        raw_frame: &str,
+        reason: &str,
+        peer: Option<&str>,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO frame_debug_log (
+                device_id, device_uid, mat, frame_type, flags_hex, flags_raw,
+                raw_frame, reason, peer, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+            "#,
+        )
+        .bind(device_id)
+        .bind(device_uid)
+        .bind(mat)
+        .bind(frame_type)
+        .bind(flags_hex)
+        .bind(flags_raw)
+        .bind(raw_frame)
+        .bind(reason)
+        .bind(peer)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
 }
 
 impl Database {

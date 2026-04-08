@@ -81,6 +81,20 @@ pub trait TelemetryStore: Send + Sync {
 
     /// Insert an auto-recovery command log entry
     async fn log_auto_recovery(&self, device_id: i32, command_text: &str) -> anyhow::Result<()>;
+
+    /// Log a frame to frame_debug_log for audit (immobilization detection, non-standard frames, etc.)
+    async fn log_frame_debug(
+        &self,
+        device_id: Option<i32>,
+        device_uid: Option<&str>,
+        mat: Option<&str>,
+        frame_type: &str,
+        flags_hex: Option<&str>,
+        flags_raw: Option<i16>,
+        raw_frame: &str,
+        reason: &str,
+        peer: Option<&str>,
+    ) -> anyhow::Result<()>;
 }
 
 #[async_trait]

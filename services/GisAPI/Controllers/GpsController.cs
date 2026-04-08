@@ -148,40 +148,60 @@ public class GpsController : ControllerBase
     {
         var companyId = GetCompanyId();
 
-        var positions = await _context.Vehicles
+        // Step 1: Get vehicles with GPS devices (single query)
+        var vehicles = await _context.Vehicles
             .AsNoTracking()
             .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue)
             .Include(v => v.GpsDevice)
             .Include(v => v.AssignedDriver)
-            .Select(v => new VehiclePositionDto
-            {
-                VehicleId = v.Id,
-                VehicleName = v.Name,
-                Plate = v.Plate,
-                DriverName = v.AssignedDriver != null ? v.AssignedDriver.Name : null,
-                DeviceId = v.GpsDeviceId,
-                DeviceUid = v.GpsDevice != null ? v.GpsDevice.DeviceUid : null,
-                LastPosition = v.GpsDevice != null 
-                    ? _context.GpsPositions
-                        .Where(p => p.DeviceId == v.GpsDeviceId)
-                        .OrderByDescending(p => p.RecordedAt)
-                        .Select(p => new PositionDto
-                        {
-                            Id = p.Id,
-                            Latitude = p.Latitude,
-                            Longitude = p.Longitude,
-                            SpeedKph = p.SpeedKph,
-                            CourseDeg = p.CourseDeg,
-                            IgnitionOn = p.IgnitionOn,
-                            RecordedAt = p.RecordedAt,
-                            Address = p.Address
-                        })
-                        .FirstOrDefault()
-                    : null,
-                Status = v.Status,
-                LastCommunication = v.GpsDevice != null ? v.GpsDevice.LastCommunication : null
-            })
             .ToListAsync();
+
+        var deviceIds = vehicles
+            .Where(v => v.GpsDevice != null)
+            .Select(v => v.GpsDevice!.Id)
+            .ToList();
+
+        // Step 2: Get latest position per device — ONE grouped query instead of N correlated subqueries
+        var latestPositions = new Dictionary<int, PositionDto>();
+        if (deviceIds.Any())
+        {
+            var latestPosIds = await _context.GpsPositions
+                .AsNoTracking()
+                .Where(p => deviceIds.Contains(p.DeviceId))
+                .GroupBy(p => p.DeviceId)
+                .Select(g => g.OrderByDescending(p => p.RecordedAt).Select(p => p.Id).First())
+                .ToListAsync();
+
+            latestPositions = await _context.GpsPositions
+                .AsNoTracking()
+                .Where(p => latestPosIds.Contains(p.Id))
+                .Select(p => new { p.DeviceId, Dto = new PositionDto
+                {
+                    Id = p.Id,
+                    Latitude = p.Latitude,
+                    Longitude = p.Longitude,
+                    SpeedKph = p.SpeedKph,
+                    CourseDeg = p.CourseDeg,
+                    IgnitionOn = p.IgnitionOn,
+                    RecordedAt = p.RecordedAt,
+                    Address = p.Address
+                }})
+                .ToDictionaryAsync(x => x.DeviceId, x => x.Dto);
+        }
+
+        // Step 3: Join in memory
+        var positions = vehicles.Select(v => new VehiclePositionDto
+        {
+            VehicleId = v.Id,
+            VehicleName = v.Name,
+            Plate = v.Plate,
+            DriverName = v.AssignedDriver?.Name,
+            DeviceId = v.GpsDeviceId,
+            DeviceUid = v.GpsDevice?.DeviceUid,
+            LastPosition = v.GpsDeviceId.HasValue && latestPositions.TryGetValue(v.GpsDeviceId.Value, out var pos) ? pos : null,
+            Status = v.Status,
+            LastCommunication = v.GpsDevice?.LastCommunication
+        }).ToList();
 
         return Ok(positions);
     }

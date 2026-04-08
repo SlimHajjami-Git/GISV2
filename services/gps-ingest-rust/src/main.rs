@@ -403,6 +403,26 @@ mod real_pipeline_tests {
         .execute(pool)
         .await?;
 
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS frame_debug_log (
+                id BIGSERIAL PRIMARY KEY,
+                device_id INTEGER,
+                device_uid TEXT,
+                mat TEXT,
+                frame_type TEXT NOT NULL,
+                flags_hex TEXT,
+                flags_raw SMALLINT,
+                raw_frame TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                peer TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            "#,
+        )
+        .execute(pool)
+        .await?;
+
         Ok(())
     }
 }

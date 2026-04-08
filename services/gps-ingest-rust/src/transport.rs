@@ -361,6 +361,39 @@ async fn handle_tcp_connection(
                 // Commands and passwords come from DB — nothing is hardcoded.
                 for frame_str in &check_frames {
                     let trimmed = frame_str.trim();
+                    let peer_str = peer.as_deref().unwrap_or("unknown");
+
+                    // ── Extract MAT prefix for logging ──
+                    let (frame_mat, _) = extract_mat_prefix(trimmed);
+                    let frame_after_mat = if let Some(ref m) = frame_mat {
+                        trimmed.get(m.len()..).map(|s| s.trim_start()).unwrap_or(trimmed)
+                    } else {
+                        trimmed
+                    };
+
+                    // ── Log non-standard frames (AA00, AA03, AAAA, etc.) ──
+                    if frame_after_mat.starts_with("AA0") || frame_after_mat.starts_with("AA4")
+                        || frame_after_mat.starts_with("AA5") || frame_after_mat.starts_with("AA6")
+                        || frame_after_mat.starts_with("AA7") || frame_after_mat.starts_with("AA8")
+                        || frame_after_mat.starts_with("AA9") || frame_after_mat.starts_with("AAAA") {
+                        let ft = frame_after_mat.get(..4).unwrap_or("????");
+                        let imei_opt = if let Some(ref p) = peer {
+                            let map = connection_map.lock().await;
+                            map.get(p).cloned()
+                        } else { None };
+                        let _ = database.log_frame_debug(
+                            None,
+                            imei_opt.as_deref(),
+                            frame_mat.as_deref(),
+                            ft,
+                            None, None,
+                            &trimmed[..std::cmp::min(trimmed.len(), 200)],
+                            "non_standard_frame",
+                            Some(peer_str),
+                        ).await;
+                    }
+
+                    // ── Check position frames for immobilization (bit5=0) ──
                     let header_pos = if trimmed.starts_with("AA1") || trimmed.starts_with("AA2") || trimmed.starts_with("AA3")
                         || trimmed.starts_with("HH1") || trimmed.starts_with("HH2") || trimmed.starts_with("HH3") {
                         Some(0)
@@ -379,8 +412,7 @@ async fn handle_tcp_connection(
                                     // Only check bit5 if GPS is valid (bit6=1).
                                     // flags=0x00 means corrupted/empty data, NOT real immobilization.
                                     if (flags & 0x40) != 0 && (flags & 0x20) == 0 {
-                                        let peer_str = peer.as_deref().unwrap_or("unknown");
-                                        // Resolve device_id from connection_map
+                                        // ── Log the immobilization frame to frame_debug_log ──
                                         let imei_opt = if let Some(ref p) = peer {
                                             let map = connection_map.lock().await;
                                             map.get(p).cloned()
@@ -388,8 +420,26 @@ async fn handle_tcp_connection(
                                             None
                                         };
 
+                                        let device_id_opt = if let Some(ref imei) = imei_opt {
+                                            database.get_device_id(imei).await.ok().flatten()
+                                        } else {
+                                            None
+                                        };
+
+                                        let _ = database.log_frame_debug(
+                                            device_id_opt,
+                                            imei_opt.as_deref(),
+                                            frame_mat.as_deref(),
+                                            actual_frame.get(..4).unwrap_or("????"),
+                                            Some(flags_hex),
+                                            Some(flags as i16),
+                                            &actual_frame[..std::cmp::min(actual_frame.len(), 200)],
+                                            "bit5_immobilization_detected",
+                                            Some(peer_str),
+                                        ).await;
+
                                         if let Some(ref imei) = imei_opt {
-                                            if let Ok(Some(device_id)) = database.get_device_id(imei).await {
+                                            if let Some(device_id) = device_id_opt {
                                                 // Rate limit: skip if we already sent AJ+GO to this device recently
                                                 let now = std::time::Instant::now();
                                                 let cooldown_elapsed = match last_auto_recovery.get(&device_id) {
