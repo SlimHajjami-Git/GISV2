@@ -241,9 +241,30 @@ public class GetStopsReportQueryHandler : IRequestHandler<GetStopsReportQuery, S
             merged.Add(stop);
         }
 
+        // Step 2b: Proximity merge — if adjacent stops are at the same location (within ~200m),
+        // merge them regardless of time gap. Handles overnight parking with brief ignition-on
+        // noise or engine starts that don't actually move the vehicle.
+        const double PROXIMITY_DEGREES = 0.002; // ~200m
+        var finalMerged = new List<(DateTime Start, DateTime End, double Lat, double Lon)>();
+
+        foreach (var stop in merged)
+        {
+            if (finalMerged.Count > 0)
+            {
+                var prev = finalMerged[^1];
+                if (Math.Abs(stop.Lat - prev.Lat) < PROXIMITY_DEGREES &&
+                    Math.Abs(stop.Lon - prev.Lon) < PROXIMITY_DEGREES)
+                {
+                    finalMerged[^1] = (prev.Start, stop.End > prev.End ? stop.End : prev.End, prev.Lat, prev.Lon);
+                    continue;
+                }
+            }
+            finalMerged.Add(stop);
+        }
+
         // Step 3: Filter by minimum duration and build DTOs
         var result = new List<StopEntryDto>();
-        foreach (var stop in merged)
+        foreach (var stop in finalMerged)
         {
             var durationSeconds = (int)(stop.End - stop.Start).TotalSeconds;
             if (durationSeconds >= minDurationSeconds)
