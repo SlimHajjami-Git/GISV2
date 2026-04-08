@@ -1,6 +1,8 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Subscription } from 'rxjs';
+import { AlertController, ToastController } from '@ionic/angular';
 import { ApiService } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
 import { SignalRService, SignalRNotification } from '../../core/services/signalr.service';
 import { Notification } from '../../core/models/types';
 
@@ -105,6 +107,7 @@ import { Notification } from '../../core/models/types';
     .notif-icon.geofence { background: rgba(59,130,246,0.12); color: #3b82f6; }
     .notif-icon.maintenance { background: rgba(245,158,11,0.12); color: #f59e0b; }
     .notif-icon.driving { background: rgba(168,85,247,0.12); color: #a855f7; }
+    .notif-icon.immobilization { background: rgba(220,38,38,0.12); color: #dc2626; }
     .notif-icon.default { background: rgba(107,114,128,0.12); color: #6b7280; }
     .notif-title { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
     .notif-message { font-size: 13px; color: var(--ion-color-medium); }
@@ -136,7 +139,10 @@ export class AlertsPage implements OnInit, OnDestroy {
 
   constructor(
     private api: ApiService,
-    private signalr: SignalRService
+    private signalr: SignalRService,
+    private authService: AuthService,
+    private alertCtrl: AlertController,
+    private toastCtrl: ToastController
   ) {}
 
   ngOnInit() {
@@ -217,9 +223,85 @@ export class AlertsPage implements OnInit, OnDestroy {
   }
 
   openNotification(n: Notification) {
+    if (n.type === 'immobilization_request' && !n.isRead) {
+      this.showImmobilizationDialog(n);
+      return;
+    }
     if (!n.isRead) {
       this.markRead(n);
     }
+  }
+
+  private async showImmobilizationDialog(n: Notification): Promise<void> {
+    const user = this.authService.getCurrentUserSync();
+    if (!user || parseInt(user.id) !== 1) {
+      // Not the approver — just mark read
+      this.markRead(n);
+      return;
+    }
+
+    const meta = n.metadata || {};
+    const commandType = meta.commandType || 'STOP';
+    const vehicleName = meta.vehicleName || 'Véhicule';
+    const requestedByName = meta.requestedByName || 'Un utilisateur';
+    const isStop = commandType === 'STOP';
+
+    const alert = await this.alertCtrl.create({
+      header: isStop ? "DEMANDE D'ARRÊT" : 'DEMANDE DE LIBÉRATION',
+      message: isStop
+        ? `<strong>${requestedByName}</strong> demande l'<strong style="color:#dc2626">ARRÊT</strong> du véhicule <strong>"${vehicleName}"</strong>`
+        : `<strong>${requestedByName}</strong> demande la <strong style="color:#16a34a">LIBÉRATION</strong> du véhicule <strong>"${vehicleName}"</strong>`,
+      cssClass: 'immobilization-alert',
+      backdropDismiss: false,
+      buttons: [
+        {
+          text: 'Refuser',
+          role: 'cancel',
+          handler: () => {
+            this.api.rejectImmobilization(n.id).subscribe({
+              next: async () => {
+                this.markRead(n);
+                const toast = await this.toastCtrl.create({
+                  message: `Demande refusée pour ${vehicleName}`,
+                  duration: 3000, color: 'warning', position: 'top'
+                });
+                await toast.present();
+              },
+              error: async () => {
+                const toast = await this.toastCtrl.create({
+                  message: 'Erreur lors du refus', duration: 3000, color: 'danger', position: 'top'
+                });
+                await toast.present();
+              }
+            });
+          }
+        },
+        {
+          text: 'ACCEPTER',
+          cssClass: 'alert-danger-btn',
+          handler: () => {
+            this.api.approveImmobilization(n.id).subscribe({
+              next: async () => {
+                this.markRead(n);
+                const toast = await this.toastCtrl.create({
+                  message: `Demande approuvée pour ${vehicleName}`,
+                  duration: 3000, color: 'success', position: 'top'
+                });
+                await toast.present();
+              },
+              error: async (err) => {
+                const msg = err?.error?.message || "Erreur lors de l'approbation";
+                const toast = await this.toastCtrl.create({
+                  message: msg, duration: 3000, color: 'danger', position: 'top'
+                });
+                await toast.present();
+              }
+            });
+          }
+        }
+      ]
+    });
+    await alert.present();
   }
 
   markRead(n: Notification) {
@@ -259,6 +341,7 @@ export class AlertsPage implements OnInit, OnDestroy {
 
   getNotifIcon(n: Notification): string {
     const type = (n.type || '').toLowerCase();
+    if (type.includes('immobilization')) return 'lock-closed';
     if (type.includes('speed')) return 'speedometer';
     if (type.includes('geofence')) return 'location';
     if (type.includes('maintenance')) return 'build';
@@ -269,6 +352,7 @@ export class AlertsPage implements OnInit, OnDestroy {
 
   getNotifColorClass(n: Notification): string {
     const type = (n.type || '').toLowerCase();
+    if (type.includes('immobilization')) return 'immobilization';
     if (type.includes('speed')) return 'speed';
     if (type.includes('geofence')) return 'geofence';
     if (type.includes('maintenance')) return 'maintenance';
