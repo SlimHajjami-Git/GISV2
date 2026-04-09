@@ -72,7 +72,10 @@ public class UsersController : ControllerBase
             request.CanUsers,
             request.CanSettings,
             request.CanSuppliers,
-            request.CanFleetManagement
+            request.CanFleetManagement,
+            request.CanFuel,
+            request.CanTours,
+            request.CanPlayback
         );
 
         var user = await _mediator.Send(command);
@@ -103,7 +106,10 @@ public class UsersController : ControllerBase
             CanUsers: request.CanUsers,
             CanSettings: request.CanSettings,
             CanSuppliers: request.CanSuppliers,
-            CanFleetManagement: request.CanFleetManagement
+            CanFleetManagement: request.CanFleetManagement,
+            CanFuel: request.CanFuel,
+            CanTours: request.CanTours,
+            CanPlayback: request.CanPlayback
         );
 
         await _mediator.Send(command);

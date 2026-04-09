@@ -30,7 +30,10 @@ public record CreateUserRequest(
     bool CanUsers = false,
     bool CanSettings = false,
     bool CanSuppliers = false,
-    bool CanFleetManagement = false
+    bool CanFleetManagement = false,
+    bool CanFuel = false,
+    bool CanTours = false,
+    bool CanPlayback = false
 );
 
 public record UpdateUserRequest(
@@ -54,7 +57,10 @@ public record UpdateUserRequest(
     bool? CanUsers = null,
     bool? CanSettings = null,
     bool? CanSuppliers = null,
-    bool? CanFleetManagement = null
+    bool? CanFleetManagement = null,
+    bool? CanFuel = null,
+    bool? CanTours = null,
+    bool? CanPlayback = null
 );
 
 public record UserSettingsDto(
