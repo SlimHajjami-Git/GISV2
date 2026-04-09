@@ -1,14 +1,14 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::{anyhow, Context, Result};
-use chrono::Duration;
+use chrono::{DateTime, Duration, Utc};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream, UdpSocket},
     signal,
     sync::Mutex,
 };
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     config::{AppConfig, ListenerConfig, TransportKind},
@@ -30,6 +30,9 @@ use crate::{
 
 type ConnectionMap = Arc<Mutex<HashMap<String, String>>>;
 
+/// Cooldown period: once a device event is recorded, ignore further events for 24h
+const DEVICE_EVENT_COOLDOWN_SECS: i64 = 24 * 3600;
+
 /// Shared services for stop detection, fuel tracking, geocoding, geofencing, GPS stabilization, validation, trip detection, and driving events
 pub struct TelemetryServices {
     pub stop_detector: StopDetector,
@@ -41,6 +44,8 @@ pub struct TelemetryServices {
     pub trip_detector: TripDetector,
     pub driving_events_detector: DrivingEventsDetector,
     pub speed_filter: SpeedFilter,
+    /// Tracks last device event timestamp per device_id to prevent duplicates
+    pub device_event_cooldown: Mutex<HashMap<i32, DateTime<Utc>>>,
 }
 
 pub async fn run_listeners(
@@ -78,6 +83,7 @@ pub async fn run_listeners(
         trip_detector: TripDetector::new(),
         driving_events_detector: DrivingEventsDetector::new(),
         speed_filter: SpeedFilter::new(),
+        device_event_cooldown: Mutex::new(HashMap::new()),
     });
     info!("Telemetry services initialized (StopDetector, FuelTracker, Geocoding, GeofenceDetector, GpsStabilizer, GpsValidator, TripDetector, DrivingEventsDetector, SpeedFilter)");
 
@@ -731,6 +737,23 @@ async fn process_single_frame(
                 // Only insert + notify if offline >= 6h (power cut suspected)
                 let min_offline = crate::services::device_event::POWER_CUT_MIN_OFFLINE_SECS;
                 if offline_duration_secs.unwrap_or(0) >= min_offline {
+                    // Anti-duplicate: check cooldown (24h per device)
+                    let now_utc = Utc::now();
+                    let mut cooldown = services.device_event_cooldown.lock().await;
+                    if let Some(last_event) = cooldown.get(&device_id) {
+                        let elapsed = now_utc.signed_duration_since(*last_event).num_seconds();
+                        if elapsed < DEVICE_EVENT_COOLDOWN_SECS {
+                            info!(
+                                device_id,
+                                elapsed_secs = elapsed,
+                                "Device event skipped — cooldown active (24h)"
+                            );
+                            return Ok(());
+                        }
+                    }
+                    cooldown.insert(device_id, now_utc);
+                    drop(cooldown);
+
                     match database.insert_device_event(&record).await {
                         Ok(id) => info!(
                             device_id, event_id = id, event_type = event_type.as_str(),
@@ -1751,6 +1774,7 @@ mod tests {
             trip_detector: TripDetector::new(),
             driving_events_detector: DrivingEventsDetector::new(),
             speed_filter: SpeedFilter::new(),
+            device_event_cooldown: Mutex::new(HashMap::new()),
         });
         let peer = "127.0.0.1:1234";
 
@@ -1811,6 +1835,7 @@ mod tests {
             trip_detector: TripDetector::new(),
             driving_events_detector: DrivingEventsDetector::new(),
             speed_filter: SpeedFilter::new(),
+            device_event_cooldown: Mutex::new(HashMap::new()),
         });
         let peer = "10.0.0.5:5555";
 
