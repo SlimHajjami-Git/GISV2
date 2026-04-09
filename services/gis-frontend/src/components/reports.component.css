@@ -768,6 +768,7 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 
 .chart-scroll-container {
   flex: 1;
+  min-width: 0; /* Allow flex item to shrink below content — required for overflow scroll */
   overflow-x: auto;
   overflow-y: hidden;
   border-radius: 8px;
