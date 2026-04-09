@@ -37,6 +37,7 @@ public class PermissionMiddleware
         { "/api/vehiclestops", "CanMonitoring" },
         { "/api/alerts", "CanMonitoring" },
         { "/api/drivingbehavior", "CanMonitoring" },
+        { "/api/vehicles/with-positions", "CanMonitoring" },
         { "/api/vehicles", "CanVehicles" },
         { "/api/vehicleassignments", "CanVehicles" },
     };
@@ -85,6 +86,7 @@ public class PermissionMiddleware
         { "/api/roles", sub => sub.ModuleUsers },
         { "/api/employees", sub => sub.ModuleEmployees },
         { "/api/drivers", sub => sub.ModuleEmployees },
+        { "/api/vehicles/with-positions", sub => sub.ModuleMonitoring },
         { "/api/vehicles", sub => sub.ModuleVehicles },
         { "/api/vehicleassignments", sub => sub.ModuleVehicles },
     };
@@ -195,7 +197,9 @@ public class PermissionMiddleware
         if (subscriptionType != null)
         {
             var matchedSub = _subscriptionModuleChecks
-                .FirstOrDefault(kv => path.StartsWith(kv.Key, StringComparison.OrdinalIgnoreCase));
+                .Where(kv => path.StartsWith(kv.Key, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(kv => kv.Key.Length)
+                .FirstOrDefault();
 
             if (matchedSub.Key != null)
             {
@@ -227,7 +231,9 @@ public class PermissionMiddleware
         if (!isAdmin)
         {
             var matchedPermission = _modulePermissions
-                .FirstOrDefault(kv => path.StartsWith(kv.Key, StringComparison.OrdinalIgnoreCase));
+                .Where(kv => path.StartsWith(kv.Key, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(kv => kv.Key.Length)
+                .FirstOrDefault();
 
             if (matchedPermission.Key != null)
             {

@@ -10,6 +10,7 @@ using GisAPI.Application.Features.Dashboard.Queries.GetDashboardCharts;
 using GisAPI.Application.Features.Dashboard.Queries.GetFleetStatistics;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Services;
+using System.Security.Claims;
 
 namespace GisAPI.Controllers;
 
@@ -40,6 +41,8 @@ public class DashboardController : ControllerBase
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
+    private int GetUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+    private bool IsAdminUser() => User.IsInRole("company_admin") || User.IsInRole("admin") || User.IsInRole("super_admin") || User.IsInRole("system_admin");
 
     #region NEW CQRS-BASED ENDPOINTS
 
@@ -510,7 +513,9 @@ public class DashboardController : ControllerBase
     public async Task<ActionResult> GetDashboardAll([FromQuery] string period = "week")
     {
         var companyId = GetCompanyId();
-        var cacheKey = $"dashboard_all_{companyId}_{period}";
+        var userId = GetUserId();
+        var isAdmin = IsAdminUser();
+        var cacheKey = isAdmin ? $"dashboard_all_{companyId}_{period}" : $"dashboard_all_{companyId}_{userId}_{period}";
         if (_cache.TryGetValue(cacheKey, out object? cached) && cached != null)
             return Ok(cached);
 
@@ -519,11 +524,25 @@ public class DashboardController : ControllerBase
         var (periodStart, periodEnd, prevStart, prevEnd) = GetPeriodRange(now, period);
 
         // ── 1. Load vehicles once (shared across sections) ──
-        var vehicles = await _context.Vehicles
+        var vehicleQuery = _context.Vehicles
             .AsNoTracking()
             .Include(v => v.GpsDevice)
             .Where(v => v.CompanyId == companyId)
-            .ToListAsync();
+            .AsQueryable();
+
+        // Non-admin users only see their assigned vehicles
+        if (!isAdmin && userId > 0)
+        {
+            var assignedVehicleIds = await _context.UserVehicles
+                .Where(uv => uv.UserId == userId)
+                .Select(uv => uv.VehicleId)
+                .ToListAsync();
+
+            if (assignedVehicleIds.Any())
+                vehicleQuery = vehicleQuery.Where(v => assignedVehicleIds.Contains(v.Id));
+        }
+
+        var vehicles = await vehicleQuery.ToListAsync();
 
         var maintenanceVehicles = vehicles.Count(v => v.Status == "maintenance");
         var noGpsVehicles = vehicles.Count(v => !v.GpsDeviceId.HasValue);

@@ -48,7 +48,7 @@ import * as L from 'leaflet';
             </svg>
             <span>Suivi en direct</span>
           </a>
-          <a *ngIf="hasModule('monitoring')" [routerLink]="['/playback']" routerLinkActive="active" class="nav-link" title="Tracer Playback">
+          <a *ngIf="hasModule('playback')" [routerLink]="['/playback']" routerLinkActive="active" class="nav-link" title="Tracer Playback">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="5 3 19 12 5 21 5 3"/>
             </svg>
@@ -291,7 +291,7 @@ import * as L from 'leaflet';
                   </svg>
                   <span>Gestion utilisateurs</span>
                 </a>
-                <a class="dropdown-item" (click)="onSettingsClick()">
+                <a *ngIf="hasModule('settings')" class="dropdown-item" (click)="onSettingsClick()">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="3"/>
                     <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
