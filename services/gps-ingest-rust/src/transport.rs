@@ -728,21 +728,29 @@ async fn process_single_frame(
                     })),
                 };
 
-                // Always insert for audit
-                match database.insert_device_event(&record).await {
-                    Ok(id) => info!(
-                        device_id, event_id = id, event_type = event_type.as_str(),
-                        offline_secs = ?offline_duration_secs,
-                        "Device event recorded"
-                    ),
-                    Err(e) => warn!(device_id, error = %e, "Failed to insert device event"),
-                }
-
-                // Publish ALL restart/system events to RabbitMQ (notifications)
-                if let Some(pub_ref) = &publisher {
-                    if let Err(e) = pub_ref.publish_device_event(&record).await {
-                        warn!(device_id, error = %e, "Failed to publish device event to RabbitMQ");
+                // Only insert + notify if offline >= 6h (power cut suspected)
+                let min_offline = crate::services::device_event::POWER_CUT_MIN_OFFLINE_SECS;
+                if offline_duration_secs.unwrap_or(0) >= min_offline {
+                    match database.insert_device_event(&record).await {
+                        Ok(id) => info!(
+                            device_id, event_id = id, event_type = event_type.as_str(),
+                            offline_secs = ?offline_duration_secs,
+                            "Device event recorded (offline >= 6h)"
+                        ),
+                        Err(e) => warn!(device_id, error = %e, "Failed to insert device event"),
                     }
+
+                    if let Some(pub_ref) = &publisher {
+                        if let Err(e) = pub_ref.publish_device_event(&record).await {
+                            warn!(device_id, error = %e, "Failed to publish device event to RabbitMQ");
+                        }
+                    }
+                } else {
+                    debug!(
+                        device_id,
+                        offline_secs = ?offline_duration_secs,
+                        "Device restart detected but offline < 6h, skipping"
+                    );
                 }
 
                 return Ok(());
