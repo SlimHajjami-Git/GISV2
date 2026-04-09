@@ -34,9 +34,11 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
             && (request.CanVehicles ?? user.CanVehicles) && (request.CanDrivers ?? user.CanDrivers)
             && (request.CanReports ?? user.CanReports) && (request.CanGeofences ?? user.CanGeofences)
             && (request.CanMaintenance ?? user.CanMaintenance) && (request.CanCosts ?? user.CanCosts)
+            && (request.CanFuel ?? user.CanFuel)
             && (request.CanDocuments ?? user.CanDocuments) && (request.CanAccidents ?? user.CanAccidents)
             && (request.CanUsers ?? user.CanUsers) && (request.CanSettings ?? user.CanSettings)
-            && (request.CanSuppliers ?? user.CanSuppliers) && (request.CanFleetManagement ?? user.CanFleetManagement);
+            && (request.CanSuppliers ?? user.CanSuppliers) && (request.CanFleetManagement ?? user.CanFleetManagement)
+            && (request.CanTours ?? user.CanTours) && (request.CanPlayback ?? user.CanPlayback);
 
         if (allPerms)
         {
@@ -81,12 +83,15 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         if (request.CanGeofences.HasValue) user.CanGeofences = request.CanGeofences.Value;
         if (request.CanMaintenance.HasValue) user.CanMaintenance = request.CanMaintenance.Value;
         if (request.CanCosts.HasValue) user.CanCosts = request.CanCosts.Value;
+        if (request.CanFuel.HasValue) user.CanFuel = request.CanFuel.Value;
         if (request.CanDocuments.HasValue) user.CanDocuments = request.CanDocuments.Value;
         if (request.CanAccidents.HasValue) user.CanAccidents = request.CanAccidents.Value;
         if (request.CanUsers.HasValue) user.CanUsers = request.CanUsers.Value;
         if (request.CanSettings.HasValue) user.CanSettings = request.CanSettings.Value;
         if (request.CanSuppliers.HasValue) user.CanSuppliers = request.CanSuppliers.Value;
         if (request.CanFleetManagement.HasValue) user.CanFleetManagement = request.CanFleetManagement.Value;
+        if (request.CanTours.HasValue) user.CanTours = request.CanTours.Value;
+        if (request.CanPlayback.HasValue) user.CanPlayback = request.CanPlayback.Value;
 
         // Update vehicle assignments if provided
         if (request.AssignedVehicleIds != null)

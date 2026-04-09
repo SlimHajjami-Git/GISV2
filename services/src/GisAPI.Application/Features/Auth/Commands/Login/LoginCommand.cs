@@ -39,12 +39,15 @@ public record UserPermissionsDto(
     bool CanGeofences,
     bool CanMaintenance,
     bool CanCosts,
+    bool CanFuel,
     bool CanDocuments,
     bool CanAccidents,
     bool CanUsers,
     bool CanSettings,
     bool CanSuppliers,
-    bool CanFleetManagement
+    bool CanFleetManagement,
+    bool CanTours,
+    bool CanPlayback
 );
 
 public record SubscriptionFeaturesDto(
@@ -65,6 +68,7 @@ public record SubscriptionFeaturesDto(
     bool ModuleGeofences,
     bool ModuleMaintenance,
     bool ModuleCosts,
+    bool ModuleFuel,
     bool ModuleReports,
     bool ModuleSettings,
     bool ModuleUsers,
@@ -72,6 +76,7 @@ public record SubscriptionFeaturesDto(
     bool ModuleDocuments,
     bool ModuleAccidents,
     bool ModuleFleetManagement,
+    bool ModuleTours,
     // Report permissions
     bool ReportTrips,
     bool ReportFuel,

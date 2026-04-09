@@ -17,6 +17,7 @@ export interface SubscriptionFeatures {
   moduleGeofences: boolean;
   moduleMaintenance: boolean;
   moduleCosts: boolean;
+  moduleFuel: boolean;
   moduleReports: boolean;
   moduleSettings: boolean;
   moduleUsers: boolean;
@@ -24,6 +25,7 @@ export interface SubscriptionFeatures {
   moduleDocuments: boolean;
   moduleAccidents: boolean;
   moduleFleetManagement: boolean;
+  moduleTours: boolean;
   reportTrips: boolean;
   reportFuel: boolean;
   reportSpeed: boolean;
@@ -58,6 +60,8 @@ export type ModuleKey =
   | 'documents'
   | 'accidents'
   | 'fleet_management'
+  | 'tours'
+  | 'playback'
   | 'carburant'
   | 'repairs'
   | 'expenses';
@@ -81,7 +85,9 @@ export class PermissionService {
     'documents': 'moduleDocuments',
     'accidents': 'moduleAccidents',
     'fleet_management': 'moduleFleetManagement',
-    'carburant': 'moduleCosts',
+    'tours': 'moduleTours',
+    'playback': 'moduleMonitoring',
+    'carburant': 'moduleFuel',
     'repairs': 'moduleMaintenance',
     'expenses': 'moduleCosts'
   };
@@ -103,7 +109,9 @@ export class PermissionService {
     'documents': 'canDocuments',
     'accidents': 'canAccidents',
     'fleet_management': 'canFleetManagement',
-    'carburant': 'canCosts',
+    'tours': 'canTours',
+    'playback': 'canPlayback',
+    'carburant': 'canFuel',
     'repairs': 'canMaintenance',
     'expenses': 'canCosts'
   };

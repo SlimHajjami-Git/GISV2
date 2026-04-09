@@ -29,12 +29,15 @@ public class User : TenantEntity
     public bool CanGeofences { get; set; } = false;
     public bool CanMaintenance { get; set; } = false;
     public bool CanCosts { get; set; } = false;
+    public bool CanFuel { get; set; } = false;
     public bool CanDocuments { get; set; } = false;
     public bool CanAccidents { get; set; } = false;
     public bool CanUsers { get; set; } = false;
     public bool CanSettings { get; set; } = false;
     public bool CanSuppliers { get; set; } = false;
     public bool CanFleetManagement { get; set; } = false;
+    public bool CanTours { get; set; } = false;
+    public bool CanPlayback { get; set; } = false;
 
     // Navigation
     public Role Role { get; set; } = null!;

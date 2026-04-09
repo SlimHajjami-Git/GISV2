@@ -103,6 +103,7 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, L
                 ModuleGeofences: subType.ModuleGeofences,
                 ModuleMaintenance: subType.ModuleMaintenance,
                 ModuleCosts: subType.ModuleCosts,
+                ModuleFuel: subType.ModuleFuel,
                 ModuleReports: subType.ModuleReports,
                 ModuleSettings: subType.ModuleSettings,
                 ModuleUsers: subType.ModuleUsers,
@@ -110,6 +111,7 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, L
                 ModuleDocuments: subType.ModuleDocuments,
                 ModuleAccidents: subType.ModuleAccidents,
                 ModuleFleetManagement: subType.ModuleFleetManagement,
+                ModuleTours: subType.ModuleTours,
                 ReportTrips: subType.ReportTrips,
                 ReportFuel: subType.ReportFuel,
                 ReportSpeed: subType.ReportSpeed,
@@ -151,12 +153,15 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, L
             CanGeofences: user.CanGeofences,
             CanMaintenance: user.CanMaintenance,
             CanCosts: user.CanCosts,
+            CanFuel: user.CanFuel,
             CanDocuments: user.CanDocuments,
             CanAccidents: user.CanAccidents,
             CanUsers: user.CanUsers,
             CanSettings: user.CanSettings,
             CanSuppliers: user.CanSuppliers,
-            CanFleetManagement: user.CanFleetManagement
+            CanFleetManagement: user.CanFleetManagement,
+            CanTours: user.CanTours,
+            CanPlayback: user.CanPlayback
         );
 
         return new LoginResponse(

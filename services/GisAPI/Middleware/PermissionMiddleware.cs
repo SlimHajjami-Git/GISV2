@@ -23,13 +23,14 @@ public class PermissionMiddleware
         { "/api/maintenancescheduler", "CanMaintenance" },
         { "/api/vehiclemaintenance", "CanMaintenance" },
         { "/api/costs", "CanCosts" },
-        { "/api/fuelentries", "CanCosts" },
-        { "/api/fuelexpenses", "CanCosts" },
-        { "/api/fuelrecords", "CanCosts" },
+        { "/api/fuelentries", "CanFuel" },
+        { "/api/fuelexpenses", "CanFuel" },
+        { "/api/fuelrecords", "CanFuel" },
         { "/api/documents", "CanDocuments" },
         { "/api/accidentclaims", "CanAccidents" },
         { "/api/suppliers", "CanSuppliers" },
         { "/api/fleetmanagement", "CanFleetManagement" },
+        { "/api/tours", "CanTours" },
         { "/api/gps", "CanMonitoring" },
         { "/api/gpsdevices", "CanMonitoring" },
         { "/api/trips", "CanMonitoring" },
@@ -41,6 +42,8 @@ public class PermissionMiddleware
     };
 
     // Map API route prefixes to the required subscription module flag
+    // NOTE: More specific routes (e.g. /api/reports/trips) must appear before
+    //       their parent (e.g. /api/reports) because matching uses FirstOrDefault.
     private static readonly Dictionary<string, Func<SubscriptionType, bool>> _subscriptionModuleChecks = new(StringComparer.OrdinalIgnoreCase)
     {
         { "/api/gps", sub => sub.ModuleMonitoring },
@@ -50,19 +53,34 @@ public class PermissionMiddleware
         { "/api/alerts", sub => sub.ModuleMonitoring },
         { "/api/drivingbehavior", sub => sub.DrivingBehavior },
         { "/api/geofences", sub => sub.ModuleGeofences },
+        // Report-level subscription checks (specific report sub-routes)
+        { "/api/reports/trips", sub => sub.ModuleReports && sub.ReportTrips },
+        { "/api/reports/fuel", sub => sub.ModuleReports && sub.ReportFuel },
+        { "/api/reports/speed", sub => sub.ModuleReports && sub.ReportSpeed },
+        { "/api/reports/stops", sub => sub.ModuleReports && sub.ReportStops },
+        { "/api/reports/mileage-period", sub => sub.ModuleReports && sub.ReportMileagePeriod },
+        { "/api/reports/mileage", sub => sub.ModuleReports && sub.ReportMileage },
+        { "/api/reports/costs", sub => sub.ModuleReports && sub.ReportCosts },
+        { "/api/reports/maintenance", sub => sub.ModuleReports && sub.ReportMaintenance },
+        { "/api/reports/daily", sub => sub.ModuleReports && sub.ReportDaily },
+        { "/api/reports/monthly", sub => sub.ModuleReports && sub.ReportMonthly },
+        { "/api/reports/speed-infraction", sub => sub.ModuleReports && sub.ReportSpeedInfraction },
+        { "/api/reports/driving-behavior", sub => sub.ModuleReports && sub.ReportDrivingBehavior },
+        // Generic /api/reports fallback (list reports, create, schedules, etc.)
         { "/api/reports", sub => sub.ModuleReports },
         { "/api/maintenance", sub => sub.ModuleMaintenance },
         { "/api/maintenancetemplates", sub => sub.ModuleMaintenance },
         { "/api/maintenancescheduler", sub => sub.ModuleMaintenance },
         { "/api/vehiclemaintenance", sub => sub.ModuleMaintenance },
         { "/api/costs", sub => sub.ModuleCosts },
-        { "/api/fuelentries", sub => sub.ModuleCosts },
-        { "/api/fuelexpenses", sub => sub.ModuleCosts },
-        { "/api/fuelrecords", sub => sub.FuelAnalysis },
+        { "/api/fuelentries", sub => sub.ModuleFuel },
+        { "/api/fuelexpenses", sub => sub.ModuleFuel },
+        { "/api/fuelrecords", sub => sub.ModuleFuel },
         { "/api/documents", sub => sub.ModuleDocuments },
         { "/api/accidentclaims", sub => sub.ModuleAccidents },
         { "/api/suppliers", sub => sub.ModuleSuppliers },
         { "/api/fleetmanagement", sub => sub.ModuleFleetManagement },
+        { "/api/tours", sub => sub.ModuleTours },
         { "/api/users", sub => sub.ModuleUsers },
         { "/api/roles", sub => sub.ModuleUsers },
         { "/api/employees", sub => sub.ModuleEmployees },
@@ -86,7 +104,6 @@ public class PermissionMiddleware
         "/api/poi",
         "/api/routing",
         "/api/statistics",
-        "/api/tours",
     };
 
     public PermissionMiddleware(RequestDelegate next)
@@ -185,11 +202,17 @@ public class PermissionMiddleware
                 var moduleEnabled = matchedSub.Value(subscriptionType);
                 if (!moduleEnabled)
                 {
+                    // Distinguish between a blocked report type vs a blocked module
+                    var isReportTypeBlock = matchedSub.Key.StartsWith("/api/reports/", StringComparison.OrdinalIgnoreCase);
                     context.Response.StatusCode = 403;
                     await context.Response.WriteAsJsonAsync(new
                     {
-                        message = "Cette fonctionnalité n'est pas incluse dans votre abonnement",
-                        code = "SUBSCRIPTION_MODULE_BLOCKED",
+                        message = isReportTypeBlock
+                            ? "Ce type de rapport n'est pas inclus dans votre abonnement"
+                            : "Cette fonctionnalité n'est pas incluse dans votre abonnement",
+                        code = isReportTypeBlock
+                            ? "SUBSCRIPTION_REPORT_BLOCKED"
+                            : "SUBSCRIPTION_MODULE_BLOCKED",
                         subscription = subscriptionType.Name
                     });
                     return;
@@ -218,10 +241,12 @@ public class PermissionMiddleware
                     "CanGeofences" => currentUser.CanGeofences,
                     "CanMaintenance" => currentUser.CanMaintenance,
                     "CanCosts" => currentUser.CanCosts,
+                    "CanFuel" => currentUser.CanFuel,
                     "CanDocuments" => currentUser.CanDocuments,
                     "CanAccidents" => currentUser.CanAccidents,
                     "CanSuppliers" => currentUser.CanSuppliers,
                     "CanFleetManagement" => currentUser.CanFleetManagement,
+                    "CanTours" => currentUser.CanTours,
                     _ => true
                 };
 

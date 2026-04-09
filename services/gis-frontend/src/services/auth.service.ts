@@ -12,12 +12,15 @@ export interface UserPermissions {
   canGeofences: boolean;
   canMaintenance: boolean;
   canCosts: boolean;
+  canFuel: boolean;
   canDocuments: boolean;
   canAccidents: boolean;
   canUsers: boolean;
   canSettings: boolean;
   canSuppliers: boolean;
   canFleetManagement: boolean;
+  canTours: boolean;
+  canPlayback: boolean;
 }
 
 export interface AuthUser {
@@ -124,9 +127,11 @@ export class AuthService {
           accessLevel: 'admin',
           canMonitoring: true, canVehicles: true, canDrivers: true,
           canReports: true, canGeofences: true, canMaintenance: true,
-          canCosts: true, canDocuments: true, canAccidents: true,
+          canCosts: true, canFuel: true, canDocuments: true, canAccidents: true,
           canUsers: true, canSettings: true, canSuppliers: true,
-          canFleetManagement: true
+          canFleetManagement: true,
+          canTours: true,
+          canPlayback: true
         },
         subscriptionFeatures: {
           gpsTracking: true,
@@ -144,6 +149,7 @@ export class AuthService {
           moduleGeofences: true,
           moduleMaintenance: true,
           moduleCosts: true,
+          moduleFuel: true,
           moduleReports: true,
           moduleSettings: true,
           moduleUsers: true,
@@ -151,6 +157,7 @@ export class AuthService {
           moduleDocuments: true,
           moduleAccidents: true,
           moduleFleetManagement: true,
+          moduleTours: true,
           reportTrips: true,
           reportFuel: true,
           reportSpeed: true,

@@ -64,14 +64,14 @@ export const routes: Routes = [
   { path: 'costs', component: VehicleCostsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'costs' } },
   { path: 'expenses', component: ExpensesComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'costs' } },
   { path: 'depenses', component: ExpensesComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'costs' } },
-  { path: 'carburant', component: CarburantComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'costs' } },
+  { path: 'carburant', component: CarburantComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'carburant' } },
   
   // Subscription (always accessible)
   { path: 'subscription', component: SubscriptionComponent, canActivate: [AuthGuard] },
   
   // Monitoring module
   { path: 'monitoring', component: MonitoringComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'monitoring' } },
-  { path: 'playback', component: MonitoringComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'monitoring', view: 'playback' } },
+  { path: 'playback', component: MonitoringComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'playback', view: 'playback' } },
   
   // Reports module
   { path: 'reports', component: ReportsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'reports' } },
@@ -112,8 +112,8 @@ export const routes: Routes = [
   { path: 'gestion-flotte', component: FleetManagementComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'fleet_management' } },
   
   // Tours module
-  { path: 'tours', component: ToursComponent, canActivate: [AuthGuard] },
-  { path: 'tournees', component: ToursComponent, canActivate: [AuthGuard] },
+  { path: 'tours', component: ToursComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'tours' } },
+  { path: 'tournees', component: ToursComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'tours' } },
   
   // Repairs module (part of maintenance)
   { path: 'repairs', component: RepairsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'maintenance' } },

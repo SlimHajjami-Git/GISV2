@@ -27,10 +27,13 @@ public record UpdateUserCommand(
     bool? CanGeofences = null,
     bool? CanMaintenance = null,
     bool? CanCosts = null,
+    bool? CanFuel = null,
     bool? CanDocuments = null,
     bool? CanAccidents = null,
     bool? CanUsers = null,
     bool? CanSettings = null,
     bool? CanSuppliers = null,
-    bool? CanFleetManagement = null
+    bool? CanFleetManagement = null,
+    bool? CanTours = null,
+    bool? CanPlayback = null
 ) : ICommand;

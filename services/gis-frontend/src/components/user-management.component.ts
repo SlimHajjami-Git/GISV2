@@ -26,12 +26,15 @@ interface UserPermissions {
   canGeofences: boolean;
   canMaintenance: boolean;
   canCosts: boolean;
+  canFuel: boolean;
   canDocuments: boolean;
   canAccidents: boolean;
   canUsers: boolean;
   canSettings: boolean;
   canSuppliers: boolean;
   canFleetManagement: boolean;
+  canTours: boolean;
+  canPlayback: boolean;
 }
 
 interface User {
@@ -306,7 +309,12 @@ interface VehicleOption {
                     <label class="perm-check">
                       <input type="checkbox" [(ngModel)]="userForm.canCosts">
                       <span class="perm-label">💰 Dépenses</span>
-                      <span class="perm-desc">Coûts et carburant</span>
+                      <span class="perm-desc">Coûts et dépenses</span>
+                    </label>
+                    <label class="perm-check">
+                      <input type="checkbox" [(ngModel)]="userForm.canFuel">
+                      <span class="perm-label">⛽ Carburant</span>
+                      <span class="perm-desc">Gestion du carburant</span>
                     </label>
                     <label class="perm-check">
                       <input type="checkbox" [(ngModel)]="userForm.canDocuments">
@@ -327,6 +335,16 @@ interface VehicleOption {
                       <input type="checkbox" [(ngModel)]="userForm.canFleetManagement">
                       <span class="perm-label">🚛 Gestion flotte</span>
                       <span class="perm-desc">Configuration avancée du parc</span>
+                    </label>
+                    <label class="perm-check">
+                      <input type="checkbox" [(ngModel)]="userForm.canTours">
+                      <span class="perm-label">🗺️ Tournées</span>
+                      <span class="perm-desc">Gestion des tournées</span>
+                    </label>
+                    <label class="perm-check">
+                      <input type="checkbox" [(ngModel)]="userForm.canPlayback">
+                      <span class="perm-label">⏪ Tracer Playback</span>
+                      <span class="perm-desc">Lecture historique des trajets</span>
                     </label>
                     <label class="perm-check perm-critical">
                       <input type="checkbox" [(ngModel)]="userForm.canUsers">
@@ -1526,12 +1544,15 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     canGeofences: false,
     canMaintenance: false,
     canCosts: false,
+    canFuel: false,
     canDocuments: false,
     canAccidents: false,
     canUsers: false,
     canSettings: false,
     canSuppliers: false,
-    canFleetManagement: false
+    canFleetManagement: false,
+    canTours: false,
+    canPlayback: false
   };
   availableVehicles: VehicleOption[] = [];
 
@@ -1811,12 +1832,15 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         canGeofences: up?.canGeofences ?? false,
         canMaintenance: up?.canMaintenance ?? false,
         canCosts: up?.canCosts ?? false,
+        canFuel: up?.canFuel ?? false,
         canDocuments: up?.canDocuments ?? false,
         canAccidents: up?.canAccidents ?? false,
         canUsers: up?.canUsers ?? false,
         canSettings: up?.canSettings ?? false,
         canSuppliers: up?.canSuppliers ?? false,
-        canFleetManagement: up?.canFleetManagement ?? false
+        canFleetManagement: up?.canFleetManagement ?? false,
+        canTours: up?.canTours ?? false,
+        canPlayback: up?.canPlayback ?? false
       };
     } else {
       this.editingUser = null;
@@ -1836,12 +1860,15 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         canGeofences: false,
         canMaintenance: false,
         canCosts: false,
+        canFuel: false,
         canDocuments: false,
         canAccidents: false,
         canUsers: false,
         canSettings: false,
         canSuppliers: false,
-        canFleetManagement: false
+        canFleetManagement: false,
+        canTours: false,
+        canPlayback: false
       };
     }
     this.userModalStep = 1;
@@ -1888,12 +1915,15 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     this.userForm.canGeofences = true;
     this.userForm.canMaintenance = true;
     this.userForm.canCosts = true;
+    this.userForm.canFuel = true;
     this.userForm.canDocuments = true;
     this.userForm.canAccidents = true;
     this.userForm.canUsers = true;
     this.userForm.canSettings = true;
     this.userForm.canSuppliers = true;
     this.userForm.canFleetManagement = true;
+    this.userForm.canTours = true;
+    this.userForm.canPlayback = true;
   }
 
   deselectAllPermissions() {
@@ -1904,12 +1934,15 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     this.userForm.canGeofences = false;
     this.userForm.canMaintenance = false;
     this.userForm.canCosts = false;
+    this.userForm.canFuel = false;
     this.userForm.canDocuments = false;
     this.userForm.canAccidents = false;
     this.userForm.canUsers = false;
     this.userForm.canSettings = false;
     this.userForm.canSuppliers = false;
     this.userForm.canFleetManagement = false;
+    this.userForm.canTours = false;
+    this.userForm.canPlayback = false;
   }
 
   saveUser() {
@@ -1930,12 +1963,15 @@ export class UserManagementComponent implements OnInit, OnDestroy {
       canGeofences: this.userForm.canGeofences,
       canMaintenance: this.userForm.canMaintenance,
       canCosts: this.userForm.canCosts,
+      canFuel: this.userForm.canFuel,
       canDocuments: this.userForm.canDocuments,
       canAccidents: this.userForm.canAccidents,
       canUsers: this.userForm.canUsers,
       canSettings: this.userForm.canSettings,
       canSuppliers: this.userForm.canSuppliers,
-      canFleetManagement: this.userForm.canFleetManagement
+      canFleetManagement: this.userForm.canFleetManagement,
+      canTours: this.userForm.canTours,
+      canPlayback: this.userForm.canPlayback
     };
 
     if (this.editingUser) {
@@ -2210,9 +2246,9 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     const count = [
       perms.canMonitoring, perms.canVehicles, perms.canDrivers,
       perms.canReports, perms.canGeofences, perms.canMaintenance,
-      perms.canCosts, perms.canDocuments, perms.canAccidents,
+      perms.canCosts, perms.canFuel, perms.canDocuments, perms.canAccidents,
       perms.canUsers, perms.canSettings, perms.canSuppliers,
-      perms.canFleetManagement
+      perms.canFleetManagement, perms.canTours, perms.canPlayback
     ].filter(Boolean).length;
     return `${count} module${count > 1 ? 's' : ''}`;
   }

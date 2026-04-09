@@ -25,10 +25,13 @@ public record CreateUserCommand(
     bool CanGeofences = false,
     bool CanMaintenance = false,
     bool CanCosts = false,
+    bool CanFuel = false,
     bool CanDocuments = false,
     bool CanAccidents = false,
     bool CanUsers = false,
     bool CanSettings = false,
     bool CanSuppliers = false,
-    bool CanFleetManagement = false
+    bool CanFleetManagement = false,
+    bool CanTours = false,
+    bool CanPlayback = false
 ) : ICommand<UserListDto>;

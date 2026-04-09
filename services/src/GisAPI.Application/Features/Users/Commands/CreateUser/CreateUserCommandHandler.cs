@@ -56,9 +56,9 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
         // Any permission unchecked → non-admin role (Chef de parc / Opérateur)
         var allPermissionsGranted = request.CanMonitoring && request.CanVehicles && request.CanDrivers
             && request.CanReports && request.CanGeofences && request.CanMaintenance
-            && request.CanCosts && request.CanDocuments && request.CanAccidents
+            && request.CanCosts && request.CanFuel && request.CanDocuments && request.CanAccidents
             && request.CanUsers && request.CanSettings && request.CanSuppliers
-            && request.CanFleetManagement;
+            && request.CanFleetManagement && request.CanTours && request.CanPlayback;
 
         Role role;
         if (allPermissionsGranted)
@@ -119,12 +119,15 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
             CanGeofences = request.CanGeofences,
             CanMaintenance = request.CanMaintenance,
             CanCosts = request.CanCosts,
+            CanFuel = request.CanFuel,
             CanDocuments = request.CanDocuments,
             CanAccidents = request.CanAccidents,
             CanUsers = request.CanUsers,
             CanSettings = request.CanSettings,
             CanSuppliers = request.CanSuppliers,
-            CanFleetManagement = request.CanFleetManagement
+            CanFleetManagement = request.CanFleetManagement,
+            CanTours = request.CanTours,
+            CanPlayback = request.CanPlayback
         };
 
         _context.Users.Add(user);
@@ -177,12 +180,15 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
                 user.CanGeofences,
                 user.CanMaintenance,
                 user.CanCosts,
+                user.CanFuel,
                 user.CanDocuments,
                 user.CanAccidents,
                 user.CanUsers,
                 user.CanSettings,
                 user.CanSuppliers,
-                user.CanFleetManagement
+                user.CanFleetManagement,
+                user.CanTours,
+                user.CanPlayback
             )
         );
     }

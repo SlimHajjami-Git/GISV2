@@ -15,8 +15,11 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     return next(req);
   }
 
-  // Check both auth_token (user app) and admin_token (admin panel)
-  const token = localStorage.getItem('auth_token') || localStorage.getItem('admin_token');
+  // Use admin_token for admin routes, auth_token for everything else
+  const isAdminRoute = req.url.includes('/api/admin');
+  const token = isAdminRoute
+    ? (localStorage.getItem('admin_token') || localStorage.getItem('auth_token'))
+    : (localStorage.getItem('auth_token') || localStorage.getItem('admin_token'));
 
   // Proactive refresh: if token is expiring soon, refresh before sending the request
   if (token && authService.isTokenExpiringSoon() && !isRefreshing) {

@@ -41,12 +41,15 @@ public class GetCurrentUserQueryHandler : IRequestHandler<GetCurrentUserQuery, U
                     u.CanGeofences,
                     u.CanMaintenance,
                     u.CanCosts,
+                    u.CanFuel,
                     u.CanDocuments,
                     u.CanAccidents,
                     u.CanUsers,
                     u.CanSettings,
                     u.CanSuppliers,
-                    u.CanFleetManagement
+                    u.CanFleetManagement,
+                    u.CanTours,
+                    u.CanPlayback
                 )
             ))
             .FirstOrDefaultAsync(ct);

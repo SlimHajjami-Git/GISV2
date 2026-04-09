@@ -65,6 +65,7 @@ public class SubscriptionType : Entity
     public bool ModuleGeofences { get; set; } = false;
     public bool ModuleMaintenance { get; set; } = true;
     public bool ModuleCosts { get; set; } = true;
+    public bool ModuleFuel { get; set; } = true;
     public bool ModuleReports { get; set; } = true;
     public bool ModuleSettings { get; set; } = true;
     public bool ModuleUsers { get; set; } = true;
@@ -72,6 +73,7 @@ public class SubscriptionType : Entity
     public bool ModuleDocuments { get; set; } = true;
     public bool ModuleAccidents { get; set; } = true;
     public bool ModuleFleetManagement { get; set; } = false;
+    public bool ModuleTours { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
