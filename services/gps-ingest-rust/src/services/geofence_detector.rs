@@ -12,10 +12,12 @@ pub enum GeofenceType {
     Circle,
 }
 
-/// A point coordinate
+/// A point coordinate (aliases handle PascalCase from .NET EF Core JSONB serialization)
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Point {
+    #[serde(alias = "Lat")]
     pub lat: f64,
+    #[serde(alias = "Lng")]
     pub lng: f64,
 }
 

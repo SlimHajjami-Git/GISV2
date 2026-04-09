@@ -738,14 +738,10 @@ async fn process_single_frame(
                     Err(e) => warn!(device_id, error = %e, "Failed to insert device event"),
                 }
 
-                // Publish to RabbitMQ only if offline >= 6h (power cut notification)
-                if let Some(duration) = offline_duration_secs {
-                    if duration >= crate::services::device_event::POWER_CUT_MIN_OFFLINE_SECS {
-                        if let Some(pub_ref) = &publisher {
-                            if let Err(e) = pub_ref.publish_device_event(&record).await {
-                                warn!(device_id, error = %e, "Failed to publish device event to RabbitMQ");
-                            }
-                        }
+                // Publish ALL restart/system events to RabbitMQ (notifications)
+                if let Some(pub_ref) = &publisher {
+                    if let Err(e) = pub_ref.publish_device_event(&record).await {
+                        warn!(device_id, error = %e, "Failed to publish device event to RabbitMQ");
                     }
                 }
 

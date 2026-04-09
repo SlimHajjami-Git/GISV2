@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, DeviceEventDto, DeviceEventsResult } from '../services/api.service';
@@ -383,7 +383,7 @@ export class SecuriteComponent implements OnInit {
     return Math.ceil(this.totalCount / this.pageSize) || 1;
   }
 
-  constructor(private api: ApiService) {}
+  constructor(private api: ApiService, private cdr: ChangeDetectorRef, private zone: NgZone) {}
 
   ngOnInit() {
     this.loadVehicles();
@@ -399,6 +399,7 @@ export class SecuriteComponent implements OnInit {
 
   load() {
     this.loading = true;
+    this.cdr.detectChanges();
     this.api.getDeviceEvents({
       eventType: this.filterType || undefined,
       vehicleId: this.filterVehicleId ?? undefined,
@@ -409,11 +410,19 @@ export class SecuriteComponent implements OnInit {
       pageSize: this.pageSize
     }).subscribe({
       next: (res) => {
-        this.events = res.items;
-        this.totalCount = res.totalCount;
-        this.loading = false;
+        this.zone.run(() => {
+          this.events = res.items;
+          this.totalCount = res.totalCount;
+          this.loading = false;
+          this.cdr.detectChanges();
+        });
       },
-      error: () => { this.loading = false; }
+      error: () => {
+        this.zone.run(() => {
+          this.loading = false;
+          this.cdr.detectChanges();
+        });
+      }
     });
   }
 
