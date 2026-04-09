@@ -460,8 +460,8 @@ export class ApiService {
     let params = new HttpParams();
     if (filters?.geofenceId) params = params.set('geofenceId', filters.geofenceId.toString());
     if (filters?.vehicleId) params = params.set('vehicleId', filters.vehicleId.toString());
-    if (filters?.startDate) params = params.set('startDate', filters.startDate.toISOString());
-    if (filters?.endDate) params = params.set('endDate', filters.endDate.toISOString());
+    if (filters?.startDate) params = params.set('startDate', this.toLocalIso(filters.startDate));
+    if (filters?.endDate) params = params.set('endDate', this.toLocalIso(filters.endDate));
     if (filters?.limit) params = params.set('limit', filters.limit.toString());
     return this.http.get<any[]>(`${this.API_URL}/geofences/events`, { headers: this.getHeaders(), params });
   }
@@ -525,8 +525,8 @@ export class ApiService {
     let params = new HttpParams();
     if (filters?.vehicleId) params = params.set('vehicleId', filters.vehicleId.toString());
     if (filters?.type) params = params.set('type', filters.type);
-    if (filters?.startDate) params = params.set('startDate', filters.startDate.toISOString());
-    if (filters?.endDate) params = params.set('endDate', filters.endDate.toISOString());
+    if (filters?.startDate) params = params.set('startDate', this.toLocalIso(filters.startDate));
+    if (filters?.endDate) params = params.set('endDate', this.toLocalIso(filters.endDate));
     return this.http.get<any[]>(`${this.API_URL}/costs`, { headers: this.getHeaders(), params });
   }
 
@@ -542,8 +542,8 @@ export class ApiService {
       );
     }
     let params = new HttpParams();
-    if (startDate) params = params.set('startDate', startDate.toISOString());
-    if (endDate) params = params.set('endDate', endDate.toISOString());
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate));
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate));
     return this.http.get<any>(`${this.API_URL}/costs/summary`, { headers: this.getHeaders(), params });
   }
 
@@ -599,8 +599,8 @@ export class ApiService {
 
   getVehicleHistory(vehicleId: number, from?: Date, to?: Date, maxPoints = 3000, filterDrift = true): Observable<PositionDto[]> {
     let params = new HttpParams();
-    if (from) params = params.set('from', from.toISOString());
-    if (to) params = params.set('to', to.toISOString());
+    if (from) params = params.set('from', this.toLocalIso(from));
+    if (to) params = params.set('to', this.toLocalIso(to));
     params = params.set('maxPoints', maxPoints.toString());
     if (!filterDrift) params = params.set('filterDrift', 'false');
     return this.http.get<any>(`${this.getMonitoringApiUrl()}/gps/vehicles/${vehicleId}/history`, { headers: this.getHeaders(), params }).pipe(
@@ -610,8 +610,8 @@ export class ApiService {
 
   getDeviceHistory(deviceUid: string, from?: Date, to?: Date, maxPoints = 3000): Observable<PositionDto[]> {
     let params = new HttpParams();
-    if (from) params = params.set('from', from.toISOString());
-    if (to) params = params.set('to', to.toISOString());
+    if (from) params = params.set('from', this.toLocalIso(from));
+    if (to) params = params.set('to', this.toLocalIso(to));
     params = params.set('maxPoints', maxPoints.toString());
     return this.http.get<any>(`${this.getMonitoringApiUrl()}/gps/devices/${deviceUid}/history`, { headers: this.getHeaders(), params }).pipe(
       map(resp => Array.isArray(resp) ? resp : resp?.positions ?? [])
@@ -630,8 +630,8 @@ export class ApiService {
 
   getVehicleGpsStats(vehicleId: number, from?: Date, to?: Date): Observable<any> {
     let params = new HttpParams();
-    if (from) params = params.set('from', from.toISOString());
-    if (to) params = params.set('to', to.toISOString());
+    if (from) params = params.set('from', this.toLocalIso(from));
+    if (to) params = params.set('to', this.toLocalIso(to));
     return this.http.get<any>(`${this.getMonitoringApiUrl()}/gps/vehicles/${vehicleId}/stats`, { headers: this.getHeaders(), params });
   }
 
@@ -738,8 +738,8 @@ export class ApiService {
     let params = new HttpParams();
     if (filters?.vehicleId) params = params.set('vehicleId', filters.vehicleId.toString());
     if (filters?.driverId) params = params.set('driverId', filters.driverId.toString());
-    if (filters?.startDate) params = params.set('startDate', filters.startDate.toISOString());
-    if (filters?.endDate) params = params.set('endDate', filters.endDate.toISOString());
+    if (filters?.startDate) params = params.set('startDate', this.toLocalIso(filters.startDate));
+    if (filters?.endDate) params = params.set('endDate', this.toLocalIso(filters.endDate));
     if (filters?.limit) params = params.set('limit', filters.limit.toString());
     return this.http.get<any[]>(`${this.API_URL}/trips`, { headers: this.getHeaders(), params });
   }
@@ -750,8 +750,8 @@ export class ApiService {
     let params = new HttpParams()
       .set('vehicleId', vehicleId.toString())
       .set('pageSize', pageSize.toString());
-    if (startDate) params = params.set('startDate', startDate.toISOString());
-    if (endDate) params = params.set('endDate', endDate.toISOString());
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate));
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate));
     return this.http.get<VehicleStopsResult>(`${this.API_URL}/vehiclestops`, { headers: this.getHeaders(), params });
   }
 
@@ -764,8 +764,8 @@ export class ApiService {
       return of([]);
     }
     let params = new HttpParams();
-    if (startDate) params = params.set('startDate', startDate.toISOString());
-    if (endDate) params = params.set('endDate', endDate.toISOString());
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate));
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate));
     return this.http.get<any[]>(`${this.API_URL}/trips/vehicle/${vehicleId}`, { headers: this.getHeaders(), params });
   }
 
@@ -775,8 +775,8 @@ export class ApiService {
 
   getTripsSummary(startDate?: Date, endDate?: Date): Observable<any> {
     let params = new HttpParams();
-    if (startDate) params = params.set('startDate', startDate.toISOString());
-    if (endDate) params = params.set('endDate', endDate.toISOString());
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate));
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate));
     return this.http.get<any>(`${this.API_URL}/trips/summary`, { headers: this.getHeaders(), params });
   }
 
@@ -1083,30 +1083,30 @@ export class ApiService {
   getDailyStatistics(vehicleId?: number, startDate?: Date, endDate?: Date): Observable<any[]> {
     let params = new HttpParams();
     if (vehicleId) params = params.set('vehicleId', vehicleId.toString());
-    if (startDate) params = params.set('startDate', startDate.toISOString());
-    if (endDate) params = params.set('endDate', endDate.toISOString());
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate));
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate));
     return this.http.get<any[]>(`${this.API_URL}/statistics/daily`, { headers: this.getHeaders(), params });
   }
 
   getVehicleStatistics(vehicleId: number, startDate?: Date, endDate?: Date): Observable<any> {
     let params = new HttpParams();
-    if (startDate) params = params.set('startDate', startDate.toISOString());
-    if (endDate) params = params.set('endDate', endDate.toISOString());
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate));
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate));
     return this.http.get<any>(`${this.API_URL}/statistics/vehicle/${vehicleId}`, { headers: this.getHeaders(), params });
   }
 
   getDriverScores(driverId?: number, startDate?: Date, endDate?: Date): Observable<any[]> {
     let params = new HttpParams();
     if (driverId) params = params.set('driverId', driverId.toString());
-    if (startDate) params = params.set('startDate', startDate.toISOString());
-    if (endDate) params = params.set('endDate', endDate.toISOString());
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate));
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate));
     return this.http.get<any[]>(`${this.API_URL}/statistics/drivers`, { headers: this.getHeaders(), params });
   }
 
   getDriverSummary(driverId: number, startDate?: Date, endDate?: Date): Observable<any> {
     let params = new HttpParams();
-    if (startDate) params = params.set('startDate', startDate.toISOString());
-    if (endDate) params = params.set('endDate', endDate.toISOString());
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate));
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate));
     return this.http.get<any>(`${this.API_URL}/statistics/drivers/${driverId}/summary`, { headers: this.getHeaders(), params });
   }
 
@@ -1133,8 +1133,8 @@ export class ApiService {
   } = {}): Observable<FuelRecordsResult> {
     let params = new HttpParams();
     if (options.vehicleId) params = params.set('vehicleId', options.vehicleId.toString());
-    if (options.startDate) params = params.set('startDate', options.startDate.toISOString());
-    if (options.endDate) params = params.set('endDate', options.endDate.toISOString());
+    if (options.startDate) params = params.set('startDate', this.toLocalIso(options.startDate));
+    if (options.endDate) params = params.set('endDate', this.toLocalIso(options.endDate));
     if (options.eventType) params = params.set('eventType', options.eventType);
     if (options.anomaliesOnly !== undefined) params = params.set('anomaliesOnly', options.anomaliesOnly.toString());
     if (options.page) params = params.set('page', options.page.toString());
@@ -1146,31 +1146,31 @@ export class ApiService {
     let params = new HttpParams()
       .set('page', page.toString())
       .set('pageSize', pageSize.toString());
-    if (startDate) params = params.set('startDate', startDate.toISOString());
-    if (endDate) params = params.set('endDate', endDate.toISOString());
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate));
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate));
     return this.http.get<FuelRecordsResult>(`${this.API_URL}/fuelrecords/vehicle/${vehicleId}`, { headers: this.getHeaders(), params });
   }
 
   getFuelRefuels(vehicleId?: number, startDate?: Date, endDate?: Date): Observable<FuelRecordsResult> {
     let params = new HttpParams();
     if (vehicleId) params = params.set('vehicleId', vehicleId.toString());
-    if (startDate) params = params.set('startDate', startDate.toISOString());
-    if (endDate) params = params.set('endDate', endDate.toISOString());
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate));
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate));
     return this.http.get<FuelRecordsResult>(`${this.API_URL}/fuelrecords/refuels`, { headers: this.getHeaders(), params });
   }
 
   getFuelAnomalies(vehicleId?: number, startDate?: Date, endDate?: Date): Observable<FuelRecordsResult> {
     let params = new HttpParams();
     if (vehicleId) params = params.set('vehicleId', vehicleId.toString());
-    if (startDate) params = params.set('startDate', startDate.toISOString());
-    if (endDate) params = params.set('endDate', endDate.toISOString());
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate));
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate));
     return this.http.get<FuelRecordsResult>(`${this.API_URL}/fuelrecords/anomalies`, { headers: this.getHeaders(), params });
   }
 
   getFuelReport(vehicleId: number, startDate?: Date, endDate?: Date): Observable<FuelReport> {
     let params = new HttpParams();
-    if (startDate) params = params.set('startDate', startDate.toISOString());
-    if (endDate) params = params.set('endDate', endDate.toISOString());
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate));
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate));
     return this.http.get<FuelReport>(`${this.API_URL}/fuelrecords/vehicle/${vehicleId}/report`, { headers: this.getHeaders(), params });
   }
 
@@ -1178,14 +1178,14 @@ export class ApiService {
 
   getDailyReport(vehicleId: number, date?: Date, minStopDurationSeconds?: number): Observable<DailyActivityReport> {
     let params = new HttpParams();
-    if (date) params = params.set('date', date.toISOString().split('T')[0]);
+    if (date) params = params.set('date', this.toLocalIso(date).split('T')[0]);
     if (minStopDurationSeconds) params = params.set('minStopDurationSeconds', minStopDurationSeconds.toString());
     return this.http.get<DailyActivityReport>(`${this.API_URL}/reports/daily/${vehicleId}`, { headers: this.getHeaders(), params });
   }
 
   getDailyReports(date?: Date, vehicleIds?: number[], minStopDurationSeconds?: number): Observable<DailyActivityReport[]> {
     let params = new HttpParams();
-    if (date) params = params.set('date', date.toISOString().split('T')[0]);
+    if (date) params = params.set('date', this.toLocalIso(date).split('T')[0]);
     if (vehicleIds?.length) {
       vehicleIds.forEach(id => params = params.append('vehicleIds', id.toString()));
     }
@@ -1235,15 +1235,15 @@ export class ApiService {
 
   getMileageReport(vehicleId: number, startDate?: Date, endDate?: Date): Observable<MileageReport> {
     let params = new HttpParams();
-    if (startDate) params = params.set('startDate', startDate.toISOString().split('T')[0]);
-    if (endDate) params = params.set('endDate', endDate.toISOString().split('T')[0]);
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate).split('T')[0]);
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate).split('T')[0]);
     return this.http.get<MileageReport>(`${this.API_URL}/reports/mileage/${vehicleId}`, { headers: this.getHeaders(), params });
   }
 
   getMileageReports(startDate?: Date, endDate?: Date, vehicleIds?: number[]): Observable<MileageReport[]> {
     let params = new HttpParams();
-    if (startDate) params = params.set('startDate', startDate.toISOString().split('T')[0]);
-    if (endDate) params = params.set('endDate', endDate.toISOString().split('T')[0]);
+    if (startDate) params = params.set('startDate', this.toLocalIso(startDate).split('T')[0]);
+    if (endDate) params = params.set('endDate', this.toLocalIso(endDate).split('T')[0]);
     if (vehicleIds?.length) {
       vehicleIds.forEach(id => params = params.append('vehicleIds', id.toString()));
     }
