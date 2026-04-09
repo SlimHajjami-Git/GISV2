@@ -9,7 +9,6 @@ namespace GisAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
 public class DeviceCheckController : ControllerBase
 {
     private readonly GisDbContext _context;
