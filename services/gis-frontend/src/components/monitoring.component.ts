@@ -36,6 +36,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   searchQuery = '';
   filterStatus: string = 'all';
 
+  // Remote Control
+  immobilizationState: Record<number, any> = {};
+  commandLoading: Record<number, string | null> = {};
+
   viewMode: 'map' | 'list' | 'split' = 'split';
   mapStyle: 'streets' | 'satellite' | 'terrain' = 'streets';
   previousMapStyle: 'streets' | 'satellite' | 'terrain' | null = null; // Store style before playback

@@ -829,6 +829,162 @@ public class GpsController : ControllerBase
         return Ok(overview);
     }
 
+    // ==================== REMOTE CONTROL (IMMOBILIZATION) ====================
+
+    private int GetUserId() => int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
+
+    /// <summary>
+    /// Get immobilization state for a device
+    /// </summary>
+    [HttpGet("devices/{deviceId}/immobilization")]
+    public async Task<ActionResult> GetImmobilizationState(int deviceId)
+    {
+        var companyId = GetCompanyId();
+        var device = await _context.GpsDevices
+            .Where(d => d.Id == deviceId && d.CompanyId == companyId)
+            .Select(d => new {
+                d.Id,
+                d.DeviceUid,
+                d.ImmobilizationActive,
+                d.ImmobilizationBy,
+                d.ImmobilizationAt,
+                d.CommandGo,
+                d.CommandStop
+            })
+            .FirstOrDefaultAsync();
+
+        if (device == null) return NotFound();
+
+        // Get the username of who activated it
+        string? activatedByName = null;
+        if (device.ImmobilizationBy.HasValue && device.ImmobilizationBy.Value > 0)
+        {
+            activatedByName = await _context.Users
+                .Where(u => u.Id == device.ImmobilizationBy.Value)
+                .Select(u => u.FirstName + " " + u.LastName)
+                .FirstOrDefaultAsync();
+        }
+
+        return Ok(new {
+            device.ImmobilizationActive,
+            ImmobilizationBy = activatedByName,
+            ImmobilizationByUserId = device.ImmobilizationBy,
+            device.ImmobilizationAt,
+            device.CommandGo,
+            device.CommandStop
+        });
+    }
+
+    /// <summary>
+    /// Send STOP command — immobilize the vehicle
+    /// </summary>
+    [HttpPost("devices/{deviceId}/stop")]
+    public async Task<ActionResult> StopVehicle(int deviceId)
+    {
+        var companyId = GetCompanyId();
+        var userId = GetUserId();
+
+        var device = await _context.GpsDevices
+            .Include(d => d.Vehicle)
+            .FirstOrDefaultAsync(d => d.Id == deviceId && d.CompanyId == companyId);
+
+        if (device == null) return NotFound();
+
+        // Update device state
+        device.ImmobilizationActive = true;
+        device.ImmobilizationBy = userId;
+        device.ImmobilizationAt = DateTime.UtcNow;
+
+        // Insert pending command (Rust ingest will pick it up and send via TCP)
+        var command = new DeviceCommand
+        {
+            DeviceId = deviceId,
+            VehicleId = device.Vehicle?.Id,
+            UserId = userId,
+            CommandType = "STOP",
+            CommandText = device.CommandStop,
+            Status = "pending",
+            Source = "manual",
+            CompanyId = companyId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _context.DeviceCommands.Add(command);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Stop command queued", commandId = command.Id });
+    }
+
+    /// <summary>
+    /// Send GO command — release the vehicle
+    /// </summary>
+    [HttpPost("devices/{deviceId}/go")]
+    public async Task<ActionResult> GoVehicle(int deviceId)
+    {
+        var companyId = GetCompanyId();
+        var userId = GetUserId();
+
+        var device = await _context.GpsDevices
+            .Include(d => d.Vehicle)
+            .FirstOrDefaultAsync(d => d.Id == deviceId && d.CompanyId == companyId);
+
+        if (device == null) return NotFound();
+
+        // Update device state
+        device.ImmobilizationActive = false;
+        device.ImmobilizationBy = userId;
+        device.ImmobilizationAt = DateTime.UtcNow;
+
+        // Insert pending command
+        var command = new DeviceCommand
+        {
+            DeviceId = deviceId,
+            VehicleId = device.Vehicle?.Id,
+            UserId = userId,
+            CommandType = "GO",
+            CommandText = device.CommandGo,
+            Status = "pending",
+            Source = "manual",
+            CompanyId = companyId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _context.DeviceCommands.Add(command);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Go command queued", commandId = command.Id });
+    }
+
+    /// <summary>
+    /// Get command history for a device
+    /// </summary>
+    [HttpGet("devices/{deviceId}/commands")]
+    public async Task<ActionResult> GetCommandHistory(int deviceId, [FromQuery] int limit = 20)
+    {
+        var companyId = GetCompanyId();
+        var commands = await _context.DeviceCommands
+            .Where(c => c.DeviceId == deviceId && c.CompanyId == companyId)
+            .OrderByDescending(c => c.CreatedAt)
+            .Take(limit)
+            .Select(c => new {
+                c.Id,
+                c.CommandType,
+                c.CommandText,
+                c.Status,
+                c.Source,
+                c.SentAt,
+                c.Attempts,
+                c.ErrorMessage,
+                c.CreatedAt,
+                UserName = c.UserId > 0
+                    ? _context.Users.Where(u => u.Id == c.UserId).Select(u => u.FirstName + " " + u.LastName).FirstOrDefault()
+                    : "Système"
+            })
+            .ToListAsync();
+
+        return Ok(commands);
+    }
+
     // ==================== TEST ENDPOINT ====================
 
     /// <summary>
