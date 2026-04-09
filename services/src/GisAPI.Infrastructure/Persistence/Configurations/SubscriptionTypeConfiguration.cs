@@ -75,6 +75,8 @@ public class SubscriptionTypeConfiguration : IEntityTypeConfiguration<Subscripti
         builder.Property(s => s.ModuleDocuments).HasColumnName("module_documents");
         builder.Property(s => s.ModuleAccidents).HasColumnName("module_accidents");
         builder.Property(s => s.ModuleFleetManagement).HasColumnName("module_fleet_management");
+        builder.Property(s => s.ModuleTours).HasColumnName("module_tours");
+        builder.Property(s => s.ModuleFuel).HasColumnName("module_fuel");
 
         // Timestamps
         builder.Property(s => s.CreatedAt).HasColumnName("created_at");

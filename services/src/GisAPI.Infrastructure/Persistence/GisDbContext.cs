@@ -299,6 +299,9 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<User>().Property(u => u.CanSettings).HasColumnName("can_settings");
         modelBuilder.Entity<User>().Property(u => u.CanSuppliers).HasColumnName("can_suppliers");
         modelBuilder.Entity<User>().Property(u => u.CanFleetManagement).HasColumnName("can_fleet_management");
+        modelBuilder.Entity<User>().Property(u => u.CanTours).HasColumnName("can_tours");
+        modelBuilder.Entity<User>().Property(u => u.CanFuel).HasColumnName("can_fuel");
+        modelBuilder.Entity<User>().Property(u => u.CanPlayback).HasColumnName("can_playback");
 
         // Role configuration is handled by RoleConfiguration.cs
 
