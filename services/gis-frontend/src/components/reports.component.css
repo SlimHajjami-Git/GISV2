@@ -678,6 +678,7 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   border-bottom: 1px solid #e2e8f0;
   height: 280px;
   flex-shrink: 0;
+  overflow: hidden; /* Prevent chart from expanding beyond section */
 }
 
 .section-toolbar {
@@ -763,6 +764,8 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   display: flex;
   align-items: center;
   flex: 1;
+  min-width: 0;        /* Prevent flex item from growing beyond parent */
+  overflow: hidden;    /* Constrain wrapper to allocated space */
   min-height: 200px;
 }
 
