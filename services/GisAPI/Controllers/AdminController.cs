@@ -934,6 +934,7 @@ public class AdminController : ControllerBase
                 c.CompanyId,
                 c.CommandType,
                 c.CommandText,
+                flagsHex = c.ErrorMessage,
                 c.Status,
                 c.SentAt,
                 c.CreatedAt

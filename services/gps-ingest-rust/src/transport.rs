@@ -478,7 +478,7 @@ async fn handle_tcp_connection(
                                                         } else {
                                                             info!(peer = peer_str, imei = %imei, device_id, "Auto-recovery command SENT");
                                                             last_auto_recovery.insert(device_id, now);
-                                                            let _ = database.log_auto_recovery(device_id, &command_go).await;
+                                                            let _ = database.log_auto_recovery(device_id, &command_go, flags_hex).await;
                                                         }
                                                     }
                                                     Err(e) => {

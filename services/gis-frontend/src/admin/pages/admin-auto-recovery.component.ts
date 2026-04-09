@@ -65,6 +65,7 @@ import { AdminService } from '../services/admin.service';
                 <th>Plaque</th>
                 <th>Société</th>
                 <th>Téléphone</th>
+                <th>Type</th>
                 <th>Statut</th>
               </tr>
             </thead>
@@ -78,6 +79,7 @@ import { AdminService } from '../services/admin.service';
                 <td>{{ r.vehiclePlate || '-' }}</td>
                 <td>{{ r.companyName || '-' }}</td>
                 <td class="mono">{{ r.driverPhone || '-' }}</td>
+                <td><span class="type-badge" [ngClass]="getCommandClass(r.flagsHex)">{{ getCommandLabel(r.flagsHex) }}</span></td>
                 <td>
                   <span class="status-badge" [ngClass]="r.status">{{ r.status }}</span>
                 </td>
@@ -203,6 +205,17 @@ import { AdminService } from '../services/admin.service';
     .status-badge.pending { background: #fef3c7; color: #d97706; }
     .status-badge.failed { background: #fef2f2; color: #dc2626; }
 
+    .type-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+    .type-badge.GO_67 { background: #dbeafe; color: #1d4ed8; }
+    .type-badge.GO_C3 { background: #e0e7ff; color: #4338ca; }
+
     .empty-state {
       display: flex;
       flex-direction: column;
@@ -255,5 +268,18 @@ export class AdminAutoRecoveryComponent implements OnInit {
         this.loading = false;
       }
     });
+  }
+
+  getCommandLabel(flagsHex: string): string {
+    if (!flagsHex) return '-';
+    return flagsHex.toUpperCase();
+  }
+
+  getCommandClass(flagsHex: string): string {
+    if (!flagsHex) return '';
+    const upper = flagsHex.toUpperCase();
+    if (upper === 'C3') return 'GO_C3';
+    if (upper === '67') return 'GO_67';
+    return '';
   }
 }

@@ -962,7 +962,7 @@ impl TelemetryStore for Database {
         Ok(())
     }
 
-    async fn log_auto_recovery(&self, device_id: i32, command_text: &str) -> Result<()> {
+    async fn log_auto_recovery(&self, device_id: i32, command_text: &str, flags_hex: &str) -> Result<()> {
         // Get vehicle_id and company_id for the device
         let (vehicle_id, company_id, _) = self.get_device_vehicle_info(device_id).await?;
 
@@ -970,9 +970,9 @@ impl TelemetryStore for Database {
             r#"
             INSERT INTO device_commands (
                 device_id, vehicle_id, user_id, command_type, command_text,
-                status, sent_at, attempts, source, company_id, created_at, updated_at
+                status, sent_at, attempts, source, company_id, error_message, created_at, updated_at
             ) VALUES (
-                $1, $2, 0, 'GO', $3, 'sent', NOW(), 1, 'auto_recovery', $4, NOW(), NOW()
+                $1, $2, 0, 'GO', $3, 'sent', NOW(), 1, 'auto_recovery', $4, $5, NOW(), NOW()
             )
             "#,
         )
@@ -980,6 +980,7 @@ impl TelemetryStore for Database {
         .bind(vehicle_id)
         .bind(command_text)
         .bind(company_id)
+        .bind(flags_hex)
         .execute(&self.pool)
         .await?;
         Ok(())
