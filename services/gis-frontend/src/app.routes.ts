@@ -32,6 +32,7 @@ import { adminRoutes } from './admin/admin.routes';
 import { AuthGuard } from './guards/auth.guard';
 import { FeatureGuard } from './guards/feature.guard';
 import { SystemAdminGuard } from './guards/system-admin.guard';
+import { SecuriteGuard } from './guards/securite.guard';
 
 export const routes: Routes = [
   // Public routes (no auth required)
@@ -80,7 +81,7 @@ export const routes: Routes = [
   { path: 'geofences', component: GeofencesComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'geofences' } },
   
   // Security (device events)
-  { path: 'securite', component: SecuriteComponent, canActivate: [AuthGuard] },
+  { path: 'securite', component: SecuriteComponent, canActivate: [AuthGuard, SecuriteGuard] },
 
   // Notifications (always accessible when logged in)
   { path: 'notifications', component: NotificationsComponent, canActivate: [AuthGuard] },
