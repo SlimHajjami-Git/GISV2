@@ -687,7 +687,7 @@
                       <button class="chart-scroll-btn left" (click)="scrollChart('left')">&lsaquo;</button>
                     }
                     <div class="chart-scroll-container" #chartScrollContainer>
-                      <div class="chart-area" [style.min-width]="chartData.length > 20 ? (chartData.length * 40) + 'px' : 'auto'">
+                      <div class="chart-area" [style.min-width]="getChartMinWidth()">
                         <canvas #chartCanvas></canvas>
                       </div>
                     </div>

@@ -578,6 +578,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return `${y}-${m}-${d}`;
   }
 
+  /** Chart container min-width capped to avoid exceeding browser canvas limits */
+  getChartMinWidth(): string {
+    if (this.chartData.length <= 20) return 'auto';
+    return Math.min(this.chartData.length * 40, 5000) + 'px';
+  }
+
   selectTemplate(template: any) {
     this.destroyAllCharts();
     this.selectedTemplate = template;
@@ -3679,7 +3685,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.enrichAllAddresses();
 
     // Chart data - use cleaned positions for smooth fuel level graph (no spikes)
-    this.chartData = cleanPositions.map((pos: any) => ({
+    // Downsample if too many points (canvas breaks above ~16k px width)
+    const maxChartPoints = 300;
+    let chartPositions = cleanPositions;
+    if (cleanPositions.length > maxChartPoints) {
+      const step = Math.ceil(cleanPositions.length / maxChartPoints);
+      chartPositions = cleanPositions.filter((_: any, i: number) => i % step === 0 || i === cleanPositions.length - 1);
+    }
+    this.chartData = chartPositions.map((pos: any) => ({
       label: new Date(pos.recordedAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
       value: pos.fuelRaw || 0
     }));
