@@ -25,6 +25,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   @Input() embedded = false;
   map: L.Map | null = null;
   mapReady = false;
+  initialFitDone = false;
   vehicleMarkers = new Map<string, L.Marker>();
 
   vehicles: Vehicle[] = [];
@@ -715,9 +716,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     });
 
-    if (this.vehicleMarkers.size > 0 && !this.selectedVehicle) {
+    if (this.vehicleMarkers.size > 0 && !this.selectedVehicle && !this.initialFitDone) {
       const group = new L.FeatureGroup(Array.from(this.vehicleMarkers.values()));
       this.map.fitBounds(group.getBounds().pad(0.1));
+      this.initialFitDone = true;
     }
   }
 
