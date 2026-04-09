@@ -25,6 +25,22 @@ public class GeofenceNotificationHandler : INotificationHandler<GeofenceNotifica
     {
         try
         {
+            // Persist geofence event in the database for history
+            var geofenceEvent = new GisAPI.Domain.Entities.GeofenceEvent
+            {
+                GeofenceId = e.GeofenceId,
+                VehicleId = e.VehicleId ?? 0,
+                CompanyId = e.CompanyId,
+                Type = e.EventType,
+                Latitude = e.Latitude,
+                Longitude = e.Longitude,
+                Timestamp = e.Timestamp,
+                IsNotified = true,
+                NotifiedAt = DateTime.UtcNow
+            };
+            _context.GeofenceEvents.Add(geofenceEvent);
+            await _context.SaveChangesAsync(ct);
+
             var targetUsers = await _context.Users
                 .Where(u => u.CompanyId == e.CompanyId && u.Status == "active")
                 .Select(u => u.Id)

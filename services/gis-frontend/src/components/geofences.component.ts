@@ -1436,6 +1436,8 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
   private overviewLayers: L.FeatureGroup = L.featureGroup();
   private drawingLayer: L.Circle | L.Polygon | L.Polyline | null = null;
   private markers: L.CircleMarker[] = [];
+  private draggingIndex: number | null = null;
+  private isDragging = false;
   private defaultCenter: L.LatLngExpression = [36.8065, 10.1815]; // Tunis, Tunisie
 
   private destroy$ = new Subject<void>();
@@ -1658,6 +1660,12 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private onMapClick(e: L.LeafletMouseEvent) {
+    // Skip if we just finished dragging a point
+    if (this.isDragging) {
+      this.isDragging = false;
+      return;
+    }
+
     const { lat, lng } = e.latlng;
 
     if (this.geofenceForm.type === 'circle') {
@@ -1714,18 +1722,37 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     this.markers = [];
 
     if (this.geofenceForm.coordinates.length > 0) {
-      // Draw markers for each point
+      // Draw markers for each point (draggable)
       this.geofenceForm.coordinates.forEach((coord: GeofencePoint, index: number) => {
         const marker = L.circleMarker(
           [coord.lat, coord.lng],
-          { 
-            radius: 6, 
-            color: this.geofenceForm.color, 
-            fillColor: index === 0 ? this.geofenceForm.color : '#fff', 
-            fillOpacity: 1, 
-            weight: 2 
+          {
+            radius: 7,
+            color: this.geofenceForm.color,
+            fillColor: index === 0 ? this.geofenceForm.color : '#fff',
+            fillOpacity: 1,
+            weight: 2,
+            interactive: true,
+            bubblingMouseEvents: false
           }
         ).addTo(this.drawMap!);
+
+        // Drag: mousedown on marker starts drag
+        marker.on('mousedown', (e: L.LeafletMouseEvent) => {
+          L.DomEvent.stop(e.originalEvent);
+          this.draggingIndex = index;
+          this.drawMap!.dragging.disable();
+          this.drawMap!.on('mousemove', this.onMarkerDrag, this);
+          this.drawMap!.once('mouseup', () => {
+            this.drawMap!.off('mousemove', this.onMarkerDrag, this);
+            this.drawMap!.dragging.enable();
+            if (this.draggingIndex !== null) {
+              this.isDragging = true;
+              this.draggingIndex = null;
+            }
+          });
+        });
+
         this.markers.push(marker);
       });
 
@@ -1743,6 +1770,30 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
         const latLngs = this.geofenceForm.coordinates.map((c: GeofencePoint) => [c.lat, c.lng] as L.LatLngExpression);
         this.drawingLayer = L.polyline(latLngs, { color: this.geofenceForm.color, weight: 2, dashArray: '5,5' }).addTo(this.drawMap);
       }
+    }
+  }
+
+  private onMarkerDrag(e: L.LeafletMouseEvent) {
+    if (this.draggingIndex === null) return;
+    const { lat, lng } = e.latlng;
+    this.geofenceForm.coordinates[this.draggingIndex] = { lat, lng };
+
+    // Update marker position
+    this.markers[this.draggingIndex]?.setLatLng([lat, lng]);
+
+    // Redraw polygon/polyline without recreating markers
+    if (this.drawingLayer && this.drawMap) {
+      this.drawMap.removeLayer(this.drawingLayer);
+      this.drawingLayer = null;
+    }
+    if (this.geofenceForm.coordinates.length >= 3) {
+      const latLngs = this.geofenceForm.coordinates.map((c: GeofencePoint) => [c.lat, c.lng] as L.LatLngExpression);
+      this.drawingLayer = L.polygon(latLngs, {
+        color: this.geofenceForm.color, fillColor: this.geofenceForm.color, fillOpacity: 0.3, weight: 2
+      }).addTo(this.drawMap!);
+    } else if (this.geofenceForm.coordinates.length === 2) {
+      const latLngs = this.geofenceForm.coordinates.map((c: GeofencePoint) => [c.lat, c.lng] as L.LatLngExpression);
+      this.drawingLayer = L.polyline(latLngs, { color: this.geofenceForm.color, weight: 2, dashArray: '5,5' }).addTo(this.drawMap!);
     }
   }
 
