@@ -108,6 +108,16 @@ public class PermissionMiddleware
         "/api/statistics",
     };
 
+    // Shared reference data routes: GET is always allowed (many modules need these),
+    // but write operations (POST/PUT/DELETE) still require the specific permission.
+    private static readonly HashSet<string> _readOnlySharedRoutes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "/api/vehicles",
+        "/api/drivers",
+        "/api/employees",
+        "/api/geofences",
+    };
+
     public PermissionMiddleware(RequestDelegate next)
     {
         _next = next;
@@ -133,6 +143,15 @@ public class PermissionMiddleware
 
         // Skip always-accessible routes
         if (_skipRoutes.Any(r => path.StartsWith(r, StringComparison.OrdinalIgnoreCase)))
+        {
+            await _next(context);
+            return;
+        }
+
+        // Shared reference data: GET requests are allowed for any authenticated user
+        // (vehicles, drivers, geofences are needed by many modules)
+        // Write operations still go through full permission checks below
+        if (context.Request.Method == "GET" && _readOnlySharedRoutes.Any(r => path.StartsWith(r, StringComparison.OrdinalIgnoreCase)))
         {
             await _next(context);
             return;
