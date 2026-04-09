@@ -262,7 +262,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   
   fromDate = '';
   toDate = '';
-  todayStr = new Date().toISOString().split('T')[0]; // For max date on inputs
+  todayStr = ''; // Set in initializeMileagePeriodDates() to avoid UTC date shift
 
   reportGenerated = false;
   activeTab = 'chart';
@@ -396,25 +396,27 @@ export class ReportsComponent implements OnInit, OnDestroy {
     yesterday.setDate(today.getDate() - 1);
     const weekAgo = new Date(today);
     weekAgo.setDate(today.getDate() - 7);
-    
+
+    // Set todayStr for max date on inputs (local timezone)
+    this.todayStr = this.toLocalDate(today);
+
     // Hourly: default to yesterday
-    this.mileagePeriodDate = yesterday.toISOString().split('T')[0];
-    
+    this.mileagePeriodDate = this.toLocalDate(yesterday);
+
     // Daily: default to last 7 days
-    this.mileagePeriodStartDate = weekAgo.toISOString().split('T')[0];
-    this.mileagePeriodEndDate = today.toISOString().split('T')[0];
-    
+    this.mileagePeriodStartDate = this.toLocalDate(weekAgo);
+    this.mileagePeriodEndDate = this.toLocalDate(today);
+
     // Monthly: default to previous month (current month often has no data yet)
     const prevMonth = new Date(today);
     prevMonth.setMonth(today.getMonth() - 1);
     this.mileagePeriodMonth = prevMonth.getMonth() + 1;
     this.mileagePeriodYear = prevMonth.getFullYear();
-    
-    
+
     // Initialize custom date range + daily report date
-    this.customStartDate = weekAgo.toISOString().split('T')[0];
-    this.customEndDate = today.toISOString().split('T')[0];
-    this.dailyReportDate = yesterday.toISOString().split('T')[0];
+    this.customStartDate = this.toLocalDate(weekAgo);
+    this.customEndDate = this.toLocalDate(today);
+    this.dailyReportDate = this.toLocalDate(yesterday);
   }
 
   private getVehiclesObs() {
@@ -566,6 +568,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const h = String(date.getHours()).padStart(2, '0');
     const min = String(date.getMinutes()).padStart(2, '0');
     return `${y}-${m}-${d}T${h}:${min}`;
+  }
+
+  /** Returns YYYY-MM-DD in local timezone (never UTC) */
+  toLocalDate(date: Date): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   }
 
   selectTemplate(template: any) {
@@ -2307,7 +2317,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         // Update time range display
         const endDate = new Date(prevEvt._sortTime + totalSecs * 1000);
         const startStr = prevEvt.time.split(' → ')[0];
-        prevEvt.time = `${startStr} → ${this.formatDateTime(endDate.toISOString())}`;
+        prevEvt.time = `${startStr} → ${this.formatDateTime(this.toDateTime(endDate))}`;
         continue;
       }
       mergedEvents.push(evt);
@@ -2468,7 +2478,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const daysWithActivity = report.dailyBreakdown.filter((day: DailyMileage) => {
       if (day.tripCount === 0 && day.distanceKm === 0) return false;
       if (fromDateStr) {
-        const dayDate = new Date(day.date).toISOString().split('T')[0];
+        const dayDate = this.toLocalDate(new Date(day.date));
         if (dayDate < fromDateStr) return false;
         if (toDateStr && dayDate > toDateStr) return false;
       }
@@ -2678,14 +2688,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (this.selectedMileagePeriodType === 'hour' && !this.mileagePeriodDate) {
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
-      this.mileagePeriodDate = yesterday.toISOString().split('T')[0];
+      this.mileagePeriodDate = this.toLocalDate(yesterday);
     }
     if (this.selectedMileagePeriodType === 'day') {
       if (!this.mileagePeriodStartDate || !this.mileagePeriodEndDate) {
         const today = new Date();
         const weekAgo = new Date(today.getTime() - 7 * 86400000);
-        this.mileagePeriodStartDate = weekAgo.toISOString().split('T')[0];
-        this.mileagePeriodEndDate = today.toISOString().split('T')[0];
+        this.mileagePeriodStartDate = this.toLocalDate(weekAgo);
+        this.mileagePeriodEndDate = this.toLocalDate(today);
       }
     }
     // Always re-execute when changing period type (even on first run)
@@ -3845,7 +3855,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           if (startDate.toDateString() !== endDate.toDateString()) {
             const endOfDay = new Date(startDate);
             endOfDay.setHours(23, 59, 59, 0);
-            endTime = endOfDay.toISOString();
+            endTime = this.toDateTime(endOfDay);
             durationSeconds = Math.round((endOfDay.getTime() - startDate.getTime()) / 1000);
             durationFormatted = null; // Force recalculation via formatDuration
           }
@@ -4099,7 +4109,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const dailyMap = new Map<string, { distance: number; trips: number; duration: number }>();
       for (const t of tripRows) {
         const rawTs = t._startTimeSort;
-        const dayKey = rawTs ? new Date(rawTs).toISOString().split('T')[0] : 'unknown';
+        const dayKey = rawTs ? this.toLocalDate(new Date(rawTs)) : 'unknown';
         const entry = dailyMap.get(dayKey) || { distance: 0, trips: 0, duration: 0 };
         entry.distance += t.distanceKm || 0;
         entry.trips += 1;
@@ -5177,8 +5187,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.fuelEstimationReport = null;
     this.fuelEstimationActiveSection = 'summary';
     
-    const startDateStr = startDate ? startDate.toISOString() : undefined;
-    const endDateStr = endDate ? endDate.toISOString() : undefined;
+    const startDateStr = startDate ? this.toDateTime(startDate) : undefined;
+    const endDateStr = endDate ? this.toDateTime(endDate) : undefined;
     
     this.apiService.getFuelExpenseStatistics(startDateStr, endDateStr, vehicleId).subscribe({
       next: (report) => {
@@ -5610,8 +5620,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     
     const options: any = {};
     if (vehicleId) options.vehicleId = vehicleId;
-    if (startDate) options.fromDate = startDate.toISOString().split('T')[0];
-    if (endDate) options.toDate = endDate.toISOString().split('T')[0];
+    if (startDate) options.fromDate = this.toLocalDate(startDate);
+    if (endDate) options.toDate = this.toLocalDate(endDate);
     
     this.apiService.getRepairs(options).subscribe({
       next: (result) => {
