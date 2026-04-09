@@ -43,6 +43,9 @@ builder.Services.AddHostedService<GisAPI.Services.TourMonitoringService>();
 // Predictive Alert Service (document expiry, maintenance due, fuel anomaly)
 builder.Services.AddHostedService<GisAPI.Services.PredictiveAlertService>();
 
+// Device Event Consumer (RabbitMQ -> Power cut notifications)
+builder.Services.AddHostedService<GisAPI.Services.DeviceEventConsumer>();
+
 // Geocoding Service with cache
 builder.Services.AddSingleton<GisAPI.Domain.Interfaces.IGeocodingService, GisAPI.Services.GeocodingService>();
 

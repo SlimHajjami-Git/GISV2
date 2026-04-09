@@ -1645,6 +1645,24 @@ export class ApiService {
     return this.http.delete<void>(`${this.API_URL}/fuelentries/${id}`, { headers: this.getHeaders() });
   }
 
+  // ==================== DEVICE EVENTS (SECURITY) ====================
+
+  getDeviceEvents(params: { eventType?: string; vehicleId?: number; from?: string; to?: string; acknowledged?: boolean; page?: number; pageSize?: number }): Observable<DeviceEventsResult> {
+    let queryParams = new HttpParams();
+    if (params.eventType) queryParams = queryParams.set('eventType', params.eventType);
+    if (params.vehicleId) queryParams = queryParams.set('vehicleId', params.vehicleId.toString());
+    if (params.from) queryParams = queryParams.set('from', params.from);
+    if (params.to) queryParams = queryParams.set('to', params.to);
+    if (params.acknowledged !== undefined) queryParams = queryParams.set('acknowledged', params.acknowledged.toString());
+    if (params.page) queryParams = queryParams.set('page', params.page.toString());
+    if (params.pageSize) queryParams = queryParams.set('pageSize', params.pageSize.toString());
+    return this.http.get<DeviceEventsResult>(`${this.API_URL}/device-events`, { headers: this.getHeaders(), params: queryParams });
+  }
+
+  acknowledgeDeviceEvent(id: number): Observable<void> {
+    return this.http.post<void>(`${this.API_URL}/device-events/${id}/acknowledge`, {}, { headers: this.getHeaders() });
+  }
+
   // ==================== PARTS CATALOG ====================
 
   getPartCategories(): Observable<PartCategoryDto[]> {
@@ -3225,6 +3243,32 @@ export interface PaginatedFuelEntriesResult {
   page: number;
   pageSize: number;
   totalPages: number;
+}
+
+// ==================== DEVICE EVENTS INTERFACES ====================
+
+export interface DeviceEventDto {
+  id: number;
+  deviceId: number;
+  vehicleId?: number;
+  vehicleName?: string;
+  eventType: string;
+  eventAt: string;
+  offlineDurationSecs?: number;
+  lastKnownLat?: number;
+  lastKnownLon?: number;
+  lastKnownAddress?: string;
+  wasMoving: boolean;
+  acknowledged: boolean;
+  acknowledgedBy?: number;
+  acknowledgedAt?: string;
+}
+
+export interface DeviceEventsResult {
+  items: DeviceEventDto[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
 }
 
 // ==================== PARTS CATALOG INTERFACES ====================

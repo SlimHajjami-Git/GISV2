@@ -100,4 +100,5 @@ pub trait TelemetryStore: Send + Sync {
 #[async_trait]
 pub trait TelemetryEventPublisher: Send + Sync {
     async fn publish_hh_frame(&self, device_uid: &str, protocol: &str, frame: &HhFrame) -> anyhow::Result<()>;
+    async fn publish_device_event(&self, event: &crate::services::device_event::DeviceEventRecord) -> anyhow::Result<()>;
 }

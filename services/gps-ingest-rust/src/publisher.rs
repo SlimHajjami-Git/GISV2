@@ -12,6 +12,7 @@ use tracing::{info, warn};
 
 use crate::{
     ports::TelemetryEventPublisher,
+    services::device_event::DeviceEventRecord,
     telemetry::model::HhFrame,
 };
 
@@ -114,6 +115,58 @@ impl TelemetryEventPublisher for TelemetryPublisher {
                         tokio::time::sleep(std::time::Duration::from_secs(attempt as u64)).await;
                     } else {
                         return Err(anyhow::anyhow!("RabbitMQ publish failed after 3 attempts: {}", e));
+                    }
+                }
+            }
+        }
+
+        unreachable!()
+    }
+
+    async fn publish_device_event(&self, event: &DeviceEventRecord) -> Result<()> {
+        let payload = json!({
+            "message_type": "device_event",
+            "device_id": event.device_id,
+            "vehicle_id": event.vehicle_id,
+            "company_id": event.company_id,
+            "event_type": event.event_type.as_str(),
+            "event_at": event.event_at.to_rfc3339(),
+            "offline_duration_secs": event.offline_duration_secs,
+            "last_known_lat": event.last_known_lat,
+            "last_known_lon": event.last_known_lon,
+            "was_moving": event.was_moving,
+        });
+
+        let body = serde_json::to_vec(&payload)?;
+
+        for attempt in 1u32..=3 {
+            self.ensure_connected().await?;
+
+            let result = {
+                let guard = self.state.lock().await;
+                if let Some((_, ch)) = guard.as_ref() {
+                    let mut props = BasicProperties::default();
+                    props.with_delivery_mode(2);
+                    let args = BasicPublishArguments::new(&self.config.exchange, "device.event");
+                    ch.basic_publish(props, body.clone(), args).await
+                } else {
+                    Err(amqprs::error::Error::ChannelUseError("no channel".to_string()))
+                }
+            };
+
+            match result {
+                Ok(()) => {
+                    info!(device_id = event.device_id, event_type = event.event_type.as_str(),
+                        "Published device event to RabbitMQ");
+                    return Ok(());
+                }
+                Err(e) => {
+                    warn!("RabbitMQ device event publish failed (attempt {}/3): {}", attempt, e);
+                    self.invalidate().await;
+                    if attempt < 3 {
+                        tokio::time::sleep(std::time::Duration::from_secs(attempt as u64)).await;
+                    } else {
+                        return Err(anyhow::anyhow!("RabbitMQ device event publish failed after 3 attempts: {}", e));
                     }
                 }
             }

@@ -27,6 +27,7 @@ import { ExpensesComponent } from './components/expenses.component';
 import { CarburantComponent } from './components/carburant.component';
 import { ToursComponent } from './components/tours.component';
 import { DeviceCheckComponent } from './components/device-check.component';
+import { SecuriteComponent } from './components/securite.component';
 import { adminRoutes } from './admin/admin.routes';
 import { AuthGuard } from './guards/auth.guard';
 import { FeatureGuard } from './guards/feature.guard';
@@ -78,6 +79,9 @@ export const routes: Routes = [
   // Geofences module
   { path: 'geofences', component: GeofencesComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'geofences' } },
   
+  // Security (device events)
+  { path: 'securite', component: SecuriteComponent, canActivate: [AuthGuard] },
+
   // Notifications (always accessible when logged in)
   { path: 'notifications', component: NotificationsComponent, canActivate: [AuthGuard] },
   

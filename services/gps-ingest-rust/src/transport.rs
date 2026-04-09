@@ -633,15 +633,8 @@ async fn process_single_frame(
 ) -> Result<()> {
     match protocol {
         "gps_type_1" => {
-            // Check for system frames (AA02/AA03/AA07) - just log and skip
-            if telemetry::hh::is_system_frame(frame_str) {
-                info!(protocol, frame = %frame_str, "Received system frame (ignored)");
-                return Ok(());
-            }
-
-            // Check for info/connect frames (AA00/AA01/HH00/HH01) or frames with prefix like "NR08G0663 AA00..."
-            // IMPORTANT: Don't use contains() as it may match position data that accidentally contains "AA00"
-            // Instead, check if frame starts with info header OR has MAT prefix followed by space and info header
+            // Process info/connect frames FIRST (AA00/AA01/HH00/HH01) so the connection map
+            // has the IMEI before we process system frames (device sends AA00 then AA02 in same payload)
             let is_info_frame = frame_str.starts_with("HH01") || frame_str.starts_with("AA01") ||
                 frame_str.starts_with("HH00") || frame_str.starts_with("AA00") ||
                 frame_str.contains(" AA00") || frame_str.contains(" HH00");
@@ -654,7 +647,113 @@ async fn process_single_frame(
                     map.insert(peer.to_string(), imei.clone());
                 }
                 info!(protocol, imei, "Registered device via info frame");
-            } else {
+                return Ok(());
+            }
+
+            // Process system frames (AA02/HH02=restart, AA03/HH03=GSM reset)
+            if telemetry::hh::is_system_frame(frame_str) {
+                let is_restart = frame_str.starts_with("AA02") || frame_str.starts_with("HH02");
+                let is_gsm_reset = frame_str.starts_with("AA03") || frame_str.starts_with("HH03");
+
+                if !is_restart && !is_gsm_reset {
+                    // AA07/HH07 time request — just log
+                    info!(protocol, frame = %frame_str, "Received time request frame");
+                    return Ok(());
+                }
+
+                // Resolve IMEI from connection map
+                let resolved_uid = if let Some(peer) = peer_addr {
+                    let map = connection_map.lock().await;
+                    map.get(peer).cloned()
+                } else {
+                    None
+                };
+
+                let resolved_uid = match resolved_uid {
+                    Some(uid) => uid,
+                    None => {
+                        warn!(protocol, frame = %frame_str, "System frame but no IMEI in connection map");
+                        return Ok(());
+                    }
+                };
+
+                // Look up device info
+                let device_id = match database.get_device_id(&resolved_uid).await? {
+                    Some(id) => id,
+                    None => {
+                        warn!(imei = %resolved_uid, "System frame for unknown device");
+                        return Ok(());
+                    }
+                };
+
+                let (vehicle_id, company_id, _) = database.get_device_vehicle_info(device_id).await?;
+
+                // Calculate offline duration from last known position
+                let last_pos = database.get_last_position(device_id).await?;
+                let now = chrono::Utc::now();
+                let offline_duration_secs = last_pos.as_ref().map(|p| {
+                    let last_utc = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                        p.recorded_at, chrono::Utc,
+                    );
+                    (now - last_utc).num_seconds()
+                });
+
+                let was_moving = false; // LastKnownPosition doesn't store speed
+                let ignition_was_on = last_pos.as_ref().map_or(false, |p| p.ignition_on);
+
+                let event_type = if is_gsm_reset {
+                    crate::services::device_event::DeviceEventType::GsmReset
+                } else {
+                    crate::services::device_event::classify_restart(
+                        offline_duration_secs,
+                        was_moving,
+                        ignition_was_on,
+                    )
+                };
+
+                let record = crate::services::device_event::DeviceEventRecord {
+                    device_id,
+                    vehicle_id,
+                    company_id,
+                    event_type: event_type.clone(),
+                    event_at: now,
+                    offline_duration_secs: offline_duration_secs.map(|d| d as i32),
+                    last_known_lat: last_pos.as_ref().map(|p| p.latitude),
+                    last_known_lon: last_pos.as_ref().map(|p| p.longitude),
+                    last_known_address: None,
+                    was_moving,
+                    details: Some(serde_json::json!({
+                        "frame_type": &frame_str[..4],
+                        "imei": &resolved_uid,
+                    })),
+                };
+
+                // Always insert for audit
+                match database.insert_device_event(&record).await {
+                    Ok(id) => info!(
+                        device_id, event_id = id, event_type = event_type.as_str(),
+                        offline_secs = ?offline_duration_secs,
+                        "Device event recorded"
+                    ),
+                    Err(e) => warn!(device_id, error = %e, "Failed to insert device event"),
+                }
+
+                // Publish to RabbitMQ only if offline >= 6h (power cut notification)
+                if let Some(duration) = offline_duration_secs {
+                    if duration >= crate::services::device_event::POWER_CUT_MIN_OFFLINE_SECS {
+                        if let Some(pub_ref) = &publisher {
+                            if let Err(e) = pub_ref.publish_device_event(&record).await {
+                                warn!(device_id, error = %e, "Failed to publish device event to RabbitMQ");
+                            }
+                        }
+                    }
+                }
+
+                return Ok(());
+            }
+
+            // Regular position frame
+            {
                 // Try to extract MAT prefix from frame (format: "NR08G0664 AA23...")
                 let (mat_prefix, actual_frame) = extract_mat_prefix(frame_str);
                 

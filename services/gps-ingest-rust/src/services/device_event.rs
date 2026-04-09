@@ -46,6 +46,9 @@ pub const TAMPER_MAX_OFFLINE_SECS: i64 = 2 * 60 * 60;  // 2 hours
 /// Speed threshold to consider vehicle "was moving" before disconnect
 pub const MOVING_SPEED_THRESHOLD: f64 = 5.0; // km/h
 
+/// Minimum offline duration to trigger a power-cut notification (6 hours)
+pub const POWER_CUT_MIN_OFFLINE_SECS: i64 = 6 * 3600; // 21600s
+
 /// Determine if a restart event should be classified as tamper_suspected
 pub fn classify_restart(
     offline_duration_secs: Option<i64>,
