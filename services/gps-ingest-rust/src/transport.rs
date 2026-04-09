@@ -661,7 +661,13 @@ async fn process_single_frame(
                 let is_restart = frame_str.starts_with("AA02") || frame_str.starts_with("HH02");
                 let is_gsm_reset = frame_str.starts_with("AA03") || frame_str.starts_with("HH03");
 
-                if !is_restart && !is_gsm_reset {
+                if is_gsm_reset {
+                    // AA03/HH03 GSM reset is normal (modem reconnect), not a power cut — ignore
+                    debug!(protocol, frame = %frame_str, "GSM reset frame — ignoring (not a power cut)");
+                    return Ok(());
+                }
+
+                if !is_restart {
                     // AA07/HH07 time request — just log
                     info!(protocol, frame = %frame_str, "Received time request frame");
                     return Ok(());
@@ -707,15 +713,11 @@ async fn process_single_frame(
                 let was_moving = false; // LastKnownPosition doesn't store speed
                 let ignition_was_on = last_pos.as_ref().map_or(false, |p| p.ignition_on);
 
-                let event_type = if is_gsm_reset {
-                    crate::services::device_event::DeviceEventType::GsmReset
-                } else {
-                    crate::services::device_event::classify_restart(
-                        offline_duration_secs,
-                        was_moving,
-                        ignition_was_on,
-                    )
-                };
+                let event_type = crate::services::device_event::classify_restart(
+                    offline_duration_secs,
+                    was_moving,
+                    ignition_was_on,
+                );
 
                 let record = crate::services::device_event::DeviceEventRecord {
                     device_id,
