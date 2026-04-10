@@ -19,6 +19,7 @@ import { AdminMonitoringComponent } from './pages/admin-monitoring.component';
 import { AdminReportsComponent } from './pages/admin-reports.component';
 import { AdminTramesComponent } from './pages/admin-trames.component';
 import { AdminAutoRecoveryComponent } from './pages/admin-auto-recovery.component';
+import { AdminCommandsComponent } from './pages/admin-commands.component';
 import { AdminGuard } from './guards/admin.guard';
 
 export const adminRoutes: Routes = [
@@ -46,4 +47,5 @@ export const adminRoutes: Routes = [
   { path: 'reports', component: AdminReportsComponent, canActivate: [AdminGuard] },
   { path: 'trames', component: AdminTramesComponent, canActivate: [AdminGuard] },
   { path: 'auto-recovery', component: AdminAutoRecoveryComponent, canActivate: [AdminGuard] },
+  { path: 'commands', component: AdminCommandsComponent, canActivate: [AdminGuard] },
 ];

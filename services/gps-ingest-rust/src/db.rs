@@ -928,7 +928,7 @@ impl TelemetryStore for Database {
             SET status = 'sent', sent_at = NOW(), attempts = attempts + 1, updated_at = NOW()
             WHERE id = (
                 SELECT id FROM device_commands
-                WHERE device_id = $1 AND status = 'pending' AND command_type = 'GO'
+                WHERE device_id = $1 AND status = 'pending'
                 ORDER BY created_at ASC
                 LIMIT 1
             )
