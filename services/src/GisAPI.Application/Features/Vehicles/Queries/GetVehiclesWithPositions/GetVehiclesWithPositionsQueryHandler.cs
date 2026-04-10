@@ -143,7 +143,7 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             latestPositions.TryGetValue(deviceId, out var position);
             deviceStats.TryGetValue(deviceId, out var stats);
             var lastComm = v.GpsDevice?.LastCommunication;
-            var isOnline = lastComm.HasValue && (DateTime.UtcNow - lastComm.Value).TotalMinutes < 30;
+            var isOnline = lastComm.HasValue && (DateTime.UtcNow - lastComm.Value).TotalMinutes < 41;
             // Calculate battery level from latest position's PowerVoltage (same formula as Rust ingest)
             // Fallback to GpsDevice.BatteryLevel if PowerVoltage is not available
             int? batteryLevel = v.GpsDevice?.BatteryLevel;

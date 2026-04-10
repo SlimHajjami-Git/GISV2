@@ -302,6 +302,19 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<User>().Property(u => u.CanTours).HasColumnName("can_tours");
         modelBuilder.Entity<User>().Property(u => u.CanFuel).HasColumnName("can_fuel");
         modelBuilder.Entity<User>().Property(u => u.CanPlayback).HasColumnName("can_playback");
+        // Per-report user permission column mappings
+        modelBuilder.Entity<User>().Property(u => u.CanReportTrips).HasColumnName("can_report_trips");
+        modelBuilder.Entity<User>().Property(u => u.CanReportFuel).HasColumnName("can_report_fuel");
+        modelBuilder.Entity<User>().Property(u => u.CanReportSpeed).HasColumnName("can_report_speed");
+        modelBuilder.Entity<User>().Property(u => u.CanReportStops).HasColumnName("can_report_stops");
+        modelBuilder.Entity<User>().Property(u => u.CanReportMileage).HasColumnName("can_report_mileage");
+        modelBuilder.Entity<User>().Property(u => u.CanReportCosts).HasColumnName("can_report_costs");
+        modelBuilder.Entity<User>().Property(u => u.CanReportMaintenance).HasColumnName("can_report_maintenance");
+        modelBuilder.Entity<User>().Property(u => u.CanReportDaily).HasColumnName("can_report_daily");
+        modelBuilder.Entity<User>().Property(u => u.CanReportMonthly).HasColumnName("can_report_monthly");
+        modelBuilder.Entity<User>().Property(u => u.CanReportMileagePeriod).HasColumnName("can_report_mileage_period");
+        modelBuilder.Entity<User>().Property(u => u.CanReportSpeedInfraction).HasColumnName("can_report_speed_infraction");
+        modelBuilder.Entity<User>().Property(u => u.CanReportDrivingBehavior).HasColumnName("can_report_driving_behavior");
 
         // Role configuration is handled by RoleConfiguration.cs
 
