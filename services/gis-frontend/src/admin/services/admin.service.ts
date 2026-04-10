@@ -892,32 +892,6 @@ export class AdminService {
     return this.getClients();
   }
 
-  // ==================== DEVICE COMMANDS ====================
-
-  sendBulkCommand(deviceIds: number[], commandText: string): Observable<any> {
-    return this.http.post<any>(
-      `${this.apiUrl}/admin/devices/bulk-command`,
-      { deviceIds, commandText },
-      { headers: this.getHeaders() }
-    );
-  }
-
-  getCommandDashboard(companyId?: number): Observable<any[]> {
-    let url = `${this.apiUrl}/admin/devices/command-dashboard`;
-    if (companyId) url += `?companyId=${companyId}`;
-    return this.http.get<any[]>(url, { headers: this.getHeaders() }).pipe(
-      catchError(() => of([]))
-    );
-  }
-
-  getCommandHistory(limit = 100, companyId?: number | null): Observable<any[]> {
-    let url = `${this.apiUrl}/admin/devices/command-history?limit=${limit}`;
-    if (companyId) url += `&companyId=${companyId}`;
-    return this.http.get<any[]>(url, { headers: this.getHeaders() }).pipe(
-      catchError(() => of([]))
-    );
-  }
-
 }
 
 // Permission interfaces
