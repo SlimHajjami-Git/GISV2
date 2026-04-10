@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using GisAPI.Domain.Common;
 
 namespace GisAPI.Domain.Entities;
@@ -40,17 +41,29 @@ public class User : TenantEntity
     public bool CanPlayback { get; set; } = false;
 
     // Per-report permissions (granular access when CanReports is true)
+    [Column("can_report_trips")]
     public bool CanReportTrips { get; set; } = true;
+    [Column("can_report_fuel")]
     public bool CanReportFuel { get; set; } = true;
+    [Column("can_report_speed")]
     public bool CanReportSpeed { get; set; } = true;
+    [Column("can_report_stops")]
     public bool CanReportStops { get; set; } = true;
+    [Column("can_report_mileage")]
     public bool CanReportMileage { get; set; } = true;
+    [Column("can_report_costs")]
     public bool CanReportCosts { get; set; } = true;
+    [Column("can_report_maintenance")]
     public bool CanReportMaintenance { get; set; } = true;
+    [Column("can_report_daily")]
     public bool CanReportDaily { get; set; } = true;
+    [Column("can_report_monthly")]
     public bool CanReportMonthly { get; set; } = true;
+    [Column("can_report_mileage_period")]
     public bool CanReportMileagePeriod { get; set; } = true;
+    [Column("can_report_speed_infraction")]
     public bool CanReportSpeedInfraction { get; set; } = true;
+    [Column("can_report_driving_behavior")]
     public bool CanReportDrivingBehavior { get; set; } = true;
 
     // Navigation
