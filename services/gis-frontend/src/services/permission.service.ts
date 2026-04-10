@@ -198,8 +198,9 @@ export class PermissionService {
     if (!user) return false;
     if (user.isSystemAdmin) return true;
 
+    // Step 1: Check subscription-level report access (company limit)
     const features = user.subscriptionFeatures;
-    if (!features) return false; // No subscription data = deny by default
+    if (!features) return false;
 
     const reportMapping: Record<string, keyof SubscriptionFeatures> = {
       'trips': 'reportTrips',
@@ -217,7 +218,33 @@ export class PermissionService {
     };
 
     const featureKey = reportMapping[reportKey];
-    if (!featureKey) return true;
-    return features[featureKey] !== false;
+    if (featureKey && features[featureKey] === false) return false;
+
+    // Step 2: Company admins bypass user-level checks
+    if (user.isCompanyAdmin) return true;
+
+    // Step 3: Check per-user report permissions
+    const up = user.userPermissions;
+    if (up) {
+      const userReportMapping: Record<string, string> = {
+        'trips': 'canReportTrips',
+        'fuel': 'canReportFuel',
+        'speed': 'canReportSpeed',
+        'stops': 'canReportStops',
+        'mileage': 'canReportMileage',
+        'costs': 'canReportCosts',
+        'maintenance': 'canReportMaintenance',
+        'daily': 'canReportDaily',
+        'monthly': 'canReportMonthly',
+        'mileage_period': 'canReportMileagePeriod',
+        'speed_infraction': 'canReportSpeedInfraction',
+        'driving_behavior': 'canReportDrivingBehavior'
+      };
+
+      const userPermKey = userReportMapping[reportKey];
+      if (userPermKey && (up as any)[userPermKey] === false) return false;
+    }
+
+    return true;
   }
 }

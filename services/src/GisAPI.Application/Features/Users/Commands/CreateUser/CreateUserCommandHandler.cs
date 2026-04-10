@@ -127,7 +127,19 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
             CanSuppliers = request.CanSuppliers,
             CanFleetManagement = request.CanFleetManagement,
             CanTours = request.CanTours,
-            CanPlayback = request.CanPlayback
+            CanPlayback = request.CanPlayback,
+            CanReportTrips = request.CanReportTrips,
+            CanReportFuel = request.CanReportFuel,
+            CanReportSpeed = request.CanReportSpeed,
+            CanReportStops = request.CanReportStops,
+            CanReportMileage = request.CanReportMileage,
+            CanReportCosts = request.CanReportCosts,
+            CanReportMaintenance = request.CanReportMaintenance,
+            CanReportDaily = request.CanReportDaily,
+            CanReportMonthly = request.CanReportMonthly,
+            CanReportMileagePeriod = request.CanReportMileagePeriod,
+            CanReportSpeedInfraction = request.CanReportSpeedInfraction,
+            CanReportDrivingBehavior = request.CanReportDrivingBehavior
         };
 
         _context.Users.Add(user);
@@ -188,7 +200,19 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
                 user.CanSuppliers,
                 user.CanFleetManagement,
                 user.CanTours,
-                user.CanPlayback
+                user.CanPlayback,
+                user.CanReportTrips,
+                user.CanReportFuel,
+                user.CanReportSpeed,
+                user.CanReportStops,
+                user.CanReportMileage,
+                user.CanReportCosts,
+                user.CanReportMaintenance,
+                user.CanReportDaily,
+                user.CanReportMonthly,
+                user.CanReportMileagePeriod,
+                user.CanReportSpeedInfraction,
+                user.CanReportDrivingBehavior
             )
         );
     }

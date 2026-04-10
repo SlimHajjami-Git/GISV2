@@ -49,7 +49,19 @@ public class GetCurrentUserQueryHandler : IRequestHandler<GetCurrentUserQuery, U
                     u.CanSuppliers,
                     u.CanFleetManagement,
                     u.CanTours,
-                    u.CanPlayback
+                    u.CanPlayback,
+                    u.CanReportTrips,
+                    u.CanReportFuel,
+                    u.CanReportSpeed,
+                    u.CanReportStops,
+                    u.CanReportMileage,
+                    u.CanReportCosts,
+                    u.CanReportMaintenance,
+                    u.CanReportDaily,
+                    u.CanReportMonthly,
+                    u.CanReportMileagePeriod,
+                    u.CanReportSpeedInfraction,
+                    u.CanReportDrivingBehavior
                 )
             ))
             .FirstOrDefaultAsync(ct);

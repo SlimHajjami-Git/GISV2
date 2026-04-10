@@ -47,7 +47,20 @@ public record UserPermissionsDto(
     bool CanSuppliers,
     bool CanFleetManagement,
     bool CanTours,
-    bool CanPlayback
+    bool CanPlayback,
+    // Per-report permissions
+    bool CanReportTrips = true,
+    bool CanReportFuel = true,
+    bool CanReportSpeed = true,
+    bool CanReportStops = true,
+    bool CanReportMileage = true,
+    bool CanReportCosts = true,
+    bool CanReportMaintenance = true,
+    bool CanReportDaily = true,
+    bool CanReportMonthly = true,
+    bool CanReportMileagePeriod = true,
+    bool CanReportSpeedInfraction = true,
+    bool CanReportDrivingBehavior = true
 );
 
 public record SubscriptionFeaturesDto(

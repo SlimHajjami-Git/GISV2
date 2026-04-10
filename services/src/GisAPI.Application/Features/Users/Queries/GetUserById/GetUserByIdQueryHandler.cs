@@ -55,7 +55,19 @@ public class GetUserByIdQueryHandler : IRequestHandler<GetUserByIdQuery, UserLis
                     u.CanSuppliers,
                     u.CanFleetManagement,
                     u.CanTours,
-                    u.CanPlayback
+                    u.CanPlayback,
+                    u.CanReportTrips,
+                    u.CanReportFuel,
+                    u.CanReportSpeed,
+                    u.CanReportStops,
+                    u.CanReportMileage,
+                    u.CanReportCosts,
+                    u.CanReportMaintenance,
+                    u.CanReportDaily,
+                    u.CanReportMonthly,
+                    u.CanReportMileagePeriod,
+                    u.CanReportSpeedInfraction,
+                    u.CanReportDrivingBehavior
                 )
             ))
             .FirstOrDefaultAsync(ct);

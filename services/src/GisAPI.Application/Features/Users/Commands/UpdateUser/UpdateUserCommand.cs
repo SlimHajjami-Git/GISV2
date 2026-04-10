@@ -35,5 +35,18 @@ public record UpdateUserCommand(
     bool? CanSuppliers = null,
     bool? CanFleetManagement = null,
     bool? CanTours = null,
-    bool? CanPlayback = null
+    bool? CanPlayback = null,
+    // Per-report permissions
+    bool? CanReportTrips = null,
+    bool? CanReportFuel = null,
+    bool? CanReportSpeed = null,
+    bool? CanReportStops = null,
+    bool? CanReportMileage = null,
+    bool? CanReportCosts = null,
+    bool? CanReportMaintenance = null,
+    bool? CanReportDaily = null,
+    bool? CanReportMonthly = null,
+    bool? CanReportMileagePeriod = null,
+    bool? CanReportSpeedInfraction = null,
+    bool? CanReportDrivingBehavior = null
 ) : ICommand;

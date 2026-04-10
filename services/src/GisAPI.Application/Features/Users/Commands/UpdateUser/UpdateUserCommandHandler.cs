@@ -92,6 +92,19 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         if (request.CanFleetManagement.HasValue) user.CanFleetManagement = request.CanFleetManagement.Value;
         if (request.CanTours.HasValue) user.CanTours = request.CanTours.Value;
         if (request.CanPlayback.HasValue) user.CanPlayback = request.CanPlayback.Value;
+        // Per-report permissions
+        if (request.CanReportTrips.HasValue) user.CanReportTrips = request.CanReportTrips.Value;
+        if (request.CanReportFuel.HasValue) user.CanReportFuel = request.CanReportFuel.Value;
+        if (request.CanReportSpeed.HasValue) user.CanReportSpeed = request.CanReportSpeed.Value;
+        if (request.CanReportStops.HasValue) user.CanReportStops = request.CanReportStops.Value;
+        if (request.CanReportMileage.HasValue) user.CanReportMileage = request.CanReportMileage.Value;
+        if (request.CanReportCosts.HasValue) user.CanReportCosts = request.CanReportCosts.Value;
+        if (request.CanReportMaintenance.HasValue) user.CanReportMaintenance = request.CanReportMaintenance.Value;
+        if (request.CanReportDaily.HasValue) user.CanReportDaily = request.CanReportDaily.Value;
+        if (request.CanReportMonthly.HasValue) user.CanReportMonthly = request.CanReportMonthly.Value;
+        if (request.CanReportMileagePeriod.HasValue) user.CanReportMileagePeriod = request.CanReportMileagePeriod.Value;
+        if (request.CanReportSpeedInfraction.HasValue) user.CanReportSpeedInfraction = request.CanReportSpeedInfraction.Value;
+        if (request.CanReportDrivingBehavior.HasValue) user.CanReportDrivingBehavior = request.CanReportDrivingBehavior.Value;
 
         // Update vehicle assignments if provided
         if (request.AssignedVehicleIds != null)

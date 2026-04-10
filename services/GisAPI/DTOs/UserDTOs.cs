@@ -33,7 +33,20 @@ public record CreateUserRequest(
     bool CanFleetManagement = false,
     bool CanFuel = false,
     bool CanTours = false,
-    bool CanPlayback = false
+    bool CanPlayback = false,
+    // Per-report permissions
+    bool CanReportTrips = true,
+    bool CanReportFuel = true,
+    bool CanReportSpeed = true,
+    bool CanReportStops = true,
+    bool CanReportMileage = true,
+    bool CanReportCosts = true,
+    bool CanReportMaintenance = true,
+    bool CanReportDaily = true,
+    bool CanReportMonthly = true,
+    bool CanReportMileagePeriod = true,
+    bool CanReportSpeedInfraction = true,
+    bool CanReportDrivingBehavior = true
 );
 
 public record UpdateUserRequest(
@@ -60,7 +73,20 @@ public record UpdateUserRequest(
     bool? CanFleetManagement = null,
     bool? CanFuel = null,
     bool? CanTours = null,
-    bool? CanPlayback = null
+    bool? CanPlayback = null,
+    // Per-report permissions
+    bool? CanReportTrips = null,
+    bool? CanReportFuel = null,
+    bool? CanReportSpeed = null,
+    bool? CanReportStops = null,
+    bool? CanReportMileage = null,
+    bool? CanReportCosts = null,
+    bool? CanReportMaintenance = null,
+    bool? CanReportDaily = null,
+    bool? CanReportMonthly = null,
+    bool? CanReportMileagePeriod = null,
+    bool? CanReportSpeedInfraction = null,
+    bool? CanReportDrivingBehavior = null
 );
 
 public record UserSettingsDto(

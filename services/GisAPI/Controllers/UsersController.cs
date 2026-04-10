@@ -75,7 +75,19 @@ public class UsersController : ControllerBase
             request.CanFleetManagement,
             request.CanFuel,
             request.CanTours,
-            request.CanPlayback
+            request.CanPlayback,
+            request.CanReportTrips,
+            request.CanReportFuel,
+            request.CanReportSpeed,
+            request.CanReportStops,
+            request.CanReportMileage,
+            request.CanReportCosts,
+            request.CanReportMaintenance,
+            request.CanReportDaily,
+            request.CanReportMonthly,
+            request.CanReportMileagePeriod,
+            request.CanReportSpeedInfraction,
+            request.CanReportDrivingBehavior
         );
 
         var user = await _mediator.Send(command);
@@ -109,7 +121,19 @@ public class UsersController : ControllerBase
             CanFleetManagement: request.CanFleetManagement,
             CanFuel: request.CanFuel,
             CanTours: request.CanTours,
-            CanPlayback: request.CanPlayback
+            CanPlayback: request.CanPlayback,
+            CanReportTrips: request.CanReportTrips,
+            CanReportFuel: request.CanReportFuel,
+            CanReportSpeed: request.CanReportSpeed,
+            CanReportStops: request.CanReportStops,
+            CanReportMileage: request.CanReportMileage,
+            CanReportCosts: request.CanReportCosts,
+            CanReportMaintenance: request.CanReportMaintenance,
+            CanReportDaily: request.CanReportDaily,
+            CanReportMonthly: request.CanReportMonthly,
+            CanReportMileagePeriod: request.CanReportMileagePeriod,
+            CanReportSpeedInfraction: request.CanReportSpeedInfraction,
+            CanReportDrivingBehavior: request.CanReportDrivingBehavior
         );
 
         await _mediator.Send(command);

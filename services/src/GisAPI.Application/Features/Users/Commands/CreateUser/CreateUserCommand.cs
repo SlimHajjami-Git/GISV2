@@ -33,5 +33,18 @@ public record CreateUserCommand(
     bool CanSuppliers = false,
     bool CanFleetManagement = false,
     bool CanTours = false,
-    bool CanPlayback = false
+    bool CanPlayback = false,
+    // Per-report permissions
+    bool CanReportTrips = true,
+    bool CanReportFuel = true,
+    bool CanReportSpeed = true,
+    bool CanReportStops = true,
+    bool CanReportMileage = true,
+    bool CanReportCosts = true,
+    bool CanReportMaintenance = true,
+    bool CanReportDaily = true,
+    bool CanReportMonthly = true,
+    bool CanReportMileagePeriod = true,
+    bool CanReportSpeedInfraction = true,
+    bool CanReportDrivingBehavior = true
 ) : ICommand<UserListDto>;

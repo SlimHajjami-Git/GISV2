@@ -161,7 +161,19 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, L
             CanSuppliers: user.CanSuppliers,
             CanFleetManagement: user.CanFleetManagement,
             CanTours: user.CanTours,
-            CanPlayback: user.CanPlayback
+            CanPlayback: user.CanPlayback,
+            CanReportTrips: user.CanReportTrips,
+            CanReportFuel: user.CanReportFuel,
+            CanReportSpeed: user.CanReportSpeed,
+            CanReportStops: user.CanReportStops,
+            CanReportMileage: user.CanReportMileage,
+            CanReportCosts: user.CanReportCosts,
+            CanReportMaintenance: user.CanReportMaintenance,
+            CanReportDaily: user.CanReportDaily,
+            CanReportMonthly: user.CanReportMonthly,
+            CanReportMileagePeriod: user.CanReportMileagePeriod,
+            CanReportSpeedInfraction: user.CanReportSpeedInfraction,
+            CanReportDrivingBehavior: user.CanReportDrivingBehavior
         );
 
         return new LoginResponse(

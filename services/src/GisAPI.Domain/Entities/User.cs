@@ -39,6 +39,20 @@ public class User : TenantEntity
     public bool CanTours { get; set; } = false;
     public bool CanPlayback { get; set; } = false;
 
+    // Per-report permissions (granular access when CanReports is true)
+    public bool CanReportTrips { get; set; } = true;
+    public bool CanReportFuel { get; set; } = true;
+    public bool CanReportSpeed { get; set; } = true;
+    public bool CanReportStops { get; set; } = true;
+    public bool CanReportMileage { get; set; } = true;
+    public bool CanReportCosts { get; set; } = true;
+    public bool CanReportMaintenance { get; set; } = true;
+    public bool CanReportDaily { get; set; } = true;
+    public bool CanReportMonthly { get; set; } = true;
+    public bool CanReportMileagePeriod { get; set; } = true;
+    public bool CanReportSpeedInfraction { get; set; } = true;
+    public bool CanReportDrivingBehavior { get; set; } = true;
+
     // Navigation
     public Role Role { get; set; } = null!;
     public Societe Societe { get; set; } = null!;

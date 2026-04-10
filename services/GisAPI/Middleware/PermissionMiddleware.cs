@@ -16,6 +16,20 @@ public class PermissionMiddleware
         { "/api/roles", "CanUsers" },
         { "/api/drivers", "CanDrivers" },
         { "/api/employees", "CanDrivers" },
+        // Per-report user permissions (specific routes before generic /api/reports)
+        { "/api/reports/trips", "CanReportTrips" },
+        { "/api/reports/fuel", "CanReportFuel" },
+        { "/api/reports/speed-infraction", "CanReportSpeedInfraction" },
+        { "/api/reports/speed", "CanReportSpeed" },
+        { "/api/reports/stops", "CanReportStops" },
+        { "/api/reports/mileage-period", "CanReportMileagePeriod" },
+        { "/api/reports/mileage", "CanReportMileage" },
+        { "/api/reports/costs", "CanReportCosts" },
+        { "/api/reports/maintenance", "CanReportMaintenance" },
+        { "/api/reports/daily", "CanReportDaily" },
+        { "/api/reports/monthly", "CanReportMonthly" },
+        { "/api/reports/driving-behavior", "CanReportDrivingBehavior" },
+        // Generic reports fallback (list, create, schedules)
         { "/api/reports", "CanReports" },
         { "/api/geofences", "CanGeofences" },
         { "/api/maintenance", "CanMaintenance" },
@@ -272,6 +286,19 @@ public class PermissionMiddleware
                     "CanSuppliers" => currentUser.CanSuppliers,
                     "CanFleetManagement" => currentUser.CanFleetManagement,
                     "CanTours" => currentUser.CanTours,
+                    // Per-report permissions (require CanReports + specific report permission)
+                    "CanReportTrips" => currentUser.CanReports && currentUser.CanReportTrips,
+                    "CanReportFuel" => currentUser.CanReports && currentUser.CanReportFuel,
+                    "CanReportSpeed" => currentUser.CanReports && currentUser.CanReportSpeed,
+                    "CanReportStops" => currentUser.CanReports && currentUser.CanReportStops,
+                    "CanReportMileage" => currentUser.CanReports && currentUser.CanReportMileage,
+                    "CanReportCosts" => currentUser.CanReports && currentUser.CanReportCosts,
+                    "CanReportMaintenance" => currentUser.CanReports && currentUser.CanReportMaintenance,
+                    "CanReportDaily" => currentUser.CanReports && currentUser.CanReportDaily,
+                    "CanReportMonthly" => currentUser.CanReports && currentUser.CanReportMonthly,
+                    "CanReportMileagePeriod" => currentUser.CanReports && currentUser.CanReportMileagePeriod,
+                    "CanReportSpeedInfraction" => currentUser.CanReports && currentUser.CanReportSpeedInfraction,
+                    "CanReportDrivingBehavior" => currentUser.CanReports && currentUser.CanReportDrivingBehavior,
                     _ => true
                 };
 

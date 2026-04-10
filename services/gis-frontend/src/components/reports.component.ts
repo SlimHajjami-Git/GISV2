@@ -9,6 +9,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
 import { AdminService } from '../admin/services/admin.service';
 import { PdfExportService } from '../services/pdf-export.service';
 import { ReportStateService } from '../services/report-state.service';
+import { PermissionService } from '../services/permission.service';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
@@ -362,7 +363,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     private adminService: AdminService,
     private pdfExportService: PdfExportService,
     private sanitizer: DomSanitizer,
-    private reportStateService: ReportStateService
+    private reportStateService: ReportStateService,
+    private permissionService: PermissionService
   ) {}
 
   ngOnInit() {
@@ -624,7 +626,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   getTemplatesByCategory(category: string): any[] {
-    return this.templates.filter(t => (t as any).category === category);
+    return this.templates.filter(t => {
+      if ((t as any).category !== category) return false;
+      // Map template type to report permission key (handle hyphen vs underscore)
+      const reportKey = (t as any).type?.replace(/-/g, '_');
+      return this.permissionService.hasReportAccess(reportKey);
+    });
   }
 
   @HostListener('document:click', ['$event'])
