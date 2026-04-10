@@ -35,6 +35,19 @@ interface UserPermissions {
   canFleetManagement: boolean;
   canTours: boolean;
   canPlayback: boolean;
+  // Per-report permissions
+  canReportTrips: boolean;
+  canReportFuel: boolean;
+  canReportSpeed: boolean;
+  canReportStops: boolean;
+  canReportMileage: boolean;
+  canReportCosts: boolean;
+  canReportMaintenance: boolean;
+  canReportDaily: boolean;
+  canReportMonthly: boolean;
+  canReportMileagePeriod: boolean;
+  canReportSpeedInfraction: boolean;
+  canReportDrivingBehavior: boolean;
 }
 
 interface User {
@@ -296,6 +309,66 @@ interface VehicleOption {
                       <span class="perm-label">📊 Rapports</span>
                       <span class="perm-desc">Rapports d'activité et analyse</span>
                     </label>
+                    <!-- Sub-report permissions accordion (shown when canReports is checked) -->
+                    <div class="report-sub-permissions" *ngIf="userForm.canReports">
+                      <div class="sub-perm-header">
+                        <span class="sub-perm-title">Types de rapports autorisés</span>
+                        <div class="sub-perm-actions">
+                          <button type="button" class="btn-mini" (click)="selectAllReports()">Tous</button>
+                          <button type="button" class="btn-mini" (click)="deselectAllReports()">Aucun</button>
+                        </div>
+                      </div>
+                      <div class="sub-perm-grid">
+                        <label class="sub-perm-item">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportTrips">
+                          <span>🛣️ Trajets</span>
+                        </label>
+                        <label class="sub-perm-item">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportStops">
+                          <span>🅿️ Arrêts</span>
+                        </label>
+                        <label class="sub-perm-item">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportMileage">
+                          <span>📏 Kilométrique</span>
+                        </label>
+                        <label class="sub-perm-item">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportMileagePeriod">
+                          <span>📈 Km par période</span>
+                        </label>
+                        <label class="sub-perm-item">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportDaily">
+                          <span>📅 Journalier</span>
+                        </label>
+                        <label class="sub-perm-item">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportSpeed">
+                          <span>🏎️ Vitesse</span>
+                        </label>
+                        <label class="sub-perm-item">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportSpeedInfraction">
+                          <span>⚠️ Infractions vitesse</span>
+                        </label>
+                        <label class="sub-perm-item">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportDrivingBehavior">
+                          <span>🚦 Comportement</span>
+                        </label>
+                        <label class="sub-perm-item">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportFuel">
+                          <span>⛽ Carburant</span>
+                        </label>
+                        <label class="sub-perm-item">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportCosts">
+                          <span>🔩 Réparations</span>
+                        </label>
+                        <label class="sub-perm-item">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportMaintenance">
+                          <span>🔧 Maintenance</span>
+                        </label>
+                        <label class="sub-perm-item">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportMonthly">
+                          <span>📊 Mensuel flotte</span>
+                        </label>
+                      </div>
+                    </div>
                     <label class="perm-check">
                       <input type="checkbox" [(ngModel)]="userForm.canGeofences">
                       <span class="perm-label">🗺️ Géofences</span>
@@ -1431,6 +1504,66 @@ interface VehicleOption {
     .btn-text { background:none; border:none; color:#6366f1; font-size:12px; font-weight:500; cursor:pointer; padding:4px 8px; border-radius:4px; }
     .btn-text:hover { background:#f0f0ff; }
 
+    /* Report sub-permissions accordion */
+    .report-sub-permissions {
+      grid-column: 1 / -1;
+      background: #f0f4ff;
+      border: 1px solid #c7d2fe;
+      border-radius: 8px;
+      padding: 12px;
+      animation: slideDown 0.2s ease-out;
+    }
+    @keyframes slideDown {
+      from { opacity: 0; max-height: 0; transform: translateY(-8px); }
+      to { opacity: 1; max-height: 500px; transform: translateY(0); }
+    }
+    .sub-perm-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .sub-perm-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #4338ca;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .sub-perm-actions { display: flex; gap: 6px; }
+    .btn-mini {
+      background: #e0e7ff;
+      border: 1px solid #a5b4fc;
+      color: #4338ca;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 2px 8px;
+      border-radius: 4px;
+      transition: all 0.15s;
+    }
+    .btn-mini:hover { background: #c7d2fe; }
+    .sub-perm-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 6px;
+    }
+    .sub-perm-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      background: #fff;
+      border: 1px solid #e0e7ff;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #334155;
+      transition: all 0.15s;
+    }
+    .sub-perm-item:hover { border-color: #818cf8; background: #f5f3ff; }
+    .sub-perm-item input[type="checkbox"] { accent-color: #6366f1; width: 14px; height: 14px; cursor: pointer; }
+
     /* Modal Footer */
     .modal-footer {
       display: flex;
@@ -1552,7 +1685,20 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     canSuppliers: false,
     canFleetManagement: false,
     canTours: false,
-    canPlayback: false
+    canPlayback: false,
+    // Per-report permissions (default true = all reports accessible when canReports is on)
+    canReportTrips: true,
+    canReportFuel: true,
+    canReportSpeed: true,
+    canReportStops: true,
+    canReportMileage: true,
+    canReportCosts: true,
+    canReportMaintenance: true,
+    canReportDaily: true,
+    canReportMonthly: true,
+    canReportMileagePeriod: true,
+    canReportSpeedInfraction: true,
+    canReportDrivingBehavior: true
   };
   availableVehicles: VehicleOption[] = [];
 
@@ -1840,7 +1986,19 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         canSuppliers: up?.canSuppliers ?? false,
         canFleetManagement: up?.canFleetManagement ?? false,
         canTours: up?.canTours ?? false,
-        canPlayback: up?.canPlayback ?? false
+        canPlayback: up?.canPlayback ?? false,
+        canReportTrips: up?.canReportTrips ?? true,
+        canReportFuel: up?.canReportFuel ?? true,
+        canReportSpeed: up?.canReportSpeed ?? true,
+        canReportStops: up?.canReportStops ?? true,
+        canReportMileage: up?.canReportMileage ?? true,
+        canReportCosts: up?.canReportCosts ?? true,
+        canReportMaintenance: up?.canReportMaintenance ?? true,
+        canReportDaily: up?.canReportDaily ?? true,
+        canReportMonthly: up?.canReportMonthly ?? true,
+        canReportMileagePeriod: up?.canReportMileagePeriod ?? true,
+        canReportSpeedInfraction: up?.canReportSpeedInfraction ?? true,
+        canReportDrivingBehavior: up?.canReportDrivingBehavior ?? true
       };
     } else {
       this.editingUser = null;
@@ -1868,7 +2026,19 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         canSuppliers: false,
         canFleetManagement: false,
         canTours: false,
-        canPlayback: false
+        canPlayback: false,
+        canReportTrips: true,
+        canReportFuel: true,
+        canReportSpeed: true,
+        canReportStops: true,
+        canReportMileage: true,
+        canReportCosts: true,
+        canReportMaintenance: true,
+        canReportDaily: true,
+        canReportMonthly: true,
+        canReportMileagePeriod: true,
+        canReportSpeedInfraction: true,
+        canReportDrivingBehavior: true
       };
     }
     this.userModalStep = 1;
@@ -1924,6 +2094,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     this.userForm.canFleetManagement = true;
     this.userForm.canTours = true;
     this.userForm.canPlayback = true;
+    this.selectAllReports();
   }
 
   deselectAllPermissions() {
@@ -1943,6 +2114,37 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     this.userForm.canFleetManagement = false;
     this.userForm.canTours = false;
     this.userForm.canPlayback = false;
+    this.deselectAllReports();
+  }
+
+  selectAllReports() {
+    this.userForm.canReportTrips = true;
+    this.userForm.canReportFuel = true;
+    this.userForm.canReportSpeed = true;
+    this.userForm.canReportStops = true;
+    this.userForm.canReportMileage = true;
+    this.userForm.canReportCosts = true;
+    this.userForm.canReportMaintenance = true;
+    this.userForm.canReportDaily = true;
+    this.userForm.canReportMonthly = true;
+    this.userForm.canReportMileagePeriod = true;
+    this.userForm.canReportSpeedInfraction = true;
+    this.userForm.canReportDrivingBehavior = true;
+  }
+
+  deselectAllReports() {
+    this.userForm.canReportTrips = false;
+    this.userForm.canReportFuel = false;
+    this.userForm.canReportSpeed = false;
+    this.userForm.canReportStops = false;
+    this.userForm.canReportMileage = false;
+    this.userForm.canReportCosts = false;
+    this.userForm.canReportMaintenance = false;
+    this.userForm.canReportDaily = false;
+    this.userForm.canReportMonthly = false;
+    this.userForm.canReportMileagePeriod = false;
+    this.userForm.canReportSpeedInfraction = false;
+    this.userForm.canReportDrivingBehavior = false;
   }
 
   saveUser() {
@@ -1971,7 +2173,19 @@ export class UserManagementComponent implements OnInit, OnDestroy {
       canSuppliers: this.userForm.canSuppliers,
       canFleetManagement: this.userForm.canFleetManagement,
       canTours: this.userForm.canTours,
-      canPlayback: this.userForm.canPlayback
+      canPlayback: this.userForm.canPlayback,
+      canReportTrips: this.userForm.canReportTrips,
+      canReportFuel: this.userForm.canReportFuel,
+      canReportSpeed: this.userForm.canReportSpeed,
+      canReportStops: this.userForm.canReportStops,
+      canReportMileage: this.userForm.canReportMileage,
+      canReportCosts: this.userForm.canReportCosts,
+      canReportMaintenance: this.userForm.canReportMaintenance,
+      canReportDaily: this.userForm.canReportDaily,
+      canReportMonthly: this.userForm.canReportMonthly,
+      canReportMileagePeriod: this.userForm.canReportMileagePeriod,
+      canReportSpeedInfraction: this.userForm.canReportSpeedInfraction,
+      canReportDrivingBehavior: this.userForm.canReportDrivingBehavior
     };
 
     if (this.editingUser) {
