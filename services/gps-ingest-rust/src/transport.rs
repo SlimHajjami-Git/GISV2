@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::{HashMap, VecDeque}, sync::Arc};
 
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Duration, Utc};
@@ -259,6 +259,11 @@ async fn handle_tcp_connection(
     let mut last_auto_recovery: HashMap<i32, std::time::Instant> = HashMap::new();
     const AUTO_RECOVERY_COOLDOWN_SECS: u64 = 300; // 5 minutes
 
+    // Ring buffer: keep last 10 position frames for context logging when bit5=0 is detected
+    let mut frame_history: VecDeque<String> = VecDeque::with_capacity(12);
+    // Counter: after bit5=0 detection, log the next N frames as "after" context
+    let mut log_after_bit5: u8 = 0;
+
     // Noron protocol uses binary framing — handle separately from ASCII protocols
     let is_noron = cfg.protocol == "noron";
 
@@ -415,9 +420,41 @@ async fn handle_tcp_connection(
                         if actual_frame.len() >= 44 {
                             if let Some(flags_hex) = actual_frame.get(42..44) {
                                 if let Ok(flags) = u8::from_str_radix(flags_hex, 16) {
+                                    let bit5_on = (flags & 0x20) != 0;
+                                    let gps_valid = (flags & 0x40) != 0;
+                                    let frame_preview = &actual_frame[..std::cmp::min(actual_frame.len(), 200)];
+
+                                    // ── Buffer every position frame for context logging ──
+                                    frame_history.push_back(format!(
+                                        "flags=0x{:02X} bit5={} gps={} | {}",
+                                        flags, if bit5_on { "1" } else { "0" },
+                                        if gps_valid { "OK" } else { "NO" },
+                                        frame_preview
+                                    ));
+                                    if frame_history.len() > 10 {
+                                        frame_history.pop_front();
+                                    }
+
+                                    // ── Log "after" context frames following a bit5=0 detection ──
+                                    if log_after_bit5 > 0 {
+                                        let after_imei = if let Some(ref p) = peer {
+                                            let map = connection_map.lock().await;
+                                            map.get(p).cloned()
+                                        } else { None };
+                                        info!(
+                                            imei = ?after_imei,
+                                            flags = format!("0x{:02X}", flags),
+                                            bit5 = bit5_on,
+                                            remaining = log_after_bit5,
+                                            frame = %frame_preview,
+                                            "🔍 Frame AFTER bit5=0 detection (context)"
+                                        );
+                                        log_after_bit5 -= 1;
+                                    }
+
                                     // Only check bit5 if GPS is valid (bit6=1).
                                     // flags=0x00 means corrupted/empty data, NOT real immobilization.
-                                    if (flags & 0x40) != 0 && (flags & 0x20) == 0 {
+                                    if gps_valid && !bit5_on {
                                         // ── Resolve device for immobilization check ──
                                         let imei_opt = if let Some(ref p) = peer {
                                             let map = connection_map.lock().await;
@@ -445,6 +482,28 @@ async fn handle_tcp_connection(
                                                     // Skip — already processed recently (don't log every frame)
                                                     break;
                                                 }
+
+                                                // ── Dump frame history (last ~10 frames BEFORE detection) ──
+                                                info!(
+                                                    imei = %imei,
+                                                    device_id,
+                                                    history_count = frame_history.len(),
+                                                    "🔍 bit5=0 DETECTED — dumping last {} frames as context",
+                                                    frame_history.len()
+                                                );
+                                                for (i, hist) in frame_history.iter().enumerate() {
+                                                    info!(
+                                                        imei = %imei,
+                                                        device_id,
+                                                        index = i + 1,
+                                                        total = frame_history.len(),
+                                                        frame = %hist,
+                                                        "🔍 BEFORE bit5=0 [{}/{}]",
+                                                        i + 1, frame_history.len()
+                                                    );
+                                                }
+                                                // Start logging next 5 frames as "after" context
+                                                log_after_bit5 = 5;
 
                                                 // Log once per cooldown period (not every frame)
                                                 let _ = database.log_frame_debug(
