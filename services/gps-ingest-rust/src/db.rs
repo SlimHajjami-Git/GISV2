@@ -408,7 +408,7 @@ impl Database {
         Ok(imei)
     }
 
-    async fn update_device_last_communication(&self, device_id: i32) -> Result<()> {
+    pub async fn update_device_last_communication(&self, device_id: i32) -> Result<()> {
         sqlx::query(
             r#"
             UPDATE gps_devices 
@@ -981,6 +981,20 @@ impl TelemetryStore for Database {
         .bind(command_text)
         .bind(company_id)
         .bind(flags_hex)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn update_device_last_communication(&self, device_id: i32) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE gps_devices
+            SET last_communication = NOW(), updated_at = NOW()
+            WHERE id = $1
+            "#,
+        )
+        .bind(device_id)
         .execute(&self.pool)
         .await?;
         Ok(())

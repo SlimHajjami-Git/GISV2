@@ -418,7 +418,7 @@ async fn handle_tcp_connection(
                                     // Only check bit5 if GPS is valid (bit6=1).
                                     // flags=0x00 means corrupted/empty data, NOT real immobilization.
                                     if (flags & 0x40) != 0 && (flags & 0x20) == 0 {
-                                        // ── Log the immobilization frame to frame_debug_log ──
+                                        // ── Resolve device for immobilization check ──
                                         let imei_opt = if let Some(ref p) = peer {
                                             let map = connection_map.lock().await;
                                             map.get(p).cloned()
@@ -432,21 +432,9 @@ async fn handle_tcp_connection(
                                             None
                                         };
 
-                                        let _ = database.log_frame_debug(
-                                            device_id_opt,
-                                            imei_opt.as_deref(),
-                                            frame_mat.as_deref(),
-                                            actual_frame.get(..4).unwrap_or("????"),
-                                            Some(flags_hex),
-                                            Some(flags as i16),
-                                            &actual_frame[..std::cmp::min(actual_frame.len(), 200)],
-                                            "bit5_immobilization_detected",
-                                            Some(peer_str),
-                                        ).await;
-
                                         if let Some(ref imei) = imei_opt {
                                             if let Some(device_id) = device_id_opt {
-                                                // Rate limit: skip if we already sent AJ+GO to this device recently
+                                                // Rate limit: skip if we already processed this device recently
                                                 let now = std::time::Instant::now();
                                                 let cooldown_elapsed = match last_auto_recovery.get(&device_id) {
                                                     Some(last) => now.duration_since(*last).as_secs() >= AUTO_RECOVERY_COOLDOWN_SECS,
@@ -454,9 +442,22 @@ async fn handle_tcp_connection(
                                                 };
 
                                                 if !cooldown_elapsed {
-                                                    // Skip — already sent recently
+                                                    // Skip — already processed recently (don't log every frame)
                                                     break;
                                                 }
+
+                                                // Log once per cooldown period (not every frame)
+                                                let _ = database.log_frame_debug(
+                                                    device_id_opt,
+                                                    imei_opt.as_deref(),
+                                                    frame_mat.as_deref(),
+                                                    actual_frame.get(..4).unwrap_or("????"),
+                                                    Some(flags_hex),
+                                                    Some(flags as i16),
+                                                    &actual_frame[..std::cmp::min(actual_frame.len(), 200)],
+                                                    "bit5_immobilization_detected",
+                                                    Some(peer_str),
+                                                ).await;
 
                                                 // Check DB: was this stop requested by an operator?
                                                 match database.get_immobilization_state(device_id).await {
@@ -886,8 +887,13 @@ async fn process_single_frame(
                                         seconds_since_last = seconds_since_last_stored,
                                         speed_kph = frame.speed_kph,
                                         min_interval_secs = STOPPED_MIN_INTERVAL_SECS,
-                                        "Frame throttled for DB, refreshing Redis only"
+                                        "Frame throttled for DB, refreshing Redis + last_communication"
                                     );
+                                    // Update last_communication so the vehicle stays "online" in monitoring
+                                    // even when position writes are throttled
+                                    if let Err(err) = database.update_device_last_communication(device_id).await {
+                                        warn!(?err, "Failed to update last_communication on throttled frame");
+                                    }
                                     // Extend Redis TTL so parked vehicles don't disappear.
                                     // Do NOT overwrite cached data — throttled frames bypass
                                     // GPS validation and odometer spike detection.
