@@ -39,9 +39,7 @@ interface Reservation {
 
 interface CompanyUser {
   id: number;
-  firstName: string;
-  lastName: string;
-  fullName: string;
+  name: string;
 }
 
 @Component({
@@ -355,7 +353,7 @@ interface CompanyUser {
                 <label>Employé</label>
                 <select [(ngModel)]="borrowForm.assignedDriverId">
                   <option [ngValue]="null">-- Sélectionner --</option>
-                  <option *ngFor="let u of users" [ngValue]="u.id">{{ u.fullName || (u.firstName + ' ' + u.lastName) }}</option>
+                  <option *ngFor="let u of users" [ngValue]="u.id">{{ u.name }}</option>
                 </select>
               </div>
               <div class="form-row">
