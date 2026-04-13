@@ -227,8 +227,21 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
         <div class="empty-msg" *ngIf="!topUnits.length">Aucune donnée</div>
       </section>
 
+      <!-- Géozones (paired with km span2 + geo span1 = 3) -->
+      <section class="glass-card gc-geo fade-in" style="--d:7">
+        <div class="gc-head"><span class="gc-title">Géozones</span></div>
+        <div class="list-rows" *ngIf="geofences.length">
+          <div *ngFor="let g of geofences" class="list-row">
+            <span class="dot-glow lg" [style.--dc]="g.color"></span>
+            <span class="row-name flex-1">{{ g.name }}</span>
+            <b class="row-mono">{{ g.count }}</b>
+          </div>
+        </div>
+        <div class="empty-msg" *ngIf="!geofences.length">Aucune géozone</div>
+      </section>
+
       <!-- Scores -->
-      <section class="glass-card gc-scores fade-in" style="--d:7">
+      <section class="glass-card gc-scores fade-in" style="--d:8">
         <div class="gc-head"><span class="gc-title">Scores de conduite</span></div>
         <div class="list-rows" *ngIf="drivingScores.length">
           <div *ngFor="let s of pScores;let i=index" class="list-row">
@@ -242,20 +255,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
         <div class="empty-msg" *ngIf="!drivingScores.length">Aucun score</div>
       </section>
 
-      <!-- Géozones -->
-      <section class="glass-card gc-geo fade-in" style="--d:8">
-        <div class="gc-head"><span class="gc-title">Géozones</span></div>
-        <div class="list-rows" *ngIf="geofences.length">
-          <div *ngFor="let g of geofences" class="list-row">
-            <span class="dot-glow lg" [style.--dc]="g.color"></span>
-            <span class="row-name flex-1">{{ g.name }}</span>
-            <b class="row-mono">{{ g.count }}</b>
-          </div>
-        </div>
-        <div class="empty-msg" *ngIf="!geofences.length">Aucune géozone</div>
-      </section>
-
-      <!-- Alertes -->
+      <!-- Alertes (paired with scores span2 + alerts span1 = 3) -->
       <section class="glass-card gc-alerts fade-in" style="--d:9">
         <div class="gc-head">
           <span class="gc-title">Alertes</span>
@@ -271,22 +271,8 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
         <div class="empty-msg" *ngIf="!alerts.length">Aucune alerte</div>
       </section>
 
-      <!-- Conso/Véhicule -->
-      <section class="glass-card fade-in" style="--d:10">
-        <div class="gc-head"><span class="gc-title">Conso / Véhicule</span><span class="neon-badge muted">L/100km</span></div>
-        <div class="list-rows" *ngIf="vehicleFuelStats.length">
-          <div *ngFor="let v of pFuel" class="fuel-row">
-            <div class="fuel-meta"><span class="row-name">{{ v.plate }}</span><b [style.color]="fuelC(v.consumption)">{{ v.consumption|number:'1.1-1' }}</b></div>
-            <div class="bar-track bar-sm"><div class="bar-fill" [style.width.%]="(v.consumption/maxFuelConsumption)*100" [style.background]="fuelC(v.consumption)"></div></div>
-            <span class="fuel-sub">{{ v.totalLiters|number:'1.0-0' }}L · {{ v.totalKm|number:'1.0-0' }}km</span>
-          </div>
-          <div class="pgr" *ngIf="vehicleFuelStats.length>5"><button (click)="fuP=fuP-1" [disabled]="fuP===0">&#8249;</button><span>{{ fuP+1 }}/{{ Math.ceil(vehicleFuelStats.length/5) }}</span><button (click)="fuP=fuP+1" [disabled]="(fuP+1)*5>=vehicleFuelStats.length">&#8250;</button></div>
-        </div>
-        <div class="empty-msg" *ngIf="!vehicleFuelStats.length">Aucune donnée</div>
-      </section>
-
       <!-- Trajets -->
-      <section class="glass-card gc-trips fade-in" style="--d:11">
+      <section class="glass-card gc-trips fade-in" style="--d:10">
         <div class="gc-head"><span class="gc-title">Derniers trajets</span></div>
         <div class="list-rows" *ngIf="recentTrips.length">
           <div *ngFor="let t of pTrips" class="list-row">
@@ -301,8 +287,22 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
         <div class="empty-msg" *ngIf="!recentTrips.length">Aucun trajet</div>
       </section>
 
-      <!-- Conducteurs -->
-      <section class="glass-card fade-in" style="--d:12">
+      <!-- Conso/Véhicule (paired with trips span2 + conso span1 = 3) -->
+      <section class="glass-card gc-conso fade-in" style="--d:11">
+        <div class="gc-head"><span class="gc-title">Conso / Véhicule</span><span class="neon-badge muted">L/100km</span></div>
+        <div class="list-rows" *ngIf="vehicleFuelStats.length">
+          <div *ngFor="let v of pFuel" class="fuel-row">
+            <div class="fuel-meta"><span class="row-name">{{ v.plate }}</span><b [style.color]="fuelC(v.consumption)">{{ v.consumption|number:'1.1-1' }}</b></div>
+            <div class="bar-track bar-sm"><div class="bar-fill" [style.width.%]="(v.consumption/maxFuelConsumption)*100" [style.background]="fuelC(v.consumption)"></div></div>
+            <span class="fuel-sub">{{ v.totalLiters|number:'1.0-0' }}L · {{ v.totalKm|number:'1.0-0' }}km</span>
+          </div>
+          <div class="pgr" *ngIf="vehicleFuelStats.length>5"><button (click)="fuP=fuP-1" [disabled]="fuP===0">&#8249;</button><span>{{ fuP+1 }}/{{ Math.ceil(vehicleFuelStats.length/5) }}</span><button (click)="fuP=fuP+1" [disabled]="(fuP+1)*5>=vehicleFuelStats.length">&#8250;</button></div>
+        </div>
+        <div class="empty-msg" *ngIf="!vehicleFuelStats.length">Aucune donnée</div>
+      </section>
+
+      <!-- Conducteurs (full width) -->
+      <section class="glass-card gc-drv fade-in" style="--d:12">
         <div class="gc-head"><span class="gc-title">Conducteurs</span><span class="neon-badge muted">{{ drivers.length }}</span></div>
         <div class="list-rows" *ngIf="drivers.length">
           <div *ngFor="let d of pDrv" class="list-row">
@@ -437,6 +437,51 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     .glass-chip small { font-size: 10px; font-weight: 500; color: #64748b; margin-left: 4px; font-family: var(--font); }
     .hdr-right { display: flex; align-items: center; gap: 12px; }
 
+    /* ── Date filter bar dark override ── */
+    ::ng-deep .aurora .filter-bar {
+      background: rgba(255,255,255,.04) !important;
+      border: 1px solid rgba(255,255,255,.08) !important;
+      border-bottom: none !important;
+      border-radius: 14px !important;
+      backdrop-filter: blur(12px);
+      padding: 6px 12px !important;
+    }
+    ::ng-deep .aurora .period-buttons button {
+      background: transparent !important;
+      border-color: rgba(255,255,255,.1) !important;
+      color: #64748b !important;
+      font-size: 11px !important;
+      padding: 5px 10px !important;
+    }
+    ::ng-deep .aurora .period-buttons button:first-child { border-radius: 8px 0 0 8px !important; }
+    ::ng-deep .aurora .period-buttons button:last-child { border-radius: 0 8px 8px 0 !important; border-right: 1px solid rgba(255,255,255,.1) !important; }
+    ::ng-deep .aurora .period-buttons button.active {
+      background: rgba(99,102,241,.25) !important;
+      border-color: rgba(99,102,241,.4) !important;
+      color: #a5b4fc !important;
+    }
+    ::ng-deep .aurora .period-buttons button:hover:not(.active) {
+      background: rgba(255,255,255,.04) !important;
+    }
+    ::ng-deep .aurora .date-label { color: #475569 !important; font-size: 11px !important; }
+    ::ng-deep .aurora .date-input {
+      background: transparent !important;
+      color: #94a3b8 !important;
+      border: none !important;
+      font-size: 11px !important;
+      text-decoration: none !important;
+    }
+    ::ng-deep .aurora .date-input::-webkit-calendar-picker-indicator { filter: invert(.6); }
+    ::ng-deep .aurora .btn-apply {
+      background: rgba(99,102,241,.3) !important;
+      border: 1px solid rgba(99,102,241,.4) !important;
+      border-radius: 8px !important;
+      color: #a5b4fc !important;
+      font-size: 11px !important;
+      padding: 5px 12px !important;
+    }
+    ::ng-deep .aurora .btn-apply:hover { background: rgba(99,102,241,.45) !important; }
+
     /* ════════════════════════════════════════════
        HERO KPIs
     ════════════════════════════════════════════ */
@@ -489,10 +534,12 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     .gc-health { grid-column: span 2; }
     .gc-exp    { grid-column: span 1; }
     .gc-km     { grid-column: span 2; }
-    .gc-scores { grid-column: span 2; }
     .gc-geo    { grid-column: span 1; }
+    .gc-scores { grid-column: span 2; }
     .gc-alerts { grid-column: span 1; }
     .gc-trips  { grid-column: span 2; }
+    .gc-conso  { grid-column: span 1; }
+    .gc-drv    { grid-column: span 3; }
 
     .glass-card {
       background: rgba(255,255,255,.025);
@@ -727,11 +774,12 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     @media (max-width: 900px) {
       .grid { grid-template-columns: repeat(2, 1fr); }
       .gc-chart, .gc-scores, .gc-km, .gc-trips, .gc-health { grid-column: span 2; }
+      .gc-drv { grid-column: span 2; }
       .hero-kpis { grid-template-columns: repeat(3, 1fr); }
     }
     @media (max-width: 600px) {
       .grid { grid-template-columns: 1fr; }
-      .gc-chart, .gc-scores, .gc-km, .gc-trips, .gc-fleet, .gc-health { grid-column: span 1; }
+      .gc-chart, .gc-scores, .gc-km, .gc-trips, .gc-fleet, .gc-health, .gc-drv { grid-column: span 1; }
       .hero-kpis { grid-template-columns: repeat(2, 1fr); }
       .aurora-inner { padding: 0 14px 36px; }
       .hdr { flex-direction: column; align-items: flex-start; }
