@@ -97,6 +97,16 @@ public class TestGisDbContext : DbContext, IGisDbContext
     // Device Commands
     public DbSet<DeviceCommand> DeviceCommands => Set<DeviceCommand>();
 
+    // Device Events
+    public DbSet<DeviceEvent> DeviceEvents => Set<DeviceEvent>();
+
+    // User Device Tokens
+    public DbSet<UserDeviceToken> UserDeviceTokens => Set<UserDeviceToken>();
+
+    // Reservations / Emprunts
+    public DbSet<Reservation> Reservations => Set<Reservation>();
+    public DbSet<Contract> Contracts => Set<Contract>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -167,6 +177,19 @@ public class TestGisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<MaintenanceAlertSettings>()
             .Ignore(ma => ma.AdditionalEmails)
             .Ignore(ma => ma.AdditionalPhones);
+
+        // === DeviceEvent: Dictionary<string, object> ===
+        modelBuilder.Entity<DeviceEvent>().Ignore(de => de.Details);
+
+        // === Reservation: FK relationships ===
+        modelBuilder.Entity<Reservation>()
+            .HasOne(r => r.Vehicle).WithMany().HasForeignKey(r => r.VehicleId).IsRequired(false);
+        modelBuilder.Entity<Reservation>()
+            .HasOne(r => r.RequestedByUser).WithMany().HasForeignKey(r => r.RequestedByUserId).IsRequired(false);
+        modelBuilder.Entity<Reservation>()
+            .HasOne(r => r.AssignedDriver).WithMany().HasForeignKey(r => r.AssignedDriverId).IsRequired(false);
+        modelBuilder.Entity<Reservation>()
+            .HasOne(r => r.ApprovedByUser).WithMany().HasForeignKey(r => r.ApprovedByUserId).IsRequired(false);
     }
 
     public override async Task<int> SaveChangesAsync(CancellationToken ct = default)
