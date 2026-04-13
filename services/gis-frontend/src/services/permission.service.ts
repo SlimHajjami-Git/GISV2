@@ -198,9 +198,13 @@ export class PermissionService {
     if (!user) return false;
     if (user.isSystemAdmin) return true;
 
+    // Company admins always have full report access
+    if (user.isCompanyAdmin) return true;
+
     // Step 1: Check subscription-level report access (company limit)
     const features = user.subscriptionFeatures;
-    if (!features) return false;
+    // If no subscription features configured, allow all reports (don't block)
+    if (!features) return true;
 
     const reportMapping: Record<string, keyof SubscriptionFeatures> = {
       'trips': 'reportTrips',
@@ -219,9 +223,6 @@ export class PermissionService {
 
     const featureKey = reportMapping[reportKey];
     if (featureKey && features[featureKey] === false) return false;
-
-    // Step 2: Company admins bypass user-level checks
-    if (user.isCompanyAdmin) return true;
 
     // Step 3: Check per-user report permissions
     const up = user.userPermissions;
