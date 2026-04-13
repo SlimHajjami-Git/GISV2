@@ -315,6 +315,40 @@ export class ApiService {
     return this.http.post<any>(`${this.API_URL}/vehicles/${vehicleId}/sync-mileage`, {}, { headers: this.getHeaders() });
   }
 
+  // ==================== RESERVATIONS / EMPRUNTS ====================
+
+  getReservations(params?: { vehicleId?: number; driverId?: number; status?: string; from?: string; to?: string }): Observable<any[]> {
+    let url = `${this.API_URL}/reservations`;
+    const queryParams: string[] = [];
+    if (params?.vehicleId) queryParams.push(`vehicleId=${params.vehicleId}`);
+    if (params?.driverId) queryParams.push(`driverId=${params.driverId}`);
+    if (params?.status) queryParams.push(`status=${params.status}`);
+    if (params?.from) queryParams.push(`from=${params.from}`);
+    if (params?.to) queryParams.push(`to=${params.to}`);
+    if (queryParams.length) url += '?' + queryParams.join('&');
+    return this.http.get<any[]>(url, { headers: this.getHeaders() });
+  }
+
+  getAvailableVehiclesForBorrowing(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.API_URL}/reservations/available-vehicles`, { headers: this.getHeaders() });
+  }
+
+  createReservation(data: { vehicleId: number; assignedDriverId?: number; purpose?: string; destination?: string; estimatedKm?: number; notes?: string }): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/reservations`, data, { headers: this.getHeaders() });
+  }
+
+  completeReservation(id: number, notes?: string): Observable<any> {
+    return this.http.put<any>(`${this.API_URL}/reservations/${id}/complete`, { notes }, { headers: this.getHeaders() });
+  }
+
+  cancelReservation(id: number, reason?: string): Observable<any> {
+    return this.http.put<any>(`${this.API_URL}/reservations/${id}/cancel`, { reason }, { headers: this.getHeaders() });
+  }
+
+  setVehicleRentalStatus(vehicleId: number, isRented: boolean): Observable<any> {
+    return this.http.put<any>(`${this.API_URL}/vehicles/${vehicleId}/rental-status`, { isRented }, { headers: this.getHeaders() });
+  }
+
   getVehicleLocations(): Observable<any[]> {
     return this.getLatestPositions();
   }

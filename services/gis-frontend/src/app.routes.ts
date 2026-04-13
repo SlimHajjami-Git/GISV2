@@ -33,6 +33,8 @@ import { AuthGuard } from './guards/auth.guard';
 import { FeatureGuard } from './guards/feature.guard';
 import { SystemAdminGuard } from './guards/system-admin.guard';
 import { SecuriteGuard } from './guards/securite.guard';
+import { LocationCompanyGuard } from './guards/location-company.guard';
+import { VehicleLoansComponent } from './components/vehicle-loans.component';
 
 export const routes: Routes = [
   // Public routes (no auth required)
@@ -111,6 +113,9 @@ export const routes: Routes = [
   { path: 'fleet-management', component: FleetManagementComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'fleet_management' } },
   { path: 'gestion-flotte', component: FleetManagementComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'fleet_management' } },
   
+  // Emprunts véhicules (location companies only)
+  { path: 'emprunts', component: VehicleLoansComponent, canActivate: [AuthGuard, FeatureGuard, LocationCompanyGuard], data: { feature: 'fleet_management' } },
+
   // Tours module
   { path: 'tours', component: ToursComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'tours' } },
   { path: 'tournees', component: ToursComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'tours' } },

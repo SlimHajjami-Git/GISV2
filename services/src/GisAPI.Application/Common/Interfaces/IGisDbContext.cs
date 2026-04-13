@@ -78,6 +78,10 @@ public interface IGisDbContext
     // Auth
     DbSet<RefreshToken> RefreshTokens { get; }
 
+    // Reservations / Emprunts
+    DbSet<Reservation> Reservations { get; }
+    DbSet<Contract> Contracts { get; }
+
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 

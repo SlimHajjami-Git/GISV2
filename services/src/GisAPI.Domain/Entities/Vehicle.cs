@@ -16,7 +16,10 @@ public class Vehicle : TenantEntity
     public bool HasGps { get; set; }
     public int Mileage { get; set; }
     public int? RentalMileage { get; set; }
-    
+
+    [Column("is_rented")]
+    public bool IsRented { get; set; } = false;
+
     public int? AssignedDriverId { get; set; }
     public User? AssignedDriver { get; set; }
     
