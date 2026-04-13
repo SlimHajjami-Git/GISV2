@@ -2703,7 +2703,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         dataGaps.add(i);
         console.log(`[Playback] Speed outlier at index ${i}: ${Math.round(speedKmh)}km/h, ${Math.round(dist)}m`);
       } else {
-        transitions.push(ignitionOn && dist > 20);
+        const shouldRoute = ignitionOn && dist > 20;
+        transitions.push(shouldRoute);
+        // Raw transitions with significant distance = visual gap (no straight line drawn)
+        if (!shouldRoute && dist > 100) {
+          dataGaps.add(i);
+        }
       }
     }
 
