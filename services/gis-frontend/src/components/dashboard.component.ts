@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, AfterViewInit, ChangeDetectorRef, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -19,6 +19,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
 
   <!-- Animated background layers -->
   <div class="aurora-bg">
+    <canvas #networkCanvas class="network-canvas"></canvas>
     <div class="orb orb-1"></div>
     <div class="orb orb-2"></div>
     <div class="orb orb-3"></div>
@@ -336,6 +337,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
 
     /* ── Animated background ── */
     .aurora-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+    .network-canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .45; }
 
     .orb {
       position: absolute; border-radius: 50%; filter: blur(100px);
@@ -788,7 +790,9 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
     }
   `]
 })
-export class DashboardComponent implements OnInit, OnDestroy {
+export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
+  @ViewChild('networkCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
+  private netAnim = 0;
   private destroy$ = new Subject<void>();
   company: Company | null = null;
   selectedPeriod = 'week'; fromDate = ''; toDate = '';
@@ -846,7 +850,110 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.loadAll();
     this.wire();
   }
-  ngOnDestroy(){this.destroy$.next();this.destroy$.complete();}
+  ngAfterViewInit(){this.initNetwork();}
+
+  ngOnDestroy(){
+    this.destroy$.next();this.destroy$.complete();
+    if(this.netAnim) cancelAnimationFrame(this.netAnim);
+  }
+
+  private initNetwork(){
+    const canvas=this.canvasRef?.nativeElement;
+    if(!canvas)return;
+    const ctx=canvas.getContext('2d');
+    if(!ctx)return;
+
+    const dpr=window.devicePixelRatio||1;
+    const resize=()=>{
+      canvas.width=canvas.offsetWidth*dpr;
+      canvas.height=canvas.offsetHeight*dpr;
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+    };
+    resize();
+    window.addEventListener('resize',resize);
+
+    // Particles representing GPS-tracked vehicles
+    const N=35;
+    const particles:{x:number;y:number;vx:number;vy:number;r:number;color:string;pulse:number;type:string}[]=[];
+    const colors=['rgba(96,165,250,1)','rgba(52,211,153,1)','rgba(167,139,250,1)','rgba(251,191,36,1)','rgba(34,211,238,1)','rgba(248,113,113,1)'];
+    const types=['car','truck','pin'];
+    const w=()=>canvas.offsetWidth;
+    const h=()=>canvas.offsetHeight;
+
+    for(let i=0;i<N;i++){
+      const speed=.15+Math.random()*.25;
+      const angle=Math.random()*Math.PI*2;
+      particles.push({
+        x:Math.random()*w(), y:Math.random()*h(),
+        vx:Math.cos(angle)*speed, vy:Math.sin(angle)*speed,
+        r:1.5+Math.random()*2, color:colors[i%colors.length],
+        pulse:Math.random()*Math.PI*2, type:types[i%3]
+      });
+    }
+
+    const CONN_DIST=140;
+    const draw=()=>{
+      const W=w(),H=h();
+      ctx.clearRect(0,0,W,H);
+
+      // Update positions
+      for(const p of particles){
+        p.x+=p.vx; p.y+=p.vy;
+        p.pulse+=.02;
+        if(p.x<-20)p.x=W+20; if(p.x>W+20)p.x=-20;
+        if(p.y<-20)p.y=H+20; if(p.y>H+20)p.y=-20;
+      }
+
+      // Draw connection lines between nearby particles (fleet network)
+      for(let i=0;i<N;i++){
+        for(let j=i+1;j<N;j++){
+          const dx=particles[i].x-particles[j].x;
+          const dy=particles[i].y-particles[j].y;
+          const dist=Math.sqrt(dx*dx+dy*dy);
+          if(dist<CONN_DIST){
+            const alpha=(1-dist/CONN_DIST)*.15;
+            ctx.beginPath();
+            ctx.moveTo(particles[i].x,particles[i].y);
+            ctx.lineTo(particles[j].x,particles[j].y);
+            ctx.strokeStyle=`rgba(148,163,184,${alpha})`;
+            ctx.lineWidth=.6;
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Draw particles
+      for(const p of particles){
+        const pulseR=p.r+Math.sin(p.pulse)*0.8;
+
+        // Outer ping ring (GPS signal effect)
+        const pingAlpha=(.3+Math.sin(p.pulse*1.5)*.15)*.15;
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,pulseR+6+Math.sin(p.pulse)*3,0,Math.PI*2);
+        ctx.strokeStyle=p.color.replace(',1)',`,${pingAlpha})`);
+        ctx.lineWidth=.5;
+        ctx.stroke();
+
+        // Core dot
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,pulseR,0,Math.PI*2);
+        ctx.fillStyle=p.color;
+        ctx.fill();
+
+        // Glow
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,pulseR+3,0,Math.PI*2);
+        const grd=ctx.createRadialGradient(p.x,p.y,pulseR*.5,p.x,p.y,pulseR+3);
+        grd.addColorStop(0,p.color.replace(',1)',',0.3)'));
+        grd.addColorStop(1,'transparent');
+        ctx.fillStyle=grd;
+        ctx.fill();
+      }
+
+      this.netAnim=requestAnimationFrame(draw);
+    };
+    this.netAnim=requestAnimationFrame(draw);
+  }
 
   private anim(from:number,to:number,cb:(v:number)=>void){
     const t0=performance.now();
