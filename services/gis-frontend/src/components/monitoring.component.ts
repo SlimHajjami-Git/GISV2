@@ -2478,6 +2478,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   // Rebuild progressCoords up to a given GPS index (used when rewinding)
+  // Uses multi-segment polyline to create visual breaks at data gaps
   private rebuildProgressTrace(upToGpsIndex: number) {
     this.progressCoords = [];
     if (!this.progressPolyline) return;
@@ -2486,17 +2487,42 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
     if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0) {
-      const endRoad = this.segmentBoundaries[Math.min(upToGpsIndex, this.segmentBoundaries.length - 1)];
-      if (endRoad !== undefined) {
-        for (let i = 0; i <= endRoad; i++) {
+      // Build multi-segment polyline with breaks at data gaps
+      const segments: L.LatLng[][] = [];
+      let currentSeg: L.LatLng[] = [];
+
+      for (let gpsIdx = 0; gpsIdx < upToGpsIndex; gpsIdx++) {
+        const roadStart = this.segmentBoundaries[gpsIdx];
+        const roadEnd = this.segmentBoundaries[Math.min(gpsIdx + 1, this.segmentBoundaries.length - 1)];
+        if (roadStart === undefined || roadEnd === undefined) continue;
+
+        // If this transition is a data gap, break the segment
+        if (this.playbackDataGaps && this.playbackDataGaps.has(gpsIdx)) {
+          if (currentSeg.length > 0) {
+            segments.push(currentSeg);
+            currentSeg = [];
+          }
+          continue;
+        }
+
+        const lo = Math.min(roadStart, roadEnd);
+        const hi = Math.max(roadStart, roadEnd);
+        for (let i = lo; i <= hi; i++) {
           const coord = this.matchedRouteCoords[i];
           if (coord && !isNaN(coord.lat) && !isNaN(coord.lng)) {
-            this.progressCoords.push(coord);
+            currentSeg.push(coord);
           }
         }
-        this.progressPolyline.setLatLngs(this.progressCoords);
-        return;
       }
+      if (currentSeg.length > 0) segments.push(currentSeg);
+
+      this.progressCoords = segments.flat();
+      if (segments.length > 1) {
+        this.progressPolyline.setLatLngs(segments as any);
+      } else {
+        this.progressPolyline.setLatLngs(segments[0] || []);
+      }
+      return;
     }
     // Fallback: use raw GPS positions
     for (let i = 0; i <= Math.min(upToGpsIndex, this.playbackPositions.length - 1); i++) {
@@ -2509,6 +2535,13 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Append road coords to the growing progress polyline
   private appendProgressTrace(fromGpsIndex: number, toGpsIndex: number) {
     if (!this.progressPolyline || !this.map) return;
+
+    // Skip drawing for data gaps / speed outliers — don't draw straight lines across gaps
+    if (this.playbackDataGaps && this.playbackDataGaps.has(fromGpsIndex)) {
+      // Just jump marker to new position, no line drawn
+      return;
+    }
+
     if (this.matchedRouteCoords.length > 0 && this.segmentBoundaries.length > 0) {
       const startRoad = this.segmentBoundaries[fromGpsIndex];
       const endRoad = this.segmentBoundaries[Math.min(toGpsIndex, this.segmentBoundaries.length - 1)];
@@ -2608,10 +2641,46 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
+    // Step 0: Filter GPS outliers (drift/jitter) before routing
+    // Points showing impossible speed (> 150 km/h) with short time gaps are GPS drift
+    // Also detect zigzag: if removing a point makes the path much shorter, it's an outlier
+    const MAX_SPEED_KMH = 150;
+    let outlierCount = 0;
+    for (let i = 1; i < this.playbackPositions.length - 1; i++) {
+      const prev = this.playbackPositions[i - 1];
+      const curr = this.playbackPositions[i];
+      const next = this.playbackPositions[i + 1];
+      const distPrevCurr = this.calculateDistance(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
+      const distCurrNext = this.calculateDistance(curr.latitude, curr.longitude, next.latitude, next.longitude);
+      const distPrevNext = this.calculateDistance(prev.latitude, prev.longitude, next.latitude, next.longitude);
+      const timePrevCurr = Math.abs(new Date(curr.recordedAt).getTime() - new Date(prev.recordedAt).getTime()) / 1000;
+      const timeCurrNext = Math.abs(new Date(next.recordedAt).getTime() - new Date(curr.recordedAt).getTime()) / 1000;
+
+      // Speed check: impossible speed to AND from this point
+      const speedIn = timePrevCurr > 0 ? (distPrevCurr / timePrevCurr) * 3.6 : 0;
+      const speedOut = timeCurrNext > 0 ? (distCurrNext / timeCurrNext) * 3.6 : 0;
+      const isSpeedOutlier = speedIn > MAX_SPEED_KMH && speedOut > MAX_SPEED_KMH;
+
+      // Zigzag check: point jumps far then returns (prev→next is much shorter than detour via curr)
+      const detour = distPrevCurr + distCurrNext;
+      const isZigzag = detour > 0 && distPrevNext < detour * 0.3 && distPrevCurr > 200;
+
+      if (isSpeedOutlier || isZigzag) {
+        // Replace outlier with interpolated position from neighbors
+        curr.latitude = (prev.latitude + next.latitude) / 2;
+        curr.longitude = (prev.longitude + next.longitude) / 2;
+        outlierCount++;
+      }
+    }
+    if (outlierCount > 0) {
+      console.log(`[Playback] Filtered ${outlierCount} GPS outlier points (drift/jitter)`);
+    }
+
     // Step 1: Classify each transition (i → i+1) as "route" or "raw"
     // Also detect data gaps (large time + distance) to avoid vol d'oiseau straight lines
-    const DATA_GAP_TIME_MS = 5 * 60 * 1000; // 5 minutes
-    const DATA_GAP_DISTANCE_M = 500; // 500 meters
+    const DATA_GAP_TIME_MS = 3 * 60 * 1000; // 3 minutes (reduced from 5)
+    const DATA_GAP_DISTANCE_M = 300; // 300 meters (reduced from 500)
+    const MAX_TRANSITION_SPEED_KMH = 160; // Skip routing for impossible-speed transitions
     const transitions: boolean[] = []; // true = should route via Valhalla
     this.playbackDataGaps = new Set<number>(); // reset
     const dataGaps = this.playbackDataGaps; // local alias
@@ -2621,11 +2690,18 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       const ignitionOn = to.ignitionOn !== false;
       const dist = this.calculateDistance(from.latitude, from.longitude, to.latitude, to.longitude);
       const timeGapMs = Math.abs(new Date(to.recordedAt).getTime() - new Date(from.recordedAt).getTime());
-      // Data gap: large time gap + large distance = missing GPS data, don't route
+      const speedKmh = timeGapMs > 0 ? (dist / (timeGapMs / 1000)) * 3.6 : 0;
+
+      // Data gap: large time gap + distance = missing GPS data, don't route
       if (timeGapMs > DATA_GAP_TIME_MS && dist > DATA_GAP_DISTANCE_M) {
         transitions.push(false);
         dataGaps.add(i);
         console.log(`[Playback] Data gap detected at index ${i}: ${Math.round(timeGapMs/1000)}s, ${Math.round(dist)}m`);
+      // Speed outlier: impossible speed between points even after drift filter
+      } else if (speedKmh > MAX_TRANSITION_SPEED_KMH && dist > 100) {
+        transitions.push(false);
+        dataGaps.add(i);
+        console.log(`[Playback] Speed outlier at index ${i}: ${Math.round(speedKmh)}km/h, ${Math.round(dist)}m`);
       } else {
         transitions.push(ignitionOn && dist > 20);
       }
@@ -2691,6 +2767,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         }
 
         try {
+          console.log(`[Playback] Routing chunk GPS ${chunkGpsStart}-${chunkGpsEnd} (${waypoints.length} points)`);
           const response = await fetch('/api/routing/process', {
             method: 'POST',
             headers: {
@@ -2700,8 +2777,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
             body: JSON.stringify({ points: waypoints, enableRoadSnapping: true })
           });
 
-          if (!response.ok) throw new Error(`API error: ${response.status}`);
+          if (!response.ok) {
+            const errBody = await response.text().catch(() => '');
+            throw new Error(`API ${response.status}: ${errBody.substring(0, 200)}`);
+          }
           const data = await response.json();
+          console.log(`[Playback] Chunk response: method=${data.method}, roadPath=${data.roadPath?.length}, snapped=${data.roadSnappingApplied}`);
 
           if (data.roadPath && data.roadPath.length >= 2 && data.segmentBoundaries) {
             const tripRoadCoords: L.LatLng[] = data.roadPath.map((p: any) => L.latLng(p.lat, p.lon));
