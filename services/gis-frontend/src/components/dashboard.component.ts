@@ -15,108 +15,125 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
   imports: [CommonModule, FormsModule, AppLayoutComponent, DateFilterBarComponent, CardComponent, LegendItemComponent],
   template: `
 <app-layout>
-<div class="dash">
-  <div class="dash-bg"></div>
-  <div class="dash-grain"></div>
+<div class="aurora">
 
-  <div class="dash-inner">
+  <!-- Animated background layers -->
+  <div class="aurora-bg">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="grid-overlay"></div>
+  </div>
 
-    <!-- ── HEADER ── -->
-    <header class="d-head reveal" style="--i:0">
-      <div class="d-head-left">
-        <h1 class="d-title">Tableau de bord</h1>
-        <div class="d-meta">
-          <span class="live" [class.on]="isConnected">
-            <span class="live-ring"></span>
-            <span class="live-core"></span>
-            {{ isConnected ? 'En direct' : 'Hors ligne' }}
-          </span>
-          <span class="d-chip"><span class="chip-dot"></span>{{ totalMotion }} véhicules</span>
-          <span class="d-chip"><span class="chip-dot drv"></span>{{ drivers.length }} conducteurs</span>
+  <div class="aurora-inner">
+
+    <!-- ══ HEADER ══ -->
+    <header class="hdr fade-in" style="--d:0">
+      <div class="hdr-left">
+        <div class="hdr-badge">
+          <span class="pulse-dot" [class.on]="isConnected"></span>
+          {{ isConnected ? 'LIVE' : 'OFFLINE' }}
+        </div>
+        <h1 class="hdr-title">
+          <span class="title-gradient">Dashboard</span>
+        </h1>
+        <div class="hdr-chips">
+          <span class="glass-chip">{{ totalMotion }} <small>véhicules</small></span>
+          <span class="glass-chip">{{ drivers.length }} <small>conducteurs</small></span>
         </div>
       </div>
-      <div class="d-head-right">
+      <div class="hdr-right">
         <ui-date-filter-bar [selectedPeriod]="selectedPeriod" [fromDate]="fromDate" [toDate]="toDate"
           (periodChange)="onPeriodChange($event)" (dateRangeChange)="onDateRangeChange($event)" (applyFilter)="applyFilter()">
         </ui-date-filter-bar>
       </div>
     </header>
 
-    <!-- ── KPI CARDS ── -->
-    <div class="kpi-row">
-      <div class="kpi reveal-kpi" style="--kc:#3b82f6;--kg:rgba(59,130,246,.15);--ks:rgba(59,130,246,.35);--kd:0">
-        <div class="kpi-glow"></div>
-        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--kc)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 4v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
-        <span class="kpi-num">{{ dVehicles }}</span>
-        <span class="kpi-lbl">Véhicules</span>
-        <div class="kpi-shimmer"></div>
+    <!-- ══ HERO KPIs ══ -->
+    <div class="hero-kpis fade-in" style="--d:1">
+      <div class="hero-kpi" style="--ac:#60a5fa;--ag:rgba(96,165,250,.2)">
+        <div class="hero-glow"></div>
+        <div class="hero-label">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 4v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+          Véhicules
+        </div>
+        <div class="hero-num">{{ dVehicles }}</div>
+        <div class="hero-bar"><div class="hero-bar-fill" style="width:100%;background:var(--ac)"></div></div>
       </div>
-      <div class="kpi reveal-kpi" style="--kc:#10b981;--kg:rgba(16,185,129,.15);--ks:rgba(16,185,129,.35);--kd:1">
-        <div class="kpi-glow"></div>
-        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--kc)" stroke-width="1.6" stroke-linecap="round" width="20" height="20"><circle cx="12" cy="12" r="3"/><path d="M4.93 19.07A10 10 0 0119.07 4.93"/><path d="M7.76 16.24a6 6 0 018.49-8.49"/></svg></div>
-        <span class="kpi-num">{{ dMoving }}</span>
-        <span class="kpi-lbl">En mouvement</span>
-        <div class="kpi-shimmer"></div>
+      <div class="hero-kpi" style="--ac:#34d399;--ag:rgba(52,211,153,.2)">
+        <div class="hero-glow"></div>
+        <div class="hero-label">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M4.93 19.07A10 10 0 0119.07 4.93"/></svg>
+          En mouvement
+        </div>
+        <div class="hero-num">{{ dMoving }}</div>
+        <div class="hero-bar"><div class="hero-bar-fill" [style.width.%]="totalMotion?(motionData.movingIgnition/totalMotion)*100:0" style="background:var(--ac)"></div></div>
       </div>
-      <div class="kpi reveal-kpi" style="--kc:#f59e0b;--kg:rgba(245,158,11,.15);--ks:rgba(245,158,11,.35);--kd:2">
-        <div class="kpi-glow"></div>
-        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--kc)" stroke-width="1.6" width="20" height="20"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M9 17V7h4a3 3 0 110 6H9"/></svg></div>
-        <span class="kpi-num">{{ dStopped }}</span>
-        <span class="kpi-lbl">À l'arrêt</span>
-        <div class="kpi-shimmer"></div>
+      <div class="hero-kpi" style="--ac:#fbbf24;--ag:rgba(251,191,36,.2)">
+        <div class="hero-glow"></div>
+        <div class="hero-label">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M9 17V7h4a3 3 0 110 6H9"/></svg>
+          À l'arrêt
+        </div>
+        <div class="hero-num">{{ dStopped }}</div>
+        <div class="hero-bar"><div class="hero-bar-fill" [style.width.%]="totalMotion?(motionData.stationary/totalMotion)*100:0" style="background:var(--ac)"></div></div>
       </div>
-      <div class="kpi reveal-kpi" style="--kc:#ef4444;--kg:rgba(239,68,68,.15);--ks:rgba(239,68,68,.35);--kd:3">
-        <div class="kpi-glow"></div>
-        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--kc)" stroke-width="1.6" stroke-linecap="round" width="20" height="20"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg></div>
-        <span class="kpi-num">{{ dAlerts }}</span>
-        <span class="kpi-lbl">Alertes</span>
-        <div class="kpi-shimmer"></div>
+      <div class="hero-kpi" style="--ac:#f87171;--ag:rgba(248,113,113,.2)">
+        <div class="hero-glow"></div>
+        <div class="hero-label">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+          Alertes
+        </div>
+        <div class="hero-num">{{ dAlerts }}</div>
+        <div class="hero-bar"><div class="hero-bar-fill" style="width:100%;background:var(--ac)"></div></div>
       </div>
-      <div class="kpi reveal-kpi" style="--kc:#8b5cf6;--kg:rgba(139,92,246,.15);--ks:rgba(139,92,246,.35);--kd:4">
-        <div class="kpi-glow"></div>
-        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--kc)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M3 22V5a2 2 0 012-2h8a2 2 0 012 2v17"/><path d="M15 11h2a2 2 0 012 2v4a2 2 0 004 0V9l-3-3"/><path d="M3 22h12"/><rect x="6" y="6" width="6" height="5" rx="1"/></svg></div>
-        <span class="kpi-num">{{ dFuel }}<small>L</small></span>
-        <span class="kpi-lbl">Carburant</span>
-        <div class="kpi-shimmer"></div>
+      <div class="hero-kpi" style="--ac:#a78bfa;--ag:rgba(167,139,250,.2)">
+        <div class="hero-glow"></div>
+        <div class="hero-label">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 22V5a2 2 0 012-2h8a2 2 0 012 2v17"/><path d="M15 11h2a2 2 0 012 2v4a2 2 0 004 0V9l-3-3"/></svg>
+          Carburant
+        </div>
+        <div class="hero-num">{{ dFuel }}<span class="hero-unit">L</span></div>
+        <div class="hero-bar"><div class="hero-bar-fill" style="width:100%;background:var(--ac)"></div></div>
       </div>
-      <div class="kpi reveal-kpi" style="--kc:#06b6d4;--kg:rgba(6,182,212,.15);--ks:rgba(6,182,212,.35);--kd:5">
-        <div class="kpi-glow"></div>
-        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--kc)" stroke-width="1.6" stroke-linecap="round" width="20" height="20"><rect x="2" y="6" width="20" height="14" rx="3"/><path d="M2 10h20"/><circle cx="17" cy="14.5" r="1.5" fill="var(--kc)" stroke="none"/></svg></div>
-        <span class="kpi-num">{{ dCost }}<small>DT</small></span>
-        <span class="kpi-lbl">Coût total</span>
-        <div class="kpi-shimmer"></div>
+      <div class="hero-kpi" style="--ac:#22d3ee;--ag:rgba(34,211,238,.2)">
+        <div class="hero-glow"></div>
+        <div class="hero-label">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
+          Coût total
+        </div>
+        <div class="hero-num">{{ dCost }}<span class="hero-unit">DT</span></div>
+        <div class="hero-bar"><div class="hero-bar-fill" style="width:100%;background:var(--ac)"></div></div>
       </div>
     </div>
 
-    <!-- ── BENTO GRID ── -->
-    <div class="bento">
+    <!-- ══ MAIN GRID ══ -->
+    <div class="grid">
 
       <!-- Fleet Status -->
-      <section class="card card--fleet reveal" style="--i:2">
-        <div class="card-head"><h3>État flotte</h3></div>
-        <div class="fleet-row">
+      <section class="glass-card gc-fleet fade-in" style="--d:2">
+        <div class="gc-head"><span class="gc-title">État flotte</span></div>
+        <div class="fleet-body">
           <div class="donut-wrap">
-            <svg viewBox="0 0 140 140">
-              <defs>
-                <filter id="donutGlow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-              </defs>
-              <circle cx="70" cy="70" r="56" fill="none" stroke="var(--border-color)" stroke-width="12" opacity=".08"/>
-              <circle *ngFor="let s of donutSegs;let si=index" cx="70" cy="70" r="56" fill="none"
-                [attr.stroke]="s.color" [attr.stroke-width]="hSeg===si?20:13" stroke-linecap="round"
-                [attr.stroke-dasharray]="s.da+' '+(circ56-s.da)" [attr.stroke-dashoffset]="s.offset"
-                class="donut-seg" [attr.filter]="hSeg===si?'url(#donutGlow)':'none'"
+            <svg viewBox="0 0 160 160">
+              <defs><filter id="dg"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+              <circle cx="80" cy="80" r="62" fill="none" stroke="rgba(255,255,255,.04)" stroke-width="14"/>
+              <circle *ngFor="let s of donutSegs;let si=index" cx="80" cy="80" r="62" fill="none"
+                [attr.stroke]="s.color" [attr.stroke-width]="hSeg===si?22:14" stroke-linecap="round"
+                [attr.stroke-dasharray]="s.da2+' '+(circ62-s.da2)" [attr.stroke-dashoffset]="s.offset2"
+                class="donut-seg" [attr.filter]="hSeg===si?'url(#dg)':'none'"
                 (mouseenter)="hSeg=si" (mouseleave)="hSeg=-1"/>
             </svg>
             <div class="donut-center">
-              <span class="donut-num">{{ totalMotion }}</span>
-              <span class="donut-lbl">total</span>
+              <span class="donut-big">{{ totalMotion }}</span>
+              <span class="donut-sub">VÉHICULES</span>
             </div>
           </div>
-          <div class="fleet-legend">
-            <div *ngFor="let s of donutSegs;let si=index" class="lg-item" (mouseenter)="hSeg=si" (mouseleave)="hSeg=-1" [class.lg-active]="hSeg===si">
-              <span class="lg-bar" [style.background]="s.color"></span>
-              <span class="lg-name">{{ s.name }}</span>
-              <b class="lg-val">{{ s.value }}</b>
+          <div class="fleet-rows">
+            <div *ngFor="let s of donutSegs;let si=index" class="fleet-row-item" (mouseenter)="hSeg=si" (mouseleave)="hSeg=-1" [class.row-hl]="hSeg===si">
+              <span class="dot-glow" [style.--dc]="s.color"></span>
+              <span class="fleet-name">{{ s.name }}</span>
+              <b class="fleet-val">{{ s.value }}</b>
             </div>
           </div>
         </div>
@@ -125,748 +142,601 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
         </div>
       </section>
 
-      <!-- Fuel Consumption Chart -->
-      <section class="card card--chart reveal" style="--i:3">
-        <div class="card-head">
-          <h3>Consommation carburant</h3>
-          <span class="badge badge--green">{{ totalFuelConsumed | number:'1.0-0' }} L</span>
+      <!-- Fuel Chart -->
+      <section class="glass-card gc-chart fade-in" style="--d:3">
+        <div class="gc-head">
+          <span class="gc-title">Consommation carburant</span>
+          <span class="neon-badge green">{{ totalFuelConsumed | number:'1.0-0' }} L</span>
         </div>
-        <div class="chart-wrap" (mousemove)="onChartHover($event)" (mouseleave)="cIdx=-1">
-          <svg viewBox="0 0 500 130" preserveAspectRatio="none" class="chart-svg">
+        <div class="chart-area" (mousemove)="onChartHover($event)" (mouseleave)="cIdx=-1">
+          <svg viewBox="0 0 500 140" preserveAspectRatio="none" class="chart-svg">
             <defs>
-              <linearGradient id="cGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#10b981" stop-opacity=".22"/>
-                <stop offset="100%" stop-color="#10b981" stop-opacity="0"/>
+              <linearGradient id="aFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#34d399" stop-opacity=".3"/>
+                <stop offset="100%" stop-color="#34d399" stop-opacity="0"/>
               </linearGradient>
-              <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stop-color="#6ee7b7"/>
-                <stop offset="50%" stop-color="#10b981"/>
-                <stop offset="100%" stop-color="#059669"/>
+              <linearGradient id="aStroke" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#6ee7b7"/><stop offset="50%" stop-color="#34d399"/><stop offset="100%" stop-color="#059669"/>
               </linearGradient>
-              <filter id="lineGlow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              <filter id="lg"><feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
             </defs>
-            <line *ngFor="let y of [0,32,65,97,130]" x1="0" [attr.y1]="y" x2="500" [attr.y2]="y" stroke="var(--border-color)" stroke-width=".35" opacity=".15"/>
-            <polygon *ngIf="cPts" [attr.points]="'0,130 '+cPts+' 500,130'" fill="url(#cGrad)" class="chart-area"/>
-            <polyline *ngIf="cPts" fill="none" stroke="url(#lineGrad)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" [attr.points]="cPts" filter="url(#lineGlow)" class="chart-line"/>
+            <line *ngFor="let y of [0,35,70,105,140]" x1="0" [attr.y1]="y" x2="500" [attr.y2]="y" stroke="rgba(255,255,255,.04)" stroke-width=".5"/>
+            <polygon *ngIf="cPts" [attr.points]="'0,140 '+cPts+' 500,140'" fill="url(#aFill)" class="area-path"/>
+            <polyline *ngIf="cPts" fill="none" stroke="url(#aStroke)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" [attr.points]="cPts" filter="url(#lg)" class="line-path"/>
             <ng-container *ngFor="let p of cPoints;let pi=index">
-              <circle *ngIf="cIdx===pi" [attr.cx]="p.x" [attr.cy]="p.y" r="12" fill="#10b981" opacity=".12" class="chart-ring"/>
-              <circle [attr.cx]="p.x" [attr.cy]="p.y" [attr.r]="cIdx===pi?5:2.5" [attr.fill]="cIdx===pi?'#10b981':'var(--bg-card)'" stroke="#10b981" [attr.stroke-width]="cIdx===pi?2:1.5" class="chart-dot"/>
+              <circle *ngIf="cIdx===pi" [attr.cx]="p.x" [attr.cy]="p.y" r="16" fill="#34d399" opacity=".1"/>
+              <circle [attr.cx]="p.x" [attr.cy]="p.y" [attr.r]="cIdx===pi?5:2.5" [attr.fill]="cIdx===pi?'#34d399':'#0f1729'" stroke="#34d399" [attr.stroke-width]="cIdx===pi?2.5:1.5" class="chart-pt"/>
             </ng-container>
-            <line *ngIf="cIdx>=0&&cPoints[cIdx]" [attr.x1]="cPoints[cIdx].x" y1="0" [attr.x2]="cPoints[cIdx].x" y2="130" stroke="#10b981" stroke-width=".8" opacity=".15" stroke-dasharray="4 3"/>
+            <line *ngIf="cIdx>=0&&cPoints[cIdx]" [attr.x1]="cPoints[cIdx].x" y1="0" [attr.x2]="cPoints[cIdx].x" y2="140" stroke="#34d399" stroke-width=".6" opacity=".2" stroke-dasharray="4 3"/>
           </svg>
-          <div class="chart-labels"><span *ngFor="let l of cLabels">{{ l }}</span></div>
-          <div class="chart-tip" *ngIf="cIdx>=0&&cVals[cIdx]!==undefined" [style.left.%]="cPoints[cIdx]?(cPoints[cIdx].x/5):0">
+          <div class="chart-x"><span *ngFor="let l of cLabels">{{ l }}</span></div>
+          <div class="chart-tooltip" *ngIf="cIdx>=0&&cVals[cIdx]!==undefined" [style.left.%]="cPoints[cIdx]?(cPoints[cIdx].x/5):0">
             <b>{{ cVals[cIdx]|number:'1.0-0' }} L</b><span>{{ cLabels[cIdx]||'' }}</span>
           </div>
         </div>
       </section>
 
-      <!-- Kilométrage -->
-      <section class="card card--km reveal" style="--i:4">
-        <div class="card-head"><h3>Kilométrage</h3></div>
-        <div class="rows" *ngIf="topUnits.length">
-          <div *ngFor="let u of pUnits" class="row-item">
-            <span class="row-accent" [style.background]="u.color"></span>
-            <span class="row-plate" style="min-width:90px">{{ u.name }}</span>
-            <div class="progress progress--lg"><div class="progress-fill" [style.width.%]="(u.mileage/maxMileage)*100" [style.background]="u.color"></div></div>
-            <span class="row-val mono">{{ u.mileage|number:'1.0-0' }} km</span>
+      <!-- Vehicle Health -->
+      <section class="glass-card gc-health fade-in" style="--d:4">
+        <div class="gc-head"><span class="gc-title">Santé véhicules</span></div>
+        <div class="health-body">
+          <div class="gauge-box">
+            <svg viewBox="0 0 160 160">
+              <defs><filter id="gg"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+              <circle cx="80" cy="80" r="65" fill="none" stroke="rgba(255,255,255,.04)" stroke-width="10"/>
+              <circle cx="80" cy="80" r="65" fill="none" [attr.stroke]="hColor" stroke-width="10" stroke-linecap="round"
+                stroke-dasharray="408" [attr.stroke-dashoffset]="408-(hPct/100)*408" class="gauge-ring" filter="url(#gg)"/>
+            </svg>
+            <div class="gauge-inner">
+              <span class="gauge-big" [style.color]="hColor">{{ hPct }}<small>%</small></span>
+              <span class="gauge-sub">en bon état</span>
+            </div>
           </div>
-          <div class="pager" *ngIf="topUnits.length>5"><button (click)="unP=unP-1" [disabled]="unP===0">&#8249;</button><span>{{ unP+1 }}/{{ Math.ceil(topUnits.length/5) }}</span><button (click)="unP=unP+1" [disabled]="(unP+1)*5>=topUnits.length">&#8250;</button></div>
+          <div class="health-bars">
+            <div *ngFor="let h of hItems" class="health-row">
+              <div class="health-info"><span class="health-name">{{ h.name }}</span><b [style.color]="h.color">{{ h.value }}</b></div>
+              <div class="bar-track"><div class="bar-fill" [style.width.%]="totalHealth?(h.value/totalHealth)*100:0" [style.background]="h.color" [style.box-shadow]="'0 0 12px '+h.color+'55'"></div></div>
+            </div>
+          </div>
         </div>
-        <div class="empty" *ngIf="!topUnits.length">Aucune donnée</div>
       </section>
 
       <!-- Dépenses -->
-      <section class="card card--exp reveal" style="--i:5">
-        <div class="card-head"><h3>Dépenses</h3><span class="badge badge--amber">{{ totalCost|number:'1.0-0' }} DT</span></div>
-        <div class="exp-list">
-          <div *ngFor="let e of expItems" class="exp-item">
-            <div class="exp-header">
-              <span class="exp-dot" [style.background]="e.color"></span>
-              <span class="exp-name">{{ e.name }}</span>
-              <b class="exp-val mono">{{ e.value|number:'1.0-0' }} DT</b>
-            </div>
-            <div class="progress progress--sm"><div class="progress-fill" [style.width.%]="totalCost?(e.value/totalCost)*100:0" [style.background]="e.color"></div></div>
+      <section class="glass-card gc-exp fade-in" style="--d:5">
+        <div class="gc-head"><span class="gc-title">Dépenses</span><span class="neon-badge amber">{{ totalCost|number:'1.0-0' }} DT</span></div>
+        <div class="exp-rows">
+          <div *ngFor="let e of expItems" class="exp-row">
+            <div class="exp-meta"><span class="dot-glow" [style.--dc]="e.color"></span><span class="exp-name">{{ e.name }}</span><b class="exp-amt">{{ e.value|number:'1.0-0' }} DT</b></div>
+            <div class="bar-track"><div class="bar-fill" [style.width.%]="totalCost?(e.value/totalCost)*100:0" [style.background]="e.color" [style.box-shadow]="'0 0 10px '+e.color+'44'"></div></div>
           </div>
         </div>
       </section>
 
-      <!-- Vehicle Health -->
-      <section class="card card--health reveal" style="--i:6">
-        <div class="card-head"><h3>Santé véhicules</h3></div>
-        <div class="health-layout">
-          <div class="gauge-wrap">
-            <svg viewBox="0 0 140 140">
-              <defs>
-                <filter id="gaugeGlow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-              </defs>
-              <circle cx="70" cy="70" r="58" fill="none" stroke="var(--border-color)" stroke-width="8" opacity=".08"/>
-              <circle cx="70" cy="70" r="58" fill="none" [attr.stroke]="hColor" stroke-width="9" stroke-linecap="round" stroke-dasharray="364" [attr.stroke-dashoffset]="364-(hPct/100)*364" class="gauge-arc" filter="url(#gaugeGlow)"/>
+      <!-- Kilométrage -->
+      <section class="glass-card gc-km fade-in" style="--d:6">
+        <div class="gc-head"><span class="gc-title">Kilométrage</span></div>
+        <div class="list-rows" *ngIf="topUnits.length">
+          <div *ngFor="let u of pUnits" class="list-row">
+            <span class="row-bar" [style.background]="u.color"></span>
+            <span class="row-name" style="min-width:90px">{{ u.name }}</span>
+            <div class="bar-track bar-lg"><div class="bar-fill" [style.width.%]="(u.mileage/maxMileage)*100" [style.background]="u.color" [style.box-shadow]="'0 0 10px '+u.color+'44'"></div></div>
+            <span class="row-mono">{{ u.mileage|number:'1.0-0' }} km</span>
+          </div>
+          <div class="pgr" *ngIf="topUnits.length>5"><button (click)="unP=unP-1" [disabled]="unP===0">&#8249;</button><span>{{ unP+1 }}/{{ Math.ceil(topUnits.length/5) }}</span><button (click)="unP=unP+1" [disabled]="(unP+1)*5>=topUnits.length">&#8250;</button></div>
+        </div>
+        <div class="empty-msg" *ngIf="!topUnits.length">Aucune donnée</div>
+      </section>
+
+      <!-- Scores -->
+      <section class="glass-card gc-scores fade-in" style="--d:7">
+        <div class="gc-head"><span class="gc-title">Scores de conduite</span></div>
+        <div class="list-rows" *ngIf="drivingScores.length">
+          <div *ngFor="let s of pScores;let i=index" class="list-row">
+            <span class="rank-badge" [class.gold]="scP*5+i<1" [class.silver]="scP*5+i===1" [class.bronze]="scP*5+i===2">{{ scP*5+i+1 }}</span>
+            <span class="row-name">{{ s.plate }}</span>
+            <div class="bar-track"><div class="bar-fill" [style.width.%]="s.score" [style.background]="'linear-gradient(90deg,'+scoreC(s.score)+','+scoreE(s.score)+')'" [style.box-shadow]="'0 0 10px '+scoreC(s.score)+'55'"></div></div>
+            <b class="score-num" [style.color]="scoreC(s.score)">{{ s.score }}</b>
+          </div>
+          <div class="pgr" *ngIf="drivingScores.length>5"><button (click)="scP=scP-1" [disabled]="scP===0">&#8249;</button><span>{{ scP+1 }}/{{ Math.ceil(drivingScores.length/5) }}</span><button (click)="scP=scP+1" [disabled]="(scP+1)*5>=drivingScores.length">&#8250;</button></div>
+        </div>
+        <div class="empty-msg" *ngIf="!drivingScores.length">Aucun score</div>
+      </section>
+
+      <!-- Géozones -->
+      <section class="glass-card gc-geo fade-in" style="--d:8">
+        <div class="gc-head"><span class="gc-title">Géozones</span></div>
+        <div class="list-rows" *ngIf="geofences.length">
+          <div *ngFor="let g of geofences" class="list-row">
+            <span class="dot-glow lg" [style.--dc]="g.color"></span>
+            <span class="row-name flex-1">{{ g.name }}</span>
+            <b class="row-mono">{{ g.count }}</b>
+          </div>
+        </div>
+        <div class="empty-msg" *ngIf="!geofences.length">Aucune géozone</div>
+      </section>
+
+      <!-- Alertes -->
+      <section class="glass-card gc-alerts fade-in" style="--d:9">
+        <div class="gc-head">
+          <span class="gc-title">Alertes</span>
+          <span class="neon-badge red" *ngIf="alerts.length">{{ alerts.length }}</span>
+        </div>
+        <div class="alert-list" *ngIf="alerts.length">
+          <div *ngFor="let a of pagedAlerts" class="alert-row" [class.alert-new]="a._isNew">
+            <span class="alert-dot" [class.a-warn]="a.severity==='warning'" [class.a-danger]="a.severity==='danger'" [class.a-info]="a.severity==='info'"></span>
+            <div class="alert-body"><span class="alert-msg">{{ a.message }}</span><span class="alert-time">{{ a.time }}</span></div>
+          </div>
+          <div class="pgr" *ngIf="alerts.length>6"><button (click)="alertsP=alertsP-1" [disabled]="alertsP===0">&#8249;</button><span>{{ alertsP+1 }}/{{ Math.ceil(alerts.length/6) }}</span><button (click)="alertsP=alertsP+1" [disabled]="(alertsP+1)*6>=alerts.length">&#8250;</button></div>
+        </div>
+        <div class="empty-msg" *ngIf="!alerts.length">Aucune alerte</div>
+      </section>
+
+      <!-- Conso/Véhicule -->
+      <section class="glass-card fade-in" style="--d:10">
+        <div class="gc-head"><span class="gc-title">Conso / Véhicule</span><span class="neon-badge muted">L/100km</span></div>
+        <div class="list-rows" *ngIf="vehicleFuelStats.length">
+          <div *ngFor="let v of pFuel" class="fuel-row">
+            <div class="fuel-meta"><span class="row-name">{{ v.plate }}</span><b [style.color]="fuelC(v.consumption)">{{ v.consumption|number:'1.1-1' }}</b></div>
+            <div class="bar-track bar-sm"><div class="bar-fill" [style.width.%]="(v.consumption/maxFuelConsumption)*100" [style.background]="fuelC(v.consumption)"></div></div>
+            <span class="fuel-sub">{{ v.totalLiters|number:'1.0-0' }}L · {{ v.totalKm|number:'1.0-0' }}km</span>
+          </div>
+          <div class="pgr" *ngIf="vehicleFuelStats.length>5"><button (click)="fuP=fuP-1" [disabled]="fuP===0">&#8249;</button><span>{{ fuP+1 }}/{{ Math.ceil(vehicleFuelStats.length/5) }}</span><button (click)="fuP=fuP+1" [disabled]="(fuP+1)*5>=vehicleFuelStats.length">&#8250;</button></div>
+        </div>
+        <div class="empty-msg" *ngIf="!vehicleFuelStats.length">Aucune donnée</div>
+      </section>
+
+      <!-- Trajets -->
+      <section class="glass-card gc-trips fade-in" style="--d:11">
+        <div class="gc-head"><span class="gc-title">Derniers trajets</span></div>
+        <div class="list-rows" *ngIf="recentTrips.length">
+          <div *ngFor="let t of pTrips" class="list-row">
+            <svg viewBox="0 0 20 28" width="14" height="20" fill="none" class="trip-svg">
+              <circle cx="10" cy="5" r="3.5" stroke="#34d399" stroke-width="1.5"/><line x1="10" y1="9" x2="10" y2="19" stroke="rgba(255,255,255,.15)" stroke-width="1.5" stroke-dasharray="2 2"/><circle cx="10" cy="23" r="3.5" stroke="#f87171" stroke-width="1.5"/>
             </svg>
-            <div class="gauge-center">
-              <span class="gauge-pct" [style.color]="hColor">{{ hPct }}%</span>
-              <span class="gauge-lbl">en bon état</span>
-            </div>
+            <div class="trip-info"><span class="row-name">{{ t.plate }}</span><span class="trip-sub">{{ t.distance }} km · {{ t.duration }}</span></div>
+            <span class="trip-date">{{ t.date }}</span>
           </div>
-          <div class="health-items">
-            <div *ngFor="let h of hItems" class="health-card" [style.--hc]="h.color">
-              <b>{{ h.value }}</b>
-              <span>{{ h.name }}</span>
-              <div class="progress progress--xs"><div class="progress-fill" [style.width.%]="totalHealth?(h.value/totalHealth)*100:0" [style.background]="h.color"></div></div>
-            </div>
-          </div>
+          <div class="pgr" *ngIf="recentTrips.length>5"><button (click)="trP=trP-1" [disabled]="trP===0">&#8249;</button><span>{{ trP+1 }}/{{ Math.ceil(recentTrips.length/5) }}</span><button (click)="trP=trP+1" [disabled]="(trP+1)*5>=recentTrips.length">&#8250;</button></div>
         </div>
+        <div class="empty-msg" *ngIf="!recentTrips.length">Aucun trajet</div>
       </section>
 
-      <!-- Geozones -->
-      <section class="card card--geo reveal" style="--i:7">
-        <div class="card-head"><h3>Géozones</h3></div>
-        <div class="geo-list" *ngIf="geofences.length">
-          <div *ngFor="let g of geofences" class="geo-item">
-            <span class="geo-dot" [style.background]="g.color" [style.box-shadow]="'0 0 8px '+g.color+'44'"></span>
-            <span class="geo-name">{{ g.name }}</span>
-            <b class="geo-count mono">{{ g.count }}</b>
+      <!-- Conducteurs -->
+      <section class="glass-card fade-in" style="--d:12">
+        <div class="gc-head"><span class="gc-title">Conducteurs</span><span class="neon-badge muted">{{ drivers.length }}</span></div>
+        <div class="list-rows" *ngIf="drivers.length">
+          <div *ngFor="let d of pDrv" class="list-row">
+            <div class="drv-avatar" [class.drv-on]="d.active">{{ d.initials }}</div>
+            <div class="trip-info"><span class="row-name">{{ d.name }}</span><span class="trip-sub">{{ d.vehicle||'Non assigné' }}</span></div>
+            <span class="drv-status" [class.st-on]="d.active">{{ d.active?'Actif':'—' }}</span>
           </div>
+          <div class="pgr" *ngIf="drivers.length>5"><button (click)="drP=drP-1" [disabled]="drP===0">&#8249;</button><span>{{ drP+1 }}/{{ Math.ceil(drivers.length/5) }}</span><button (click)="drP=drP+1" [disabled]="(drP+1)*5>=drivers.length">&#8250;</button></div>
         </div>
-        <div class="empty" *ngIf="!geofences.length">Aucune géozone</div>
+        <div class="empty-msg" *ngIf="!drivers.length">Aucun conducteur</div>
       </section>
 
-      <!-- Driving Scores -->
-      <section class="card card--scores reveal" style="--i:8">
-        <div class="card-head"><h3>Scores de conduite</h3></div>
-        <div class="rows" *ngIf="drivingScores.length">
-          <div *ngFor="let s of pScores;let i=index" class="row-item">
-            <span class="rank" [class.rank-gold]="scP*5+i<1" [class.rank-silver]="scP*5+i===1" [class.rank-bronze]="scP*5+i===2">{{ scP*5+i+1 }}</span>
-            <span class="row-plate">{{ s.plate }}</span>
-            <div class="progress"><div class="progress-fill" [style.width.%]="s.score" [style.background]="'linear-gradient(90deg,'+scoreC(s.score)+','+scoreE(s.score)+')'"></div></div>
-            <b class="row-score mono" [style.color]="scoreC(s.score)">{{ s.score }}</b>
-          </div>
-          <div class="pager" *ngIf="drivingScores.length>5"><button (click)="scP=scP-1" [disabled]="scP===0">&#8249;</button><span>{{ scP+1 }}/{{ Math.ceil(drivingScores.length/5) }}</span><button (click)="scP=scP+1" [disabled]="(scP+1)*5>=drivingScores.length">&#8250;</button></div>
-        </div>
-        <div class="empty" *ngIf="!drivingScores.length">Aucun score</div>
-      </section>
-
-      <!-- Alerts -->
-      <section class="card card--alerts reveal" style="--i:9">
-        <div class="card-head"><h3>Alertes récentes</h3><span class="alert-pill" *ngIf="alerts.length">{{ alerts.length }}</span></div>
-        <div class="timeline" *ngIf="alerts.length">
-          <div *ngFor="let a of pagedAlerts" class="tl-item" [class.tl-new]="a._isNew">
-            <div class="tl-dot" [class.tl-warn]="a.severity==='warning'" [class.tl-danger]="a.severity==='danger'" [class.tl-info]="a.severity==='info'"></div>
-            <div class="tl-body"><span class="tl-msg">{{ a.message }}</span><span class="tl-time">{{ a.time }}</span></div>
-          </div>
-          <div class="pager" *ngIf="alerts.length>6"><button (click)="alertsP=alertsP-1" [disabled]="alertsP===0">&#8249;</button><span>{{ alertsP+1 }}/{{ Math.ceil(alerts.length/6) }}</span><button (click)="alertsP=alertsP+1" [disabled]="(alertsP+1)*6>=alerts.length">&#8250;</button></div>
-        </div>
-        <div class="empty" *ngIf="!alerts.length">Aucune alerte</div>
-      </section>
-
-      <!-- Fuel per Vehicle -->
-      <section class="card reveal" style="--i:10">
-        <div class="card-head"><h3>Conso / Véhicule</h3><span class="badge badge--muted">L/100km</span></div>
-        <div class="rows" *ngIf="vehicleFuelStats.length">
-          <div *ngFor="let v of pFuel" class="fuel-item">
-            <div class="fuel-top"><span class="row-plate">{{ v.plate }}</span><b class="mono" [style.color]="fuelC(v.consumption)">{{ v.consumption|number:'1.1-1' }}</b></div>
-            <div class="progress progress--sm"><div class="progress-fill" [style.width.%]="(v.consumption/maxFuelConsumption)*100" [style.background]="fuelC(v.consumption)"></div></div>
-            <span class="row-sub">{{ v.totalLiters|number:'1.0-0' }}L · {{ v.totalKm|number:'1.0-0' }}km</span>
-          </div>
-          <div class="pager" *ngIf="vehicleFuelStats.length>5"><button (click)="fuP=fuP-1" [disabled]="fuP===0">&#8249;</button><span>{{ fuP+1 }}/{{ Math.ceil(vehicleFuelStats.length/5) }}</span><button (click)="fuP=fuP+1" [disabled]="(fuP+1)*5>=vehicleFuelStats.length">&#8250;</button></div>
-        </div>
-        <div class="empty" *ngIf="!vehicleFuelStats.length">Aucune donnée</div>
-      </section>
-
-      <!-- Recent Trips -->
-      <section class="card card--trips reveal" style="--i:11">
-        <div class="card-head"><h3>Derniers trajets</h3></div>
-        <div class="rows" *ngIf="recentTrips.length">
-          <div *ngFor="let t of pTrips" class="row-item">
-            <svg viewBox="0 0 20 28" width="14" height="20" fill="none" class="trip-icon">
-              <circle cx="10" cy="5" r="3.5" stroke="#10b981" stroke-width="1.5"/>
-              <line x1="10" y1="9" x2="10" y2="19" stroke="var(--text-muted)" stroke-width="1.5" stroke-dasharray="2 2"/>
-              <circle cx="10" cy="23" r="3.5" stroke="#ef4444" stroke-width="1.5"/>
-            </svg>
-            <div class="row-col"><span class="row-plate">{{ t.plate }}</span><span class="row-sub">{{ t.distance }} km · {{ t.duration }}</span></div>
-            <span class="row-sub" style="margin-left:auto">{{ t.date }}</span>
-          </div>
-          <div class="pager" *ngIf="recentTrips.length>5"><button (click)="trP=trP-1" [disabled]="trP===0">&#8249;</button><span>{{ trP+1 }}/{{ Math.ceil(recentTrips.length/5) }}</span><button (click)="trP=trP+1" [disabled]="(trP+1)*5>=recentTrips.length">&#8250;</button></div>
-        </div>
-        <div class="empty" *ngIf="!recentTrips.length">Aucun trajet</div>
-      </section>
-
-      <!-- Drivers -->
-      <section class="card reveal" style="--i:12">
-        <div class="card-head"><h3>Conducteurs</h3><span class="badge badge--muted">{{ drivers.length }}</span></div>
-        <div class="rows" *ngIf="drivers.length">
-          <div *ngFor="let d of pDrv" class="row-item">
-            <div class="avatar" [class.avatar--on]="d.active">{{ d.initials }}</div>
-            <div class="row-col"><span class="row-plate">{{ d.name }}</span><span class="row-sub">{{ d.vehicle||'Non assigné' }}</span></div>
-            <span class="status" [class.status--on]="d.active">{{ d.active?'Actif':'—' }}</span>
-          </div>
-          <div class="pager" *ngIf="drivers.length>5"><button (click)="drP=drP-1" [disabled]="drP===0">&#8249;</button><span>{{ drP+1 }}/{{ Math.ceil(drivers.length/5) }}</span><button (click)="drP=drP+1" [disabled]="(drP+1)*5>=drivers.length">&#8250;</button></div>
-        </div>
-        <div class="empty" *ngIf="!drivers.length">Aucun conducteur</div>
-      </section>
-
-    </div><!-- bento -->
-  </div><!-- dash-inner -->
-</div><!-- dash -->
+    </div><!-- grid -->
+  </div><!-- inner -->
+</div><!-- aurora -->
 </app-layout>
   `,
   styles: [`
-    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
-    /* ═══════════════════════════════════════
-       FOUNDATION
-    ═══════════════════════════════════════ */
-    .dash {
+    /* ════════════════════════════════════════════
+       AURORA — ANIMATED DARK DASHBOARD
+    ════════════════════════════════════════════ */
+
+    :host { --font: 'Space Grotesk', sans-serif; --mono: 'JetBrains Mono', ui-monospace, monospace; }
+
+    .aurora {
       flex: 1; min-height: calc(100vh - 42px); overflow-y: auto;
-      background: var(--bg-page); position: relative;
+      background: #070b14; position: relative; color: #e2e8f0;
     }
 
-    /* Ambient gradient background */
-    .dash-bg {
-      position: fixed; inset: 0; pointer-events: none; z-index: 0;
-      background:
-        radial-gradient(ellipse 80% 60% at 10% 20%, rgba(99,102,241,.06) 0%, transparent 60%),
-        radial-gradient(ellipse 60% 50% at 85% 70%, rgba(16,185,129,.05) 0%, transparent 55%),
-        radial-gradient(ellipse 50% 40% at 50% 10%, rgba(139,92,246,.04) 0%, transparent 50%);
+    /* ── Animated background ── */
+    .aurora-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+
+    .orb {
+      position: absolute; border-radius: 50%; filter: blur(100px);
+      animation: drift 20s ease-in-out infinite alternate;
+    }
+    .orb-1 {
+      width: 600px; height: 600px; top: -10%; left: -5%;
+      background: radial-gradient(circle, rgba(99,102,241,.2) 0%, transparent 70%);
+      animation-duration: 22s;
+    }
+    .orb-2 {
+      width: 500px; height: 500px; top: 40%; right: -10%;
+      background: radial-gradient(circle, rgba(16,185,129,.15) 0%, transparent 70%);
+      animation-duration: 26s; animation-delay: -8s;
+    }
+    .orb-3 {
+      width: 450px; height: 450px; bottom: -5%; left: 30%;
+      background: radial-gradient(circle, rgba(139,92,246,.12) 0%, transparent 70%);
+      animation-duration: 30s; animation-delay: -14s;
+    }
+    @keyframes drift {
+      0%   { transform: translate(0, 0) scale(1); }
+      33%  { transform: translate(40px, -30px) scale(1.05); }
+      66%  { transform: translate(-20px, 20px) scale(0.95); }
+      100% { transform: translate(30px, -10px) scale(1.02); }
     }
 
-    /* Subtle noise texture */
-    .dash-grain {
-      position: fixed; inset: 0; pointer-events: none; z-index: 0;
-      opacity: 0.025;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    .grid-overlay {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.015) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 30%, transparent 80%);
+      -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 30%, transparent 80%);
     }
 
-    .dash-inner {
+    .aurora-inner {
       position: relative; z-index: 1;
-      max-width: 1440px; margin: 0 auto; padding: 0 28px 56px;
-    }
-    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
-
-    /* ═══════════════════════════════════════
-       ANIMATIONS
-    ═══════════════════════════════════════ */
-    .reveal {
-      animation: revealUp .65s cubic-bezier(.16,1,.3,1) both;
-      animation-delay: calc(var(--i, 0) * 65ms + 80ms);
-    }
-    @keyframes revealUp {
-      from { opacity: 0; transform: translateY(22px) scale(.98); }
-      to   { opacity: 1; transform: translateY(0) scale(1); }
-    }
-    .reveal-kpi {
-      animation: kpiPop .6s cubic-bezier(.34,1.56,.64,1) both;
-      animation-delay: calc(var(--kd, 0) * 60ms + 160ms);
-    }
-    @keyframes kpiPop {
-      from { opacity: 0; transform: translateY(16px) scale(.92); }
-      to   { opacity: 1; transform: translateY(0) scale(1); }
+      max-width: 1440px; margin: 0 auto; padding: 0 28px 60px;
     }
 
-    /* ═══════════════════════════════════════
+    /* ── Staggered entrance ── */
+    .fade-in {
+      animation: fadeUp .7s cubic-bezier(.16,1,.3,1) both;
+      animation-delay: calc(var(--d, 0) * 70ms + 100ms);
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px) scale(.97); filter: blur(6px); }
+      to   { opacity: 1; transform: none; filter: blur(0); }
+    }
+
+    /* ════════════════════════════════════════════
        HEADER
-    ═══════════════════════════════════════ */
-    .d-head {
+    ════════════════════════════════════════════ */
+    .hdr {
       display: flex; justify-content: space-between; align-items: flex-end;
-      padding: 24px 0 16px; flex-wrap: wrap; gap: 14px;
+      padding: 26px 0 18px; flex-wrap: wrap; gap: 16px;
     }
-    .d-title {
-      font-family: 'Sora', sans-serif; font-size: 28px; font-weight: 800;
-      color: var(--text-primary); margin: 0; letter-spacing: -.6px;
-      background: linear-gradient(135deg, var(--text-primary) 0%, color-mix(in srgb, var(--text-primary) 70%, #6366f1) 100%);
+    .hdr-badge {
+      display: inline-flex; align-items: center; gap: 7px;
+      font: 700 9px/1 var(--mono); text-transform: uppercase; letter-spacing: 1.2px;
+      padding: 5px 14px; border-radius: 20px;
+      background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.06);
+      color: #94a3b8; margin-bottom: 8px;
+    }
+    .pulse-dot {
+      width: 7px; height: 7px; border-radius: 50%; background: #ef4444;
+      position: relative;
+    }
+    .pulse-dot.on { background: #34d399; }
+    .pulse-dot.on::after {
+      content: ''; position: absolute; inset: -3px; border-radius: 50%; background: #34d399;
+      animation: pulse 2s ease-in-out infinite; opacity: 0;
+    }
+    @keyframes pulse { 0%{transform:scale(1);opacity:.5} 100%{transform:scale(2.5);opacity:0} }
+
+    .hdr-title { margin: 0; }
+    .title-gradient {
+      font: 800 34px/1 var(--font); letter-spacing: -.8px;
+      background: linear-gradient(135deg, #f1f5f9 0%, #60a5fa 50%, #a78bfa 100%);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
       background-clip: text;
+      background-size: 200% 200%;
+      animation: gradientShift 8s ease-in-out infinite;
     }
-    .d-meta {
-      display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap;
-    }
-    .d-chip {
-      display: inline-flex; align-items: center; gap: 6px;
-      font-size: 11px; font-weight: 600; color: var(--text-muted);
-      background: var(--bg-secondary); padding: 4px 12px; border-radius: 20px;
-      border: 1px solid var(--border-color); letter-spacing: .01em;
-      backdrop-filter: blur(8px);
-    }
-    .chip-dot {
-      width: 6px; height: 6px; border-radius: 50%;
-      background: #6366f1;
-    }
-    .chip-dot.drv { background: #f59e0b; }
-    .d-head-right { display: flex; align-items: center; gap: 12px; }
-
-    /* ── Live badge ── */
-    .live {
-      display: inline-flex; align-items: center; gap: 7px;
-      font-size: 10px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: .6px; padding: 5px 14px 5px 12px; border-radius: 20px;
-      color: #ef4444; background: rgba(239,68,68,.06);
-      border: 1px solid rgba(239,68,68,.12); position: relative;
-      backdrop-filter: blur(8px);
-    }
-    .live.on {
-      color: #10b981; background: rgba(16,185,129,.06);
-      border-color: rgba(16,185,129,.15);
-    }
-    .live-core {
-      width: 6px; height: 6px; border-radius: 50%; background: currentColor;
-      position: relative; z-index: 1;
-    }
-    .live-ring {
-      position: absolute; left: 12px; width: 6px; height: 6px;
-      border-radius: 50%; background: currentColor; opacity: 0;
-    }
-    .live.on .live-ring {
-      animation: livePulse 2s ease-in-out infinite;
-    }
-    @keyframes livePulse {
-      0%   { transform: scale(1); opacity: .55; }
-      100% { transform: scale(4); opacity: 0; }
+    @keyframes gradientShift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
     }
 
-    /* ═══════════════════════════════════════
-       KPI CARDS
-    ═══════════════════════════════════════ */
-    .kpi-row {
-      display: grid; grid-template-columns: repeat(6, 1fr);
-      gap: 12px; margin: 6px 0 20px;
+    .hdr-chips { display: flex; gap: 8px; margin-top: 10px; }
+    .glass-chip {
+      font: 700 13px/1 var(--mono); color: #e2e8f0;
+      padding: 6px 14px; border-radius: 20px;
+      background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08);
+      backdrop-filter: blur(8px);
     }
-    .kpi {
-      background: color-mix(in srgb, var(--bg-card) 85%, transparent);
-      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-      border-radius: 16px;
-      padding: 20px 18px 18px; position: relative; overflow: hidden;
-      border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+    .glass-chip small { font-size: 10px; font-weight: 500; color: #64748b; margin-left: 4px; font-family: var(--font); }
+    .hdr-right { display: flex; align-items: center; gap: 12px; }
+
+    /* ════════════════════════════════════════════
+       HERO KPIs
+    ════════════════════════════════════════════ */
+    .hero-kpis {
+      display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px;
+      margin: 8px 0 22px;
+    }
+    .hero-kpi {
+      position: relative; overflow: hidden;
+      background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06);
+      border-radius: 16px; padding: 20px 18px 16px;
+      display: flex; flex-direction: column; gap: 6px;
       cursor: default;
-      display: flex; flex-direction: column; gap: 10px;
-      transition: transform .3s cubic-bezier(.34,1.56,.64,1), box-shadow .3s ease, border-color .3s ease;
+      transition: transform .3s cubic-bezier(.34,1.56,.64,1), border-color .3s, box-shadow .3s;
     }
-    .kpi::before {
-      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-      background: linear-gradient(90deg, var(--kc), color-mix(in srgb, var(--kc) 25%, transparent));
-      border-radius: 3px 3px 0 0;
+    .hero-kpi::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, var(--ac), transparent);
     }
-    .kpi-glow {
-      position: absolute; top: -40px; right: -40px; width: 100px; height: 100px;
-      background: radial-gradient(circle, var(--kg) 0%, transparent 70%);
-      opacity: 0; transition: opacity .4s ease;
-      pointer-events: none;
+    .hero-glow {
+      position: absolute; top: -30%; right: -30%; width: 100px; height: 100px;
+      background: radial-gradient(circle, var(--ag) 0%, transparent 70%);
+      opacity: 0; transition: opacity .4s; pointer-events: none;
     }
-    .kpi:hover .kpi-glow { opacity: 1; }
-    .kpi:hover {
-      transform: translateY(-5px) scale(1.02);
-      border-color: color-mix(in srgb, var(--kc) 30%, var(--border-color));
-      box-shadow:
-        0 12px 32px -8px var(--ks),
-        0 0 0 1px color-mix(in srgb, var(--kc) 8%, transparent);
+    .hero-kpi:hover .hero-glow { opacity: 1; }
+    .hero-kpi:hover {
+      transform: translateY(-4px) scale(1.02);
+      border-color: color-mix(in srgb, var(--ac) 30%, rgba(255,255,255,.06));
+      box-shadow: 0 12px 40px -8px color-mix(in srgb, var(--ac) 25%, transparent);
     }
-
-    /* Shimmer sweep on load */
-    .kpi-shimmer {
-      position: absolute; inset: 0; pointer-events: none;
-      background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.08) 50%, transparent 70%);
-      animation: shimmer 2s ease-in-out 1;
-      animation-delay: calc(var(--kd, 0) * 60ms + 500ms);
-      animation-fill-mode: both;
+    .hero-label {
+      display: flex; align-items: center; gap: 6px;
+      font: 500 10px/1 var(--font); color: #64748b; text-transform: uppercase; letter-spacing: .6px;
     }
-    @keyframes shimmer {
-      0%   { transform: translateX(-100%); opacity: 1; }
-      100% { transform: translateX(100%); opacity: 0; }
-    }
-
-    .kpi-icon {
-      width: 38px; height: 38px; border-radius: 12px;
-      background: var(--kg); display: flex;
-      align-items: center; justify-content: center;
-      transition: transform .2s ease, box-shadow .2s ease;
-    }
-    .kpi:hover .kpi-icon {
-      transform: scale(1.08);
-      box-shadow: 0 4px 12px -2px var(--ks);
-    }
-    .kpi-num {
-      font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 30px; font-weight: 700; line-height: 1;
-      color: var(--text-primary); letter-spacing: -.5px;
+    .hero-label svg { color: var(--ac); opacity: .7; }
+    .hero-num {
+      font: 700 36px/1 var(--mono); color: #f1f5f9; letter-spacing: -1px;
       font-variant-numeric: tabular-nums;
     }
-    .kpi-num small {
-      font-size: 13px; font-weight: 500; opacity: .4; margin-left: 2px;
-    }
-    .kpi-lbl {
-      font-family: 'Sora', sans-serif;
-      font-size: 11px; font-weight: 500; color: var(--text-muted);
-      letter-spacing: .01em;
-    }
+    .hero-unit { font-size: 14px; font-weight: 500; color: #475569; margin-left: 2px; }
+    .hero-bar { height: 3px; border-radius: 3px; background: rgba(255,255,255,.04); overflow: hidden; margin-top: 2px; }
+    .hero-bar-fill { height: 100%; border-radius: 3px; transition: width .9s cubic-bezier(.16,1,.3,1); }
 
-    /* ═══════════════════════════════════════
-       BENTO GRID
-    ═══════════════════════════════════════ */
-    .bento { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-    .card--fleet  { grid-column: span 1; }
-    .card--chart  { grid-column: span 2; }
-    .card--km     { grid-column: span 2; }
-    .card--exp    { grid-column: span 1; }
-    .card--health { grid-column: span 2; }
-    .card--geo    { grid-column: span 1; }
-    .card--scores { grid-column: span 2; }
-    .card--alerts { grid-column: span 1; }
-    .card--trips  { grid-column: span 2; }
+    /* ════════════════════════════════════════════
+       GLASS CARDS
+    ════════════════════════════════════════════ */
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .gc-fleet  { grid-column: span 1; }
+    .gc-chart  { grid-column: span 2; }
+    .gc-health { grid-column: span 2; }
+    .gc-exp    { grid-column: span 1; }
+    .gc-km     { grid-column: span 2; }
+    .gc-scores { grid-column: span 2; }
+    .gc-geo    { grid-column: span 1; }
+    .gc-alerts { grid-column: span 1; }
+    .gc-trips  { grid-column: span 2; }
 
-    /* ── Card base ── */
-    .card {
-      background: color-mix(in srgb, var(--bg-card) 90%, transparent);
-      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-      border-radius: 18px; padding: 22px;
-      border: 1px solid color-mix(in srgb, var(--border-color) 50%, transparent);
-      position: relative; overflow: hidden;
-      transition: transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease, border-color .25s ease;
+    .glass-card {
+      background: rgba(255,255,255,.025);
+      border: 1px solid rgba(255,255,255,.06);
+      border-radius: 20px; padding: 22px; position: relative; overflow: hidden;
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      transition: transform .28s cubic-bezier(.34,1.56,.64,1), border-color .28s, box-shadow .28s;
     }
-    .card::after {
+    .glass-card::before {
       content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,.06), transparent);
+      background: linear-gradient(90deg, transparent 10%, rgba(255,255,255,.06) 50%, transparent 90%);
     }
-    .card:hover {
+    .glass-card:hover {
       transform: translateY(-3px);
-      box-shadow: 0 20px 50px -12px rgba(0,0,0,.08), 0 0 0 1px rgba(255,255,255,.02);
-      border-color: color-mix(in srgb, var(--primary, #6366f1) 12%, var(--border-color));
+      border-color: rgba(255,255,255,.1);
+      box-shadow: 0 20px 60px -15px rgba(0,0,0,.4);
     }
-    .card-head {
-      display: flex; align-items: center; gap: 8px; margin-bottom: 18px;
-    }
-    .card-head h3 {
-      font-family: 'Sora', sans-serif; font-size: 13px;
-      font-weight: 700; color: var(--text-primary);
-      margin: 0; flex: 1; letter-spacing: -.01em;
+    .gc-head { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+    .gc-title {
+      font: 600 13px/1 var(--font); color: #cbd5e1;
+      letter-spacing: .02em; flex: 1;
     }
 
-    /* ── Badges ── */
-    .badge {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 13px; font-weight: 700; letter-spacing: -.02em;
+    /* ── Neon Badges ── */
+    .neon-badge {
+      font: 700 12px/1 var(--mono); padding: 4px 12px; border-radius: 14px; letter-spacing: -.02em;
     }
-    .badge--green { color: #10b981; }
-    .badge--amber { color: #f59e0b; }
-    .badge--muted { font-size: 11px; color: var(--text-muted); font-weight: 500; font-family: 'Sora', sans-serif; }
-    .alert-pill {
-      background: linear-gradient(135deg, #fef2f2, #fee2e2); color: #ef4444;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 11px; font-weight: 700; padding: 3px 11px; border-radius: 14px;
-      border: 1px solid rgba(239,68,68,.15);
-    }
+    .neon-badge.green { color: #34d399; background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.15); }
+    .neon-badge.amber { color: #fbbf24; background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.15); }
+    .neon-badge.red   { color: #f87171; background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.15); }
+    .neon-badge.muted { color: #64748b; background: rgba(100,116,139,.08); border: 1px solid rgba(100,116,139,.1); font-family: var(--font); font-weight: 500; font-size: 11px; }
 
-    /* ═══════════════════════════════════════
+    /* ── Shared elements ── */
+    .dot-glow {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+      background: var(--dc); box-shadow: 0 0 8px var(--dc);
+    }
+    .dot-glow.lg { width: 10px; height: 10px; }
+
+    .bar-track { flex: 1; height: 6px; background: rgba(255,255,255,.04); border-radius: 6px; overflow: hidden; }
+    .bar-track.bar-lg { height: 10px; }
+    .bar-track.bar-sm { height: 5px; }
+    .bar-fill { height: 100%; border-radius: 6px; transition: width .9s cubic-bezier(.16,1,.3,1); }
+
+    .row-name { font: 600 12px/1.3 var(--font); color: #e2e8f0; }
+    .row-mono { font: 700 12px/1 var(--mono); color: #e2e8f0; min-width: 75px; text-align: right; }
+    .flex-1 { flex: 1; }
+
+    /* ════════════════════════════════════════════
        FLEET DONUT
-    ═══════════════════════════════════════ */
-    .fleet-row { display: flex; gap: 18px; align-items: center; }
-    .donut-wrap { position: relative; width: 135px; height: 135px; flex-shrink: 0; }
+    ════════════════════════════════════════════ */
+    .fleet-body { display: flex; gap: 20px; align-items: center; }
+    .donut-wrap { position: relative; width: 145px; height: 145px; flex-shrink: 0; }
     .donut-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-    .donut-seg {
-      transition: stroke-dasharray .6s ease, stroke-dashoffset .6s ease, stroke-width .2s ease;
+    .donut-seg { transition: stroke-dasharray .6s ease, stroke-dashoffset .6s ease, stroke-width .2s ease; }
+    .donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .donut-big { font: 700 30px/1 var(--mono); color: #f1f5f9; letter-spacing: -1px; }
+    .donut-sub { font: 700 8px/1 var(--font); color: #475569; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 4px; }
+
+    .fleet-rows { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+    .fleet-row-item {
+      display: flex; align-items: center; gap: 10px; padding: 6px 10px;
+      border-radius: 10px; font-size: 12px; transition: all .18s;
     }
-    .donut-center {
-      position: absolute; inset: 0;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-    }
-    .donut-num {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 28px; font-weight: 700; color: var(--text-primary);
-      line-height: 1; letter-spacing: -.5px;
-    }
-    .donut-lbl {
-      font-size: 9px; color: var(--text-muted);
-      text-transform: uppercase; letter-spacing: .8px; margin-top: 3px;
-      font-weight: 600;
-    }
-    .fleet-legend { display: flex; flex-direction: column; gap: 3px; flex: 1; }
-    .lg-item {
-      display: flex; align-items: center; gap: 8px; padding: 6px 10px;
-      border-radius: 10px; font-size: 12px; color: var(--text-secondary);
-      cursor: default; transition: all .18s ease;
-    }
-    .lg-item:hover, .lg-active {
-      background: var(--bg-secondary); transform: translateX(4px);
-    }
-    .lg-bar { width: 4px; height: 22px; border-radius: 3px; flex-shrink: 0; transition: height .2s ease; }
-    .lg-active .lg-bar { height: 28px; }
-    .lg-name { flex: 1; font-weight: 500; }
-    .lg-val {
-      font-family: 'JetBrains Mono', monospace;
-      font-weight: 700; color: var(--text-primary); font-size: 14px;
-    }
-    .fleet-strip {
-      display: flex; height: 6px; border-radius: 100px;
-      overflow: hidden; gap: 2px; margin-top: 16px; background: var(--bg-tertiary);
-    }
+    .fleet-row-item:hover, .row-hl { background: rgba(255,255,255,.04); transform: translateX(4px); }
+    .fleet-name { flex: 1; font: 500 12px/1.3 var(--font); color: #94a3b8; }
+    .fleet-val { font: 700 14px/1 var(--mono); color: #e2e8f0; }
+
+    .fleet-strip { display: flex; height: 5px; border-radius: 100px; overflow: hidden; gap: 2px; margin-top: 16px; background: rgba(255,255,255,.03); }
     .strip-seg { min-width: 0; transition: flex .7s ease; border-radius: 100px; }
     .strip-hide { flex: 0 !important; }
 
-    /* ═══════════════════════════════════════
-       FUEL CHART
-    ═══════════════════════════════════════ */
-    .chart-wrap {
-      background: color-mix(in srgb, var(--bg-secondary) 80%, transparent);
-      border-radius: 14px;
+    /* ════════════════════════════════════════════
+       CHART
+    ════════════════════════════════════════════ */
+    .chart-area {
+      background: rgba(255,255,255,.02); border-radius: 14px;
       padding: 16px 18px 10px; position: relative; cursor: crosshair;
-      border: 1px solid var(--border-color); border-color: transparent;
+      border: 1px solid rgba(255,255,255,.04);
     }
-    .chart-svg { width: 100%; height: 120px; display: block; overflow: visible; }
-    .chart-line {
-      stroke-dasharray: 2000; stroke-dashoffset: 2000;
-      animation: drawLine 1.6s ease forwards .3s;
-    }
-    .chart-area { opacity: 0; animation: fadeIn .6s ease forwards .8s; }
-    @keyframes drawLine { to { stroke-dashoffset: 0; } }
-    @keyframes fadeIn { to { opacity: 1; } }
-    .chart-ring { animation: ringPop .2s ease; }
-    @keyframes ringPop { from { r: 0; opacity: 0; } }
-    .chart-dot { transition: r .18s ease, fill .18s ease, stroke-width .18s ease; }
-    .chart-labels {
-      display: flex; justify-content: space-between;
-      font-size: 10px; color: var(--text-muted); margin-top: 10px;
-      font-weight: 500;
-    }
-    .chart-tip {
+    .chart-svg { width: 100%; height: 125px; display: block; overflow: visible; }
+    .line-path { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: draw 1.6s ease forwards .3s; }
+    .area-path { opacity: 0; animation: fadeA .6s ease forwards .8s; }
+    @keyframes draw { to { stroke-dashoffset: 0; } }
+    @keyframes fadeA { to { opacity: 1; } }
+    .chart-pt { transition: r .18s ease, fill .18s ease, stroke-width .18s ease; }
+    .chart-x { display: flex; justify-content: space-between; font: 500 10px/1 var(--font); color: #475569; margin-top: 10px; }
+    .chart-tooltip {
       position: absolute; top: 6px; transform: translateX(-50%);
-      background: color-mix(in srgb, var(--bg-card) 92%, transparent);
-      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-      border: 1px solid var(--border-color);
+      background: rgba(15,23,41,.9); border: 1px solid rgba(255,255,255,.1);
       border-radius: 12px; padding: 8px 14px;
-      box-shadow: 0 10px 30px -6px rgba(0,0,0,.12);
-      pointer-events: none; z-index: 5;
+      box-shadow: 0 12px 40px rgba(0,0,0,.4); pointer-events: none; z-index: 5;
       display: flex; flex-direction: column; align-items: center;
-      animation: tipPop .15s ease;
+      animation: tipIn .15s ease;
     }
-    .chart-tip b {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 15px; font-weight: 700; color: #10b981;
-    }
-    .chart-tip span { font-size: 10px; color: var(--text-muted); font-weight: 500; }
-    @keyframes tipPop { from { opacity: 0; transform: translateX(-50%) translateY(5px) scale(.95); } }
+    .chart-tooltip b { font: 700 15px/1 var(--mono); color: #34d399; }
+    .chart-tooltip span { font: 500 10px/1 var(--font); color: #475569; }
+    @keyframes tipIn { from { opacity: 0; transform: translateX(-50%) translateY(5px) scale(.9); } }
 
-    /* ═══════════════════════════════════════
-       PROGRESS BARS
-    ═══════════════════════════════════════ */
-    .progress {
-      flex: 1; height: 8px; background: var(--bg-tertiary);
-      border-radius: 100px; overflow: hidden;
-    }
-    .progress--lg { height: 14px; }
-    .progress--sm { height: 6px; }
-    .progress--xs { height: 4px; }
-    .progress-fill {
-      height: 100%; border-radius: 100px; position: relative;
-      transition: width .9s cubic-bezier(.16,1,.3,1);
-    }
+    /* ════════════════════════════════════════════
+       HEALTH
+    ════════════════════════════════════════════ */
+    .health-body { display: flex; gap: 28px; align-items: center; }
+    .gauge-box { position: relative; width: 145px; height: 145px; flex-shrink: 0; }
+    .gauge-box svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .gauge-ring { transition: stroke-dashoffset 1.2s cubic-bezier(.16,1,.3,1); }
+    .gauge-inner { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .gauge-big { font: 700 30px/1 var(--mono); }
+    .gauge-big small { font-size: 18px; font-weight: 500; }
+    .gauge-sub { font: 500 10px/1 var(--font); color: #475569; margin-top: 3px; }
+    .health-bars { flex: 1; display: flex; flex-direction: column; gap: 14px; }
+    .health-row { display: flex; flex-direction: column; gap: 6px; }
+    .health-info { display: flex; justify-content: space-between; }
+    .health-name { font: 500 12px/1 var(--font); color: #94a3b8; }
+    .health-info b { font: 700 14px/1 var(--mono); }
 
-    /* ═══════════════════════════════════════
-       ROWS
-    ═══════════════════════════════════════ */
-    .rows { display: flex; flex-direction: column; gap: 2px; }
-    .row-item {
+    /* ════════════════════════════════════════════
+       EXPENSES
+    ════════════════════════════════════════════ */
+    .exp-rows { display: flex; flex-direction: column; gap: 16px; }
+    .exp-row { display: flex; flex-direction: column; gap: 7px; }
+    .exp-meta { display: flex; align-items: center; gap: 10px; }
+    .exp-name { flex: 1; font: 500 12px/1 var(--font); color: #94a3b8; }
+    .exp-amt { font: 700 12px/1 var(--mono); color: #e2e8f0; }
+
+    /* ════════════════════════════════════════════
+       LIST ROWS
+    ════════════════════════════════════════════ */
+    .list-rows { display: flex; flex-direction: column; gap: 2px; }
+    .list-row {
       display: flex; align-items: center; gap: 10px;
-      padding: 8px 10px; border-radius: 10px; font-size: 12px;
-      transition: all .15s ease;
+      padding: 8px 10px; border-radius: 10px;
+      transition: all .15s;
     }
-    .row-item:hover {
-      background: var(--bg-secondary);
-      transform: translateX(2px);
-    }
-    .row-accent { width: 4px; height: 22px; border-radius: 3px; flex-shrink: 0; }
-    .row-plate { font-size: 12px; font-weight: 600; color: var(--text-primary); }
-    .row-val {
-      font-size: 12px; font-weight: 700; color: var(--text-primary);
-      min-width: 80px; text-align: right;
-    }
-    .row-sub { font-size: 11px; color: var(--text-muted); }
-    .row-col { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-    .row-score {
-      font-size: 14px; font-weight: 700; min-width: 32px; text-align: right;
-    }
+    .list-row:hover { background: rgba(255,255,255,.03); transform: translateX(3px); }
+    .row-bar { width: 4px; height: 22px; border-radius: 3px; flex-shrink: 0; }
 
-    /* ── Ranks ── */
-    .rank {
+    .rank-badge {
       width: 24px; height: 24px; border-radius: 8px;
       display: flex; align-items: center; justify-content: center;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 10px; font-weight: 700;
-      color: var(--text-muted); background: var(--bg-tertiary);
-      flex-shrink: 0; transition: transform .2s ease;
+      font: 700 10px/1 var(--mono); color: #475569;
+      background: rgba(255,255,255,.04); flex-shrink: 0;
+      transition: transform .2s;
     }
-    .row-item:hover .rank { transform: scale(1.1); }
-    .rank-gold   { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #fff; box-shadow: 0 2px 8px rgba(245,158,11,.3); }
-    .rank-silver { background: linear-gradient(135deg, #e2e8f0, #94a3b8); color: #fff; box-shadow: 0 2px 8px rgba(148,163,184,.3); }
-    .rank-bronze { background: linear-gradient(135deg, #d97706, #92400e); color: #fff; box-shadow: 0 2px 8px rgba(217,119,6,.3); }
+    .list-row:hover .rank-badge { transform: scale(1.12); }
+    .rank-badge.gold   { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #fff; box-shadow: 0 0 12px rgba(251,191,36,.3); }
+    .rank-badge.silver { background: linear-gradient(135deg, #94a3b8, #64748b); color: #fff; box-shadow: 0 0 12px rgba(148,163,184,.3); }
+    .rank-badge.bronze { background: linear-gradient(135deg, #d97706, #92400e); color: #fff; box-shadow: 0 0 12px rgba(217,119,6,.3); }
+    .score-num { font: 700 14px/1 var(--mono); min-width: 32px; text-align: right; }
 
-    /* ═══════════════════════════════════════
-       EXPENSES
-    ═══════════════════════════════════════ */
-    .exp-list { display: flex; flex-direction: column; gap: 16px; }
-    .exp-item { display: flex; flex-direction: column; gap: 6px; }
-    .exp-header { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-    .exp-dot { width: 9px; height: 9px; border-radius: 4px; flex-shrink: 0; }
-    .exp-name { flex: 1; color: var(--text-secondary); font-weight: 500; }
-    .exp-val { color: var(--text-primary); font-size: 12px; font-weight: 700; }
+    /* ════════════════════════════════════════════
+       FUEL
+    ════════════════════════════════════════════ */
+    .fuel-row { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; }
+    .fuel-meta { display: flex; justify-content: space-between; }
+    .fuel-meta b { font: 700 13px/1 var(--mono); }
+    .fuel-sub { font: 400 11px/1 var(--font); color: #475569; }
 
-    /* ═══════════════════════════════════════
-       HEALTH
-    ═══════════════════════════════════════ */
-    .health-layout { display: flex; gap: 24px; align-items: center; }
-    .gauge-wrap { position: relative; width: 135px; height: 135px; flex-shrink: 0; }
-    .gauge-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-    .gauge-arc {
-      transition: stroke-dashoffset 1.2s cubic-bezier(.16,1,.3,1);
+    /* ════════════════════════════════════════════
+       ALERTS
+    ════════════════════════════════════════════ */
+    .alert-list { display: flex; flex-direction: column; gap: 0; }
+    .alert-row {
+      display: flex; gap: 12px; padding: 8px 6px; border-radius: 8px;
+      transition: background .15s;
     }
-    .gauge-center {
-      position: absolute; inset: 0;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    .alert-row:hover { background: rgba(255,255,255,.03); }
+    .alert-row.alert-new { animation: alertGlow .6s ease; }
+    @keyframes alertGlow { 0% { background: rgba(99,102,241,.08); } 100% { background: transparent; } }
+    .alert-dot {
+      width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 4px;
+      background: rgba(255,255,255,.06); border: 2px solid #475569;
     }
-    .gauge-pct {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 28px; font-weight: 700; line-height: 1;
-    }
-    .gauge-lbl { font-size: 10px; color: var(--text-muted); margin-top: 3px; font-weight: 500; }
-    .health-items { display: flex; flex-direction: column; gap: 10px; flex: 1; }
-    .health-card {
-      display: flex; flex-direction: column; gap: 5px;
-      padding: 12px 16px; border-radius: 12px;
-      background: var(--bg-secondary);
-      border-left: 3px solid var(--hc);
-      transition: transform .15s ease, background .15s ease;
-    }
-    .health-card:hover { transform: translateX(3px); }
-    .health-card b {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 20px; font-weight: 700; color: var(--text-primary); line-height: 1;
-    }
-    .health-card span { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+    .a-warn   { border-color: #fbbf24; background: rgba(251,191,36,.15); box-shadow: 0 0 8px rgba(251,191,36,.2); }
+    .a-danger { border-color: #f87171; background: rgba(248,113,113,.15); box-shadow: 0 0 8px rgba(248,113,113,.2); }
+    .a-info   { border-color: #60a5fa; background: rgba(96,165,250,.15); box-shadow: 0 0 8px rgba(96,165,250,.2); }
+    .alert-body { min-width: 0; }
+    .alert-msg { font: 500 12px/1.4 var(--font); color: #e2e8f0; display: block; }
+    .alert-time { font: 500 10px/1 var(--font); color: #475569; display: block; margin-top: 2px; }
 
-    /* ═══════════════════════════════════════
-       GEOZONES
-    ═══════════════════════════════════════ */
-    .geo-list { display: flex; flex-direction: column; gap: 2px; }
-    .geo-item {
-      display: flex; align-items: center; gap: 12px;
-      padding: 8px 10px; border-radius: 10px; transition: all .15s;
-    }
-    .geo-item:hover { background: var(--bg-secondary); transform: translateX(2px); }
-    .geo-dot {
-      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-      transition: transform .2s ease;
-    }
-    .geo-item:hover .geo-dot { transform: scale(1.3); }
-    .geo-name { flex: 1; font-size: 13px; font-weight: 500; color: var(--text-secondary); }
-    .geo-count { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+    /* ════════════════════════════════════════════
+       TRIPS & DRIVERS
+    ════════════════════════════════════════════ */
+    .trip-svg { flex-shrink: 0; }
+    .trip-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+    .trip-sub { font: 400 11px/1 var(--font); color: #475569; }
+    .trip-date { font: 500 11px/1 var(--font); color: #475569; margin-left: auto; }
 
-    /* ═══════════════════════════════════════
-       ALERTS TIMELINE
-    ═══════════════════════════════════════ */
-    .timeline { display: flex; flex-direction: column; gap: 0; }
-    .tl-item {
-      display: flex; gap: 12px; padding: 8px 4px;
-      border-radius: 8px; transition: background .15s;
-    }
-    .tl-item:hover { background: var(--bg-secondary); }
-    .tl-item.tl-new { animation: alertFlash .6s ease; }
-    @keyframes alertFlash {
-      0% { background: rgba(99,102,241,.08); }
-      100% { background: transparent; }
-    }
-    .tl-dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: var(--bg-tertiary); border: 2px solid var(--text-muted);
-      flex-shrink: 0; margin-top: 3px;
-      transition: transform .2s ease;
-    }
-    .tl-item:hover .tl-dot { transform: scale(1.2); }
-    .tl-warn   { border-color: #f59e0b; background: rgba(245,158,11,.15); box-shadow: 0 0 6px rgba(245,158,11,.2); }
-    .tl-danger { border-color: #ef4444; background: rgba(239,68,68,.15); box-shadow: 0 0 6px rgba(239,68,68,.2); }
-    .tl-info   { border-color: #3b82f6; background: rgba(59,130,246,.15); box-shadow: 0 0 6px rgba(59,130,246,.2); }
-    .tl-body { min-width: 0; }
-    .tl-msg { font-size: 12px; font-weight: 500; color: var(--text-primary); line-height: 1.4; display: block; }
-    .tl-time { font-size: 10px; color: var(--text-muted); display: block; margin-top: 2px; font-weight: 500; }
-
-    /* ═══════════════════════════════════════
-       FUEL PER VEHICLE
-    ═══════════════════════════════════════ */
-    .fuel-item { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; }
-    .fuel-top { display: flex; justify-content: space-between; font-size: 12px; }
-    .fuel-top b { font-size: 13px; font-weight: 700; }
-
-    /* ═══════════════════════════════════════
-       DRIVERS
-    ═══════════════════════════════════════ */
-    .avatar {
+    .drv-avatar {
       width: 34px; height: 34px; border-radius: 10px;
-      background: color-mix(in srgb, var(--primary, #6366f1) 12%, transparent);
-      color: var(--primary, #6366f1); display: flex; align-items: center; justify-content: center;
-      font-family: 'Sora', sans-serif;
-      font-size: 11px; font-weight: 700; flex-shrink: 0;
-      border: 2px solid transparent;
-      transition: transform .2s ease;
+      background: rgba(99,102,241,.12); color: #818cf8;
+      display: flex; align-items: center; justify-content: center;
+      font: 700 11px/1 var(--font); flex-shrink: 0;
+      border: 2px solid transparent; transition: transform .2s;
     }
-    .row-item:hover .avatar { transform: scale(1.08); }
-    .avatar--on { border-color: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,.2); }
-    .status {
-      font-size: 10px; font-weight: 600; padding: 3px 10px;
-      border-radius: 14px; background: var(--bg-tertiary); color: var(--text-muted);
+    .list-row:hover .drv-avatar { transform: scale(1.08); }
+    .drv-on { border-color: #34d399; box-shadow: 0 0 10px rgba(52,211,153,.2); }
+    .drv-status {
+      font: 600 10px/1 var(--font); padding: 3px 10px; border-radius: 14px;
+      background: rgba(255,255,255,.04); color: #475569;
     }
-    .status--on {
-      background: rgba(16,185,129,.08); color: #10b981;
-      border: 1px solid rgba(16,185,129,.15);
-    }
-    .trip-icon { flex-shrink: 0; }
+    .st-on { background: rgba(52,211,153,.08); color: #34d399; border: 1px solid rgba(52,211,153,.15); }
 
-    /* ═══════════════════════════════════════
+    /* ════════════════════════════════════════════
        PAGINATION
-    ═══════════════════════════════════════ */
-    .pager {
+    ════════════════════════════════════════════ */
+    .pgr {
       display: flex; align-items: center; justify-content: center;
       gap: 10px; margin-top: 12px; padding-top: 12px;
-      border-top: 1px solid var(--border-color);
+      border-top: 1px solid rgba(255,255,255,.05);
     }
-    .pager button {
-      width: 30px; height: 30px; border: 1px solid var(--border-color);
-      border-radius: 10px; background: var(--bg-card); color: var(--text-secondary);
+    .pgr button {
+      width: 30px; height: 30px; border: 1px solid rgba(255,255,255,.08);
+      border-radius: 10px; background: rgba(255,255,255,.03); color: #94a3b8;
       font-size: 15px; font-weight: 700; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
       transition: all .2s cubic-bezier(.34,1.56,.64,1);
     }
-    .pager button:hover:not(:disabled) {
-      background: var(--primary, #6366f1); color: #fff; border-color: var(--primary, #6366f1);
-      transform: scale(1.1);
-      box-shadow: 0 4px 12px rgba(99,102,241,.25);
+    .pgr button:hover:not(:disabled) {
+      background: #6366f1; color: #fff; border-color: #6366f1;
+      transform: scale(1.12); box-shadow: 0 0 16px rgba(99,102,241,.3);
     }
-    .pager button:disabled { opacity: .2; cursor: default; }
-    .pager span { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+    .pgr button:disabled { opacity: .15; cursor: default; }
+    .pgr span { font: 500 11px/1 var(--font); color: #475569; }
 
-    /* ═══════════════════════════════════════
-       EMPTY STATE
-    ═══════════════════════════════════════ */
-    .empty {
-      padding: 32px; text-align: center; color: var(--text-muted);
-      font-size: 12px; opacity: .45; font-weight: 500;
-    }
+    .empty-msg { padding: 32px; text-align: center; color: #334155; font: 500 12px/1 var(--font); }
 
-    /* ═══════════════════════════════════════
+    /* ════════════════════════════════════════════
        RESPONSIVE
-    ═══════════════════════════════════════ */
-    @media (max-width: 1200px) {
-      .kpi-row { grid-template-columns: repeat(3, 1fr); }
-    }
+    ════════════════════════════════════════════ */
+    @media (max-width: 1200px) { .hero-kpis { grid-template-columns: repeat(3, 1fr); } }
     @media (max-width: 900px) {
-      .bento { grid-template-columns: repeat(2, 1fr); }
-      .card--chart, .card--scores, .card--km, .card--trips { grid-column: span 2; }
-      .card--fleet { grid-column: span 1; }
-      .kpi-row { grid-template-columns: repeat(3, 1fr); }
+      .grid { grid-template-columns: repeat(2, 1fr); }
+      .gc-chart, .gc-scores, .gc-km, .gc-trips, .gc-health { grid-column: span 2; }
+      .hero-kpis { grid-template-columns: repeat(3, 1fr); }
     }
     @media (max-width: 600px) {
-      .bento { grid-template-columns: 1fr; }
-      .card--chart, .card--scores, .card--km, .card--trips, .card--fleet { grid-column: span 1; }
-      .kpi-row { grid-template-columns: repeat(2, 1fr); }
-      .dash-inner { padding: 0 14px 36px; }
-      .d-head { flex-direction: column; align-items: flex-start; }
-      .fleet-row { flex-direction: column; }
-      .health-layout { flex-direction: column; }
+      .grid { grid-template-columns: 1fr; }
+      .gc-chart, .gc-scores, .gc-km, .gc-trips, .gc-fleet, .gc-health { grid-column: span 1; }
+      .hero-kpis { grid-template-columns: repeat(2, 1fr); }
+      .aurora-inner { padding: 0 14px 36px; }
+      .hdr { flex-direction: column; align-items: flex-start; }
+      .fleet-body { flex-direction: column; }
+      .health-body { flex-direction: column; }
     }
   `]
 })
@@ -895,11 +765,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private refreshPending=false;
 
-  // Display values for animated counting
   dVehicles=0; dMoving=0; dStopped=0; dAlerts=0; dFuel=0; dCost=0;
 
   fleetSegs:any[]=[]; donutSegs:any[]=[];
   readonly circ56=2*Math.PI*56;
+  readonly circ62=2*Math.PI*62;
   expItems:any[]=[]; hItems:any[]=[];
 
   get totalMotion():number{return this.motionData.stationary+this.motionData.ignitionOn+this.motionData.movingIgnition+this.motionData.noState+this.motionData.noCoords;}
@@ -957,13 +827,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.donutSegs=segs.filter(s=>s.value>0).map(s=>{
       const da=(s.value/tot)*this.circ56;
       const offset=-(cum/tot)*this.circ56;
+      const da2=(s.value/tot)*this.circ62;
+      const offset2=-(cum/tot)*this.circ62;
       cum+=s.value;
-      return{...s,da,offset};
+      return{...s,da,offset,da2,offset2};
     });
     this.expItems=[
-      {name:'Carburant',color:'#3b82f6',value:this.fuelCost},
-      {name:'Entretien',color:'#10b981',value:this.maintenanceCost},
-      {name:'Réparation',color:'#f59e0b',value:this.repairCost},
+      {name:'Carburant',color:'#60a5fa',value:this.fuelCost},
+      {name:'Entretien',color:'#34d399',value:this.maintenanceCost},
+      {name:'Réparation',color:'#fbbf24',value:this.repairCost},
       {name:'Autres',color:'#94a3b8',value:this.otherCost},
     ];
     this.hItems=[
@@ -1011,7 +883,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           if(fc.chartValues?.length){
             this.cVals=fc.chartValues as number[];
             const mx=Math.max(...this.cVals,0.1);
-            this.cPoints=this.cVals.map((v:number,i:number)=>({x:this.cVals.length>1?(i/(this.cVals.length-1))*500:250,y:125-(v/mx)*118}));
+            this.cPoints=this.cVals.map((v:number,i:number)=>({x:this.cVals.length>1?(i/(this.cVals.length-1))*500:250,y:130-(v/mx)*122}));
             this.cPts=this.cPoints.map(p=>`${p.x.toFixed(0)},${p.y.toFixed(0)}`).join(' ');
             if(fc.chartDays?.length){const step=Math.max(1,Math.floor(fc.chartDays.length/7));this.cLabels=(fc.chartDays as string[]).filter((_:string,i:number)=>i%step===0||i===fc.chartDays.length-1).map((dd:string)=>{const p=dd.split('-');return p.length>=3?`${p[2]}/${p[1]}`:dd;});}
           }
