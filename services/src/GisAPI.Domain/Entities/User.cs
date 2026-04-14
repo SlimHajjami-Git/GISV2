@@ -68,6 +68,16 @@ public class User : TenantEntity
     [Column("can_report_monthly_costs")]
     public bool CanReportMonthlyCosts { get; set; } = true;
 
+    // Alert email preferences
+    [Column("alert_assurance")]
+    public bool AlertAssurance { get; set; } = false;
+    [Column("alert_taxe_circulation")]
+    public bool AlertTaxeCirculation { get; set; } = false;
+    [Column("alert_visite_technique")]
+    public bool AlertVisiteTechnique { get; set; } = false;
+    [Column("alert_entretien")]
+    public bool AlertEntretien { get; set; } = false;
+
     // Navigation
     public Role Role { get; set; } = null!;
     public Societe Societe { get; set; } = null!;

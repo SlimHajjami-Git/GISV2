@@ -33,3 +33,9 @@ CREATE INDEX IF NOT EXISTS idx_alert_emails_type ON alert_emails(alert_type);
 -- ── Report permissions: Monthly costs report ──
 ALTER TABLE subscription_types ADD COLUMN IF NOT EXISTS report_monthly_costs BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS can_report_monthly_costs BOOLEAN NOT NULL DEFAULT true;
+
+-- ── User alert email preferences ──
+ALTER TABLE users ADD COLUMN IF NOT EXISTS alert_assurance BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS alert_taxe_circulation BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS alert_visite_technique BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS alert_entretien BOOLEAN NOT NULL DEFAULT false;

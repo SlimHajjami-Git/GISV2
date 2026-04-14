@@ -47,7 +47,12 @@ public record CreateUserRequest(
     bool CanReportMileagePeriod = true,
     bool CanReportSpeedInfraction = true,
     bool CanReportDrivingBehavior = true,
-    bool CanReportMonthlyCosts = true
+    bool CanReportMonthlyCosts = true,
+    // Alert email preferences
+    bool AlertAssurance = false,
+    bool AlertTaxeCirculation = false,
+    bool AlertVisiteTechnique = false,
+    bool AlertEntretien = false
 );
 
 public record UpdateUserRequest(
@@ -88,7 +93,12 @@ public record UpdateUserRequest(
     bool? CanReportMileagePeriod = null,
     bool? CanReportSpeedInfraction = null,
     bool? CanReportDrivingBehavior = null,
-    bool? CanReportMonthlyCosts = null
+    bool? CanReportMonthlyCosts = null,
+    // Alert email preferences
+    bool? AlertAssurance = null,
+    bool? AlertTaxeCirculation = null,
+    bool? AlertVisiteTechnique = null,
+    bool? AlertEntretien = null
 );
 
 public record UserSettingsDto(

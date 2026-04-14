@@ -106,6 +106,10 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         if (request.CanReportSpeedInfraction.HasValue) user.CanReportSpeedInfraction = request.CanReportSpeedInfraction.Value;
         if (request.CanReportDrivingBehavior.HasValue) user.CanReportDrivingBehavior = request.CanReportDrivingBehavior.Value;
         if (request.CanReportMonthlyCosts.HasValue) user.CanReportMonthlyCosts = request.CanReportMonthlyCosts.Value;
+        if (request.AlertAssurance.HasValue) user.AlertAssurance = request.AlertAssurance.Value;
+        if (request.AlertTaxeCirculation.HasValue) user.AlertTaxeCirculation = request.AlertTaxeCirculation.Value;
+        if (request.AlertVisiteTechnique.HasValue) user.AlertVisiteTechnique = request.AlertVisiteTechnique.Value;
+        if (request.AlertEntretien.HasValue) user.AlertEntretien = request.AlertEntretien.Value;
 
         // Update vehicle assignments if provided
         if (request.AssignedVehicleIds != null)

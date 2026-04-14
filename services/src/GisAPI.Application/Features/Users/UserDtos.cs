@@ -14,5 +14,9 @@ public record UserListDto(
     DateTime CreatedAt,
     DateTime? LastLoginAt,
     int[]? AssignedVehicleIds = null,
-    UserPermissionsDto? UserPermissions = null
+    UserPermissionsDto? UserPermissions = null,
+    bool AlertAssurance = false,
+    bool AlertTaxeCirculation = false,
+    bool AlertVisiteTechnique = false,
+    bool AlertEntretien = false
 );

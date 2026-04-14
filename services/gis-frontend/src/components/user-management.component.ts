@@ -49,6 +49,10 @@ interface UserPermissions {
   canReportSpeedInfraction: boolean;
   canReportDrivingBehavior: boolean;
   canReportMonthlyCosts: boolean;
+  alertAssurance: boolean;
+  alertTaxeCirculation: boolean;
+  alertVisiteTechnique: boolean;
+  alertEntretien: boolean;
 }
 
 interface User {
@@ -439,6 +443,37 @@ interface VehicleOption {
                     <button class="btn-text" (click)="selectAllPermissions()">Tout cocher</button>
                     <button class="btn-text" (click)="deselectAllPermissions()">Tout décocher</button>
                   </div>
+                </div>
+              </div>
+
+              <!-- Alert email preferences (shown in step 2) -->
+              <div *ngIf="userModalStep === 2" class="form-section" style="margin-top: 20px;">
+                <h3 class="section-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                  Alertes par email
+                </h3>
+                <p class="section-hint">Les alertes sélectionnées seront envoyées à l'adresse email de cet utilisateur.</p>
+                <div class="perm-grid" style="grid-template-columns: repeat(2, 1fr);">
+                  <label class="perm-check">
+                    <input type="checkbox" [(ngModel)]="userForm.alertAssurance">
+                    <span class="perm-label">🛡️ Assurance</span>
+                    <span class="perm-desc">Expiration assurance</span>
+                  </label>
+                  <label class="perm-check">
+                    <input type="checkbox" [(ngModel)]="userForm.alertTaxeCirculation">
+                    <span class="perm-label">🚗 Taxe circulation</span>
+                    <span class="perm-desc">Expiration taxe</span>
+                  </label>
+                  <label class="perm-check">
+                    <input type="checkbox" [(ngModel)]="userForm.alertVisiteTechnique">
+                    <span class="perm-label">🔍 Visite technique</span>
+                    <span class="perm-desc">Expiration visite</span>
+                  </label>
+                  <label class="perm-check">
+                    <input type="checkbox" [(ngModel)]="userForm.alertEntretien">
+                    <span class="perm-label">🔧 Entretien</span>
+                    <span class="perm-desc">Rappel entretien</span>
+                  </label>
                 </div>
               </div>
 
@@ -1704,7 +1739,11 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     canReportMileagePeriod: true,
     canReportSpeedInfraction: true,
     canReportDrivingBehavior: true,
-    canReportMonthlyCosts: true
+    canReportMonthlyCosts: true,
+    alertAssurance: false,
+    alertTaxeCirculation: false,
+    alertVisiteTechnique: false,
+    alertEntretien: false
   };
   availableVehicles: VehicleOption[] = [];
 
@@ -2005,7 +2044,11 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         canReportMileagePeriod: up?.canReportMileagePeriod ?? true,
         canReportSpeedInfraction: up?.canReportSpeedInfraction ?? true,
         canReportDrivingBehavior: up?.canReportDrivingBehavior ?? true,
-        canReportMonthlyCosts: up?.canReportMonthlyCosts ?? true
+        canReportMonthlyCosts: up?.canReportMonthlyCosts ?? true,
+        alertAssurance: (user as any).alertAssurance ?? false,
+        alertTaxeCirculation: (user as any).alertTaxeCirculation ?? false,
+        alertVisiteTechnique: (user as any).alertVisiteTechnique ?? false,
+        alertEntretien: (user as any).alertEntretien ?? false
       };
     } else {
       this.editingUser = null;
@@ -2046,7 +2089,11 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         canReportMileagePeriod: true,
         canReportSpeedInfraction: true,
         canReportDrivingBehavior: true,
-        canReportMonthlyCosts: true
+        canReportMonthlyCosts: true,
+        alertAssurance: false,
+        alertTaxeCirculation: false,
+        alertVisiteTechnique: false,
+        alertEntretien: false
       };
     }
     this.userModalStep = 1;
@@ -2196,7 +2243,11 @@ export class UserManagementComponent implements OnInit, OnDestroy {
       canReportMileagePeriod: this.userForm.canReportMileagePeriod,
       canReportSpeedInfraction: this.userForm.canReportSpeedInfraction,
       canReportDrivingBehavior: this.userForm.canReportDrivingBehavior,
-      canReportMonthlyCosts: this.userForm.canReportMonthlyCosts
+      canReportMonthlyCosts: this.userForm.canReportMonthlyCosts,
+      alertAssurance: this.userForm.alertAssurance,
+      alertTaxeCirculation: this.userForm.alertTaxeCirculation,
+      alertVisiteTechnique: this.userForm.alertVisiteTechnique,
+      alertEntretien: this.userForm.alertEntretien
     };
 
     if (this.editingUser) {

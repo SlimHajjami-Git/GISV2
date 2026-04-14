@@ -36,7 +36,7 @@ import { SecuriteGuard } from './guards/securite.guard';
 import { LocationCompanyGuard } from './guards/location-company.guard';
 import { VehicleLoansComponent } from './components/vehicle-loans.component';
 import { VehicleInfoComponent } from './components/vehicle-info.component';
-import { AlertEmailsComponent } from './components/alert-emails.component';
+
 
 export const routes: Routes = [
   // Public routes (no auth required)
@@ -118,9 +118,6 @@ export const routes: Routes = [
   
   // Emprunts véhicules (location companies only)
   { path: 'emprunts', component: VehicleLoansComponent, canActivate: [AuthGuard, FeatureGuard, LocationCompanyGuard], data: { feature: 'fleet_management' } },
-
-  // Alert emails
-  { path: 'alert-emails', component: AlertEmailsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'fleet_management' } },
 
   // Tours module
   { path: 'tours', component: ToursComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'tours' } },
