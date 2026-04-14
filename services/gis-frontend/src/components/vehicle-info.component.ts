@@ -41,11 +41,17 @@ import { ApiService } from '../services/api.service';
               <div class="form-row">
                 <div class="form-group">
                   <label>Marque</label>
-                  <input type="text" [(ngModel)]="vehicleForm.marque" name="marque" placeholder="Ex: Renault">
+                  <select [(ngModel)]="vehicleForm.marque" name="marque" (ngModelChange)="onBrandChange($event)">
+                    <option value="">Sélectionner une marque</option>
+                    <option *ngFor="let brand of brands" [value]="brand.name">{{ brand.name }}</option>
+                  </select>
                 </div>
                 <div class="form-group">
                   <label>Modèle</label>
-                  <input type="text" [(ngModel)]="vehicleForm.modele" name="modele" placeholder="Ex: Kangoo">
+                  <select [(ngModel)]="vehicleForm.modele" name="modele" [disabled]="!vehicleForm.marque || loadingModels">
+                    <option value="">{{ loadingModels ? 'Chargement...' : 'Sélectionner un modèle' }}</option>
+                    <option *ngFor="let model of models" [value]="model.name">{{ model.name }}</option>
+                  </select>
                 </div>
               </div>
               <div class="form-row">
@@ -411,6 +417,9 @@ export class VehicleInfoComponent implements OnChanges {
   loading = false;
   saving = false;
   showSuccess = false;
+  brands: any[] = [];
+  models: any[] = [];
+  loadingModels = false;
   vehicleForm: any = {
     marque: '',
     modele: '',
@@ -428,8 +437,40 @@ export class VehicleInfoComponent implements OnChanges {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['isOpen'] && this.isOpen && this.vehicleId) {
+      this.loadBrands();
       this.loadVehicle();
     }
+  }
+
+  loadBrands(): void {
+    this.api.getBrands().subscribe({
+      next: (brands) => {
+        this.brands = brands;
+        this.cdr.detectChanges();
+      },
+      error: () => {}
+    });
+  }
+
+  onBrandChange(brandName: string): void {
+    this.vehicleForm.modele = '';
+    this.models = [];
+    if (!brandName) return;
+    const brand = this.brands.find(b => b.name === brandName);
+    if (!brand) return;
+    this.loadingModels = true;
+    this.cdr.detectChanges();
+    this.api.getBrandModels(brand.id).subscribe({
+      next: (models) => {
+        this.models = models;
+        this.loadingModels = false;
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.loadingModels = false;
+        this.cdr.detectChanges();
+      }
+    });
   }
 
   loadVehicle(): void {
@@ -445,6 +486,16 @@ export class VehicleInfoComponent implements OnChanges {
           this.vehicleForm.typeAcquisition = vehicle.typeAcquisition || vehicle.acquisitionType || 'achat';
           this.vehicleForm.prixAchat = vehicle.prixAchat || vehicle.purchasePrice || null;
           this.vehicleForm.traiteMensuelle = vehicle.traiteMensuelle || vehicle.leasingMonthlyPayment || null;
+          // Load models for the existing brand
+          if (this.vehicleForm.marque) {
+            const brand = this.brands.find(b => b.name === this.vehicleForm.marque);
+            if (brand) {
+              this.api.getBrandModels(brand.id).subscribe({
+                next: (models) => { this.models = models; this.cdr.detectChanges(); },
+                error: () => {}
+              });
+            }
+          }
         }
         this.loading = false;
         this.cdr.detectChanges();

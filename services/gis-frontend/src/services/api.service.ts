@@ -304,6 +304,15 @@ export class ApiService {
     return this.http.put<void>(`${this.API_URL}/vehicles/${id}`, vehicle, { headers: this.getHeaders() });
   }
 
+  // Brands & Models
+  getBrands(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.API_URL}/brands`, { headers: this.getHeaders() });
+  }
+
+  getBrandModels(brandId: number): Observable<any[]> {
+    return this.http.get<any[]>(`${this.API_URL}/brands/${brandId}/models`, { headers: this.getHeaders() });
+  }
+
   deleteVehicle(id: number): Observable<void> {
     if (this.isMockUser()) {
       this.mockDataService.deleteVehicle(id.toString());
