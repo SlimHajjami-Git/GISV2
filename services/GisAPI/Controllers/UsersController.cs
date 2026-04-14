@@ -6,6 +6,7 @@ using GisAPI.DTOs;
 using GisAPI.Application.Features.Users;
 using GisAPI.Application.Features.Users.Commands.CreateUser;
 using GisAPI.Application.Features.Users.Commands.UpdateUser;
+using GisAPI.Application.Features.Users.Commands.UpdateProfile;
 using GisAPI.Application.Features.Users.Commands.DeleteUser;
 using GisAPI.Application.Features.Users.Queries.GetUsers;
 using GisAPI.Application.Features.Users.Queries.GetUserById;
@@ -153,4 +154,24 @@ public class UsersController : ControllerBase
         var user = await _mediator.Send(new GetCurrentUserQuery(GetUserId()));
         return Ok(user);
     }
+
+    [HttpPut("me")]
+    public async Task<ActionResult<UserListDto>> UpdateMyProfile([FromBody] UpdateProfileRequest request)
+    {
+        var command = new UpdateProfileCommand(
+            request.FirstName,
+            request.LastName,
+            request.Email,
+            request.Phone
+        );
+        var user = await _mediator.Send(command);
+        return Ok(user);
+    }
 }
+
+public record UpdateProfileRequest(
+    string FirstName,
+    string LastName,
+    string Email,
+    string? Phone
+);

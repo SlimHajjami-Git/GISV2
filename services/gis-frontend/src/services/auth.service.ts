@@ -298,6 +298,19 @@ export class AuthService {
     return this.currentUser$.value;
   }
 
+  /**
+   * Merge updates into the current auth user and persist to localStorage.
+   * Used after self-service actions like profile updates so the whole app
+   * (sidebar, toolbar, guards) sees the new values without a full re-login.
+   */
+  patchCurrentUser(updates: Partial<AuthUser>): void {
+    const current = this.currentUser$.value;
+    if (!current) return;
+    const merged: AuthUser = { ...current, ...updates };
+    localStorage.setItem('auth_user', JSON.stringify(merged));
+    this.currentUser$.next(merged);
+  }
+
   getToken(): string | null {
     return localStorage.getItem('auth_token');
   }
