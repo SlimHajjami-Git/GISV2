@@ -99,7 +99,52 @@ import { ApiService } from '../services/api.service';
                     <span class="input-suffix">TND/mois</span>
                   </div>
                 </div>
-                <div class="form-group"></div>
+                <div class="form-group">
+                  <label>Durée du leasing</label>
+                  <div class="input-with-suffix">
+                    <input type="number" [(ngModel)]="vehicleForm.leasingDurationMonths" name="leasingDurationMonths" placeholder="36" min="1" max="120">
+                    <span class="input-suffix">mois</span>
+                  </div>
+                </div>
+              </div>
+              <div class="form-row" *ngIf="vehicleForm.typeAcquisition === 'leasing'">
+                <div class="form-group">
+                  <label>Date début leasing</label>
+                  <input type="date" [(ngModel)]="vehicleForm.leasingStartDate" name="leasingStartDate">
+                </div>
+                <div class="form-group">
+                  <label>Jour de paiement</label>
+                  <select [(ngModel)]="vehicleForm.leasingPaymentDay" name="leasingPaymentDay">
+                    <option [ngValue]="null">— Choisir —</option>
+                    <option *ngFor="let d of paymentDays" [ngValue]="d">{{d}}</option>
+                  </select>
+                </div>
+              </div>
+              <!-- Échéancier leasing -->
+              <div class="leasing-schedule" *ngIf="vehicleForm.typeAcquisition === 'leasing' && vehicleForm.leasingStartDate && vehicleForm.leasingDurationMonths && vehicleForm.traiteMensuelle">
+                <label class="schedule-title">Échéancier des paiements</label>
+                <div class="schedule-summary">
+                  <span>{{vehicleForm.leasingDurationMonths}} mois × {{vehicleForm.traiteMensuelle | number:'1.2-2'}} TND = <strong>{{vehicleForm.leasingDurationMonths * vehicleForm.traiteMensuelle | number:'1.2-2'}} TND</strong></span>
+                </div>
+                <div class="schedule-table-wrapper">
+                  <table class="schedule-table">
+                    <thead>
+                      <tr><th>N°</th><th>Date</th><th>Montant</th><th>Statut</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr *ngFor="let payment of getPaymentSchedule()" [class.paid]="payment.isPast" [class.current]="payment.isCurrent">
+                        <td>{{payment.index}}</td>
+                        <td>{{payment.date}}</td>
+                        <td>{{vehicleForm.traiteMensuelle | number:'1.2-2'}} TND</td>
+                        <td>
+                          <span class="payment-badge paid" *ngIf="payment.isPast">Payé</span>
+                          <span class="payment-badge current" *ngIf="payment.isCurrent">En cours</span>
+                          <span class="payment-badge upcoming" *ngIf="!payment.isPast && !payment.isCurrent">À venir</span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </form>
@@ -399,6 +444,68 @@ import { ApiService } from '../services/api.service';
       to { opacity: 1; transform: translateY(0); }
     }
 
+    /* ── Leasing schedule ── */
+    .leasing-schedule {
+      margin-top: 8px;
+      padding: 12px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+    }
+    .schedule-title {
+      font-weight: 600;
+      font-size: 13px;
+      color: #1f2937;
+      margin-bottom: 8px;
+      display: block;
+    }
+    .schedule-summary {
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 10px;
+      padding: 6px 10px;
+      background: #fff;
+      border-radius: 6px;
+      border: 1px solid #e2e8f0;
+    }
+    .schedule-table-wrapper {
+      max-height: 200px;
+      overflow-y: auto;
+      border-radius: 6px;
+      border: 1px solid #e2e8f0;
+    }
+    .schedule-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .schedule-table th {
+      background: #f1f5f9;
+      padding: 6px 10px;
+      text-align: left;
+      font-weight: 600;
+      color: #475569;
+      position: sticky;
+      top: 0;
+    }
+    .schedule-table td {
+      padding: 5px 10px;
+      border-top: 1px solid #f1f5f9;
+      color: #334155;
+    }
+    .schedule-table tr.paid { opacity: 0.6; }
+    .schedule-table tr.current { background: #eff6ff; }
+    .payment-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .payment-badge.paid { background: #dcfce7; color: #166534; }
+    .payment-badge.current { background: #dbeafe; color: #1e40af; }
+    .payment-badge.upcoming { background: #f1f5f9; color: #64748b; }
+
     /* ── Responsive ── */
     @media (max-width: 640px) {
       .form-row { grid-template-columns: 1fr; }
@@ -420,6 +527,7 @@ export class VehicleInfoComponent implements OnChanges {
   brands: any[] = [];
   models: any[] = [];
   loadingModels = false;
+  paymentDays = Array.from({ length: 28 }, (_, i) => i + 1);
   vehicleForm: any = {
     marque: '',
     modele: '',
@@ -427,7 +535,10 @@ export class VehicleInfoComponent implements OnChanges {
     carburant: '',
     typeAcquisition: 'achat',
     prixAchat: null,
-    traiteMensuelle: null
+    traiteMensuelle: null,
+    leasingDurationMonths: null,
+    leasingStartDate: '',
+    leasingPaymentDay: null
   };
 
   constructor(
@@ -486,6 +597,9 @@ export class VehicleInfoComponent implements OnChanges {
           this.vehicleForm.typeAcquisition = vehicle.typeAcquisition || vehicle.acquisitionType || 'achat';
           this.vehicleForm.prixAchat = vehicle.prixAchat || vehicle.purchasePrice || null;
           this.vehicleForm.traiteMensuelle = vehicle.traiteMensuelle || vehicle.leasingMonthlyPayment || null;
+          this.vehicleForm.leasingDurationMonths = vehicle.leasingDurationMonths || null;
+          this.vehicleForm.leasingStartDate = vehicle.leasingStartDate ? vehicle.leasingStartDate.substring(0, 10) : '';
+          this.vehicleForm.leasingPaymentDay = vehicle.leasingPaymentDay || null;
           // Load models for the existing brand
           if (this.vehicleForm.marque) {
             const brand = this.brands.find(b => b.name === this.vehicleForm.marque);
@@ -523,6 +637,31 @@ export class VehicleInfoComponent implements OnChanges {
         this.cdr.detectChanges();
       }
     });
+  }
+
+  getPaymentSchedule(): { index: number; date: string; isPast: boolean; isCurrent: boolean }[] {
+    const duration = this.vehicleForm.leasingDurationMonths;
+    const startStr = this.vehicleForm.leasingStartDate;
+    const payDay = this.vehicleForm.leasingPaymentDay || 1;
+    if (!duration || !startStr) return [];
+
+    const start = new Date(startStr + 'T00:00:00');
+    const now = new Date();
+    const payments: { index: number; date: string; isPast: boolean; isCurrent: boolean }[] = [];
+
+    for (let i = 0; i < duration; i++) {
+      const d = new Date(start.getFullYear(), start.getMonth() + i, Math.min(payDay, 28));
+      const nextD = new Date(start.getFullYear(), start.getMonth() + i + 1, Math.min(payDay, 28));
+      const isPast = d < now && nextD <= now;
+      const isCurrent = d <= now && nextD > now;
+      payments.push({
+        index: i + 1,
+        date: d.toLocaleDateString('fr-FR', { year: 'numeric', month: 'short', day: 'numeric' }),
+        isPast,
+        isCurrent
+      });
+    }
+    return payments;
   }
 
   close(): void {

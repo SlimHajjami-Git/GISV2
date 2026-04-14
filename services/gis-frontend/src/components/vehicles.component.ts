@@ -212,13 +212,6 @@ interface VehicleTrip {
                   </td>
                   <td class="col-actions">
                     <div class="actions-cell">
-                      <button class="btn-table-action" (click)="openCostsPopup(vehicle); $event.stopPropagation()" title="Dépenses">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <line x1="12" y1="1" x2="12" y2="23"/>
-                          <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-                        </svg>
-                        <span>Dépenses</span>
-                      </button>
                       <button class="btn-table-action primary" (click)="goToVehicleInfo(vehicle); $event.stopPropagation()" title="Fiche véhicule">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>

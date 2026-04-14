@@ -45,6 +45,9 @@ public class UpdateVehicleCommandHandler : IRequestHandler<UpdateVehicleCommand>
         if (request.AcquisitionType != null) vehicle.AcquisitionType = request.AcquisitionType;
         if (request.PurchasePrice.HasValue) vehicle.PurchasePrice = request.PurchasePrice;
         if (request.LeasingMonthlyPayment.HasValue) vehicle.LeasingMonthlyPayment = request.LeasingMonthlyPayment;
+        if (request.LeasingDurationMonths.HasValue) vehicle.LeasingDurationMonths = request.LeasingDurationMonths;
+        if (request.LeasingStartDate.HasValue) vehicle.LeasingStartDate = request.LeasingStartDate;
+        if (request.LeasingPaymentDay.HasValue) vehicle.LeasingPaymentDay = request.LeasingPaymentDay;
         if (request.RegistrationDate.HasValue) vehicle.RegistrationDate = request.RegistrationDate;
 
         // Document dates

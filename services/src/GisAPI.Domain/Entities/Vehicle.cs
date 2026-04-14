@@ -46,6 +46,9 @@ public class Vehicle : TenantEntity
     public string AcquisitionType { get; set; } = "purchase"; // "purchase" or "leasing"
     public decimal? PurchasePrice { get; set; }
     public decimal? LeasingMonthlyPayment { get; set; }
+    public int? LeasingDurationMonths { get; set; } // Nombre de mois du leasing
+    public DateTime? LeasingStartDate { get; set; } // Date début du leasing
+    public int? LeasingPaymentDay { get; set; } // Jour du mois pour le paiement (1-28)
     public DateTime? RegistrationDate { get; set; } // Date de mise en circulation
 
     // Document expiry dates
