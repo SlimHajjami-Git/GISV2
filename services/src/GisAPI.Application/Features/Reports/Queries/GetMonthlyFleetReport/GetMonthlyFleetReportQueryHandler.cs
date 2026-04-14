@@ -111,10 +111,15 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         var adjustedStart = DateTime.SpecifyKind(start.AddHours(1), DateTimeKind.Utc); // Tunisia UTC+1
         var adjustedEnd = DateTime.SpecifyKind(end.AddHours(1), DateTimeKind.Utc);
 
+        // Sample positions: 1 per ~3 minute window instead of loading ALL positions
+        // (a month of 10-second data for 20 devices = 5M+ rows → OOM)
+        // This takes positions in the first 10 seconds of every 3rd minute = ~18x reduction
         return await _context.GpsPositions.AsNoTracking()
             .Where(p => deviceIds.Contains(p.DeviceId) &&
                         p.RecordedAt >= adjustedStart &&
-                        p.RecordedAt < adjustedEnd)
+                        p.RecordedAt < adjustedEnd &&
+                        p.RecordedAt.Minute % 3 == 0 &&
+                        p.RecordedAt.Second < 10)
             .ToListAsync(ct);
     }
 

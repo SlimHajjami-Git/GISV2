@@ -91,6 +91,9 @@ public class GpsPositionConfiguration : IEntityTypeConfiguration<GpsPosition>
 
         builder.HasIndex(e => e.DeviceId);
         builder.HasIndex(e => e.RecordedAt).IsDescending();
+        // Composite index for report queries that filter by device + time range
+        builder.HasIndex(e => new { e.DeviceId, e.RecordedAt })
+            .HasDatabaseName("ix_gps_positions_device_recorded");
         builder.HasIndex(e => e.EventKey)
             .IsUnique()
             .HasDatabaseName("ux_gps_positions_event_key");

@@ -73,31 +73,39 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
             .ToDictionary(v => v.GpsDeviceId!.Value, v => v.Id);
         var deviceIds = deviceVehicleMap.Keys.ToList();
 
-        // Get first and last odometer readings per device for the month
         var mileagePerVehicle = new Dictionary<int, decimal>();
 
         if (deviceIds.Any())
         {
-            // Get start-of-month odometer for each device
-            var startOdos = await _context.GpsPositions.AsNoTracking()
+            // Use two separate simple queries instead of complex GroupBy+OrderBy+FirstOrDefault
+            // which can fail in EF Core query translation on some PostgreSQL versions
+            var odometerBase = _context.GpsPositions.AsNoTracking()
                 .Where(p => deviceIds.Contains(p.DeviceId)
                          && p.RecordedAt >= startDate && p.RecordedAt < endDate
-                         && p.OdometerKm.HasValue && p.OdometerKm > 0 && p.OdometerKm != 1048574)
+                         && p.OdometerKm.HasValue && p.OdometerKm > 0 && p.OdometerKm != 1048574);
+
+            // First odometer per device (earliest in month)
+            var firstOdos = await odometerBase
                 .GroupBy(p => p.DeviceId)
-                .Select(g => new
-                {
-                    DeviceId = g.Key,
-                    FirstOdo = g.OrderBy(p => p.RecordedAt).Select(p => p.OdometerKm).FirstOrDefault(),
-                    LastOdo = g.OrderByDescending(p => p.RecordedAt).Select(p => p.OdometerKm).FirstOrDefault()
-                })
+                .Select(g => new { DeviceId = g.Key, Odo = g.Min(p => p.OdometerKm) })
                 .ToListAsync(ct);
 
-            foreach (var odo in startOdos)
+            // Last odometer per device (latest in month)
+            var lastOdos = await odometerBase
+                .GroupBy(p => p.DeviceId)
+                .Select(g => new { DeviceId = g.Key, Odo = g.Max(p => p.OdometerKm) })
+                .ToListAsync(ct);
+
+            var firstMap = firstOdos.ToDictionary(x => x.DeviceId, x => x.Odo);
+            var lastMap = lastOdos.ToDictionary(x => x.DeviceId, x => x.Odo);
+
+            foreach (var deviceId in deviceIds)
             {
-                if (deviceVehicleMap.TryGetValue(odo.DeviceId, out var vehicleId)
-                    && odo.FirstOdo.HasValue && odo.LastOdo.HasValue)
+                if (firstMap.TryGetValue(deviceId, out var first) && first.HasValue
+                    && lastMap.TryGetValue(deviceId, out var last) && last.HasValue
+                    && deviceVehicleMap.TryGetValue(deviceId, out var vehicleId))
                 {
-                    var km = Math.Max(0, odo.LastOdo.Value - odo.FirstOdo.Value);
+                    var km = Math.Max(0, last.Value - first.Value);
                     mileagePerVehicle[vehicleId] = km;
                 }
             }
@@ -129,8 +137,9 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
         foreach (var vehicle in vehicles)
         {
             var km = mileagePerVehicle.GetValueOrDefault(vehicle.Id, 0);
-            var fuelCost = fuelByVehicle.TryGetValue(vehicle.Id, out var fuel) ? fuel.TotalCost : 0;
-            var fuelLiters = fuel?.TotalLiters ?? 0;
+            var hasFuel = fuelByVehicle.TryGetValue(vehicle.Id, out var fuel);
+            var fuelCost = hasFuel ? fuel!.TotalCost : 0;
+            var fuelLiters = hasFuel ? fuel!.TotalLiters : 0;
             var maintCost = maintByVehicle.GetValueOrDefault(vehicle.Id, 0);
             var repairCost = repairByVehicle.GetValueOrDefault(vehicle.Id, 0);
             var totalCost = fuelCost + maintCost + repairCost;
