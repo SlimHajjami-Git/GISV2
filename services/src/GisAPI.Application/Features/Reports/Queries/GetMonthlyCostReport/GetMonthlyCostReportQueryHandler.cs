@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
@@ -9,20 +10,26 @@ namespace GisAPI.Application.Features.Reports.Queries.GetMonthlyCostReport;
 public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostReportQuery, MonthlyCostReportDto>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
     private static readonly CultureInfo FrenchCulture = new("fr-FR");
 
-    public GetMonthlyCostReportQueryHandler(IGisDbContext context)
+    public GetMonthlyCostReportQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<MonthlyCostReportDto> Handle(GetMonthlyCostReportQuery request, CancellationToken ct)
     {
+        var companyId = _tenantService.CompanyId ?? 0;
         var startDate = DateTime.SpecifyKind(new DateTime(request.Year, request.Month, 1), DateTimeKind.Utc);
         var endDate = DateTime.SpecifyKind(startDate.AddMonths(1), DateTimeKind.Utc);
 
-        // 1. Fetch all vehicles with their departments and drivers
+        // 1. Fetch vehicles scoped to current company
+        // Explicit CompanyId filter (defense in depth; system admins also get scoped to their
+        // active company for this report instead of seeing all fleets)
         var vehiclesQuery = _context.Vehicles.AsNoTracking()
+            .Where(v => v.CompanyId == companyId)
             .Include(v => v.Department)
             .Include(v => v.AssignedDriver)
             .AsQueryable();
@@ -45,26 +52,32 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
             };
         }
 
-        // 2. Fetch fuel entries for the month
+        // 2. Fetch fuel entries from /carburant page's table (fuel_entries)
         var fuelEntries = await _context.FuelEntries.AsNoTracking()
-            .Where(f => f.VehicleId.HasValue
+            .Where(f => f.CompanyId == companyId
+                     && f.VehicleId.HasValue
                      && vehicleIds.Contains(f.VehicleId.Value)
                      && f.InvoiceDate >= startDate
                      && f.InvoiceDate < endDate)
+            .Select(f => new { f.VehicleId, f.TotalAmount, f.Volume })
             .ToListAsync(ct);
 
-        // 3. Fetch maintenance records for the month
-        var maintenanceRecords = await _context.MaintenanceRecords.AsNoTracking()
-            .Where(m => vehicleIds.Contains(m.VehicleId)
-                     && m.Date >= startDate
-                     && m.Date < endDate)
+        // 3. Fetch maintenance logs from /entretien page's table (maintenance_logs)
+        var maintenanceLogs = await _context.MaintenanceLogs.AsNoTracking()
+            .Where(m => m.CompanyId == companyId
+                     && vehicleIds.Contains(m.VehicleId)
+                     && m.DoneDate >= startDate
+                     && m.DoneDate < endDate)
+            .Select(m => new { m.VehicleId, m.ActualCost })
             .ToListAsync(ct);
 
-        // 4. Fetch repairs for the month
+        // 4. Fetch repairs from /reparation page's table (repairs)
         var repairs = await _context.Repairs.AsNoTracking()
-            .Where(r => vehicleIds.Contains(r.VehicleId)
+            .Where(r => r.SocieteId == companyId
+                     && vehicleIds.Contains(r.VehicleId)
                      && r.RepairDate >= startDate
                      && r.RepairDate < endDate)
+            .Select(r => new { r.VehicleId, r.TotalCost })
             .ToListAsync(ct);
 
         // 5. Compute mileage from GPS odometer readings (start of month vs end of month)
@@ -122,9 +135,9 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
             });
 
         // 7. Group maintenance by vehicle
-        var maintByVehicle = maintenanceRecords
+        var maintByVehicle = maintenanceLogs
             .GroupBy(m => m.VehicleId)
-            .ToDictionary(g => g.Key, g => g.Sum(m => m.TotalCost));
+            .ToDictionary(g => g.Key, g => g.Sum(m => m.ActualCost));
 
         // 8. Group repairs by vehicle
         var repairByVehicle = repairs
