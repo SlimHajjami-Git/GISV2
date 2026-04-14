@@ -93,7 +93,7 @@ interface VehicleTrip {
               <option value="suv">SUV</option>
               <option value="utilitaire">Utilitaire</option>
             </select>
-            <button class="btn-add" (click)="openAddPopup()">
+            <button class="btn-add" *ngIf="isAdmin" (click)="openAddPopup()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"/>
                 <line x1="5" y1="12" x2="19" y2="12"/>
@@ -1722,6 +1722,7 @@ export class VehiclesComponent implements OnInit, OnDestroy {
   
   // Sync mileage
   syncingMileage = false;
+  isAdmin = false;
 
   constructor(
     private router: Router,
@@ -1740,6 +1741,7 @@ export class VehiclesComponent implements OnInit, OnDestroy {
 
     const user = this.apiService.getCurrentUserSync();
     if (user) {
+      this.isAdmin = user.isCompanyAdmin;
       this.company = {
         id: user.companyId.toString(),
         name: user.companyName,
