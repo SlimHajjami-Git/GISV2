@@ -16,8 +16,20 @@ public record UpdateVehicleCommand(
     string? FuelType,
     int? FuelTankCapacity,
     int? AssignedDriverId,
-    int? AssignedSupervisorId
+    int? AssignedSupervisorId,
+    // Acquisition info
+    string? AcquisitionType,
+    decimal? PurchasePrice,
+    decimal? LeasingMonthlyPayment,
+    DateTime? RegistrationDate,
+    // Document dates
+    DateTime? InsuranceStartDate,
+    DateTime? InsuranceExpiry,
+    int? InsuranceReminderDays,
+    DateTime? TaxStartDate,
+    DateTime? TaxExpiry,
+    int? TaxReminderDays,
+    DateTime? TechnicalInspectionStartDate,
+    DateTime? TechnicalInspectionExpiry,
+    int? TechnicalInspectionReminderDays
 ) : ICommand;
-
-
-

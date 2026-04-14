@@ -27,7 +27,8 @@ public record UserDto(
     Dictionary<string, object>? Permissions,
     SubscriptionFeaturesDto? SubscriptionFeatures,
     int[]? AssignedVehicleIds = null,
-    UserPermissionsDto? UserPermissions = null
+    UserPermissionsDto? UserPermissions = null,
+    string Currency = "TND"
 );
 
 public record UserPermissionsDto(
@@ -60,7 +61,8 @@ public record UserPermissionsDto(
     bool CanReportMonthly = true,
     bool CanReportMileagePeriod = true,
     bool CanReportSpeedInfraction = true,
-    bool CanReportDrivingBehavior = true
+    bool CanReportDrivingBehavior = true,
+    bool CanReportMonthlyCosts = true
 );
 
 public record SubscriptionFeaturesDto(
@@ -103,6 +105,7 @@ public record SubscriptionFeaturesDto(
     bool ReportMileagePeriod,
     bool ReportSpeedInfraction,
     bool ReportDrivingBehavior,
+    bool ReportMonthlyCosts,
     // Limits
     int MaxVehicles,
     int MaxUsers,

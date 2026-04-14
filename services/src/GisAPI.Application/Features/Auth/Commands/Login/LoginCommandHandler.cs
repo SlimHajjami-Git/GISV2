@@ -114,7 +114,8 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
             CanReportMonthly: user.CanReportMonthly,
             CanReportMileagePeriod: user.CanReportMileagePeriod,
             CanReportSpeedInfraction: user.CanReportSpeedInfraction,
-            CanReportDrivingBehavior: user.CanReportDrivingBehavior
+            CanReportDrivingBehavior: user.CanReportDrivingBehavior,
+            CanReportMonthlyCosts: user.CanReportMonthlyCosts
         );
 
         return new LoginResponse(
@@ -137,7 +138,8 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
                 user.Role?.Permissions,
                 subscriptionFeatures,
                 assignedVehicleIds,
-                userPermissions
+                userPermissions,
+                Currency: user.Societe?.Settings?.Currency ?? "TND"
             )
         );
     }
@@ -184,6 +186,7 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
             ReportMileagePeriod: subType.ReportMileagePeriod,
             ReportSpeedInfraction: subType.ReportSpeedInfraction,
             ReportDrivingBehavior: subType.ReportDrivingBehavior,
+            ReportMonthlyCosts: subType.ReportMonthlyCosts,
             MaxVehicles: subType.MaxVehicles,
             MaxUsers: subType.MaxUsers,
             MaxGpsDevices: subType.MaxGpsDevices,

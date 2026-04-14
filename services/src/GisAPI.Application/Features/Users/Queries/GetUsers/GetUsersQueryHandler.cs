@@ -67,7 +67,8 @@ public class GetUsersQueryHandler : IRequestHandler<GetUsersQuery, List<UserList
                     u.CanReportMonthly,
                     u.CanReportMileagePeriod,
                     u.CanReportSpeedInfraction,
-                    u.CanReportDrivingBehavior
+                    u.CanReportDrivingBehavior,
+                    u.CanReportMonthlyCosts
                 )
             ))
             .ToListAsync(ct);

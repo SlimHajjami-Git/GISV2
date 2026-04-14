@@ -38,6 +38,7 @@ export interface UserDto {
   roleName?: string;
   modulePermissions?: Record<string, boolean>;
   reportPermissions?: Record<string, boolean>;
+  currency?: string;
 }
 
 export interface PositionDto {
@@ -313,6 +314,26 @@ export class ApiService {
 
   syncVehicleMileage(vehicleId: number): Observable<any> {
     return this.http.post<any>(`${this.API_URL}/vehicles/${vehicleId}/sync-mileage`, {}, { headers: this.getHeaders() });
+  }
+
+  // ==================== ALERT EMAILS ====================
+
+  getAlertEmails(alertType?: string): Observable<any[]> {
+    let url = `${this.API_URL}/alertemails`;
+    if (alertType) url += `?alertType=${alertType}`;
+    return this.http.get<any[]>(url, { headers: this.getHeaders() });
+  }
+
+  createAlertEmail(data: { email: string; alertType: string }): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/alertemails`, data, { headers: this.getHeaders() });
+  }
+
+  updateAlertEmail(id: number, data: { email: string; alertType: string }): Observable<void> {
+    return this.http.put<void>(`${this.API_URL}/alertemails/${id}`, data, { headers: this.getHeaders() });
+  }
+
+  deleteAlertEmail(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.API_URL}/alertemails/${id}`, { headers: this.getHeaders() });
   }
 
   // ==================== RESERVATIONS / EMPRUNTS ====================
@@ -1296,6 +1317,16 @@ export class ApiService {
     return this.http.get<MonthlyFleetReport>(`${this.API_URL}/reports/monthly`, { headers: this.getHeaders(), params });
   }
 
+  // ==================== MONTHLY COST REPORT ====================
+
+  getMonthlyCostReport(year?: number, month?: number, departmentId?: number): Observable<MonthlyCostReport> {
+    let params = new HttpParams();
+    if (year) params = params.set('year', year.toString());
+    if (month) params = params.set('month', month.toString());
+    if (departmentId) params = params.set('departmentId', departmentId.toString());
+    return this.http.get<MonthlyCostReport>(`${this.API_URL}/reports/monthly-costs`, { headers: this.getHeaders(), params });
+  }
+
   // ==================== MILEAGE PERIOD REPORTS (Hour/Day/Month) ====================
 
   getMileagePeriodReport(
@@ -2105,6 +2136,58 @@ export interface MonthlyFleetReport {
   alerts: FleetAlert[];
   keyPerformanceIndicators: Kpi[];
   charts: ChartDataCollection;
+}
+
+// ==================== MONTHLY COST REPORT ====================
+
+export interface MonthlyCostReport {
+  year: number;
+  month: number;
+  monthName: string;
+  reportPeriod: string;
+  generatedAt: string;
+  totalKm: number;
+  totalFuelCostDzd: number;
+  totalFuelLiters: number;
+  totalMaintenanceCostDzd: number;
+  totalRepairCostDzd: number;
+  totalCostDzd: number;
+  departments: DepartmentCostGroup[];
+  vehicles: VehicleMonthlyCost[];
+}
+
+export interface DepartmentCostGroup {
+  departmentId: number | null;
+  departmentName: string;
+  totalKm: number;
+  totalFuelCostDzd: number;
+  totalFuelLiters: number;
+  totalMaintenanceCostDzd: number;
+  totalRepairCostDzd: number;
+  totalCostDzd: number;
+  vehicles: VehicleMonthlyCost[];
+}
+
+export interface VehicleMonthlyCost {
+  vehicleId: number;
+  vehicleName: string;
+  plate: string | null;
+  driverName: string | null;
+  departmentId: number | null;
+  departmentName: string;
+  km: number;
+  kmPr: number;
+  fuelCostDzd: number;
+  maintenanceCostDzd: number;
+  repairCostDzd: number;
+  totalCostDzd: number;
+  fuelLiters: number;
+  fuelLitersPr: number;
+  costPerKm: number;
+  fuelPer100Km: number;
+  maintenanceRepairPer100Km: number;
+  consumptionPer100Km: number;
+  consumptionPrPer100Km: number;
 }
 
 export interface ExecutiveSummary {

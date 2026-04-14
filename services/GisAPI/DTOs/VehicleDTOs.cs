@@ -22,7 +22,24 @@ public record UpdateVehicleRequest(
     string Status,
     int Mileage,
     int? AssignedDriverId,
-    int? AssignedSupervisorId
+    int? AssignedSupervisorId,
+    string? FuelType,
+    int? FuelTankCapacity,
+    // Acquisition
+    string? AcquisitionType,
+    decimal? PurchasePrice,
+    decimal? LeasingMonthlyPayment,
+    DateTime? RegistrationDate,
+    // Document dates
+    DateTime? InsuranceStartDate,
+    DateTime? InsuranceExpiry,
+    int? InsuranceReminderDays,
+    DateTime? TaxStartDate,
+    DateTime? TaxExpiry,
+    int? TaxReminderDays,
+    DateTime? TechnicalInspectionStartDate,
+    DateTime? TechnicalInspectionExpiry,
+    int? TechnicalInspectionReminderDays
 );
 
 public record VehicleDto(

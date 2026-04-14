@@ -272,6 +272,7 @@ export interface SubscriptionType {
   reportMileagePeriod?: boolean;
   reportSpeedInfraction?: boolean;
   reportDrivingBehavior?: boolean;
+  reportMonthlyCosts?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

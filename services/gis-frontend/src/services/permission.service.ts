@@ -38,6 +38,7 @@ export interface SubscriptionFeatures {
   reportMileagePeriod: boolean;
   reportSpeedInfraction: boolean;
   reportDrivingBehavior: boolean;
+  reportMonthlyCosts: boolean;
   maxVehicles: number;
   maxUsers: number;
   maxGpsDevices: number;
@@ -218,7 +219,9 @@ export class PermissionService {
       'monthly': 'reportMonthly',
       'mileage_period': 'reportMileagePeriod',
       'speed_infraction': 'reportSpeedInfraction',
-      'driving_behavior': 'reportDrivingBehavior'
+      'driving_behavior': 'reportDrivingBehavior',
+      'monthly_costs': 'reportMonthlyCosts',
+      'monthly_fuel': 'reportMonthlyCosts'
     };
 
     const featureKey = reportMapping[reportKey];
@@ -239,7 +242,9 @@ export class PermissionService {
         'monthly': 'canReportMonthly',
         'mileage_period': 'canReportMileagePeriod',
         'speed_infraction': 'canReportSpeedInfraction',
-        'driving_behavior': 'canReportDrivingBehavior'
+        'driving_behavior': 'canReportDrivingBehavior',
+        'monthly_costs': 'canReportMonthlyCosts',
+        'monthly_fuel': 'canReportMonthlyCosts'
       };
 
       const userPermKey = userReportMapping[reportKey];

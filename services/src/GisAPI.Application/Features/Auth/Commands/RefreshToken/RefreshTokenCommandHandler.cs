@@ -124,6 +124,7 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, L
                 ReportMileagePeriod: subType.ReportMileagePeriod,
                 ReportSpeedInfraction: subType.ReportSpeedInfraction,
                 ReportDrivingBehavior: subType.ReportDrivingBehavior,
+                ReportMonthlyCosts: subType.ReportMonthlyCosts,
                 MaxVehicles: subType.MaxVehicles,
                 MaxUsers: subType.MaxUsers,
                 MaxGpsDevices: subType.MaxGpsDevices,
@@ -173,7 +174,8 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, L
             CanReportMonthly: user.CanReportMonthly,
             CanReportMileagePeriod: user.CanReportMileagePeriod,
             CanReportSpeedInfraction: user.CanReportSpeedInfraction,
-            CanReportDrivingBehavior: user.CanReportDrivingBehavior
+            CanReportDrivingBehavior: user.CanReportDrivingBehavior,
+            CanReportMonthlyCosts: user.CanReportMonthlyCosts
         );
 
         return new LoginResponse(
@@ -196,7 +198,8 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, L
                 user.Role?.Permissions,
                 subscriptionFeatures,
                 assignedVehicleIds,
-                userPermissions
+                userPermissions,
+                Currency: user.Societe?.Settings?.Currency ?? "TND"
             )
         );
     }

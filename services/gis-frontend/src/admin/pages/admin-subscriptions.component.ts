@@ -781,6 +781,7 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
     if (type.reportMileagePeriod) count++;
     if (type.reportSpeedInfraction) count++;
     if (type.reportDrivingBehavior) count++;
+    if (type.reportMonthlyCosts) count++;
     return count;
   }
 
@@ -831,7 +832,8 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
         monthly: type.reportMonthly || false,
         mileage_period: type.reportMileagePeriod || false,
         speed_infraction: type.reportSpeedInfraction || false,
-        driving_behavior: type.reportDrivingBehavior || false
+        driving_behavior: type.reportDrivingBehavior || false,
+        monthly_costs: type.reportMonthlyCosts || false
       },
       features: {
         gpsTracking: type.gpsTracking || false,
@@ -932,7 +934,8 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
       reportMonthly: this.formData.reports['monthly'],
       reportMileagePeriod: this.formData.reports['mileage_period'],
       reportSpeedInfraction: this.formData.reports['speed_infraction'],
-      reportDrivingBehavior: this.formData.reports['driving_behavior']
+      reportDrivingBehavior: this.formData.reports['driving_behavior'],
+      reportMonthlyCosts: this.formData.reports['monthly_costs']
     };
 
     if (this.editingType) {

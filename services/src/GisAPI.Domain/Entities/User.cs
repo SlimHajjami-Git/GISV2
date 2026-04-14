@@ -65,6 +65,8 @@ public class User : TenantEntity
     public bool CanReportSpeedInfraction { get; set; } = true;
     [Column("can_report_driving_behavior")]
     public bool CanReportDrivingBehavior { get; set; } = true;
+    [Column("can_report_monthly_costs")]
+    public bool CanReportMonthlyCosts { get; set; } = true;
 
     // Navigation
     public Role Role { get; set; } = null!;

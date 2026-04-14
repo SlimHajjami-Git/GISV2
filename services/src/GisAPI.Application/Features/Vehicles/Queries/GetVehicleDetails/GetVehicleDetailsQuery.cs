@@ -32,10 +32,26 @@ public record VehicleDetailsDto(
     // GPS Device
     VehicleGpsDeviceDto? GpsDevice,
     
-    // Document expiries
+    // Acquisition info
+    string? AcquisitionType,
+    decimal? PurchasePrice,
+    decimal? LeasingMonthlyPayment,
+    DateTime? RegistrationDate,
+    string? FuelType,
+    int? FuelTankCapacity,
+    int? SpeedLimit,
+    int? DepartmentId,
+
+    // Document dates & expiries
+    DateTime? InsuranceStartDate,
     DateTime? InsuranceExpiry,
-    DateTime? TechnicalInspectionExpiry,
+    int InsuranceReminderDays,
+    DateTime? TaxStartDate,
     DateTime? TaxExpiry,
+    int TaxReminderDays,
+    DateTime? TechnicalInspectionStartDate,
+    DateTime? TechnicalInspectionExpiry,
+    int TechnicalInspectionReminderDays,
     DateTime? RegistrationExpiry,
     DateTime? TransportPermitExpiry,
     

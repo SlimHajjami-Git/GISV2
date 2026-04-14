@@ -11,6 +11,7 @@ using GisAPI.Application.Features.Reports.Queries.GetMonthlyFleetReport;
 using GisAPI.Application.Features.Reports.Queries.GetMileagePeriodReport;
 using GisAPI.Application.Features.Reports.Queries.GetStopsReport;
 using GisAPI.Application.Features.Reports.Queries.GetTripsReport;
+using GisAPI.Application.Features.Reports.Queries.GetMonthlyCostReport;
 
 namespace GisAPI.Controllers;
 
@@ -535,6 +536,37 @@ public class ReportsController : ControllerBase
         }
 
         var result = await _mediator.Send(new GetMileagePeriodReportQuery(vehicleId, start, end, period));
+
+        return Ok(result);
+    }
+
+    // ==================== MONTHLY COST REPORT ====================
+
+    /// <summary>
+    /// Get monthly cost report with fuel, maintenance, and repair costs per vehicle/department
+    /// Used for both "Carburant Entretien Réparation Mensuel" and "Consommation Carburant Mensuel"
+    /// </summary>
+    [HttpGet("monthly-costs")]
+    public async Task<ActionResult<MonthlyCostReportDto>> GetMonthlyCostReport(
+        [FromQuery] int? year = null,
+        [FromQuery] int? month = null,
+        [FromQuery] int? departmentId = null)
+    {
+        var reportYear = year ?? DateTime.UtcNow.Year;
+        var reportMonth = month ?? DateTime.UtcNow.Month;
+
+        // If current month, use previous month to have complete data
+        if (year == null && month == null)
+        {
+            var lastMonth = DateTime.UtcNow.AddMonths(-1);
+            reportYear = lastMonth.Year;
+            reportMonth = lastMonth.Month;
+        }
+
+        var result = await _mediator.Send(new GetMonthlyCostReportQuery(
+            reportYear,
+            reportMonth,
+            departmentId));
 
         return Ok(result);
     }

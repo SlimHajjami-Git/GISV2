@@ -139,7 +139,8 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
             CanReportMonthly = request.CanReportMonthly,
             CanReportMileagePeriod = request.CanReportMileagePeriod,
             CanReportSpeedInfraction = request.CanReportSpeedInfraction,
-            CanReportDrivingBehavior = request.CanReportDrivingBehavior
+            CanReportDrivingBehavior = request.CanReportDrivingBehavior,
+            CanReportMonthlyCosts = request.CanReportMonthlyCosts
         };
 
         _context.Users.Add(user);
@@ -212,7 +213,8 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
                 user.CanReportMonthly,
                 user.CanReportMileagePeriod,
                 user.CanReportSpeedInfraction,
-                user.CanReportDrivingBehavior
+                user.CanReportDrivingBehavior,
+                user.CanReportMonthlyCosts
             )
         );
     }

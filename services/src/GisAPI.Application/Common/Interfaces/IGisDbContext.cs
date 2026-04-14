@@ -82,6 +82,9 @@ public interface IGisDbContext
     DbSet<Reservation> Reservations { get; }
     DbSet<Contract> Contracts { get; }
 
+    // Alert Emails
+    DbSet<AlertEmail> AlertEmails { get; }
+
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 

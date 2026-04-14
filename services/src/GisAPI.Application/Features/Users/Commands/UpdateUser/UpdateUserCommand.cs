@@ -48,5 +48,6 @@ public record UpdateUserCommand(
     bool? CanReportMonthly = null,
     bool? CanReportMileagePeriod = null,
     bool? CanReportSpeedInfraction = null,
-    bool? CanReportDrivingBehavior = null
+    bool? CanReportDrivingBehavior = null,
+    bool? CanReportMonthlyCosts = null
 ) : ICommand;

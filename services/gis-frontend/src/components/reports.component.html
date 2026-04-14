@@ -82,7 +82,7 @@
         </div>
 
         <!-- Filter Type Checkboxes -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'ai-fleet'">
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'monthly-costs' && selectedTemplate?.type !== 'monthly-fuel' && selectedTemplate?.type !== 'ai-fleet'">
           <label class="field-label">Filtrer par</label>
           <div class="filter-checkboxes">
             <label class="filter-check-item">
@@ -97,7 +97,7 @@
         </div>
 
         <!-- Department Filter -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && filterByDepartment && departments.length > 0">
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'monthly-costs' && selectedTemplate?.type !== 'monthly-fuel' && filterByDepartment && departments.length > 0">
           <label class="field-label">Département</label>
           <select class="field-select" [(ngModel)]="selectedDepartmentId" (change)="onDepartmentFilterChange()">
             <option value="">Tous les départements</option>
@@ -108,7 +108,7 @@
         </div>
 
         <!-- Vehicle Selector (hidden for monthly and AI reports) -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'ai-fleet' && filterByVehicle">
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'monthly-costs' && selectedTemplate?.type !== 'monthly-fuel' && selectedTemplate?.type !== 'ai-fleet' && filterByVehicle">
           <label class="field-label">Véhicule</label>
           <select class="field-select" [(ngModel)]="selectedVehicleId" (ngModelChange)="onVehicleChange()">
             <option value="">Sélectionner véhicule</option>
@@ -170,6 +170,28 @@
           </div>
         </div>
 
+        <!-- Monthly Cost / Fuel Report Period Selector -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'monthly-costs' || selectedTemplate?.type === 'monthly-fuel'">
+          <label class="field-label">Période du rapport</label>
+          <div class="monthly-period-row">
+            <select class="field-select" [(ngModel)]="selectedMonthlyMonth" (change)="onMonthlyPeriodChange()">
+              <option *ngFor="let m of monthlyMonths" [value]="m.value">{{ m.label }}</option>
+            </select>
+            <select class="field-select" [(ngModel)]="selectedMonthlyYear" (change)="onMonthlyPeriodChange()">
+              <option *ngFor="let y of monthlyYears" [value]="y">{{ y }}</option>
+            </select>
+          </div>
+        </div>
+        <div class="sidebar-row" *ngIf="(selectedTemplate?.type === 'monthly-costs' || selectedTemplate?.type === 'monthly-fuel') && departments.length > 0">
+          <label class="field-label">Département</label>
+          <select class="field-select" [(ngModel)]="selectedDepartmentId">
+            <option value="">Tous les départements</option>
+            @for (dept of departments; track dept.id) {
+              <option [value]="dept.id">{{ dept.name }}</option>
+            }
+          </select>
+        </div>
+
         <!-- ===== DAILY REPORT: Single date picker ===== -->
         <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'daily'">
           <label class="field-label">Date du rapport</label>
@@ -178,7 +200,7 @@
 
         <!-- ===== GPS REPORTS: Standard period buttons ===== -->
         <!-- trips, stops, speed, speed-infraction, driving-behavior, fuel, fuel-estimation, mileage -->
-        <div class="period-row" *ngIf="selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance'">
+        <div class="period-row" *ngIf="selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'monthly-costs' && selectedTemplate.type !== 'monthly-fuel' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance'">
           <button *ngFor="let p of standardPeriods" 
             [class.active]="selectedStandardPeriod === p.value"
             (click)="onStandardPeriodChange(p.value)">{{ p.label }}</button>
@@ -252,6 +274,146 @@
             </svg>
             <h3>Générer un rapport</h3>
             <p>Sélectionnez un template et un véhicule, puis cliquez sur Exécuter</p>
+          </div>
+        } @else if ((selectedTemplate?.type === 'monthly-costs' || selectedTemplate?.type === 'monthly-fuel') && monthlyCostReport) {
+          <!-- ========== MONTHLY COST / FUEL REPORT ========== -->
+          <div class="monthly-cost-report-workspace">
+            <!-- Summary stats cards -->
+            <div class="stats-cards-row">
+              @if (monthlyCostReportType === 'costs') {
+                <div class="stat-card">
+                  <span class="stat-label">KM Total</span>
+                  <span class="stat-value">{{ formatNumber(monthlyCostReport.totalKm) }} km</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Carburant</span>
+                  <span class="stat-value accent">{{ formatCurrency(monthlyCostReport.totalFuelCostDzd) }}</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Entretien</span>
+                  <span class="stat-value warning">{{ formatCurrency(monthlyCostReport.totalMaintenanceCostDzd) }}</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Réparation</span>
+                  <span class="stat-value danger">{{ formatCurrency(monthlyCostReport.totalRepairCostDzd) }}</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Coût Total</span>
+                  <span class="stat-value">{{ formatCurrency(monthlyCostReport.totalCostDzd) }}</span>
+                </div>
+              } @else {
+                <div class="stat-card">
+                  <span class="stat-label">KM Total</span>
+                  <span class="stat-value">{{ formatNumber(monthlyCostReport.totalKm) }} km</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Litres Total</span>
+                  <span class="stat-value accent">{{ formatNumber(monthlyCostReport.totalFuelLiters) }} L</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Coût Carburant</span>
+                  <span class="stat-value">{{ formatCurrency(monthlyCostReport.totalFuelCostDzd) }}</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Conso. Moyenne</span>
+                  <span class="stat-value">{{ monthlyCostReport.totalKm > 0 ? ((monthlyCostReport.totalFuelLiters / monthlyCostReport.totalKm) * 100).toFixed(2) : '0' }} L/100km</span>
+                </div>
+              }
+            </div>
+
+            <!-- Department grouped tables -->
+            @for (dept of monthlyCostReport.departments; track dept.departmentId) {
+              <div class="dept-group">
+                <div class="dept-header">
+                  <span class="dept-badge">{{ dept.departmentName }}</span>
+                  <span class="dept-summary">
+                    {{ formatNumber(dept.totalKm) }} km
+                    @if (monthlyCostReportType === 'costs') {
+                      &bull; {{ formatCurrency(dept.totalCostDzd) }}
+                    } @else {
+                      &bull; {{ formatNumber(dept.totalFuelLiters) }} L
+                    }
+                  </span>
+                </div>
+                <div class="table-wrapper">
+                  <table class="report-table monthly-cost-table">
+                    <thead>
+                      <tr>
+                        <th>Conducteur</th>
+                        <th>Véhicule</th>
+                        <th class="num">KM</th>
+                        @if (monthlyCostReportType === 'costs') {
+                          <th class="num">Carburant {{ getCurrencyCode() }}</th>
+                          <th class="num">Entretien {{ getCurrencyCode() }}</th>
+                          <th class="num">Réparation {{ getCurrencyCode() }}</th>
+                          <th class="num">Total Coût</th>
+                          <th class="num">Coût/KM</th>
+                          <th class="num">Carb./100KM</th>
+                          <th class="num">Ent+Rép/100KM</th>
+                        } @else {
+                          <th class="num">KM PR</th>
+                          <th class="num">C. Total (L)</th>
+                          <th class="num">C. PR (L)</th>
+                          <th class="num">C/100KM</th>
+                          <th class="num">C/100KM PR</th>
+                        }
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (v of dept.vehicles; track v.vehicleId) {
+                        <tr>
+                          <td>{{ v.driverName || '-' }}</td>
+                          <td>{{ v.vehicleName }} <span class="plate-tag" *ngIf="v.plate">{{ v.plate }}</span></td>
+                          <td class="num">{{ formatNumber(v.km) }}</td>
+                          @if (monthlyCostReportType === 'costs') {
+                            <td class="num">{{ formatCurrency(v.fuelCostDzd) }}</td>
+                            <td class="num">{{ formatCurrency(v.maintenanceCostDzd) }}</td>
+                            <td class="num">{{ formatCurrency(v.repairCostDzd) }}</td>
+                            <td class="num total-cell">{{ formatCurrency(v.totalCostDzd) }}</td>
+                            <td class="num">{{ v.costPerKm.toFixed(2) }}</td>
+                            <td class="num">{{ v.fuelPer100Km.toFixed(2) }}</td>
+                            <td class="num">{{ v.maintenanceRepairPer100Km.toFixed(2) }}</td>
+                          } @else {
+                            <td class="num">{{ formatNumber(v.kmPr) }}</td>
+                            <td class="num">{{ v.fuelLiters.toFixed(1) }}</td>
+                            <td class="num">{{ v.fuelLitersPr.toFixed(1) }}</td>
+                            <td class="num">{{ v.consumptionPer100Km.toFixed(2) }}</td>
+                            <td class="num">{{ v.consumptionPrPer100Km.toFixed(2) }}</td>
+                          }
+                        </tr>
+                      }
+                    </tbody>
+                    <tfoot>
+                      <tr class="dept-total-row">
+                        <td colspan="2"><strong>Total {{ dept.departmentName }}</strong></td>
+                        <td class="num"><strong>{{ formatNumber(dept.totalKm) }}</strong></td>
+                        @if (monthlyCostReportType === 'costs') {
+                          <td class="num"><strong>{{ formatCurrency(dept.totalFuelCostDzd) }}</strong></td>
+                          <td class="num"><strong>{{ formatCurrency(dept.totalMaintenanceCostDzd) }}</strong></td>
+                          <td class="num"><strong>{{ formatCurrency(dept.totalRepairCostDzd) }}</strong></td>
+                          <td class="num total-cell"><strong>{{ formatCurrency(dept.totalCostDzd) }}</strong></td>
+                          <td class="num"><strong>{{ dept.totalKm > 0 ? (dept.totalCostDzd / dept.totalKm).toFixed(2) : '0' }}</strong></td>
+                          <td class="num"><strong>{{ dept.totalKm > 0 ? ((dept.totalFuelCostDzd / dept.totalKm) * 100).toFixed(2) : '0' }}</strong></td>
+                          <td class="num"><strong>{{ dept.totalKm > 0 ? (((dept.totalMaintenanceCostDzd + dept.totalRepairCostDzd) / dept.totalKm) * 100).toFixed(2) : '0' }}</strong></td>
+                        } @else {
+                          <td class="num"><strong>{{ formatNumber(dept.totalKm) }}</strong></td>
+                          <td class="num"><strong>{{ dept.totalFuelLiters.toFixed(1) }}</strong></td>
+                          <td class="num"><strong>{{ dept.totalFuelLiters.toFixed(1) }}</strong></td>
+                          <td class="num"><strong>{{ dept.totalKm > 0 ? ((dept.totalFuelLiters / dept.totalKm) * 100).toFixed(2) : '0' }}</strong></td>
+                          <td class="num"><strong>{{ dept.totalKm > 0 ? ((dept.totalFuelLiters / dept.totalKm) * 100).toFixed(2) : '0' }}</strong></td>
+                        }
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            }
+
+            @if (monthlyCostReport.departments.length === 0) {
+              <div class="empty-state" style="text-align:center; padding:48px 24px; color:rgba(255,255,255,0.5);">
+                <p>Aucune donnée pour cette période</p>
+              </div>
+            }
           </div>
         } @else if (selectedTemplate?.type === 'monthly' && monthlyReport) {
           <!-- ========== MONTHLY REPORT DEDICATED SECTION ========== -->

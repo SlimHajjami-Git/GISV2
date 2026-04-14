@@ -46,5 +46,6 @@ public record CreateUserCommand(
     bool CanReportMonthly = true,
     bool CanReportMileagePeriod = true,
     bool CanReportSpeedInfraction = true,
-    bool CanReportDrivingBehavior = true
+    bool CanReportDrivingBehavior = true,
+    bool CanReportMonthlyCosts = true
 ) : ICommand<UserListDto>;

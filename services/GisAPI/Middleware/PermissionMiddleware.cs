@@ -29,6 +29,7 @@ public class PermissionMiddleware
         { "/api/reports/daily", "CanReportDaily" },
         { "/api/reports/monthly", "CanReportMonthly" },
         { "/api/reports/driving-behavior", "CanReportDrivingBehavior" },
+        { "/api/reports/monthly-costs", "CanReportMonthlyCosts" },
         // Generic reports fallback (list, create, schedules)
         { "/api/reports", "CanReports" },
         { "/api/geofences", "CanGeofences" },
@@ -81,6 +82,7 @@ public class PermissionMiddleware
         { "/api/reports/monthly", sub => sub.ModuleReports && sub.ReportMonthly },
         { "/api/reports/speed-infraction", sub => sub.ModuleReports && sub.ReportSpeedInfraction },
         { "/api/reports/driving-behavior", sub => sub.ModuleReports && sub.ReportDrivingBehavior },
+        { "/api/reports/monthly-costs", sub => sub.ModuleReports && sub.ReportMonthlyCosts },
         // Generic /api/reports fallback (list reports, create, schedules, etc.)
         { "/api/reports", sub => sub.ModuleReports },
         { "/api/maintenance", sub => sub.ModuleMaintenance },
@@ -299,6 +301,7 @@ public class PermissionMiddleware
                     "CanReportMileagePeriod" => currentUser.CanReports && currentUser.CanReportMileagePeriod,
                     "CanReportSpeedInfraction" => currentUser.CanReports && currentUser.CanReportSpeedInfraction,
                     "CanReportDrivingBehavior" => currentUser.CanReports && currentUser.CanReportDrivingBehavior,
+                    "CanReportMonthlyCosts" => currentUser.CanReports && currentUser.CanReportMonthlyCosts,
                     _ => true
                 };
 

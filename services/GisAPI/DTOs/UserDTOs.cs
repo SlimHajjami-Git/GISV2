@@ -46,7 +46,8 @@ public record CreateUserRequest(
     bool CanReportMonthly = true,
     bool CanReportMileagePeriod = true,
     bool CanReportSpeedInfraction = true,
-    bool CanReportDrivingBehavior = true
+    bool CanReportDrivingBehavior = true,
+    bool CanReportMonthlyCosts = true
 );
 
 public record UpdateUserRequest(
@@ -86,7 +87,8 @@ public record UpdateUserRequest(
     bool? CanReportMonthly = null,
     bool? CanReportMileagePeriod = null,
     bool? CanReportSpeedInfraction = null,
-    bool? CanReportDrivingBehavior = null
+    bool? CanReportDrivingBehavior = null,
+    bool? CanReportMonthlyCosts = null
 );
 
 public record UserSettingsDto(

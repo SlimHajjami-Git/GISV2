@@ -61,7 +61,8 @@ public class GetCurrentUserQueryHandler : IRequestHandler<GetCurrentUserQuery, U
                     u.CanReportMonthly,
                     u.CanReportMileagePeriod,
                     u.CanReportSpeedInfraction,
-                    u.CanReportDrivingBehavior
+                    u.CanReportDrivingBehavior,
+                    u.CanReportMonthlyCosts
                 )
             ))
             .FirstOrDefaultAsync(ct);

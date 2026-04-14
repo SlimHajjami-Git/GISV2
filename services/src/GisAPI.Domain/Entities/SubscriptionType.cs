@@ -56,6 +56,7 @@ public class SubscriptionType : Entity
     public bool ReportMileagePeriod { get; set; } = false;
     public bool ReportSpeedInfraction { get; set; } = true;
     public bool ReportDrivingBehavior { get; set; } = false;
+    public bool ReportMonthlyCosts { get; set; } = true;
 
     // Module Permissions
     public bool ModuleDashboard { get; set; } = true;

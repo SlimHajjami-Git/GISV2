@@ -150,6 +150,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResp
                 ReportMileagePeriod: defaultSubscriptionType.ReportMileagePeriod,
                 ReportSpeedInfraction: defaultSubscriptionType.ReportSpeedInfraction,
                 ReportDrivingBehavior: defaultSubscriptionType.ReportDrivingBehavior,
+                ReportMonthlyCosts: defaultSubscriptionType.ReportMonthlyCosts,
                 MaxVehicles: defaultSubscriptionType.MaxVehicles,
                 MaxUsers: defaultSubscriptionType.MaxUsers,
                 MaxGpsDevices: defaultSubscriptionType.MaxGpsDevices,
@@ -178,7 +179,8 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResp
                 societe.Name,
                 societe.Type,
                 adminRole.Permissions,
-                subscriptionFeatures
+                subscriptionFeatures,
+                Currency: societe.Settings?.Currency ?? "TND"
             )
         );
     }

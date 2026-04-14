@@ -41,13 +41,29 @@ public class Vehicle : TenantEntity
     
     public string? DriverName { get; set; }
     public string? DriverPhone { get; set; }
-    
+
+    // Acquisition info
+    public string AcquisitionType { get; set; } = "purchase"; // "purchase" or "leasing"
+    public decimal? PurchasePrice { get; set; }
+    public decimal? LeasingMonthlyPayment { get; set; }
+    public DateTime? RegistrationDate { get; set; } // Date de mise en circulation
+
     // Document expiry dates
     public DateTime? InsuranceExpiry { get; set; }
     public DateTime? TechnicalInspectionExpiry { get; set; }
     public DateTime? TaxExpiry { get; set; }
     public DateTime? RegistrationExpiry { get; set; }
     public DateTime? TransportPermitExpiry { get; set; }
+
+    // Document start dates
+    public DateTime? InsuranceStartDate { get; set; }
+    public DateTime? TaxStartDate { get; set; }
+    public DateTime? TechnicalInspectionStartDate { get; set; }
+
+    // Reminder days before expiry
+    public int InsuranceReminderDays { get; set; } = 30;
+    public int TaxReminderDays { get; set; } = 30;
+    public int TechnicalInspectionReminderDays { get; set; } = 30;
 
     public ICollection<VehicleDocument> Documents { get; set; } = new List<VehicleDocument>();
     public ICollection<MaintenanceRecord> MaintenanceRecords { get; set; } = new List<MaintenanceRecord>();

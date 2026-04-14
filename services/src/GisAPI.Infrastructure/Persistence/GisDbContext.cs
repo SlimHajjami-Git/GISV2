@@ -129,6 +129,9 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<AiChatMessage> AiChatMessages => Set<AiChatMessage>();
 
+    // Alert Emails
+    public DbSet<AlertEmail> AlertEmails => Set<AlertEmail>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -170,6 +173,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<Tour>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<ChatMessage>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<AiChatMessage>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<AlertEmail>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
 
         // Configure composite keys
         modelBuilder.Entity<GeofenceVehicle>().HasKey(gv => new { gv.GeofenceId, gv.VehicleId });
@@ -213,6 +217,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<TourPause>().ToTable("tour_pauses");
         modelBuilder.Entity<ChatMessage>().ToTable("chat_messages");
         modelBuilder.Entity<AiChatMessage>().ToTable("ai_chat_messages");
+        modelBuilder.Entity<AlertEmail>().ToTable("alert_emails");
 
         // SubscriptionType configuration - all column mappings for PostgreSQL snake_case
         modelBuilder.Entity<SubscriptionType>().Property(s => s.Id).HasColumnName("id");

@@ -48,6 +48,7 @@ interface UserPermissions {
   canReportMileagePeriod: boolean;
   canReportSpeedInfraction: boolean;
   canReportDrivingBehavior: boolean;
+  canReportMonthlyCosts: boolean;
 }
 
 interface User {
@@ -366,6 +367,10 @@ interface VehicleOption {
                         <label class="sub-perm-item">
                           <input type="checkbox" [(ngModel)]="userForm.canReportMonthly">
                           <span>📊 Mensuel flotte</span>
+                        </label>
+                        <label class="sub-perm-item">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportMonthlyCosts">
+                          <span>💰 Coûts mensuel</span>
                         </label>
                       </div>
                     </div>
@@ -1698,7 +1703,8 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     canReportMonthly: true,
     canReportMileagePeriod: true,
     canReportSpeedInfraction: true,
-    canReportDrivingBehavior: true
+    canReportDrivingBehavior: true,
+    canReportMonthlyCosts: true
   };
   availableVehicles: VehicleOption[] = [];
 
@@ -1998,7 +2004,8 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         canReportMonthly: up?.canReportMonthly ?? true,
         canReportMileagePeriod: up?.canReportMileagePeriod ?? true,
         canReportSpeedInfraction: up?.canReportSpeedInfraction ?? true,
-        canReportDrivingBehavior: up?.canReportDrivingBehavior ?? true
+        canReportDrivingBehavior: up?.canReportDrivingBehavior ?? true,
+        canReportMonthlyCosts: up?.canReportMonthlyCosts ?? true
       };
     } else {
       this.editingUser = null;
@@ -2038,7 +2045,8 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         canReportMonthly: true,
         canReportMileagePeriod: true,
         canReportSpeedInfraction: true,
-        canReportDrivingBehavior: true
+        canReportDrivingBehavior: true,
+        canReportMonthlyCosts: true
       };
     }
     this.userModalStep = 1;
@@ -2130,6 +2138,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     this.userForm.canReportMileagePeriod = true;
     this.userForm.canReportSpeedInfraction = true;
     this.userForm.canReportDrivingBehavior = true;
+    this.userForm.canReportMonthlyCosts = true;
   }
 
   deselectAllReports() {
@@ -2145,6 +2154,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     this.userForm.canReportMileagePeriod = false;
     this.userForm.canReportSpeedInfraction = false;
     this.userForm.canReportDrivingBehavior = false;
+    this.userForm.canReportMonthlyCosts = false;
   }
 
   saveUser() {
@@ -2185,7 +2195,8 @@ export class UserManagementComponent implements OnInit, OnDestroy {
       canReportMonthly: this.userForm.canReportMonthly,
       canReportMileagePeriod: this.userForm.canReportMileagePeriod,
       canReportSpeedInfraction: this.userForm.canReportSpeedInfraction,
-      canReportDrivingBehavior: this.userForm.canReportDrivingBehavior
+      canReportDrivingBehavior: this.userForm.canReportDrivingBehavior,
+      canReportMonthlyCosts: this.userForm.canReportMonthlyCosts
     };
 
     if (this.editingUser) {

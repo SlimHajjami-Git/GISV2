@@ -105,6 +105,7 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         if (request.CanReportMileagePeriod.HasValue) user.CanReportMileagePeriod = request.CanReportMileagePeriod.Value;
         if (request.CanReportSpeedInfraction.HasValue) user.CanReportSpeedInfraction = request.CanReportSpeedInfraction.Value;
         if (request.CanReportDrivingBehavior.HasValue) user.CanReportDrivingBehavior = request.CanReportDrivingBehavior.Value;
+        if (request.CanReportMonthlyCosts.HasValue) user.CanReportMonthlyCosts = request.CanReportMonthlyCosts.Value;
 
         // Update vehicle assignments if provided
         if (request.AssignedVehicleIds != null)

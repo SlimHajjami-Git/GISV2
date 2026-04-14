@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, ViewChild, ElementRef, NgZone, ChangeDete
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto } from '../services/api.service';
+import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup } from '../services/api.service';
 import { Subject, takeUntil } from 'rxjs';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -151,6 +151,22 @@ export class ReportsComponent implements OnInit, OnDestroy {
       type: 'fuel-estimation',
       icon: '💰',
       description: 'Estimation basée sur GPS et prix',
+      category: 'costs'
+    },
+    {
+      id: '15',
+      name: 'Coûts mensuel par véhicule',
+      type: 'monthly-costs',
+      icon: '📋',
+      description: 'Carburant, entretien, réparation par département',
+      category: 'costs'
+    },
+    {
+      id: '16',
+      name: 'Consommation carburant mensuel',
+      type: 'monthly-fuel',
+      icon: '🛢️',
+      description: 'Litres consommés par département',
       category: 'costs'
     },
     // Statistics Reports
@@ -306,6 +322,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
   monthlyReport: MonthlyFleetReport | null = null;
   monthlyActiveSection = 'summary';
   
+  // Monthly cost report data
+  monthlyCostReport: MonthlyCostReport | null = null;
+  monthlyCostReportType: 'costs' | 'fuel' = 'costs';
+
   // Fuel estimation report data
   fuelEstimationReport: FleetFuelStatisticsDto | null = null;
   fuelEstimationActiveSection = 'summary';
@@ -787,6 +807,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.expandedSections['result'] = true;
     this.dailyReport = null;
     this.mileageReport = null;
+    this.monthlyCostReport = null;
     this.monthlyReport = null;
     this.mileagePeriodReport = null;
     this.fuelEstimationReport = null;
@@ -842,6 +863,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Handle monthly fleet report inline
     if (this.selectedTemplate.type === 'monthly') {
       this.executeMonthlyReport();
+      return;
+    }
+
+    // Handle monthly cost reports (costs + fuel consumption)
+    if (this.selectedTemplate.type === 'monthly-costs' || this.selectedTemplate.type === 'monthly-fuel') {
+      this.monthlyCostReportType = this.selectedTemplate.type === 'monthly-costs' ? 'costs' : 'fuel';
+      this.executeMonthlyCostReport();
       return;
     }
 
@@ -3137,6 +3165,73 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (this.selectedTemplate?.type === 'monthly') {
       this.executeMonthlyReport();
     }
+    if (this.selectedTemplate?.type === 'monthly-costs' || this.selectedTemplate?.type === 'monthly-fuel') {
+      this.executeMonthlyCostReport();
+    }
+  }
+
+  // ==================== MONTHLY COST / FUEL REPORT ====================
+
+  executeMonthlyCostReport() {
+    const deptId = this.selectedDepartmentId ? parseInt(this.selectedDepartmentId) : undefined;
+    this.apiService.getMonthlyCostReport(this.selectedMonthlyYear, this.selectedMonthlyMonth, deptId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (report) => {
+          this.ngZone.run(() => {
+            this.monthlyCostReport = report;
+            this.processMonthlyCostReport(report);
+            this.reportGenerated = true;
+            this.loading = false;
+            this.activeTab = 'table';
+            this.currentPage = 1;
+            this.cdr.detectChanges();
+            this.appRef.tick();
+          });
+        },
+        error: (err) => {
+          this.ngZone.run(() => {
+            console.error('Error loading monthly cost report:', err);
+            this.monthlyCostReport = null;
+            this.tableData = [];
+            this.chartData = [];
+            this.statisticsData = { 'Erreur': 'Impossible de charger le rapport mensuel des coûts' };
+            this.reportGenerated = true;
+            this.loading = false;
+            this.cdr.detectChanges();
+            this.appRef.tick();
+          });
+        }
+      });
+  }
+
+  processMonthlyCostReport(report: MonthlyCostReport) {
+    if (this.monthlyCostReportType === 'costs') {
+      this.statisticsData = {
+        'Période': report.reportPeriod,
+        'KM Total': this.formatNumber(report.totalKm) + ' km',
+        'Carburant': this.formatCurrency(report.totalFuelCostDzd),
+        'Entretien': this.formatCurrency(report.totalMaintenanceCostDzd),
+        'Réparation': this.formatCurrency(report.totalRepairCostDzd),
+        'Coût Total': this.formatCurrency(report.totalCostDzd)
+      };
+    } else {
+      this.statisticsData = {
+        'Période': report.reportPeriod,
+        'KM Total': this.formatNumber(report.totalKm) + ' km',
+        'Litres Total': this.formatNumber(report.totalFuelLiters) + ' L',
+        'Coût Carburant': this.formatCurrency(report.totalFuelCostDzd),
+        'Consommation Moyenne': report.totalKm > 0
+          ? ((report.totalFuelLiters / report.totalKm) * 100).toFixed(2) + ' L/100km'
+          : 'N/A'
+      };
+    }
+
+    // Build flat table data for rendering
+    this.tableData = report.vehicles.map(v => ({
+      ...v,
+      type: this.monthlyCostReportType
+    }));
   }
 
   setMonthlySection(sectionId: string) {
@@ -3457,8 +3552,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return value.toLocaleString('fr-FR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   }
 
+  getCurrencyCode(): string {
+    return this.apiService.getCurrentUserSync()?.currency || 'TND';
+  }
+
   formatCurrency(value: number): string {
-    return value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' TND';
+    return value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + this.getCurrencyCode();
   }
 
   getKpiStatusClass(status: string): string {

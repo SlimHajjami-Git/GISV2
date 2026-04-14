@@ -103,10 +103,26 @@ public class GetVehicleDetailsQueryHandler : IRequestHandler<GetVehicleDetailsQu
                 vehicle.GpsDevice.ProtocolType
             ) : null,
             
-            // Document expiries
+            // Acquisition info
+            vehicle.AcquisitionType,
+            vehicle.PurchasePrice,
+            vehicle.LeasingMonthlyPayment,
+            vehicle.RegistrationDate,
+            vehicle.FuelType,
+            vehicle.FuelTankCapacity,
+            vehicle.SpeedLimit,
+            vehicle.DepartmentId,
+
+            // Document dates & expiries
+            vehicle.InsuranceStartDate,
             vehicle.InsuranceExpiry,
-            vehicle.TechnicalInspectionExpiry,
+            vehicle.InsuranceReminderDays,
+            vehicle.TaxStartDate,
             vehicle.TaxExpiry,
+            vehicle.TaxReminderDays,
+            vehicle.TechnicalInspectionStartDate,
+            vehicle.TechnicalInspectionExpiry,
+            vehicle.TechnicalInspectionReminderDays,
             vehicle.RegistrationExpiry,
             vehicle.TransportPermitExpiry,
             

@@ -67,7 +67,8 @@ public class GetUserByIdQueryHandler : IRequestHandler<GetUserByIdQuery, UserLis
                     u.CanReportMonthly,
                     u.CanReportMileagePeriod,
                     u.CanReportSpeedInfraction,
-                    u.CanReportDrivingBehavior
+                    u.CanReportDrivingBehavior,
+                    u.CanReportMonthlyCosts
                 )
             ))
             .FirstOrDefaultAsync(ct);

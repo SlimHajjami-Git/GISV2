@@ -272,6 +272,11 @@ interface VehicleTrip {
                     <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
                   </svg>
                 </button>
+                <button class="btn-action info" (click)="goToVehicleInfo(vehicle); $event.stopPropagation()" title="Fiche véhicule">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                  </svg>
+                </button>
                 <button class="btn-detail" (click)="openVehicleDetail(vehicle); $event.stopPropagation()">
                   Voir détails
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -514,6 +519,12 @@ interface VehicleTrip {
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
               </svg>
               Modifier
+            </button>
+            <button class="btn-action-footer info" (click)="goToVehicleInfo(selectedDetailVehicle)" style="background:#6366f1;color:white;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+              </svg>
+              Fiche véhicule
             </button>
             <button class="btn-action-footer costs" (click)="openCostsPopup(selectedDetailVehicle)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -972,6 +983,7 @@ interface VehicleTrip {
 
     .btn-action.edit:hover { color: #3b82f6; border-color: #3b82f6; }
     .btn-action.costs:hover { color: #22c55e; border-color: #22c55e; }
+    .btn-action.info:hover { color: #6366f1; border-color: #6366f1; }
 
     .btn-detail {
       margin-left: auto;
@@ -2312,6 +2324,10 @@ export class VehiclesComponent implements OnInit, OnDestroy {
   closeCostsPopup() {
     this.isCostsPopupOpen = false;
     this.selectedVehicleForCosts = null;
+  }
+
+  goToVehicleInfo(vehicle: Vehicle) {
+    this.router.navigate(['/vehicle-info', vehicle.id]);
   }
 
   // Document Expiry Alert Methods

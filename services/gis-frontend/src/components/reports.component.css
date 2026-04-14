@@ -2275,3 +2275,170 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   .ai-kpi-row { grid-template-columns: repeat(2, 1fr); }
   .ai-charts-grid, .ai-charts-grid.two-col { grid-template-columns: 1fr; }
 }
+
+/* ==================== MONTHLY COST / FUEL REPORT ==================== */
+
+.monthly-cost-report-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  background: #0f172a;
+  border-radius: 12px;
+  min-height: 400px;
+}
+
+.stats-cards-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.monthly-cost-report-workspace .stat-card {
+  flex: 1;
+  min-width: 150px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 10px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.monthly-cost-report-workspace .stat-card .stat-label {
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.9);
+  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+.monthly-cost-report-workspace .stat-card .stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.monthly-cost-report-workspace .stat-card .stat-value.accent {
+  color: #6366f1;
+}
+
+.monthly-cost-report-workspace .stat-card .stat-value.warning {
+  color: #f59e0b;
+}
+
+.monthly-cost-report-workspace .stat-card .stat-value.danger {
+  color: #ef4444;
+}
+
+.dept-group {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.dept-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(99, 102, 241, 0.08);
+  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+.dept-badge {
+  background: #6366f1;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dept-summary {
+  color: rgba(148, 163, 184, 0.9);
+  font-size: 13px;
+}
+
+.monthly-cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.monthly-cost-table thead th {
+  background: rgba(15, 23, 42, 0.6);
+  color: rgba(148, 163, 184, 0.9);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+  white-space: nowrap;
+}
+
+.monthly-cost-table thead th.num {
+  text-align: right;
+}
+
+.monthly-cost-table tbody td {
+  padding: 8px 12px;
+  color: #e2e8f0;
+  border-bottom: 1px solid rgba(30, 41, 59, 0.5);
+}
+
+.monthly-cost-table tbody td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.monthly-cost-table tbody tr:hover {
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.monthly-cost-table .total-cell {
+  color: #6366f1;
+  font-weight: 600;
+}
+
+.monthly-cost-table .plate-tag {
+  display: inline-block;
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.monthly-cost-table tfoot .dept-total-row td {
+  padding: 10px 12px;
+  background: rgba(99, 102, 241, 0.06);
+  border-top: 2px solid rgba(99, 102, 241, 0.3);
+  color: #e2e8f0;
+}
+
+.monthly-cost-table tfoot .dept-total-row td.num {
+  text-align: right;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+@media (max-width: 900px) {
+  .stats-cards-row {
+    flex-direction: column;
+  }
+  .monthly-cost-table {
+    font-size: 12px;
+  }
+  .monthly-cost-table thead th,
+  .monthly-cost-table tbody td {
+    padding: 6px 8px;
+  }
+}

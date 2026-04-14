@@ -170,6 +170,7 @@ export class AuthService {
           reportMileagePeriod: true,
           reportSpeedInfraction: true,
           reportDrivingBehavior: true,
+          reportMonthlyCosts: true,
           maxVehicles: 999,
           maxUsers: 999,
           maxGpsDevices: 999,
