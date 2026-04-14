@@ -62,8 +62,8 @@ interface VehicleTrip {
     ]),
     trigger('scaleIn', [
       transition(':enter', [
-        style({ opacity: 0, transform: 'scale(0.95)' }),
-        animate('200ms ease-out', style({ opacity: 1, transform: 'scale(1)' }))
+        style({ opacity: 0 }),
+        animate('150ms ease-out', style({ opacity: 1 }))
       ])
     ])
   ],
@@ -154,140 +154,84 @@ interface VehicleTrip {
             </div>
           </div>
 
-          <!-- Grille des véhicules -->
-          <div class="grid-container">
-            <div class="vehicles-grid">
-            <div class="vehicle-card" *ngFor="let vehicle of filteredVehicles" @scaleIn (click)="openVehicleDetail(vehicle)">
-              <!-- Header avec infos principales -->
-              <div class="card-top" [class]="vehicle.status">
-                <div class="card-top-left">
-                  <div class="vehicle-type-icon" [class]="vehicle.type">
-                    <span *ngIf="vehicle.type === 'camion'">🚛</span>
-                    <span *ngIf="vehicle.type === 'citadine'">🚗</span>
-                    <span *ngIf="vehicle.type === 'suv'">🚙</span>
-                    <span *ngIf="vehicle.type === 'utilitaire'">🚐</span>
-                    <span *ngIf="!vehicle.type || vehicle.type === 'other'">🚘</span>
-                  </div>
-                  <div class="card-top-info">
-                    <span class="vehicle-brand">{{ vehicle.brand }}</span>
-                    <span class="vehicle-year">{{ vehicle.year }}</span>
-                  </div>
-                </div>
-                <div class="card-top-right">
-                  <div class="status-badge-small" [class]="vehicle.status">
-                    <span class="status-dot"></span>
-                  </div>
-                  <div class="gps-indicator" *ngIf="vehicle.hasGPS">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
-                    </svg>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Contenu de la carte -->
-              <div class="card-content">
-                <div class="card-header">
-                  <h3 class="vehicle-name">{{ vehicle.name }}</h3>
-                  <span class="vehicle-plate">{{ vehicle.plate }}</span>
-                </div>
-                <p class="vehicle-model">{{ vehicle.brand }} {{ vehicle.model }} · {{ vehicle.year }}</p>
-
-                <!-- Indicateurs visuels -->
-                <div class="vehicle-indicators">
-                  <!-- Jauge carburant -->
-                  <div class="indicator fuel">
-                    <div class="indicator-header">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 22V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v14"/>
-                        <path d="M17 10h2a2 2 0 0 1 2 2v3"/>
-                        <path d="M21 19a2 2 0 0 1-2 2h-2"/>
-                        <path d="M3 14h14"/>
-                      </svg>
-                      <span>Carburant</span>
-                    </div>
-                    <div class="gauge-bar">
-                      <div class="gauge-fill" [style.width.%]="vehicle.fuelLevel || 75" 
-                           [class.low]="(vehicle.fuelLevel || 75) < 25"
-                           [class.medium]="(vehicle.fuelLevel || 75) >= 25 && (vehicle.fuelLevel || 75) < 50">
+          <!-- Table des véhicules -->
+          <div class="table-container">
+            <table class="vehicles-table" *ngIf="filteredVehicles.length > 0">
+              <thead>
+                <tr>
+                  <th class="col-vehicle">Véhicule</th>
+                  <th class="col-plate">Plaque</th>
+                  <th class="col-type">Type</th>
+                  <th class="col-mileage">Kilométrage</th>
+                  <th class="col-driver">Chauffeur</th>
+                  <th class="col-status">Statut</th>
+                  <th class="col-gps">GPS</th>
+                  <th class="col-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="vehicle-row" *ngFor="let vehicle of filteredVehicles" (click)="openVehicleDetail(vehicle)">
+                  <td class="col-vehicle">
+                    <div class="vehicle-cell">
+                      <span class="vehicle-type-icon">
+                        <span *ngIf="vehicle.type === 'camion'">🚛</span>
+                        <span *ngIf="vehicle.type === 'citadine'">🚗</span>
+                        <span *ngIf="vehicle.type === 'suv'">🚙</span>
+                        <span *ngIf="vehicle.type === 'utilitaire'">🚐</span>
+                        <span *ngIf="!vehicle.type || vehicle.type === 'other'">🚘</span>
+                      </span>
+                      <div class="vehicle-cell-info">
+                        <span class="vehicle-name">{{ vehicle.name }}</span>
+                        <span class="vehicle-model">{{ vehicle.brand }} {{ vehicle.model }}</span>
                       </div>
                     </div>
-                    <span class="indicator-value">{{ vehicle.fuelLevel || 75 }}%</span>
-                  </div>
-
-                  <!-- Kilométrage -->
-                  <div class="indicator mileage">
-                    <div class="indicator-header">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <polyline points="12 6 12 12 16 14"/>
-                      </svg>
-                      <span>Kilométrage</span>
+                  </td>
+                  <td class="col-plate">
+                    <span class="plate-badge">{{ vehicle.plate }}</span>
+                  </td>
+                  <td class="col-type">{{ getTypeLabel(vehicle.type) }}</td>
+                  <td class="col-mileage">
+                    <span class="mileage-value">{{ formatNumber(vehicle.mileage) }} km</span>
+                  </td>
+                  <td class="col-driver">
+                    <span *ngIf="vehicle.assignedDriverName" class="driver-name">{{ vehicle.assignedDriverName }}</span>
+                    <span *ngIf="!vehicle.assignedDriverName" class="no-driver">—</span>
+                  </td>
+                  <td class="col-status">
+                    <span class="status-badge" [class]="vehicle.status">
+                      <span class="status-dot"></span>
+                      {{ getStatusLabel(vehicle.status) }}
+                    </span>
+                  </td>
+                  <td class="col-gps">
+                    <span class="gps-badge active" *ngIf="vehicle.hasGPS">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+                      GPS
+                    </span>
+                    <span class="gps-badge inactive" *ngIf="!vehicle.hasGPS">—</span>
+                  </td>
+                  <td class="col-actions">
+                    <div class="actions-cell">
+                      <button class="btn-table-action" (click)="openCostsPopup(vehicle); $event.stopPropagation()" title="Dépenses">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <line x1="12" y1="1" x2="12" y2="23"/>
+                          <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                        </svg>
+                        <span>Dépenses</span>
+                      </button>
+                      <button class="btn-table-action primary" (click)="goToVehicleInfo(vehicle); $event.stopPropagation()" title="Fiche véhicule">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                          <line x1="3" y1="9" x2="21" y2="9"/>
+                          <line x1="9" y1="21" x2="9" y2="9"/>
+                        </svg>
+                        <span>Fiche</span>
+                      </button>
                     </div>
-                    <span class="indicator-value large">{{ formatNumber(vehicle.mileage) }} km</span>
-                  </div>
-                </div>
-
-                <!-- Prochaine maintenance -->
-                <div class="maintenance-alert" *ngIf="isMaintenanceSoon(vehicle)">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                  </svg>
-                  <span>Maintenance dans {{ getMaintenanceRemaining(vehicle) }} km</span>
-                </div>
-
-                <!-- Alertes documents (assurance, visite technique) -->
-                <div class="document-alerts" *ngIf="hasDocumentAlerts(vehicle)">
-                  <div class="doc-alert" *ngIf="isInsuranceExpiring(vehicle)" [class]="getInsuranceStatus(vehicle)">
-                    <span class="doc-icon">🛡️</span>
-                    <span class="doc-text">{{ getInsuranceAlertText(vehicle) }}</span>
-                  </div>
-                  <div class="doc-alert" *ngIf="isTechnicalInspectionExpiring(vehicle)" [class]="getTechnicalStatus(vehicle)">
-                    <span class="doc-icon">🔧</span>
-                    <span class="doc-text">{{ getTechnicalAlertText(vehicle) }}</span>
-                  </div>
-                </div>
-
-                <!-- Chauffeur assigné -->
-                <div class="driver-info" *ngIf="vehicle.assignedDriverName">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                    <circle cx="12" cy="7" r="4"/>
-                  </svg>
-                  <span>{{ vehicle.assignedDriverName }}</span>
-                </div>
-              </div>
-
-              <!-- Footer avec actions -->
-              <div class="card-footer">
-                <button class="btn-action edit" (click)="openEditPopup(vehicle); $event.stopPropagation()">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                </button>
-                <button class="btn-action costs" (click)="openCostsPopup(vehicle); $event.stopPropagation()">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="12" y1="1" x2="12" y2="23"/>
-                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-                  </svg>
-                </button>
-                <button class="btn-action info" (click)="goToVehicleInfo(vehicle); $event.stopPropagation()" title="Fiche véhicule">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-                  </svg>
-                </button>
-                <button class="btn-detail" (click)="openVehicleDetail(vehicle); $event.stopPropagation()">
-                  Voir détails
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="m9 18 6-6-6-6"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
             <!-- État vide -->
             <div class="empty-state" *ngIf="filteredVehicles.length === 0">
               <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -700,319 +644,208 @@ interface VehicleTrip {
       color: #64748b;
     }
 
-    /* ===== GRID CONTAINER ===== */
-    .grid-container {
+    /* ===== TABLE CONTAINER ===== */
+    .table-container {
       flex: 1;
-      padding: 12px;
-      overflow-y: auto;
+      padding: 16px 24px;
+      overflow-x: auto;
     }
 
-    /* ===== VEHICLES GRID ===== */
-    .vehicles-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 16px;
-    }
-
-    /* ===== VEHICLE CARD ===== */
-    .vehicle-card {
-      background: white;
-      border-radius: 8px;
-      overflow: hidden;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-      transition: all 0.2s;
-      cursor: pointer;
+    .vehicles-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      background: #fff;
+      border-radius: 10px;
       border: 1px solid #e2e8f0;
+      overflow: hidden;
     }
 
-    .vehicle-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    .vehicles-table thead {
+      background: #f8fafc;
     }
 
-    /* ===== CARD TOP (nouveau design) ===== */
-    .card-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px 14px;
+    .vehicles-table th {
+      padding: 10px 16px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      text-align: left;
       border-bottom: 1px solid #e2e8f0;
+      white-space: nowrap;
     }
 
-    .card-top.available { background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-left: 3px solid #22c55e; }
-    .card-top.in_use { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-left: 3px solid #3b82f6; }
-    .card-top.maintenance { background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border-left: 3px solid #f59e0b; }
+    .vehicles-table td {
+      padding: 12px 16px;
+      font-size: 12px;
+      color: #334155;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: middle;
+    }
 
-    .card-top-left {
+    .vehicle-row {
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .vehicle-row:hover {
+      background: #f8fafc;
+    }
+
+    .vehicle-row:last-child td {
+      border-bottom: none;
+    }
+
+    /* Vehicle cell (icon + name + model) */
+    .vehicle-cell {
       display: flex;
       align-items: center;
       gap: 10px;
     }
 
     .vehicle-type-icon {
-      font-size: 24px;
+      font-size: 20px;
       line-height: 1;
     }
 
-    .card-top-info {
+    .vehicle-cell-info {
       display: flex;
       flex-direction: column;
-    }
-
-    .vehicle-brand {
-      font-size: 12px;
-      font-weight: 600;
-      color: #1e293b;
-    }
-
-    .vehicle-year {
-      font-size: 11px;
-      color: #64748b;
-    }
-
-    .card-top-right {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .status-badge-small {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      position: relative;
-    }
-
-    .status-badge-small.available { background: #22c55e; }
-    .status-badge-small.in_use { background: #3b82f6; }
-    .status-badge-small.maintenance { background: #f59e0b; }
-
-    .status-badge-small .status-dot {
-      position: absolute;
-      inset: 0;
-      border-radius: 50%;
-      animation: pulse-ring 2s infinite;
-    }
-
-    .status-badge-small.available .status-dot { background: rgba(34, 197, 94, 0.4); }
-    .status-badge-small.in_use .status-dot { background: rgba(59, 130, 246, 0.4); }
-    .status-badge-small.maintenance .status-dot { background: rgba(245, 158, 11, 0.4); }
-
-    @keyframes pulse-ring {
-      0% { transform: scale(1); opacity: 1; }
-      50% { transform: scale(1.8); opacity: 0; }
-      100% { transform: scale(1); opacity: 0; }
-    }
-
-    .gps-indicator {
-      display: flex;
-      align-items: center;
-      color: #3b82f6;
-    }
-
-    .card-content {
-      padding: 16px;
-    }
-
-    .vehicle-card .card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 4px;
-      padding: 0;
-      border: none;
-      background: none;
+      gap: 2px;
     }
 
     .vehicle-name {
-      font-size: 16px;
+      font-size: 13px;
       font-weight: 600;
-      color: #1f2937;
-      margin: 0;
-    }
-
-    .vehicle-plate {
-      background: #f1f5f9;
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      color: #64748b;
-      font-family: monospace;
+      color: #1e293b;
     }
 
     .vehicle-model {
-      color: #64748b;
-      font-size: 13px;
-      margin: 0 0 16px;
+      font-size: 11px;
+      color: #94a3b8;
     }
 
-    /* Indicators */
-    .vehicle-indicators {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      margin-bottom: 12px;
-    }
-
-    .indicator {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .indicator-header {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      color: #64748b;
-      font-size: 12px;
-      min-width: 100px;
-    }
-
-    .gauge-bar {
-      flex: 1;
-      height: 6px;
-      background: #e2e8f0;
-      border-radius: 3px;
-      overflow: hidden;
-    }
-
-    .gauge-fill {
-      height: 100%;
-      background: linear-gradient(90deg, #22c55e, #4ade80);
-      border-radius: 3px;
-      transition: width 0.5s ease;
-    }
-
-    .gauge-fill.low { background: linear-gradient(90deg, #ef4444, #f87171); }
-    .gauge-fill.medium { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
-
-    .indicator-value {
+    /* Plate badge */
+    .plate-badge {
+      display: inline-block;
+      background: #f1f5f9;
+      padding: 4px 10px;
+      border-radius: 4px;
       font-size: 12px;
       font-weight: 600;
+      color: #475569;
+      font-family: monospace;
+    }
+
+    /* Mileage */
+    .mileage-value {
+      font-weight: 600;
       color: #1e293b;
-      min-width: 50px;
-      text-align: right;
+      font-size: 12px;
     }
 
-    .indicator-value.large {
-      font-size: 14px;
+    /* Driver */
+    .driver-name {
+      font-size: 12px;
+      color: #334155;
     }
 
-    .maintenance-alert {
-      display: flex;
+    .no-driver {
+      color: #cbd5e1;
+    }
+
+    /* Status badge */
+    .status-badge {
+      display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      background: #fef3c7;
-      border-radius: 8px;
-      font-size: 11px;
-      color: #92400e;
-      margin-bottom: 12px;
-    }
-
-    /* Document Expiry Alerts */
-    .document-alerts {
-      display: flex;
-      flex-wrap: wrap;
       gap: 6px;
-      margin-bottom: 12px;
-    }
-
-    .doc-alert {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 10px;
-      font-weight: 500;
-    }
-
-    .doc-alert.warning {
-      background: #fef3c7;
-      color: #92400e;
-    }
-
-    .doc-alert.critical {
-      background: #fee2e2;
-      color: #dc2626;
-    }
-
-    .doc-alert.expired {
-      background: #dc2626;
-      color: white;
-    }
-
-    .doc-icon {
+      padding: 4px 10px;
+      border-radius: 20px;
       font-size: 11px;
-    }
-
-    .doc-text {
+      font-weight: 600;
       white-space: nowrap;
     }
 
-    .driver-info {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: #64748b;
+    .status-badge .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
     }
 
-    /* Card Footer */
-    .card-footer {
-      display: flex;
+    .status-badge.available { background: #dcfce7; color: #16a34a; }
+    .status-badge.in_use { background: #dbeafe; color: #2563eb; }
+    .status-badge.maintenance { background: #fef3c7; color: #d97706; }
+
+    /* GPS badge */
+    .gps-badge {
+      display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 16px 20px;
-      background: #f8fafc;
-      border-top: 1px solid #e2e8f0;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 500;
     }
 
-    .btn-action {
-      width: 36px;
-      height: 36px;
-      border-radius: 8px;
+    .gps-badge.active {
+      color: #3b82f6;
+    }
+
+    .gps-badge.inactive {
+      color: #cbd5e1;
+    }
+
+    /* Actions cell */
+    .actions-cell {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-table-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 10px;
+      border-radius: 4px;
       border: 1px solid #e2e8f0;
       background: white;
       color: #64748b;
       cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
+      font-size: 11px;
+      font-weight: 500;
+      font-family: var(--font-family);
+      transition: all 0.15s;
+      white-space: nowrap;
     }
 
-    .btn-action:hover {
+    .btn-table-action:hover {
+      background: #f8fafc;
       border-color: #cbd5e1;
-      color: #1e293b;
+      color: #334155;
     }
 
-    .btn-action.edit:hover { color: #3b82f6; border-color: #3b82f6; }
-    .btn-action.costs:hover { color: #22c55e; border-color: #22c55e; }
-    .btn-action.info:hover { color: #6366f1; border-color: #6366f1; }
-
-    .btn-detail {
-      margin-left: auto;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 16px;
-      background: #1e3a5f;
+    .btn-table-action.primary {
+      background: #6366f1;
+      border-color: #6366f1;
       color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
     }
 
-    .btn-detail:hover {
-      background: #2d5a87;
+    .btn-table-action.primary:hover {
+      background: #4f46e5;
+      border-color: #4f46e5;
     }
+
+    /* Column widths */
+    .col-vehicle { min-width: 200px; }
+    .col-plate { min-width: 120px; }
+    .col-type { min-width: 90px; }
+    .col-mileage { min-width: 110px; }
+    .col-driver { min-width: 140px; }
+    .col-status { min-width: 110px; }
+    .col-gps { min-width: 60px; }
+    .col-actions { min-width: 120px; }
 
     /* Empty State */
     .empty-state {
@@ -1039,17 +872,20 @@ interface VehicleTrip {
     /* ===== SLIDE-IN DETAIL PANEL ===== */
     .detail-overlay {
       position: fixed;
-      inset: 0;
+      top: 42px;
+      left: 0;
+      right: 0;
+      bottom: 0;
       background: rgba(0, 0, 0, 0.5);
       display: flex;
       justify-content: flex-end;
-      z-index: 1000;
+      z-index: 1050;
     }
 
     .detail-panel {
       width: 100%;
       max-width: 480px;
-      height: 100vh;
+      height: 100%;
       background: white;
       display: flex;
       flex-direction: column;
@@ -1824,9 +1660,8 @@ interface VehicleTrip {
         justify-content: center;
       }
 
-      .vehicles-grid {
-        grid-template-columns: 1fr;
-        padding: 20px;
+      .table-container {
+        padding: 12px;
       }
 
       .vehicle-hero {
