@@ -35,7 +35,6 @@ import { SystemAdminGuard } from './guards/system-admin.guard';
 import { SecuriteGuard } from './guards/securite.guard';
 import { LocationCompanyGuard } from './guards/location-company.guard';
 import { VehicleLoansComponent } from './components/vehicle-loans.component';
-import { VehicleInfoComponent } from './components/vehicle-info.component';
 
 
 export const routes: Routes = [
@@ -45,11 +44,10 @@ export const routes: Routes = [
   { path: 'device-check', component: DeviceCheckComponent },
   // Protected routes - Dashboard (always accessible when logged in)
   { path: 'dashboard', component: DashboardComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'dashboard' } },
-  
+
   // Vehicles module
   { path: 'units', component: VehiclesComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'vehicles' } },
   { path: 'vehicles', component: VehiclesComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'vehicles' } },
-  { path: 'vehicle-info/:id', component: VehicleInfoComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'vehicles' } },
   
   // Employees module
   { path: 'drivers', component: EmployeesComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'employees' } },

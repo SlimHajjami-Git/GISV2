@@ -1,461 +1,414 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnChanges, SimpleChanges, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService } from '../services/api.service';
-import { AppLayoutComponent } from './shared/app-layout.component';
 
 @Component({
   selector: 'app-vehicle-info',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule],
   template: `
-    <app-layout>
-      <div class="vi-page">
-        <!-- Breadcrumb + Back -->
-        <div class="vi-topbar">
-          <button class="vi-back" (click)="goBack()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/>
+    <div class="panel-overlay" *ngIf="isOpen" (mousedown)="onOverlayClick($event)">
+      <div class="slide-panel" (mousedown)="$event.stopPropagation()">
+        <!-- Panel Header -->
+        <div class="panel-header">
+          <div class="panel-header-content">
+            <div class="panel-icon">📋</div>
+            <div class="panel-header-info">
+              <h2>Fiche véhicule</h2>
+              <p>{{ vehicleForm.marque && vehicleForm.modele ? vehicleForm.marque + ' ' + vehicleForm.modele : vehicleName || 'Informations complémentaires' }}</p>
+            </div>
+          </div>
+          <button class="btn-close-panel" (click)="close()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
-          <div class="vi-breadcrumb">
-            <span class="vi-bc-link" (click)="goBack()">Véhicules</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-            <span class="vi-bc-current">Fiche véhicule</span>
-          </div>
         </div>
 
-        <!-- Loading -->
-        <div class="vi-loading" *ngIf="loading">
-          <div class="vi-spinner"></div>
-        </div>
-
-        <!-- Content -->
-        <div class="vi-content" *ngIf="!loading">
-          <!-- Header card -->
-          <div class="vi-hero">
-            <div class="vi-hero-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <rect x="1" y="3" width="15" height="13" rx="2"/>
-                <path d="M16 8h2a2 2 0 0 1 2 2v1l2 1v4h-2"/>
-                <circle cx="5.5" cy="18.5" r="2.5"/>
-                <circle cx="18.5" cy="18.5" r="2.5"/>
-              </svg>
-            </div>
-            <div class="vi-hero-text">
-              <h1 class="vi-title">{{ vehicleForm.marque || 'Nouveau' }} {{ vehicleForm.modele || 'Véhicule' }}</h1>
-              <span class="vi-subtitle">Informations du véhicule</span>
-            </div>
+        <!-- Panel Body -->
+        <div class="panel-body">
+          <!-- Loading -->
+          <div class="loading-state" *ngIf="loading">
+            <div class="spinner"></div>
           </div>
 
-          <!-- Form grid -->
-          <div class="vi-grid">
-            <!-- Col 1: Identification -->
-            <div class="vi-card">
-              <div class="vi-card-head">
-                <div class="vi-card-dot"></div>
-                <span>Identification</span>
+          <form *ngIf="!loading" (ngSubmit)="save()">
+            <!-- Section: Identification -->
+            <div class="form-section">
+              <h3 class="section-title">🚗 Identification</h3>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Marque</label>
+                  <input type="text" [(ngModel)]="vehicleForm.marque" name="marque" placeholder="Ex: Renault">
+                </div>
+                <div class="form-group">
+                  <label>Modèle</label>
+                  <input type="text" [(ngModel)]="vehicleForm.modele" name="modele" placeholder="Ex: Kangoo">
+                </div>
               </div>
-              <div class="vi-card-body">
-                <label class="vi-field">
-                  <span class="vi-label">Marque</span>
-                  <input type="text" [(ngModel)]="vehicleForm.marque" placeholder="Ex: Renault">
-                </label>
-                <label class="vi-field">
-                  <span class="vi-label">Modèle</span>
-                  <input type="text" [(ngModel)]="vehicleForm.modele" placeholder="Ex: Kangoo">
-                </label>
-                <label class="vi-field">
-                  <span class="vi-label">Mise en circulation</span>
-                  <input type="date" [(ngModel)]="vehicleForm.dateMiseEnCirculation">
-                </label>
-                <label class="vi-field">
-                  <span class="vi-label">Carburant</span>
-                  <select [(ngModel)]="vehicleForm.carburant">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Date mise en circulation</label>
+                  <input type="date" [(ngModel)]="vehicleForm.dateMiseEnCirculation" name="dateMiseEnCirculation">
+                </div>
+                <div class="form-group">
+                  <label>Carburant</label>
+                  <select [(ngModel)]="vehicleForm.carburant" name="carburant">
                     <option value="">Sélectionner</option>
                     <option value="diesel">Diesel</option>
                     <option value="essence">Essence</option>
                     <option value="hybride">Hybride</option>
                     <option value="electrique">Électrique</option>
                   </select>
-                </label>
-              </div>
-            </div>
-
-            <!-- Col 2: Acquisition -->
-            <div class="vi-card">
-              <div class="vi-card-head">
-                <div class="vi-card-dot accent"></div>
-                <span>Acquisition</span>
-              </div>
-              <div class="vi-card-body">
-                <div class="vi-toggle-row">
-                  <button class="vi-toggle" [class.active]="vehicleForm.typeAcquisition === 'achat'" (click)="vehicleForm.typeAcquisition = 'achat'">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                    Achat
-                  </button>
-                  <button class="vi-toggle" [class.active]="vehicleForm.typeAcquisition === 'leasing'" (click)="vehicleForm.typeAcquisition = 'leasing'">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-                    Leasing
-                  </button>
                 </div>
-                <label class="vi-field">
-                  <span class="vi-label">Prix d'achat</span>
-                  <div class="vi-input-suffix">
-                    <input type="number" [(ngModel)]="vehicleForm.prixAchat" placeholder="0.00">
-                    <span class="vi-suffix">MAD</span>
-                  </div>
-                </label>
-                <label class="vi-field" *ngIf="vehicleForm.typeAcquisition === 'leasing'">
-                  <span class="vi-label">Traite mensuelle</span>
-                  <div class="vi-input-suffix">
-                    <input type="number" [(ngModel)]="vehicleForm.traiteMensuelle" placeholder="0.00">
-                    <span class="vi-suffix">MAD/mois</span>
-                  </div>
-                </label>
               </div>
             </div>
-          </div>
 
-          <!-- Save bar -->
-          <div class="vi-actions">
-            <button class="vi-save" (click)="save()" [disabled]="saving">
-              <svg *ngIf="!saving" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                <polyline points="17 21 17 13 7 13 7 21"/>
-                <polyline points="7 3 7 8 15 8"/>
-              </svg>
-              <span class="vi-save-spinner" *ngIf="saving"></span>
-              {{ saving ? 'Enregistrement...' : 'Enregistrer les modifications' }}
-            </button>
-          </div>
+            <!-- Section: Acquisition -->
+            <div class="form-section">
+              <h3 class="section-title">💰 Acquisition</h3>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Type d'acquisition</label>
+                  <select [(ngModel)]="vehicleForm.typeAcquisition" name="typeAcquisition">
+                    <option value="achat">Achat</option>
+                    <option value="leasing">Leasing</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Prix d'achat</label>
+                  <div class="input-with-suffix">
+                    <input type="number" [(ngModel)]="vehicleForm.prixAchat" name="prixAchat" placeholder="0.00">
+                    <span class="input-suffix">TND</span>
+                  </div>
+                </div>
+              </div>
+              <div class="form-row" *ngIf="vehicleForm.typeAcquisition === 'leasing'">
+                <div class="form-group">
+                  <label>Traite mensuelle</label>
+                  <div class="input-with-suffix">
+                    <input type="number" [(ngModel)]="vehicleForm.traiteMensuelle" name="traiteMensuelle" placeholder="0.00">
+                    <span class="input-suffix">TND/mois</span>
+                  </div>
+                </div>
+                <div class="form-group"></div>
+              </div>
+            </div>
+          </form>
         </div>
 
-        <!-- Toast -->
-        <div class="vi-toast" *ngIf="showSuccess">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-            <polyline points="22 4 12 14.01 9 11.01"/>
-          </svg>
-          Modifications enregistrées
+        <!-- Panel Footer -->
+        <div class="panel-footer">
+          <button type="button" class="btn-secondary" (click)="close()">Annuler</button>
+          <button type="button" class="btn-primary" (click)="save()" [disabled]="saving">
+            {{ saving ? 'Enregistrement...' : 'Enregistrer' }}
+          </button>
         </div>
       </div>
-    </app-layout>
+    </div>
+
+    <!-- Success Toast -->
+    <div class="toast-success" *ngIf="showSuccess">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+        <polyline points="22 4 12 14.01 9 11.01"/>
+      </svg>
+      Modifications enregistrées
+    </div>
   `,
   styles: [`
-    .vi-page {
-      padding: 20px 28px;
-      width: 100%;
-      min-height: calc(100vh - 42px);
-      background: #0f172a;
+    .panel-overlay {
+      position: fixed;
+      top: 42px;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1050;
+      display: flex;
+      justify-content: flex-end;
+      animation: fadeIn 0.2s ease-out;
     }
 
-    /* ── Topbar ── */
-    .vi-topbar {
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .slide-panel {
+      width: 520px;
+      max-width: 100%;
+      height: 100%;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
+      animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+    .panel-header {
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin-bottom: 24px;
+      justify-content: space-between;
+      padding: 20px 24px;
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: #fff;
     }
 
-    .vi-back {
-      display: grid;
-      place-items: center;
+    .panel-header-content {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .panel-icon {
+      font-size: 32px;
+    }
+
+    .panel-header-info h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .panel-header-info p {
+      margin: 4px 0 0;
+      font-size: 13px;
+      opacity: 0.9;
+    }
+
+    .btn-close-panel {
       width: 36px;
       height: 36px;
-      border-radius: 10px;
-      border: 1px solid rgba(71,85,105,0.3);
-      background: rgba(30,41,59,0.6);
-      color: #94a3b8;
+      border: none;
+      background: rgba(255,255,255,0.2);
+      border-radius: 8px;
+      color: #fff;
       cursor: pointer;
-      transition: all 0.2s;
-    }
-    .vi-back:hover { color: #e2e8f0; border-color: #6366f1; background: rgba(99,102,241,0.1); }
-
-    .vi-breadcrumb {
       display: flex;
       align-items: center;
-      gap: 6px;
-      font-size: 13px;
-      color: #475569;
+      justify-content: center;
+      transition: all 0.2s;
     }
-    .vi-bc-link { color: #64748b; cursor: pointer; transition: color 0.15s; }
-    .vi-bc-link:hover { color: #818cf8; }
-    .vi-bc-current { color: #cbd5e1; font-weight: 500; }
+
+    .btn-close-panel:hover {
+      background: rgba(255,255,255,0.3);
+    }
+
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+    }
 
     /* ── Loading ── */
-    .vi-loading {
-      display: grid;
-      place-items: center;
-      padding: 120px 0;
+    .loading-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 0;
     }
-    .vi-spinner {
-      width: 28px; height: 28px;
-      border: 3px solid rgba(99,102,241,0.15);
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid #e2e8f0;
       border-top-color: #6366f1;
       border-radius: 50%;
       animation: spin 0.65s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Hero header ── */
-    .vi-hero {
-      display: flex;
-      align-items: center;
-      gap: 16px;
+    /* ── Form sections (same as vehicle-popup) ── */
+    .form-section {
       margin-bottom: 24px;
-      padding: 20px 24px;
-      background: linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(30,41,59,0.6) 100%);
-      border: 1px solid rgba(99,102,241,0.15);
-      border-radius: 14px;
-    }
-    .vi-hero-icon {
-      display: grid;
-      place-items: center;
-      width: 52px; height: 52px;
-      border-radius: 12px;
-      background: rgba(99,102,241,0.12);
-      color: #818cf8;
-      flex-shrink: 0;
-    }
-    .vi-title {
-      font-size: 20px;
-      font-weight: 700;
-      color: #f1f5f9;
-      margin: 0;
-      letter-spacing: -0.3px;
-    }
-    .vi-subtitle {
-      font-size: 13px;
-      color: #64748b;
+      padding-bottom: 24px;
+      border-bottom: 1px solid #e2e8f0;
     }
 
-    /* ── Card grid ── */
-    .vi-grid {
+    .form-section:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+    }
+
+    .section-title {
+      margin: 0 0 16px 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #4f46e5;
+    }
+
+    .form-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 20px;
-    }
-
-    .vi-card {
-      background: rgba(30,41,59,0.55);
-      border: 1px solid rgba(71,85,105,0.25);
-      border-radius: 14px;
-      overflow: hidden;
-      transition: border-color 0.2s;
-    }
-    .vi-card:hover { border-color: rgba(99,102,241,0.3); }
-
-    .vi-card-head {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 14px 20px;
-      font-size: 13px;
-      font-weight: 600;
-      color: #cbd5e1;
-      letter-spacing: 0.3px;
-      border-bottom: 1px solid rgba(71,85,105,0.2);
-    }
-    .vi-card-dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: #22d3ee;
-    }
-    .vi-card-dot.accent { background: #818cf8; }
-
-    .vi-card-body {
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
       gap: 16px;
+      margin-bottom: 16px;
     }
 
-    /* ── Fields ── */
-    .vi-field {
+    .form-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .form-group {
       display: flex;
       flex-direction: column;
       gap: 6px;
     }
-    .vi-label {
+
+    .form-group label {
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 500;
       color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
     }
 
-    .vi-field input,
-    .vi-field select {
-      width: 100%;
-      padding: 10px 14px;
-      background: rgba(15,23,42,0.5);
-      border: 1px solid rgba(71,85,105,0.3);
-      border-radius: 10px;
-      color: #e2e8f0;
-      font-size: 14px;
-      font-family: inherit;
-      transition: border-color 0.2s, box-shadow 0.2s;
-      box-sizing: border-box;
+    .form-group input,
+    .form-group select {
+      padding: 8px 12px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 3px;
+      color: #1e293b;
+      font-family: var(--font-family);
+      font-size: 12px;
+      transition: all 0.15s;
     }
-    .vi-field input:focus,
-    .vi-field select:focus {
+
+    .form-group input:focus,
+    .form-group select:focus {
       outline: none;
       border-color: #6366f1;
-      box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.08);
     }
-    .vi-field input::placeholder { color: #475569; }
 
-    .vi-field select {
-      cursor: pointer;
-      appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 14px center;
-      padding-right: 36px;
+    .form-group input::placeholder {
+      color: #94a3b8;
     }
-    .vi-field select option { background: #1e293b; color: #e2e8f0; }
 
-    /* Date input fix */
-    .vi-field input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); }
-
-    /* Input with suffix */
-    .vi-input-suffix {
+    /* ── Input with suffix ── */
+    .input-with-suffix {
       position: relative;
     }
-    .vi-input-suffix input {
+
+    .input-with-suffix input {
       width: 100%;
-      padding-right: 64px;
-      padding: 10px 14px;
-      padding-right: 70px;
-      background: rgba(15,23,42,0.5);
-      border: 1px solid rgba(71,85,105,0.3);
-      border-radius: 10px;
-      color: #e2e8f0;
-      font-size: 14px;
-      font-family: inherit;
-      transition: border-color 0.2s, box-shadow 0.2s;
-      box-sizing: border-box;
+      padding: 8px 12px;
+      padding-right: 60px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 3px;
+      color: #1e293b;
+      font-family: var(--font-family);
+      font-size: 12px;
+      transition: all 0.15s;
     }
-    .vi-input-suffix input:focus {
+
+    .input-with-suffix input:focus {
       outline: none;
       border-color: #6366f1;
-      box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.08);
     }
-    .vi-input-suffix input::placeholder { color: #475569; }
-    .vi-suffix {
+
+    .input-with-suffix input::placeholder {
+      color: #94a3b8;
+    }
+
+    .input-suffix {
       position: absolute;
-      right: 14px;
+      right: 10px;
       top: 50%;
       transform: translateY(-50%);
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 500;
-      color: #475569;
+      color: #94a3b8;
       pointer-events: none;
     }
 
-    /* ── Toggle buttons ── */
-    .vi-toggle-row {
-      display: flex;
-      gap: 8px;
-    }
-    .vi-toggle {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 10px;
-      border-radius: 10px;
-      border: 1px solid rgba(71,85,105,0.3);
-      background: rgba(15,23,42,0.4);
-      color: #64748b;
-      font-size: 13px;
-      font-weight: 500;
-      font-family: inherit;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .vi-toggle:hover { border-color: rgba(99,102,241,0.3); color: #94a3b8; }
-    .vi-toggle.active {
-      background: rgba(99,102,241,0.12);
-      border-color: rgba(99,102,241,0.4);
-      color: #a5b4fc;
-    }
-
-    /* ── Actions bar ── */
-    .vi-actions {
+    /* ── Footer (same as vehicle-popup) ── */
+    .panel-footer {
       display: flex;
       justify-content: flex-end;
-      margin-top: 24px;
+      gap: 12px;
+      padding: 16px 24px;
+      border-top: 1px solid #e2e8f0;
+      background: #f8fafc;
     }
 
-    .vi-save {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 11px 28px;
-      background: #6366f1;
+    .btn-primary {
+      padding: 10px 20px;
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: white;
       border: none;
       border-radius: 10px;
-      color: white;
-      font-size: 14px;
       font-weight: 600;
-      font-family: inherit;
+      font-size: 14px;
       cursor: pointer;
       transition: all 0.2s;
     }
-    .vi-save:hover:not(:disabled) { background: #4f46e5; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(99,102,241,0.3); }
-    .vi-save:active:not(:disabled) { transform: translateY(0); }
-    .vi-save:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    .vi-save-spinner {
-      width: 16px; height: 16px;
-      border: 2px solid rgba(255,255,255,0.3);
-      border-top-color: white;
-      border-radius: 50%;
-      animation: spin 0.65s linear infinite;
-      display: inline-block;
+    .btn-primary:hover:not(:disabled) {
+      box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      padding: 10px 20px;
+      background: #f1f5f9;
+      color: #1f2937;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      font-weight: 500;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary:hover {
+      background: #e2e8f0;
     }
 
     /* ── Toast ── */
-    .vi-toast {
+    .toast-success {
       position: fixed;
-      bottom: 24px;
-      right: 24px;
+      bottom: 20px;
+      right: 20px;
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 14px 22px;
-      background: rgba(22,101,52,0.95);
-      border: 1px solid rgba(34,197,94,0.4);
-      border-radius: 12px;
-      color: #dcfce7;
-      font-size: 13px;
+      gap: 8px;
+      padding: 10px 16px;
+      background: #10b981;
+      color: white;
+      border-radius: 6px;
+      font-size: 12px;
       font-weight: 500;
-      backdrop-filter: blur(12px);
-      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-      animation: toastIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-      z-index: 1000;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      animation: toastIn 0.3s ease-out;
+      z-index: 1100;
     }
     @keyframes toastIn {
-      from { opacity: 0; transform: translateY(16px) scale(0.96); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
     /* ── Responsive ── */
-    @media (max-width: 768px) {
-      .vi-page { padding: 16px; }
-      .vi-grid { grid-template-columns: 1fr; }
-      .vi-hero { padding: 16px; }
-      .vi-title { font-size: 17px; }
+    @media (max-width: 640px) {
+      .form-row { grid-template-columns: 1fr; }
+      .slide-panel { width: 100%; }
+      .panel-body { padding: 16px; }
     }
   `]
 })
-export class VehicleInfoComponent implements OnInit {
-  vehicleId: number = 0;
-  loading = true;
+export class VehicleInfoComponent implements OnChanges {
+  @Input() isOpen = false;
+  @Input() vehicleId: number | null = null;
+  @Input() vehicleName: string = '';
+  @Output() closed = new EventEmitter<void>();
+  @Output() saved = new EventEmitter<void>();
+
+  loading = false;
   saving = false;
   showSuccess = false;
   vehicleForm: any = {
@@ -470,16 +423,17 @@ export class VehicleInfoComponent implements OnInit {
 
   constructor(
     private api: ApiService,
-    private route: ActivatedRoute,
-    private router: Router
+    private cdr: ChangeDetectorRef
   ) {}
 
-  ngOnInit(): void {
-    this.vehicleId = Number(this.route.snapshot.paramMap.get('id'));
-    this.loadVehicle();
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['isOpen'] && this.isOpen && this.vehicleId) {
+      this.loadVehicle();
+    }
   }
 
   loadVehicle(): void {
+    if (!this.vehicleId) return;
     this.loading = true;
     this.api.getVehicle(this.vehicleId).subscribe({
       next: (vehicle: any) => {
@@ -493,28 +447,40 @@ export class VehicleInfoComponent implements OnInit {
           this.vehicleForm.traiteMensuelle = vehicle.traiteMensuelle || vehicle.leasingMonthlyPayment || null;
         }
         this.loading = false;
+        this.cdr.detectChanges();
       },
       error: () => {
         this.loading = false;
+        this.cdr.detectChanges();
       }
     });
   }
 
   save(): void {
+    if (!this.vehicleId) return;
     this.saving = true;
     this.api.updateVehicle(this.vehicleId, this.vehicleForm).subscribe({
       next: () => {
         this.saving = false;
         this.showSuccess = true;
-        setTimeout(() => this.showSuccess = false, 3000);
+        this.saved.emit();
+        setTimeout(() => { this.showSuccess = false; this.cdr.detectChanges(); }, 3000);
+        this.cdr.detectChanges();
       },
       error: () => {
         this.saving = false;
+        this.cdr.detectChanges();
       }
     });
   }
 
-  goBack(): void {
-    this.router.navigate(['/vehicles']);
+  close(): void {
+    this.closed.emit();
+  }
+
+  onOverlayClick(event: MouseEvent): void {
+    if (event.target === event.currentTarget) {
+      this.close();
+    }
   }
 }

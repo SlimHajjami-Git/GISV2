@@ -10,6 +10,7 @@ import { Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { VehiclePopupComponent } from './shared/vehicle-popup.component';
 import { VehicleCostsPopupComponent } from './shared/vehicle-costs-popup.component';
+import { VehicleInfoComponent } from './vehicle-info.component';
 
 interface VehicleExtended extends Vehicle {
   fuelLevel?: number;
@@ -42,7 +43,7 @@ interface VehicleTrip {
 @Component({
   selector: 'app-vehicles',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, VehiclePopupComponent, VehicleCostsPopupComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, VehiclePopupComponent, VehicleCostsPopupComponent, VehicleInfoComponent],
   animations: [
     trigger('slideIn', [
       transition(':enter', [
@@ -548,6 +549,14 @@ interface VehicleTrip {
         [isOpen]="isCostsPopupOpen"
         [vehicle]="selectedVehicleForCosts"
         (closed)="closeCostsPopup()"
+      />
+
+      <app-vehicle-info
+        [isOpen]="isInfoPanelOpen"
+        [vehicleId]="selectedInfoVehicleId"
+        [vehicleName]="selectedInfoVehicleName"
+        (closed)="closeInfoPanel()"
+        (saved)="onInfoSaved()"
       />
     </app-layout>
   `,
@@ -1867,6 +1876,9 @@ export class VehiclesComponent implements OnInit, OnDestroy {
   // Costs popup
   isCostsPopupOpen = false;
   selectedVehicleForCosts: Vehicle | null = null;
+  isInfoPanelOpen = false;
+  selectedInfoVehicleId: number | null = null;
+  selectedInfoVehicleName: string = '';
 
   // Filters
   searchQuery = '';
@@ -2326,8 +2338,21 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     this.selectedVehicleForCosts = null;
   }
 
-  goToVehicleInfo(vehicle: Vehicle) {
-    this.router.navigate(['/vehicle-info', vehicle.id]);
+  goToVehicleInfo(vehicle: any) {
+    this.selectedInfoVehicleId = vehicle.id;
+    this.selectedInfoVehicleName = (vehicle.brand || '') + ' ' + (vehicle.model || '') + (vehicle.plate ? ' (' + vehicle.plate + ')' : '');
+    this.isInfoPanelOpen = true;
+    this.cdr.detectChanges();
+  }
+
+  closeInfoPanel() {
+    this.isInfoPanelOpen = false;
+    this.selectedInfoVehicleId = null;
+    this.cdr.detectChanges();
+  }
+
+  onInfoSaved() {
+    this.loadVehicles();
   }
 
   // Document Expiry Alert Methods
