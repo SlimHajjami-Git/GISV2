@@ -2281,85 +2281,123 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 .monthly-cost-report-workspace {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 16px;
-  background: #0f172a;
-  border-radius: 12px;
+  gap: 20px;
+  padding: 24px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, #0f172a 100%);
+  border-radius: 16px;
   min-height: 400px;
+  animation: fadeInReport 0.4s ease-out;
+}
+
+@keyframes fadeInReport {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .stats-cards-row {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
 }
 
 .monthly-cost-report-workspace .stat-card {
-  flex: 1;
-  min-width: 150px;
-  background: rgba(30, 41, 59, 0.8);
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  border-radius: 10px;
-  padding: 14px 18px;
+  position: relative;
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(71, 85, 105, 0.25);
+  border-radius: 14px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  overflow: hidden;
+  transition: border-color 0.25s, transform 0.2s;
+}
+
+.monthly-cost-report-workspace .stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.4), transparent);
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.monthly-cost-report-workspace .stat-card:hover {
+  border-color: rgba(99, 102, 241, 0.35);
+  transform: translateY(-2px);
+}
+
+.monthly-cost-report-workspace .stat-card:hover::before {
+  opacity: 1;
 }
 
 .monthly-cost-report-workspace .stat-card .stat-label {
-  font-size: 11px;
-  color: rgba(148, 163, 184, 0.9);
+  font-size: 10.5px;
+  color: #64748b;
   text-transform: uppercase;
-  font-weight: 500;
-  letter-spacing: 0.5px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
 }
 
 .monthly-cost-report-workspace .stat-card .stat-value {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
-  color: #e2e8f0;
+  color: #f1f5f9;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.3px;
 }
 
 .monthly-cost-report-workspace .stat-card .stat-value.accent {
-  color: #6366f1;
+  color: #818cf8;
 }
 
 .monthly-cost-report-workspace .stat-card .stat-value.warning {
-  color: #f59e0b;
+  color: #fbbf24;
 }
 
 .monthly-cost-report-workspace .stat-card .stat-value.danger {
-  color: #ef4444;
+  color: #f87171;
 }
 
 .dept-group {
-  background: rgba(30, 41, 59, 0.6);
-  border: 1px solid rgba(99, 102, 241, 0.15);
-  border-radius: 10px;
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(71, 85, 105, 0.2);
+  border-radius: 14px;
   overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.dept-group:hover {
+  border-color: rgba(99, 102, 241, 0.25);
 }
 
 .dept-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: rgba(99, 102, 241, 0.08);
-  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+  gap: 14px;
+  padding: 14px 20px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(30, 41, 59, 0.4) 100%);
+  border-bottom: 1px solid rgba(71, 85, 105, 0.2);
 }
 
 .dept-badge {
-  background: #6366f1;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
   color: white;
-  padding: 4px 12px;
-  border-radius: 6px;
-  font-size: 13px;
+  padding: 5px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
   font-weight: 600;
+  letter-spacing: 0.2px;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
 }
 
 .dept-summary {
-  color: rgba(148, 163, 184, 0.9);
+  color: #64748b;
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .monthly-cost-table {
@@ -2369,15 +2407,15 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .monthly-cost-table thead th {
-  background: rgba(15, 23, 42, 0.6);
-  color: rgba(148, 163, 184, 0.9);
+  background: rgba(15, 23, 42, 0.5);
+  color: #64748b;
   font-weight: 600;
-  font-size: 11px;
+  font-size: 10.5px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 10px 12px;
+  letter-spacing: 0.7px;
+  padding: 11px 14px;
   text-align: left;
-  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+  border-bottom: 1px solid rgba(71, 85, 105, 0.2);
   white-space: nowrap;
 }
 
@@ -2386,40 +2424,49 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .monthly-cost-table tbody td {
-  padding: 8px 12px;
-  color: #e2e8f0;
-  border-bottom: 1px solid rgba(30, 41, 59, 0.5);
+  padding: 10px 14px;
+  color: #cbd5e1;
+  border-bottom: 1px solid rgba(30, 41, 59, 0.4);
+  transition: background 0.15s;
 }
 
 .monthly-cost-table tbody td.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+  color: #e2e8f0;
+}
+
+.monthly-cost-table tbody tr:nth-child(even) {
+  background: rgba(15, 23, 42, 0.2);
 }
 
 .monthly-cost-table tbody tr:hover {
-  background: rgba(99, 102, 241, 0.06);
+  background: rgba(99, 102, 241, 0.07);
 }
 
 .monthly-cost-table .total-cell {
-  color: #6366f1;
-  font-weight: 600;
+  color: #a5b4fc;
+  font-weight: 700;
 }
 
 .monthly-cost-table .plate-tag {
   display: inline-block;
-  background: rgba(99, 102, 241, 0.15);
+  background: rgba(99, 102, 241, 0.12);
   color: #818cf8;
-  padding: 1px 6px;
-  border-radius: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
   font-size: 11px;
+  font-weight: 500;
   margin-left: 6px;
+  letter-spacing: 0.3px;
 }
 
 .monthly-cost-table tfoot .dept-total-row td {
-  padding: 10px 12px;
+  padding: 12px 14px;
   background: rgba(99, 102, 241, 0.06);
-  border-top: 2px solid rgba(99, 102, 241, 0.3);
-  color: #e2e8f0;
+  border-top: 2px solid rgba(99, 102, 241, 0.25);
+  color: #f1f5f9;
+  font-weight: 600;
 }
 
 .monthly-cost-table tfoot .dept-total-row td.num {
@@ -2430,15 +2477,46 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   overflow-x: auto;
 }
 
+.table-wrapper::-webkit-scrollbar {
+  height: 6px;
+}
+
+.table-wrapper::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.3);
+  border-radius: 3px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.25);
+  border-radius: 3px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.4);
+}
+
 @media (max-width: 900px) {
+  .monthly-cost-report-workspace {
+    padding: 16px;
+    gap: 14px;
+  }
   .stats-cards-row {
-    flex-direction: column;
+    grid-template-columns: 1fr 1fr;
   }
   .monthly-cost-table {
     font-size: 12px;
   }
   .monthly-cost-table thead th,
   .monthly-cost-table tbody td {
-    padding: 6px 8px;
+    padding: 7px 10px;
+  }
+  .dept-header {
+    padding: 12px 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-cards-row {
+    grid-template-columns: 1fr;
   }
 }
