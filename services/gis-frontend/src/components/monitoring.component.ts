@@ -2681,9 +2681,18 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const DATA_GAP_TIME_MS = 3 * 60 * 1000; // 3 minutes (reduced from 5)
     const DATA_GAP_DISTANCE_M = 300; // 300 meters (reduced from 500)
     const MAX_TRANSITION_SPEED_KMH = 160; // Skip routing for impossible-speed transitions
+    // Valhalla's server-side breakage_distance (hardcoded at 2000m in config).
+    // If two consecutive GPS points are farther apart than this, Valhalla
+    // SILENTLY truncates its trace_route response at the first "broken" point
+    // and returns only the initial segment — causing a phantom straight line
+    // when the partial result is concatenated with the next chunk's fresh
+    // map-match. We break the trip ourselves BEFORE Valhalla sees the gap,
+    // falling back to a straight line between the two raw GPS points.
+    const VALHALLA_BREAKAGE_DISTANCE_M = 1800;
     const transitions: boolean[] = []; // true = should route via Valhalla
     this.playbackDataGaps = new Set<number>(); // reset
     const dataGaps = this.playbackDataGaps; // local alias
+    let valhallaBreakageBreaks = 0;
     for (let i = 0; i < totalPositions - 1; i++) {
       const from = this.playbackPositions[i];
       const to = this.playbackPositions[i + 1];
@@ -2702,6 +2711,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         transitions.push(false);
         dataGaps.add(i);
         console.log(`[Playback] Speed outlier at index ${i}: ${Math.round(speedKmh)}km/h, ${Math.round(dist)}m`);
+      // Valhalla breakage: large straight-line distance would trigger silent
+      // truncation of trace_route. Break the trip without flagging as a data
+      // gap so a straight line is still drawn across the small missing stretch.
+      } else if (dist > VALHALLA_BREAKAGE_DISTANCE_M) {
+        transitions.push(false);
+        valhallaBreakageBreaks++;
       } else {
         const shouldRoute = ignitionOn && dist > 20;
         transitions.push(shouldRoute);
@@ -2710,6 +2725,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           dataGaps.add(i);
         }
       }
+    }
+    if (valhallaBreakageBreaks > 0) {
+      console.log(`[Playback] Broke trip at ${valhallaBreakageBreaks} point(s) to avoid Valhalla silent truncation (gap > ${VALHALLA_BREAKAGE_DISTANCE_M}m)`);
     }
 
     // Step 2: Group consecutive "route" transitions into trips
