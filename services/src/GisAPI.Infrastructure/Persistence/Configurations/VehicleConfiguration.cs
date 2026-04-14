@@ -32,6 +32,25 @@ public class VehicleConfiguration : IEntityTypeConfiguration<Vehicle>
         builder.Property(e => e.DriverName).HasColumnName("driver_name");
         builder.Property(e => e.DriverPhone).HasColumnName("driver_phone");
 
+        // Acquisition info (created via manual SQL migration 025 as snake_case)
+        builder.Property(e => e.AcquisitionType).HasColumnName("acquisition_type").HasMaxLength(20);
+        builder.Property(e => e.PurchasePrice).HasColumnName("purchase_price").HasColumnType("decimal(12,2)");
+        builder.Property(e => e.LeasingMonthlyPayment).HasColumnName("leasing_monthly_payment").HasColumnType("decimal(10,2)");
+        builder.Property(e => e.LeasingDurationMonths).HasColumnName("leasing_duration_months");
+        builder.Property(e => e.LeasingStartDate).HasColumnName("leasing_start_date");
+        builder.Property(e => e.LeasingPaymentDay).HasColumnName("leasing_payment_day");
+        builder.Property(e => e.RegistrationDate).HasColumnName("registration_date");
+
+        // Document start dates (snake_case from migration 025)
+        builder.Property(e => e.InsuranceStartDate).HasColumnName("insurance_start_date");
+        builder.Property(e => e.TaxStartDate).HasColumnName("tax_start_date");
+        builder.Property(e => e.TechnicalInspectionStartDate).HasColumnName("technical_inspection_start_date");
+
+        // Reminder days (snake_case from migration 025)
+        builder.Property(e => e.InsuranceReminderDays).HasColumnName("insurance_reminder_days");
+        builder.Property(e => e.TaxReminderDays).HasColumnName("tax_reminder_days");
+        builder.Property(e => e.TechnicalInspectionReminderDays).HasColumnName("technical_inspection_reminder_days");
+
         builder.HasIndex(e => e.CompanyId);
         builder.HasIndex(e => e.Plate).HasDatabaseName("idx_vehicles_plate_number");
 

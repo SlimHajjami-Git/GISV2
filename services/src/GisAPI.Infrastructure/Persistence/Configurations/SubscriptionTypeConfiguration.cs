@@ -59,6 +59,7 @@ public class SubscriptionTypeConfiguration : IEntityTypeConfiguration<Subscripti
         builder.Property(s => s.ReportMileagePeriod).HasColumnName("report_mileage_period");
         builder.Property(s => s.ReportSpeedInfraction).HasColumnName("report_speed_infraction");
         builder.Property(s => s.ReportDrivingBehavior).HasColumnName("report_driving_behavior");
+        builder.Property(s => s.ReportMonthlyCosts).HasColumnName("report_monthly_costs");
 
         // Module Permissions
         builder.Property(s => s.ModuleDashboard).HasColumnName("module_dashboard");
