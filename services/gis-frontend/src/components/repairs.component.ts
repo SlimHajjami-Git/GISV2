@@ -4,7 +4,10 @@ import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ApiService } from '../services/api.service';
+import { PdfExportService, PdfGroup } from '../services/pdf-export.service';
 import { trigger, transition, style, animate } from '@angular/animations';
+
+type RepairSortKey = 'reference' | 'repairDate' | 'vehicleName' | 'partsCost' | 'laborCost' | 'totalCost' | 'status';
 
 interface RepairPart {
   id?: number;
@@ -82,6 +85,16 @@ interface Vehicle {
             <option value="in_progress">En cours</option>
             <option value="completed">Termine</option>
           </select>
+          <button class="btn-export" (click)="exportPdf()" [disabled]="filteredRepairs.length === 0" title="Exporter un PDF groupé par véhicule">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+            Exporter PDF
+          </button>
           <button class="btn-add" (click)="openAddRepair()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -138,82 +151,102 @@ interface Vehicle {
           </div>
         </div>
 
-        <!-- Repairs List -->
-        <div class="list-container">
-          <div class="repairs-list" @fadeIn>
-            <div class="repair-card" *ngFor="let repair of filteredRepairs" @slideIn>
-              <div class="card-top" [class]="repair.status">
-                <div class="card-top-left">
-                  <div class="repair-icon">🔧</div>
-                  <div class="card-top-info">
-                    <span class="repair-ref">{{ repair.reference }}</span>
-                    <span class="repair-date">{{ repair.repairDate | date:'dd/MM/yyyy' }}</span>
+        <!-- Repairs Table -->
+        <div class="table-container" @fadeIn>
+          <table class="repairs-table" *ngIf="filteredRepairs.length > 0">
+            <thead>
+              <tr>
+                <th class="col-ref sortable" [class.active]="sortColumn === 'reference'" (click)="toggleSort('reference')">
+                  Référence
+                  <span class="sort-indicator">{{ getSortIndicator('reference') }}</span>
+                </th>
+                <th class="col-date sortable" [class.active]="sortColumn === 'repairDate'" (click)="toggleSort('repairDate')">
+                  Date
+                  <span class="sort-indicator">{{ getSortIndicator('repairDate') }}</span>
+                </th>
+                <th class="col-vehicle sortable" [class.active]="sortColumn === 'vehicleName'" (click)="toggleSort('vehicleName')">
+                  Véhicule
+                  <span class="sort-indicator">{{ getSortIndicator('vehicleName') }}</span>
+                </th>
+                <th class="col-description">Description</th>
+                <th class="col-parts-count">Pièces</th>
+                <th class="col-parts-cost sortable" [class.active]="sortColumn === 'partsCost'" (click)="toggleSort('partsCost')">
+                  Pièces (DT)
+                  <span class="sort-indicator">{{ getSortIndicator('partsCost') }}</span>
+                </th>
+                <th class="col-labor-cost sortable" [class.active]="sortColumn === 'laborCost'" (click)="toggleSort('laborCost')">
+                  M. œuvre (DT)
+                  <span class="sort-indicator">{{ getSortIndicator('laborCost') }}</span>
+                </th>
+                <th class="col-total-cost sortable" [class.active]="sortColumn === 'totalCost'" (click)="toggleSort('totalCost')">
+                  Total (DT)
+                  <span class="sort-indicator">{{ getSortIndicator('totalCost') }}</span>
+                </th>
+                <th class="col-status sortable" [class.active]="sortColumn === 'status'" (click)="toggleSort('status')">
+                  Statut
+                  <span class="sort-indicator">{{ getSortIndicator('status') }}</span>
+                </th>
+                <th class="col-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="repair-row" *ngFor="let repair of getSortedRepairs()" (click)="viewRepair(repair)">
+                <td class="col-ref">
+                  <div class="ref-cell">
+                    <span class="repair-icon">🔧</span>
+                    <span class="repair-ref">{{ repair.reference || '—' }}</span>
                   </div>
-                </div>
-                <div class="card-top-right">
+                </td>
+                <td class="col-date">{{ repair.repairDate | date:'dd/MM/yyyy' }}</td>
+                <td class="col-vehicle">
+                  <div class="vehicle-cell">
+                    <span class="vehicle-name">{{ repair.vehicleName }}</span>
+                    <span class="vehicle-plate">{{ repair.vehiclePlate }}</span>
+                  </div>
+                </td>
+                <td class="col-description">
+                  <span class="description-text" [title]="repair.description">{{ repair.description || '—' }}</span>
+                </td>
+                <td class="col-parts-count">
+                  <span class="parts-badge" *ngIf="repair.parts.length > 0">{{ repair.parts.length }}</span>
+                  <span class="parts-badge empty" *ngIf="repair.parts.length === 0">—</span>
+                </td>
+                <td class="col-parts-cost num">{{ repair.partsCost | number:'1.2-2' }}</td>
+                <td class="col-labor-cost num">{{ repair.laborCost | number:'1.2-2' }}</td>
+                <td class="col-total-cost num strong">{{ repair.totalCost | number:'1.2-2' }}</td>
+                <td class="col-status">
                   <span class="status-badge" [class]="repair.status">{{ getStatusLabel(repair.status) }}</span>
-                </div>
-              </div>
-
-              <div class="card-content">
-                <div class="vehicle-info">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/>
-                    <path d="M5 17h-2v-6l2 -5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0h-6m-6 -6h15m-6 0v-5"/>
-                  </svg>
-                  <span class="vehicle-name">{{ repair.vehicleName }}</span>
-                  <span class="vehicle-plate">{{ repair.vehiclePlate }}</span>
-                </div>
-
-                <p class="repair-description" *ngIf="repair.description">{{ repair.description }}</p>
-
-                <div class="cost-breakdown">
-                  <div class="cost-item">
-                    <span class="cost-label">Pieces</span>
-                    <span class="cost-value">{{ repair.partsCost | number:'1.2-2' }} DT</span>
+                </td>
+                <td class="col-actions">
+                  <div class="actions-cell">
+                    <button class="btn-action view" (click)="viewRepair(repair); $event.stopPropagation()" title="Détails">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                      </svg>
+                    </button>
+                    <button class="btn-action edit" (click)="editRepair(repair); $event.stopPropagation()" title="Modifier">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
+                    <button class="btn-action delete" (click)="confirmDelete(repair); $event.stopPropagation()" title="Supprimer">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                      </svg>
+                    </button>
                   </div>
-                  <div class="cost-item">
-                    <span class="cost-label">Main d'oeuvre</span>
-                    <span class="cost-value">{{ repair.laborCost | number:'1.2-2' }} DT</span>
-                  </div>
-                  <div class="cost-item total">
-                    <span class="cost-label">Total</span>
-                    <span class="cost-value">{{ repair.totalCost | number:'1.2-2' }} DT</span>
-                  </div>
-                </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
 
-                <div class="parts-summary" *ngIf="repair.parts.length > 0">
-                  <span class="parts-count">{{ repair.parts.length }} piece(s)</span>
-                </div>
-              </div>
-
-              <div class="card-footer">
-                <button class="btn-action view" (click)="viewRepair(repair)" title="Details">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                  </svg>
-                </button>
-                <button class="btn-action edit" (click)="editRepair(repair)" title="Modifier">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                </button>
-                <button class="btn-action delete" (click)="confirmDelete(repair)" title="Supprimer">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <div class="empty-state" *ngIf="filteredRepairs.length === 0">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-              </svg>
-              <h3>Aucune reparation trouvee</h3>
-              <p>Modifiez vos filtres ou ajoutez une nouvelle reparation</p>
-            </div>
+          <div class="empty-state" *ngIf="filteredRepairs.length === 0">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+            </svg>
+            <h3>Aucune reparation trouvee</h3>
+            <p>Modifiez vos filtres ou ajoutez une nouvelle reparation</p>
           </div>
         </div>
       </div>
@@ -494,7 +527,10 @@ interface Vehicle {
     .search-input:focus { outline:none; border-color:#3b82f6; }
     .filter-select { padding:6px 10px; background:white; border:1px solid #e2e8f0; border-radius:3px; font-size:12px; cursor:pointer; }
     .filter-select:focus { outline:none; border-color:#3b82f6; }
-    .btn-add { display:flex; align-items:center; gap:6px; padding:6px 12px; background:#3b82f6; color:white; border:none; border-radius:3px; font-size:12px; font-weight:500; cursor:pointer; margin-left:auto; }
+    .btn-export { display:flex; align-items:center; gap:6px; padding:6px 12px; background:white; color:#475569; border:1px solid #e2e8f0; border-radius:3px; font-size:12px; font-weight:500; cursor:pointer; margin-left:auto; transition:all .15s; }
+    .btn-export:hover:not(:disabled) { background:#f1f5f9; border-color:#cbd5e1; color:#1e293b; }
+    .btn-export:disabled { opacity:.4; cursor:not-allowed; }
+    .btn-add { display:flex; align-items:center; gap:6px; padding:6px 12px; background:#3b82f6; color:white; border:none; border-radius:3px; font-size:12px; font-weight:500; cursor:pointer; }
     .btn-add:hover { background:#2563eb; }
 
     .stats-bar { display:flex; gap:16px; padding:12px 14px; background:white; border-bottom:1px solid #e2e8f0; }
@@ -508,53 +544,99 @@ interface Vehicle {
     .stat-value { font-size:16px; font-weight:600; color:#1e293b; }
     .stat-label { font-size:11px; color:#64748b; }
 
-    .list-container { flex:1; padding:12px; overflow-y:auto; }
-    .repairs-list { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:16px; }
+    /* Table */
+    .table-container { flex:1; padding:16px 24px; overflow-x:auto; }
+    .repairs-table {
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      background:#fff;
+      border-radius:10px;
+      border:1px solid #e2e8f0;
+      overflow:hidden;
+    }
+    .repairs-table thead { background:#f8fafc; }
+    .repairs-table th {
+      padding:10px 12px;
+      font-size:10px;
+      font-weight:600;
+      color:#64748b;
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+      text-align:left;
+      border-bottom:1px solid #e2e8f0;
+      white-space:nowrap;
+      user-select:none;
+    }
+    .repairs-table th.sortable {
+      cursor:pointer;
+      transition:color .15s;
+    }
+    .repairs-table th.sortable:hover { color:#1e293b; }
+    .repairs-table th.sortable.active { color:#3b82f6; }
+    .sort-indicator { margin-left:4px; font-size:9px; color:#cbd5e1; }
+    .repairs-table th.sortable.active .sort-indicator { color:#3b82f6; }
 
-    .repair-card { background:white; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.08); border:1px solid #e2e8f0; transition:all .2s; }
-    .repair-card:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,0.1); }
+    .repairs-table td {
+      padding:12px;
+      font-size:12px;
+      color:#334155;
+      border-bottom:1px solid #f1f5f9;
+      vertical-align:middle;
+    }
+    .repair-row { cursor:pointer; transition:background .15s; }
+    .repair-row:hover { background:#f8fafc; }
+    .repair-row:last-child td { border-bottom:none; }
 
-    .card-top { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border-bottom:1px solid #e2e8f0; }
-    .card-top.completed { background:linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-left:3px solid #22c55e; }
-    .card-top.pending { background:linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border-left:3px solid #f59e0b; }
-    .card-top.in_progress { background:linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-left:3px solid #3b82f6; }
-    .card-top-left { display:flex; align-items:center; gap:10px; }
-    .repair-icon { font-size:24px; }
-    .card-top-info { display:flex; flex-direction:column; }
-    .repair-ref { font-size:12px; font-weight:600; color:#1e293b; }
-    .repair-date { font-size:11px; color:#64748b; }
+    .ref-cell { display:flex; align-items:center; gap:8px; }
+    .repair-icon { font-size:16px; line-height:1; }
+    .repair-ref { font-size:12px; font-weight:600; color:#1e293b; font-family:monospace; }
 
-    .status-badge { padding:4px 8px; border-radius:4px; font-size:10px; font-weight:600; }
+    .vehicle-cell { display:flex; flex-direction:column; gap:2px; }
+    .vehicle-name { font-size:12px; font-weight:500; color:#1e293b; }
+    .vehicle-plate { font-size:10px; font-family:monospace; background:#e2e8f0; padding:1px 5px; border-radius:3px; color:#64748b; align-self:flex-start; }
+
+    .description-text {
+      display:-webkit-box;
+      -webkit-line-clamp:2;
+      -webkit-box-orient:vertical;
+      overflow:hidden;
+      max-width:220px;
+      color:#64748b;
+      font-size:12px;
+      line-height:1.4;
+    }
+
+    .parts-badge { display:inline-block; background:#e2e8f0; color:#475569; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; }
+    .parts-badge.empty { background:transparent; color:#cbd5e1; }
+
+    td.num { text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; }
+    td.num.strong { font-weight:700; color:#16a34a; font-size:12.5px; }
+
+    .status-badge { display:inline-block; padding:3px 8px; border-radius:4px; font-size:10px; font-weight:600; white-space:nowrap; }
     .status-badge.completed { background:#dcfce7; color:#16a34a; }
     .status-badge.pending { background:#fef3c7; color:#d97706; }
     .status-badge.in_progress { background:#dbeafe; color:#2563eb; }
     .status-badge.large { font-size:12px; padding:6px 12px; }
 
-    .card-content { padding:14px; }
-    .vehicle-info { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
-    .vehicle-name { font-size:13px; font-weight:500; color:#1e293b; }
-    .vehicle-plate { font-size:11px; font-family:monospace; background:#e2e8f0; padding:2px 6px; border-radius:4px; color:#64748b; }
-    .repair-description { font-size:12px; color:#64748b; margin:0 0 12px; line-height:1.4; }
-
-    .cost-breakdown { display:flex; flex-direction:column; gap:4px; padding:10px; background:#f8fafc; border-radius:6px; margin-bottom:10px; }
-    .cost-item { display:flex; justify-content:space-between; font-size:12px; }
-    .cost-label { color:#64748b; }
-    .cost-value { font-weight:500; color:#1e293b; }
-    .cost-item.total { padding-top:8px; border-top:1px solid #e2e8f0; margin-top:4px; }
-    .cost-item.total .cost-label { font-weight:600; color:#1e293b; }
-    .cost-item.total .cost-value { font-weight:700; color:#16a34a; font-size:14px; }
-
-    .parts-summary { font-size:11px; color:#64748b; }
-    .parts-count { background:#e2e8f0; padding:2px 6px; border-radius:4px; }
-
-    .card-footer { display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid #e2e8f0; background:#f8fafc; }
-    .btn-action { width:32px; height:32px; border:1px solid #e2e8f0; border-radius:6px; background:white; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .2s; }
+    .actions-cell { display:flex; align-items:center; gap:4px; }
+    .btn-action { width:26px; height:26px; border:1px solid #e2e8f0; border-radius:4px; background:white; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .15s; }
     .btn-action.view { color:#2563eb; }
     .btn-action.view:hover { background:#dbeafe; border-color:#2563eb; }
     .btn-action.edit { color:#f59e0b; }
     .btn-action.edit:hover { background:#fef3c7; border-color:#f59e0b; }
     .btn-action.delete { color:#dc2626; }
     .btn-action.delete:hover { background:#fee2e2; border-color:#dc2626; }
+
+    /* Column widths */
+    .col-ref { min-width:140px; }
+    .col-date { min-width:100px; }
+    .col-vehicle { min-width:160px; }
+    .col-description { min-width:180px; max-width:240px; }
+    .col-parts-count { min-width:60px; text-align:center; }
+    .col-parts-cost, .col-labor-cost, .col-total-cost { min-width:100px; text-align:right; }
+    .col-status { min-width:100px; }
+    .col-actions { min-width:100px; }
 
     .supplier-select-row { display:flex; gap:8px; align-items:center; }
     .btn-add-supplier { width:34px; height:34px; border:1px solid #e2e8f0; border-radius:6px; background:#f0fdf4; color:#16a34a; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; }
@@ -674,6 +756,9 @@ export class RepairsComponent implements OnInit, OnDestroy {
   filterVehicle = '';
   filterStatus = '';
 
+  sortColumn: RepairSortKey = 'repairDate';
+  sortDirection: 'asc' | 'desc' = 'desc';
+
   stats = { totalRepairs: 0, pendingRepairs: 0, completedRepairs: 0, totalCost: 0 };
 
   isPanelOpen = false;
@@ -691,7 +776,11 @@ export class RepairsComponent implements OnInit, OnDestroy {
   newSupplierName = '';
   newSupplierType = 'garage';
 
-  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef) {}
+  constructor(
+    private apiService: ApiService,
+    private pdfService: PdfExportService,
+    private cdr: ChangeDetectorRef
+  ) {}
 
   ngOnInit() {
     this.loadVehicles();
@@ -800,8 +889,8 @@ export class RepairsComponent implements OnInit, OnDestroy {
     let result = [...this.repairs];
     if (this.searchQuery) {
       const q = this.searchQuery.toLowerCase();
-      result = result.filter(r => 
-        r.reference.toLowerCase().includes(q) || 
+      result = result.filter(r =>
+        r.reference.toLowerCase().includes(q) ||
         r.vehicleName.toLowerCase().includes(q) ||
         r.description.toLowerCase().includes(q)
       );
@@ -813,6 +902,153 @@ export class RepairsComponent implements OnInit, OnDestroy {
       result = result.filter(r => r.status === this.filterStatus);
     }
     this.filteredRepairs = result;
+  }
+
+  toggleSort(column: RepairSortKey) {
+    if (this.sortColumn === column) {
+      this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+      this.sortColumn = column;
+      this.sortDirection = column === 'repairDate' ? 'desc' : 'asc';
+    }
+  }
+
+  getSortIndicator(column: RepairSortKey): string {
+    if (this.sortColumn !== column) return '⇅';
+    return this.sortDirection === 'asc' ? '▲' : '▼';
+  }
+
+  getSortedRepairs(): Repair[] {
+    const data = [...this.filteredRepairs];
+    const dir = this.sortDirection === 'asc' ? 1 : -1;
+    const col = this.sortColumn;
+    return data.sort((a, b) => {
+      let va: any;
+      let vb: any;
+      switch (col) {
+        case 'reference':
+          va = (a.reference || '').toLowerCase();
+          vb = (b.reference || '').toLowerCase();
+          break;
+        case 'repairDate':
+          va = a.repairDate ? new Date(a.repairDate).getTime() : 0;
+          vb = b.repairDate ? new Date(b.repairDate).getTime() : 0;
+          break;
+        case 'vehicleName':
+          va = `${a.vehicleName} ${a.vehiclePlate}`.toLowerCase();
+          vb = `${b.vehicleName} ${b.vehiclePlate}`.toLowerCase();
+          break;
+        case 'partsCost':
+          va = a.partsCost || 0;
+          vb = b.partsCost || 0;
+          break;
+        case 'laborCost':
+          va = a.laborCost || 0;
+          vb = b.laborCost || 0;
+          break;
+        case 'totalCost':
+          va = a.totalCost || 0;
+          vb = b.totalCost || 0;
+          break;
+        case 'status':
+          va = a.status || '';
+          vb = b.status || '';
+          break;
+      }
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return 0;
+    });
+  }
+
+  exportPdf() {
+    if (this.filteredRepairs.length === 0) return;
+
+    // Group repairs by vehicleId
+    const vehicleMap = new Map<number, { repairs: Repair[]; label: string; subtitle: string }>();
+    for (const r of this.filteredRepairs) {
+      const existing = vehicleMap.get(r.vehicleId);
+      if (existing) {
+        existing.repairs.push(r);
+      } else {
+        vehicleMap.set(r.vehicleId, {
+          repairs: [r],
+          label: r.vehicleName || `Véhicule #${r.vehicleId}`,
+          subtitle: r.vehiclePlate || ''
+        });
+      }
+    }
+
+    // Sort vehicles alphabetically by name
+    const sortedVehicles = Array.from(vehicleMap.values()).sort((a, b) =>
+      a.label.localeCompare(b.label, 'fr')
+    );
+
+    // Build groups
+    const groups: PdfGroup[] = [];
+    let grandTotalParts = 0;
+    let grandTotalLabor = 0;
+    let grandTotal = 0;
+    let grandCount = 0;
+
+    for (const v of sortedVehicles) {
+      // Sort repairs by date desc within each vehicle
+      const rs = [...v.repairs].sort((a, b) =>
+        new Date(b.repairDate).getTime() - new Date(a.repairDate).getTime()
+      );
+      const subParts = rs.reduce((s, r) => s + (r.partsCost || 0), 0);
+      const subLabor = rs.reduce((s, r) => s + (r.laborCost || 0), 0);
+      const subTotal = rs.reduce((s, r) => s + (r.totalCost || 0), 0);
+
+      grandTotalParts += subParts;
+      grandTotalLabor += subLabor;
+      grandTotal += subTotal;
+      grandCount += rs.length;
+
+      groups.push({
+        groupLabel: v.label,
+        groupSubtitle: v.subtitle,
+        rows: rs.map(r => ({
+          reference: r.reference || '—',
+          date: this.formatDate(r.repairDate),
+          description: r.description || '—',
+          parts: r.parts.length > 0 ? r.parts.length.toString() : '—',
+          partsCost: (r.partsCost || 0).toFixed(2),
+          laborCost: (r.laborCost || 0).toFixed(2),
+          totalCost: (r.totalCost || 0).toFixed(2),
+          status: this.getStatusLabel(r.status)
+        })),
+        subtotal: `${rs.length} réparation(s) — Pièces: ${subParts.toFixed(2)} DT | M. œuvre: ${subLabor.toFixed(2)} DT | Total: ${subTotal.toFixed(2)} DT`
+      });
+    }
+
+    this.pdfService.exportGroupedReport({
+      title: 'Historique des réparations',
+      subtitle: `${grandCount} réparation(s) — ${sortedVehicles.length} véhicule(s)`,
+      columns: [
+        { header: 'Référence', dataKey: 'reference' },
+        { header: 'Date', dataKey: 'date' },
+        { header: 'Description', dataKey: 'description' },
+        { header: 'Pièces', dataKey: 'parts' },
+        { header: 'Pièces (DT)', dataKey: 'partsCost' },
+        { header: 'M. œuvre (DT)', dataKey: 'laborCost' },
+        { header: 'Total (DT)', dataKey: 'totalCost' },
+        { header: 'Statut', dataKey: 'status' }
+      ],
+      groups,
+      grandTotal: `TOTAL GÉNÉRAL — ${grandCount} réparation(s) | Pièces: ${grandTotalParts.toFixed(2)} DT | M. œuvre: ${grandTotalLabor.toFixed(2)} DT | Total: ${grandTotal.toFixed(2)} DT`
+    });
+  }
+
+  private formatDate(d: string): string {
+    if (!d) return '—';
+    try {
+      const date = new Date(d);
+      const dd = String(date.getDate()).padStart(2, '0');
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      const yyyy = date.getFullYear();
+      return `${dd}/${mm}/${yyyy}`;
+    } catch { return d; }
   }
 
   calculateStats() {

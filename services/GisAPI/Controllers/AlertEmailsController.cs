@@ -45,6 +45,17 @@ public class AlertEmailsController : ControllerBase
         await _mediator.Send(new DeleteAlertEmailCommand(id));
         return NoContent();
     }
+
+    /// <summary>
+    /// Sends a one-off test email to the configured recipient so the user
+    /// can verify delivery directly from the UI.
+    /// </summary>
+    [HttpPost("{id}/test")]
+    public async Task<IActionResult> SendTest(int id)
+    {
+        await _mediator.Send(new TestAlertEmailCommand(id));
+        return Ok(new { sent = true });
+    }
 }
 
 public record CreateAlertEmailRequest(string Email, string AlertType);

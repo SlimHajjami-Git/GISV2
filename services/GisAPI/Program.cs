@@ -58,6 +58,10 @@ builder.Services.AddScoped<GisAPI.Services.IDrivingBehaviorService, GisAPI.Servi
 // Maintenance Scheduler Service
 builder.Services.AddScoped<GisAPI.Application.Services.IMaintenanceSchedulerService, GisAPI.Application.Services.MaintenanceSchedulerService>();
 
+// Alert Email Dispatcher — fans out alerts to configured alert_emails recipients
+// (with a company-admin fallback) for assurance / taxe_circulation / visite_technique / entretien
+builder.Services.AddScoped<IAlertEmailDispatcher, GisAPI.Application.Services.AlertEmailDispatcher>();
+
 // Valhalla Road Snapping Service (replaces OSRM - better map-matching for GPS)
 builder.Services.AddSingleton<GisAPI.Services.IValhallaService, GisAPI.Services.ValhallaService>();
 

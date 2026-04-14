@@ -87,6 +87,9 @@ const ALERT_TYPES: Record<string, string> = {
                       <span class="type-badge" [ngClass]="'type-' + item.alertType">{{ alertTypeLabels[item.alertType] || item.alertType }}</span>
                     </td>
                     <td class="actions-cell">
+                      <button class="btn btn-test" (click)="sendTest(item)" [disabled]="testingId === item.id" title="Envoyer un email de test à cette adresse">
+                        {{ testingId === item.id ? 'Envoi...' : 'Tester' }}
+                      </button>
                       <button class="btn btn-edit" (click)="startEdit(item)">Modifier</button>
                       <button class="btn btn-delete" (click)="confirmDelete(item)">Supprimer</button>
                     </td>
@@ -110,6 +113,11 @@ const ALERT_TYPES: Record<string, string> = {
               </tbody>
             </table>
           </div>
+        </div>
+
+        <!-- Toast notification for test email result -->
+        <div class="toast" *ngIf="toast" [ngClass]="'toast-' + toast.kind">
+          <span>{{ toast.message }}</span>
         </div>
 
         <!-- Delete confirmation overlay -->
@@ -184,6 +192,11 @@ const ALERT_TYPES: Record<string, string> = {
     .btn-delete {
       background: #ef4444;
       color: #fff;
+    }
+    .btn-test {
+      background: rgba(99, 102, 241, 0.18);
+      color: #a5b4fc;
+      border: 1px solid rgba(99, 102, 241, 0.35);
     }
 
     /* Add form card */
@@ -384,6 +397,32 @@ const ALERT_TYPES: Record<string, string> = {
       margin-top: 4px;
       display: inline-block;
     }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 12px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      z-index: 1100;
+      animation: toast-in 0.2s ease-out;
+    }
+    .toast-success {
+      background: rgba(20, 184, 166, 0.95);
+      color: #fff;
+    }
+    .toast-error {
+      background: rgba(239, 68, 68, 0.95);
+      color: #fff;
+    }
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   `]
 })
 export class AlertEmailsComponent implements OnInit, OnDestroy {
@@ -397,6 +436,10 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
   editEmail: { email: string; alertType: string } = { email: '', alertType: '' };
 
   deletingItem: AlertEmail | null = null;
+
+  testingId: number | null = null;
+  toast: { kind: 'success' | 'error'; message: string } | null = null;
+  private toastTimer: any;
 
   alertTypeLabels = ALERT_TYPES;
   alertTypeKeys = Object.keys(ALERT_TYPES);
@@ -490,5 +533,27 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
         this.loadAlertEmails();
       }
     });
+  }
+
+  // --- Send test email ---
+  sendTest(item: AlertEmail): void {
+    if (this.testingId !== null) return;
+    this.testingId = item.id;
+    this.api.testAlertEmail(item.id).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        this.testingId = null;
+        this.showToast('success', `Email de test envoyé à ${item.email}`);
+      },
+      error: () => {
+        this.testingId = null;
+        this.showToast('error', `Échec de l'envoi à ${item.email}`);
+      }
+    });
+  }
+
+  private showToast(kind: 'success' | 'error', message: string): void {
+    this.toast = { kind, message };
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => { this.toast = null; }, 4000);
   }
 }

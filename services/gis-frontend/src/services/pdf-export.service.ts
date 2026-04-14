@@ -13,6 +13,30 @@ export interface PdfReportConfig {
   formatters?: Record<string, (value: any, row: any) => string>;
 }
 
+export interface PdfGroup {
+  /** Main label shown as section header (e.g. vehicle name) */
+  groupLabel: string;
+  /** Optional secondary info (e.g. plate, km) shown right of the label */
+  groupSubtitle?: string;
+  /** Rows for this group */
+  rows: any[];
+  /** Optional right-aligned subtotal line (e.g. "3 réparations · 1 250,00 DT") */
+  subtotal?: string;
+}
+
+export interface GroupedPdfReportConfig {
+  title: string;
+  subtitle?: string;
+  dateRange?: string;
+  /** Top statistic cards (global totals) */
+  statistics?: Record<string, string>;
+  columns: { header: string; dataKey: string }[];
+  groups: PdfGroup[];
+  formatters?: Record<string, (value: any, row: any) => string>;
+  /** Optional grand-total line shown after the last group */
+  grandTotal?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class PdfExportService {
 
@@ -159,6 +183,205 @@ export class PdfExportService {
         doc.text(`Page ${pageNum} / ${pageCount}`, pageWidth - 10, footerY, { align: 'right' });
       }
     });
+
+    // ── Save ──
+    const filename = this.sanitizeFilename(config.title);
+    const dateStr = new Date().toISOString().split('T')[0];
+    doc.save(`${filename}_${dateStr}.pdf`);
+  }
+
+  /**
+   * Export a PDF where rows are organized in sections (one table per group),
+   * each with its own subtotal line, followed by a grand total.
+   * Reuses the same header bar, footer, column sizing and sanitizer as exportReport.
+   */
+  exportGroupedReport(config: GroupedPdfReportConfig): void {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    let y = 15;
+
+    // ── Header bar ──
+    doc.setFillColor(...this.primaryColor);
+    doc.rect(0, 0, pageWidth, 32, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text(this.sanitizeText(config.title), 14, 14);
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    const meta: string[] = [];
+    if (config.dateRange) meta.push(`P\u00e9riode: ${this.sanitizeText(config.dateRange)}`);
+    meta.push(`G\u00e9n\u00e9r\u00e9 le: ${new Date().toLocaleDateString('fr-FR')} \u00e0 ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
+    doc.text(meta.join('  |  '), 14, 22);
+
+    if (config.subtitle) {
+      doc.setFontSize(9);
+      doc.text(this.sanitizeText(config.subtitle), pageWidth - 14, 14, { align: 'right' });
+    }
+
+    y = 38;
+
+    // ── Statistics block (global totals) ──
+    if (config.statistics && Object.keys(config.statistics).length > 0) {
+      const entries = Object.entries(config.statistics);
+      const colCount = Math.min(entries.length, 4);
+      const cardW = (pageWidth - 28) / colCount;
+      const cardH = 20;
+
+      entries.slice(0, 8).forEach(([label, value], i) => {
+        const row = Math.floor(i / colCount);
+        const col = i % colCount;
+        const x = 14 + col * cardW;
+        const cy = y + row * (cardH + 3);
+
+        doc.setFillColor(...this.lightBg);
+        doc.roundedRect(x, cy, cardW - 3, cardH, 2, 2, 'F');
+
+        doc.setTextColor(100, 116, 139);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text(this.sanitizeText(label), x + 4, cy + 7);
+
+        doc.setTextColor(15, 23, 42);
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text(this.sanitizeText(String(value)), x + 4, cy + 15);
+      });
+
+      const totalRows = Math.ceil(entries.length / colCount);
+      y += totalRows * (cardH + 3) + 6;
+    }
+
+    const headers = config.columns.map(c => this.sanitizeText(c.header));
+
+    // Draws header bar + footer on each new page (used by didDrawPage)
+    const drawPageChrome = () => {
+      const pageNum = (doc as any).internal.getCurrentPageInfo().pageNumber;
+      if (pageNum > 1) {
+        doc.setFillColor(...this.primaryColor);
+        doc.rect(0, 0, pageWidth, 12, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.text(this.sanitizeText(config.title), 10, 8);
+      }
+      const pageCount = (doc as any).internal.getNumberOfPages();
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.setFont('helvetica', 'normal');
+      const footerY = pageHeight - 7;
+      doc.text(`GIS Fleet Management - ${this.sanitizeText(config.title)}`, 10, footerY);
+      doc.text(`Page ${pageNum} / ${pageCount}`, pageWidth - 10, footerY, { align: 'right' });
+    };
+
+    // ── Render each group ──
+    for (let g = 0; g < config.groups.length; g++) {
+      const group = config.groups[g];
+
+      // If the section header + a couple of rows wouldn't fit on current page, start a new page
+      if (y > pageHeight - 50) {
+        doc.addPage();
+        y = 18;
+      }
+
+      // Section header bar
+      doc.setFillColor(...this.lightBg);
+      doc.roundedRect(10, y, pageWidth - 20, 10, 1.5, 1.5, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(...this.primaryColor);
+      doc.text(this.sanitizeText(group.groupLabel), 14, y + 7);
+      if (group.groupSubtitle) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(100, 116, 139);
+        doc.text(this.sanitizeText(group.groupSubtitle), pageWidth - 14, y + 7, { align: 'right' });
+      }
+      y += 12;
+
+      // Section table
+      const body = group.rows.map(row => {
+        return config.columns.map(col => {
+          const val = row[col.dataKey];
+          if (config.formatters && config.formatters[col.dataKey]) {
+            return this.sanitizeText(config.formatters[col.dataKey](val, row));
+          }
+          if (val === null || val === undefined) return '-';
+          return this.sanitizeText(String(val));
+        });
+      });
+
+      autoTable(doc, {
+        head: [headers],
+        body: body,
+        startY: y,
+        theme: 'grid',
+        styles: {
+          fontSize: 7,
+          cellPadding: 2.5,
+          lineColor: [226, 232, 240],
+          lineWidth: 0.2,
+          textColor: [30, 41, 59],
+          font: 'helvetica',
+          overflow: 'linebreak'
+        },
+        headStyles: {
+          fillColor: this.primaryColor,
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 7.5,
+          cellPadding: 2.5
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252]
+        },
+        columnStyles: this.getColumnStyles(config.columns),
+        margin: { left: 10, right: 10 },
+        tableWidth: pageWidth - 20,
+        didDrawPage: drawPageChrome
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 2;
+
+      // Subtotal line
+      if (group.subtotal) {
+        if (y > pageHeight - 18) {
+          doc.addPage();
+          y = 18;
+        }
+        doc.setFillColor(241, 245, 249);
+        doc.rect(10, y, pageWidth - 20, 7, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(30, 41, 59);
+        doc.text(this.sanitizeText(group.subtotal), pageWidth - 14, y + 5, { align: 'right' });
+        y += 10;
+      } else {
+        y += 4;
+      }
+    }
+
+    // ── Grand total ──
+    if (config.grandTotal) {
+      if (y > pageHeight - 20) {
+        doc.addPage();
+        y = 18;
+      }
+      doc.setFillColor(...this.primaryColor);
+      doc.rect(10, y, pageWidth - 20, 10, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(255, 255, 255);
+      doc.text(this.sanitizeText(config.grandTotal), pageWidth - 14, y + 7, { align: 'right' });
+      y += 12;
+    }
+
+    // Ensure footer is drawn on the last page (autoTable only triggers didDrawPage
+    // when it actually renders a table on that page — the grand total alone wouldn't).
+    drawPageChrome();
 
     // ── Save ──
     const filename = this.sanitizeFilename(config.title);

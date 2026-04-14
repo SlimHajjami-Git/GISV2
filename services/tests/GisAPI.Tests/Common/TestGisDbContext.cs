@@ -107,6 +107,9 @@ public class TestGisDbContext : DbContext, IGisDbContext
     public DbSet<Reservation> Reservations => Set<Reservation>();
     public DbSet<Contract> Contracts => Set<Contract>();
 
+    // Alert Emails
+    public DbSet<AlertEmail> AlertEmails => Set<AlertEmail>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

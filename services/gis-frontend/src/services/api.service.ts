@@ -345,6 +345,10 @@ export class ApiService {
     return this.http.delete<void>(`${this.API_URL}/alertemails/${id}`, { headers: this.getHeaders() });
   }
 
+  testAlertEmail(id: number): Observable<{ sent: boolean }> {
+    return this.http.post<{ sent: boolean }>(`${this.API_URL}/alertemails/${id}/test`, {}, { headers: this.getHeaders() });
+  }
+
   // ==================== RESERVATIONS / EMPRUNTS ====================
 
   getReservations(params?: { vehicleId?: number; driverId?: number; status?: string; from?: string; to?: string }): Observable<any[]> {
@@ -1182,6 +1186,10 @@ export class ApiService {
 
   getCurrentUserProfile(): Observable<any> {
     return this.http.get<any>(`${this.API_URL}/users/me`, { headers: this.getHeaders() });
+  }
+
+  updateMyProfile(payload: { firstName: string; lastName: string; email: string; phone?: string | null }): Observable<any> {
+    return this.http.put<any>(`${this.API_URL}/users/me`, payload, { headers: this.getHeaders() });
   }
 
   // ==================== FUEL RECORDS ====================

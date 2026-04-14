@@ -2,7 +2,6 @@ using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
 using GisAPI.Hubs;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace GisAPI.Services;
@@ -11,20 +10,17 @@ public class NotificationService : INotificationService
 {
     private readonly IGisDbContext _context;
     private readonly IHubContext<GpsHub> _hubContext;
-    private readonly IEmailService _emailService;
     private readonly IFcmService _fcmService;
     private readonly ILogger<NotificationService> _logger;
 
     public NotificationService(
         IGisDbContext context,
         IHubContext<GpsHub> hubContext,
-        IEmailService emailService,
         IFcmService fcmService,
         ILogger<NotificationService> logger)
     {
         _context = context;
         _hubContext = hubContext;
-        _emailService = emailService;
         _fcmService = fcmService;
         _logger = logger;
     }
@@ -114,33 +110,11 @@ public class NotificationService : INotificationService
             _logger.LogWarning(ex, "Failed to send FCM push to user {UserId}", userId);
         }
 
-        // Send email notification (TEST: forced to hajjami.selim@gmail.com)
-        try
-        {
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await _emailService.SendNotificationEmailAsync(
-                        "hajjami.selim@gmail.com",
-                        "Selim Hajjami",
-                        type,
-                        title,
-                        message,
-                        actionUrl,
-                        CancellationToken.None
-                    );
-                }
-                catch (Exception emailEx)
-                {
-                    _logger.LogWarning(emailEx, "Failed to send notification email to test address");
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to send test notification email");
-        }
+        // Email fan-out is intentionally NOT done here anymore.
+        // Alert emails for assurance / taxe_circulation / visite_technique / entretien
+        // are dispatched via IAlertEmailDispatcher from the producers that actually
+        // know the alert type (e.g. PredictiveAlertService). In-app notifications
+        // (SignalR + FCM above) continue to fire for every notification.
 
         return notification;
     }

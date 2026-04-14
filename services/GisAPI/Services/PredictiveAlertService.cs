@@ -43,6 +43,7 @@ public class PredictiveAlertService : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<GisDbContext>();
         var notifService = scope.ServiceProvider.GetRequiredService<INotificationService>();
+        var alertDispatcher = scope.ServiceProvider.GetRequiredService<IAlertEmailDispatcher>();
 
         var companies = await context.Societes
             .AsNoTracking()
@@ -59,8 +60,8 @@ public class PredictiveAlertService : BackgroundService
 
             foreach (var vehicle in vehicles)
             {
-                await CheckDocumentExpiry(context, notifService, vehicle, companyId, ct);
-                await CheckMaintenanceDue(context, notifService, vehicle, companyId, ct);
+                await CheckDocumentExpiry(context, notifService, alertDispatcher, vehicle, companyId, ct);
+                await CheckMaintenanceDue(context, notifService, alertDispatcher, vehicle, companyId, ct);
                 await CheckFuelAnomaly(context, notifService, vehicle, companyId, ct);
             }
         }
@@ -68,8 +69,21 @@ public class PredictiveAlertService : BackgroundService
         _logger.LogInformation("PredictiveAlertService completed check for {Count} companies", companies.Count);
     }
 
+    /// <summary>
+    /// Maps a document name (as displayed in the UI) to the <c>alert_emails.alert_type</c>
+    /// key used by <see cref="IAlertEmailDispatcher"/>. Documents not mapped here
+    /// (Carte grise, Permis de transport) fall through to the admin-only notification.
+    /// </summary>
+    private static string? MapDocumentNameToAlertType(string name) => name switch
+    {
+        "Assurance" => "assurance",
+        "Vignette" => "taxe_circulation",
+        "Contrôle technique" => "visite_technique",
+        _ => null
+    };
+
     private async Task CheckDocumentExpiry(GisDbContext context, INotificationService notifService,
-        Vehicle vehicle, int companyId, CancellationToken ct)
+        IAlertEmailDispatcher alertDispatcher, Vehicle vehicle, int companyId, CancellationToken ct)
     {
         var now = DateTime.UtcNow;
         var in15Days = now.AddDays(15);
@@ -115,16 +129,38 @@ public class PredictiveAlertService : BackgroundService
                     vehicle.Id, name, ct);
                 if (!alreadySent)
                 {
+                    var title = $"Document: {name}";
+
+                    // In-app notification for company admins (unchanged)
                     await SendToCompanyAdmins(context, notifService, companyId,
-                        "document_expiry", $"Document: {name}", message,
+                        "document_expiry", title, message,
                         priority, "vehicle", vehicle.Id, "/echeances", ct);
+
+                    // Email fan-out to configured alert_emails recipients
+                    // (Assurance / Vignette / Contrôle technique only — other docs
+                    // don't have a dedicated alert_emails slot and stay admin-only)
+                    var alertType = MapDocumentNameToAlertType(name);
+                    if (alertType != null)
+                    {
+                        try
+                        {
+                            await alertDispatcher.DispatchAsync(
+                                companyId, alertType, title, message, "/echeances", ct);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex,
+                                "Failed to dispatch alert email for company {CompanyId} type {AlertType}",
+                                companyId, alertType);
+                        }
+                    }
                 }
             }
         }
     }
 
     private async Task CheckMaintenanceDue(GisDbContext context, INotificationService notifService,
-        Vehicle vehicle, int companyId, CancellationToken ct)
+        IAlertEmailDispatcher alertDispatcher, Vehicle vehicle, int companyId, CancellationToken ct)
     {
         var schedules = await context.VehicleMaintenanceSchedules
             .IgnoreQueryFilters()
@@ -175,9 +211,25 @@ public class PredictiveAlertService : BackgroundService
                 vehicle.Id, templateName, ct);
             if (!alreadySent)
             {
+                var title = $"Entretien: {templateName}";
+
+                // In-app notification for company admins (unchanged)
                 await SendToCompanyAdmins(context, notifService, companyId,
-                    "maintenance_prediction", $"Entretien: {templateName}", message,
+                    "maintenance_prediction", title, message,
                     priority, "vehicle", vehicle.Id, "/entretiens", ct);
+
+                // Email fan-out to alert_emails with alertType = "entretien"
+                try
+                {
+                    await alertDispatcher.DispatchAsync(
+                        companyId, "entretien", title, message, "/entretiens", ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Failed to dispatch entretien alert email for company {CompanyId}",
+                        companyId);
+                }
             }
         }
     }
