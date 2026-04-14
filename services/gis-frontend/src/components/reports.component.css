@@ -2425,7 +2425,8 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   background: #f8fafc;
 }
 
-.monthly-cost-table .total-cell {
+.monthly-cost-table tbody td.total-cell,
+.monthly-cost-table tfoot .dept-total-row td.total-cell {
   color: #3b82f6;
   font-weight: 700;
 }
