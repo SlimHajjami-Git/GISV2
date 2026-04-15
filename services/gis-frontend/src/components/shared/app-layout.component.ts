@@ -208,6 +208,12 @@ import * as L from 'leaflet';
                   @for (notif of notifications; track notif.id) {
                     <div class="notification-item" [class.unread]="!notif.isRead" (click)="onNotificationClick(notif)">
                       <div class="notif-icon" [class]="getNotifIconClass(notif.type)">
+                        <!-- Accident detected -->
+                        <svg *ngIf="notif.type === 'accident_detected'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                          <line x1="12" y1="9" x2="12" y2="13"/>
+                          <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
                         <!-- Speed / Driving behavior -->
                         <svg *ngIf="notif.type === 'speed_alert' || notif.type === 'driving_behavior'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
@@ -233,7 +239,7 @@ import * as L from 'leaflet';
                           <path d="M9 17H5a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm12-2h-4a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2z"/><polyline points="9 17 12 5 15 17"/>
                         </svg>
                         <!-- Default -->
-                        <svg *ngIf="!['speed_alert','driving_behavior','geofence','geofence_event','admin_action','maintenance_due','vehicle_stop','tour_started','tour_waypoint','tour_completed'].includes(notif.type)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg *ngIf="!['accident_detected','speed_alert','driving_behavior','geofence','geofence_event','admin_action','maintenance_due','vehicle_stop','tour_started','tour_waypoint','tour_completed'].includes(notif.type)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                         </svg>
                       </div>
@@ -815,6 +821,11 @@ import * as L from 'leaflet';
     .notif-icon.admin-action { background: #ecfdf5; color: #059669; }
     .notif-icon.tour { background: #ecfdf5; color: #10b981; }
     .notif-icon.other { background: #e0e7ff; color: #4f46e5; }
+    .notif-icon.accident {
+      background: #fee2e2;
+      color: #991b1b;
+      box-shadow: 0 0 0 2px rgba(153, 27, 27, 0.12);
+    }
 
     .notif-content {
       flex: 1;
@@ -1375,6 +1386,7 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
 
   getNotifIconClass(type: string): string {
     const typeMap: { [key: string]: string } = {
+      accident_detected: 'accident',
       speed_alert: 'speeding',
       driving_behavior: 'speeding',
       vehicle_stop: 'stopped',

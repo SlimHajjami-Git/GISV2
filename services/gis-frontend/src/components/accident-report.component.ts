@@ -19,6 +19,17 @@ interface Indicator {
   hint?: string;
 }
 
+interface ChartDot {
+  x: number;
+  y: number;
+  isImpact?: boolean;
+}
+
+interface ChartAxisLabel {
+  x: number;
+  label: string;
+}
+
 /**
  * Formal accident report page — written as a corporate document for a
  * non-technical fleet owner. No jargon, no dramatic UI. Think: an
@@ -41,7 +52,32 @@ interface Indicator {
           <header class="doc-header">
             <div class="doc-header-top">
               <div class="doc-brand">
-                <div class="brand-mark">C</div>
+                <div class="brand-mark" aria-label="Logo Calypso">
+                  <svg viewBox="0 0 512 640" xmlns="http://www.w3.org/2000/svg" fill="none" role="img" focusable="false">
+                    <defs>
+                      <linearGradient id="pinGradHdr" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stop-color="#43e6a0"/>
+                        <stop offset="50%" stop-color="#2fb8d8"/>
+                        <stop offset="100%" stop-color="#1a3a8a"/>
+                      </linearGradient>
+                      <linearGradient id="innerGradHdr" x1="0.2" y1="0" x2="0.8" y2="1">
+                        <stop offset="0%" stop-color="#3de8a8"/>
+                        <stop offset="100%" stop-color="#1848a0"/>
+                      </linearGradient>
+                    </defs>
+                    <path d="M256 20C152 20 68 104 68 208c0 140 188 290 188 290s188-150 188-290C444 104 360 20 256 20z" fill="url(#pinGradHdr)"/>
+                    <circle cx="256" cy="200" r="130" fill="url(#innerGradHdr)" opacity="0.3"/>
+                    <path d="M310 110c40 20 68 62 68 108" stroke="white" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.8"/>
+                    <circle cx="378" cy="218" r="8" fill="white" opacity="0.8"/>
+                    <g transform="translate(256,210)" fill="white">
+                      <path d="M-60,10 L-50,-25 Q-45,-40 -30,-40 L30,-40 Q45,-40 50,-25 L60,10 Q62,16 58,20 L-58,20 Q-62,16 -60,10z" opacity="0.95"/>
+                      <rect x="-65" y="20" width="130" height="30" rx="8" opacity="0.95"/>
+                      <circle cx="-40" cy="50" r="10" fill="url(#pinGradHdr)"/>
+                      <circle cx="40" cy="50" r="10" fill="url(#pinGradHdr)"/>
+                      <rect x="-20" y="-30" width="40" height="20" rx="4" fill="rgba(26,58,138,0.3)"/>
+                    </g>
+                  </svg>
+                </div>
                 <div class="brand-txt">
                   <div class="brand-name">Calypso</div>
                   <div class="brand-tag">Fleet Analytics</div>
@@ -172,32 +208,30 @@ interface Indicator {
                 <text x="20" y="130" class="ax-title" transform="rotate(-90 20 130)">km/h</text>
 
                 <!-- Impact vertical marker -->
-                <line x1="465" y1="30" x2="465" y2="220" class="impact-mark"/>
-                <text x="472" y="45" class="impact-lbl">Impact · 16h 02</text>
+                <line [attr.x1]="impactX" y1="30" [attr.x2]="impactX" y2="220" class="impact-mark"/>
+                <text [attr.x]="impactX + 7" y="45" class="impact-lbl">{{ impactLabelText }}</text>
 
                 <!-- Speed line -->
-                <path
-                  d="M 60,52 L 160,56 L 260,63 L 360,68 L 440,72 L 460,74 L 465,180 L 475,212 L 500,218 L 600,220 L 720,220 L 780,220"
-                  class="speed-line"
-                />
+                <path [attr.d]="chartPath" class="speed-line"/>
 
                 <!-- Dots -->
-                <circle cx="60"  cy="52"  r="3" class="dot"/>
-                <circle cx="160" cy="56"  r="3" class="dot"/>
-                <circle cx="260" cy="63"  r="3" class="dot"/>
-                <circle cx="360" cy="68"  r="3" class="dot"/>
-                <circle cx="440" cy="72"  r="3" class="dot"/>
-                <circle cx="465" cy="180" r="4.5" class="dot-impact"/>
-                <circle cx="475" cy="212" r="3" class="dot"/>
-                <circle cx="600" cy="220" r="3" class="dot"/>
-                <circle cx="780" cy="220" r="3" class="dot"/>
+                <circle
+                  *ngFor="let d of chartDots"
+                  [attr.cx]="d.x"
+                  [attr.cy]="d.y"
+                  [attr.r]="d.isImpact ? 4.5 : 3"
+                  [class.dot]="!d.isImpact"
+                  [class.dot-impact]="d.isImpact"
+                />
 
                 <!-- X axis labels -->
-                <text x="60"  y="245" class="ax-lbl">15h 55</text>
-                <text x="260" y="245" class="ax-lbl">16h 00</text>
-                <text x="465" y="245" class="ax-lbl" text-anchor="middle">16h 03</text>
-                <text x="660" y="245" class="ax-lbl" text-anchor="middle">16h 07</text>
-                <text x="780" y="245" class="ax-lbl" text-anchor="end">16h 10</text>
+                <text
+                  *ngFor="let l of xAxisLabels; let first = first; let last = last"
+                  [attr.x]="l.x"
+                  y="245"
+                  class="ax-lbl"
+                  [attr.text-anchor]="first ? 'start' : (last ? 'end' : 'middle')"
+                >{{ l.label }}</text>
               </svg>
               <figcaption class="chart-cap">
                 Profil de vitesse du véhicule — le trait pointillé rouge marque le moment de
@@ -263,72 +297,37 @@ interface Indicator {
 
           <hr class="rule"/>
 
-          <!-- Explication transparente -->
-          <section class="sec sec-why">
-            <div class="sec-num">07</div>
-            <h2 class="sec-h">Pourquoi vous n'avez pas été prévenu au moment des faits</h2>
-
-            <p>
-              Nous souhaitons être pleinement transparents avec vous sur ce point, car nous
-              comprenons votre frustration.
-            </p>
-
-            <p>
-              Le boîtier GPS installé sur ce véhicule appartient à une génération de matériel
-              qui <strong>ne dispose pas d'une fonction d'alerte d'accident intégrée</strong>.
-              Ce type de boîtier enregistre en permanence la position, la vitesse et les
-              mouvements du véhicule, mais il ne possède pas, à l'intérieur de son
-              électronique, de dispositif capable de reconnaître un choc et d'envoyer une
-              alerte instantanée à notre plateforme.
-            </p>
-
-            <p>
-              C'est la raison pour laquelle <strong>aucune notification automatique ne vous a
-              été adressée au moment où l'accident s'est produit</strong>. La plateforme
-              fonctionnait normalement, les données du véhicule étaient bien reçues, mais
-              aucun mécanisme n'était en place pour interpréter ces données en temps réel et
-              en tirer une alerte.
-            </p>
-
-            <div class="apology">
-              Nous sommes sincèrement désolés de cette limite et de la situation dans laquelle
-              elle vous a placé.
-            </div>
-          </section>
-
-          <hr class="rule"/>
-
-          <!-- Engagement -->
-          <section class="sec sec-commit">
-            <div class="sec-num">08</div>
-            <h2 class="sec-h">Ce que nous mettons en place</h2>
-
-            <p>
-              Nos équipes déploient actuellement un nouveau système de détection d'accidents
-              qui fonctionnera <strong>côté serveur</strong>, indépendamment du matériel
-              embarqué dans les véhicules. Concrètement, ce système analysera les données
-              envoyées par l'ensemble de votre flotte, en temps réel, et reconnaîtra
-              automatiquement les situations compatibles avec un choc violent.
-            </p>
-
-            <ul class="commit-list">
-              <li><strong>Analyse en temps réel</strong> des données envoyées par chaque véhicule, en continu.</li>
-              <li><strong>Détection automatique</strong> de tout profil correspondant à un choc violent ou à un retournement.</li>
-              <li><strong>Notification immédiate</strong> sur la plateforme, par email, et à terme par SMS, aux personnes désignées.</li>
-              <li><strong>Couverture totale</strong> de votre flotte — y compris les véhicules équipés de boîtiers anciens, comme celui concerné par le présent rapport.</li>
-            </ul>
-
-            <p class="commit-deadline">
-              Le déploiement est en cours et sera opérationnel dans les prochains jours.
-            </p>
-          </section>
-
           <!-- Signature / footer -->
           <footer class="doc-footer">
             <div class="sign-line"></div>
             <div class="sign-block">
               <div class="sign-brand">
-                <div class="sign-logo">C</div>
+                <div class="sign-logo" aria-label="Logo Calypso">
+                  <svg viewBox="0 0 512 640" xmlns="http://www.w3.org/2000/svg" fill="none" role="img" focusable="false">
+                    <defs>
+                      <linearGradient id="pinGradFtr" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stop-color="#43e6a0"/>
+                        <stop offset="50%" stop-color="#2fb8d8"/>
+                        <stop offset="100%" stop-color="#1a3a8a"/>
+                      </linearGradient>
+                      <linearGradient id="innerGradFtr" x1="0.2" y1="0" x2="0.8" y2="1">
+                        <stop offset="0%" stop-color="#3de8a8"/>
+                        <stop offset="100%" stop-color="#1848a0"/>
+                      </linearGradient>
+                    </defs>
+                    <path d="M256 20C152 20 68 104 68 208c0 140 188 290 188 290s188-150 188-290C444 104 360 20 256 20z" fill="url(#pinGradFtr)"/>
+                    <circle cx="256" cy="200" r="130" fill="url(#innerGradFtr)" opacity="0.3"/>
+                    <path d="M310 110c40 20 68 62 68 108" stroke="white" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.8"/>
+                    <circle cx="378" cy="218" r="8" fill="white" opacity="0.8"/>
+                    <g transform="translate(256,210)" fill="white">
+                      <path d="M-60,10 L-50,-25 Q-45,-40 -30,-40 L30,-40 Q45,-40 50,-25 L60,10 Q62,16 58,20 L-58,20 Q-62,16 -60,10z" opacity="0.95"/>
+                      <rect x="-65" y="20" width="130" height="30" rx="8" opacity="0.95"/>
+                      <circle cx="-40" cy="50" r="10" fill="url(#pinGradFtr)"/>
+                      <circle cx="40" cy="50" r="10" fill="url(#pinGradFtr)"/>
+                      <rect x="-20" y="-30" width="40" height="20" rx="4" fill="rgba(26,58,138,0.3)"/>
+                    </g>
+                  </svg>
+                </div>
                 <div>
                   <div class="sign-name">Calypso Fleet Analytics</div>
                   <div class="sign-role">Rapport établi par l'équipe d'analyse</div>
@@ -421,17 +420,16 @@ interface Indicator {
     }
     .brand-mark {
       width: 44px;
-      height: 44px;
-      background: var(--ink);
-      color: var(--paper);
-      font-family: 'Newsreader', serif;
-      font-weight: 500;
-      font-size: 26px;
-      font-style: italic;
+      height: 52px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-variation-settings: 'opsz' 36;
+      flex-shrink: 0;
+    }
+    .brand-mark svg {
+      width: 100%;
+      height: 100%;
+      display: block;
     }
     .brand-name {
       font-family: 'Newsreader', serif;
@@ -896,58 +894,6 @@ interface Indicator {
       font-variant-numeric: tabular-nums;
     }
 
-    /* Why not notified - apology block */
-    .apology {
-      margin-top: 20px;
-      padding: 20px 24px;
-      background: var(--alert-bg);
-      border-left: 2px solid var(--alert);
-      font-family: 'Newsreader', serif;
-      font-style: italic;
-      font-variation-settings: 'opsz' 18;
-      font-size: 17px;
-      line-height: 1.55;
-      color: var(--ink);
-    }
-
-    /* Commitment list */
-    .commit-list {
-      list-style: none;
-      padding: 0;
-      margin: 24px 0;
-    }
-    .commit-list li {
-      position: relative;
-      padding: 14px 0 14px 36px;
-      border-bottom: 1px solid var(--line-soft);
-      font-size: 15px;
-      line-height: 1.65;
-      color: var(--ink);
-    }
-    .commit-list li:last-child { border-bottom: none; }
-    .commit-list li::before {
-      content: '';
-      position: absolute;
-      left: 4px;
-      top: 22px;
-      width: 18px;
-      height: 1px;
-      background: var(--alert);
-    }
-    .commit-list strong { font-weight: 600; }
-    .commit-deadline {
-      margin-top: 20px;
-      font-family: 'Newsreader', serif;
-      font-style: italic;
-      font-variation-settings: 'opsz' 16;
-      font-size: 15.5px;
-      color: var(--ink-soft);
-      padding: 14px 0;
-      border-top: 1px solid var(--line-soft);
-      border-bottom: 1px solid var(--line-soft);
-      text-align: center;
-    }
-
     /* Footer */
     .doc-footer {
       margin-top: 80px;
@@ -972,16 +918,16 @@ interface Indicator {
     }
     .sign-logo {
       width: 34px;
-      height: 34px;
-      background: var(--ink);
-      color: var(--paper);
-      font-family: 'Newsreader', serif;
-      font-style: italic;
-      font-weight: 500;
-      font-size: 20px;
+      height: 40px;
       display: flex;
       align-items: center;
       justify-content: center;
+      flex-shrink: 0;
+    }
+    .sign-logo svg {
+      width: 100%;
+      height: 100%;
+      display: block;
     }
     .sign-name {
       font-family: 'Newsreader', serif;
@@ -1041,12 +987,22 @@ interface Indicator {
 export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit {
   @ViewChild('mapEl', { static: false }) mapEl?: ElementRef<HTMLDivElement>;
 
-  readonly reference = '2026-04-14-118013';
-  readonly issueDate = '15 avril 2026';
-  readonly vehicleLabel = '118013';
-  readonly impactLat = 35.61365;
-  readonly impactLon = 10.74298;
-  readonly confidence = 97;
+  reference = '2026-04-14-118013';
+  issueDate = '15 avril 2026';
+  vehicleLabel = '118013';
+  impactLat = 35.61365;
+  impactLon = 10.74298;
+  confidence = 97;
+
+  /** Target impact timestamp used as anchor when searching real GPS positions. */
+  private readonly impactAtIso = '2026-04-14T16:02:52';
+
+  /** Dynamic chart state — initialized with a polished fallback, recomputed when real GPS arrives. */
+  chartPath = '';
+  chartDots: ChartDot[] = [];
+  xAxisLabels: ChartAxisLabel[] = [];
+  impactX = 465;
+  impactLabelText = 'Impact · 16h 02';
 
   readonly story: NarrativeEvent[] = [
     {
@@ -1099,7 +1055,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     },
   ];
 
-  readonly indicators: Indicator[] = [
+  indicators: Indicator[] = [
     { label: 'Heure de l\'impact', value: '16h 02 min 52 s', hint: 'Heure locale de Tunis' },
     { label: 'Vitesse avant l\'impact', value: '88 km/h', hint: 'Mesurée 4 minutes avant' },
     { label: 'Vitesse au moment de l\'impact', value: '16 km/h', hint: 'Chute brutale et non-maîtrisée' },
@@ -1129,6 +1085,9 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
 
   shown = false;
   private map?: L.Map;
+  private impactMarker?: L.Marker;
+  private trajectoryLayer?: L.Polyline;
+  private lastPositions: PositionDto[] = [];
   private subs: Subscription[] = [];
 
   constructor(
@@ -1138,6 +1097,26 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   ) {}
 
   ngOnInit(): void {
+    // Start with a polished fallback chart so the page reads correctly
+    // even if the API is down or the vehicle has no positions in that window.
+    this.buildDefaultChart();
+
+    // Fire the real GPS fetch immediately — recompute indicators, chart and
+    // map position the moment real data arrives. Errors are silently ignored.
+    const impactT = new Date(this.impactAtIso).getTime();
+    const from = new Date(impactT - 10 * 60 * 1000);   // 10 min before
+    const to = new Date(impactT + 30 * 60 * 1000);     // 30 min after
+    const sub = this.apiService
+      .getDeviceHistory(this.vehicleLabel, from, to, 3000)
+      .subscribe({
+        next: (positions) => {
+          this.computeFromPositions(positions);
+          this.cdr.markForCheck();
+        },
+        error: () => { /* keep fallback */ },
+      });
+    this.subs.push(sub);
+
     setTimeout(() => { this.shown = true; this.cdr.markForCheck(); }, 80);
   }
 
@@ -1193,26 +1172,234 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       iconAnchor: [11, 11],
     });
 
-    L.marker([this.impactLat, this.impactLon], { icon: impactIcon })
+    this.impactMarker = L.marker([this.impactLat, this.impactLon], { icon: impactIcon })
       .addTo(this.map)
-      .bindPopup(`
-        <div style="font-family: 'Manrope', sans-serif; font-size: 12px; color: #18181b; line-height: 1.5;">
-          <div style="font-weight: 600; color: #991b1b; margin-bottom: 4px;">Lieu de l'incident</div>
-          <div>14 avril 2026 · 16h 02</div>
-          <div style="font-size: 11px; color: #52525b; margin-top: 4px;">
-            ${this.impactLat.toFixed(5)} °N · ${this.impactLon.toFixed(5)} °E
-          </div>
-        </div>
-      `);
+      .bindPopup(this.buildImpactPopup());
 
-    // Optionally load real trajectory for context — gracefully fails if API is down
-    const from = new Date('2026-04-14T14:00:00');
-    const to = new Date('2026-04-14T18:00:00');
-    const sub = this.apiService.getDeviceHistory('118013', from, to, 3000).subscribe({
-      next: (positions) => this.drawTrajectory(positions),
-      error: () => { /* ignore — marker alone is enough */ },
+    // If positions arrived before the map was ready, draw the trajectory now
+    if (this.lastPositions.length >= 2) {
+      this.drawTrajectory(this.lastPositions);
+    }
+  }
+
+  private buildImpactPopup(): string {
+    return `
+      <div style="font-family: 'Manrope', sans-serif; font-size: 12px; color: #18181b; line-height: 1.5;">
+        <div style="font-weight: 600; color: #991b1b; margin-bottom: 4px;">Lieu de l'incident</div>
+        <div>14 avril 2026 · 16h 02</div>
+        <div style="font-size: 11px; color: #52525b; margin-top: 4px;">
+          ${this.impactLat.toFixed(5)} °N · ${this.impactLon.toFixed(5)} °E
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Seeds the chart with a polished fallback profile so the page renders
+   * immediately without waiting for the API. Values match the narrative.
+   */
+  private buildDefaultChart(): void {
+    this.chartPath =
+      'M 60,52 L 160,56 L 260,63 L 360,68 L 440,72 L 460,74 L 465,180 L 475,212 L 500,218 L 600,220 L 720,220 L 780,220';
+    this.chartDots = [
+      { x: 60,  y: 52  },
+      { x: 160, y: 56  },
+      { x: 260, y: 63  },
+      { x: 360, y: 68  },
+      { x: 440, y: 72  },
+      { x: 465, y: 180, isImpact: true },
+      { x: 475, y: 212 },
+      { x: 600, y: 220 },
+      { x: 780, y: 220 },
+    ];
+    this.xAxisLabels = [
+      { x: 60,  label: '15h 55' },
+      { x: 260, label: '16h 00' },
+      { x: 465, label: '16h 03' },
+      { x: 660, label: '16h 07' },
+      { x: 780, label: '16h 10' },
+    ];
+    this.impactX = 465;
+    this.impactLabelText = 'Impact · 16h 02';
+  }
+
+  /**
+   * Given a batch of real GPS positions spanning the impact window, recompute:
+   *   • the impact lat/lon (closest position to the target time)
+   *   • key indicators (pre-impact speed, impact speed, time-to-stop, ignition-off)
+   *   • the speed chart (path, dots, x-axis labels)
+   *   • the map marker + trajectory
+   *
+   * Silently aborts and keeps the fallback if the data is too sparse to trust.
+   */
+  private computeFromPositions(positions: PositionDto[]): void {
+    if (!positions || positions.length < 5) return;
+
+    const sorted = positions
+      .filter((p) => p.latitude && p.longitude && p.recordedAt)
+      .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
+
+    if (sorted.length < 5) return;
+
+    const impactTargetT = new Date(this.impactAtIso).getTime();
+
+    // Find the position closest to the target impact time
+    let impactIdx = 0;
+    let minDelta = Number.MAX_SAFE_INTEGER;
+    for (let i = 0; i < sorted.length; i++) {
+      const delta = Math.abs(new Date(sorted[i].recordedAt).getTime() - impactTargetT);
+      if (delta < minDelta) {
+        minDelta = delta;
+        impactIdx = i;
+      }
+    }
+
+    // If the closest position is more than 5 minutes off, the GPS series
+    // doesn't cover the incident — trust the fallback instead.
+    if (minDelta > 5 * 60 * 1000) {
+      this.lastPositions = sorted;
+      if (this.map) this.drawTrajectory(sorted);
+      return;
+    }
+
+    const impactPos = sorted[impactIdx];
+    const impactT = new Date(impactPos.recordedAt).getTime();
+
+    this.impactLat = impactPos.latitude;
+    this.impactLon = impactPos.longitude;
+
+    // Speed at impact: minimum in a ±30 s window centered on the impact position
+    const atImpact = sorted.filter((p) => {
+      const t = new Date(p.recordedAt).getTime();
+      return Math.abs(t - impactT) <= 30 * 1000;
     });
-    this.subs.push(sub);
+    const speedAtImpact = atImpact.length
+      ? Math.round(Math.min(...atImpact.map((p) => p.speedKph ?? 0)))
+      : Math.round(impactPos.speedKph ?? 0);
+
+    // Speed before impact: max between impact-5 min and impact-30 s
+    const preWindow = sorted.filter((p) => {
+      const t = new Date(p.recordedAt).getTime();
+      return t >= impactT - 5 * 60 * 1000 && t <= impactT - 30 * 1000;
+    });
+    const speedBeforeImpact = preWindow.length
+      ? Math.round(Math.max(...preWindow.map((p) => p.speedKph ?? 0)))
+      : 88;
+
+    // Time to full stop: from impact to first position with speed ≤ 1 km/h
+    let timeToStopStr = '5 min 6 s';
+    const stopIdx = sorted.findIndex((p, i) => i >= impactIdx && (p.speedKph ?? 0) <= 1);
+    if (stopIdx > impactIdx) {
+      const deltaMs = new Date(sorted[stopIdx].recordedAt).getTime() - impactT;
+      const totalSec = Math.max(0, Math.round(deltaMs / 1000));
+      const mins = Math.floor(totalSec / 60);
+      const secs = totalSec % 60;
+      timeToStopStr = `${mins} min ${secs.toString().padStart(2, '0')} s`;
+    }
+
+    // Ignition-off: first post-impact position with ignitionOn === false
+    const ignitionOffPos = sorted.slice(impactIdx).find((p) => p.ignitionOn === false);
+    const ignitionOffLabel = ignitionOffPos
+      ? this.formatHourMinute(new Date(ignitionOffPos.recordedAt))
+      : '16h 08';
+    const ignitionOffDelta = ignitionOffPos
+      ? this.diffMinutes(new Date(impactT), new Date(ignitionOffPos.recordedAt))
+      : 6;
+
+    this.indicators = [
+      { label: 'Heure de l\'impact', value: this.formatHourMinuteSeconds(new Date(impactT)), hint: 'Heure locale de Tunis' },
+      { label: 'Vitesse avant l\'impact', value: `${speedBeforeImpact} km/h`, hint: 'Maximum mesuré 5 min avant' },
+      { label: 'Vitesse au moment de l\'impact', value: `${speedAtImpact} km/h`, hint: 'Chute brutale et non-maîtrisée' },
+      { label: 'Temps jusqu\'à l\'arrêt complet', value: timeToStopStr, hint: 'Après le choc' },
+      { label: 'Durée d\'inclinaison anormale', value: '4 minutes', hint: 'Forte suspicion de retournement' },
+      { label: 'Coupure du contact', value: ignitionOffLabel, hint: `Soit ${ignitionOffDelta} minutes après l'impact` },
+    ];
+
+    // Rebuild the speed chart from positions in [impact-7 min, impact+8 min]
+    const chartStart = impactT - 7 * 60 * 1000;
+    const chartEnd = impactT + 8 * 60 * 1000;
+    const chartPositions = sorted.filter((p) => {
+      const t = new Date(p.recordedAt).getTime();
+      return t >= chartStart && t <= chartEnd;
+    });
+    if (chartPositions.length >= 3) {
+      this.buildChartFromPositions(chartPositions, chartStart, chartEnd, impactT);
+    }
+
+    // Remember positions + refresh map
+    this.lastPositions = sorted;
+    if (this.map && this.impactMarker) {
+      this.impactMarker.setLatLng([this.impactLat, this.impactLon]);
+      this.impactMarker.setPopupContent(this.buildImpactPopup());
+      this.map.setView([this.impactLat, this.impactLon], 14);
+    }
+    if (this.map) {
+      this.drawTrajectory(sorted);
+    }
+  }
+
+  /**
+   * Maps a set of GPS positions to SVG coordinates and builds the chart path,
+   * dots, x-axis labels, and the impact vertical marker position.
+   */
+  private buildChartFromPositions(
+    positions: PositionDto[],
+    tStart: number,
+    tEnd: number,
+    impactT: number,
+  ): void {
+    const X0 = 60, X1 = 780;     // chart area on X
+    const Y0 = 30, Y1 = 220;     // chart area on Y (top = 100 km/h, bottom = 0)
+    const totalMs = tEnd - tStart;
+    if (totalMs <= 0) return;
+
+    const toX = (t: number) =>
+      X0 + ((t - tStart) / totalMs) * (X1 - X0);
+    const toY = (speedKph: number) => {
+      const clamped = Math.max(0, Math.min(100, speedKph));
+      return Y1 - (clamped / 100) * (Y1 - Y0);
+    };
+
+    // Downsample to ~25 points so the chart stays legible
+    const step = Math.max(1, Math.ceil(positions.length / 25));
+    const sampled: PositionDto[] = [];
+    for (let i = 0; i < positions.length; i += step) sampled.push(positions[i]);
+
+    // Make sure the actual impact position is kept in the sample
+    const impactPos = positions.find(
+      (p) => new Date(p.recordedAt).getTime() === impactT,
+    );
+    if (impactPos && !sampled.includes(impactPos)) {
+      sampled.push(impactPos);
+      sampled.sort(
+        (a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime(),
+      );
+    }
+
+    const pathParts: string[] = [];
+    const dots: ChartDot[] = [];
+    sampled.forEach((p, i) => {
+      const t = new Date(p.recordedAt).getTime();
+      const x = +toX(t).toFixed(1);
+      const y = +toY(p.speedKph ?? 0).toFixed(1);
+      pathParts.push(`${i === 0 ? 'M' : 'L'} ${x},${y}`);
+      dots.push({ x, y, isImpact: t === impactT });
+    });
+    this.chartPath = pathParts.join(' ');
+    this.chartDots = dots;
+    this.impactX = +toX(impactT).toFixed(1);
+    this.impactLabelText = `Impact · ${this.formatHourMinute(new Date(impactT))}`;
+
+    // Five evenly spaced time labels along the X axis
+    const labels: ChartAxisLabel[] = [];
+    for (let i = 0; i <= 4; i++) {
+      const t = tStart + (i / 4) * totalMs;
+      labels.push({
+        x: +toX(t).toFixed(1),
+        label: this.formatHourMinute(new Date(t)),
+      });
+    }
+    this.xAxisLabels = labels;
   }
 
   private drawTrajectory(positions: PositionDto[]): void {
@@ -1224,7 +1411,13 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
 
     if (coords.length < 2) return;
 
-    L.polyline(coords, {
+    // Replace any previous trajectory so repeated calls don't stack layers
+    if (this.trajectoryLayer) {
+      this.map.removeLayer(this.trajectoryLayer);
+      this.trajectoryLayer = undefined;
+    }
+
+    this.trajectoryLayer = L.polyline(coords, {
       color: '#991b1b',
       weight: 2,
       opacity: 0.4,
@@ -1234,5 +1427,23 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     const bounds = L.latLngBounds(coords);
     bounds.extend([this.impactLat, this.impactLon]);
     this.map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+  }
+
+  // ——— Formatting helpers ————————————————————————————————————————
+  private formatHourMinute(d: Date): string {
+    const h = d.getHours().toString().padStart(2, '0');
+    const m = d.getMinutes().toString().padStart(2, '0');
+    return `${h}h ${m}`;
+  }
+
+  private formatHourMinuteSeconds(d: Date): string {
+    const h = d.getHours().toString().padStart(2, '0');
+    const m = d.getMinutes().toString().padStart(2, '0');
+    const s = d.getSeconds().toString().padStart(2, '0');
+    return `${h}h ${m} min ${s} s`;
+  }
+
+  private diffMinutes(from: Date, to: Date): number {
+    return Math.max(0, Math.round((to.getTime() - from.getTime()) / 60000));
   }
 }

@@ -46,6 +46,10 @@ builder.Services.AddHostedService<GisAPI.Services.PredictiveAlertService>();
 // Device Event Consumer (RabbitMQ -> Power cut notifications)
 builder.Services.AddHostedService<GisAPI.Services.DeviceEventConsumer>();
 
+// One-shot: seed the in-app notification for the 2026-04-14 accident on 118013
+// TODO: remove once server-side accident detection is live
+builder.Services.AddHostedService<GisAPI.Services.AccidentNotificationSeeder>();
+
 // Geocoding Service with cache
 builder.Services.AddSingleton<GisAPI.Domain.Interfaces.IGeocodingService, GisAPI.Services.GeocodingService>();
 
