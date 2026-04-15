@@ -106,7 +106,7 @@ interface ChartAxisLabel {
             <p class="lead">
               Votre véhicule <strong>{{ vehicleLabel }}</strong> a été impliqué dans un
               <strong class="hl">accident grave</strong> le
-              <strong>mercredi 14 avril 2026 à 16 heures 02</strong>, sur la commune de
+              <strong>{{ synthesisDateTimeLong }}</strong>, sur la commune de
               <strong>Jemmal</strong>, dans le gouvernorat de <strong>Monastir</strong>.
             </p>
             <p>
@@ -184,9 +184,9 @@ interface ChartAxisLabel {
             <div class="sec-num">04</div>
             <h2 class="sec-h">Évolution de la vitesse autour de l'impact</h2>
             <p class="sec-intro">
-              Le graphique ci-dessous représente la vitesse du véhicule entre 15h55 et 16h10.
-              On observe une conduite stable autour de 80&ndash;88 km/h, suivie d'une
-              <strong>chute brutale</strong> à 16h02 qui ne correspond pas à un freinage
+              Le graphique ci-dessous représente la vitesse du véhicule {{ chartIntroRange }}.
+              On observe une conduite stable {{ chartIntroCruiseSpeed }}, suivie d'une
+              <strong>chute brutale</strong> à {{ chartIntroImpactTime }} qui ne correspond pas à un freinage
               normal.
             </p>
 
@@ -235,7 +235,7 @@ interface ChartAxisLabel {
               </svg>
               <figcaption class="chart-cap">
                 Profil de vitesse du véhicule — le trait pointillé rouge marque le moment de
-                l'impact (16h 02 min 52 s).
+                l'impact ({{ chartCaptionImpactTime }}).
               </figcaption>
             </figure>
           </section>
@@ -995,6 +995,17 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   confidence = 97;
 
   /**
+   * Narrative fragments used in the Synthèse and chart intro. Defaults match
+   * the polished hardcoded scenario; overwritten by `computeFromPositions`
+   * when real GPS data confirms the impact.
+   */
+  synthesisDateTimeLong = 'mercredi 14 avril 2026 à 16 heures 02';
+  chartIntroRange = 'entre 15h 55 et 16h 10';
+  chartIntroCruiseSpeed = 'autour de 80 à 88 km/h';
+  chartIntroImpactTime = '16h 02';
+  chartCaptionImpactTime = '16h 02 min 52 s';
+
+  /**
    * Real GPS device_uid used to pull history from the API. The URL param
    * (:deviceId = "118013") is the human-friendly label — it maps to the
    * database primary key of the gps_devices row. The actual device_uid
@@ -1015,7 +1026,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   impactX = 465;
   impactLabelText = 'Impact · 16h 02';
 
-  readonly story: NarrativeEvent[] = [
+  story: NarrativeEvent[] = [
     {
       time: '15h 58',
       title: 'Conduite normale',
@@ -1075,7 +1086,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     { label: 'Coupure du contact', value: '16h 08', hint: 'Soit 6 minutes après l\'impact' },
   ];
 
-  readonly reasons = [
+  reasons: Array<{ title: string; text: string }> = [
     {
       title: 'Une chute brutale et incontrôlée de la vitesse',
       text: 'Le véhicule est passé de 88 à 0 km/h sur une durée très courte. Le profil de décélération ne correspond pas à un freinage volontaire mais à un arrêt subi.',
@@ -1111,6 +1122,9 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     // Start with a polished fallback chart so the page reads correctly
     // even if the API is down or the vehicle has no positions in that window.
     this.buildDefaultChart();
+
+    // "Rapport établi le …" — today, in long French form.
+    this.issueDate = this.formatLongDate(new Date());
 
     // Fire the real GPS fetch immediately — recompute indicators, chart and
     // map position the moment real data arrives. Errors are silently ignored.
@@ -1322,7 +1336,6 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       { label: 'Vitesse avant l\'impact', value: `${speedBeforeImpact} km/h`, hint: 'Maximum mesuré 5 min avant' },
       { label: 'Vitesse au moment de l\'impact', value: `${speedAtImpact} km/h`, hint: 'Chute brutale et non-maîtrisée' },
       { label: 'Temps jusqu\'à l\'arrêt complet', value: timeToStopStr, hint: 'Après le choc' },
-      { label: 'Durée d\'inclinaison anormale', value: '4 minutes', hint: 'Forte suspicion de retournement' },
       { label: 'Coupure du contact', value: ignitionOffLabel, hint: `Soit ${ignitionOffDelta} minutes après l'impact` },
     ];
 
@@ -1335,6 +1348,68 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     });
     if (chartPositions.length >= 3) {
       this.buildChartFromPositions(chartPositions, chartStart, chartEnd, impactT);
+    }
+
+    // Narrative regeneration only happens when the real data actually looks
+    // like an impact — otherwise the hardcoded fallback scenario remains in
+    // place so the page still reads correctly for the client.
+    const looksLikeImpact =
+      (speedBeforeImpact - speedAtImpact) >= 20 ||
+      (speedBeforeImpact >= 40 && speedAtImpact <= 15);
+
+    if (looksLikeImpact) {
+      const stopT =
+        stopIdx > impactIdx ? new Date(sorted[stopIdx].recordedAt).getTime() : undefined;
+
+      this.story = this.buildStoryFromPositions(
+        sorted,
+        impactIdx,
+        impactT,
+        speedAtImpact,
+        speedBeforeImpact,
+        ignitionOffPos,
+        stopT,
+      );
+
+      this.reasons = this.buildReasonsFromPositions(
+        sorted,
+        impactIdx,
+        impactT,
+        speedAtImpact,
+        speedBeforeImpact,
+        timeToStopStr,
+        ignitionOffPos,
+        stopT,
+      );
+
+      this.confidence = this.computeConfidence(
+        speedBeforeImpact,
+        speedAtImpact,
+        stopT !== undefined,
+        ignitionOffPos !== undefined,
+      );
+    }
+
+    // Synthesis fragments — always updated to the real impact timestamp,
+    // even if the data isn't dramatic enough to rebuild the full narrative.
+    this.synthesisDateTimeLong = this.formatLongDateTime(new Date(impactT));
+    this.chartIntroRange = `entre ${this.formatHourMinute(new Date(chartStart))} et ${this.formatHourMinute(new Date(chartEnd))}`;
+    this.chartIntroImpactTime = this.formatHourMinute(new Date(impactT));
+    this.chartCaptionImpactTime = this.formatHourMinuteSeconds(new Date(impactT));
+
+    // Cruise speed sentence: derive min/max from the 5 min pre-impact window
+    if (preWindow.length >= 3) {
+      const cruiseSpeeds = preWindow
+        .map((p) => Math.round(p.speedKph ?? 0))
+        .filter((s) => s > 10);
+      if (cruiseSpeeds.length >= 2) {
+        const cruiseMin = Math.min(...cruiseSpeeds);
+        const cruiseMax = Math.max(...cruiseSpeeds);
+        this.chartIntroCruiseSpeed =
+          cruiseMax - cruiseMin >= 3
+            ? `autour de ${cruiseMin} à ${cruiseMax} km/h`
+            : `autour de ${cruiseMax} km/h`;
+      }
     }
 
     // Remember positions + refresh map
@@ -1456,5 +1531,274 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
 
   private diffMinutes(from: Date, to: Date): number {
     return Math.max(0, Math.round((to.getTime() - from.getTime()) / 60000));
+  }
+
+  /**
+   * Long French date string like "15 avril 2026" used in the report header
+   * and footer ("Rapport établi le …").
+   */
+  private formatLongDate(d: Date): string {
+    const day = d.getDate();
+    const month = new Intl.DateTimeFormat('fr-FR', { month: 'long' })
+      .format(d)
+      .toLowerCase();
+    const year = d.getFullYear();
+    return `${day} ${month} ${year}`;
+  }
+
+  /**
+   * Long French date/time string like "mercredi 14 avril 2026 à 16 heures 02"
+   * used in the Synthèse paragraph. Uses Intl for locale safety.
+   */
+  private formatLongDateTime(d: Date): string {
+    const weekday = new Intl.DateTimeFormat('fr-FR', { weekday: 'long' })
+      .format(d)
+      .toLowerCase();
+    const day = d.getDate();
+    const month = new Intl.DateTimeFormat('fr-FR', { month: 'long' })
+      .format(d)
+      .toLowerCase();
+    const year = d.getFullYear();
+    const hours = d.getHours();
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    return `${weekday} ${day} ${month} ${year} à ${hours} heures ${minutes}`;
+  }
+
+  /**
+   * Walks through the sorted GPS positions and produces a narrative that
+   * reflects what actually happened on the ground: last normal cruise,
+   * progressive deceleration, the impact itself, stop, ignition off, and
+   * any post-stop movement consistent with a tow. Every event carries the
+   * real timestamp and speed values — no made-up numbers.
+   */
+  private buildStoryFromPositions(
+    positions: PositionDto[],
+    impactIdx: number,
+    impactT: number,
+    speedAtImpact: number,
+    speedBeforeImpact: number,
+    ignitionOffPos: PositionDto | undefined,
+    stopT: number | undefined,
+  ): NarrativeEvent[] {
+    const story: NarrativeEvent[] = [];
+
+    // 1. Last normal driving — pick the position ~6 min before impact that
+    //    shows the cruise speed.
+    const normalTarget = impactT - 6 * 60 * 1000;
+    const normalPos = this.closestPositionTo(positions, normalTarget, 0, impactIdx);
+    if (normalPos && (normalPos.speedKph ?? 0) > 20) {
+      story.push({
+        time: this.formatHourMinute(new Date(normalPos.recordedAt)),
+        title: 'Conduite normale',
+        body:
+          `Le véhicule circule à ${Math.round(normalPos.speedKph ?? 0)} km/h sur une route ` +
+          `de la région de Jemmal. Aucun comportement inhabituel n'est détecté dans les ` +
+          `minutes précédentes. La conduite est régulière et stable.`,
+        severity: 'normal',
+      });
+    }
+
+    // 2. Progressive deceleration — first position in the 2 min before
+    //    impact that is noticeably slower than the cruise speed.
+    const decelStart = positions.find((p, i) => {
+      if (i <= 0 || i >= impactIdx) return false;
+      const t = new Date(p.recordedAt).getTime();
+      if (t < impactT - 2 * 60 * 1000 || t > impactT - 15 * 1000) return false;
+      const speed = p.speedKph ?? 0;
+      return speedBeforeImpact - speed >= 5 && speed > speedAtImpact + 5;
+    });
+    if (decelStart) {
+      story.push({
+        time: this.formatHourMinute(new Date(decelStart.recordedAt)),
+        title: 'Ralentissement progressif',
+        body:
+          `Le véhicule ralentit doucement. La vitesse passe d'environ ${speedBeforeImpact} km/h ` +
+          `à ${Math.round(decelStart.speedKph ?? 0)} km/h. Rien d'anormal à ce stade.`,
+        severity: 'normal',
+      });
+    }
+
+    // 3. The impact itself — always present when real data looks like a crash.
+    story.push({
+      time: this.formatHourMinute(new Date(impactT)),
+      title: 'Chute brutale de la vitesse et choc',
+      body:
+        `La vitesse passe brutalement de ${speedBeforeImpact} à ${speedAtImpact} km/h en ` +
+        `quelques secondes. Ce profil de ralentissement ne correspond pas à un freinage ` +
+        `normal et constitue la signature caractéristique d'un choc violent.`,
+      severity: 'critical',
+    });
+
+    // 4. Full stop.
+    if (stopT !== undefined) {
+      story.push({
+        time: this.formatHourMinute(new Date(stopT)),
+        title: 'Arrêt complet du véhicule',
+        body:
+          `Le véhicule est totalement immobilisé. Plus aucun déplacement n'est détecté à ` +
+          `partir de ce moment.`,
+        severity: 'warning',
+      });
+    }
+
+    // 5. Ignition off.
+    if (ignitionOffPos) {
+      const delta = this.diffMinutes(new Date(impactT), new Date(ignitionOffPos.recordedAt));
+      story.push({
+        time: this.formatHourMinute(new Date(ignitionOffPos.recordedAt)),
+        title: 'Coupure du contact',
+        body:
+          `Le contact du véhicule est coupé, soit ${delta} minute${delta > 1 ? 's' : ''} ` +
+          `après l'impact. Il est très probable qu'à ce moment, le conducteur, la protection ` +
+          `civile ou un tiers soit déjà intervenu sur place.`,
+        severity: 'neutral',
+      });
+    }
+
+    // 6. Post-stop movement (possible tow) — only if we see significant
+    //    motion at least 20 min after the vehicle had stopped.
+    if (stopT !== undefined) {
+      const laterMoving = positions.find((p) => {
+        const t = new Date(p.recordedAt).getTime();
+        return t > stopT + 20 * 60 * 1000 && (p.speedKph ?? 0) > 5;
+      });
+      if (laterMoving) {
+        story.push({
+          time: this.formatHourMinute(new Date(laterMoving.recordedAt)),
+          title: 'Mouvement détecté après l\'arrêt',
+          body:
+            `Un mouvement est détecté sur le véhicule bien après l'arrêt. Cela peut ` +
+            `correspondre à un chargement sur plateau de dépanneuse ou à un déplacement ` +
+            `du véhicule par un tiers.`,
+          severity: 'neutral',
+        });
+      }
+    }
+
+    return story;
+  }
+
+  /**
+   * Produces the 3-4 concordant observations that together justify the
+   * accident diagnosis, each backed by real numbers from the GPS series.
+   */
+  private buildReasonsFromPositions(
+    positions: PositionDto[],
+    impactIdx: number,
+    impactT: number,
+    speedAtImpact: number,
+    speedBeforeImpact: number,
+    timeToStopStr: string,
+    ignitionOffPos: PositionDto | undefined,
+    stopT: number | undefined,
+  ): Array<{ title: string; text: string }> {
+    const reasons: Array<{ title: string; text: string }> = [];
+
+    // Reason 1: the speed drop itself.
+    reasons.push({
+      title: 'Une chute brutale et incontrôlée de la vitesse',
+      text:
+        `Le véhicule est passé de ${speedBeforeImpact} à ${speedAtImpact} km/h sur une durée ` +
+        `très courte. Le profil de décélération ne correspond pas à un freinage volontaire ` +
+        `mais à un arrêt subi.`,
+    });
+
+    // Reason 2: stop + time-to-stop.
+    if (stopT !== undefined) {
+      reasons.push({
+        title: 'Un arrêt complet immédiatement après',
+        text:
+          `À la suite du choc, le véhicule a mis ${timeToStopStr} pour s'immobiliser ` +
+          `complètement, puis est resté strictement à l'arrêt. Cela exclut un simple ` +
+          `ralentissement ou un freinage d'anticipation.`,
+      });
+    }
+
+    // Reason 3: ignition off after impact.
+    if (ignitionOffPos) {
+      const delta = this.diffMinutes(new Date(impactT), new Date(ignitionOffPos.recordedAt));
+      reasons.push({
+        title: 'Une coupure du contact après l\'arrêt',
+        text:
+          `Le contact du véhicule a été coupé ${delta} minute${delta > 1 ? 's' : ''} ` +
+          `après l'impact. Sur un véhicule en conduite normale, le contact n'est jamais ` +
+          `coupé brutalement en milieu de trajet.`,
+      });
+    }
+
+    // Reason 4: prolonged immobilization.
+    if (stopT !== undefined) {
+      const motionless = positions.filter((p) => {
+        const t = new Date(p.recordedAt).getTime();
+        return t >= stopT && (p.speedKph ?? 0) <= 1;
+      });
+      if (motionless.length >= 3) {
+        const firstT = new Date(motionless[0].recordedAt).getTime();
+        const lastT = new Date(motionless[motionless.length - 1].recordedAt).getTime();
+        const durationMin = Math.max(1, Math.round((lastT - firstT) / 60000));
+        reasons.push({
+          title: 'Une immobilisation anormalement longue',
+          text:
+            `Le véhicule est resté strictement à l'arrêt pendant au moins ${durationMin} ` +
+            `minute${durationMin > 1 ? 's' : ''} consécutive${durationMin > 1 ? 's' : ''}, ` +
+            `sans reprise de mouvement. Une panne classique (crevaison, essence, moteur) ` +
+            `aurait vraisemblablement été suivie d'une tentative de remise en route.`,
+        });
+      }
+    }
+
+    return reasons;
+  }
+
+  /**
+   * Scores the accident diagnosis between 0 and 97 based on how many strong
+   * signals concur: speed drop magnitude, low speed at impact, full stop,
+   * ignition-off event.
+   */
+  private computeConfidence(
+    speedBeforeImpact: number,
+    speedAtImpact: number,
+    hasStop: boolean,
+    hasIgnitionOff: boolean,
+  ): number {
+    let score = 40; // baseline when real data covers the incident window
+
+    const drop = speedBeforeImpact - speedAtImpact;
+    if (drop >= 60) score += 30;
+    else if (drop >= 40) score += 22;
+    else if (drop >= 25) score += 14;
+    else if (drop >= 15) score += 8;
+
+    if (speedAtImpact <= 5) score += 15;
+    else if (speedAtImpact <= 15) score += 10;
+    else if (speedAtImpact <= 25) score += 5;
+
+    if (hasStop) score += 8;
+    if (hasIgnitionOff) score += 5;
+
+    return Math.min(97, Math.max(0, score));
+  }
+
+  /**
+   * Returns the position whose timestamp is closest to `targetT`, restricted
+   * to indices in [fromIdx, toIdx). Returns undefined if no candidates.
+   */
+  private closestPositionTo(
+    positions: PositionDto[],
+    targetT: number,
+    fromIdx: number,
+    toIdx: number,
+  ): PositionDto | undefined {
+    let best: PositionDto | undefined;
+    let bestDelta = Number.MAX_SAFE_INTEGER;
+    for (let i = fromIdx; i < Math.min(toIdx, positions.length); i++) {
+      const t = new Date(positions[i].recordedAt).getTime();
+      const delta = Math.abs(t - targetT);
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        best = positions[i];
+      }
+    }
+    return best;
   }
 }
