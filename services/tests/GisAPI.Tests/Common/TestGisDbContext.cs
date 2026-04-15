@@ -50,6 +50,7 @@ public class TestGisDbContext : DbContext, IGisDbContext
     public DbSet<AccidentClaim> AccidentClaims => Set<AccidentClaim>();
     public DbSet<AccidentClaimThirdParty> AccidentClaimThirdParties => Set<AccidentClaimThirdParty>();
     public DbSet<AccidentClaimDocument> AccidentClaimDocuments => Set<AccidentClaimDocument>();
+    public DbSet<AccidentEvent> AccidentEvents => Set<AccidentEvent>();
     public DbSet<MaintenanceTemplate> MaintenanceTemplates => Set<MaintenanceTemplate>();
     public DbSet<VehicleMaintenanceSchedule> VehicleMaintenanceSchedules => Set<VehicleMaintenanceSchedule>();
     public DbSet<MaintenanceLog> MaintenanceLogs => Set<MaintenanceLog>();
