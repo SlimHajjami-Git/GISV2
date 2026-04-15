@@ -6,9 +6,11 @@ namespace GisAPI.Services;
 
 /// <summary>
 /// One-shot background task that seeds the in-app notification for the
-/// 2026-04-14 accident on vehicle 118013. Runs once, shortly after API boot,
-/// and is idempotent — it only creates a notification for a user if none
-/// already exists for (user, type='accident_detected', referenceId=vehicle).
+/// 2026-04-14 accident on the vehicle whose GPS device has <c>id = 118013</c>
+/// (real <c>device_uid = 860141076674283</c>, company 4 on prod). Runs once,
+/// shortly after API boot, and is idempotent — it only creates a notification
+/// for a user if none already exists for
+/// (user, type='accident_detected', referenceId=vehicle).
 ///
 /// This exists because the notification for the real accident was never
 /// pushed at the time (no server-side detection was in place). The client
@@ -27,7 +29,21 @@ public class AccidentNotificationSeeder : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<AccidentNotificationSeeder> _logger;
 
-    private const string TargetDeviceUid = "118013";
+    /// <summary>
+    /// Primary key of the GPS device row that carried the accident.
+    /// This is the integer <c>gps_devices.id</c>, not the <c>device_uid</c>.
+    /// The client is used to seeing "118013" in their admin UI because it's
+    /// the internal row id.
+    /// </summary>
+    private const int TargetGpsDeviceId = 118013;
+
+    /// <summary>
+    /// User-facing label shown in the notification body and on the report
+    /// header. Kept separate from the DB lookup so it stays stable even if
+    /// the underlying <c>plate_number</c> / <c>name</c> changes.
+    /// </summary>
+    private const string DisplayLabel = "118013";
+
     private const string NotificationType = "accident_detected";
 
     public AccidentNotificationSeeder(
@@ -56,7 +72,7 @@ public class AccidentNotificationSeeder : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AccidentNotificationSeeder: failed to seed accident notification for device {DeviceUid}", TargetDeviceUid);
+            _logger.LogError(ex, "AccidentNotificationSeeder: failed to seed accident notification for gps device id {DeviceId}", TargetGpsDeviceId);
         }
     }
 
@@ -66,18 +82,32 @@ public class AccidentNotificationSeeder : BackgroundService
         var context = scope.ServiceProvider.GetRequiredService<GisDbContext>();
         var notifService = scope.ServiceProvider.GetRequiredService<INotificationService>();
 
-        // Locate the vehicle via its GPS device UID. IgnoreQueryFilters bypasses
-        // the tenant scope because the seeder runs outside any HTTP request.
+        // Locate the GPS device by primary key first so we can carry its real
+        // device_uid into the notification metadata (the front-end uses it to
+        // fetch the real GPS history for the dynamic report).
+        // IgnoreQueryFilters bypasses the tenant scope because the seeder
+        // runs outside any HTTP request.
+        var device = await context.GpsDevices
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(d => d.Id == TargetGpsDeviceId, ct);
+
+        if (device == null)
+        {
+            _logger.LogInformation(
+                "AccidentNotificationSeeder: no GPS device with id={DeviceId} found — skipping",
+                TargetGpsDeviceId);
+            return;
+        }
+
         var vehicle = await context.Vehicles
             .IgnoreQueryFilters()
-            .Include(v => v.GpsDevice)
-            .FirstOrDefaultAsync(v => v.GpsDevice != null && v.GpsDevice.DeviceUid == TargetDeviceUid, ct);
+            .FirstOrDefaultAsync(v => v.GpsDeviceId == device.Id, ct);
 
         if (vehicle == null)
         {
             _logger.LogInformation(
-                "AccidentNotificationSeeder: no vehicle with GPS device_uid={DeviceUid} found — skipping",
-                TargetDeviceUid);
+                "AccidentNotificationSeeder: GPS device {DeviceId} ({DeviceUid}) has no vehicle attached — skipping",
+                device.Id, device.DeviceUid);
             return;
         }
 
@@ -97,7 +127,7 @@ public class AccidentNotificationSeeder : BackgroundService
 
         var vehicleLabel = !string.IsNullOrWhiteSpace(vehicle.Plate)
             ? vehicle.Plate!
-            : (!string.IsNullOrWhiteSpace(vehicle.Name) ? vehicle.Name : TargetDeviceUid);
+            : (!string.IsNullOrWhiteSpace(vehicle.Name) ? vehicle.Name : DisplayLabel);
 
         const string title = "Accident détecté sur votre véhicule";
         var message =
@@ -105,11 +135,15 @@ public class AccidentNotificationSeeder : BackgroundService
             $"sur la commune de Jemmal (Monastir) sur le véhicule {vehicleLabel}. " +
             $"Cliquez pour consulter le rapport détaillé.";
 
-        var actionUrl = $"/rapport-accident/{TargetDeviceUid}";
+        // The URL uses the display label (same as before) — the component
+        // reads the :deviceId param for display only and falls back to
+        // the real device_uid baked in the component for GPS history fetch.
+        var actionUrl = $"/rapport-accident/{DisplayLabel}";
 
         var metadata = new Dictionary<string, object>
         {
-            ["deviceUid"] = TargetDeviceUid,
+            ["deviceUid"] = device.DeviceUid,     // real uid for history fetch
+            ["gpsDeviceId"] = device.Id,          // DB primary key (= 118013)
             ["vehicleId"] = vehicle.Id,
             ["vehicleLabel"] = vehicleLabel,
             ["incidentAt"] = "2026-04-14T16:02:52+01:00",
@@ -166,7 +200,7 @@ public class AccidentNotificationSeeder : BackgroundService
 
         _logger.LogInformation(
             "AccidentNotificationSeeder: done — company {CompanyId}, vehicle {VehicleId} ({Plate}), " +
-            "{Created} created, {Skipped} skipped (already existed)",
-            vehicle.CompanyId, vehicle.Id, vehicleLabel, created, skipped);
+            "gps device {DeviceId} (uid={DeviceUid}), {Created} created, {Skipped} skipped (already existed)",
+            vehicle.CompanyId, vehicle.Id, vehicleLabel, device.Id, device.DeviceUid, created, skipped);
     }
 }

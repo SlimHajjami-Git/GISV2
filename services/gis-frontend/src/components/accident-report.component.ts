@@ -994,6 +994,17 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   impactLon = 10.74298;
   confidence = 97;
 
+  /**
+   * Real GPS device_uid used to pull history from the API. The URL param
+   * (:deviceId = "118013") is the human-friendly label — it maps to the
+   * database primary key of the gps_devices row. The actual device_uid
+   * that the history endpoint expects is this 15-digit IMEI.
+   *
+   * TODO: resolve this via a backend lookup once Step C (accident_events
+   * table) ships; for now, hardcoded for the 2026-04-14 incident.
+   */
+  private readonly realDeviceUid = '860141076674283';
+
   /** Target impact timestamp used as anchor when searching real GPS positions. */
   private readonly impactAtIso = '2026-04-14T16:02:52';
 
@@ -1107,7 +1118,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     const from = new Date(impactT - 10 * 60 * 1000);   // 10 min before
     const to = new Date(impactT + 30 * 60 * 1000);     // 30 min after
     const sub = this.apiService
-      .getDeviceHistory(this.vehicleLabel, from, to, 3000)
+      .getDeviceHistory(this.realDeviceUid, from, to, 3000)
       .subscribe({
         next: (positions) => {
           this.computeFromPositions(positions);
