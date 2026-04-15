@@ -111,7 +111,7 @@ export const routes: Routes = [
   { path: 'accidents', component: AccidentClaimsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
   { path: 'sinistres', component: AccidentClaimsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
   { path: 'rapport-accident', component: AccidentReportComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
-  { path: 'rapport-accident/:deviceId', component: AccidentReportComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
+  { path: 'rapport-accident/:accidentId', component: AccidentReportComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
   
   // Fleet management module
   { path: 'fleet-management', component: FleetManagementComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'fleet_management' } },

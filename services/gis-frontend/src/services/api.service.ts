@@ -1521,6 +1521,15 @@ export class ApiService {
     return this.http.delete<void>(`${this.API_URL}/accident-claims/${claimId}/documents/${documentId}`, { headers: this.getHeaders() });
   }
 
+  // ==================== ACCIDENT REPORTS ====================
+  // Persisted server-side detection reports (the narrative read by the
+  // formal accident report page). Decoupled from accident-claims, which
+  // are insurance-side records entered manually by the user.
+
+  getAccidentReport(id: number): Observable<AccidentReportDto> {
+    return this.http.get<AccidentReportDto>(`${this.API_URL}/accident-reports/${id}`, { headers: this.getHeaders() });
+  }
+
   // ==================== MAINTENANCE TEMPLATES ====================
 
   getMaintenanceTemplates(options?: { category?: string; isActive?: boolean; page?: number; pageSize?: number }): Observable<PaginatedResult<MaintenanceTemplateDto>> {
@@ -3049,6 +3058,49 @@ export interface UpdateAccidentClaimRequest {
   mileageAtAccident?: number;
   witnesses?: string;
   additionalNotes?: string;
+}
+
+// ==================== ACCIDENT REPORTS ====================
+// Server-persisted accident detection report. Mirrors the backend
+// AccidentReportDto record (services/src/GisAPI.Application/Features/
+// AccidentEvents/Queries/GetAccidentReportQuery.cs).
+export interface AccidentReportDto {
+  id: number;
+  companyId: number;
+  vehicleId: number | null;
+  gpsDeviceId: number | null;
+  deviceUid: string;
+  incidentAt: string;
+  latitude: number;
+  longitude: number;
+  referenceCode: string | null;
+  vehicleLabel: string | null;
+  locationCommune: string | null;
+  locationGovernorate: string | null;
+  locationRoadType: string | null;
+  synthesisText: string | null;
+  confidence: number;
+  story: AccidentReportStoryEventDto[] | null;
+  reasons: AccidentReportReasonDto[] | null;
+  indicators: AccidentReportIndicatorDto[] | null;
+}
+
+export interface AccidentReportStoryEventDto {
+  time: string;
+  title: string;
+  body: string;
+  severity: string;
+}
+
+export interface AccidentReportReasonDto {
+  title: string;
+  text: string;
+}
+
+export interface AccidentReportIndicatorDto {
+  label: string;
+  value: string;
+  hint?: string | null;
 }
 
 // ==================== MAINTENANCE TEMPLATES ====================

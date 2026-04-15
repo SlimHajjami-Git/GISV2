@@ -31,6 +31,7 @@ public interface IGisDbContext
     DbSet<AccidentClaim> AccidentClaims { get; }
     DbSet<AccidentClaimThirdParty> AccidentClaimThirdParties { get; }
     DbSet<AccidentClaimDocument> AccidentClaimDocuments { get; }
+    DbSet<AccidentEvent> AccidentEvents { get; }
     DbSet<MaintenanceTemplate> MaintenanceTemplates { get; }
     DbSet<VehicleMaintenanceSchedule> VehicleMaintenanceSchedules { get; }
     DbSet<MaintenanceLog> MaintenanceLogs { get; }

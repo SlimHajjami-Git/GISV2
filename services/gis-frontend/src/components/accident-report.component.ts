@@ -4,7 +4,11 @@ import { ActivatedRoute, RouterModule } from '@angular/router';
 import { Subscription } from 'rxjs';
 import * as L from 'leaflet';
 import { AppLayoutComponent } from './shared/app-layout.component';
-import { ApiService, PositionDto } from '../services/api.service';
+import {
+  ApiService,
+  PositionDto,
+  AccidentReportDto,
+} from '../services/api.service';
 
 interface NarrativeEvent {
   time: string;
@@ -36,8 +40,18 @@ interface ChartAxisLabel {
  * insurance adjuster's written report, a medical summary, a notary's
  * brief.
  *
- * Preconfigured for the 2026-04-14 incident on vehicle 118013 (Jemmal,
- * Monastir). Route params `:deviceId` are accepted for future reuse.
+ * Data flow:
+ *   1. Route param `:accidentId` → GET /api/accident-reports/{id}
+ *   2. The persisted DTO populates every narrative field (story, reasons,
+ *      indicators, synthesis, location, confidence, reference code…).
+ *   3. The component then fetches GPS history around `incidentAt` using
+ *      the DTO's real `deviceUid`, and `computeFromPositions()` builds
+ *      the speed chart + map trajectory from the live GPS series.
+ *
+ * The hardcoded class fields below are fallbacks: if the route has no
+ * id, or the API call fails, the page still renders with the polished
+ * static 2026-04-14 Jemmal scenario so the client always sees a valid
+ * document.
  */
 @Component({
   selector: 'app-accident-report',
@@ -107,13 +121,13 @@ interface ChartAxisLabel {
               Votre véhicule <strong>{{ vehicleLabel }}</strong> a été impliqué dans un
               <strong class="hl">accident grave</strong> le
               <strong>{{ synthesisDateTimeLong }}</strong>, sur la commune de
-              <strong>Jemmal</strong>, dans le gouvernorat de <strong>Monastir</strong>.
+              <strong>{{ locationCommune }}</strong>, dans le gouvernorat de
+              <strong>{{ locationGovernorate }}</strong>.
             </p>
             <p>
               L'analyse des données enregistrées par le boîtier GPS installé sur ce véhicule
               permet d'établir, avec un niveau de certitude très élevé, qu'il s'agit d'un
-              <strong>choc violent</strong> ayant vraisemblablement entraîné un
-              <strong>retournement du véhicule</strong>. Les éléments qui conduisent à ce
+              <strong>{{ synthesisText }}</strong>. Les éléments qui conduisent à ce
               diagnostic sont détaillés dans les pages suivantes.
             </p>
           </section>
@@ -128,15 +142,15 @@ interface ChartAxisLabel {
               <div class="loc-info">
                 <div class="loc-row">
                   <div class="loc-k">Commune</div>
-                  <div class="loc-v">Jemmal</div>
+                  <div class="loc-v">{{ locationCommune }}</div>
                 </div>
                 <div class="loc-row">
                   <div class="loc-k">Gouvernorat</div>
-                  <div class="loc-v">Monastir</div>
+                  <div class="loc-v">{{ locationGovernorate }}</div>
                 </div>
                 <div class="loc-row">
                   <div class="loc-k">Type de voie</div>
-                  <div class="loc-v">Route secondaire interurbaine</div>
+                  <div class="loc-v">{{ locationRoadType }}</div>
                 </div>
                 <div class="loc-row">
                   <div class="loc-k">Coordonnées GPS</div>
@@ -987,12 +1001,26 @@ interface ChartAxisLabel {
 export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit {
   @ViewChild('mapEl', { static: false }) mapEl?: ElementRef<HTMLDivElement>;
 
+  /**
+   * Display fields populated from the backend DTO (or from the static
+   * fallback scenario when the API call fails / no :accidentId is in
+   * the URL).
+   */
   reference = '2026-04-14-259-TU-4972';
   issueDate = '15 avril 2026';
   vehicleLabel = '259 TU 4972';
   impactLat = 35.61365;
   impactLon = 10.74298;
   confidence = 97;
+
+  /** Location strings shown in section 03 (Localisation). */
+  locationCommune = 'Jemmal';
+  locationGovernorate = 'Monastir';
+  locationRoadType = 'Route secondaire interurbaine';
+
+  /** Long-form synthesis sentence shown in section 01. */
+  synthesisText =
+    'choc violent ayant vraisemblablement entraîné un retournement du véhicule';
 
   /**
    * Narrative fragments used in the Synthèse and chart intro. Defaults match
@@ -1006,18 +1034,26 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   chartCaptionImpactTime = '16h 02 min 52 s';
 
   /**
-   * Real GPS device_uid used to pull history from the API. The URL param
-   * (:deviceId = "118013") is the human-friendly label — it maps to the
-   * database primary key of the gps_devices row. The actual device_uid
-   * that the history endpoint expects is this 15-digit IMEI.
-   *
-   * TODO: resolve this via a backend lookup once Step C (accident_events
-   * table) ships; for now, hardcoded for the 2026-04-14 incident.
+   * GPS device_uid used to pull position history from the API. Populated
+   * from the backend DTO (`dto.deviceUid`) once the accident report is
+   * loaded. Defaults to the known value for the 2026-04-14 incident so
+   * the page still works when rendered without an `:accidentId`.
    */
-  private readonly realDeviceUid = '860141076674283';
+  private realDeviceUid = '860141076674283';
 
-  /** Target impact timestamp used as anchor when searching real GPS positions. */
-  private readonly impactAtIso = '2026-04-14T16:02:52';
+  /**
+   * Anchor timestamp used when searching real GPS positions for the
+   * impact moment. Populated from the backend DTO (`dto.incidentAt`).
+   */
+  private impactAtIso = '2026-04-14T16:02:52';
+
+  /**
+   * True once the backend report has been loaded successfully. When set,
+   * `computeFromPositions` no longer regenerates story/reasons/indicators
+   * or the confidence score from raw GPS — the backend-provided narrative
+   * is authoritative.
+   */
+  private narrativeFromBackend = false;
 
   /** Dynamic chart state — initialized with a polished fallback, recomputed when real GPS arrives. */
   chartPath = '';
@@ -1126,9 +1162,120 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     // "Rapport établi le …" — today, in long French form.
     this.issueDate = this.formatLongDate(new Date());
 
-    // Fire the real GPS fetch immediately — recompute indicators, chart and
-    // map position the moment real data arrives. Errors are silently ignored.
+    // Reveal animation — runs regardless of data source.
+    setTimeout(() => { this.shown = true; this.cdr.markForCheck(); }, 80);
+
+    // If the URL carries an :accidentId, fetch the persisted report from
+    // the backend first. Its DTO populates every narrative field; we then
+    // fire the GPS history request using the DTO's real device_uid and
+    // incident_at so the chart and map reflect the actual vehicle.
+    const paramSub = this.route.paramMap.subscribe((params) => {
+      const raw = params.get('accidentId');
+      const id = raw ? parseInt(raw, 10) : NaN;
+      if (!isNaN(id) && id > 0) {
+        this.loadReport(id);
+      } else {
+        // No id in URL → keep the static fallback scenario and still try to
+        // pull the 2026-04-14 GPS history for the chart/map.
+        this.fetchPositionsForChart();
+      }
+    });
+    this.subs.push(paramSub);
+  }
+
+  /**
+   * Loads the persisted accident report from the backend and mirrors every
+   * field onto the component. Falls back to the static scenario on error
+   * so the page never breaks for the client.
+   */
+  private loadReport(accidentId: number): void {
+    const sub = this.apiService.getAccidentReport(accidentId).subscribe({
+      next: (dto) => {
+        this.applyReport(dto);
+        this.fetchPositionsForChart();
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        // Keep fallback narrative, but still try to render a real chart
+        // using the default device_uid / incident time.
+        this.fetchPositionsForChart();
+      },
+    });
+    this.subs.push(sub);
+  }
+
+  /**
+   * Copies the server-supplied report onto the component's display fields.
+   * Marks the narrative as "from backend" so downstream GPS-based recompute
+   * doesn't clobber it.
+   */
+  private applyReport(dto: AccidentReportDto): void {
+    this.reference = dto.referenceCode || this.reference;
+    this.vehicleLabel = dto.vehicleLabel || this.vehicleLabel;
+    this.impactLat = dto.latitude;
+    this.impactLon = dto.longitude;
+    this.confidence = dto.confidence;
+    this.realDeviceUid = dto.deviceUid;
+    this.impactAtIso = dto.incidentAt;
+
+    if (dto.locationCommune) this.locationCommune = dto.locationCommune;
+    if (dto.locationGovernorate) this.locationGovernorate = dto.locationGovernorate;
+    if (dto.locationRoadType) this.locationRoadType = dto.locationRoadType;
+    if (dto.synthesisText) this.synthesisText = dto.synthesisText;
+
+    if (dto.story && dto.story.length) {
+      this.story = dto.story.map((s) => ({
+        time: s.time,
+        title: s.title,
+        body: s.body,
+        severity: this.normalizeSeverity(s.severity),
+      }));
+    }
+    if (dto.reasons && dto.reasons.length) {
+      this.reasons = dto.reasons.map((r) => ({ title: r.title, text: r.text }));
+    }
+    if (dto.indicators && dto.indicators.length) {
+      this.indicators = dto.indicators.map((i) => ({
+        label: i.label,
+        value: i.value,
+        hint: i.hint ?? undefined,
+      }));
+    }
+
+    // Synthesis date fragment — use the real incidentAt from the DTO.
+    const incidentDate = new Date(dto.incidentAt);
+    if (!isNaN(incidentDate.getTime())) {
+      this.synthesisDateTimeLong = this.formatLongDateTime(incidentDate);
+    }
+
+    // Update map marker lat/lon if the map is already initialized.
+    if (this.map && this.impactMarker) {
+      this.impactMarker.setLatLng([this.impactLat, this.impactLon]);
+      this.impactMarker.setPopupContent(this.buildImpactPopup());
+      this.map.setView([this.impactLat, this.impactLon], 14);
+    }
+
+    this.narrativeFromBackend = true;
+  }
+
+  /** Accepts any backend severity string and maps to the NarrativeEvent union. */
+  private normalizeSeverity(sev: string): NarrativeEvent['severity'] {
+    switch ((sev || '').toLowerCase()) {
+      case 'critical': return 'critical';
+      case 'warning': return 'warning';
+      case 'neutral': return 'neutral';
+      default: return 'normal';
+    }
+  }
+
+  /**
+   * Fires the GPS history request using the current `realDeviceUid` and
+   * `impactAtIso` (both populated either from the DTO or the fallback
+   * constants). Errors are silently ignored so the static chart stays.
+   */
+  private fetchPositionsForChart(): void {
     const impactT = new Date(this.impactAtIso).getTime();
+    if (isNaN(impactT)) return;
     const from = new Date(impactT - 10 * 60 * 1000);   // 10 min before
     const to = new Date(impactT + 30 * 60 * 1000);     // 30 min after
     const sub = this.apiService
@@ -1138,11 +1285,9 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
           this.computeFromPositions(positions);
           this.cdr.markForCheck();
         },
-        error: () => { /* keep fallback */ },
+        error: () => { /* keep fallback chart */ },
       });
     this.subs.push(sub);
-
-    setTimeout(() => { this.shown = true; this.cdr.markForCheck(); }, 80);
   }
 
   ngAfterViewInit(): void {
@@ -1331,13 +1476,17 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       ? this.diffMinutes(new Date(impactT), new Date(ignitionOffPos.recordedAt))
       : 6;
 
-    this.indicators = [
-      { label: 'Heure de l\'impact', value: this.formatHourMinuteSeconds(new Date(impactT)), hint: 'Heure locale de Tunis' },
-      { label: 'Vitesse avant l\'impact', value: `${speedBeforeImpact} km/h`, hint: 'Maximum mesuré 5 min avant' },
-      { label: 'Vitesse au moment de l\'impact', value: `${speedAtImpact} km/h`, hint: 'Chute brutale et non-maîtrisée' },
-      { label: 'Temps jusqu\'à l\'arrêt complet', value: timeToStopStr, hint: 'Après le choc' },
-      { label: 'Coupure du contact', value: ignitionOffLabel, hint: `Soit ${ignitionOffDelta} minutes après l'impact` },
-    ];
+    // Indicators are authoritative when they came from the backend — only
+    // recompute them from raw GPS when we're running in fallback mode.
+    if (!this.narrativeFromBackend) {
+      this.indicators = [
+        { label: 'Heure de l\'impact', value: this.formatHourMinuteSeconds(new Date(impactT)), hint: 'Heure locale de Tunis' },
+        { label: 'Vitesse avant l\'impact', value: `${speedBeforeImpact} km/h`, hint: 'Maximum mesuré 5 min avant' },
+        { label: 'Vitesse au moment de l\'impact', value: `${speedAtImpact} km/h`, hint: 'Chute brutale et non-maîtrisée' },
+        { label: 'Temps jusqu\'à l\'arrêt complet', value: timeToStopStr, hint: 'Après le choc' },
+        { label: 'Coupure du contact', value: ignitionOffLabel, hint: `Soit ${ignitionOffDelta} minutes après l'impact` },
+      ];
+    }
 
     // Rebuild the speed chart from positions in [impact-7 min, impact+8 min]
     const chartStart = impactT - 7 * 60 * 1000;
@@ -1350,14 +1499,15 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       this.buildChartFromPositions(chartPositions, chartStart, chartEnd, impactT);
     }
 
-    // Narrative regeneration only happens when the real data actually looks
-    // like an impact — otherwise the hardcoded fallback scenario remains in
-    // place so the page still reads correctly for the client.
+    // Narrative regeneration only happens when we're in fallback mode
+    // (no backend DTO) AND the real data actually looks like an impact.
+    // When the backend already provided story/reasons/confidence, we
+    // never overwrite them — the server is the source of truth.
     const looksLikeImpact =
       (speedBeforeImpact - speedAtImpact) >= 20 ||
       (speedBeforeImpact >= 40 && speedAtImpact <= 15);
 
-    if (looksLikeImpact) {
+    if (!this.narrativeFromBackend && looksLikeImpact) {
       const stopT =
         stopIdx > impactIdx ? new Date(sorted[stopIdx].recordedAt).getTime() : undefined;
 
