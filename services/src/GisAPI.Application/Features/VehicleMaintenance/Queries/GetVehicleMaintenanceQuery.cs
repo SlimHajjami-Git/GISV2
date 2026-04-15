@@ -30,7 +30,12 @@ public record MaintenanceItemDto(
     int? NextDueKm,
     string Status,
     int? KmUntilDue,
-    int? DaysUntilDue
+    int? DaysUntilDue,
+    int FreeUsesTotal = 0,
+    int FreeUsesRemaining = 0,
+    string? FreeSource = null,
+    DateTime? FreeExpiryDate = null,
+    string? FreeNotes = null
 );
 
 public record MaintenanceStatsDto(

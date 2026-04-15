@@ -123,11 +123,73 @@ public class VehicleMaintenanceController : ControllerBase
             request.Mileage,
             request.Cost,
             request.SupplierId,
-            request.Notes
+            request.Notes,
+            ApplyFreeBenefit: request.ApplyFreeBenefit ?? true
         );
 
         var logId = await _mediator.Send(command);
         return Ok(new { LogId = logId, Message = "Maintenance marked as done" });
+    }
+
+    /// <summary>
+    /// Declare free maintenances on a vehicle (e.g. dealership gift, constructor warranty).
+    /// Creates or updates the schedule for (vehicleId, templateId) with a counter of free uses.
+    /// </summary>
+    [HttpPost("declare-free")]
+    public async Task<ActionResult> DeclareFree([FromBody] DeclareFreeRequest request)
+    {
+        var expiryUtc = request.ExpiryDate.HasValue
+            ? (request.ExpiryDate.Value.Kind == DateTimeKind.Utc
+                ? request.ExpiryDate.Value
+                : DateTime.SpecifyKind(request.ExpiryDate.Value, DateTimeKind.Utc))
+            : (DateTime?)null;
+
+        var scheduleId = await _mediator.Send(new DeclareFreeMaintenancesCommand(
+            request.VehicleId,
+            request.TemplateId,
+            request.Count,
+            request.Source,
+            expiryUtc,
+            request.Notes
+        ));
+
+        return Ok(new { ScheduleId = scheduleId });
+    }
+
+    /// <summary>
+    /// Update the free maintenance counters/metadata on an existing schedule.
+    /// </summary>
+    [HttpPut("{scheduleId}/free")]
+    public async Task<ActionResult> UpdateFree(int scheduleId, [FromBody] UpdateFreeRequest request)
+    {
+        var expiryUtc = request.ExpiryDate.HasValue
+            ? (request.ExpiryDate.Value.Kind == DateTimeKind.Utc
+                ? request.ExpiryDate.Value
+                : DateTime.SpecifyKind(request.ExpiryDate.Value, DateTimeKind.Utc))
+            : (DateTime?)null;
+
+        var success = await _mediator.Send(new UpdateFreeMaintenanceCommand(
+            scheduleId,
+            request.FreeUsesTotal,
+            request.FreeUsesRemaining,
+            request.Source,
+            expiryUtc,
+            request.Notes
+        ));
+
+        if (!success) return NotFound();
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Clear all free maintenance counters on a schedule (resets to 0).
+    /// </summary>
+    [HttpDelete("{scheduleId}/free")]
+    public async Task<ActionResult> ClearFree(int scheduleId)
+    {
+        var success = await _mediator.Send(new ClearFreeMaintenanceCommand(scheduleId));
+        if (!success) return NotFound();
+        return NoContent();
     }
 }
 
@@ -141,5 +203,23 @@ public record MarkDoneRequest(
     int Mileage,
     decimal Cost,
     int? SupplierId,
+    string? Notes,
+    bool? ApplyFreeBenefit = null
+);
+
+public record DeclareFreeRequest(
+    int VehicleId,
+    int TemplateId,
+    int Count,
+    string? Source,
+    DateTime? ExpiryDate,
+    string? Notes
+);
+
+public record UpdateFreeRequest(
+    int FreeUsesTotal,
+    int FreeUsesRemaining,
+    string? Source,
+    DateTime? ExpiryDate,
     string? Notes
 );

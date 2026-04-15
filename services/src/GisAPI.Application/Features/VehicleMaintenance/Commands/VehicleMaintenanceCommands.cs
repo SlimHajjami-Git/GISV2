@@ -22,8 +22,29 @@ public record MarkMaintenanceDoneCommand(
     decimal? LaborCost = null,
     decimal? PartsCost = null,
     List<ReplacedPartDto>? PartsReplaced = null,
-    int? QualityRating = null
+    int? QualityRating = null,
+    bool ApplyFreeBenefit = true
 ) : ICommand<int>;
+
+public record DeclareFreeMaintenancesCommand(
+    int VehicleId,
+    int TemplateId,
+    int Count,
+    string? Source,
+    DateTime? ExpiryDate,
+    string? Notes
+) : ICommand<int>;
+
+public record UpdateFreeMaintenanceCommand(
+    int ScheduleId,
+    int FreeUsesTotal,
+    int FreeUsesRemaining,
+    string? Source,
+    DateTime? ExpiryDate,
+    string? Notes
+) : ICommand<bool>;
+
+public record ClearFreeMaintenanceCommand(int ScheduleId) : ICommand<bool>;
 
 public record PauseMaintenanceScheduleCommand(
     int ScheduleId,

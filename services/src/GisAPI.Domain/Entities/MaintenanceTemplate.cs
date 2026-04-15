@@ -55,7 +55,15 @@ public class VehicleMaintenanceSchedule : TenantEntity
     public DateTime? LastNotificationAt { get; set; }
     public int NotificationCount { get; set; } = 0;
     public string? Notes { get; set; }
-    
+
+    // Free maintenance benefits (constructor warranty, dealership promo, etc.)
+    // When FreeUsesRemaining > 0, the next completion is covered and auto-forced to 0 cost.
+    public int FreeUsesTotal { get; set; } = 0;
+    public int FreeUsesRemaining { get; set; } = 0;
+    public string? FreeSource { get; set; } // "Achat neuf", "Garantie constructeur", "Contrat concessionnaire", "Autre"
+    public DateTime? FreeExpiryDate { get; set; }
+    public string? FreeNotes { get; set; }
+
     // Navigation
     public ICollection<MaintenanceNotification> Notifications { get; set; } = new List<MaintenanceNotification>();
 }
@@ -95,6 +103,9 @@ public class MaintenanceLog : Entity
     
     public string? Notes { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    // Marks this log as covered by a free maintenance benefit (no real cost was paid)
+    public bool WasFree { get; set; } = false;
 }
 
 public class ReplacedPart

@@ -75,6 +75,13 @@ public class VehicleMaintenanceScheduleEnhancedConfiguration : IEntityTypeConfig
         builder.Property(e => e.NotificationCount).HasColumnName("notification_count").HasDefaultValue(0);
         builder.Property(e => e.Notes).HasColumnName("notes");
 
+        // Free maintenance benefit columns
+        builder.Property(e => e.FreeUsesTotal).HasColumnName("free_uses_total").HasDefaultValue(0);
+        builder.Property(e => e.FreeUsesRemaining).HasColumnName("free_uses_remaining").HasDefaultValue(0);
+        builder.Property(e => e.FreeSource).HasColumnName("free_source").HasMaxLength(50);
+        builder.Property(e => e.FreeExpiryDate).HasColumnName("free_expiry_date").HasColumnType("date");
+        builder.Property(e => e.FreeNotes).HasColumnName("free_notes").HasMaxLength(500);
+
         builder.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
 
@@ -127,6 +134,9 @@ public class MaintenanceLogEnhancedConfiguration : IEntityTypeConfiguration<Main
         builder.Property(e => e.PartsCost).HasColumnName("parts_cost").HasPrecision(10, 2);
         builder.Property(e => e.QualityRating).HasColumnName("quality_rating");
         builder.Property(e => e.Photos).HasColumnName("photos").HasColumnType("text[]");
+
+        // Free maintenance tracking
+        builder.Property(e => e.WasFree).HasColumnName("was_free").HasDefaultValue(false);
 
         builder.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
 

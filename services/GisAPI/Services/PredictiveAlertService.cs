@@ -213,16 +213,16 @@ public class PredictiveAlertService : BackgroundService
             {
                 var title = $"Entretien: {templateName}";
 
-                // In-app notification for company admins (unchanged)
+                // In-app notification for company admins — route to the real "entretien programmable" page
                 await SendToCompanyAdmins(context, notifService, companyId,
                     "maintenance_prediction", title, message,
-                    priority, "vehicle", vehicle.Id, "/entretiens", ct);
+                    priority, "vehicle", vehicle.Id, "/entretien-programmable", ct);
 
                 // Email fan-out to alert_emails with alertType = "entretien"
                 try
                 {
                     await alertDispatcher.DispatchAsync(
-                        companyId, "entretien", title, message, "/entretiens", ct);
+                        companyId, "entretien", title, message, "/entretien-programmable", ct);
                 }
                 catch (Exception ex)
                 {

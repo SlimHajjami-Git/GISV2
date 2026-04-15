@@ -10,7 +10,11 @@ public record CreateMaintenanceTemplateCommand(
     int? IntervalKm,
     int? IntervalMonths,
     decimal? EstimatedCost,
-    bool IsActive = true
+    bool IsActive = true,
+    int? WarningKm = null,
+    int? WarningDays = null,
+    int? CriticalKm = null,
+    int? CriticalDays = null
 ) : ICommand<int>;
 
 public record UpdateMaintenanceTemplateCommand(
@@ -22,7 +26,11 @@ public record UpdateMaintenanceTemplateCommand(
     int? IntervalKm,
     int? IntervalMonths,
     decimal? EstimatedCost,
-    bool? IsActive
+    bool? IsActive,
+    int? WarningKm = null,
+    int? WarningDays = null,
+    int? CriticalKm = null,
+    int? CriticalDays = null
 ) : ICommand<bool>;
 
 public record DeleteMaintenanceTemplateCommand(int Id) : ICommand<bool>;

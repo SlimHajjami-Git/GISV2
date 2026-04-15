@@ -16,8 +16,10 @@ interface MaintenanceTemplate {
   priority: 'low' | 'medium' | 'high' | 'critical';
   category: string;
   isActive: boolean;
-  notifyKmBefore?: number | null;
-  notifyDaysBefore?: number | null;
+  warningKm?: number | null;
+  warningDays?: number | null;
+  criticalKm?: number | null;
+  criticalDays?: number | null;
 }
 
 interface InvoiceLine {
@@ -49,6 +51,11 @@ interface MaintenanceItem {
   nextDueKm: number | null;
   status: 'ok' | 'upcoming' | 'due' | 'overdue';
   kmUntilDue: number | null;
+  // Free maintenance benefit
+  freeUsesTotal?: number;
+  freeUsesRemaining?: number;
+  freeSource?: string;
+  freeExpiryDate?: string;
 }
 
 interface FlatRow {
@@ -65,6 +72,11 @@ interface FlatRow {
   status: 'ok' | 'upcoming' | 'due' | 'overdue';
   kmUntilDue: number | null;
   progressPercent: number;
+  // Free maintenance benefit
+  freeUsesTotal?: number;
+  freeUsesRemaining?: number;
+  freeSource?: string;
+  freeExpiryDate?: string;
 }
 
 @Component({
@@ -198,6 +210,17 @@ interface FlatRow {
                   </td>
                   <td class="col-maint">
                     <span class="cell-maint-name">{{ row.templateName }}</span>
+                    <span class="free-badge" *ngIf="(row.freeUsesRemaining ?? 0) > 0"
+                          [title]="getFreeBadgeTitle(row)">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 12 20 22 4 22 4 12"/>
+                        <rect x="2" y="7" width="20" height="5"/>
+                        <line x1="12" y1="22" x2="12" y2="7"/>
+                        <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+                        <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
+                      </svg>
+                      <span>{{ row.freeUsesRemaining }} offert<span *ngIf="(row.freeUsesRemaining ?? 0) > 1">s</span></span>
+                    </span>
                   </td>
                   <td class="col-progress">
                     <div class="progress-cell">
@@ -264,10 +287,15 @@ interface FlatRow {
             </div>
             <div class="field toggle"><label><input type="checkbox" [(ngModel)]="form.isActive"><span class="switch"></span> Actif</label></div>
             <div class="divider"></div>
-            <h4 class="sub-title">Notifications (optionnel)</h4>
+            <h4 class="sub-title">Seuils d'alerte</h4>
+            <p class="sub-hint">Dès que la distance ou le délai restant passe sous ces seuils, une notification est déclenchée.</p>
             <div class="field-row">
-              <div class="field"><label>Notifier a X km restants</label><input type="number" [(ngModel)]="form.notifyKmBefore" placeholder="1000"></div>
-              <div class="field"><label>Notifier X jours avant</label><input type="number" [(ngModel)]="form.notifyDaysBefore" placeholder="7"></div>
+              <div class="field"><label>Alerte (km restants)</label><input type="number" [(ngModel)]="form.warningKm" placeholder="1000"></div>
+              <div class="field"><label>Alerte (jours restants)</label><input type="number" [(ngModel)]="form.warningDays" placeholder="30"></div>
+            </div>
+            <div class="field-row">
+              <div class="field"><label>Critique (km restants)</label><input type="number" [(ngModel)]="form.criticalKm" placeholder="0"></div>
+              <div class="field"><label>Critique (jours restants)</label><input type="number" [(ngModel)]="form.criticalDays" placeholder="0"></div>
             </div>
           </div>
           <div class="panel-foot"><button class="btn-cancel" (click)="closeForm()">Annuler</button><button class="btn-save" (click)="saveTemplate()" [disabled]="!isFormValid()">Enregistrer</button></div>
@@ -286,6 +314,36 @@ interface FlatRow {
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
               <div><strong>{{ markData.vehicleName }}</strong><br><span class="text-muted">{{ markData.vehiclePlate }}</span></div>
             </div>
+
+            <!-- Free maintenance protection banner -->
+            <div class="free-banner" *ngIf="(markData.freeUsesRemaining ?? 0) > 0">
+              <div class="free-banner-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 12 20 22 4 22 4 12"/>
+                  <rect x="2" y="7" width="20" height="5"/>
+                  <line x1="12" y1="22" x2="12" y2="7"/>
+                  <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+                  <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
+                </svg>
+              </div>
+              <div class="free-banner-body">
+                <div class="free-banner-title">
+                  Cet entretien est offert
+                  <span class="free-banner-pill">{{ markData.freeUsesRemaining }} restant<span *ngIf="markData.freeUsesRemaining > 1">s</span></span>
+                </div>
+                <div class="free-banner-sub">
+                  <span *ngIf="markData.freeSource">Source : <strong>{{ markData.freeSource }}</strong>. </span>
+                  <span *ngIf="markData.freeExpiryDate">Valable jusqu'au <strong>{{ markData.freeExpiryDate | date:'dd/MM/yyyy' }}</strong>. </span>
+                  En cochant ci-dessous, le coût sera automatiquement mis à 0 DT et le compteur sera décrémenté.
+                </div>
+                <label class="free-banner-check">
+                  <input type="checkbox" [(ngModel)]="markData.applyFreeBenefit" name="applyFreeBenefit">
+                  <span class="check-box"></span>
+                  <span class="check-label">Appliquer le crédit gratuit (recommandé)</span>
+                </label>
+              </div>
+            </div>
+
             <div class="field-row">
               <div class="field"><label>Date *</label><input type="date" [(ngModel)]="markData.date"></div>
               <div class="field"><label>Kilometrage *</label><input type="number" [(ngModel)]="markData.mileage" placeholder="45000"></div>
@@ -529,6 +587,20 @@ interface FlatRow {
     .cell-name { display:block; font-size:12px; font-weight:600; color:#1e293b; }
     .cell-plate { font-family:monospace; font-size:10px; color:#94a3b8; }
     .cell-maint-name { font-weight:500; color:#1e293b; }
+    .free-badge {
+      display:inline-flex; align-items:center; gap:4px;
+      margin-left:8px; padding:3px 8px;
+      background:linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+      color:#b45309;
+      border:1px solid #fcd34d;
+      border-radius:999px;
+      font-size:10px; font-weight:700;
+      letter-spacing:0.02em;
+      box-shadow:0 1px 3px rgba(180, 83, 9, 0.15);
+      white-space:nowrap;
+      vertical-align:middle;
+    }
+    .free-badge svg { flex-shrink:0; }
     .progress-cell { display:flex; align-items:center; gap:8px; }
     .progress-track { flex:1; height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden; min-width:60px; }
     .progress-fill { height:100%; border-radius:3px; transition:width .4s ease; }
@@ -611,7 +683,8 @@ interface FlatRow {
     .field.toggle input:checked + .switch { background:#3b82f6; }
     .field.toggle input:checked + .switch::after { transform:translateX(16px); }
     .divider { height:1px; background:#e2e8f0; margin:16px 0; }
-    .sub-title { font-size:12px; font-weight:600; color:#1e293b; margin:0 0 12px; }
+    .sub-title { font-size:12px; font-weight:600; color:#1e293b; margin:0 0 6px; }
+    .sub-hint { font-size:11px; color:#64748b; margin:0 0 12px; line-height:1.4; }
     .text-muted { color:#94a3b8; font-size:11px; }
 
     /* Buttons */
@@ -641,6 +714,91 @@ interface FlatRow {
     /* Invoice */
     .recap-box { display:flex; align-items:center; gap:12px; padding:12px; background:#f8fafc; border-radius:6px; margin-bottom:16px; border:1px solid #e2e8f0; }
     .recap-box strong { font-size:13px; color:#1e293b; }
+
+    /* Free maintenance banner inside Mark-Done panel */
+    .free-banner {
+      display:flex; align-items:flex-start; gap:12px;
+      margin-bottom:16px;
+      padding:14px 16px;
+      background:linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+      border:1.5px solid #fbbf24;
+      border-left:4px solid #f59e0b;
+      border-radius:10px;
+      position:relative;
+      box-shadow:0 2px 8px -2px rgba(245, 158, 11, 0.25);
+    }
+    .free-banner-icon {
+      flex-shrink:0;
+      width:40px; height:40px;
+      border-radius:10px;
+      background:#f59e0b;
+      color:white;
+      display:flex; align-items:center; justify-content:center;
+    }
+    .free-banner-body { flex:1; min-width:0; }
+    .free-banner-title {
+      display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+      font-size:14px; font-weight:700; color:#78350f;
+      margin-bottom:4px;
+    }
+    .free-banner-pill {
+      display:inline-flex; align-items:center;
+      padding:3px 10px;
+      background:#b45309;
+      color:white;
+      border-radius:999px;
+      font-size:11px; font-weight:700;
+      text-transform:uppercase;
+      letter-spacing:0.04em;
+    }
+    .free-banner-sub {
+      font-size:12px; color:#92400e; line-height:1.5;
+      margin-bottom:10px;
+    }
+    .free-banner-sub strong { color:#78350f; }
+    .free-banner-check {
+      display:inline-flex; align-items:center; gap:10px;
+      padding:8px 12px;
+      background:rgba(255,255,255,0.7);
+      border:1px solid #fde68a;
+      border-radius:8px;
+      cursor:pointer;
+      user-select:none;
+      transition:all 0.15s;
+    }
+    .free-banner-check:hover {
+      background:white;
+      border-color:#f59e0b;
+    }
+    .free-banner-check input[type="checkbox"] {
+      position:absolute;
+      opacity:0;
+      pointer-events:none;
+    }
+    .free-banner-check .check-box {
+      width:18px; height:18px;
+      border:2px solid #b45309;
+      border-radius:5px;
+      background:white;
+      display:inline-flex; align-items:center; justify-content:center;
+      transition:all 0.15s;
+      flex-shrink:0;
+    }
+    .free-banner-check input[type="checkbox"]:checked + .check-box {
+      background:#b45309;
+      border-color:#b45309;
+    }
+    .free-banner-check input[type="checkbox"]:checked + .check-box::after {
+      content:'';
+      width:6px; height:10px;
+      border:solid white;
+      border-width:0 2.5px 2.5px 0;
+      transform:rotate(45deg) translate(-1px, -1px);
+    }
+    .free-banner-check .check-label {
+      font-size:13px; font-weight:600;
+      color:#78350f;
+    }
     .invoice-section { background:#f8fafc; border-radius:6px; padding:14px; margin-bottom:14px; border:1px solid #e2e8f0; }
     .invoice-lines { display:flex; flex-direction:column; gap:8px; }
     .inv-line { background:white; border-radius:6px; padding:10px; border:1px solid #e2e8f0; }
@@ -724,9 +882,14 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
 
   ngOnInit() { this.loadTemplates(); this.loadVehicles(); this.loadAllVehicles(); }
 
-  getEmptyForm() { return { name:'', description:'', category:'', priority:'medium', intervalKm:null, intervalMonths:null, estimatedCost:0, isActive:true, notifyKmBefore:null, notifyDaysBefore:null }; }
-  getEmptyMark() { 
-    return { vehicleId:'', vehicleName:'', vehiclePlate:'', templateId:'', maintenanceName:'', date:new Date().toISOString().split('T')[0], mileage:null, supplier:'', notes:'', invoiceLines: [] as InvoiceLine[] }; 
+  getEmptyForm() { return { name:'', description:'', category:'', priority:'medium', intervalKm:null, intervalMonths:null, estimatedCost:0, isActive:true, warningKm:1000, warningDays:30, criticalKm:0, criticalDays:0 }; }
+  getEmptyMark() {
+    return {
+      vehicleId:'', vehicleName:'', vehiclePlate:'', templateId:'', maintenanceName:'',
+      date:new Date().toISOString().split('T')[0], mileage:null, supplier:'', notes:'',
+      freeUsesRemaining: 0, freeUsesTotal: 0, freeSource: '', freeExpiryDate: null, applyFreeBenefit: false,
+      invoiceLines: [] as InvoiceLine[]
+    };
   }
   getEmptyAddToVehicle() { return { vehicleId:'', vehicleName:'', vehiclePlate:'', vehicleMileage:0, selectedTemplateIds:[] as string[] }; }
 
@@ -735,7 +898,21 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     this.apiService.getMaintenanceTemplates({ pageSize: 100 }).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {
         this.ngZone.run(() => {
-          this.templates = result.items.map(t => ({ id: t.id?.toString() || '', name: t.name, description: t.description || '', intervalKm: t.intervalKm ?? null, intervalMonths: t.intervalMonths ?? null, estimatedCost: t.estimatedCost || 0, priority: (t.priority as any) || 'medium', category: t.category || 'Autre', isActive: t.isActive }));
+          this.templates = result.items.map(t => ({
+            id: t.id?.toString() || '',
+            name: t.name,
+            description: t.description || '',
+            intervalKm: t.intervalKm ?? null,
+            intervalMonths: t.intervalMonths ?? null,
+            estimatedCost: t.estimatedCost || 0,
+            priority: (t.priority as any) || 'medium',
+            category: t.category || 'Autre',
+            isActive: t.isActive,
+            warningKm: t.warningKm ?? 1000,
+            warningDays: t.warningDays ?? 30,
+            criticalKm: t.criticalKm ?? 0,
+            criticalDays: t.criticalDays ?? 0
+          }));
           this.filteredTemplates = [...this.templates];
           this.loading = false;
           this.rebuildRows();
@@ -752,7 +929,20 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
         this.ngZone.run(() => {
           this.vehicleSchedules = result.items.map(v => ({
             vehicleId: v.vehicleId.toString(), vehicleName: v.vehicleName || '', vehiclePlate: v.vehiclePlate || '', currentMileage: v.currentMileage || 0,
-            maintenanceItems: (v.maintenanceItems || []).map(m => ({ scheduleId: m.scheduleId ?? null, templateId: m.templateId?.toString() || '', templateName: m.templateName || '', lastDoneDate: m.lastDoneDate ? new Date(m.lastDoneDate) : null, lastDoneKm: m.lastDoneKm ?? null, nextDueKm: m.nextDueKm ?? null, status: (m.status as any) || 'ok', kmUntilDue: m.kmUntilDue ?? null }))
+            maintenanceItems: (v.maintenanceItems || []).map(m => ({
+              scheduleId: m.scheduleId ?? null,
+              templateId: m.templateId?.toString() || '',
+              templateName: m.templateName || '',
+              lastDoneDate: m.lastDoneDate ? new Date(m.lastDoneDate) : null,
+              lastDoneKm: m.lastDoneKm ?? null,
+              nextDueKm: m.nextDueKm ?? null,
+              status: (m.status as any) || 'ok',
+              kmUntilDue: m.kmUntilDue ?? null,
+              freeUsesTotal: m.freeUsesTotal ?? 0,
+              freeUsesRemaining: m.freeUsesRemaining ?? 0,
+              freeSource: m.freeSource,
+              freeExpiryDate: m.freeExpiryDate
+            }))
           }));
           this.filteredVehicleSchedules = [...this.vehicleSchedules];
           this.rebuildRows();
@@ -774,7 +964,11 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
         rows.push({
           vehicleId: v.vehicleId, vehicleName: v.vehicleName, vehiclePlate: v.vehiclePlate, currentMileage: v.currentMileage,
           templateId: m.templateId, templateName: m.templateName, scheduleId: m.scheduleId, lastDoneDate: m.lastDoneDate, lastDoneKm: m.lastDoneKm, nextDueKm: m.nextDueKm,
-          status: m.status, kmUntilDue: m.kmUntilDue, progressPercent: pct
+          status: m.status, kmUntilDue: m.kmUntilDue, progressPercent: pct,
+          freeUsesTotal: m.freeUsesTotal,
+          freeUsesRemaining: m.freeUsesRemaining,
+          freeSource: m.freeSource,
+          freeExpiryDate: m.freeExpiryDate
         });
       }
     }
@@ -837,7 +1031,25 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   isFormValid() { return this.form.name && this.form.category && (this.form.intervalKm || this.form.intervalMonths); }
   saveTemplate() {
     if (!this.isFormValid()) return;
-    const d = { name: this.form.name, description: this.form.description || '', category: this.form.category, priority: this.form.priority, intervalKm: this.form.intervalKm || undefined, intervalMonths: this.form.intervalMonths || undefined, estimatedCost: this.form.estimatedCost || 0, isActive: this.form.isActive };
+    const toIntOrUndefined = (v: any): number | undefined => {
+      if (v === null || v === undefined || v === '') return undefined;
+      const n = Number(v);
+      return isNaN(n) ? undefined : Math.max(0, Math.floor(n));
+    };
+    const d = {
+      name: this.form.name,
+      description: this.form.description || '',
+      category: this.form.category,
+      priority: this.form.priority,
+      intervalKm: this.form.intervalKm || undefined,
+      intervalMonths: this.form.intervalMonths || undefined,
+      estimatedCost: this.form.estimatedCost || 0,
+      isActive: this.form.isActive,
+      warningKm: toIntOrUndefined(this.form.warningKm),
+      warningDays: toIntOrUndefined(this.form.warningDays),
+      criticalKm: toIntOrUndefined(this.form.criticalKm),
+      criticalDays: toIntOrUndefined(this.form.criticalDays)
+    };
     if (this.editing) {
       this.apiService.updateMaintenanceTemplate(parseInt(this.editing.id), d).pipe(takeUntil(this.destroy$)).subscribe({ next: () => { this.loadTemplates(); this.closeForm(); }, error: (err) => console.error(err) });
     } else {
@@ -850,16 +1062,47 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     } 
   }
 
-  openMarkDone(v: VehicleMaintenanceStatus, m: MaintenanceItem) { 
+  openMarkDone(v: VehicleMaintenanceStatus, m: MaintenanceItem) {
     const lastPrice = this.lastPaidPrices.get(m.templateId) || null;
-    this.markData = { vehicleId:v.vehicleId, vehicleName:v.vehicleName, vehiclePlate:v.vehiclePlate, templateId:m.templateId, maintenanceName:m.templateName, date:new Date().toISOString().split('T')[0], mileage:v.currentMileage, supplier:'', notes:'', invoiceLines: [{ templateId: m.templateId, description: m.templateName, price: lastPrice, isCustom: false, isNewTemplate: false, newTemplateName: '', newTemplateCategory: '', newTemplateIntervalKm: null, newTemplateIntervalMonths: null }] }; 
-    this.isMarkOpen = true; 
+    const hasFree = (m.freeUsesRemaining ?? 0) > 0;
+    this.markData = {
+      vehicleId: v.vehicleId,
+      vehicleName: v.vehicleName,
+      vehiclePlate: v.vehiclePlate,
+      templateId: m.templateId,
+      maintenanceName: m.templateName,
+      date: new Date().toISOString().split('T')[0],
+      mileage: v.currentMileage,
+      supplier: '',
+      notes: '',
+      // Free benefit context (read by the yellow banner)
+      freeUsesRemaining: m.freeUsesRemaining ?? 0,
+      freeUsesTotal: m.freeUsesTotal ?? 0,
+      freeSource: m.freeSource || '',
+      freeExpiryDate: m.freeExpiryDate || null,
+      applyFreeBenefit: hasFree, // auto-checked when a credit is available
+      invoiceLines: [{
+        templateId: m.templateId, description: m.templateName, price: lastPrice,
+        isCustom: false, isNewTemplate: false, newTemplateName: '',
+        newTemplateCategory: '', newTemplateIntervalKm: null, newTemplateIntervalMonths: null
+      }]
+    };
+    this.isMarkOpen = true;
   }
 
   openMarkDoneFromRow(row: FlatRow) {
     const v = this.vehicleSchedules.find(x => x.vehicleId === row.vehicleId);
     const m = v?.maintenanceItems.find(x => x.templateId === row.templateId);
     if (v && m) this.openMarkDone(v, m);
+  }
+
+  getFreeBadgeTitle(row: FlatRow): string {
+    const rem = row.freeUsesRemaining ?? 0;
+    const total = row.freeUsesTotal ?? 0;
+    let msg = `${rem} entretien${rem > 1 ? 's' : ''} offert${rem > 1 ? 's' : ''} (sur ${total})`;
+    if (row.freeSource) msg += ` - ${row.freeSource}`;
+    if (row.freeExpiryDate) msg += ` - expire le ${new Date(row.freeExpiryDate).toLocaleDateString('fr-FR')}`;
+    return msg;
   }
 
   removeFromRow(row: FlatRow) {
@@ -910,9 +1153,25 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     let done = 0;
     const onDone = () => { done++; if (done === totalLines) { this.loadTemplates(); this.loadVehicles(); this.closeMarkDone(); } };
 
+    // Free benefit: only apply to the SAME template that has the credit (other lines go through at normal price).
+    const parentTemplateId = this.markData.templateId;
+    const applyFreeBenefit = !!this.markData.applyFreeBenefit && (this.markData.freeUsesRemaining ?? 0) > 0;
+
     for (const line of existingLines) {
-      this.lastPaidPrices.set(line.templateId!, line.price!);
-      this.apiService.markMaintenanceDone({ vehicleId, templateId: parseInt(line.templateId!), date: this.markData.date, mileage: this.markData.mileage, cost: line.price!, notes: this.markData.notes || undefined }).pipe(takeUntil(this.destroy$)).subscribe({ next: onDone, error: onDone });
+      // Don't store zero in lastPaidPrices when the line is free — keep the real price memory
+      if (!applyFreeBenefit || line.templateId !== parentTemplateId) {
+        this.lastPaidPrices.set(line.templateId!, line.price!);
+      }
+      const isTargetLine = applyFreeBenefit && line.templateId === parentTemplateId;
+      this.apiService.markMaintenanceDone({
+        vehicleId,
+        templateId: parseInt(line.templateId!),
+        date: this.markData.date,
+        mileage: this.markData.mileage,
+        cost: line.price!,
+        notes: this.markData.notes || undefined,
+        applyFreeBenefit: isTargetLine
+      }).pipe(takeUntil(this.destroy$)).subscribe({ next: onDone, error: onDone });
     }
 
     for (const line of newTplLines) {
@@ -924,7 +1183,15 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
         next: (tplId: number) => {
           this.apiService.assignMaintenanceTemplate(vehicleId, tplId).pipe(takeUntil(this.destroy$)).subscribe({
             next: () => {
-              this.apiService.markMaintenanceDone({ vehicleId, templateId: tplId, date: this.markData.date, mileage: this.markData.mileage, cost: line.price!, notes: this.markData.notes || undefined }).pipe(takeUntil(this.destroy$)).subscribe({ next: onDone, error: onDone });
+              this.apiService.markMaintenanceDone({
+                vehicleId,
+                templateId: tplId,
+                date: this.markData.date,
+                mileage: this.markData.mileage,
+                cost: line.price!,
+                notes: this.markData.notes || undefined,
+                applyFreeBenefit: false // new templates can't have free benefits
+              }).pipe(takeUntil(this.destroy$)).subscribe({ next: onDone, error: onDone });
             },
             error: onDone
           });

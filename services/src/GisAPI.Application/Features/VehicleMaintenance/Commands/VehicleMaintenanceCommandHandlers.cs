@@ -103,21 +103,7 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
         if (vehicle == null)
             throw new InvalidOperationException($"Vehicle not found: {request.VehicleId}");
 
-        // Create VehicleCost
-        var cost = new VehicleCost
-        {
-            VehicleId = request.VehicleId,
-            Type = "maintenance",
-            Description = $"Entretien: {template.Name}",
-            Amount = request.Cost,
-            Date = request.Date,
-            Mileage = request.Mileage,
-            CompanyId = companyId
-        };
-        _context.VehicleCosts.Add(cost);
-        await _context.SaveChangesAsync(cancellationToken);
-
-        // Get or create schedule
+        // Get or create schedule FIRST (we need to know if a free benefit applies)
         var schedule = await _context.VehicleMaintenanceSchedules
             .FirstOrDefaultAsync(s => s.VehicleId == request.VehicleId && s.TemplateId == request.TemplateId, cancellationToken);
 
@@ -131,6 +117,34 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
             _context.VehicleMaintenanceSchedules.Add(schedule);
         }
 
+        // Free benefit consumption
+        // A benefit is applied if: caller requested it, counter > 0, and (no expiry OR expiry is in future)
+        var today = DateTime.UtcNow.Date;
+        var benefitIsValid =
+            schedule.FreeUsesRemaining > 0
+            && (!schedule.FreeExpiryDate.HasValue || schedule.FreeExpiryDate.Value >= today);
+
+        var applyBenefit = request.ApplyFreeBenefit && benefitIsValid;
+        var actualCost = applyBenefit ? 0m : request.Cost;
+        var actualLaborCost = applyBenefit ? (decimal?)0m : request.LaborCost;
+        var actualPartsCost = applyBenefit ? (decimal?)0m : request.PartsCost;
+
+        // Create VehicleCost (always, even if 0 — keeps history consistent)
+        var cost = new VehicleCost
+        {
+            VehicleId = request.VehicleId,
+            Type = "maintenance",
+            Description = applyBenefit
+                ? $"Entretien: {template.Name} (gratuit — {schedule.FreeSource ?? "avantage"})"
+                : $"Entretien: {template.Name}",
+            Amount = actualCost,
+            Date = request.Date,
+            Mileage = request.Mileage,
+            CompanyId = companyId
+        };
+        _context.VehicleCosts.Add(cost);
+        await _context.SaveChangesAsync(cancellationToken);
+
         // Update schedule
         schedule.LastDoneDate = request.Date;
         schedule.LastDoneKm = request.Mileage;
@@ -138,6 +152,12 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
         schedule.NextDueDate = template.IntervalMonths.HasValue ? request.Date.AddMonths(template.IntervalMonths.Value) : null;
         schedule.Status = CalculateStatus(schedule, vehicle.Mileage);
         schedule.UpdatedAt = DateTime.UtcNow;
+
+        // Decrement free uses counter if benefit was applied
+        if (applyBenefit)
+        {
+            schedule.FreeUsesRemaining = Math.Max(0, schedule.FreeUsesRemaining - 1);
+        }
 
         // Create MaintenanceLog
         var log = new MaintenanceLog
@@ -148,9 +168,16 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
             CostId = cost.Id,
             DoneDate = request.Date,
             DoneKm = request.Mileage,
-            ActualCost = request.Cost,
+            ActualCost = actualCost,
+            LaborCost = actualLaborCost,
+            PartsCost = actualPartsCost,
             SupplierId = request.SupplierId,
-            Notes = request.Notes
+            Notes = applyBenefit
+                ? (string.IsNullOrWhiteSpace(request.Notes)
+                    ? $"Gratuit — {schedule.FreeSource ?? "avantage entretien"}"
+                    : $"{request.Notes} [Gratuit — {schedule.FreeSource ?? "avantage entretien"}]")
+                : request.Notes,
+            WasFree = applyBenefit
         };
         _context.MaintenanceLogs.Add(log);
 
@@ -362,6 +389,141 @@ public class AcknowledgeMaintenanceNotificationCommandHandler : IRequestHandler<
         if (notification == null) return false;
 
         notification.AcknowledgedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+}
+
+public class DeclareFreeMaintenancesCommandHandler : IRequestHandler<DeclareFreeMaintenancesCommand, int>
+{
+    private readonly IGisDbContext _context;
+
+    public DeclareFreeMaintenancesCommandHandler(IGisDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<int> Handle(DeclareFreeMaintenancesCommand request, CancellationToken cancellationToken)
+    {
+        if (request.Count <= 0)
+            throw new InvalidOperationException("Le nombre d'entretiens gratuits doit être supérieur à zéro.");
+
+        var template = await _context.MaintenanceTemplates
+            .FirstOrDefaultAsync(t => t.Id == request.TemplateId, cancellationToken);
+
+        if (template == null)
+            throw new InvalidOperationException($"Template not found: {request.TemplateId}");
+
+        var vehicle = await _context.Vehicles
+            .FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken);
+
+        if (vehicle == null)
+            throw new InvalidOperationException($"Vehicle not found: {request.VehicleId}");
+
+        // Find existing schedule OR create a new one
+        var schedule = await _context.VehicleMaintenanceSchedules
+            .FirstOrDefaultAsync(s => s.VehicleId == request.VehicleId && s.TemplateId == request.TemplateId, cancellationToken);
+
+        if (schedule == null)
+        {
+            // Create schedule with initial due calculation (same logic as AssignMaintenanceTemplateCommandHandler)
+            schedule = new VehicleMaintenanceSchedule
+            {
+                VehicleId = request.VehicleId,
+                TemplateId = request.TemplateId,
+                NextDueKm = template.IntervalKm.HasValue ? vehicle.Mileage + template.IntervalKm.Value : null,
+                NextDueDate = template.IntervalMonths.HasValue ? DateTime.UtcNow.AddMonths(template.IntervalMonths.Value) : null,
+                Status = "upcoming",
+                FreeUsesTotal = request.Count,
+                FreeUsesRemaining = request.Count,
+                FreeSource = request.Source,
+                FreeExpiryDate = request.ExpiryDate,
+                FreeNotes = request.Notes
+            };
+            _context.VehicleMaintenanceSchedules.Add(schedule);
+        }
+        else
+        {
+            // Accumulate counters — existing benefits stay, new ones are added on top
+            schedule.FreeUsesTotal += request.Count;
+            schedule.FreeUsesRemaining += request.Count;
+
+            // Update metadata if provided (caller's values win over previous ones)
+            if (!string.IsNullOrWhiteSpace(request.Source))
+                schedule.FreeSource = request.Source;
+
+            if (request.ExpiryDate.HasValue)
+                schedule.FreeExpiryDate = request.ExpiryDate;
+
+            if (!string.IsNullOrWhiteSpace(request.Notes))
+                schedule.FreeNotes = request.Notes;
+
+            schedule.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return schedule.Id;
+    }
+}
+
+public class UpdateFreeMaintenanceCommandHandler : IRequestHandler<UpdateFreeMaintenanceCommand, bool>
+{
+    private readonly IGisDbContext _context;
+
+    public UpdateFreeMaintenanceCommandHandler(IGisDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<bool> Handle(UpdateFreeMaintenanceCommand request, CancellationToken cancellationToken)
+    {
+        var schedule = await _context.VehicleMaintenanceSchedules
+            .FirstOrDefaultAsync(s => s.Id == request.ScheduleId, cancellationToken);
+
+        if (schedule == null) return false;
+
+        if (request.FreeUsesTotal < 0 || request.FreeUsesRemaining < 0)
+            throw new InvalidOperationException("Les compteurs d'entretiens gratuits ne peuvent pas être négatifs.");
+
+        if (request.FreeUsesRemaining > request.FreeUsesTotal)
+            throw new InvalidOperationException("Le nombre d'entretiens gratuits restants ne peut pas dépasser le total.");
+
+        schedule.FreeUsesTotal = request.FreeUsesTotal;
+        schedule.FreeUsesRemaining = request.FreeUsesRemaining;
+        schedule.FreeSource = request.Source;
+        schedule.FreeExpiryDate = request.ExpiryDate;
+        schedule.FreeNotes = request.Notes;
+        schedule.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+}
+
+public class ClearFreeMaintenanceCommandHandler : IRequestHandler<ClearFreeMaintenanceCommand, bool>
+{
+    private readonly IGisDbContext _context;
+
+    public ClearFreeMaintenanceCommandHandler(IGisDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<bool> Handle(ClearFreeMaintenanceCommand request, CancellationToken cancellationToken)
+    {
+        var schedule = await _context.VehicleMaintenanceSchedules
+            .FirstOrDefaultAsync(s => s.Id == request.ScheduleId, cancellationToken);
+
+        if (schedule == null) return false;
+
+        schedule.FreeUsesTotal = 0;
+        schedule.FreeUsesRemaining = 0;
+        schedule.FreeSource = null;
+        schedule.FreeExpiryDate = null;
+        schedule.FreeNotes = null;
+        schedule.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);
         return true;

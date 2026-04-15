@@ -84,7 +84,12 @@ public class GetVehicleMaintenanceQueryHandler : IRequestHandler<GetVehicleMaint
                     s.NextDueKm,
                     s.Status,
                     kmUntilDue,
-                    daysUntilDue
+                    daysUntilDue,
+                    s.FreeUsesTotal,
+                    s.FreeUsesRemaining,
+                    s.FreeSource,
+                    s.FreeExpiryDate,
+                    s.FreeNotes
                 );
             }).OrderBy(i => i.Status == "overdue" ? 0 : i.Status == "due" ? 1 : i.Status == "upcoming" ? 2 : 3)
               .ThenBy(i => i.DaysUntilDue ?? int.MaxValue)

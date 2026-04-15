@@ -1601,6 +1601,31 @@ export class ApiService {
     return this.http.get<any[]>(`${this.API_URL}/vehicle-maintenance/vehicle/${vehicleId}/logs`, { headers: this.getHeaders(), params });
   }
 
+  // ==================== FREE MAINTENANCE BENEFITS ====================
+
+  declareFreeMaintenances(request: DeclareFreeMaintenancesRequest): Observable<{ scheduleId: number }> {
+    return this.http.post<{ scheduleId: number }>(
+      `${this.API_URL}/vehicle-maintenance/declare-free`,
+      request,
+      { headers: this.getHeaders() }
+    );
+  }
+
+  updateFreeMaintenance(scheduleId: number, request: UpdateFreeMaintenanceRequest): Observable<void> {
+    return this.http.put<void>(
+      `${this.API_URL}/vehicle-maintenance/${scheduleId}/free`,
+      request,
+      { headers: this.getHeaders() }
+    );
+  }
+
+  clearFreeMaintenance(scheduleId: number): Observable<void> {
+    return this.http.delete<void>(
+      `${this.API_URL}/vehicle-maintenance/${scheduleId}/free`,
+      { headers: this.getHeaders() }
+    );
+  }
+
   // ==================== REPAIRS ====================
 
   getRepairs(options?: { vehicleId?: number; status?: string; fromDate?: string; toDate?: string; page?: number; pageSize?: number }): Observable<RepairsListResult> {
@@ -3116,6 +3141,10 @@ export interface MaintenanceTemplateDto {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  warningKm?: number;
+  warningDays?: number;
+  criticalKm?: number;
+  criticalDays?: number;
 }
 
 export interface CreateMaintenanceTemplateRequest {
@@ -3127,6 +3156,10 @@ export interface CreateMaintenanceTemplateRequest {
   intervalMonths?: number;
   estimatedCost?: number;
   isActive?: boolean;
+  warningKm?: number;
+  warningDays?: number;
+  criticalKm?: number;
+  criticalDays?: number;
 }
 
 export interface UpdateMaintenanceTemplateRequest {
@@ -3138,6 +3171,10 @@ export interface UpdateMaintenanceTemplateRequest {
   intervalMonths?: number;
   estimatedCost?: number;
   isActive?: boolean;
+  warningKm?: number;
+  warningDays?: number;
+  criticalKm?: number;
+  criticalDays?: number;
 }
 
 // ==================== VEHICLE MAINTENANCE SCHEDULE ====================
@@ -3162,6 +3199,12 @@ export interface MaintenanceItemDto {
   status: string;
   kmUntilDue?: number;
   daysUntilDue?: number;
+  // Free maintenance benefits
+  freeUsesTotal?: number;
+  freeUsesRemaining?: number;
+  freeSource?: string;
+  freeExpiryDate?: string;
+  freeNotes?: string;
 }
 
 export interface MaintenanceStatsDto {
@@ -3179,6 +3222,24 @@ export interface MarkMaintenanceDoneRequest {
   mileage: number;
   cost: number;
   supplierId?: number;
+  notes?: string;
+  applyFreeBenefit?: boolean;
+}
+
+export interface DeclareFreeMaintenancesRequest {
+  vehicleId: number;
+  templateId: number;
+  count: number;
+  source?: string;
+  expiryDate?: string;
+  notes?: string;
+}
+
+export interface UpdateFreeMaintenanceRequest {
+  freeUsesTotal: number;
+  freeUsesRemaining: number;
+  source?: string;
+  expiryDate?: string;
   notes?: string;
 }
 

@@ -21,7 +21,11 @@ public record MaintenanceTemplateDto(
     decimal? EstimatedCost,
     bool IsActive,
     DateTime CreatedAt,
-    DateTime UpdatedAt
+    DateTime UpdatedAt,
+    int WarningKm = 1000,
+    int WarningDays = 30,
+    int CriticalKm = 0,
+    int CriticalDays = 0
 );
 
 public static class MaintenanceCategories

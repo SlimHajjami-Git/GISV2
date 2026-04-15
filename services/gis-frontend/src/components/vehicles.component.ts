@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { trigger, transition, style, animate, state } from '@angular/animations';
 import { Subject, takeUntil } from 'rxjs';
-import { ApiService } from '../services/api.service';
+import { ApiService, MaintenanceItemDto, DeclareFreeMaintenancesRequest } from '../services/api.service';
 import { GeocodingService } from '../services/geocoding.service';
 import { Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -64,6 +64,16 @@ interface VehicleTrip {
       transition(':enter', [
         style({ opacity: 0 }),
         animate('150ms ease-out', style({ opacity: 1 }))
+      ])
+    ]),
+    trigger('slideUp', [
+      transition(':enter', [
+        style({ opacity: 0, transform: 'translateY(24px) scale(0.96)' }),
+        animate('280ms cubic-bezier(0.16, 1, 0.3, 1)',
+          style({ opacity: 1, transform: 'translateY(0) scale(1)' }))
+      ]),
+      transition(':leave', [
+        animate('180ms ease-in', style({ opacity: 0, transform: 'translateY(16px)' }))
       ])
     ])
   ],
@@ -471,6 +481,149 @@ interface VehicleTrip {
               </svg>
               Dépenses
             </button>
+            <button class="btn-action-footer free-maint" (click)="openFreeMaintModal(selectedDetailVehicle)" title="Déclarer des entretiens offerts par le concessionnaire">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="20 12 20 22 4 22 4 12"/>
+                <rect x="2" y="7" width="20" height="5"/>
+                <line x1="12" y1="22" x2="12" y2="7"/>
+                <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+                <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
+              </svg>
+              Entretiens offerts
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============== MODAL ENTRETIENS OFFERTS ============== -->
+      <div class="free-maint-overlay" *ngIf="isFreeMaintModalOpen" @fadeIn (click)="closeFreeMaintModal()">
+        <div class="free-maint-modal" @slideUp (click)="$event.stopPropagation()">
+          <!-- Decorative header with gift pattern -->
+          <div class="fm-header">
+            <div class="fm-header-pattern"></div>
+            <button class="fm-close" (click)="closeFreeMaintModal()" aria-label="Fermer">×</button>
+            <div class="fm-badge-wrapper">
+              <div class="fm-gift-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 12 20 22 4 22 4 12"/>
+                  <rect x="2" y="7" width="20" height="5"/>
+                  <line x1="12" y1="22" x2="12" y2="7"/>
+                  <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+                  <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
+                </svg>
+              </div>
+            </div>
+            <h2 class="fm-title">Entretiens offerts</h2>
+            <p class="fm-subtitle" *ngIf="freeMaintVehicle">
+              <span class="fm-vehicle-chip">
+                <span class="fm-vehicle-icon">🚘</span>
+                {{ freeMaintVehicle.name }} · {{ freeMaintVehicle.plate }}
+              </span>
+            </p>
+          </div>
+
+          <div class="fm-body">
+            <div class="fm-intro">
+              <p>Protégez vos collègues : déclarez les entretiens gratuits reçus à l'achat (concessionnaire, garantie constructeur, contrat de service). La prochaine fois que quelqu'un marque cet entretien comme fait, le système appliquera automatiquement le crédit.</p>
+            </div>
+
+            <form class="fm-form" (ngSubmit)="submitFreeMaintDeclaration()" #freeMaintForm="ngForm">
+              <!-- Liste des entretiens actuellement déclarés -->
+              <div class="fm-section" *ngIf="freeMaintExistingItems.length > 0">
+                <h3 class="fm-section-title">
+                  <span class="fm-section-num">A</span>
+                  Entretiens déjà offerts
+                </h3>
+                <div class="fm-existing-list">
+                  <div class="fm-existing-item" *ngFor="let item of freeMaintExistingItems">
+                    <div class="fm-existing-main">
+                      <div class="fm-existing-name">{{ item.templateName }}</div>
+                      <div class="fm-existing-meta">
+                        <span class="fm-counter">
+                          <strong>{{ item.freeUsesRemaining }}</strong> / {{ item.freeUsesTotal }} restant(s)
+                        </span>
+                        <span class="fm-source" *ngIf="item.freeSource">· {{ item.freeSource }}</span>
+                        <span class="fm-expiry" *ngIf="item.freeExpiryDate">
+                          · expire le {{ item.freeExpiryDate | date: 'dd/MM/yyyy' }}
+                        </span>
+                      </div>
+                    </div>
+                    <button type="button" class="fm-existing-clear" (click)="clearFreeMaint(item)" title="Supprimer ce crédit">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Formulaire de déclaration -->
+              <div class="fm-section">
+                <h3 class="fm-section-title">
+                  <span class="fm-section-num">{{ freeMaintExistingItems.length > 0 ? 'B' : 'A' }}</span>
+                  Nouveau crédit
+                </h3>
+
+                <div class="fm-field">
+                  <label class="fm-label">Type d'entretien</label>
+                  <select class="fm-input" [(ngModel)]="freeMaintForm_templateId" name="templateId" required>
+                    <option [ngValue]="null" disabled>— Choisir un modèle d'entretien —</option>
+                    <option *ngFor="let t of freeMaintTemplates" [ngValue]="t.id">
+                      {{ t.name }} <span *ngIf="t.category"> · {{ t.category }}</span>
+                    </option>
+                  </select>
+                </div>
+
+                <div class="fm-field-row">
+                  <div class="fm-field">
+                    <label class="fm-label">Nombre offert</label>
+                    <div class="fm-stepper">
+                      <button type="button" class="fm-step-btn" (click)="adjustFreeMaintCount(-1)">−</button>
+                      <input type="number" class="fm-input fm-stepper-input" [(ngModel)]="freeMaintForm_count" name="count" min="1" max="99" required />
+                      <button type="button" class="fm-step-btn" (click)="adjustFreeMaintCount(1)">+</button>
+                    </div>
+                  </div>
+
+                  <div class="fm-field">
+                    <label class="fm-label">Source <span class="fm-label-opt">(optionnel)</span></label>
+                    <select class="fm-input" [(ngModel)]="freeMaintForm_source" name="source">
+                      <option value="">— Choisir —</option>
+                      <option value="Achat neuf">Achat neuf</option>
+                      <option value="Garantie constructeur">Garantie constructeur</option>
+                      <option value="Contrat concessionnaire">Contrat concessionnaire</option>
+                      <option value="Promotion">Promotion</option>
+                      <option value="Autre">Autre</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="fm-field">
+                  <label class="fm-label">Date limite <span class="fm-label-opt">(optionnel)</span></label>
+                  <input type="date" class="fm-input" [(ngModel)]="freeMaintForm_expiry" name="expiry" />
+                </div>
+
+                <div class="fm-field">
+                  <label class="fm-label">Note interne <span class="fm-label-opt">(optionnel)</span></label>
+                  <textarea class="fm-input fm-textarea" [(ngModel)]="freeMaintForm_notes" name="notes" rows="2" placeholder="Ex: Offert à l'achat du véhicule le 12/03/2026 chez Peugeot Tunis"></textarea>
+                </div>
+              </div>
+
+              <div class="fm-error" *ngIf="freeMaintError">{{ freeMaintError }}</div>
+
+              <div class="fm-actions">
+                <button type="button" class="fm-btn fm-btn-ghost" (click)="closeFreeMaintModal()">
+                  Annuler
+                </button>
+                <button type="submit" class="fm-btn fm-btn-primary" [disabled]="!freeMaintForm_templateId || freeMaintForm_count < 1 || freeMaintSubmitting">
+                  <svg *ngIf="!freeMaintSubmitting" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  <span *ngIf="freeMaintSubmitting">Enregistrement…</span>
+                  <span *ngIf="!freeMaintSubmitting">Enregistrer le crédit</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       </div>
@@ -1243,6 +1396,441 @@ interface VehicleTrip {
       border-color: #cbd5e1;
     }
 
+    .btn-action-footer.free-maint {
+      background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%);
+      color: white;
+      border: none;
+      box-shadow: 0 2px 8px rgba(234, 88, 12, 0.25);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-action-footer.free-maint::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.2), transparent);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .btn-action-footer.free-maint:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(234, 88, 12, 0.35);
+    }
+
+    .btn-action-footer.free-maint:hover::before {
+      opacity: 1;
+    }
+
+    /* ================ MODAL ENTRETIENS OFFERTS ================ */
+    .free-maint-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.62);
+      backdrop-filter: blur(6px);
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .free-maint-modal {
+      width: 100%;
+      max-width: 560px;
+      max-height: calc(100vh - 40px);
+      background: white;
+      border-radius: 20px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 25px 70px -15px rgba(15, 23, 42, 0.5);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+
+    .fm-header {
+      position: relative;
+      padding: 36px 28px 28px;
+      background: linear-gradient(145deg, #fb923c 0%, #ea580c 60%, #c2410c 100%);
+      color: white;
+      overflow: hidden;
+    }
+
+    .fm-header-pattern {
+      position: absolute;
+      inset: 0;
+      opacity: 0.18;
+      background-image:
+        radial-gradient(circle at 20% 30%, white 2px, transparent 2px),
+        radial-gradient(circle at 80% 20%, white 1.5px, transparent 1.5px),
+        radial-gradient(circle at 50% 80%, white 2.5px, transparent 2.5px),
+        radial-gradient(circle at 15% 90%, white 1.5px, transparent 1.5px),
+        radial-gradient(circle at 90% 65%, white 2px, transparent 2px);
+      background-size: 90px 90px, 60px 60px, 120px 120px, 70px 70px, 100px 100px;
+      pointer-events: none;
+    }
+
+    .fm-close {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(255,255,255,0.2);
+      color: white;
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      transition: all 0.2s;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .fm-close:hover {
+      background: rgba(255,255,255,0.32);
+      transform: rotate(90deg);
+    }
+
+    .fm-badge-wrapper {
+      position: relative;
+      display: flex;
+      justify-content: center;
+      margin-bottom: 14px;
+      z-index: 1;
+    }
+
+    .fm-gift-icon {
+      width: 68px;
+      height: 68px;
+      border-radius: 20px;
+      background: white;
+      color: #ea580c;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 12px 30px -8px rgba(0,0,0,0.35);
+      animation: fm-wiggle 3s ease-in-out infinite;
+    }
+
+    .fm-gift-icon svg {
+      width: 36px;
+      height: 36px;
+    }
+
+    @keyframes fm-wiggle {
+      0%, 92%, 100% { transform: rotate(0deg); }
+      94% { transform: rotate(-6deg); }
+      96% { transform: rotate(6deg); }
+      98% { transform: rotate(-4deg); }
+    }
+
+    .fm-title {
+      position: relative;
+      margin: 0 0 6px;
+      text-align: center;
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      z-index: 1;
+    }
+
+    .fm-subtitle {
+      position: relative;
+      margin: 0;
+      text-align: center;
+      font-size: 13px;
+      z-index: 1;
+    }
+
+    .fm-vehicle-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: rgba(255,255,255,0.22);
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 999px;
+      backdrop-filter: blur(6px);
+      font-weight: 600;
+    }
+
+    .fm-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 28px 28px;
+    }
+
+    .fm-intro {
+      background: #fffbeb;
+      border-left: 4px solid #f59e0b;
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 20px;
+    }
+
+    .fm-intro p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.55;
+      color: #78350f;
+    }
+
+    .fm-section {
+      margin-bottom: 22px;
+    }
+
+    .fm-section-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 14px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #0f172a;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .fm-section-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #1e293b;
+      color: white;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .fm-existing-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .fm-existing-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+      border: 1px solid #fde68a;
+      border-radius: 12px;
+    }
+
+    .fm-existing-main {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .fm-existing-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 2px;
+    }
+
+    .fm-existing-meta {
+      font-size: 12px;
+      color: #78350f;
+    }
+
+    .fm-counter strong {
+      color: #b45309;
+      font-size: 13px;
+    }
+
+    .fm-existing-clear {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: none;
+      background: rgba(234, 88, 12, 0.1);
+      color: #b45309;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+
+    .fm-existing-clear:hover {
+      background: #b45309;
+      color: white;
+    }
+
+    .fm-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+
+    .fm-field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .fm-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .fm-label-opt {
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: 0;
+      color: #94a3b8;
+    }
+
+    .fm-input {
+      width: 100%;
+      padding: 11px 14px;
+      border-radius: 10px;
+      border: 1.5px solid #e2e8f0;
+      background: white;
+      font-size: 14px;
+      color: #0f172a;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+
+    .fm-input:focus {
+      outline: none;
+      border-color: #ea580c;
+      box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.12);
+    }
+
+    .fm-textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+
+    .fm-stepper {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1.5px solid #e2e8f0;
+      background: white;
+    }
+
+    .fm-stepper:focus-within {
+      border-color: #ea580c;
+      box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.12);
+    }
+
+    .fm-step-btn {
+      width: 42px;
+      background: #f8fafc;
+      border: none;
+      color: #1e293b;
+      font-size: 20px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .fm-step-btn:hover {
+      background: #fed7aa;
+      color: #c2410c;
+    }
+
+    .fm-stepper-input {
+      border: none;
+      border-radius: 0;
+      border-left: 1px solid #e2e8f0;
+      border-right: 1px solid #e2e8f0;
+      text-align: center;
+      font-size: 16px;
+      font-weight: 700;
+      color: #ea580c;
+    }
+
+    .fm-stepper-input:focus {
+      box-shadow: none;
+    }
+
+    .fm-error {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #b91c1c;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+
+    .fm-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .fm-btn {
+      flex: 1;
+      padding: 13px 20px;
+      border-radius: 11px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.18s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-family: inherit;
+      border: none;
+    }
+
+    .fm-btn-ghost {
+      background: #f1f5f9;
+      color: #475569;
+    }
+
+    .fm-btn-ghost:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+
+    .fm-btn-primary {
+      background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%);
+      color: white;
+      box-shadow: 0 4px 14px -2px rgba(234, 88, 12, 0.45);
+    }
+
+    .fm-btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px -4px rgba(234, 88, 12, 0.55);
+    }
+
+    .fm-btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    @media (max-width: 600px) {
+      .free-maint-modal {
+        max-width: 100%;
+      }
+      .fm-field-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
     /* Responsive */
     @media (max-width: 500px) {
       .detail-panel {
@@ -1708,6 +2296,19 @@ export class VehiclesComponent implements OnInit, OnDestroy {
   selectedInfoVehicleId: number | null = null;
   selectedInfoVehicleName: string = '';
 
+  // Free maintenance modal
+  isFreeMaintModalOpen = false;
+  freeMaintVehicle: Vehicle | null = null;
+  freeMaintTemplates: any[] = [];
+  freeMaintExistingItems: MaintenanceItemDto[] = [];
+  freeMaintForm_templateId: number | null = null;
+  freeMaintForm_count = 2;
+  freeMaintForm_source = 'Achat neuf';
+  freeMaintForm_expiry = '';
+  freeMaintForm_notes = '';
+  freeMaintError: string | null = null;
+  freeMaintSubmitting = false;
+
   // Filters
   searchQuery = '';
   filterStatus = '';
@@ -2166,6 +2767,129 @@ export class VehiclesComponent implements OnInit, OnDestroy {
   closeCostsPopup() {
     this.isCostsPopupOpen = false;
     this.selectedVehicleForCosts = null;
+  }
+
+  // ============ FREE MAINTENANCE MODAL ============
+
+  openFreeMaintModal(vehicle: VehicleExtended | null) {
+    if (!vehicle) return;
+    this.freeMaintVehicle = vehicle;
+    this.freeMaintError = null;
+    this.freeMaintSubmitting = false;
+    this.freeMaintForm_templateId = null;
+    this.freeMaintForm_count = 2;
+    this.freeMaintForm_source = 'Achat neuf';
+    this.freeMaintForm_expiry = '';
+    this.freeMaintForm_notes = '';
+    this.freeMaintExistingItems = [];
+    this.isFreeMaintModalOpen = true;
+
+    // Load templates (all active)
+    this.apiService.getMaintenanceTemplates({ isActive: true, pageSize: 200 }).subscribe({
+      next: (result) => {
+        const items = (result?.items as any[]) || [];
+        this.freeMaintTemplates = items.filter(t => t.isActive !== false);
+        if (this.freeMaintTemplates.length > 0 && this.freeMaintForm_templateId == null) {
+          this.freeMaintForm_templateId = this.freeMaintTemplates[0].id;
+        }
+      },
+      error: () => {
+        this.freeMaintTemplates = [];
+      }
+    });
+
+    // Load existing free credits on this vehicle
+    const vehicleIdNum = typeof vehicle.id === 'string' ? parseInt(vehicle.id, 10) : vehicle.id;
+    if (vehicleIdNum) {
+      this.apiService.getVehicleMaintenanceStatus(vehicleIdNum).subscribe({
+        next: (status) => {
+          this.freeMaintExistingItems = (status?.maintenanceItems || [])
+            .filter(i => (i.freeUsesTotal ?? 0) > 0);
+        },
+        error: () => {
+          this.freeMaintExistingItems = [];
+        }
+      });
+    }
+  }
+
+  closeFreeMaintModal() {
+    this.isFreeMaintModalOpen = false;
+    this.freeMaintVehicle = null;
+    this.freeMaintError = null;
+  }
+
+  adjustFreeMaintCount(delta: number) {
+    const next = (this.freeMaintForm_count || 0) + delta;
+    if (next >= 1 && next <= 99) {
+      this.freeMaintForm_count = next;
+    }
+  }
+
+  submitFreeMaintDeclaration() {
+    if (!this.freeMaintVehicle || !this.freeMaintForm_templateId) return;
+    if (this.freeMaintForm_count < 1) {
+      this.freeMaintError = "Le nombre d'entretiens offerts doit être supérieur à zéro.";
+      return;
+    }
+
+    const vehicleIdNum = typeof this.freeMaintVehicle.id === 'string'
+      ? parseInt(this.freeMaintVehicle.id, 10)
+      : this.freeMaintVehicle.id;
+
+    if (!vehicleIdNum) {
+      this.freeMaintError = "Identifiant véhicule invalide.";
+      return;
+    }
+
+    this.freeMaintSubmitting = true;
+    this.freeMaintError = null;
+
+    const request: DeclareFreeMaintenancesRequest = {
+      vehicleId: vehicleIdNum,
+      templateId: this.freeMaintForm_templateId,
+      count: this.freeMaintForm_count,
+      source: this.freeMaintForm_source || undefined,
+      expiryDate: this.freeMaintForm_expiry
+        ? new Date(this.freeMaintForm_expiry).toISOString()
+        : undefined,
+      notes: this.freeMaintForm_notes || undefined
+    };
+
+    this.apiService.declareFreeMaintenances(request).subscribe({
+      next: () => {
+        this.freeMaintSubmitting = false;
+        // Refresh the existing list so the user sees their new credit immediately
+        if (this.freeMaintVehicle) {
+          this.apiService.getVehicleMaintenanceStatus(vehicleIdNum).subscribe({
+            next: (status) => {
+              this.freeMaintExistingItems = (status?.maintenanceItems || [])
+                .filter(i => (i.freeUsesTotal ?? 0) > 0);
+              // Reset the form for a possible second declaration
+              this.freeMaintForm_count = 2;
+              this.freeMaintForm_notes = '';
+            }
+          });
+        }
+      },
+      error: (err) => {
+        this.freeMaintSubmitting = false;
+        this.freeMaintError = err?.error?.message || err?.message || "Erreur lors de la déclaration. Réessayez.";
+      }
+    });
+  }
+
+  clearFreeMaint(item: MaintenanceItemDto) {
+    if (!confirm(`Supprimer le crédit "${item.templateName}" (${item.freeUsesRemaining}/${item.freeUsesTotal} restant(s)) ?`)) return;
+
+    this.apiService.clearFreeMaintenance(item.scheduleId).subscribe({
+      next: () => {
+        this.freeMaintExistingItems = this.freeMaintExistingItems.filter(i => i.scheduleId !== item.scheduleId);
+      },
+      error: (err) => {
+        this.freeMaintError = err?.error?.message || "Erreur lors de la suppression.";
+      }
+    });
   }
 
   goToVehicleInfo(vehicle: any) {

@@ -68,7 +68,11 @@ public class MaintenanceTemplatesController : ControllerBase
             request.IntervalKm,
             request.IntervalMonths,
             request.EstimatedCost,
-            request.IsActive ?? true
+            request.IsActive ?? true,
+            request.WarningKm,
+            request.WarningDays,
+            request.CriticalKm,
+            request.CriticalDays
         );
 
         var templateId = await _mediator.Send(command);
@@ -90,7 +94,11 @@ public class MaintenanceTemplatesController : ControllerBase
             request.IntervalKm,
             request.IntervalMonths,
             request.EstimatedCost,
-            request.IsActive
+            request.IsActive,
+            request.WarningKm,
+            request.WarningDays,
+            request.CriticalKm,
+            request.CriticalDays
         );
 
         var success = await _mediator.Send(command);
@@ -121,7 +129,11 @@ public record CreateTemplateRequest(
     int? IntervalKm,
     int? IntervalMonths,
     decimal? EstimatedCost,
-    bool? IsActive
+    bool? IsActive,
+    int? WarningKm = null,
+    int? WarningDays = null,
+    int? CriticalKm = null,
+    int? CriticalDays = null
 );
 
 public record UpdateTemplateRequest(
@@ -132,5 +144,9 @@ public record UpdateTemplateRequest(
     int? IntervalKm,
     int? IntervalMonths,
     decimal? EstimatedCost,
-    bool? IsActive
+    bool? IsActive,
+    int? WarningKm = null,
+    int? WarningDays = null,
+    int? CriticalKm = null,
+    int? CriticalDays = null
 );

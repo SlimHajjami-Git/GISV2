@@ -34,7 +34,8 @@ public class GetMaintenanceTemplatesQueryHandler : IRequestHandler<GetMaintenanc
             .Select(t => new MaintenanceTemplateDto(
                 t.Id, t.Name, t.Description, t.Category, t.Priority,
                 t.IntervalKm, t.IntervalMonths, t.EstimatedCost,
-                t.IsActive, t.CreatedAt, t.UpdatedAt
+                t.IsActive, t.CreatedAt, t.UpdatedAt,
+                t.WarningKm, t.WarningDays, t.CriticalKm, t.CriticalDays
             ))
             .ToListAsync(cancellationToken);
 

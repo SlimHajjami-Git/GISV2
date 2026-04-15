@@ -1772,6 +1772,12 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("vehicle_id");
 
+                    b.Property<bool>("WasFree")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("was_free");
+
                     b.Property<string>("WorkOrderNumber")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
@@ -4549,6 +4555,32 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.Property<int?>("CustomIntervalMonths")
                         .HasColumnType("integer")
                         .HasColumnName("custom_interval_months");
+
+                    b.Property<DateTime?>("FreeExpiryDate")
+                        .HasColumnType("date")
+                        .HasColumnName("free_expiry_date");
+
+                    b.Property<string>("FreeNotes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("free_notes");
+
+                    b.Property<string>("FreeSource")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("free_source");
+
+                    b.Property<int>("FreeUsesRemaining")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("free_uses_remaining");
+
+                    b.Property<int>("FreeUsesTotal")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("free_uses_total");
 
                     b.Property<bool>("IsPaused")
                         .ValueGeneratedOnAdd()

@@ -35,6 +35,10 @@ public class CreateMaintenanceTemplateCommandHandler : IRequestHandler<CreateMai
             IntervalMonths = request.IntervalMonths,
             EstimatedCost = request.EstimatedCost,
             IsActive = request.IsActive,
+            WarningKm = request.WarningKm ?? 1000,
+            WarningDays = request.WarningDays ?? 30,
+            CriticalKm = request.CriticalKm ?? 0,
+            CriticalDays = request.CriticalDays ?? 0,
             CompanyId = _tenantService.CompanyId ?? throw new InvalidOperationException("Company ID not set")
         };
 
@@ -81,6 +85,10 @@ public class UpdateMaintenanceTemplateCommandHandler : IRequestHandler<UpdateMai
         if (request.IntervalMonths.HasValue) template.IntervalMonths = request.IntervalMonths;
         if (request.EstimatedCost.HasValue) template.EstimatedCost = request.EstimatedCost;
         if (request.IsActive.HasValue) template.IsActive = request.IsActive.Value;
+        if (request.WarningKm.HasValue) template.WarningKm = request.WarningKm.Value;
+        if (request.WarningDays.HasValue) template.WarningDays = request.WarningDays.Value;
+        if (request.CriticalKm.HasValue) template.CriticalKm = request.CriticalKm.Value;
+        if (request.CriticalDays.HasValue) template.CriticalDays = request.CriticalDays.Value;
 
         template.UpdatedAt = DateTime.UtcNow;
 
