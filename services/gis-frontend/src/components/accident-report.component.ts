@@ -987,9 +987,9 @@ interface ChartAxisLabel {
 export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit {
   @ViewChild('mapEl', { static: false }) mapEl?: ElementRef<HTMLDivElement>;
 
-  reference = '2026-04-14-118013';
+  reference = '2026-04-14-259-TU-4972';
   issueDate = '15 avril 2026';
-  vehicleLabel = '118013';
+  vehicleLabel = '259 TU 4972';
   impactLat = 35.61365;
   impactLon = 10.74298;
   confidence = 97;
