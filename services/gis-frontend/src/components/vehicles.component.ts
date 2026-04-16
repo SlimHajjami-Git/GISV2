@@ -2792,9 +2792,11 @@ export class VehiclesComponent implements OnInit, OnDestroy {
         if (this.freeMaintTemplates.length > 0 && this.freeMaintForm_templateId == null) {
           this.freeMaintForm_templateId = this.freeMaintTemplates[0].id;
         }
+        this.cdr.detectChanges();
       },
       error: () => {
         this.freeMaintTemplates = [];
+        this.cdr.detectChanges();
       }
     });
 
@@ -2805,9 +2807,11 @@ export class VehiclesComponent implements OnInit, OnDestroy {
         next: (status) => {
           this.freeMaintExistingItems = (status?.maintenanceItems || [])
             .filter(i => (i.freeUsesTotal ?? 0) > 0);
+          this.cdr.detectChanges();
         },
         error: () => {
           this.freeMaintExistingItems = [];
+          this.cdr.detectChanges();
         }
       });
     }
@@ -2859,22 +2863,13 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     this.apiService.declareFreeMaintenances(request).subscribe({
       next: () => {
         this.freeMaintSubmitting = false;
-        // Refresh the existing list so the user sees their new credit immediately
-        if (this.freeMaintVehicle) {
-          this.apiService.getVehicleMaintenanceStatus(vehicleIdNum).subscribe({
-            next: (status) => {
-              this.freeMaintExistingItems = (status?.maintenanceItems || [])
-                .filter(i => (i.freeUsesTotal ?? 0) > 0);
-              // Reset the form for a possible second declaration
-              this.freeMaintForm_count = 2;
-              this.freeMaintForm_notes = '';
-            }
-          });
-        }
+        this.closeFreeMaintModal();
+        this.cdr.detectChanges();
       },
       error: (err) => {
         this.freeMaintSubmitting = false;
         this.freeMaintError = err?.error?.message || err?.message || "Erreur lors de la déclaration. Réessayez.";
+        this.cdr.detectChanges();
       }
     });
   }
@@ -2885,9 +2880,11 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     this.apiService.clearFreeMaintenance(item.scheduleId).subscribe({
       next: () => {
         this.freeMaintExistingItems = this.freeMaintExistingItems.filter(i => i.scheduleId !== item.scheduleId);
+        this.cdr.detectChanges();
       },
       error: (err) => {
         this.freeMaintError = err?.error?.message || "Erreur lors de la suppression.";
+        this.cdr.detectChanges();
       }
     });
   }
