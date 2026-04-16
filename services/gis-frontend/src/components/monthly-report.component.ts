@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
-import { ApiService, MonthlyFleetReport, ChartData, MultiSeriesChartData, Kpi, FleetAlert } from '../services/api.service';
+import { ApiService, MonthlyFleetReport, MonthlyCostReport, DepartmentCostGroup, ChartData, MultiSeriesChartData, Kpi, FleetAlert } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ButtonComponent, CardComponent } from './shared/ui';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
@@ -31,6 +31,7 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
   @ViewChild('vehicleStatusChart') vehicleStatusChartRef?: ElementRef<HTMLCanvasElement>;
 
   report: MonthlyFleetReport | null = null;
+  costReport: MonthlyCostReport | null = null;
   loading = false;
   error: string | null = null;
 
@@ -108,6 +109,12 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
         this.error = 'Erreur lors du chargement du rapport';
         this.loading = false;
       }
+    });
+
+    // Also load department cost report
+    this.apiService.getMonthlyCostReport(this.selectedYear, this.selectedMonth).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (data) => { this.costReport = data; },
+      error: () => { this.costReport = null; }
     });
   }
 

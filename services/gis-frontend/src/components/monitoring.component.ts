@@ -555,6 +555,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       marker.addTo(this.map!);
       this.vehicleMarkers.set(markerId, marker);
     }
+
+    // Respect selected-vehicle filter: hide markers for non-selected vehicles
+    if (this.selectedVehicle && this.selectedVehicle.id !== vehicle.id) {
+      const m = this.vehicleMarkers.get(markerId);
+      if (m) {
+        m.setOpacity(0);
+        if ((m as any)._icon) (m as any)._icon.style.pointerEvents = 'none';
+      }
+    }
   }
 
   initializeMap() {
@@ -801,6 +810,14 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const address = vehicle.lastAddress || 'Position en cours...';
     const ignitionColor = ignitionOn ? '#22c55e' : '#ef4444';
     const fuelColor = fuelLevel != null && fuelLevel < 20 ? '#ef4444' : '#f59e0b';
+
+    // Date/time of last communication
+    const lastComm = vehicle.lastCommunication;
+    let lastCommStr = '';
+    if (lastComm) {
+      const d = new Date(lastComm);
+      lastCommStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
     
     return `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; width: 270px; margin: -14px -20px;">
@@ -841,8 +858,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="${statusColor}" stroke="none" style="flex-shrink: 0; margin-top: 2px;"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
           <span style="font-size: 11px; color: #64748b; line-height: 1.4;">${address}</span>
         </div>
+        ${lastCommStr ? `<div style="padding: 6px 14px; background: #f8fafc; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; gap: 6px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" style="flex-shrink: 0;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span style="font-size: 11px; color: #64748b;">Dernière comm: ${lastCommStr}</span>
+        </div>` : ''}
         <div style="padding: 7px 14px; background: #f8fafc; border-radius: 0 0 8px 8px; display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 10px; color: #94a3b8; display: flex; align-items: center; gap: 3px;">${odometer ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="12" y1="8" x2="12" y2="8.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><path d="M9 2h6v4H9z"/></svg> ' + Number(odometer).toLocaleString() + ' km' : ''}</span>
+          <span style="font-size: 10px; color: #94a3b8; display: flex; align-items: center; gap: 3px;">${odometer ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="12" y1="8" x2="12" y2="8.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><path d="M9 2h6v4H9z"/></svg> ' + Math.round(Number(odometer)) + ' km' : ''}</span>
           <span style="font-size: 10px; color: #94a3b8; font-family: 'SF Mono', Monaco, monospace;">${vehicle.currentLocation ? vehicle.currentLocation.lat.toFixed(5) + ', ' + vehicle.currentLocation.lng.toFixed(5) : ''}</span>
         </div>
       </div>
@@ -854,6 +875,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.selectedVehicle?.id === vehicle.id) {
       this.selectedVehicle = null;
       this.showInlinePlayback = false;
+      // Show all markers again
+      this.showAllMarkers();
       return;
     }
 
@@ -880,10 +903,34 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.playbackToDate = this.toLocalDateTimeString(now);
 
     if (this.map && vehicle.currentLocation) {
-      this.map.setView([vehicle.currentLocation.lat, vehicle.currentLocation.lng], 12);
+      this.map.setView([vehicle.currentLocation.lat, vehicle.currentLocation.lng], 15);
       // Invalidate size after sidebar detail panel expands to ensure correct rendering
       setTimeout(() => this.map?.invalidateSize(), 150);
     }
+
+    // Hide all markers except the selected vehicle
+    this.filterMarkersForSelectedVehicle(vehicle.id);
+  }
+
+  // Marker visibility helpers — show only the selected vehicle's marker
+  filterMarkersForSelectedVehicle(vehicleId: number): void {
+    this.vehicleMarkers.forEach((marker, key) => {
+      const id = parseInt(key, 10);
+      if (id === vehicleId) {
+        marker.setOpacity(1);
+        if ((marker as any)._icon) (marker as any)._icon.style.pointerEvents = 'auto';
+      } else {
+        marker.setOpacity(0);
+        if ((marker as any)._icon) (marker as any)._icon.style.pointerEvents = 'none';
+      }
+    });
+  }
+
+  showAllMarkers(): void {
+    this.vehicleMarkers.forEach((marker) => {
+      marker.setOpacity(1);
+      if ((marker as any)._icon) (marker as any)._icon.style.pointerEvents = 'auto';
+    });
   }
 
   // Monitoring indicator helpers

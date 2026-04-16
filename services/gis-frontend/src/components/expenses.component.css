@@ -189,6 +189,22 @@
 
 .btn-add:hover { background: #2563eb; }
 
+.btn-export {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: #1e3a5f;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-export:hover { background: #2d5a87; }
+
 /* ===== STATS BAR ===== */
 .stats-bar {
   display: flex;

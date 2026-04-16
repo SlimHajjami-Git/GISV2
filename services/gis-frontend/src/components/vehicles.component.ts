@@ -433,6 +433,35 @@ interface VehicleTrip {
               </div>
             </div>
 
+            <!-- Documents & Échéances -->
+            <div class="info-section">
+              <h3 class="section-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                </svg>
+                Documents & Echeances
+              </h3>
+              <div class="doc-alerts-list">
+                <div class="doc-alert-row" [class]="getInsuranceStatus(selectedDetailVehicle)">
+                  <span class="doc-icon">🛡️</span>
+                  <div class="doc-info">
+                    <span class="doc-type">Assurance</span>
+                    <span class="doc-expiry">{{ selectedDetailVehicle.insuranceExpiry ? formatDate(selectedDetailVehicle.insuranceExpiry) : 'Non renseignee' }}</span>
+                  </div>
+                  <span class="doc-badge" [class]="getInsuranceStatus(selectedDetailVehicle)">{{ getInsuranceAlertText(selectedDetailVehicle) }}</span>
+                </div>
+                <div class="doc-alert-row" [class]="getTechnicalStatus(selectedDetailVehicle)">
+                  <span class="doc-icon">🔧</span>
+                  <div class="doc-info">
+                    <span class="doc-type">Visite technique</span>
+                    <span class="doc-expiry">{{ $any(selectedDetailVehicle).technicalInspectionExpiry ? formatDate($any(selectedDetailVehicle).technicalInspectionExpiry) : 'Non renseignee' }}</span>
+                  </div>
+                  <span class="doc-badge" [class]="getTechnicalStatus(selectedDetailVehicle)">{{ getTechnicalAlertText(selectedDetailVehicle) }}</span>
+                </div>
+              </div>
+            </div>
+
             <!-- Trajets récents -->
             <div class="info-section" *ngIf="selectedDetailVehicle.hasGPS && vehicleTrips.length > 0">
               <h3 class="section-title">
@@ -1305,6 +1334,21 @@ interface VehicleTrip {
       font-size: 13px;
       font-weight: 600;
     }
+
+    /* Document Alerts */
+    .doc-alerts-list { display:flex; flex-direction:column; gap:6px; }
+    .doc-alert-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:6px; background:#f8fafc; }
+    .doc-alert-row.expired { background:#fef2f2; }
+    .doc-alert-row.critical { background:#fff7ed; }
+    .doc-alert-row.warning { background:#fefce8; }
+    .doc-icon { font-size:16px; }
+    .doc-info { flex:1; display:flex; flex-direction:column; gap:1px; }
+    .doc-type { font-size:12px; font-weight:600; color:#1e293b; }
+    .doc-expiry { font-size:11px; color:#64748b; }
+    .doc-badge { padding:2px 8px; border-radius:3px; font-size:10px; font-weight:600; white-space:nowrap; }
+    .doc-badge.expired { background:#fecaca; color:#dc2626; }
+    .doc-badge.critical { background:#fed7aa; color:#ea580c; }
+    .doc-badge.warning { background:#fef08a; color:#a16207; }
 
     /* Trips List */
     .trips-list {

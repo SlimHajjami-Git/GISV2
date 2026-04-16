@@ -666,36 +666,67 @@ export class DocumentsComponent implements OnInit, OnDestroy {
   }
 
   loadDocuments(): void {
-    // Load vehicles and build document list from expiry dates
-    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (vehicles) => {
-        this.allDocuments = [];
-        const today = new Date();
+    // Use the proper API endpoint that returns all document types (insurance, tax, technical_inspection, etc.)
+    this.apiService.getDocumentExpiries({ pageSize: 500 }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (result) => {
+        this.allDocuments = (result.items || []).map((dto: any) => {
+          const typeMap: Record<string, string> = {
+            'Assurance': 'insurance',
+            'Vignette': 'tax',
+            'Contrôle technique': 'technical_inspection',
+            'Carte grise': 'registration',
+            'Permis de transport': 'transport_permit'
+          };
+          const type = (typeMap[dto.documentType] || dto.documentType) as VehicleDocument['type'];
+          const expiryDate = dto.expiryDate ? new Date(dto.expiryDate) : null;
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          let daysUntilExpiry = dto.daysUntilExpiry ?? -999;
+          let status: 'expired' | 'expiring_soon' | 'ok' = 'ok';
+          if (daysUntilExpiry < 0) status = 'expired';
+          else if (daysUntilExpiry <= 30) status = 'expiring_soon';
 
-        vehicles.forEach(vehicle => {
-          // Insurance
-          if (vehicle.insuranceExpiry) {
-            this.allDocuments.push(this.createDocumentEntry(vehicle, 'insurance', new Date(vehicle.insuranceExpiry)));
-          } else {
-            // Add placeholder for vehicles without insurance date
-            this.allDocuments.push(this.createDocumentEntry(vehicle, 'insurance', null));
-          }
-
-          // Technical Inspection
-          if (vehicle.technicalInspectionExpiry) {
-            this.allDocuments.push(this.createDocumentEntry(vehicle, 'technical_inspection', new Date(vehicle.technicalInspectionExpiry)));
-          } else {
-            this.allDocuments.push(this.createDocumentEntry(vehicle, 'technical_inspection', null));
-          }
-
-          // Tax (vignette) - using a computed date for demo, should come from vehicle
-          // For now we'll skip if not available
+          return {
+            vehicleId: dto.vehicleId,
+            vehicleName: dto.vehicleName || '',
+            vehiclePlate: dto.vehiclePlate || 'N/A',
+            type,
+            expiryDate: expiryDate || new Date(),
+            documentNumber: dto.documentNumber,
+            lastRenewalDate: dto.lastRenewalDate ? new Date(dto.lastRenewalDate) : undefined,
+            lastRenewalCost: dto.lastRenewalCost,
+            reminderDays: 30,
+            status,
+            daysUntilExpiry
+          } as VehicleDocument;
         });
-
         this.filterDocuments();
         this.cdr.detectChanges();
       },
-      error: (err) => { console.error('Error loading vehicles:', err); this.cdr.detectChanges(); }
+      error: (err) => {
+        console.error('Error loading document expiries, falling back to vehicles:', err);
+        // Fallback: build from vehicles
+        this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
+          next: (vehicles) => {
+            this.allDocuments = [];
+            vehicles.forEach(vehicle => {
+              if (vehicle.insuranceExpiry) {
+                this.allDocuments.push(this.createDocumentEntry(vehicle, 'insurance', new Date(vehicle.insuranceExpiry)));
+              } else {
+                this.allDocuments.push(this.createDocumentEntry(vehicle, 'insurance', null));
+              }
+              if ((vehicle as any).technicalInspectionExpiry) {
+                this.allDocuments.push(this.createDocumentEntry(vehicle, 'technical_inspection', new Date((vehicle as any).technicalInspectionExpiry)));
+              } else {
+                this.allDocuments.push(this.createDocumentEntry(vehicle, 'technical_inspection', null));
+              }
+            });
+            this.filterDocuments();
+            this.cdr.detectChanges();
+          },
+          error: () => this.cdr.detectChanges()
+        });
+      }
     });
   }
 

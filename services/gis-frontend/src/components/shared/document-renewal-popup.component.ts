@@ -29,6 +29,7 @@ export interface RenewalFormData {
   documentNumber: string;
   provider: string;
   notes: string;
+  reminderDays?: number;
 }
 
 @Component({
@@ -113,7 +114,7 @@ export interface RenewalFormData {
 
             <div class="form-row two-cols">
               <div class="form-group">
-                <label for="amount">Montant payé *</label>
+                <label for="amount">Montant payé <span class="required-star">*</span></label>
                 <div class="input-with-suffix">
                   <input type="number" id="amount" name="amount" [(ngModel)]="formData.amount" required
                          placeholder="0.00" class="form-control" min="0" step="0.01">
@@ -121,7 +122,7 @@ export interface RenewalFormData {
                 </div>
               </div>
               <div class="form-group">
-                <label for="date">Date de paiement *</label>
+                <label for="date">Date de paiement <span class="required-star">*</span></label>
                 <input type="date" id="date" name="date" [(ngModel)]="formData.date" required class="form-control">
               </div>
             </div>
@@ -247,10 +248,22 @@ export interface RenewalFormData {
                        [placeholder]="getDocumentNumberPlaceholder()" class="form-control">
               </div>
               <div class="form-group">
-                <label for="newExpiryDate">Nouvelle date d'expiration *</label>
+                <label for="newExpiryDate">Nouvelle date d'expiration <span class="required-star">*</span></label>
                 <input type="date" id="newExpiryDate" name="newExpiryDate" [(ngModel)]="formData.newExpiryDate" 
                        required class="form-control">
               </div>
+            </div>
+
+            <div class="form-row two-cols">
+              <div class="form-group">
+                <label for="reminderDays">Rappel avant (jours)</label>
+                <div class="input-with-suffix">
+                  <input type="number" id="reminderDays" name="reminderDays" [(ngModel)]="formData.reminderDays"
+                         placeholder="30" class="form-control" min="1" max="365">
+                  <span class="suffix">jours</span>
+                </div>
+              </div>
+              <div class="form-group"></div>
             </div>
 
             <div class="form-row">
@@ -485,6 +498,11 @@ export interface RenewalFormData {
       font-weight: 500;
       color: #64748b;
       margin-bottom: 6px;
+    }
+
+    .required-star {
+      color: #e74c3c;
+      font-weight: 600;
     }
 
     .form-control {
@@ -1001,7 +1019,8 @@ export class DocumentRenewalPopupComponent implements OnChanges {
       newExpiryDate: '',
       documentNumber: '',
       provider: '',
-      notes: ''
+      notes: '',
+      reminderDays: 30
     };
   }
 

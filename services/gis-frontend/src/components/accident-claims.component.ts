@@ -152,7 +152,6 @@ interface AccidentClaim {
                 <th>Chauffeur</th>
                 <th>Date</th>
                 <th>Gravité</th>
-                <th>Montant</th>
                 <th>Statut</th>
                 <th>Actions</th>
               </tr>
@@ -177,7 +176,6 @@ interface AccidentClaim {
                       {{ getSeverityLabel(claim.severity) }}
                     </span>
                   </td>
-                  <td class="amount-cell">{{ claim.estimatedDamage | number:'1.0-0' }} DT</td>
                   <td>
                     <span class="status-badge" [class]="claim.status">
                       {{ getStatusLabel(claim.status) }}
@@ -534,8 +532,8 @@ interface AccidentClaim {
                 </div>
               </div>
               <div class="form-group">
-                <label>Estimation des dommages (DT) *</label>
-                <input type="number" [(ngModel)]="formData.estimatedDamage" placeholder="0" required>
+                <label>Estimation des dommages (DT) <span style="color:#e74c3c;font-size:11px;font-weight:400">(facultatif)</span></label>
+                <input type="number" [(ngModel)]="formData.estimatedDamage" placeholder="0">
               </div>
               <div class="form-group">
                 <label>Zones endommagées</label>
@@ -2047,7 +2045,6 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
       this.formData.accidentTime &&
       this.formData.location &&
       this.formData.severity &&
-      this.formData.estimatedDamage &&
       this.formData.description
     );
   }
@@ -2098,6 +2095,7 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
           this.uploadPendingPhotos(claimId);
           this.loadClaims();
           this.closeForm();
+          this.cdr.detectChanges();
         },
         error: (err) => console.error('Update error:', err)
       });
@@ -2107,6 +2105,7 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
           this.uploadPendingPhotos(claimId);
           this.loadClaims();
           this.closeForm();
+          this.cdr.detectChanges();
         },
         error: (err) => console.error('Create error:', err)
       });
@@ -2115,15 +2114,28 @@ export class AccidentClaimsComponent implements OnInit, OnDestroy {
 
   deleteClaim(claim: AccidentClaim) {
     if (confirm(`Supprimer le sinistre ${claim.claimNumber} ?`)) {
-      this.claims = this.claims.filter(c => c.id !== claim.id);
-      this.filterClaims();
+      const claimId = parseInt(claim.id);
+      this.apiService.deleteAccidentClaim(claimId).pipe(takeUntil(this.destroy$)).subscribe({
+        next: () => {
+          this.claims = this.claims.filter(c => c.id !== claim.id);
+          this.filterClaims();
+          this.closeClaim();
+          this.cdr.detectChanges();
+        },
+        error: (err) => console.error('Delete error:', err)
+      });
     }
   }
 
   submitClaim(claim: AccidentClaim) {
-    claim.status = 'submitted';
-    claim.updatedAt = new Date();
-    this.closeClaim();
+    const claimId = parseInt(claim.id);
+    this.apiService.updateAccidentClaim(claimId, { status: 'submitted' }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        this.loadClaims();
+        this.closeClaim();
+      },
+      error: (err) => console.error('Submit error:', err)
+    });
   }
 
   // Photo handling

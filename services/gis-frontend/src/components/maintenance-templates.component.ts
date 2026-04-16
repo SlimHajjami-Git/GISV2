@@ -285,6 +285,10 @@ interface FlatRow {
               <div class="field"><label>Intervalle (km)</label><input type="number" [(ngModel)]="form.intervalKm" placeholder="10000"></div>
               <div class="field"><label>Intervalle (mois)</label><input type="number" [(ngModel)]="form.intervalMonths" placeholder="12"></div>
             </div>
+            <div class="field-row">
+              <div class="field"><label>Cout estime (DT)</label><input type="number" [(ngModel)]="form.estimatedCost" placeholder="0" min="0" step="0.01"></div>
+              <div class="field"></div>
+            </div>
             <div class="field toggle"><label><input type="checkbox" [(ngModel)]="form.isActive"><span class="switch"></span> Actif</label></div>
             <div class="divider"></div>
             <h4 class="sub-title">Seuils d'alerte</h4>
@@ -383,6 +387,22 @@ interface FlatRow {
               </div>
               <button class="btn-add-line" (click)="addInvoiceLine()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Ajouter une ligne</button>
               <div class="inv-total"><span>Total</span><strong>{{ getInvoiceTotal() | number:'1.2-2' }} DT</strong></div>
+              <div class="cost-comparison" *ngIf="markData.estimatedCost > 0">
+                <div class="cost-row">
+                  <span class="cost-label">Estimé (modele)</span>
+                  <span class="cost-val">{{ markData.estimatedCost | number:'1.2-2' }} DT</span>
+                </div>
+                <div class="cost-row">
+                  <span class="cost-label">Réel (facture)</span>
+                  <span class="cost-val" [class.over]="getInvoiceTotal() > markData.estimatedCost" [class.under]="getInvoiceTotal() <= markData.estimatedCost">{{ getInvoiceTotal() | number:'1.2-2' }} DT</span>
+                </div>
+                <div class="cost-row diff" *ngIf="getInvoiceTotal() !== markData.estimatedCost">
+                  <span class="cost-label">Écart</span>
+                  <span class="cost-val" [class.over]="getInvoiceTotal() > markData.estimatedCost" [class.under]="getInvoiceTotal() < markData.estimatedCost">
+                    {{ getInvoiceTotal() > markData.estimatedCost ? '+' : '' }}{{ (getInvoiceTotal() - markData.estimatedCost) | number:'1.2-2' }} DT
+                  </span>
+                </div>
+              </div>
             </div>
             <div class="field"><label>Notes</label><textarea [(ngModel)]="markData.notes" rows="2" placeholder="Remarques..."></textarea></div>
           </div>
@@ -414,8 +434,14 @@ interface FlatRow {
           </div>
           <div class="panel-foot">
             <button class="btn-cancel" (click)="closeDetail()">Fermer</button>
-            <button class="btn-save" (click)="editTemplate(selected)">Modifier</button>
-            <button class="btn-delete-confirm" (click)="deleteTemplate(selected)">Supprimer</button>
+            <button class="btn-save" (click)="editTemplate(selected)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              Modifier le modele
+            </button>
+            <button class="btn-delete-confirm" (click)="deleteTemplate(selected)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              Supprimer
+            </button>
           </div>
         </div>
       </div>
@@ -693,7 +719,18 @@ interface FlatRow {
     .btn-save:disabled { opacity:.4; cursor:not-allowed; }
     .btn-save.green { background:#16a34a; }
     .btn-save.purple { background:#7c3aed; }
-    .btn-delete-confirm { padding:8px 14px; background:white; border:1px solid #fecaca; border-radius:3px; font-size:12px; color:#dc2626; cursor:pointer; }
+    .btn-delete-confirm { padding:8px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:3px; font-size:12px; color:#dc2626; cursor:pointer; display:flex; align-items:center; gap:5px; font-weight:500; }
+    .btn-delete-confirm:hover { background:#fee2e2; }
+    .btn-save svg, .btn-delete-confirm svg { flex-shrink:0; }
+
+    /* Cost comparison in mark-done panel */
+    .cost-comparison { margin-top:10px; padding:10px; background:#f8fafc; border-radius:4px; border:1px solid #e2e8f0; }
+    .cost-row { display:flex; justify-content:space-between; align-items:center; padding:3px 0; font-size:12px; }
+    .cost-row.diff { border-top:1px solid #e2e8f0; margin-top:4px; padding-top:6px; font-weight:600; }
+    .cost-label { color:#64748b; }
+    .cost-val { font-weight:600; color:#1e293b; }
+    .cost-val.over { color:#dc2626; }
+    .cost-val.under { color:#16a34a; }
     .priority-badge { padding:3px 8px; border-radius:3px; font-size:10px; font-weight:600; }
     .priority-badge.low { background:#dcfce7; color:#16a34a; }
     .priority-badge.medium { background:#fef3c7; color:#d97706; }
@@ -1065,12 +1102,14 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   openMarkDone(v: VehicleMaintenanceStatus, m: MaintenanceItem) {
     const lastPrice = this.lastPaidPrices.get(m.templateId) || null;
     const hasFree = (m.freeUsesRemaining ?? 0) > 0;
+    const tpl = this.templates.find(t => t.id === m.templateId);
     this.markData = {
       vehicleId: v.vehicleId,
       vehicleName: v.vehicleName,
       vehiclePlate: v.vehiclePlate,
       templateId: m.templateId,
       maintenanceName: m.templateName,
+      estimatedCost: tpl?.estimatedCost ?? 0,
       date: new Date().toISOString().split('T')[0],
       mileage: v.currentMileage,
       supplier: '',

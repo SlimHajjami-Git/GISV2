@@ -3083,6 +3083,7 @@ export interface UpdateAccidentClaimRequest {
   mileageAtAccident?: number;
   witnesses?: string;
   additionalNotes?: string;
+  status?: string;
 }
 
 // ==================== ACCIDENT REPORTS ====================

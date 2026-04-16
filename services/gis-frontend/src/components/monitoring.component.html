@@ -168,11 +168,11 @@
                     <div class="sensors-grid">
                       <div class="sensor-item">
                         <span class="sensor-label">🚗 Vitesse actuelle</span>
-                        <span class="sensor-value">{{ getVehicleStats(vehicle)?.currentSpeed | number:'1.0-0' }} km/h</span>
+                        <span class="sensor-value">{{ getVehicleStats(vehicle)?.currentSpeed?.toFixed(0) || '0' }} km/h</span>
                       </div>
                       <div class="sensor-item">
                         <span class="sensor-label">⚡ Vitesse max (24h)</span>
-                        <span class="sensor-value">{{ getVehicleStats(vehicle)?.maxSpeed | number:'1.0-0' }} km/h</span>
+                        <span class="sensor-value">{{ getVehicleStats(vehicle)?.maxSpeed?.toFixed(0) || '0' }} km/h</span>
                       </div>
                       <div class="sensor-item">
                         <span class="sensor-label">⛽ Carburant</span>
@@ -188,7 +188,7 @@
                       </div>
                       <div class="sensor-item">
                         <span class="sensor-label"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px; margin-right: 2px;"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="12" y1="8" x2="12" y2="8.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><path d="M9 2h6v4H9z"/></svg> Kilométrage</span>
-                        <span class="sensor-value">{{ vehicle.odometerKm ? (vehicle.odometerKm | number:'1.0-0') + ' km' : (vehicle.mileage ? (vehicle.mileage | number:'1.0-0') + ' km' : 'N/A') }}</span>
+                        <span class="sensor-value">{{ vehicle.odometerKm ? (vehicle.odometerKm.toFixed(0) + ' km') : (vehicle.mileage ? (vehicle.mileage.toFixed(0) + ' km') : 'N/A') }}</span>
                       </div>
                       <div class="sensor-item">
                         <span class="sensor-label">📍 Statut</span>
@@ -340,10 +340,12 @@
         <div class="pb-header">
           <div class="pb-header-top">
             <div class="pb-vehicle-chip">
-              <div class="pb-vehicle-avatar">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <div class="pb-vehicle-avatar" style="background: #6366f1; border-radius: 6px;">
+                <svg width="16" height="16" viewBox="0 0 32 32" fill="none">
+                  <path d="M8 16L14 22L24 10" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
               </div>
-              <span>Tracer Playback</span>
+              <span>Calypso — Tracer</span>
             </div>
           </div>
           <!-- Vehicle selector inline -->

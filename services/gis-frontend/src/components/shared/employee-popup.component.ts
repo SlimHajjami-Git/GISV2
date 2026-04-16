@@ -105,6 +105,10 @@ import { Vehicle } from '../../models/types';
                 <label for="permitExpiry">Date d'expiration</label>
                 <input type="date" id="permitExpiry" name="permitExpiry" [(ngModel)]="formData.permitExpiry" />
               </div>
+              <div class="form-group">
+                <label for="permitReminderDays">Rappel avant (jours)</label>
+                <input type="number" id="permitReminderDays" name="permitReminderDays" [(ngModel)]="formData.permitReminderDays" placeholder="30" min="1" max="365" />
+              </div>
             </div>
           </div>
 
@@ -394,6 +398,7 @@ export class EmployeePopupComponent implements OnChanges {
         permitNumber: this.driver.permitNumber || '',
         permitType: this.driver.permitType || '',
         permitExpiry: this.driver.permitExpiry ? new Date(this.driver.permitExpiry).toISOString().split('T')[0] : '',
+        permitReminderDays: this.driver.permitReminderDays || 30,
         cin: this.driver.cin || '',
         dateOfBirth: this.driver.dateOfBirth ? new Date(this.driver.dateOfBirth).toISOString().split('T')[0] : '',
         assignedVehicleId: this.driver.assignedVehicleId || null,
@@ -402,7 +407,7 @@ export class EmployeePopupComponent implements OnChanges {
     } else {
       this.formData = {
         firstName: '', lastName: '', email: '', phone: '', password: '',
-        permitNumber: '', permitType: '', permitExpiry: '',
+        permitNumber: '', permitType: '', permitExpiry: '', permitReminderDays: 30,
         cin: '', dateOfBirth: '',
         assignedVehicleId: null, status: 'active'
       };
@@ -429,6 +434,7 @@ export class EmployeePopupComponent implements OnChanges {
       permitNumber: this.formData.permitNumber || null,
       permitType: this.formData.permitType || null,
       permitExpiry: this.formData.permitExpiry || null,
+      permitReminderDays: this.formData.permitReminderDays || 30,
       cin: this.formData.cin || null,
       dateOfBirth: this.formData.dateOfBirth || null,
       assignedVehicleId: this.formData.assignedVehicleId || null,

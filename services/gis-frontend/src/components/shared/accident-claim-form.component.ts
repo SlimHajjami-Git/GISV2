@@ -263,8 +263,8 @@ interface ThirdParty {
 
             <div class="form-row">
               <div class="form-group">
-                <label>Estimation des dommages (TND) *</label>
-                <input type="number" [(ngModel)]="formData.estimatedDamage" placeholder="0.00" required>
+                <label>Estimation des dommages (TND) <span style="color:#e74c3c;font-size:11px;font-weight:400">(facultatif)</span></label>
+                <input type="number" [(ngModel)]="formData.estimatedDamage" placeholder="0.00">
               </div>
             </div>
 

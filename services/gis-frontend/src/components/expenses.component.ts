@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { Subject, takeUntil, forkJoin } from 'rxjs';
 import { ApiService, FuelTypeDto, FuelPriceFullDto, MaintenanceTemplateDto, VehiclePartDto } from '../services/api.service';
+import { PdfExportService, PdfGroup, GroupedPdfReportConfig } from '../services/pdf-export.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 
 export interface Expense {
@@ -109,7 +110,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
 
   loading = false;
 
-  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef, private route: ActivatedRoute) {}
+  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef, private route: ActivatedRoute, private pdfService: PdfExportService) {}
 
   ngOnInit(): void {
     // Check for expenseId query param (from notification click)
@@ -581,5 +582,52 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       'technical_inspection': 'Visite technique'
     };
     return labels[category] || category;
+  }
+
+  exportPdf(): void {
+    // Group filtered expenses by category
+    const byCategory = new Map<string, Expense[]>();
+    for (const exp of this.filteredExpenses) {
+      const cat = exp.category || 'autre';
+      if (!byCategory.has(cat)) byCategory.set(cat, []);
+      byCategory.get(cat)!.push(exp);
+    }
+
+    const groups: PdfGroup[] = [];
+    byCategory.forEach((expenses, cat) => {
+      const total = expenses.reduce((s, e) => s + e.totalAmount, 0);
+      groups.push({
+        groupLabel: this.getCategoryLabel(cat),
+        groupSubtitle: `${expenses.length} entree(s)`,
+        rows: expenses.map(e => ({
+          date: e.date ? new Date(e.date).toLocaleDateString('fr-FR') : '-',
+          vehicleName: `${e.vehicleName} (${e.vehiclePlate})`,
+          label: e.label || e.description || '-',
+          amount: e.totalAmount.toFixed(2) + ' DT'
+        })),
+        subtotal: `${expenses.length} entrees - ${total.toFixed(2)} DT`
+      });
+    });
+
+    const config: GroupedPdfReportConfig = {
+      title: 'Depenses par categories',
+      subtitle: 'Rapport de depenses',
+      dateRange: this.filterMonth ? `Mois: ${this.filterMonth}` : 'Toutes periodes',
+      statistics: {
+        'Total': this.getTotalAmount().toFixed(2) + ' DT',
+        'Entrees': '' + this.filteredExpenses.length,
+        'Vehicules': '' + this.getUniqueVehiclesCount()
+      },
+      columns: [
+        { header: 'Date', dataKey: 'date' },
+        { header: 'Vehicule', dataKey: 'vehicleName' },
+        { header: 'Description', dataKey: 'label' },
+        { header: 'Montant', dataKey: 'amount' }
+      ],
+      groups,
+      grandTotal: `Total general: ${this.getTotalAmount().toFixed(2)} DT`
+    };
+
+    this.pdfService.exportGroupedReport(config);
   }
 }

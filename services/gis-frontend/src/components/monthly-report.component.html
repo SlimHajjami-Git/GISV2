@@ -611,6 +611,43 @@
             </tbody>
           </table>
         </div>
+
+        <!-- Department Grouped Costs -->
+        <div class="data-table-container" *ngIf="costReport?.departments?.length">
+          <h4>Couts par departement (Carburant + Entretien + Reparation)</h4>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Departement</th>
+                <th>Km total</th>
+                <th>Carburant</th>
+                <th>Entretien</th>
+                <th>Reparation</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let dept of costReport!.departments">
+                <td><strong>{{ dept.departmentName || 'Non assigne' }}</strong></td>
+                <td>{{ formatNumber(dept.totalKm, 0) }} km</td>
+                <td>{{ formatCurrency(dept.totalFuelCostDzd) }}</td>
+                <td>{{ formatCurrency(dept.totalMaintenanceCostDzd) }}</td>
+                <td>{{ formatCurrency(dept.totalRepairCostDzd) }}</td>
+                <td><strong>{{ formatCurrency(dept.totalCostDzd) }}</strong></td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr style="font-weight: 700; border-top: 2px solid #1e293b;">
+                <td>TOTAL</td>
+                <td>{{ formatNumber(costReport!.totalKm, 0) }} km</td>
+                <td>{{ formatCurrency(costReport!.totalFuelCostDzd) }}</td>
+                <td>{{ formatCurrency(costReport!.totalMaintenanceCostDzd) }}</td>
+                <td>{{ formatCurrency(costReport!.totalRepairCostDzd) }}</td>
+                <td>{{ formatCurrency(costReport!.totalCostDzd) }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       </section>
 
       <!-- KPIs Section -->
