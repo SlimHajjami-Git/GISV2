@@ -1,8 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { MockDataService } from '../services/mock-data.service';
-import { Subscription, Company } from '../models/types';
+import { ApiService } from '../services/api.service';
+import { AuthService } from '../services/auth.service';
 
 @Component({
   selector: 'app-subscription',
@@ -44,9 +44,9 @@ import { Subscription, Company } from '../models/types';
         </nav>
         <div class="sidebar-footer">
           <div class="user-menu">
-            <div class="user-avatar">{{ company?.name?.charAt(0) || 'U' }}</div>
+            <div class="user-avatar">{{ companyName?.charAt(0) || 'U' }}</div>
             <div class="user-info">
-              <div class="user-name">{{ company?.name || 'Entreprise' }}</div>
+              <div class="user-name">{{ companyName || 'Entreprise' }}</div>
               <div class="user-role">Administrateur</div>
             </div>
           </div>
@@ -90,7 +90,7 @@ import { Subscription, Company } from '../models/types';
               <div class="usage-bar">
                 <div class="usage-progress" [style.width.%]="getUsagePercent()"></div>
               </div>
-              <div class="usage-text">{{ vehiclesCount }} / {{ company?.maxVehicles }} véhicules</div>
+              <div class="usage-text">{{ vehiclesCount }} / {{ maxVehicles }} véhicules</div>
             </div>
 
             <div class="usage-stats">
@@ -100,7 +100,7 @@ import { Subscription, Company } from '../models/types';
               </div>
               <div class="stat-item">
                 <div class="stat-label">Date de création</div>
-                <div class="stat-value">{{ formatDate(company?.createdAt) }}</div>
+                <div class="stat-value">{{ formatDate(expiresAt) }}</div>
               </div>
             </div>
           </div>
@@ -288,39 +288,56 @@ import { Subscription, Company } from '../models/types';
   `]
 })
 export class SubscriptionComponent implements OnInit {
-  subscriptions: Subscription[] = [];
-  currentSubscription: Subscription | null = null;
-  company: Company | null = null;
+  subscriptions: any[] = [];
+  currentSubscription: any = null;
+  currentPlan: any = null;
+  usage: any = null;
+  expiresAt: string = '';
+  companyName: string = '';
+  companyType: string = '';
   vehiclesCount: number = 0;
+  maxVehicles: number = 0;
+  loading = true;
 
   constructor(
     private router: Router,
-    private dataService: MockDataService
+    private apiService: ApiService,
+    private authService: AuthService
   ) {}
 
   ngOnInit() {
-    if (!this.dataService.isAuthenticated()) {
+    const user = this.authService.getCurrentUserSync();
+    if (!user) {
       this.router.navigate(['/login']);
       return;
     }
+    this.companyName = user.companyName || '';
+    this.companyType = user.companyType || '';
 
-    this.company = this.dataService.getCurrentCompany();
-    if (this.company) {
-      const vehicles = this.dataService.getVehiclesByCompany(this.company.id);
-      this.vehiclesCount = vehicles.length;
-    }
+    // Load subscription plans from API
+    this.apiService.getSubscriptions().subscribe({
+      next: (subs: any[]) => { this.subscriptions = subs; },
+      error: () => { this.subscriptions = []; }
+    });
 
-    this.dataService.getSubscriptions().subscribe(subs => {
-      this.subscriptions = subs;
-      if (this.company) {
-        this.currentSubscription = subs.find(s => s.id === this.company!.subscriptionId) || null;
-      }
+    // Load current subscription from API
+    this.apiService.getCurrentSubscription().subscribe({
+      next: (data: any) => {
+        this.currentPlan = data.subscriptionType;
+        this.currentSubscription = data.subscriptionType;
+        this.usage = data.usage;
+        this.expiresAt = data.expiresAt;
+        this.vehiclesCount = data.usage?.vehicles?.current || 0;
+        this.maxVehicles = data.usage?.vehicles?.max || 0;
+        this.loading = false;
+      },
+      error: () => { this.loading = false; }
     });
   }
 
   getUsagePercent(): number {
-    if (!this.company || this.company.maxVehicles === 0) return 0;
-    return (this.vehiclesCount / this.company.maxVehicles) * 100;
+    if (!this.maxVehicles) return 0;
+    return (this.vehiclesCount / this.maxVehicles) * 100;
   }
 
   getCompanyTypeLabel(): string {
@@ -329,7 +346,7 @@ export class SubscriptionComponent implements OnInit {
       transport: 'Transport',
       other: 'Autre'
     };
-    return this.company ? labels[this.company.type] || this.company.type : '';
+    return labels[this.companyType] || this.companyType || '';
   }
 
   formatDate(date: any): string {
@@ -342,7 +359,7 @@ export class SubscriptionComponent implements OnInit {
   }
 
   logout() {
-    this.dataService.logout();
+    this.authService.logout();
     this.router.navigate(['/']);
   }
 }

@@ -898,8 +898,9 @@ export class DailyReportComponent implements OnInit, OnDestroy {
     if (start == null || end == null || dist <= 0) return 'N/A';
     const consumed = start - end;
     if (consumed <= 0) return 'N/A';
-    // Estimate: assume 60L tank capacity for percentage-based calculation
-    const tankCapacity = 60;
+    // Use vehicle's actual tank capacity, fallback to 60L if unknown
+    const vehicle = this.vehicles.find((v: any) => v.id === report.vehicleId);
+    const tankCapacity = vehicle?.fuelTankCapacity || vehicle?.fuel_tank_capacity || 60;
     const litersConsumed = (consumed / 100) * tankCapacity;
     const per100km = (litersConsumed / dist) * 100;
     return `${per100km.toFixed(1)} L/100km`;

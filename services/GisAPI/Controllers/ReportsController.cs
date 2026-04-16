@@ -51,7 +51,7 @@ public class ReportsController : ControllerBase
         return Ok(reports);
     }
 
-    [HttpGet("{id}")]
+    [HttpGet("{id:int}")]
     public async Task<ActionResult<Report>> GetReport(int id)
     {
         var companyId = GetCompanyId();

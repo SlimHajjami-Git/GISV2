@@ -1,8 +1,7 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { MockDataService } from '../services/mock-data.service';
-import { Subscription } from '../models/types';
+import { ApiService } from '../services/api.service';
 
 @Component({
   selector: 'app-landing',
@@ -688,15 +687,43 @@ import { Subscription } from '../models/types';
   `]
 })
 export class LandingComponent {
-  subscriptions: Subscription[] = [];
+  subscriptions: any[] = [];
 
   constructor(
     private router: Router,
-    private dataService: MockDataService
+    private apiService: ApiService
   ) {
-    this.dataService.getSubscriptions().subscribe(subs => {
-      this.subscriptions = subs;
+    // Load real subscription plans from API (public endpoint, no auth needed)
+    this.apiService.getSubscriptions().subscribe({
+      next: (subs: any[]) => {
+        this.subscriptions = subs
+          .filter((s: any) => s.isActive)
+          .sort((a: any, b: any) => a.sortOrder - b.sortOrder)
+          .map((s: any) => ({
+            ...s,
+            price: s.yearlyPrice > 0 ? s.yearlyPrice : (s.monthlyPrice > 0 ? s.monthlyPrice : 0),
+            features: this.buildFeatureList(s)
+          }));
+      },
+      error: () => { this.subscriptions = []; }
     });
+  }
+
+  private buildFeatureList(sub: any): string[] {
+    const features: string[] = [];
+    if (sub.maxVehicles) features.push(`Jusqu'à ${sub.maxVehicles} véhicules`);
+    if (sub.maxUsers) features.push(`${sub.maxUsers} utilisateurs`);
+    if (sub.gpsTracking) features.push('Suivi GPS temps réel');
+    if (sub.gpsInstallation) features.push('Installation GPS incluse');
+    if (sub.realTimeAlerts) features.push('Alertes en temps réel');
+    if (sub.historyPlayback) features.push('Historique des trajets');
+    if (sub.fuelAnalysis) features.push('Analyse carburant');
+    if (sub.drivingBehavior) features.push('Comportement de conduite');
+    if (sub.advancedReports) features.push('Rapports avancés');
+    if (sub.apiAccess) features.push('Accès API');
+    if (sub.moduleMaintenance) features.push('Gestion de maintenance');
+    if (sub.moduleGeofences) features.push('Géofences');
+    return features;
   }
 
   goToLogin() {
