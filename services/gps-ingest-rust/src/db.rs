@@ -1319,7 +1319,12 @@ impl Database {
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(),
                 $16, $17, $18, $19, $20, $21, $22, $23, $24, $25
             )
-            ON CONFLICT (event_key) DO NOTHING
+            -- Catches both unique constraints: event_key AND
+            -- (device_id, recorded_at). The latter was added in migration 028
+            -- because event_key includes coords/send_flag, so cached/delayed
+            -- frames with same timestamp but different position slipped past
+            -- the event_key check and created visual teleports in playback.
+            ON CONFLICT DO NOTHING
             RETURNING id
             "#,
         )
