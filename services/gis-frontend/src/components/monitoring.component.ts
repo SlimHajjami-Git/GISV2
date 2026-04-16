@@ -2759,10 +2759,14 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         dataGaps.add(i);
         console.log(`[Playback] Speed outlier at index ${i}: ${Math.round(speedKmh)}km/h, ${Math.round(dist)}m`);
       // Valhalla breakage: large straight-line distance would trigger silent
-      // truncation of trace_route. Break the trip without flagging as a data
-      // gap so a straight line is still drawn across the small missing stretch.
+      // truncation of trace_route. Mark as data gap so no straight line is
+      // drawn — a jump > 1800m between consecutive GPS points is almost
+      // always a bad fix or missing data, not a legit vehicle movement
+      // (would require > 200 km/h over 30 s). Drawing a line across it
+      // produces visible teleport artifacts (e.g. Tunis → Sousse).
       } else if (dist > VALHALLA_BREAKAGE_DISTANCE_M) {
         transitions.push(false);
+        dataGaps.add(i);
         valhallaBreakageBreaks++;
       } else {
         const shouldRoute = ignitionOn && dist > 20;
