@@ -2758,15 +2758,25 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         transitions.push(false);
         dataGaps.add(i);
         console.log(`[Playback] Speed outlier at index ${i}: ${Math.round(speedKmh)}km/h, ${Math.round(dist)}m`);
-      // Valhalla breakage: large straight-line distance would trigger silent
-      // truncation of trace_route. Mark as data gap so no straight line is
-      // drawn — a jump > 1800m between consecutive GPS points is almost
-      // always a bad fix or missing data, not a legit vehicle movement
-      // (would require > 200 km/h over 30 s). Drawing a line across it
-      // produces visible teleport artifacts (e.g. Tunis → Sousse).
+      // Valhalla breakage: large straight-line distance would trigger
+      // silent truncation of trace_route. We must break the trip here, but
+      // whether to hide the segment depends on physics:
+      //   - impossibleTime (dt < 5 s for > 1.8 km): same-second duplicates
+      //     or near-duplicates — always a bad GPS fix, hide as data gap.
+      //   - bothStopped (reported speed < 5 km/h on BOTH ends): vehicle
+      //     was parked yet jumped km away — bad fix, hide as data gap.
+      //   - otherwise: plausible kinematic (e.g. highway at 100 km/h with
+      //     a 60 s packet gap = 1.8-2 km) — draw a raw straight line.
+      //     This is the smallest visual lie since Valhalla can't route
+      //     across the breakage anyway, and hiding these would make the
+      //     trace disappear on every highway drive.
       } else if (dist > VALHALLA_BREAKAGE_DISTANCE_M) {
+        const impossibleTime = timeGapMs < 5000;
+        const bothStopped = (from.speedKph ?? 0) < 5 && (to.speedKph ?? 0) < 5;
         transitions.push(false);
-        dataGaps.add(i);
+        if (impossibleTime || bothStopped) {
+          dataGaps.add(i);
+        }
         valhallaBreakageBreaks++;
       } else {
         const shouldRoute = ignitionOn && dist > 20;
