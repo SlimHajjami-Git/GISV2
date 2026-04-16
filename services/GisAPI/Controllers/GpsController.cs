@@ -410,6 +410,19 @@ public class GpsController : ControllerBase
                 .ToListAsync();
         }
 
+        // Deduplicate by recorded_at: the ingest pipeline can insert multiple
+        // rows with the same (device_id, recorded_at) because event_key
+        // includes coordinates and send_flag — so a delayed/cached frame
+        // arriving later with a slightly different position slips past
+        // ON CONFLICT (event_key) and creates a visual teleport in playback.
+        // Keep the earliest-arrived row per timestamp (most likely the live
+        // frame, not a stale buffered one).
+        positions = positions
+            .GroupBy(p => p.RecordedAt)
+            .Select(g => g.OrderBy(p => p.CreatedAt).First())
+            .OrderBy(p => p.RecordedAt)
+            .ToList();
+
         // Convert fuel_raw → percentage based on fuel_sensor_mode (same logic as monitoring)
         var fuelMode = vehicle.GpsDevice?.FuelSensorMode ?? "raw_255";
         var tankCapacity = vehicle.FuelTankCapacity ?? 60;
@@ -588,6 +601,13 @@ public class GpsController : ControllerBase
                 })
                 .ToListAsync();
         }
+
+        // Deduplicate by recorded_at (same reason as GetVehicleHistory).
+        positions = positions
+            .GroupBy(p => p.RecordedAt)
+            .Select(g => g.OrderBy(p => p.CreatedAt).First())
+            .OrderBy(p => p.RecordedAt)
+            .ToList();
 
         // Convert fuel_raw → percentage based on fuel_sensor_mode (same logic as monitoring)
         var deviceFuelMode = device.FuelSensorMode ?? "raw_255";
