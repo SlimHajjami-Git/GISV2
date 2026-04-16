@@ -2779,6 +2779,35 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
     // Step 2: Group consecutive "route" transitions into trips
     // A trip is a sequence of GPS points connected by "route" transitions
+    //
+    // FIX: Absorb preceding raw points into each routed trip so Valhalla
+    // also snaps the start area. Without this, the join between the last
+    // raw GPS point and the first road-snapped point creates a visible
+    // straight line cutting through buildings (100-500m jumps at every
+    // vehicle departure). We track which raw points get absorbed so they
+    // are NOT also emitted as raw coordinates.
+    const ABSORB_RAW_MAX = 3; // max raw points to absorb before each trip
+    const absorbedIntoTrip = new Set<number>(); // indices absorbed
+
+    // Pre-scan: for each routed trip start, mark preceding raw points for absorption
+    {
+      let j = 0;
+      while (j < totalPositions) {
+        if (j >= totalPositions - 1 || !transitions[j]) { j++; continue; }
+        // j is the first "routed" transition — absorb up to ABSORB_RAW_MAX raw points before it
+        let absorbed = 0;
+        let k = j - 1;
+        while (k >= 0 && !transitions[k] && !dataGaps.has(k) && absorbed < ABSORB_RAW_MAX) {
+          absorbedIntoTrip.add(k);
+          absorbed++;
+          k--;
+        }
+        // Skip past this routed trip
+        while (j < totalPositions - 1 && transitions[j]) j++;
+        j++;
+      }
+    }
+
     const allRoadPath: L.LatLng[] = [];
     const allSegmentBoundaries: number[] = [];
     let routedTrips = 0;
@@ -2786,18 +2815,27 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     let i = 0;
 
     while (i < totalPositions) {
-      // Add current point's boundary
-      allSegmentBoundaries.push(allRoadPath.length);
-
+      // Handle last point
       if (i >= totalPositions - 1) {
-        // Last point — just add it
-        const pos = this.playbackPositions[i];
-        allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
+        if (!absorbedIntoTrip.has(i)) {
+          allSegmentBoundaries.push(allRoadPath.length);
+          const pos = this.playbackPositions[i];
+          allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
+        }
         break;
+      }
+
+      // Skip absorbed raw points entirely — they will be included in the next
+      // routed trip's Valhalla call, which returns road-snapped coords for them.
+      // Their boundaries are emitted by the trip chunk code, not here.
+      if (absorbedIntoTrip.has(i)) {
+        i++;
+        continue;
       }
 
       if (!transitions[i]) {
         // Raw transition: add current point as-is, move to next
+        allSegmentBoundaries.push(allRoadPath.length);
         const pos = this.playbackPositions[i];
         allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
         rawTransitions++;
@@ -2806,7 +2844,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       }
 
       // Start of a routed trip: collect consecutive "route" transitions
-      const tripStart = i;
+      // Also include absorbed raw points BEFORE the trip start
+      let tripStart = i;
+      // Walk back to include absorbed raw points
+      while (tripStart > 0 && absorbedIntoTrip.has(tripStart - 1)) {
+        tripStart--;
+      }
       while (i < totalPositions - 1 && transitions[i]) {
         i++;
       }
@@ -2861,19 +2904,13 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
             allRoadPath.push(...tripRoadCoords);
 
-            if (isFirstChunk) {
-              // First chunk: update the boundary that was already pushed by the outer loop
-              allSegmentBoundaries[allSegmentBoundaries.length - 1] = roadOffset + (tripBoundaries[0] || 0);
-              for (let j = 1; j <= chunkGpsEnd - chunkGpsStart; j++) {
-                const localBound = j < tripBoundaries.length ? tripBoundaries[j] : tripRoadCoords.length - 1;
-                allSegmentBoundaries.push(roadOffset + localBound);
-              }
-            } else {
-              // Subsequent chunks: skip j=0 (overlap point already has boundary from previous chunk)
-              for (let j = 1; j <= chunkGpsEnd - chunkGpsStart; j++) {
-                const localBound = j < tripBoundaries.length ? tripBoundaries[j] : tripRoadCoords.length - 1;
-                allSegmentBoundaries.push(roadOffset + localBound);
-              }
+            // Map Valhalla boundary indices to global road path indices.
+            // First chunk: emit ALL boundaries (including absorbed raw points).
+            // Subsequent chunks: skip j=0 (overlap point already has boundary).
+            const startJ = isFirstChunk ? 0 : 1;
+            for (let j = startJ; j <= chunkGpsEnd - chunkGpsStart; j++) {
+              const localBound = j < tripBoundaries.length ? tripBoundaries[j] : tripRoadCoords.length - 1;
+              allSegmentBoundaries.push(roadOffset + localBound);
             }
 
             routedTrips++;
@@ -2947,24 +2984,14 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Fallback: add raw GPS points for a trip that failed Valhalla routing
   private addTripRawFallback(tripStart: number, tripEnd: number, allRoadPath: L.LatLng[], allSegmentBoundaries: number[], isFirstChunk: boolean = true) {
-    if (isFirstChunk) {
-      // First chunk: boundary was already added by the outer loop, update it
-      const pos0 = this.playbackPositions[tripStart];
-      allRoadPath.push(L.latLng(pos0.latitude, pos0.longitude));
-      allSegmentBoundaries[allSegmentBoundaries.length - 1] = allRoadPath.length - 1;
-
-      for (let j = tripStart + 1; j <= tripEnd; j++) {
-        const pos = this.playbackPositions[j];
-        allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
-        allSegmentBoundaries.push(allRoadPath.length - 1);
-      }
-    } else {
-      // Subsequent chunks: skip first point (overlap with previous chunk's last)
-      for (let j = tripStart + 1; j <= tripEnd; j++) {
-        const pos = this.playbackPositions[j];
-        allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
-        allSegmentBoundaries.push(allRoadPath.length - 1);
-      }
+    // Push raw GPS coords as fallback when Valhalla fails.
+    // First chunk: emit all points (including absorbed raw points before the trip).
+    // Subsequent chunks: skip first point (overlap with previous chunk's last).
+    const startIdx = isFirstChunk ? tripStart : tripStart + 1;
+    for (let j = startIdx; j <= tripEnd; j++) {
+      const pos = this.playbackPositions[j];
+      allRoadPath.push(L.latLng(pos.latitude, pos.longitude));
+      allSegmentBoundaries.push(allRoadPath.length - 1);
     }
   }
 
