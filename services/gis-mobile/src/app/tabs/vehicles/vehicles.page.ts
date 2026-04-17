@@ -287,11 +287,15 @@ export class VehiclesPage implements OnInit, OnDestroy {
 
     this.loadVehicles();
 
-    // Update vehicles with real-time positions
+    // Update vehicles with real-time positions.
+    // NOTE: The API serialises vehicle.id as a JSON number, but the
+    // mobile TypeScript model types it as `string`. So `v.id` is
+    // actually a number at runtime despite the annotation. Compare
+    // both sides as strings to be safe against either shape.
     this.subs.push(
       this.signalr.positionUpdate$.subscribe(pos => {
         this.positionMap.set(pos.vehicleId, pos);
-        const v = this.vehicles.find(v => v.id === pos.vehicleId.toString());
+        const v = this.vehicles.find(x => String(x.id) === String(pos.vehicleId));
         if (v) {
           v.currentSpeed = pos.speedKph;
           v.currentLocation = { lat: pos.latitude, lng: pos.longitude };
@@ -315,6 +319,35 @@ export class VehiclesPage implements OnInit, OnDestroy {
         this.updateCounts();
         this.filterVehicles();
         this.loading = false;
+        // Merge in last known positions from REST so the "Localiser" button
+        // works even before any SignalR event has been received for a given
+        // vehicle. Without this, vehicles that haven't transmitted since
+        // the tab was opened have currentLocation=undefined, and tapping
+        // Localiser silently navigates to /monitoring with no target.
+        this.api.getLastPositions().subscribe({
+          next: (positions) => {
+            const list = Array.isArray(positions) ? positions : [];
+            list.forEach((p: any) => {
+              if (!p?.lastPosition) return;
+              // API returns vehicleId as number; our Vehicle.id is
+              // typed as string but actually arrives as number too —
+              // compare via String() on both sides.
+              const v = this.vehicles.find(x => String(x.id) === String(p.vehicleId));
+              if (v) {
+                v.currentLocation = {
+                  lat: p.lastPosition.latitude,
+                  lng: p.lastPosition.longitude
+                };
+                v.currentSpeed = p.lastPosition.speedKph || 0;
+                v.ignitionOn = p.lastPosition.ignitionOn ?? v.ignitionOn;
+                v.isOnline = true;
+              }
+            });
+            this.updateCounts();
+            this.filterVehicles();
+          },
+          error: () => { /* non-fatal: live SignalR will still populate positions */ }
+        });
       },
       error: () => {
         this.loading = false;
@@ -382,15 +415,48 @@ export class VehiclesPage implements OnInit, OnDestroy {
     this.selectedVehicle = null;
   }
 
-  locateOnMap(v: Vehicle) {
+  async locateOnMap(v: Vehicle) {
     this.selectedVehicle = null;
+    // If we already know the vehicle's location, navigate directly.
     if (v.currentLocation) {
       this.router.navigate(['/tabs/monitoring'], {
         queryParams: { lat: v.currentLocation.lat, lng: v.currentLocation.lng, vehicleId: v.id }
       });
-    } else {
-      this.router.navigate(['/tabs/monitoring']);
+      return;
     }
+    // Otherwise try one last fetch before giving up — REST may have a
+    // more recent position than what we hold in memory.
+    this.api.getLastPositions().subscribe({
+      next: async (positions) => {
+        const list = Array.isArray(positions) ? positions : [];
+        // Both sides stringified — v.id is a JSON number at runtime
+        // despite the TS `string` annotation.
+        const found = list.find((p: any) => String(p.vehicleId) === String(v.id) && p.lastPosition);
+        if (found) {
+          const lp = found.lastPosition;
+          v.currentLocation = { lat: lp.latitude, lng: lp.longitude };
+          this.router.navigate(['/tabs/monitoring'], {
+            queryParams: { lat: lp.latitude, lng: lp.longitude, vehicleId: v.id }
+          });
+        } else {
+          const toast = await this.toastCtrl.create({
+            message: `Aucune position connue pour ${v.name}. Le véhicule n'a jamais transmis sa position.`,
+            duration: 3000,
+            color: 'warning',
+            position: 'bottom'
+          });
+          await toast.present();
+        }
+      },
+      error: async () => {
+        const toast = await this.toastCtrl.create({
+          message: 'Impossible de récupérer la position du véhicule.',
+          duration: 2500,
+          color: 'danger'
+        });
+        await toast.present();
+      }
+    });
   }
 
   openPlayback(v: Vehicle) {

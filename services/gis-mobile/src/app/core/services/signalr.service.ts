@@ -74,6 +74,11 @@ export class SignalRService implements OnDestroy {
   public unreadCount$ = new BehaviorSubject<number>(0);
   public connectionState$ = this.connectionState.asObservable();
 
+  /** Last error encountered (for on-device diagnostics) */
+  public lastError: string | null = null;
+  /** Last URL used for the connection (for on-device diagnostics) */
+  public lastUrl: string | null = null;
+
   constructor(private authService: AuthService) {}
 
   ngOnDestroy(): void {
@@ -101,11 +106,14 @@ export class SignalRService implements OnDestroy {
     const token = this.authService.getToken();
     if (!token) {
       console.warn('SignalR: No authentication token available');
+      this.lastError = 'No auth token available when starting connection';
       this.connectionState.next('Error');
       return;
     }
 
     this.connectionState.next('Connecting');
+    this.lastUrl = this.authService.getSignalrUrl();
+    this.lastError = null;
 
     try {
       this.hubConnection = new signalR.HubConnectionBuilder()
@@ -133,9 +141,11 @@ export class SignalRService implements OnDestroy {
       await this.hubConnection.start();
       this.connectionState.next('Connected');
       this.reconnectAttempts = 0;
+      this.lastError = null;
       await this.resubscribeToVehicles();
-    } catch (err) {
+    } catch (err: any) {
       console.error('SignalR connection failed:', err);
+      this.lastError = err?.message || String(err);
       this.connectionState.next('Error');
       this.scheduleReconnect();
     }
@@ -156,7 +166,10 @@ export class SignalRService implements OnDestroy {
 
     this.hubConnection.onclose((error) => {
       this.connectionState.next('Disconnected');
-      if (error) this.scheduleReconnect();
+      if (error) {
+        this.lastError = (error as any)?.message || String(error);
+        this.scheduleReconnect();
+      }
     });
   }
 
