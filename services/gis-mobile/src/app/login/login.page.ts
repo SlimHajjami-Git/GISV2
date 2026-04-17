@@ -56,25 +56,6 @@ import { AuthService } from '../core/services/auth.service';
             <ion-icon name="log-in-outline" slot="start"></ion-icon>
             Se connecter
           </ion-button>
-
-          <div class="server-config" *ngIf="showServerConfig">
-            <ion-item lines="none" class="input-item">
-              <ion-icon name="server-outline" slot="start" color="medium"></ion-icon>
-              <ion-input
-                type="url"
-                placeholder="URL du serveur (ex: http://192.168.1.10:5000)"
-                [(ngModel)]="serverUrl"
-              ></ion-input>
-            </ion-item>
-            <ion-button expand="block" fill="outline" size="small" (click)="saveServerUrl()" shape="round">
-              Enregistrer
-            </ion-button>
-          </div>
-
-          <ion-button fill="clear" size="small" (click)="showServerConfig = !showServerConfig" class="config-toggle">
-            <ion-icon name="settings-outline" slot="start"></ion-icon>
-            Configuration serveur
-          </ion-button>
         </div>
 
         <!-- Footer -->
@@ -137,21 +118,6 @@ import { AuthService } from '../core/services/auth.service';
       height: 48px;
       font-weight: 600;
     }
-    .config-toggle {
-      display: block;
-      margin-top: 16px;
-      --color: rgba(255,255,255,0.5);
-      font-size: 12px;
-    }
-    .server-config {
-      margin-top: 12px;
-      padding: 12px;
-      background: rgba(255,255,255,0.05);
-      border-radius: 12px;
-    }
-    .server-config ion-button {
-      margin-top: 8px;
-    }
     .footer-section {
       margin-top: 40px;
       color: rgba(255,255,255,0.3);
@@ -163,8 +129,6 @@ export class LoginPage {
   email = '';
   password = '';
   showPassword = false;
-  showServerConfig = false;
-  serverUrl = '';
 
   constructor(
     private authService: AuthService,
@@ -172,9 +136,7 @@ export class LoginPage {
     private loadingCtrl: LoadingController,
     private toastCtrl: ToastController,
     private alertCtrl: AlertController
-  ) {
-    this.authService.getServerUrl().then(url => this.serverUrl = url);
-  }
+  ) {}
 
   async onLogin() {
     if (!this.email || !this.password) return;
@@ -207,7 +169,7 @@ export class LoginPage {
         if (err.status === 401 || err.status === 400) {
           message = err.error?.message || 'Email ou mot de passe incorrect';
         } else if (err.status === 0) {
-          message = `Serveur injoignable (${this.authService.API_URL}). Vérifiez la configuration serveur.`;
+          message = 'Serveur injoignable. Vérifiez votre connexion Internet.';
         } else if (err.status) {
           message = `Erreur serveur (${err.status}): ${err.error?.message || err.statusText}`;
         }
@@ -223,18 +185,4 @@ export class LoginPage {
     });
   }
 
-  async saveServerUrl() {
-    if (this.serverUrl) {
-      await this.authService.setServerUrl(this.serverUrl);
-      const toast = await this.toastCtrl.create({
-        message: `Serveur configuré: ${this.serverUrl}`,
-        duration: 2000,
-        color: 'success',
-        position: 'top',
-        icon: 'checkmark-circle-outline'
-      });
-      await toast.present();
-      this.showServerConfig = false;
-    }
-  }
 }
