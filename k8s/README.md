@@ -58,6 +58,31 @@ nano k8s/00-namespace-secrets.yaml
 # To change domains, edit k8s/04-ingress.yaml and k8s/02-applications.yaml (CORS)
 ```
 
+### 3b. Provision the Firebase service account Secret (one-time)
+
+The mobile push notification feature needs a Firebase Admin SDK service
+account JSON (different from `google-services.json`). It is **never**
+committed to the repo.
+
+1. On your workstation: Firebase Console → Project Settings → Service
+   accounts → "Generate new private key" → save as `firebase-sa.json`.
+2. Copy the file onto the server (`/opt/GISV2/firebase-sa.json` is fine).
+3. Create the K8s Secret:
+   ```bash
+   kubectl create secret generic firebase-sa -n gisv2 \
+     --from-file=sa.json=/opt/GISV2/firebase-sa.json
+   ```
+4. Restart the API so it picks the file up:
+   ```bash
+   kubectl rollout restart deployment/gis-api -n gisv2
+   ```
+5. Verify: `kubectl logs -n gisv2 -l app=gis-api | grep -i firebase`
+   should log "Firebase initialized from /etc/firebase/sa.json".
+
+If the Secret is missing the pod still starts (the mount is `optional`),
+but FCM push notifications are silently disabled — in-app SignalR
+notifications continue to work.
+
 ### 4. Configure DNS
 Create these A records pointing to your VPS IP:
 ```

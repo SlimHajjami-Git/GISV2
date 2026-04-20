@@ -203,9 +203,17 @@ spec:
                 secretKeyRef:
                   name: gisv2-secrets
                   key: SMTP_PASSWORD
+            # Firebase Cloud Messaging — service account JSON mounted from Secret
+            # See k8s/README.md: the firebase-sa Secret must be created manually once
+            # on the server with the file from Firebase Console > Service Accounts.
+            - name: Firebase__ServiceAccountPath
+              value: "/etc/firebase/sa.json"
           volumeMounts:
             - name: uploads
               mountPath: /app/uploads
+            - name: firebase-sa
+              mountPath: /etc/firebase
+              readOnly: true
           resources:
             requests:
               memory: "256Mi"
@@ -233,6 +241,16 @@ spec:
         - name: uploads
           persistentVolumeClaim:
             claimName: gis-uploads
+        - name: firebase-sa
+          secret:
+            secretName: firebase-sa
+            # optional=true so the pod still starts if the Secret hasn't been
+            # provisioned yet; FcmService logs a warning and disables push,
+            # which is a safer failure mode than a crash loop.
+            optional: true
+            items:
+              - key: sa.json
+                path: sa.json
 
 ---
 # -----------------------------------------------------------------------------

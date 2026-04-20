@@ -27,6 +27,13 @@ obj/
 .env.*.local
 .env.prod
 
+# Firebase service account keys — NEVER commit these
+firebase-sa.json
+calypso-sa.json
+*-firebase-adminsdk-*.json
+**/firebase-adminsdk*.json
+google-services-account*.json
+
 # Logs
 *.log
 npm-debug.log*
