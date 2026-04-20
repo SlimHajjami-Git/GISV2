@@ -48,6 +48,35 @@ export class PushNotificationService {
       return;
     }
 
+    // Create the Android NotificationChannel "immobilization" BEFORE registering.
+    // The backend (FcmService.cs) sets channelId: "immobilization" on every
+    // remote-stop push. On Android 8+ (API 26+), if the channel hasn't been
+    // created by the app, the system silently drops the notification when the
+    // screen is locked or the app is killed — which is exactly why pushes
+    // never appeared on the lock screen in 1.0.3.
+    // importance: 5 = MAX (heads-up banner + sound + vibration)
+    // visibility: 1 = PUBLIC — content visible on lock screen (required so the
+    //                          user can read "Véhicule X demande arrêt" without
+    //                          unlocking to see ACCEPTER/REFUSER).
+    if (this.platform.is('android')) {
+      try {
+        await PushNotifications.createChannel({
+          id: 'immobilization',
+          name: 'Arrêts à distance',
+          description: 'Demandes d\'immobilisation nécessitant une décision immédiate',
+          importance: 5,
+          visibility: 1,
+          sound: 'default',
+          vibration: true,
+          lights: true,
+        });
+      } catch (err) {
+        // Android <8 doesn't support channels; the call is still safe to make
+        // on newer versions if the channel already exists (idempotent).
+        console.warn('createChannel(immobilization) failed:', err);
+      }
+    }
+
     // Listen for registration
     PushNotifications.addListener('registration', (token: Token) => {
       console.log('FCM token:', token.value);
