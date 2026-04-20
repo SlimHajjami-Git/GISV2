@@ -6,7 +6,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream, UdpSocket},
     signal,
-    sync::Mutex,
+    sync::{mpsc, Mutex},
 };
 use tracing::{debug, error, info, warn};
 
@@ -29,6 +29,16 @@ use crate::{
 };
 
 type ConnectionMap = Arc<Mutex<HashMap<String, String>>>;
+
+/// Device command senders: maps device_id → mpsc sender for instant push from .NET.
+/// When an external source (.NET controller) inserts a row in `device_commands`,
+/// it hits `POST /commands/push` on this service, which looks up the sender for the
+/// target device_id and pushes the command text into the TCP connection handler task.
+/// The handler's `tokio::select!` receives the message and writes it to the socket
+/// with sub-100ms latency (vs. 5s-5min when waiting for the next device frame).
+/// The per-frame DB polling remains as a fallback for commands inserted while the
+/// device is offline or while this service is restarting.
+pub type CommandSenders = Arc<Mutex<HashMap<i32, mpsc::Sender<String>>>>;
 
 /// Cooldown period: once a device event is recorded, ignore further events for 24h
 const DEVICE_EVENT_COOLDOWN_SECS: i64 = 24 * 3600;
@@ -53,6 +63,7 @@ pub async fn run_listeners(
     database: Arc<dyn TelemetryStore>,
     publisher: Option<Arc<dyn TelemetryEventPublisher>>,
     redis_cache: Option<Arc<RedisCache>>,
+    command_senders: CommandSenders,
 ) -> Result<()> {
     if config.listeners.is_empty() {
         info!("No listeners configured; nothing to start");
@@ -97,8 +108,9 @@ pub async fn run_listeners(
                 let publisher_clone = publisher.clone();
                 let services_clone = Arc::clone(&services);
                 let redis_clone = redis_cache.clone();
+                let cmd_senders_clone = Arc::clone(&command_senders);
                 handles.push(tokio::spawn(async move {
-                    if let Err(err) = run_tcp_listener(cfg, db, mapping, publisher_clone, services_clone, redis_clone).await {
+                    if let Err(err) = run_tcp_listener(cfg, db, mapping, publisher_clone, services_clone, redis_clone, cmd_senders_clone).await {
                         error!(?err, "TCP listener terminated unexpectedly");
                     }
                 }));
@@ -136,6 +148,7 @@ async fn run_tcp_listener(
     publisher: Option<Arc<dyn TelemetryEventPublisher>>,
     services: Arc<TelemetryServices>,
     redis_cache: Option<Arc<RedisCache>>,
+    command_senders: CommandSenders,
 ) -> Result<()> {
     let bind_addr = format!("0.0.0.0:{}", cfg.port);
     let listener = TcpListener::bind(&bind_addr).await?;
@@ -150,8 +163,9 @@ async fn run_tcp_listener(
         let publisher_clone = publisher.clone();
         let services_clone = Arc::clone(&services);
         let redis_clone = redis_cache.clone();
+        let cmd_senders_clone = Arc::clone(&command_senders);
         tokio::spawn(async move {
-            if let Err(err) = handle_tcp_connection(stream, cfg_clone, db, map_clone, publisher_clone, services_clone, redis_clone).await {
+            if let Err(err) = handle_tcp_connection(stream, cfg_clone, db, map_clone, publisher_clone, services_clone, redis_clone, cmd_senders_clone).await {
                 error!(?err, "TCP connection handler exited with error");
             }
         });
@@ -242,15 +256,30 @@ async fn run_udp_listener(
 }
 
 async fn handle_tcp_connection(
-    mut stream: TcpStream,
+    stream: TcpStream,
     cfg: Arc<ListenerConfig>,
     database: Arc<dyn TelemetryStore>,
     connection_map: ConnectionMap,
     publisher: Option<Arc<dyn TelemetryEventPublisher>>,
     services: Arc<TelemetryServices>,
     redis_cache: Option<Arc<RedisCache>>,
+    command_senders: CommandSenders,
 ) -> Result<()> {
     let peer = stream.peer_addr().ok().map(|addr| addr.to_string());
+
+    // Split the TCP stream so the frame-read loop and the external command-push
+    // channel can coexist on the same connection without borrow-checker conflicts.
+    // The `writer` half is shared via Arc<Mutex<_>> between the select! loop (for
+    // ACKs, auto-recovery, DB-polled commands) and the external push path.
+    let (mut reader, write_half) = tokio::io::split(stream);
+    let writer = Arc::new(Mutex::new(write_half));
+
+    // Channel for instant push: POST /commands/push (in main.rs) looks up this
+    // device_id in the CommandSenders map and sends the command text here.
+    // Bound at 8 to drop excess if operators spam clicks; realistically there's
+    // at most one command queued at a time.
+    let (cmd_tx, mut cmd_rx) = mpsc::channel::<String>(8);
+    let mut registered_device_id: Option<i32> = None;
 
     let mut buffer = vec![0u8; 8192];
 
@@ -268,10 +297,41 @@ async fn handle_tcp_connection(
     let is_noron = cfg.protocol == "noron";
 
     loop {
-        let read = stream.read(&mut buffer).await?;
-        if read == 0 {
-            break;
-        }
+        tokio::select! {
+            // Prefer pushed commands for low latency on remote stop/go
+            biased;
+
+            // ── BRANCH 1: external push from POST /commands/push ──
+            maybe_cmd = cmd_rx.recv() => {
+                let peer_str = peer.as_deref().unwrap_or("unknown");
+                match maybe_cmd {
+                    Some(cmd) => {
+                        info!(peer = peer_str, cmd = %cmd.trim(), "Received pushed command via mpsc channel");
+                        let mut w = writer.lock().await;
+                        match w.write_all(cmd.as_bytes()).await {
+                            Ok(_) => info!(peer = peer_str, cmd = %cmd.trim(), "Pushed command written to socket (instant path)"),
+                            Err(e) => {
+                                error!(?e, peer = peer_str, "Failed to write pushed command to socket");
+                                break;
+                            }
+                        }
+                        // Skip the frame-processing body; loop again to read next
+                        continue;
+                    }
+                    None => {
+                        // All senders dropped — handler should exit gracefully
+                        debug!(peer = peer_str, "Command channel closed; ending connection handler");
+                        break;
+                    }
+                }
+            }
+
+            // ── BRANCH 2: device sent us something ──
+            read_res = reader.read(&mut buffer) => {
+                let read = read_res?;
+                if read == 0 {
+                    break;
+                }
 
         let payload = &buffer[..read];
         let hex_dump = hex::encode(payload);
@@ -290,7 +350,7 @@ async fn handle_tcp_connection(
                             map.insert(peer_str.clone(), device_id.clone());
                         }
                         // Send handshake ACK (same as GISV1 NR024TrackerShakeHandResp.ToBuffer())
-                        if let Err(e) = stream.write_all(&telemetry::noron::HANDSHAKE_ACK).await {
+                        if let Err(e) = writer.lock().await.write_all(&telemetry::noron::HANDSHAKE_ACK).await {
                             warn!(?e, "Failed to send Noron handshake ACK");
                         } else {
                             info!(device_id = %device_id, "Sent Noron handshake ACK (13 bytes)");
@@ -334,7 +394,7 @@ async fn handle_tcp_connection(
             // Without ACK, tracker falls back to degraded mode (3 min interval)
             if let Ok(ascii) = std::str::from_utf8(payload) {
                 if ascii.contains("AAAA") {
-                    if let Err(e) = stream.write_all(b"AA06").await {
+                    if let Err(e) = writer.lock().await.write_all(b"AA06").await {
                         warn!(?e, "Failed to send AA06 ACK to tracker");
                     } else {
                         info!(peer = peer.as_deref().unwrap_or("unknown"), "Sent AA06 ACK to tracker (keepalive)");
@@ -539,7 +599,7 @@ async fn handle_tcp_connection(
                                                             command = %command_go.trim(),
                                                             "IMMOBILIZATION DETECTED (unwanted) - sending auto-recovery from DB"
                                                         );
-                                                        if let Err(e) = stream.write_all(command_go.as_bytes()).await {
+                                                        if let Err(e) = writer.lock().await.write_all(command_go.as_bytes()).await {
                                                             error!(?e, peer = peer_str, "Failed to send auto-recovery command");
                                                         } else {
                                                             info!(peer = peer_str, imei = %imei, device_id, "Auto-recovery command SENT");
@@ -564,6 +624,10 @@ async fn handle_tcp_connection(
                 }
 
                 // ── Send pending commands from DB (manual STOP/GO from operators) ──
+                // This is the fallback path: catches commands inserted while the device
+                // was offline or while this service was restarting. The instant path
+                // (POST /commands/push → mpsc channel) is preferred when the device is
+                // already connected and the sender is registered below.
                 if let Some(ref p) = peer {
                     let imei_opt = {
                         let map = connection_map.lock().await;
@@ -571,10 +635,19 @@ async fn handle_tcp_connection(
                     };
                     if let Some(ref imei) = imei_opt {
                         if let Ok(Some(device_id)) = database.get_device_id(imei).await {
+                            // ── Register mpsc sender for instant command push ──
+                            // Only done once per connection, the first time we successfully
+                            // resolve the device_id. Dropped in the cleanup block on disconnect.
+                            if registered_device_id != Some(device_id) {
+                                command_senders.lock().await.insert(device_id, cmd_tx.clone());
+                                registered_device_id = Some(device_id);
+                                debug!(device_id, imei = %imei, "Registered command sender for instant push");
+                            }
+
                             if let Ok(Some((cmd_id, cmd_text))) = database.get_pending_command(device_id).await {
                                 let peer_str = peer.as_deref().unwrap_or("unknown");
-                                info!(peer = peer_str, imei = %imei, cmd_id, cmd = %cmd_text, "Sending pending command from DB");
-                                if let Err(e) = stream.write_all(cmd_text.as_bytes()).await {
+                                info!(peer = peer_str, imei = %imei, cmd_id, cmd = %cmd_text, "Sending pending command from DB (fallback path)");
+                                if let Err(e) = writer.lock().await.write_all(cmd_text.as_bytes()).await {
                                     error!(?e, "Failed to send pending command");
                                     let _ = database.update_command_status(cmd_id, "failed", Some(&e.to_string())).await;
                                 } else {
@@ -604,9 +677,15 @@ async fn handle_tcp_connection(
             }
         }
 
-    }
+            } // end `read_res = reader.read(...)` branch
+        } // end tokio::select!
+    } // end outer loop
 
-    // Connection closed — clean up
+    // Connection closed — clean up registered channel + connection map
+    if let Some(did) = registered_device_id {
+        command_senders.lock().await.remove(&did);
+        debug!(device_id = did, "Unregistered command sender on disconnect");
+    }
     if let Some(ref peer_str) = peer {
         connection_map.lock().await.remove(peer_str);
     }
@@ -1800,6 +1879,41 @@ mod tests {
         async fn insert_device_event(&self, _event: &crate::services::device_event::DeviceEventRecord) -> anyhow::Result<i64> {
             Ok(1) // Mock device_event_id
         }
+
+        async fn get_immobilization_state(&self, _device_id: i32) -> anyhow::Result<(bool, String)> {
+            Ok((false, "AJ+GO#1311\n".to_string())) // Default: not immobilized, standard GO command
+        }
+
+        async fn get_pending_command(&self, _device_id: i32) -> anyhow::Result<Option<(i64, String)>> {
+            Ok(None) // No pending commands in tests
+        }
+
+        async fn update_command_status(&self, _command_id: i64, _status: &str, _error: Option<&str>) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn log_auto_recovery(&self, _device_id: i32, _command_text: &str, _flags_hex: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn update_device_last_communication(&self, _device_id: i32) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn log_frame_debug(
+            &self,
+            _device_id: Option<i32>,
+            _device_uid: Option<&str>,
+            _mat: Option<&str>,
+            _frame_type: &str,
+            _flags_hex: Option<&str>,
+            _flags_raw: Option<i16>,
+            _raw_frame: &str,
+            _reason: &str,
+            _peer: Option<&str>,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
     }
 
     struct MockPublisher {
@@ -1821,6 +1935,10 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((protocol.to_string(), device_uid.to_string()));
+            Ok(())
+        }
+
+        async fn publish_device_event(&self, _event: &crate::services::device_event::DeviceEventRecord) -> anyhow::Result<()> {
             Ok(())
         }
     }

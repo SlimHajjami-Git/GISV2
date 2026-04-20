@@ -922,13 +922,18 @@ impl TelemetryStore for Database {
     }
 
     async fn get_pending_command(&self, device_id: i32) -> Result<Option<(i64, String)>> {
+        // Dispatches any pending command (GO or STOP). The semantic safety is enforced
+        // by `immobilization_active` in the gps_devices table (auto-recovery only fires
+        // when `immobilization_active=false`, so a legitimate operator STOP will NOT be
+        // auto-reversed by the bit5=0 detector). Remote stop flips `immobilization_active`
+        // to true BEFORE inserting the STOP command, so both signals stay consistent.
         let row = sqlx::query(
             r#"
             UPDATE device_commands
             SET status = 'sent', sent_at = NOW(), attempts = attempts + 1, updated_at = NOW()
             WHERE id = (
                 SELECT id FROM device_commands
-                WHERE device_id = $1 AND status = 'pending' AND command_type = 'GO'
+                WHERE device_id = $1 AND status = 'pending'
                 ORDER BY created_at ASC
                 LIMIT 1
             )

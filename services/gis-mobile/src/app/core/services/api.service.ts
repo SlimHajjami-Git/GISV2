@@ -154,12 +154,22 @@ export class ApiService {
     return this.http.get<any>(`${this.API}/gps/devices/${deviceId}/immobilization`);
   }
 
-  stopVehicle(deviceId: number): Observable<any> {
-    return this.http.post<any>(`${this.API}/gps/devices/${deviceId}/stop`, {});
+  /**
+   * Stop a vehicle.
+   * - If `password` is provided, the backend verifies it and dispatches the STOP
+   *   command immediately (mobile flow — operator confirms with password).
+   * - If `password` is omitted, the backend creates an approval request
+   *   fanned out to all company admins (web flow).
+   */
+  stopVehicle(deviceId: number, password?: string): Observable<any> {
+    const body = password ? { password } : {};
+    return this.http.post<any>(`${this.API}/gps/devices/${deviceId}/stop`, body);
   }
 
-  goVehicle(deviceId: number): Observable<any> {
-    return this.http.post<any>(`${this.API}/gps/devices/${deviceId}/go`, {});
+  /** See `stopVehicle` — same two-mode behaviour for releasing a vehicle. */
+  goVehicle(deviceId: number, password?: string): Observable<any> {
+    const body = password ? { password } : {};
+    return this.http.post<any>(`${this.API}/gps/devices/${deviceId}/go`, body);
   }
 
   getDeviceCommands(deviceId: number, limit: number = 20): Observable<any[]> {

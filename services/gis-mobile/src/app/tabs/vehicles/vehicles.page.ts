@@ -509,29 +509,34 @@ export class VehiclesPage implements OnInit, OnDestroy {
     await passwordAlert.present();
   }
 
+  /**
+   * Single-call flow: the backend verifies the password AND dispatches the
+   * command atomically (direct mode). A 401 means wrong password; 200 means
+   * the command was pushed to the device.
+   */
   private verifyAndSendRequest(v: Vehicle, deviceId: number, password: string, type: 'stop' | 'go') {
-    this.api.verifyPassword(password).subscribe({
-      next: () => {
-        const call = type === 'stop' ? this.api.stopVehicle(deviceId) : this.api.goVehicle(deviceId);
-        call.subscribe({
-          next: async () => {
-            const toast = await this.toastCtrl.create({
-              message: 'Demande envoyée à l\'administrateur', duration: 3000, color: 'success', position: 'top'
-            });
-            await toast.present();
-          },
-          error: async (err) => {
-            const msg = err?.error?.message || 'Erreur lors de l\'envoi';
-            const toast = await this.toastCtrl.create({
-              message: msg, duration: 3000, color: 'danger', position: 'top'
-            });
-            await toast.present();
-          }
-        });
-      },
-      error: async () => {
+    const call = type === 'stop'
+      ? this.api.stopVehicle(deviceId, password)
+      : this.api.goVehicle(deviceId, password);
+
+    call.subscribe({
+      next: async (res: any) => {
+        const isDirect = res?.mode === 'direct';
+        const defaultMsg = type === 'stop'
+          ? (isDirect ? 'Commande d\'arrêt envoyée' : 'Demande envoyée à l\'administrateur')
+          : (isDirect ? 'Commande de libération envoyée' : 'Demande envoyée à l\'administrateur');
         const toast = await this.toastCtrl.create({
-          message: 'Mot de passe incorrect', duration: 2500, color: 'danger', position: 'top'
+          message: res?.message || defaultMsg, duration: 3000, color: 'success', position: 'top'
+        });
+        await toast.present();
+      },
+      error: async (err) => {
+        const is401 = err?.status === 401;
+        const msg = is401
+          ? 'Mot de passe incorrect'
+          : (err?.error?.message || 'Erreur lors de l\'envoi');
+        const toast = await this.toastCtrl.create({
+          message: msg, duration: 2500, color: 'danger', position: 'top'
         });
         await toast.present();
       }

@@ -75,6 +75,10 @@ builder.Services.AddSingleton<GisAPI.Services.IGpsInterpolationService, GisAPI.S
 // HttpClient for health checks (GPS ingest, RabbitMQ, Frontend)
 builder.Services.AddHttpClient();
 
+// Rust command pusher — POST http://gps-ingest:3000/commands/push for
+// instant over-the-socket delivery of operator commands (immobilisation, go)
+builder.Services.AddScoped<IRustCommandPusher, GisAPI.Services.RustCommandPusher>();
+
 // JWT Authentication — require a real key in production
 var jwtKey = builder.Configuration["Jwt:Key"];
 if (string.IsNullOrEmpty(jwtKey))

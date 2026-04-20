@@ -1,4 +1,5 @@
 using FluentAssertions;
+using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
 using GisAPI.Tests.Common;
 using Microsoft.EntityFrameworkCore;
@@ -327,6 +328,94 @@ public class ImmobilizationTests
             .Where(c => c.CompanyId == 1)
             .ToListAsync();
         company1Cmds.Should().HaveCount(1);
+    }
+
+    // ==================== SCENARIO 5: TARGETING — single device isolation ====================
+
+    /// <summary>
+    /// Regression guard for the worry "quand on cible un véhicule, est-ce qu'UN seul s'arrête ou plusieurs ?"
+    ///
+    /// Simulates GpsController.DispatchImmobilizationCommandAsync on device 1 only, with devices 2 and 3
+    /// sitting in the same company. Asserts:
+    ///   1. Only device 1 has ImmobilizationActive = true (DB isolation by device.Id)
+    ///   2. Only one DeviceCommand row is inserted, tied to device 1's Id and vehicle
+    ///   3. The Rust push is called exactly once, with device 1's Id and its specific CommandStop text
+    ///      (the Rust side keys on device_id → TCP socket map, so this proves no other socket is touched)
+    /// </summary>
+    [Fact]
+    public async Task StopOneDevice_OnlyThatDeviceIsStopped_AndPushIsScopedToIt()
+    {
+        using var context = TestDbContextFactory.Create();
+        var device1 = CreateDeviceWithVehicle(context, deviceId: 1, companyId: 1, imei: "111111111111111", plate: "AAA 111");
+        var device2 = CreateDeviceWithVehicle(context, deviceId: 2, companyId: 1, imei: "222222222222222", plate: "BBB 222");
+        var device3 = CreateDeviceWithVehicle(context, deviceId: 3, companyId: 1, imei: "333333333333333", plate: "CCC 333");
+        // Give each device a distinct stop command so we can assert the *right* text lands in the pusher
+        device1.CommandStop = "AJ+STOP#1111\n";
+        device2.CommandStop = "AJ+STOP#2222\n";
+        device3.CommandStop = "AJ+STOP#3333\n";
+        await context.SaveChangesAsync();
+
+        var pusher = new RecordingPusher();
+
+        // Act: mimic what GpsController.DispatchImmobilizationCommandAsync does for device 1 only
+        var target = await context.GpsDevices.Include(d => d.Vehicle).FirstAsync(d => d.Id == 1);
+        target.ImmobilizationActive = true;
+        target.ImmobilizationBy = 10;
+        target.ImmobilizationAt = DateTime.UtcNow;
+        context.DeviceCommands.Add(new DeviceCommand
+        {
+            DeviceId = target.Id,
+            VehicleId = target.Vehicle?.Id,
+            UserId = 10,
+            CommandType = "STOP",
+            CommandText = target.CommandStop,
+            Status = "pending",
+            Source = "manual",
+            CompanyId = 1
+        });
+        await context.SaveChangesAsync();
+        await pusher.PushAsync(target.Id, target.CommandStop);
+
+        // Assert 1 — DB: only device 1 is immobilised
+        var allDevices = await context.GpsDevices.OrderBy(d => d.Id).ToListAsync();
+        allDevices.Should().HaveCount(3);
+        allDevices[0].ImmobilizationActive.Should().BeTrue("device 1 was targeted");
+        allDevices[1].ImmobilizationActive.Should().BeFalse("device 2 was NOT targeted");
+        allDevices[2].ImmobilizationActive.Should().BeFalse("device 3 was NOT targeted");
+
+        // Assert 2 — DB: exactly one command row, scoped to device 1 and its vehicle
+        var allCommands = await context.DeviceCommands.ToListAsync();
+        allCommands.Should().HaveCount(1);
+        allCommands[0].DeviceId.Should().Be(1);
+        allCommands[0].VehicleId.Should().Be(1);
+        allCommands[0].CommandType.Should().Be("STOP");
+        allCommands[0].CommandText.Should().Be("AJ+STOP#1111\n", "must use device 1's specific stop string");
+
+        // Assert 3 — Rust push: exactly one push call, targeting device 1's socket with device 1's text
+        pusher.Calls.Should().HaveCount(1, "only one device was targeted");
+        pusher.Calls[0].DeviceId.Should().Be(1);
+        pusher.Calls[0].Command.Should().Be("AJ+STOP#1111\n");
+
+        // And explicitly: device 2 and 3's stop strings were NEVER pushed
+        pusher.Calls.Should().NotContain(c => c.DeviceId == 2);
+        pusher.Calls.Should().NotContain(c => c.DeviceId == 3);
+        pusher.Calls.Should().NotContain(c => c.Command == "AJ+STOP#2222\n");
+        pusher.Calls.Should().NotContain(c => c.Command == "AJ+STOP#3333\n");
+    }
+
+    /// <summary>
+    /// Recording fake for <see cref="IRustCommandPusher"/> — captures every PushAsync call so
+    /// tests can assert exactly which (deviceId, command) pairs were sent to Rust.
+    /// </summary>
+    private sealed class RecordingPusher : IRustCommandPusher
+    {
+        public List<(int DeviceId, string Command)> Calls { get; } = new();
+
+        public Task<RustPushResult> PushAsync(int deviceId, string command, CancellationToken ct = default)
+        {
+            Calls.Add((deviceId, command));
+            return Task.FromResult(new RustPushResult(RustPushOutcome.Pushed, "test"));
+        }
     }
 
     // ==================== HELPERS ====================

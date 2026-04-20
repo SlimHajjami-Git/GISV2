@@ -997,18 +997,36 @@ public class GpsController : ControllerBase
     }
 
     [HttpPost("devices/{deviceId}/stop")]
-    public async Task<IActionResult> StopDevice(int deviceId, [FromServices] INotificationService notificationService)
-    {
-        return await CreateImmobilizationRequest(deviceId, "STOP", notificationService);
-    }
+    public Task<IActionResult> StopDevice(
+        int deviceId,
+        [FromBody] ImmobilizationRequestBody? body,
+        [FromServices] INotificationService notificationService,
+        [FromServices] IPasswordHasher passwordHasher,
+        [FromServices] IRustCommandPusher commandPusher)
+        => ExecuteImmobilizationAsync(deviceId, "STOP", body, notificationService, passwordHasher, commandPusher);
 
     [HttpPost("devices/{deviceId}/go")]
-    public async Task<IActionResult> GoDevice(int deviceId, [FromServices] INotificationService notificationService)
-    {
-        return await CreateImmobilizationRequest(deviceId, "GO", notificationService);
-    }
+    public Task<IActionResult> GoDevice(
+        int deviceId,
+        [FromBody] ImmobilizationRequestBody? body,
+        [FromServices] INotificationService notificationService,
+        [FromServices] IPasswordHasher passwordHasher,
+        [FromServices] IRustCommandPusher commandPusher)
+        => ExecuteImmobilizationAsync(deviceId, "GO", body, notificationService, passwordHasher, commandPusher);
 
-    private async Task<IActionResult> CreateImmobilizationRequest(int deviceId, string commandType, INotificationService notificationService)
+    /// <summary>
+    /// Two-mode entry point:
+    /// 1. Body carries a password → direct dispatch after verification (mobile flow).
+    /// 2. Body is empty or has no password → notification fanned out to all
+    ///    company admins, who approve/reject from their mobile app (web flow).
+    /// </summary>
+    private async Task<IActionResult> ExecuteImmobilizationAsync(
+        int deviceId,
+        string commandType,
+        ImmobilizationRequestBody? body,
+        INotificationService notificationService,
+        IPasswordHasher passwordHasher,
+        IRustCommandPusher commandPusher)
     {
         var companyId = GetCompanyId();
         var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
@@ -1016,23 +1034,36 @@ public class GpsController : ControllerBase
         var device = await _context.GpsDevices
             .Include(d => d.Vehicle)
             .FirstOrDefaultAsync(d => d.Id == deviceId && d.CompanyId == companyId);
-
         if (device == null) return NotFound();
 
-        // Check for existing pending request on this device
-        var hasPending = await _context.Notifications
-            .AnyAsync(n => n.Type == "immobilization_request" && n.ReferenceId == deviceId && !n.IsRead);
-        if (hasPending)
-            return Conflict(new { success = false, message = "Une demande est déjà en attente pour ce véhicule" });
+        var user = await _context.Users
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Id == userId);
+        if (user == null) return Unauthorized();
 
-        var requesterName = await _context.Users
-            .Where(u => u.Id == userId)
-            .Select(u => u.FirstName + " " + u.LastName)
-            .FirstOrDefaultAsync() ?? "Utilisateur";
-
+        var isStop = commandType == "STOP";
         var vehicleName = device.Vehicle?.Name ?? $"Device #{deviceId}";
         var plate = device.Vehicle?.Plate ?? "";
-        var isStop = commandType == "STOP";
+        var requesterName = $"{user.FirstName} {user.LastName}".Trim();
+        if (string.IsNullOrWhiteSpace(requesterName)) requesterName = "Utilisateur";
+
+        // ──────── DIRECT PATH (password provided) ────────
+        if (!string.IsNullOrEmpty(body?.Password))
+        {
+            if (!passwordHasher.VerifyPassword(body.Password, user.PasswordHash))
+                return Unauthorized(new { success = false, message = "Mot de passe incorrect" });
+
+            return await DispatchImmobilizationCommandAsync(device, user, commandType, isStop, commandPusher);
+        }
+
+        // ──────── REQUEST PATH (no password → admin approval) ────────
+        var hasPending = await _context.Notifications
+            .AnyAsync(n => n.Type == "immobilization_request"
+                && n.ReferenceId == deviceId
+                && n.CompanyId == companyId
+                && !n.IsRead);
+        if (hasPending)
+            return Conflict(new { success = false, message = "Une demande est déjà en attente pour ce véhicule" });
 
         var title = isStop
             ? $"Demande d'arrêt — {vehicleName}"
@@ -1052,21 +1083,88 @@ public class GpsController : ControllerBase
             ["requestedByName"] = requesterName
         };
 
-        // Send notification to system admin (user id=1) for approval
-        var notification = await notificationService.CreateAndSendAsync(
-            companyId,
-            userId: 1,
-            type: "immobilization_request",
-            title: title,
-            message: message,
-            priority: "urgent",
-            referenceType: "device",
-            referenceId: deviceId,
-            actionUrl: null,
-            metadata: metadata
-        );
+        // Fan out to every company admin (in-memory filter because IsCompanyAdmin
+        // is a computed property that reads Role — not queryable via EF Core)
+        var companyUsers = await _context.Users
+            .Include(u => u.Role)
+            .Where(u => u.CompanyId == companyId && u.Status == "active")
+            .ToListAsync();
+        var admins = companyUsers.Where(u => u.IsCompanyAdmin).ToList();
 
-        return Ok(new { success = true, message = "Demande envoyée à l'administrateur", requestId = notification.Id });
+        if (admins.Count == 0)
+            return Problem("Aucun administrateur configuré pour cette société", statusCode: 500);
+
+        long firstId = 0;
+        foreach (var admin in admins)
+        {
+            var notif = await notificationService.CreateAndSendAsync(
+                companyId,
+                userId: admin.Id,
+                type: "immobilization_request",
+                title: title,
+                message: message,
+                priority: "urgent",
+                referenceType: "device",
+                referenceId: deviceId,
+                actionUrl: null,
+                metadata: metadata
+            );
+            if (firstId == 0) firstId = notif.Id;
+        }
+
+        return Ok(new
+        {
+            success = true,
+            mode = "request",
+            message = "Demande envoyée aux administrateurs",
+            requestId = firstId,
+            adminCount = admins.Count
+        });
+    }
+
+    /// <summary>
+    /// Direct dispatch: flip device state, insert pending DeviceCommand, push to Rust
+    /// for immediate over-the-socket delivery. Push failure is non-fatal — Rust's
+    /// per-frame DB poll picks it up on the next incoming frame.
+    /// </summary>
+    private async Task<IActionResult> DispatchImmobilizationCommandAsync(
+        GpsDevice device,
+        User user,
+        string commandType,
+        bool isStop,
+        IRustCommandPusher commandPusher)
+    {
+        device.ImmobilizationActive = isStop;
+        device.ImmobilizationBy = user.Id;
+        device.ImmobilizationAt = DateTime.UtcNow;
+
+        var commandText = isStop ? device.CommandStop : device.CommandGo;
+
+        var cmd = new DeviceCommand
+        {
+            DeviceId = device.Id,
+            VehicleId = device.Vehicle?.Id,
+            UserId = user.Id,
+            CommandType = commandType,
+            CommandText = commandText,
+            Status = "pending",
+            Source = "manual",
+            CompanyId = device.CompanyId
+        };
+        _context.DeviceCommands.Add(cmd);
+        await _context.SaveChangesAsync();
+
+        var push = await commandPusher.PushAsync(device.Id, commandText);
+
+        return Ok(new
+        {
+            success = true,
+            mode = "direct",
+            message = isStop ? "Commande d'arrêt envoyée" : "Commande de libération envoyée",
+            commandId = cmd.Id,
+            pushed = push.Outcome == RustPushOutcome.Pushed,
+            pushStatus = push.Outcome.ToString()
+        });
     }
 
     [HttpGet("devices/{deviceId}/commands")]
@@ -1097,16 +1195,25 @@ public class GpsController : ControllerBase
     // ==================== IMMOBILIZATION APPROVAL FLOW ====================
 
     [HttpPost("immobilization-requests/{requestId}/approve")]
-    public async Task<IActionResult> ApproveImmobilizationRequest(long requestId, [FromServices] INotificationService notificationService)
+    public async Task<IActionResult> ApproveImmobilizationRequest(
+        long requestId,
+        [FromServices] INotificationService notificationService,
+        [FromServices] IRustCommandPusher commandPusher)
     {
         var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
-        if (userId != 1) return Forbid();
-
         var companyId = GetCompanyId();
+
+        var currentUser = await _context.Users
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Id == userId);
+        if (currentUser == null || !currentUser.IsCompanyAdmin) return Forbid();
 
         var notification = await _context.Notifications
             .FirstOrDefaultAsync(n => n.Id == requestId && n.Type == "immobilization_request" && !n.IsRead);
         if (notification == null) return NotFound(new { message = "Demande introuvable ou déjà traitée" });
+
+        // Tenant guard: admin must approve a request from their own company
+        if (notification.CompanyId != currentUser.CompanyId) return Forbid();
 
         var metadata = notification.Metadata ?? new Dictionary<string, object>();
         var deviceId = GetMetaInt(metadata, "deviceId");
@@ -1117,7 +1224,7 @@ public class GpsController : ControllerBase
 
         var device = await _context.GpsDevices
             .Include(d => d.Vehicle)
-            .FirstOrDefaultAsync(d => d.Id == deviceId);
+            .FirstOrDefaultAsync(d => d.Id == deviceId && d.CompanyId == companyId);
         if (device == null) return NotFound(new { message = "Appareil introuvable" });
 
         var isStop = commandType == "STOP";
@@ -1125,32 +1232,50 @@ public class GpsController : ControllerBase
         device.ImmobilizationBy = requestedBy;
         device.ImmobilizationAt = DateTime.UtcNow;
 
+        var commandText = isStop ? device.CommandStop : device.CommandGo;
+
         var cmd = new DeviceCommand
         {
             DeviceId = deviceId,
             VehicleId = vehicleId > 0 ? vehicleId : null,
             UserId = requestedBy,
             CommandType = commandType,
-            CommandText = isStop ? device.CommandStop : device.CommandGo,
+            CommandText = commandText,
             Status = "pending",
             Source = "manual",
             CompanyId = device.CompanyId
         };
         _context.DeviceCommands.Add(cmd);
 
-        notification.IsRead = true;
-        notification.ReadAt = DateTime.UtcNow;
+        // First-approver-wins: clear matching unread requests across all admins
+        var allRelated = await _context.Notifications
+            .Where(n => n.Type == "immobilization_request"
+                && n.ReferenceId == deviceId
+                && n.CompanyId == companyId
+                && !n.IsRead)
+            .ToListAsync();
+        var now = DateTime.UtcNow;
+        foreach (var n in allRelated)
+        {
+            n.IsRead = true;
+            n.ReadAt = now;
+        }
+
         await _context.SaveChangesAsync();
+
+        // Instant push to Rust (fallback: Rust's per-frame DB poll delivers on next frame)
+        var push = await commandPusher.PushAsync(deviceId, commandText);
 
         // Notify the requester that their request was approved
         if (requestedBy > 0)
         {
+            var approverName = $"{currentUser.FirstName} {currentUser.LastName}".Trim();
             var responseTitle = isStop
                 ? $"Arrêt approuvé — {vehicleName}"
                 : $"Libération approuvée — {vehicleName}";
             var responseMessage = isStop
-                ? $"Votre demande d'arrêt pour {vehicleName} a été approuvée"
-                : $"Votre demande de libération pour {vehicleName} a été approuvée";
+                ? $"Votre demande d'arrêt pour {vehicleName} a été approuvée par {approverName}"
+                : $"Votre demande de libération pour {vehicleName} a été approuvée par {approverName}";
 
             await notificationService.CreateAndSendAsync(
                 companyId, requestedBy,
@@ -1165,25 +1290,39 @@ public class GpsController : ControllerBase
                     ["status"] = "approved",
                     ["commandType"] = commandType,
                     ["vehicleName"] = vehicleName,
-                    ["deviceId"] = deviceId
+                    ["deviceId"] = deviceId,
+                    ["approvedBy"] = currentUser.Id,
+                    ["approvedByName"] = approverName
                 }
             );
         }
 
-        return Ok(new { success = true, message = "Demande approuvée", commandId = cmd.Id });
+        return Ok(new
+        {
+            success = true,
+            message = "Demande approuvée",
+            commandId = cmd.Id,
+            pushed = push.Outcome == RustPushOutcome.Pushed,
+            pushStatus = push.Outcome.ToString()
+        });
     }
 
     [HttpPost("immobilization-requests/{requestId}/reject")]
     public async Task<IActionResult> RejectImmobilizationRequest(long requestId, [FromServices] INotificationService notificationService)
     {
         var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
-        if (userId != 1) return Forbid();
-
         var companyId = GetCompanyId();
+
+        var currentUser = await _context.Users
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Id == userId);
+        if (currentUser == null || !currentUser.IsCompanyAdmin) return Forbid();
 
         var notification = await _context.Notifications
             .FirstOrDefaultAsync(n => n.Id == requestId && n.Type == "immobilization_request" && !n.IsRead);
         if (notification == null) return NotFound(new { message = "Demande introuvable ou déjà traitée" });
+
+        if (notification.CompanyId != currentUser.CompanyId) return Forbid();
 
         var metadata = notification.Metadata ?? new Dictionary<string, object>();
         var commandType = GetMetaString(metadata, "commandType", "STOP");
@@ -1191,20 +1330,32 @@ public class GpsController : ControllerBase
         var deviceId = GetMetaInt(metadata, "deviceId");
         var requestedBy = GetMetaInt(metadata, "requestedBy");
 
-        notification.IsRead = true;
-        notification.ReadAt = DateTime.UtcNow;
+        // First-rejecter-wins: clear matching unread requests across all admins
+        var allRelated = await _context.Notifications
+            .Where(n => n.Type == "immobilization_request"
+                && n.ReferenceId == deviceId
+                && n.CompanyId == companyId
+                && !n.IsRead)
+            .ToListAsync();
+        var now = DateTime.UtcNow;
+        foreach (var n in allRelated)
+        {
+            n.IsRead = true;
+            n.ReadAt = now;
+        }
         await _context.SaveChangesAsync();
 
         // Notify the requester that their request was rejected
         if (requestedBy > 0)
         {
             var isStop = commandType == "STOP";
+            var rejecterName = $"{currentUser.FirstName} {currentUser.LastName}".Trim();
             var responseTitle = isStop
                 ? $"Arrêt refusé — {vehicleName}"
                 : $"Libération refusée — {vehicleName}";
             var responseMessage = isStop
-                ? $"Votre demande d'arrêt pour {vehicleName} a été refusée"
-                : $"Votre demande de libération pour {vehicleName} a été refusée";
+                ? $"Votre demande d'arrêt pour {vehicleName} a été refusée par {rejecterName}"
+                : $"Votre demande de libération pour {vehicleName} a été refusée par {rejecterName}";
 
             await notificationService.CreateAndSendAsync(
                 companyId, requestedBy,
@@ -1219,7 +1370,9 @@ public class GpsController : ControllerBase
                     ["status"] = "rejected",
                     ["commandType"] = commandType,
                     ["vehicleName"] = vehicleName,
-                    ["deviceId"] = deviceId
+                    ["deviceId"] = deviceId,
+                    ["rejectedBy"] = currentUser.Id,
+                    ["rejectedByName"] = rejecterName
                 }
             );
         }
@@ -1231,10 +1384,19 @@ public class GpsController : ControllerBase
     public async Task<IActionResult> GetPendingImmobilizationRequests()
     {
         var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
-        if (userId != 1) return Forbid();
+        var companyId = GetCompanyId();
 
+        var currentUser = await _context.Users
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Id == userId);
+        if (currentUser == null || !currentUser.IsCompanyAdmin) return Forbid();
+
+        // Each admin sees only notifications addressed to them for their company
         var requests = await _context.Notifications
-            .Where(n => n.Type == "immobilization_request" && !n.IsRead)
+            .Where(n => n.Type == "immobilization_request"
+                && !n.IsRead
+                && n.UserId == userId
+                && n.CompanyId == companyId)
             .OrderByDescending(n => n.CreatedAt)
             .Select(n => new {
                 n.Id,
@@ -1249,6 +1411,16 @@ public class GpsController : ControllerBase
         return Ok(requests);
     }
 
+}
+
+public class ImmobilizationRequestBody
+{
+    /// <summary>
+    /// Optional. If present, the caller is authenticating to issue the command
+    /// directly (mobile flow). If absent, the endpoint creates an approval
+    /// request fanned out to all company admins (web flow).
+    /// </summary>
+    public string? Password { get; set; }
 }
 
 // ==================== DTOs ====================
