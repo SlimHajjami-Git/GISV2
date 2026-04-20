@@ -25,7 +25,10 @@ builder.Services.AddSignalR()
         options.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
     });
 builder.Services.AddSingleton<IGpsHubService, GpsHubService>();
-builder.Services.AddSingleton<GisAPI.Services.IFcmService, GisAPI.Services.FcmService>();
+// FcmService must be Scoped because it injects IGisDbContext (Scoped). The
+// underlying FirebaseApp.DefaultInstance is a static singleton, so each scope
+// cheaply re-uses the already-initialized Firebase SDK.
+builder.Services.AddScoped<GisAPI.Services.IFcmService, GisAPI.Services.FcmService>();
 builder.Services.AddScoped<INotificationService, GisAPI.Services.NotificationService>();
 builder.Services.AddSingleton<IEmailService, GisAPI.Services.EmailService>();
 builder.Services.AddSingleton<ILlmService, GisAPI.Services.GroqLlmService>();
