@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "1015279396920",
+    "project_id": "calypso-b3ef7",
+    "storage_bucket": "calypso-b3ef7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1015279396920:android:7ad8d8939ba7e3a8ee1ecd",
+        "android_client_info": {
+          "package_name": "tn.belive.calypso"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDqI6ZTJtkrI6PizImIgAG-uNRj0zL9UIg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1015279396920:android:3f999a29eca67180ee1ecd",
+        "android_client_info": {
+          "package_name": "tn.belive.gisv2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDqI6ZTJtkrI6PizImIgAG-uNRj0zL9UIg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
