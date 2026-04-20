@@ -1411,6 +1411,273 @@ public class GpsController : ControllerBase
         return Ok(requests);
     }
 
+    // ==================== SAFE PRODUCTION TEST — ONE TEST VEHICLE ONLY ====================
+    //
+    // Purpose: validate the end-to-end remote-stop chain on a known, controlled vehicle
+    //          (the company-owned test vehicle wired for testing) WITHOUT the risk of
+    //          accidentally immobilising a client truck in the field.
+    //
+    // Quadruple hard-check (all must pass, otherwise 4xx):
+    //   1. device.Id            == 127624
+    //   2. device.DeviceUid     == "860141076682872"  (the test vehicle's IMEI)
+    //   3. device.CompanyId     == 1                  (Belive)
+    //   4. caller               is company-admin of company 1
+    //
+    // Safety net: the STOP is AUTOMATICALLY released by a background GO command after
+    // `stopDurationSeconds` (bounded 5–60s). Even if the caller closes the browser, a
+    // fire-and-forget Task handles the release. A manual GO via the normal endpoint
+    // always overrides it.
+    //
+    // All actions are logged with the "[SAFE-TEST]" prefix for easy grep in production.
+
+    [HttpPost("test/my-vehicle-stop")]
+    public async Task<IActionResult> SafeTestMyVehicleStop(
+        [FromQuery] int stopDurationSeconds,
+        [FromServices] IRustCommandPusher commandPusher,
+        [FromServices] IServiceScopeFactory scopeFactory,
+        [FromServices] ILogger<GpsController> logger)
+    {
+        // ── Safety check #0: bounded duration ──
+        if (stopDurationSeconds < 5 || stopDurationSeconds > 60)
+            return BadRequest(new {
+                success = false,
+                error = "stopDurationSeconds must be between 5 and 60",
+                hint = "Recommended: 10 for a quick sanity check, 20 for a real-world observation"
+            });
+
+        // ── Safety check #1: caller is admin of Belive (company 1) ──
+        var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
+        var callerCompanyId = GetCompanyId();
+        var caller = await _context.Users
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Id == userId);
+
+        if (caller == null || !caller.IsCompanyAdmin)
+            return Forbid();
+        if (callerCompanyId != 1 || caller.CompanyId != 1)
+            return StatusCode(403, new {
+                success = false,
+                error = "SAFETY: this test endpoint is restricted to company 1 (Belive) admins"
+            });
+
+        // ── Safety check #2: device id=127624 still exists AND has the expected IMEI ──
+        const int expectedDeviceId = 127624;
+        const string expectedImei = "860141076682872";
+
+        var device = await _context.GpsDevices
+            .Include(d => d.Vehicle)
+            .FirstOrDefaultAsync(d => d.Id == expectedDeviceId);
+
+        if (device == null)
+            return NotFound(new { success = false, error = $"SAFETY: device id={expectedDeviceId} not found" });
+
+        if (device.DeviceUid != expectedImei)
+            return BadRequest(new {
+                success = false,
+                error = $"SAFETY: device id={expectedDeviceId} has unexpected IMEI '{device.DeviceUid}' (expected '{expectedImei}'). The test vehicle may have been reassigned. Aborting.",
+            });
+
+        if (device.Vehicle == null)
+            return BadRequest(new { success = false, error = $"SAFETY: device id={expectedDeviceId} has no vehicle attached. Aborting." });
+
+        if (device.CompanyId != 1)
+            return BadRequest(new {
+                success = false,
+                error = $"SAFETY: device {expectedDeviceId} belongs to company {device.CompanyId}, not 1. Refusing to test.",
+            });
+
+        // ── Safety check #3: not already immobilized (don't clobber an existing state) ──
+        if (device.ImmobilizationActive)
+            return Conflict(new {
+                success = false,
+                error = "Device is already immobilized. Release it manually via the normal GO endpoint before running this test.",
+                currentState = new {
+                    immobilizedAt = device.ImmobilizationAt,
+                    immobilizedBy = device.ImmobilizationBy
+                }
+            });
+
+        // ── All checks passed — proceed ──
+        logger.LogWarning(
+            "[SAFE-TEST] Vehicle STOP test STARTED by user {UserId} ({Email}), auto-release in {Seconds}s, deviceId={DeviceId}, deviceImei={Imei}",
+            userId, caller.Email, stopDurationSeconds, device.Id, device.DeviceUid);
+
+        device.ImmobilizationActive = true;
+        device.ImmobilizationBy = userId;
+        device.ImmobilizationAt = DateTime.UtcNow;
+
+        var stopCmd = new DeviceCommand
+        {
+            DeviceId = device.Id,
+            VehicleId = device.Vehicle.Id,
+            UserId = userId,
+            CommandType = "STOP",
+            CommandText = device.CommandStop,
+            Status = "pending",
+            Source = "safe-test",
+            CompanyId = 1
+        };
+        _context.DeviceCommands.Add(stopCmd);
+        await _context.SaveChangesAsync();
+
+        var stopPush = await commandPusher.PushAsync(device.Id, device.CommandStop);
+        logger.LogWarning(
+            "[SAFE-TEST] STOP dispatched: commandId={CommandId}, pushStatus={Status}",
+            stopCmd.Id, stopPush.Outcome);
+
+        // ── Schedule automatic release ──
+        var autoReleaseAt = DateTime.UtcNow.AddSeconds(stopDurationSeconds);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(stopDurationSeconds));
+
+                using var scope = scopeFactory.CreateScope();
+                var scopedContext = scope.ServiceProvider.GetRequiredService<GisDbContext>();
+                var scopedPusher = scope.ServiceProvider.GetRequiredService<IRustCommandPusher>();
+                var scopedLogger = scope.ServiceProvider.GetRequiredService<ILogger<GpsController>>();
+
+                var dev = await scopedContext.GpsDevices
+                    .Include(d => d.Vehicle)
+                    .FirstOrDefaultAsync(d => d.Id == expectedDeviceId);
+                if (dev == null)
+                {
+                    scopedLogger.LogError("[SAFE-TEST] AUTO-RELEASE FAILED: device {DeviceId} vanished", expectedDeviceId);
+                    return;
+                }
+
+                dev.ImmobilizationActive = false;
+                dev.ImmobilizationBy = userId;
+                dev.ImmobilizationAt = DateTime.UtcNow;
+
+                var goCmd = new DeviceCommand
+                {
+                    DeviceId = expectedDeviceId,
+                    VehicleId = dev.Vehicle?.Id,
+                    UserId = userId,
+                    CommandType = "GO",
+                    CommandText = dev.CommandGo,
+                    Status = "pending",
+                    Source = "safe-test-auto-release",
+                    CompanyId = 1
+                };
+                scopedContext.DeviceCommands.Add(goCmd);
+                await scopedContext.SaveChangesAsync(CancellationToken.None);
+
+                var goPush = await scopedPusher.PushAsync(expectedDeviceId, dev.CommandGo);
+                scopedLogger.LogWarning(
+                    "[SAFE-TEST] AUTO-RELEASE GO dispatched: commandId={CommandId}, pushStatus={Status}",
+                    goCmd.Id, goPush.Outcome);
+            }
+            catch (Exception ex)
+            {
+                using var scope = scopeFactory.CreateScope();
+                var scopedLogger = scope.ServiceProvider.GetRequiredService<ILogger<GpsController>>();
+                scopedLogger.LogCritical(ex,
+                    "[SAFE-TEST] AUTO-RELEASE FAILED — MANUAL INTERVENTION REQUIRED FOR DEVICE {DeviceId}", expectedDeviceId);
+            }
+        });
+
+        return Ok(new
+        {
+            success = true,
+            testId = stopCmd.Id,
+            device = new
+            {
+                id = device.Id,
+                imei = device.DeviceUid,
+                plate = device.Vehicle.Plate,
+                brand = device.Vehicle.Brand,
+                model = device.Vehicle.Model,
+                label = device.Label
+            },
+            stopCommand = new
+            {
+                commandId = stopCmd.Id,
+                text = device.CommandStop,
+                pushedInstantly = stopPush.Outcome == RustPushOutcome.Pushed,
+                pushStatus = stopPush.Outcome.ToString(),
+                pushMessage = stopPush.Message,
+                note = stopPush.Outcome == RustPushOutcome.DeviceNotConnected
+                    ? "Device offline — command is PENDING in DB and will be delivered on next frame"
+                    : stopPush.Outcome == RustPushOutcome.Pushed
+                        ? "Command written to live TCP socket — engine should cut within 1–2 seconds"
+                        : "Rust ingest unreachable — command is PENDING in DB as fallback"
+            },
+            autoRelease = new
+            {
+                scheduledAt = autoReleaseAt,
+                inSeconds = stopDurationSeconds
+            },
+            message = $"🛑 Test vehicle stopped. Auto-release scheduled in {stopDurationSeconds}s. Watch the engine — it should restart automatically."
+        });
+    }
+
+    /// <summary>
+    /// Read-only preview of the test — tells you exactly what WOULD happen without
+    /// actually dispatching anything. Safe to call anytime.
+    /// </summary>
+    [HttpGet("test/my-vehicle-stop/preview")]
+    public async Task<IActionResult> SafeTestMyVehicleStopPreview()
+    {
+        const int expectedDeviceId = 127624;
+        const string expectedImei = "860141076682872";
+
+        var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
+        var caller = await _context.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.Id == userId);
+
+        var device = await _context.GpsDevices
+            .Include(d => d.Vehicle)
+            .FirstOrDefaultAsync(d => d.Id == expectedDeviceId);
+
+        var lastPosition = await _context.GpsPositions
+            .Where(p => p.DeviceId == expectedDeviceId)
+            .OrderByDescending(p => p.RecordedAt)
+            .Select(p => new { p.RecordedAt, p.Latitude, p.Longitude, p.SpeedKph })
+            .FirstOrDefaultAsync();
+
+        bool safetyPassed =
+            caller != null
+            && caller.IsCompanyAdmin
+            && caller.CompanyId == 1
+            && device != null
+            && device.DeviceUid == expectedImei
+            && device.Vehicle != null
+            && device.CompanyId == 1
+            && !device.ImmobilizationActive;
+
+        return Ok(new
+        {
+            expected = new { deviceId = expectedDeviceId, imei = expectedImei, companyId = 1 },
+            safetyChecks = new
+            {
+                callerIsAdminOfCompany1 = caller?.IsCompanyAdmin == true && caller.CompanyId == 1,
+                deviceExists = device != null,
+                deviceImeiMatches = device?.DeviceUid == expectedImei,
+                deviceHasVehicle = device?.Vehicle != null,
+                deviceInCompany1 = device?.CompanyId == 1,
+                notAlreadyStopped = device?.ImmobilizationActive == false
+            },
+            allGreen = safetyPassed,
+            device = device == null ? null : new
+            {
+                id = device.Id,
+                imei = device.DeviceUid,
+                label = device.Label,
+                plate = device.Vehicle?.Plate,
+                brand = device.Vehicle?.Brand,
+                model = device.Vehicle?.Model,
+                immobilizationActive = device.ImmobilizationActive,
+                lastCommunication = device.LastCommunication
+            },
+            lastPosition,
+            hint = safetyPassed
+                ? "✅ All checks green — you can call POST /api/gps/test/my-vehicle-stop?stopDurationSeconds=10"
+                : "❌ Fix the failing safetyChecks before calling the stop"
+        });
+    }
+
 }
 
 public class ImmobilizationRequestBody
