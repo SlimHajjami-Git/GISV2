@@ -223,6 +223,23 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<AiChatMessage>().ToTable("ai_chat_messages");
         modelBuilder.Entity<AlertEmail>().ToTable("alert_emails");
 
+        // UserDeviceToken — FCM push notification targeting (one row per (user, device))
+        modelBuilder.Entity<UserDeviceToken>().ToTable("user_device_tokens");
+        modelBuilder.Entity<UserDeviceToken>().Property(t => t.Id).HasColumnName("id");
+        modelBuilder.Entity<UserDeviceToken>().Property(t => t.UserId).HasColumnName("user_id");
+        modelBuilder.Entity<UserDeviceToken>().Property(t => t.Token).HasColumnName("token");
+        modelBuilder.Entity<UserDeviceToken>().Property(t => t.Platform).HasColumnName("platform").HasMaxLength(20);
+        modelBuilder.Entity<UserDeviceToken>().Property(t => t.IsActive).HasColumnName("is_active");
+        modelBuilder.Entity<UserDeviceToken>().Property(t => t.RegisteredAt).HasColumnName("registered_at");
+        modelBuilder.Entity<UserDeviceToken>().Property(t => t.LastUsedAt).HasColumnName("last_used_at");
+        modelBuilder.Entity<UserDeviceToken>()
+            .HasOne(t => t.User)
+            .WithMany()
+            .HasForeignKey(t => t.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<UserDeviceToken>().HasIndex(t => t.Token).IsUnique();
+        modelBuilder.Entity<UserDeviceToken>().HasIndex(t => new { t.UserId, t.IsActive });
+
         // SubscriptionType configuration - all column mappings for PostgreSQL snake_case
         modelBuilder.Entity<SubscriptionType>().Property(s => s.Id).HasColumnName("id");
         modelBuilder.Entity<SubscriptionType>().Property(s => s.Name).HasColumnName("name");
