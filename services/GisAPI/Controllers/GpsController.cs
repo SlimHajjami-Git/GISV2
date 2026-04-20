@@ -1056,6 +1056,15 @@ public class GpsController : ControllerBase
             return await DispatchImmobilizationCommandAsync(device, user, commandType, isStop, commandPusher);
         }
 
+        // ──────── GUARD: require-direct callers must NOT fall through ────────
+        // The mobile app sets RequireDirect=true so that an empty/missing password
+        // is rejected here instead of silently creating an admin-approval
+        // notification. Without this, an admin caller would see their own
+        // approval notification pop up via SignalR, tap ACCEPTER, and end up
+        // stopping the vehicle without ever entering a password (v1.0.6 bug).
+        if (body?.RequireDirect == true)
+            return BadRequest(new { success = false, message = "Mot de passe requis" });
+
         // ──────── REQUEST PATH (no password → admin approval) ────────
         var hasPending = await _context.Notifications
             .AnyAsync(n => n.Type == "immobilization_request"
@@ -1421,6 +1430,17 @@ public class ImmobilizationRequestBody
     /// request fanned out to all company admins (web flow).
     /// </summary>
     public string? Password { get; set; }
+
+    /// <summary>
+    /// Set to true by clients that MUST dispatch via the direct (password-verified)
+    /// path — specifically the mobile app. When true, the backend will NOT fall
+    /// back to the admin-approval flow if the password is missing or wrong; it
+    /// returns 400/401 instead. This plugs a bypass where an admin caller could
+    /// submit an empty password, receive their own approval notification, and
+    /// auto-accept it via SignalR — effectively stopping the vehicle without
+    /// entering a password.
+    /// </summary>
+    public bool RequireDirect { get; set; }
 }
 
 // ==================== DTOs ====================

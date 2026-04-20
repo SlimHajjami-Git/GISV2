@@ -315,7 +315,18 @@ export class VehiclesPage implements OnInit, OnDestroy {
     this.loading = true;
     this.api.getVehicles().subscribe({
       next: (vehicles) => {
-        this.vehicles = Array.isArray(vehicles) ? vehicles : [];
+        // Backend returns the GPS device as a nested object:
+        //   vehicle.gpsDevice = { id, deviceUid, ... }
+        // but the mobile Vehicle model exposes only a flat `gpsDeviceId`
+        // field (used by the immobilization section's *ngIf). Without this
+        // flattening `gpsDeviceId` is always undefined, the "Arrêter/Libérer"
+        // section never renders, and the whole mobile-initiated stop flow
+        // is silently invisible to the user.
+        const raw: any[] = Array.isArray(vehicles) ? vehicles : [];
+        this.vehicles = raw.map((v: any) => ({
+          ...v,
+          gpsDeviceId: v.gpsDevice?.id != null ? String(v.gpsDevice.id) : undefined,
+        }));
         this.updateCounts();
         this.filterVehicles();
         this.loading = false;
@@ -497,11 +508,27 @@ export class VehiclesPage implements OnInit, OnDestroy {
     const passwordAlert = await this.alertCtrl.create({
       header: 'Confirmation requise',
       message: `Pour arrêter "${v.name}", entrez votre mot de passe`,
+      backdropDismiss: false,
       inputs: [{ name: 'password', type: 'password', placeholder: 'Mot de passe' }],
       buttons: [
         { text: 'Annuler', role: 'cancel' },
         { text: 'Envoyer', handler: (data) => {
-          this.verifyAndSendRequest(v, deviceId, data.password, 'stop');
+          // SECURITY: mobile must ALWAYS go through the direct (password-verified)
+          // dispatch path. Returning true with an empty password used to fall
+          // through to the backend "request" mode, which fan-outs an approval
+          // notification to admins. When the caller is themselves an admin
+          // (common on mobile) the notification bounces right back via SignalR,
+          // they tap ACCEPTER, and the vehicle stops without ever having typed
+          // a password — bug reported on v1.0.6. Here we refuse to close the
+          // alert on empty input.
+          const pwd = (data?.password || '').trim();
+          if (!pwd) {
+            this.toastCtrl.create({
+              message: 'Mot de passe requis', duration: 1500, color: 'warning', position: 'top'
+            }).then(t => t.present());
+            return false;
+          }
+          this.verifyAndSendRequest(v, deviceId, pwd, 'stop');
           return true;
         }}
       ]
@@ -550,11 +577,24 @@ export class VehiclesPage implements OnInit, OnDestroy {
     const passwordAlert = await this.alertCtrl.create({
       header: 'Libérer le véhicule',
       message: `Pour libérer "${v.name}", entrez votre mot de passe`,
+      backdropDismiss: false,
       inputs: [{ name: 'password', type: 'password', placeholder: 'Mot de passe' }],
       buttons: [
         { text: 'Annuler', role: 'cancel' },
         { text: 'Envoyer', handler: (data) => {
-          this.verifyAndSendRequest(v, deviceId, data.password, 'go');
+          // SECURITY: same reasoning as onStopVehicle — empty password used to
+          // fall through to the backend "request" path, which fires an admin
+          // approval notification that an admin caller can auto-accept,
+          // effectively bypassing password verification. Refuse to close
+          // the alert on empty input.
+          const pwd = (data?.password || '').trim();
+          if (!pwd) {
+            this.toastCtrl.create({
+              message: 'Mot de passe requis', duration: 1500, color: 'warning', position: 'top'
+            }).then(t => t.present());
+            return false;
+          }
+          this.verifyAndSendRequest(v, deviceId, pwd, 'go');
           return true;
         }}
       ]

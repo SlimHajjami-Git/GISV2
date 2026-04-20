@@ -160,15 +160,22 @@ export class ApiService {
    *   command immediately (mobile flow — operator confirms with password).
    * - If `password` is omitted, the backend creates an approval request
    *   fanned out to all company admins (web flow).
+   *
+   * SECURITY: the mobile app ALWAYS sends `requireDirect: true` so the backend
+   * rejects the request if the password is missing or invalid, instead of
+   * silently falling back to the approval-request flow — which would bypass
+   * password verification when the caller is an admin (see v1.0.6 bug report).
    */
   stopVehicle(deviceId: number, password?: string): Observable<any> {
-    const body = password ? { password } : {};
+    const body: any = { requireDirect: true };
+    if (password) body.password = password;
     return this.http.post<any>(`${this.API}/gps/devices/${deviceId}/stop`, body);
   }
 
   /** See `stopVehicle` — same two-mode behaviour for releasing a vehicle. */
   goVehicle(deviceId: number, password?: string): Observable<any> {
-    const body = password ? { password } : {};
+    const body: any = { requireDirect: true };
+    if (password) body.password = password;
     return this.http.post<any>(`${this.API}/gps/devices/${deviceId}/go`, body);
   }
 

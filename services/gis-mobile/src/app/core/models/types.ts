@@ -31,6 +31,16 @@ export interface Vehicle {
   lastAddress?: string;
   gpsDeviceId?: string;
   gpsImei?: string;
+  // Nested GPS device object as returned by the backend GetVehicles query.
+  // `gpsDeviceId` above is flattened from this at load time (see
+  // vehicles.page.ts loadVehicles) so template *ngIf checks stay simple.
+  gpsDevice?: {
+    id: number;
+    deviceUid?: string;
+    label?: string;
+    status?: string;
+    lastCommunication?: string;
+  };
   stats?: {
     fuelLevel?: number;
     batteryLevel?: number;
