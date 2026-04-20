@@ -53,7 +53,7 @@ export class ImmobilizationApprovalService {
 
   private async handleApprovalRequest(notification: SignalRNotification): Promise<void> {
     const user = this.authService.getCurrentUserSync();
-    if (!user || parseInt(user.id) !== 1) return;
+    if (!user || !user.isCompanyAdmin) return;
 
     const meta = notification.metadata || {};
     const commandType = meta.commandType || 'STOP';

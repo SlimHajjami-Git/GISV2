@@ -234,8 +234,8 @@ export class AlertsPage implements OnInit, OnDestroy {
 
   private async showImmobilizationDialog(n: Notification): Promise<void> {
     const user = this.authService.getCurrentUserSync();
-    if (!user || parseInt(user.id) !== 1) {
-      // Not the approver — just mark read
+    if (!user || !user.isCompanyAdmin) {
+      // Not a company admin — approval UI not shown; just mark read
       this.markRead(n);
       return;
     }

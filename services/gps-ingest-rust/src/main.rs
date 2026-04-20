@@ -11,11 +11,13 @@ use anyhow::Result;
 use chrono::NaiveDate;
 use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
 use tracing::{info, warn, error, Level};
 
 use crate::ports::{TelemetryEventPublisher, TelemetryStore};
 use crate::services::daily_statistics::DailyStatisticsCalculator;
+use crate::transport::CommandSenders;
 
 /// CLI arguments
 #[derive(Debug)]
@@ -73,6 +75,84 @@ fn print_help() {
     println!("    gps-ingest-rust                           # Run ingestion service");
     println!("    gps-ingest-rust --calculate-daily         # Calculate stats for yesterday");
     println!("    gps-ingest-rust -d 2026-01-20             # Calculate stats for Jan 20, 2026");
+}
+
+#[derive(serde::Deserialize, Debug)]
+struct PushCommandRequest {
+    device_id: i32,
+    command: String,
+}
+
+#[derive(serde::Serialize)]
+struct PushCommandResponse {
+    status: &'static str,
+    device_id: i32,
+    detail: Option<String>,
+}
+
+/// POST /commands/push
+///
+/// Called by the .NET API after inserting a pending row in `device_commands`,
+/// to deliver the command to the Rust-owned TCP socket with ~ms latency instead
+/// of waiting for the next device frame (typically 5s–5min).
+///
+/// Body: { "device_id": 42, "command": "AJ+STOP#1311\n" }
+///
+/// Returns:
+///   - 200 { status: "pushed" }      — command queued on the TCP handler's channel
+///   - 404 { status: "not_connected" } — device has no active TCP connection; the
+///                                       per-frame DB poll will deliver it on
+///                                       reconnect, so this is a soft failure
+///   - 500 { status: "channel_error" } — the receiving handler died or the buffer
+///                                       is saturated (operator spam)
+async fn push_command(
+    axum::extract::State(senders): axum::extract::State<CommandSenders>,
+    axum::Json(req): axum::Json<PushCommandRequest>,
+) -> (axum::http::StatusCode, axum::Json<PushCommandResponse>) {
+    info!(device_id = req.device_id, cmd = %req.command.trim(), "Received /commands/push");
+
+    let sender = {
+        let map = senders.lock().await;
+        map.get(&req.device_id).cloned()
+    };
+
+    match sender {
+        None => {
+            warn!(device_id = req.device_id, "No active TCP connection for device; command will be delivered via DB fallback on next reconnect");
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                axum::Json(PushCommandResponse {
+                    status: "not_connected",
+                    device_id: req.device_id,
+                    detail: Some("device is not currently connected; command stays pending in DB and will be sent on reconnect".into()),
+                }),
+            )
+        }
+        Some(tx) => match tx.try_send(req.command.clone()) {
+            Ok(_) => {
+                info!(device_id = req.device_id, "Pushed command to TCP handler via mpsc channel");
+                (
+                    axum::http::StatusCode::OK,
+                    axum::Json(PushCommandResponse {
+                        status: "pushed",
+                        device_id: req.device_id,
+                        detail: None,
+                    }),
+                )
+            }
+            Err(e) => {
+                error!(?e, device_id = req.device_id, "Failed to push command via channel");
+                (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    axum::Json(PushCommandResponse {
+                        status: "channel_error",
+                        device_id: req.device_id,
+                        detail: Some(e.to_string()),
+                    }),
+                )
+            }
+        },
+    }
 }
 
 #[tokio::main]
@@ -172,17 +252,25 @@ async fn main() -> Result<()> {
 
             info!("GPS Ingest service running in WRITE-ONLY mode (API served by .NET)");
 
-            // Spawn HTTP server with health check endpoint
+            // Shared registry of device_id → mpsc sender, populated by TCP connection
+            // handlers and looked up by the /commands/push HTTP endpoint to deliver
+            // operator commands to the specific active socket with sub-100ms latency.
+            let command_senders: CommandSenders = Arc::new(Mutex::new(HashMap::new()));
+
+            // Spawn HTTP server with health check + command push endpoint
             let api_port: u16 = std::env::var("API_PORT")
                 .ok()
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(3000);
+            let api_senders = Arc::clone(&command_senders);
             tokio::spawn(async move {
                 let app = axum::Router::new()
                     .route("/api/health", axum::routing::get(|| async { "OK" }))
-                    .route("/health", axum::routing::get(|| async { "OK" }));
+                    .route("/health", axum::routing::get(|| async { "OK" }))
+                    .route("/commands/push", axum::routing::post(push_command))
+                    .with_state(api_senders);
                 let addr = std::net::SocketAddr::from(([0, 0, 0, 0], api_port));
-                info!("HTTP API listening on port {} (health)", api_port);
+                info!("HTTP API listening on port {} (health + /commands/push)", api_port);
                 if let Err(e) = axum::serve(
                     tokio::net::TcpListener::bind(addr).await.unwrap(),
                     app.into_make_service(),
@@ -196,7 +284,7 @@ async fn main() -> Result<()> {
                 warn!("No listeners configured; service will idle");
             }
 
-            transport::run_listeners(&app_config, database, publisher, redis_cache).await?;
+            transport::run_listeners(&app_config, database, publisher, redis_cache, command_senders).await?;
         }
     }
 
