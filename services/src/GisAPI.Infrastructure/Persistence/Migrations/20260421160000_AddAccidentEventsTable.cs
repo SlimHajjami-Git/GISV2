@@ -68,14 +68,28 @@ CREATE INDEX IF NOT EXISTS ix_accident_events_incident_at_desc
         // inserts: the same (vehicle, minute-bucket) never produces two rows
         // even if two scan cycles overlap on the same candidate frame.
         //
-        // PostgreSQL forbids non-IMMUTABLE functions in index expressions, and
-        // date_trunc(text, timestamptz) is STABLE (depends on session
-        // TimeZone). We instead bucket by integer epoch-minute —
-        // EXTRACT(EPOCH FROM timestamptz) is IMMUTABLE (always UTC-based) so
-        // the cast to bigint + divide-by-60 is safe in an index expression.
+        // PostgreSQL forbids non-IMMUTABLE functions in index expressions.
+        // Both `date_trunc(text, timestamptz)` and `EXTRACT(EPOCH FROM
+        // timestamptz)` are marked STABLE in pg_proc (generic labeling; the
+        // actual output is UTC-deterministic but the catalog is
+        // conservative). We therefore wrap the bucket computation in our
+        // own SQL function marked IMMUTABLE — the standard Postgres idiom
+        // for indexing on expressions the catalog under-classifies.
+        migrationBuilder.Sql(@"
+CREATE OR REPLACE FUNCTION accident_minute_bucket(ts timestamp with time zone)
+RETURNS bigint
+LANGUAGE sql
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+AS $$
+    SELECT (EXTRACT(EPOCH FROM ts)::bigint) / 60;
+$$;
+");
+
         migrationBuilder.Sql(@"
 CREATE UNIQUE INDEX IF NOT EXISTS ux_accident_events_vehicle_minute
-    ON accident_events (vehicle_id, ((EXTRACT(EPOCH FROM incident_at)::bigint) / 60))
+    ON accident_events (vehicle_id, accident_minute_bucket(incident_at))
     WHERE vehicle_id IS NOT NULL;
 ");
     }
@@ -83,6 +97,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_accident_events_vehicle_minute
     protected override void Down(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.Sql("DROP INDEX IF EXISTS ux_accident_events_vehicle_minute;");
+        migrationBuilder.Sql("DROP FUNCTION IF EXISTS accident_minute_bucket(timestamp with time zone);");
         migrationBuilder.Sql("DROP INDEX IF EXISTS ix_accident_events_incident_at_desc;");
         migrationBuilder.Sql("DROP INDEX IF EXISTS ix_accident_events_vehicle_id;");
         migrationBuilder.Sql("DROP INDEX IF EXISTS ix_accident_events_company_id;");
