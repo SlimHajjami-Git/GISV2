@@ -157,19 +157,44 @@ interface ChartAxisLabel {
           <section class="sec sec-synth">
             <div class="sec-num">01</div>
             <h2 class="sec-h">Synthèse</h2>
-            <p class="lead">
-              Votre véhicule <strong>{{ vehicleLabel }}</strong> a été impliqué dans un
-              <strong class="hl">accident grave</strong> le
-              <strong>{{ synthesisDateTimeLong }}</strong>, sur la commune de
-              <strong>{{ locationCommune }}</strong>, dans le gouvernorat de
-              <strong>{{ locationGovernorate }}</strong>.
-            </p>
-            <p>
-              L'analyse des données enregistrées par le boîtier GPS installé sur ce véhicule
-              permet d'établir, avec un niveau de certitude très élevé, qu'il s'agit d'un
-              <strong>{{ synthesisText }}</strong>. Les éléments qui conduisent à ce
-              diagnostic sont détaillés dans les pages suivantes.
-            </p>
+
+            <!-- Dismissed: the admin called it a fausse alerte. The system
+                 still observed a violent impact, so we reframe the narrative
+                 around "choc détecté + dégâts possibles" rather than keeping
+                 the original "accident grave" verdict that would now be
+                 incoherent with the admin decision. -->
+            <ng-container *ngIf="status === 'dismissed'; else activeSynth">
+              <p class="lead">
+                Un <strong class="hl">choc violent</strong> a été détecté sur votre véhicule
+                <strong>{{ vehicleLabel }}</strong> le
+                <strong>{{ synthesisDateTimeLong }}</strong>, sur la commune de
+                <strong>{{ locationCommune }}</strong>, dans le gouvernorat de
+                <strong>{{ locationGovernorate }}</strong>.
+              </p>
+              <p>
+                Cet événement a été marqué comme <strong>fausse alerte</strong> par
+                l'administration<span *ngIf="decidedByName"> ({{ decidedByName }})</span>.
+                Les données enregistrées révèlent néanmoins un impact significatif qui peut
+                avoir causé des <strong>dégâts matériels</strong>. Une vérification du
+                véhicule est recommandée.
+              </p>
+            </ng-container>
+
+            <ng-template #activeSynth>
+              <p class="lead">
+                Votre véhicule <strong>{{ vehicleLabel }}</strong> a été impliqué dans un
+                <strong class="hl">accident grave</strong> le
+                <strong>{{ synthesisDateTimeLong }}</strong>, sur la commune de
+                <strong>{{ locationCommune }}</strong>, dans le gouvernorat de
+                <strong>{{ locationGovernorate }}</strong>.
+              </p>
+              <p>
+                L'analyse des données enregistrées par le boîtier GPS installé sur ce véhicule
+                permet d'établir, avec un niveau de certitude très élevé, qu'il s'agit d'un
+                <strong>{{ synthesisText }}</strong>. Les éléments qui conduisent à ce
+                diagnostic sont détaillés dans les pages suivantes.
+              </p>
+            </ng-template>
           </section>
 
           <hr class="rule"/>
@@ -321,11 +346,19 @@ interface ChartAxisLabel {
           <section class="sec sec-confidence">
             <div class="sec-num">06</div>
             <h2 class="sec-h">Niveau de certitude de l'analyse</h2>
-            <p class="sec-intro">
-              Le diagnostic d'accident grave repose sur <strong>quatre observations
-              concordantes</strong>. Chacune, prise isolément, serait déjà un signal fort.
-              Réunies, elles rendent la conclusion très difficile à contester.
+            <p class="sec-intro" *ngIf="status === 'dismissed'; else activeIntro">
+              Le boîtier a initialement fait remonter un impact grave sur la base de
+              <strong>quatre observations concordantes</strong>. Après examen par
+              l'administration, cet événement a été écarté comme <strong>fausse alerte</strong>.
+              Les éléments détectés restent listés ci-dessous à titre d'historique.
             </p>
+            <ng-template #activeIntro>
+              <p class="sec-intro">
+                Le diagnostic d'accident grave repose sur <strong>quatre observations
+                concordantes</strong>. Chacune, prise isolément, serait déjà un signal fort.
+                Réunies, elles rendent la conclusion très difficile à contester.
+              </p>
+            </ng-template>
 
             <ol class="reasons">
               <li *ngFor="let r of reasons; let i = index" class="reason">
@@ -343,7 +376,12 @@ interface ChartAxisLabel {
                 <div class="certainty-fill" [style.width.%]="shown ? confidence : 0"></div>
               </div>
               <div class="certainty-verdict">
-                <span class="verdict-word">Très&nbsp;élevé</span>
+                <span class="verdict-word" *ngIf="status === 'dismissed'; else activeVerdict">
+                  Écarté&nbsp;par&nbsp;l'administration
+                </span>
+                <ng-template #activeVerdict>
+                  <span class="verdict-word">Très&nbsp;élevé</span>
+                </ng-template>
                 <span class="verdict-pct">{{ confidence }}&thinsp;%</span>
               </div>
             </div>
