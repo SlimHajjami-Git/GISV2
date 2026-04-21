@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { ChangeDetectorRef, Component, NgZone, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subscription } from 'rxjs';
 import { filter } from 'rxjs/operators';
@@ -297,7 +297,9 @@ export class AccidentDecisionModalComponent implements OnInit, OnDestroy {
   constructor(
     private signalr: SignalRService,
     private auth: AuthService,
-    private api: ApiService
+    private api: ApiService,
+    private ngZone: NgZone,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
@@ -315,7 +317,10 @@ export class AccidentDecisionModalComponent implements OnInit, OnDestroy {
           filter(n => n.type === 'accident_detected'
                    && this.isRequiresDecision(n.metadata))
         )
-        .subscribe(n => this.enqueue(n))
+        // SignalR callbacks can resolve outside Angular's zone depending on
+        // how the underlying transport is patched. Re-enter the zone
+        // explicitly so change detection picks up the new modal state.
+        .subscribe(n => this.ngZone.run(() => this.enqueue(n)))
     );
   }
 
@@ -360,6 +365,7 @@ export class AccidentDecisionModalComponent implements OnInit, OnDestroy {
       error: () => {
         this.busy = null;
         this.errorMessage = "Impossible de confirmer l'accident. Veuillez réessayer.";
+        this.cdr.detectChanges();
       }
     });
   }
@@ -374,6 +380,7 @@ export class AccidentDecisionModalComponent implements OnInit, OnDestroy {
       error: () => {
         this.busy = null;
         this.errorMessage = "Impossible d'enregistrer la fausse alerte. Veuillez réessayer.";
+        this.cdr.detectChanges();
       }
     });
   }
@@ -416,6 +423,8 @@ export class AccidentDecisionModalComponent implements OnInit, OnDestroy {
     } else {
       this.queue.push(pending);
     }
+    // Force CD in case the SignalR emission escaped the Angular zone.
+    this.cdr.detectChanges();
   }
 
   private finishCurrent(): void {
@@ -428,6 +437,7 @@ export class AccidentDecisionModalComponent implements OnInit, OnDestroy {
     this.current = this.queue.shift() ?? null;
     this.busy = null;
     this.errorMessage = null;
+    this.cdr.detectChanges();
   }
 
   /**
