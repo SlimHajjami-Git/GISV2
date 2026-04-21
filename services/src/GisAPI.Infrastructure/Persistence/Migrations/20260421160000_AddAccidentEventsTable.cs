@@ -67,11 +67,15 @@ CREATE INDEX IF NOT EXISTS ix_accident_events_incident_at_desc
         // Uniqueness guard used by AccidentDetectionService for idempotent
         // inserts: the same (vehicle, minute-bucket) never produces two rows
         // even if two scan cycles overlap on the same candidate frame.
-        // Using a partial functional index on date_trunc('minute', incident_at)
-        // keeps historical rows that predate this column untouched.
+        //
+        // PostgreSQL forbids non-IMMUTABLE functions in index expressions, and
+        // date_trunc(text, timestamptz) is STABLE (depends on session
+        // TimeZone). We instead bucket by integer epoch-minute —
+        // EXTRACT(EPOCH FROM timestamptz) is IMMUTABLE (always UTC-based) so
+        // the cast to bigint + divide-by-60 is safe in an index expression.
         migrationBuilder.Sql(@"
 CREATE UNIQUE INDEX IF NOT EXISTS ux_accident_events_vehicle_minute
-    ON accident_events (vehicle_id, date_trunc('minute', incident_at))
+    ON accident_events (vehicle_id, ((EXTRACT(EPOCH FROM incident_at)::bigint) / 60))
     WHERE vehicle_id IS NOT NULL;
 ");
     }
