@@ -172,6 +172,15 @@ import * as L from 'leaflet';
 
         <!-- Right Actions -->
         <div class="nav-actions">
+          <!-- Simuler accident (user id=1 only — manual test hook for the blocking decision modal) -->
+          <button *ngIf="isUserOne()" class="nav-icon-btn simulate-accident-btn" (click)="simulateAccident()" [disabled]="simulating" title="Simuler un accident (utilisateur test)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </button>
+
           <!-- Theme Toggle -->
           <button class="nav-icon-btn theme-toggle" (click)="toggleTheme()" [title]="isDarkMode ? 'Mode clair' : 'Mode sombre'">
             <svg *ngIf="!isDarkMode" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -700,6 +709,21 @@ import * as L from 'leaflet';
 
     .theme-toggle:hover {
       color: #f59e0b;
+    }
+
+    /* Debug-only "Simuler accident" trigger — red to signal "test button, do not ship". */
+    .simulate-accident-btn {
+      color: #ef4444;
+    }
+
+    .simulate-accident-btn:hover:not(:disabled) {
+      background: rgba(239, 68, 68, 0.12);
+      color: #dc2626;
+    }
+
+    .simulate-accident-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
     /* ===== NOTIFICATIONS ===== */
@@ -1444,6 +1468,37 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     if (authUser?.email) return authUser.email;
     const apiUser = this.apiService.getCurrentUserSync();
     return apiUser ? apiUser.email : '';
+  }
+
+  // ─── Debug: simulate accident (user id=1 only) ───────────────────────────
+  // The backend endpoint is gated server-side to UserId == 1, but we also
+  // hide the button for everyone else so it never shows up in a screenshare.
+
+  simulating = false;
+
+  isUserOne(): boolean {
+    const authUser = this.authService.getCurrentUserSync();
+    return authUser?.id === '1';
+  }
+
+  simulateAccident(): void {
+    if (this.simulating) return;
+    this.simulating = true;
+
+    this.apiService.simulateAccident().subscribe({
+      next: (res) => {
+        this.simulating = false;
+        // The SignalR notification should arrive within milliseconds and the
+        // AccidentDecisionModalComponent (mounted at the root) will pop. We
+        // intentionally do not navigate here — the modal is the UX.
+        console.log('[Simulate] accident event created:', res.accidentEventId);
+      },
+      error: (err) => {
+        this.simulating = false;
+        console.error('[Simulate] failed to create simulated accident', err);
+        alert('Échec de la simulation : ' + (err?.error?.error ?? err?.message ?? 'erreur inconnue'));
+      },
+    });
   }
 
   getUserInitials(): string {

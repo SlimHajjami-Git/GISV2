@@ -1548,6 +1548,16 @@ export class ApiService {
     return this.http.post<void>(`${this.API_URL}/accident-reports/${id}/dismiss`, null, { headers: this.getHeaders() });
   }
 
+  /**
+   * Debug-only: inserts a pending accident row in the caller's company and
+   * sends the blocking-modal notification ONLY to user id=1. Server returns
+   * 403 for anyone else. Used by the hidden "Tester accident" button in the
+   * header to walk the decision flow on prod without waiting for a real crash.
+   */
+  simulateAccident(): Observable<{ accidentEventId: number }> {
+    return this.http.post<{ accidentEventId: number }>(`${this.API_URL}/accident-reports/simulate`, null, { headers: this.getHeaders() });
+  }
+
   // ==================== MAINTENANCE TEMPLATES ====================
 
   getMaintenanceTemplates(options?: { category?: string; isActive?: boolean; page?: number; pageSize?: number }): Observable<PaginatedResult<MaintenanceTemplateDto>> {
