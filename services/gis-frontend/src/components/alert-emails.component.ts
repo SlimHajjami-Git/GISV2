@@ -15,7 +15,10 @@ const ALERT_TYPES: Record<string, string> = {
   'assurance': 'Assurance',
   'taxe_circulation': 'Taxe Circulation',
   'visite_technique': 'Visite Technique',
-  'entretien': 'Entretien'
+  'entretien': 'Entretien',
+  // Server-side accident detection (AccidentDetectionService, V7 MEMS filter)
+  // routes its email fan-out through this alert_type.
+  'accident': 'Accident'
 };
 
 @Component({
@@ -346,6 +349,7 @@ const ALERT_TYPES: Record<string, string> = {
     .type-taxe_circulation { background: rgba(234, 179, 8, 0.15); color: #fbbf24; }
     .type-visite_technique { background: rgba(20, 184, 166, 0.15); color: #5eead4; }
     .type-entretien { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
+    .type-accident { background: rgba(190, 18, 60, 0.18); color: #fda4af; }
 
     /* Delete confirmation overlay */
     .delete-overlay {

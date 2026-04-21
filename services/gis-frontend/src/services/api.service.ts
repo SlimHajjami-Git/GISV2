@@ -1530,6 +1530,24 @@ export class ApiService {
     return this.http.get<AccidentReportDto>(`${this.API_URL}/accident-reports/${id}`, { headers: this.getHeaders() });
   }
 
+  /**
+   * Admin click-through from the accident decision modal (or the
+   * /rapport-accident fallback button). Idempotent — a repeat call on an
+   * already-decided event resolves silently.
+   */
+  confirmAccident(id: number): Observable<void> {
+    return this.http.post<void>(`${this.API_URL}/accident-reports/${id}/confirm`, null, { headers: this.getHeaders() });
+  }
+
+  /**
+   * Admin "Fausse alerte" click — flips the event to dismissed and lets
+   * the backend broadcast the "Choc violent — dégâts possibles" admin
+   * notification.
+   */
+  dismissAccident(id: number): Observable<void> {
+    return this.http.post<void>(`${this.API_URL}/accident-reports/${id}/dismiss`, null, { headers: this.getHeaders() });
+  }
+
   // ==================== MAINTENANCE TEMPLATES ====================
 
   getMaintenanceTemplates(options?: { category?: string; isActive?: boolean; page?: number; pageSize?: number }): Observable<PaginatedResult<MaintenanceTemplateDto>> {
@@ -3109,6 +3127,14 @@ export interface AccidentReportDto {
   story: AccidentReportStoryEventDto[] | null;
   reasons: AccidentReportReasonDto[] | null;
   indicators: AccidentReportIndicatorDto[] | null;
+  // Decision workflow — status defaults to 'pending' from the backend and
+  // moves to 'confirmed' / 'dismissed' once an admin clicks through the
+  // modal. towDetectedAt is stamped by AccidentTowMonitoringService.
+  status: 'pending' | 'confirmed' | 'dismissed';
+  decidedByUserId: number | null;
+  decidedByName: string | null;
+  decidedAt: string | null;
+  towDetectedAt: string | null;
 }
 
 export interface AccidentReportStoryEventDto {

@@ -9,6 +9,7 @@ import {
   PositionDto,
   AccidentReportDto,
 } from '../services/api.service';
+import { AuthService } from '../services/auth.service';
 
 interface NarrativeEvent {
   time: string;
@@ -112,6 +113,45 @@ interface ChartAxisLabel {
               </div>
             </div>
           </header>
+
+          <!-- Decision status banner — shown once the backend DTO is
+               loaded. Reflects accident_events.status and offers fallback
+               Confirmer / Fausse alerte buttons to admins when the modal
+               was "Reporter"-ed earlier. -->
+          <section class="status-banner" *ngIf="status" [attr.data-status]="status">
+            <div class="status-head">
+              <span class="status-pill" [class.is-pending]="status === 'pending'"
+                                         [class.is-confirmed]="status === 'confirmed'"
+                                         [class.is-dismissed]="status === 'dismissed'">
+                <span class="status-dot"></span>
+                {{ statusLabel }}
+              </span>
+              <span class="status-meta" *ngIf="decidedByName">
+                par {{ decidedByName }}<span *ngIf="decidedAtFormatted"> — {{ decidedAtFormatted }}</span>
+              </span>
+              <span class="status-tow" *ngIf="towDetectedAtFormatted">
+                Remorquage détecté le {{ towDetectedAtFormatted }}
+              </span>
+            </div>
+            <div class="status-actions" *ngIf="status === 'pending' && isAdmin">
+              <p class="status-hint">
+                Décision requise. Vous pouvez confirmer ou signaler une fausse alerte :
+              </p>
+              <div class="status-buttons">
+                <button type="button" class="sb-btn sb-btn-confirm"
+                        (click)="confirmFromReport()"
+                        [disabled]="decisionBusy">
+                  {{ decisionBusy === 'confirm' ? 'Confirmation…' : "Confirmer l'accident" }}
+                </button>
+                <button type="button" class="sb-btn sb-btn-dismiss"
+                        (click)="dismissFromReport()"
+                        [disabled]="decisionBusy">
+                  {{ decisionBusy === 'dismiss' ? 'Envoi…' : 'Fausse alerte' }}
+                </button>
+              </div>
+              <p class="status-error" *ngIf="decisionError">{{ decisionError }}</p>
+            </div>
+          </section>
 
           <!-- Synthèse -->
           <section class="sec sec-synth">
@@ -413,6 +453,115 @@ interface ChartAxisLabel {
       transition: opacity 700ms ease, transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
     }
     .doc.shown { opacity: 1; transform: translateY(0); }
+
+    /* Decision status banner */
+    .status-banner {
+      margin: 0 0 40px;
+      padding: 18px 22px;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+    }
+    .status-banner[data-status="pending"] {
+      background: #fff7ed;
+      border-color: #fed7aa;
+    }
+    .status-banner[data-status="confirmed"] {
+      background: #fef2f2;
+      border-color: #fecaca;
+    }
+    .status-banner[data-status="dismissed"] {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+    }
+    .status-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #1f2937;
+      background: #e2e8f0;
+    }
+    .status-pill.is-pending   { background: #fed7aa; color: #9a3412; }
+    .status-pill.is-confirmed { background: #fecaca; color: #991b1b; }
+    .status-pill.is-dismissed { background: #cbd5e1; color: #334155; }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .status-meta {
+      color: #475569;
+    }
+    .status-tow {
+      margin-left: auto;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: #fee2e2;
+      color: #991b1b;
+      font-weight: 600;
+      font-size: 12px;
+    }
+    .status-actions {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px dashed #fed7aa;
+    }
+    .status-hint {
+      margin: 0 0 10px;
+      font-size: 13px;
+      color: #475569;
+    }
+    .status-buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .sb-btn {
+      padding: 9px 16px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 120ms ease;
+    }
+    .sb-btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.65;
+    }
+    .sb-btn-confirm {
+      background: #dc2626;
+      color: #fff;
+    }
+    .sb-btn-confirm:hover:not(:disabled) { background: #b91c1c; }
+    .sb-btn-dismiss {
+      background: #e2e8f0;
+      color: #1f2937;
+    }
+    .sb-btn-dismiss:hover:not(:disabled) { background: #cbd5e1; }
+    .status-error {
+      margin: 10px 0 0;
+      padding: 8px 10px;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #b91c1c;
+      border-radius: 6px;
+      font-size: 13px;
+    }
 
     /* Header */
     .doc-header {
@@ -1142,6 +1291,29 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   ];
 
   shown = false;
+
+  /**
+   * Decision workflow fields — populated from AccidentReportDto. They back
+   * the status banner shown right below the document header and drive the
+   * fallback Confirmer / Fausse alerte buttons for admins who "Reporter"-ed
+   * the modal earlier.
+   *
+   * Kept null until the DTO lands so the banner isn't rendered in the
+   * fallback scenario (no :accidentId in the URL).
+   */
+  status: 'pending' | 'confirmed' | 'dismissed' | null = null;
+  decidedByName: string | null = null;
+  decidedAtFormatted: string | null = null;
+  towDetectedAtFormatted: string | null = null;
+  accidentEventId: number | null = null;
+
+  /** True when the session user is a company admin (only admins see the buttons). */
+  isAdmin = false;
+
+  /** Inline busy indicator on the fallback buttons. */
+  decisionBusy: 'confirm' | 'dismiss' | null = null;
+  decisionError: string | null = null;
+
   private map?: L.Map;
   private impactMarker?: L.Marker;
   private trajectoryLayer?: L.Polyline;
@@ -1152,9 +1324,22 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     private apiService: ApiService,
     private route: ActivatedRoute,
     private cdr: ChangeDetectorRef,
+    private authService: AuthService,
   ) {}
 
+  get statusLabel(): string {
+    switch (this.status) {
+      case 'pending':   return 'En attente de décision';
+      case 'confirmed': return 'Accident confirmé';
+      case 'dismissed': return 'Fausse alerte';
+      default:          return '';
+    }
+  }
+
   ngOnInit(): void {
+    // Only company admins see the pending decision banner buttons.
+    this.isAdmin = !!this.authService.getCurrentUserSync()?.isCompanyAdmin;
+
     // Start with a polished fallback chart so the page reads correctly
     // even if the API is down or the vehicle has no positions in that window.
     this.buildDefaultChart();
@@ -1217,6 +1402,14 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     this.confidence = dto.confidence;
     this.realDeviceUid = dto.deviceUid;
     this.impactAtIso = dto.incidentAt;
+
+    // Decision workflow snapshot — drives the status banner and the
+    // fallback Confirmer / Fausse alerte buttons.
+    this.accidentEventId = dto.id;
+    this.status = dto.status ?? 'pending';
+    this.decidedByName = dto.decidedByName ?? null;
+    this.decidedAtFormatted = this.formatShortDateTime(dto.decidedAt);
+    this.towDetectedAtFormatted = this.formatShortDateTime(dto.towDetectedAt);
 
     if (dto.locationCommune) this.locationCommune = dto.locationCommune;
     if (dto.locationGovernorate) this.locationGovernorate = dto.locationGovernorate;
@@ -1712,6 +1905,87 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     const hours = d.getHours();
     const minutes = d.getMinutes().toString().padStart(2, '0');
     return `${weekday} ${day} ${month} ${year} à ${hours} heures ${minutes}`;
+  }
+
+  /**
+   * Compact "dd/MM/yyyy HH:mm" used for the decision metadata line in the
+   * status banner. Returns null when the input is null or unparseable so
+   * the template can hide the fragment.
+   */
+  private formatShortDateTime(iso: string | null | undefined): string | null {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  /**
+   * Fallback "Confirmer l'accident" button on the report page — for admins
+   * who clicked "Reporter" on the modal and came back later via the bell
+   * icon. Idempotent on the backend: a repeat click resolves silently.
+   */
+  confirmFromReport(): void {
+    if (!this.accidentEventId || this.decisionBusy || this.status !== 'pending') return;
+    this.decisionBusy = 'confirm';
+    this.decisionError = null;
+    const id = this.accidentEventId;
+    const sub = this.apiService.confirmAccident(id).subscribe({
+      next: () => this.reloadAfterDecision(id, 'confirmed'),
+      error: () => {
+        this.decisionBusy = null;
+        this.decisionError = "Impossible de confirmer l'accident. Veuillez réessayer.";
+        this.cdr.markForCheck();
+      },
+    });
+    this.subs.push(sub);
+  }
+
+  /**
+   * Fallback "Fausse alerte" button on the report page.
+   */
+  dismissFromReport(): void {
+    if (!this.accidentEventId || this.decisionBusy || this.status !== 'pending') return;
+    this.decisionBusy = 'dismiss';
+    this.decisionError = null;
+    const id = this.accidentEventId;
+    const sub = this.apiService.dismissAccident(id).subscribe({
+      next: () => this.reloadAfterDecision(id, 'dismissed'),
+      error: () => {
+        this.decisionBusy = null;
+        this.decisionError = "Impossible d'enregistrer la fausse alerte. Veuillez réessayer.";
+        this.cdr.markForCheck();
+      },
+    });
+    this.subs.push(sub);
+  }
+
+  /**
+   * Re-hydrates the page with the freshly stamped decision fields so the
+   * status banner flips from "En attente" to "Accident confirmé" /
+   * "Fausse alerte" without needing a full navigation round-trip.
+   */
+  private reloadAfterDecision(id: number, fallbackStatus: 'confirmed' | 'dismissed'): void {
+    const sub = this.apiService.getAccidentReport(id).subscribe({
+      next: (dto) => {
+        this.decisionBusy = null;
+        this.applyReport(dto);
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        // Fallback: mark as decided locally so the buttons disappear even
+        // if the follow-up GET fails (network blip, concurrent deploy).
+        this.decisionBusy = null;
+        this.status = fallbackStatus;
+        this.cdr.markForCheck();
+      },
+    });
+    this.subs.push(sub);
   }
 
   /**

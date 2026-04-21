@@ -201,6 +201,132 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.ToTable("AccidentClaimThirdParties", (string)null);
                 });
 
+            modelBuilder.Entity("GisAPI.Domain.Entities.AccidentEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnName("id")
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnName("company_id")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("VehicleId")
+                        .HasColumnName("vehicle_id")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("GpsDeviceId")
+                        .HasColumnName("gps_device_id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("DeviceUid")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnName("device_uid")
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("IncidentAt")
+                        .HasColumnName("incident_at")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double>("Latitude")
+                        .HasColumnName("latitude")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("Longitude")
+                        .HasColumnName("longitude")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("ReferenceCode")
+                        .HasMaxLength(100)
+                        .HasColumnName("reference_code")
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("VehicleLabel")
+                        .HasMaxLength(100)
+                        .HasColumnName("vehicle_label")
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("LocationCommune")
+                        .HasMaxLength(100)
+                        .HasColumnName("location_commune")
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("LocationGovernorate")
+                        .HasMaxLength(100)
+                        .HasColumnName("location_governorate")
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("LocationRoadType")
+                        .HasMaxLength(100)
+                        .HasColumnName("location_road_type")
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("SynthesisText")
+                        .HasColumnName("synthesis_text")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Confidence")
+                        .HasColumnName("confidence")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("StoryJson")
+                        .HasColumnName("story")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("ReasonsJson")
+                        .HasColumnName("reasons")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("IndicatorsJson")
+                        .HasColumnName("indicators")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnName("status")
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("pending");
+
+                    b.Property<int?>("DecidedByUserId")
+                        .HasColumnName("decided_by_user_id")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnName("decided_at")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("TowDetectedAt")
+                        .HasColumnName("tow_detected_at")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnName("created_at")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnName("updated_at")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("IncidentAt")
+                        .IsDescending();
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("VehicleId");
+
+                    b.ToTable("accident_events", (string)null);
+                });
+
             modelBuilder.Entity("GisAPI.Domain.Entities.AuditLog", b =>
                 {
                     b.Property<long>("Id")

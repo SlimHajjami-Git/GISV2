@@ -29,12 +29,25 @@ public class AccidentEventConfiguration : IEntityTypeConfiguration<AccidentEvent
         builder.Property(e => e.StoryJson).HasColumnName("story").HasColumnType("jsonb");
         builder.Property(e => e.ReasonsJson).HasColumnName("reasons").HasColumnType("jsonb");
         builder.Property(e => e.IndicatorsJson).HasColumnName("indicators").HasColumnType("jsonb");
+
+        // Decision workflow — see AccidentEvent.Status / DecidedByUserId / DecidedAt
+        // / TowDetectedAt for semantics.
+        builder.Property(e => e.Status)
+            .HasColumnName("status")
+            .HasMaxLength(30)
+            .IsRequired()
+            .HasDefaultValue("pending");
+        builder.Property(e => e.DecidedByUserId).HasColumnName("decided_by_user_id");
+        builder.Property(e => e.DecidedAt).HasColumnName("decided_at");
+        builder.Property(e => e.TowDetectedAt).HasColumnName("tow_detected_at");
+
         builder.Property(e => e.CreatedAt).HasColumnName("created_at");
         builder.Property(e => e.UpdatedAt).HasColumnName("updated_at");
 
         builder.HasIndex(e => e.CompanyId);
         builder.HasIndex(e => e.VehicleId);
         builder.HasIndex(e => e.IncidentAt).IsDescending();
+        builder.HasIndex(e => e.Status);
 
         // Intentionally no navigation FK constraints — the entity survives
         // if the vehicle / device row is later renamed or detached.

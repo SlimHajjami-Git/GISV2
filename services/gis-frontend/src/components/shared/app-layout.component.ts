@@ -10,12 +10,13 @@ import { NotificationService, Notification } from '../../services/notification.s
 import { SignalRService } from '../../services/signalr.service';
 import { GeocodingService } from '../../services/geocoding.service';
 import { ChatComponent } from './chat.component';
+import { AccidentDecisionModalComponent } from './accident-decision-modal.component';
 import * as L from 'leaflet';
 
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterModule, ChatComponent],
+  imports: [CommonModule, RouterModule, ChatComponent, AccidentDecisionModalComponent],
   template: `
     <div class="app-container">
       <!-- WIALON-STYLE TOP NAVIGATION BAR -->
@@ -361,6 +362,12 @@ import * as L from 'leaflet';
 
       <!-- Chat Widget -->
       <app-chat></app-chat>
+
+      <!-- Strictly-blocking accident decision modal.
+           Subscribes to SignalR 'accident_detected' notifications with
+           metadata.requiresDecision === 'true' and shows the confirm /
+           dismiss / postpone choice to company admins. -->
+      <app-accident-decision-modal></app-accident-decision-modal>
 
       <!-- Global Geofence Event Modal (opens from notification click on any page) -->
       <div class="gf-modal-overlay" *ngIf="showGeofenceModal" (click)="closeGeofenceModal()">

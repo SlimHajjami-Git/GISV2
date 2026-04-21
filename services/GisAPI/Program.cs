@@ -49,9 +49,15 @@ builder.Services.AddHostedService<GisAPI.Services.PredictiveAlertService>();
 // Device Event Consumer (RabbitMQ -> Power cut notifications)
 builder.Services.AddHostedService<GisAPI.Services.DeviceEventConsumer>();
 
-// One-shot: seed the in-app notification for the 2026-04-14 accident on 118013
-// TODO: remove once server-side accident detection is live
-builder.Services.AddHostedService<GisAPI.Services.AccidentNotificationSeeder>();
+// Accident Detection Service — scans gps_positions for V7-matching MEMS
+// accelerometer events every 2 min and persists hits to accident_events,
+// then fans out in-app notifications + configured alert_emails recipients.
+builder.Services.AddHostedService<GisAPI.Services.AccidentDetectionService>();
+
+// Accident Tow Monitoring Service — after an admin confirms an accident,
+// watches the vehicle's GPS frames for 14 days and stamps tow_detected_at
+// the moment 3 consecutive frames exceed 5 km/h (the tow truck starts moving).
+builder.Services.AddHostedService<GisAPI.Services.AccidentTowMonitoringService>();
 
 // Geocoding Service with cache
 builder.Services.AddSingleton<GisAPI.Domain.Interfaces.IGeocodingService, GisAPI.Services.GeocodingService>();

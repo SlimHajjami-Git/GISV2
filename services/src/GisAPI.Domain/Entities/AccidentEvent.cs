@@ -57,4 +57,30 @@ public class AccidentEvent : TenantEntity
 
     /// <summary>JSON array of <c>{label, value, hint?}</c> indicator rows.</summary>
     public string? IndicatorsJson { get; set; }
+
+    // ── Decision workflow (modal + tow monitoring) ─────────────────────────
+    // Detection creates a row with status = "pending". A company admin then
+    // confirms or dismisses the accident via the strictly-blocking modal
+    // (or the fallback buttons on /rapport-accident/:id). Once confirmed,
+    // AccidentTowMonitoringService watches GPS positions for the next 14 days
+    // and stamps TowDetectedAt the moment the vehicle starts moving again.
+
+    /// <summary>
+    /// Lifecycle status. One of <c>"pending"</c>, <c>"confirmed"</c>, <c>"dismissed"</c>.
+    /// Defaults to <c>"pending"</c> on creation.
+    /// </summary>
+    public string Status { get; set; } = "pending";
+
+    /// <summary>Id of the admin user who confirmed / dismissed the accident (null while pending).</summary>
+    public int? DecidedByUserId { get; set; }
+
+    /// <summary>Moment the decision was taken (null while pending).</summary>
+    public DateTime? DecidedAt { get; set; }
+
+    /// <summary>
+    /// Moment <see cref="GisAPI.Services.AccidentTowMonitoringService"/> decided the
+    /// vehicle was on the move again (3 consecutive frames &gt; 5 km/h). Null while
+    /// the vehicle is still immobilised or the event has not been confirmed.
+    /// </summary>
+    public DateTime? TowDetectedAt { get; set; }
 }

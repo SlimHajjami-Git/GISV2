@@ -30,6 +30,21 @@ public class GetAccidentReportQueryHandler
 
         if (ev == null) return null;
 
+        // Resolve the decider's display name for the "Confirmé par X" /
+        // "Fausse alerte par X" banner on the report page. IgnoreQueryFilters
+        // because the decider may belong to a different tenant scope in
+        // edge cases (system admin, etc.).
+        string? decidedByName = null;
+        if (ev.DecidedByUserId.HasValue)
+        {
+            decidedByName = await _context.Users
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(u => u.Id == ev.DecidedByUserId.Value)
+                .Select(u => u.FullName)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
         return new AccidentReportDto(
             ev.Id,
             ev.CompanyId,
@@ -48,7 +63,12 @@ public class GetAccidentReportQueryHandler
             ev.Confidence,
             Deserialize<List<AccidentReportStoryEventDto>>(ev.StoryJson),
             Deserialize<List<AccidentReportReasonDto>>(ev.ReasonsJson),
-            Deserialize<List<AccidentReportIndicatorDto>>(ev.IndicatorsJson));
+            Deserialize<List<AccidentReportIndicatorDto>>(ev.IndicatorsJson),
+            ev.Status,
+            ev.DecidedByUserId,
+            decidedByName,
+            ev.DecidedAt,
+            ev.TowDetectedAt);
     }
 
     private static T? Deserialize<T>(string? json) where T : class

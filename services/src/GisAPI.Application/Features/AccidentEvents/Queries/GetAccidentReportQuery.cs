@@ -27,7 +27,14 @@ public record AccidentReportDto(
     int Confidence,
     List<AccidentReportStoryEventDto>? Story,
     List<AccidentReportReasonDto>? Reasons,
-    List<AccidentReportIndicatorDto>? Indicators);
+    List<AccidentReportIndicatorDto>? Indicators,
+    // Decision workflow — null/empty until an admin clicks through the
+    // modal on /rapport-accident/:id.
+    string Status,
+    int? DecidedByUserId,
+    string? DecidedByName,
+    DateTime? DecidedAt,
+    DateTime? TowDetectedAt);
 
 public record AccidentReportStoryEventDto(
     string Time,
