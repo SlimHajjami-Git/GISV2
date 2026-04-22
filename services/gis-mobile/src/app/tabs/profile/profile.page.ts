@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { AlertController, ToastController } from '@ionic/angular';
 import { AuthService, AuthUser } from '../../core/services/auth.service';
 import { SignalRService } from '../../core/services/signalr.service';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-profile',
@@ -74,6 +75,10 @@ import { SignalRService } from '../../core/services/signalr.service';
         <ion-item button (click)="showAbout()" detail>
           <ion-icon name="information-circle-outline" slot="start" color="primary"></ion-icon>
           <ion-label>À propos</ion-label>
+        </ion-item>
+        <ion-item button (click)="openPrivacyPolicy()" detail>
+          <ion-icon name="shield-checkmark-outline" slot="start" color="primary"></ion-icon>
+          <ion-label>Politique de confidentialité</ion-label>
         </ion-item>
       </ion-list>
 
@@ -150,6 +155,15 @@ export class ProfilePage implements OnInit {
       icon: 'reload-outline'
     });
     await toast.present();
+  }
+
+  openPrivacyPolicy() {
+    // Point at the public web route — the store reviewer + users can both
+    // reach it without needing an account. Derived from environment.apiUrl
+    // so staging/prod pick up the right host automatically.
+    const baseUrl = environment.apiUrl.replace(/\/api\/?$/, '');
+    const url = `${baseUrl}/politique-de-confidentialite`;
+    window.open(url, '_system');
   }
 
   async showAbout() {
