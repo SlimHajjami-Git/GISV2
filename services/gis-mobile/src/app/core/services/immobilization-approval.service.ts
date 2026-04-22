@@ -52,8 +52,32 @@ export class ImmobilizationApprovalService {
   }
 
   private async handleApprovalRequest(notification: SignalRNotification): Promise<void> {
+    // DO NOT re-check user.isCompanyAdmin here.
+    //
+    // The backend already gates this notification: `immobilization_request`
+    // is only pushed to the SignalR group `user_{userId}` of users that pass
+    // `Role.IsCompanyAdmin == true && Status == "active"` on the server
+    // (see GpsController.ExecuteImmobilizationAsync → admins.Where(u => u.IsCompanyAdmin)).
+    //
+    // Re-checking here against the cached `AuthUser.isCompanyAdmin` produced
+    // a silent-drop bug for any admin who was **promoted after their last login**:
+    // their cached user object stayed at `isCompanyAdmin: false` until the next
+    // token refresh cycle, so the SignalR notif arrived (visible in the bell),
+    // the DB recorded `IsSent = true`, but the ACCEPTER / REFUSER popup never
+    // showed. Observed in prod for fatma@gmail.com, sami@belive.tn, Nejem@belive.tn
+    // on 2026-04-21 while admin@belive.tn (admin since creation) worked fine.
+    //
+    // Single source of truth = backend. If the notif got routed here, show it.
     const user = this.authService.getCurrentUserSync();
-    if (!user || !user.isCompanyAdmin) return;
+    if (!user) {
+      console.warn('[ImmoApproval] No logged-in user at notif arrival — skipping');
+      return;
+    }
+    console.log('[ImmoApproval] immobilization_request received', {
+      notificationId: notification.id,
+      vehicleName: notification.metadata?.vehicleName,
+      requestedBy: notification.metadata?.requestedByName,
+    });
 
     const meta = notification.metadata || {};
     const commandType = meta.commandType || 'STOP';

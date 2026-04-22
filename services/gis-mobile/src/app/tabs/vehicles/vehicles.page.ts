@@ -282,8 +282,23 @@ export class VehiclesPage implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit() {
-    const user = this.authService.getCurrentUserSync();
-    this.canImmobilize = !!user;
+    // Only company admins may stop/release a vehicle. Gate the UI on the
+    // backend truth (Role.IsCompanyAdmin), not on "any logged-in user".
+    //
+    // Subscribe reactively to currentUser$ so that when an admin is promoted
+    // AFTER login, the next token refresh (which repopulates `isCompanyAdmin`
+    // in the BehaviorSubject) will immediately reveal the stop-vehicle
+    // controls — no forced logout needed. Conversely, a demoted user loses
+    // the controls as soon as their token rotates.
+    //
+    // This is strictly a UX gate. The real enforcement lives in the backend
+    // (GpsController.ExecuteImmobilizationAsync → 403 for non-admins). Never
+    // trust this boolean alone.
+    this.subs.push(
+      this.authService.getCurrentUser().subscribe(user => {
+        this.canImmobilize = !!user?.isCompanyAdmin;
+      })
+    );
 
     this.loadVehicles();
 

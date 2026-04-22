@@ -39,12 +39,22 @@ export class PushNotificationService {
     if (this.initialized) return;
     if (!this.platform.is('capacitor')) return; // Only on native
 
-    this.initialized = true;
-
-    // Request permission
+    // Request permission FIRST, BEFORE setting `initialized = true`.
+    //
+    // v1.0.6 regression: we used to flip `initialized = true` on entry,
+    // which meant that if the user denied the POST_NOTIFICATIONS prompt
+    // once (or dismissed it), every subsequent login silently skipped
+    // the whole setup — no channel created, no FCM token registered,
+    // no lock-screen notifications. The symptom was "popups only work
+    // when the app is in foreground" because SignalR kept working but
+    // FCM was completely inactive.
+    //
+    // By gating `initialized` on permission success, a user who grants
+    // permission later (via system settings → next login → init() runs
+    // again) will complete the setup correctly.
     const perm = await PushNotifications.requestPermissions();
     if (perm.receive !== 'granted') {
-      console.warn('Push notification permission denied');
+      console.warn('[PushNotif] Permission denied — will retry on next init()');
       return;
     }
 
@@ -70,27 +80,30 @@ export class PushNotificationService {
           vibration: true,
           lights: true,
         });
+        console.log('[PushNotif] Channel "immobilization" created/confirmed');
       } catch (err) {
         // Android <8 doesn't support channels; the call is still safe to make
         // on newer versions if the channel already exists (idempotent).
-        console.warn('createChannel(immobilization) failed:', err);
+        console.warn('[PushNotif] createChannel(immobilization) failed:', err);
+        // Do NOT abort: on some OEMs (Xiaomi/Huawei) the call can throw even
+        // when the channel is live. Registration must still proceed.
       }
     }
 
     // Listen for registration
     PushNotifications.addListener('registration', (token: Token) => {
-      console.log('FCM token:', token.value);
+      console.log('[PushNotif] FCM token received:', token.value.substring(0, 20) + '…');
       this.currentToken = token.value;
       this.registerTokenWithBackend(token.value);
     });
 
     PushNotifications.addListener('registrationError', (err) => {
-      console.error('Push registration error:', err);
+      console.error('[PushNotif] Registration error:', err);
     });
 
     // Notification received while app is in foreground
     PushNotifications.addListener('pushNotificationReceived', (notification: PushNotificationSchema) => {
-      console.log('Push received in foreground:', notification);
+      console.log('[PushNotif] Push received in foreground:', notification);
       // The ImmobilizationApprovalService handles real-time via SignalR,
       // but if this push arrives and SignalR missed it, handle it here
       const data = notification.data;
@@ -101,7 +114,7 @@ export class PushNotificationService {
 
     // User tapped on a notification (app was in background/closed)
     PushNotifications.addListener('pushNotificationActionPerformed', (action: ActionPerformed) => {
-      console.log('Push action performed:', action);
+      console.log('[PushNotif] Push action performed:', action);
       const data = action.notification.data;
       if (data?.type === 'immobilization_request') {
         // Small delay to let the app fully initialize
@@ -113,6 +126,12 @@ export class PushNotificationService {
 
     // Register with FCM
     await PushNotifications.register();
+
+    // Only NOW do we mark the service as initialized. If any of the above
+    // threw (permission denied, createChannel crash, register failure),
+    // the guard stays false and the next init() call retries the full flow.
+    this.initialized = true;
+    console.log('[PushNotif] init() complete — lock-screen notifications armed');
   }
 
   private registerTokenWithBackend(token: string): void {

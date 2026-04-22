@@ -1041,6 +1041,17 @@ public class GpsController : ControllerBase
             .FirstOrDefaultAsync(u => u.Id == userId);
         if (user == null) return Unauthorized();
 
+        // ──────── ROLE GATE (defense in depth) ────────
+        // Only company admins may trigger immobilization — both the DIRECT path
+        // (password-confirmed stop) and the REQUEST path (notify other admins).
+        // The mobile UI already hides the controls for non-admins
+        // (vehicles.page.ts → canImmobilize = user.isCompanyAdmin), but a
+        // tampered client or stale cached JWT could still reach this endpoint.
+        // Enforcing server-side guarantees no unauthorized user — even one
+        // holding a valid non-admin token — can stop a fleet vehicle.
+        if (!user.IsCompanyAdmin)
+            return Forbid();
+
         var isStop = commandType == "STOP";
         var vehicleName = device.Vehicle?.Name ?? $"Device #{deviceId}";
         var plate = device.Vehicle?.Plate ?? "";
