@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
-import { ApiService } from '../services/api.service';
+import { ApiService, MaintenanceTemplateDto, SupplierDto, MarkMaintenanceDoneRequest } from '../services/api.service';
 import { MaintenanceRecord, Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { MaintenancePopupComponent } from './shared/maintenance-popup.component';
@@ -190,6 +190,8 @@ import { MaintenancePopupComponent } from './shared/maintenance-popup.component'
         [isOpen]="showPopup"
         [record]="selectedRecord"
         [vehicles]="vehicles"
+        [templates]="templates"
+        [suppliers]="suppliers"
         (closed)="closePopup()"
         (saved)="saveRecord($event)"
       ></app-maintenance-popup>
@@ -487,6 +489,8 @@ export class MaintenanceComponent implements OnInit, OnDestroy {
   records: MaintenanceRecord[] = [];
   allRecords: MaintenanceRecord[] = [];
   vehicles: Vehicle[] = [];
+  templates: MaintenanceTemplateDto[] = [];
+  suppliers: SupplierDto[] = [];
   company: Company | null = null;
 
   searchQuery = '';
@@ -555,6 +559,34 @@ export class MaintenanceComponent implements OnInit, OnDestroy {
       },
       error: (err) => console.error('Error loading vehicles:', err)
     });
+
+    // Load maintenance templates (for the popup's type picker)
+    this.apiService.getMaintenanceTemplates({ isActive: true, pageSize: 200 })
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (res) => {
+          this.ngZone.run(() => {
+            this.templates = res?.items || [];
+            this.cdr.detectChanges();
+            this.appRef.tick();
+          });
+        },
+        error: (err) => console.error('Error loading maintenance templates:', err)
+      });
+
+    // Load suppliers (for the popup's provider picker) — limited to garages
+    this.apiService.getGarages({ isActive: true, pageSize: 200 })
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (res) => {
+          this.ngZone.run(() => {
+            this.suppliers = res?.items || [];
+            this.cdr.detectChanges();
+            this.appRef.tick();
+          });
+        },
+        error: (err) => console.error('Error loading suppliers:', err)
+      });
   }
 
   filterRecords() {
@@ -645,20 +677,14 @@ export class MaintenanceComponent implements OnInit, OnDestroy {
     this.selectedRecord = null;
   }
 
-  saveRecord(data: Partial<MaintenanceRecord>) {
-    if (this.selectedRecord?.id) {
-      // Update existing record
-      this.apiService.updateMaintenanceRecord(parseInt(this.selectedRecord.id), data).pipe(takeUntil(this.destroy$)).subscribe({
-        next: () => this.loadData(),
-        error: (err) => console.error('Error updating record:', err)
-      });
-    } else {
-      // Create new record
-      this.apiService.createMaintenanceRecord(data).pipe(takeUntil(this.destroy$)).subscribe({
-        next: () => this.loadData(),
-        error: (err) => console.error('Error creating record:', err)
-      });
-    }
+  saveRecord(data: MarkMaintenanceDoneRequest) {
+    // Écrit dans maintenance_logs via /api/vehicle-maintenance/mark-done.
+    // L'édition d'un log existant n'est pas supportée par cet endpoint,
+    // donc on crée toujours un nouvel enregistrement (même en mode "édition").
+    this.apiService.markMaintenanceDone(data).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => this.loadData(),
+      error: (err) => console.error('Error creating maintenance log:', err)
+    });
 
     this.closePopup();
   }

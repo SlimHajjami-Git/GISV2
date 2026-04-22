@@ -2,6 +2,7 @@ import { Component, EventEmitter, Input, Output, OnInit, OnChanges, SimpleChange
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MaintenanceRecord, Vehicle } from '../../models/types';
+import { MaintenanceTemplateDto, SupplierDto, MarkMaintenanceDoneRequest } from '../../services/api.service';
 
 @Component({
   selector: 'app-maintenance-popup',
@@ -33,16 +34,16 @@ import { MaintenanceRecord, Vehicle } from '../../models/types';
             </div>
 
             <div class="form-group">
-              <label for="type">Type de maintenance *</label>
-              <select id="type" name="type" [(ngModel)]="formData.type" required>
-                <option value="">Sélectionner un type</option>
-                <option value="scheduled">Révision programmée</option>
-                <option value="repair">Réparation</option>
-                <option value="oil_change">Vidange</option>
-                <option value="tire_change">Pneumatiques</option>
-                <option value="inspection">Contrôle technique</option>
-                <option value="other">Autre</option>
+              <label for="templateId">Type d'entretien *</label>
+              <select id="templateId" name="templateId" [(ngModel)]="formData.templateId" required>
+                <option value="">Sélectionner un modèle</option>
+                @for (tpl of templates; track tpl.id) {
+                  <option [value]="tpl.id">{{ tpl.name }}@if (tpl.category) { - {{ tpl.category }} }</option>
+                }
               </select>
+              @if (templates.length === 0) {
+                <small class="hint warning">Aucun modèle d'entretien n'est défini. Créez-en un dans la page Modèles d'entretien.</small>
+              }
             </div>
 
             <div class="form-group">
@@ -57,48 +58,26 @@ import { MaintenanceRecord, Vehicle } from '../../models/types';
             </div>
 
             <div class="form-group">
-              <label for="status">Statut *</label>
-              <select id="status" name="status" [(ngModel)]="formData.status" required>
-                <option value="scheduled">Planifié</option>
-                <option value="in_progress">En cours</option>
-                <option value="completed">Terminé</option>
-                <option value="cancelled">Annulé</option>
-              </select>
-            </div>
-
-            <div class="form-group full-width">
-              <label for="description">Description *</label>
-              <textarea
-                id="description"
-                name="description"
-                [(ngModel)]="formData.description"
-                required
-                rows="2"
-                placeholder="Décrivez les travaux effectués ou à effectuer..."
-              ></textarea>
-            </div>
-
-            <div class="form-group">
-              <label for="mileageAtService">Kilométrage</label>
+              <label for="mileage">Kilométrage (km) *</label>
               <input
                 type="number"
-                id="mileageAtService"
-                name="mileageAtService"
-                [(ngModel)]="formData.mileageAtService"
+                id="mileage"
+                name="mileage"
+                [(ngModel)]="formData.mileage"
                 min="0"
+                required
                 placeholder="Ex: 50000"
               />
             </div>
 
             <div class="form-group">
-              <label for="serviceProvider">Prestataire</label>
-              <input
-                type="text"
-                id="serviceProvider"
-                name="serviceProvider"
-                [(ngModel)]="formData.serviceProvider"
-                placeholder="Ex: Garage Central"
-              />
+              <label for="supplierId">Prestataire / Garage</label>
+              <select id="supplierId" name="supplierId" [(ngModel)]="formData.supplierId">
+                <option [ngValue]="null">Aucun</option>
+                @for (sup of suppliers; track sup.id) {
+                  <option [ngValue]="sup.id">{{ sup.name }}</option>
+                }
+              </select>
             </div>
           </div>
 
@@ -161,7 +140,7 @@ import { MaintenanceRecord, Vehicle } from '../../models/types';
             <button type="button" class="btn-secondary" (click)="close()">
               Annuler
             </button>
-            <button type="submit" class="btn-primary">
+            <button type="submit" class="btn-primary" [disabled]="!canSubmit()">
               {{ record?.id ? 'Mettre à jour' : 'Enregistrer' }}
             </button>
           </div>
@@ -270,6 +249,15 @@ import { MaintenanceRecord, Vehicle } from '../../models/types';
       color: #64748b;
     }
 
+    .form-group .hint {
+      font-size: 11px;
+      color: #94a3b8;
+    }
+
+    .form-group .hint.warning {
+      color: #b45309;
+    }
+
     .form-group input,
     .form-group select,
     .form-group textarea {
@@ -358,8 +346,13 @@ import { MaintenanceRecord, Vehicle } from '../../models/types';
       transition: all 0.15s;
     }
 
-    .btn-primary:hover {
+    .btn-primary:hover:not(:disabled) {
       background: #2563eb;
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
     .btn-secondary {
@@ -396,17 +389,17 @@ export class MaintenancePopupComponent implements OnInit, OnChanges {
   @Input() isOpen = false;
   @Input() record: MaintenanceRecord | null = null;
   @Input() vehicles: Vehicle[] = [];
+  @Input() templates: MaintenanceTemplateDto[] = [];
+  @Input() suppliers: SupplierDto[] = [];
   @Output() closed = new EventEmitter<void>();
-  @Output() saved = new EventEmitter<Partial<MaintenanceRecord>>();
+  @Output() saved = new EventEmitter<MarkMaintenanceDoneRequest>();
 
   formData: any = {
     vehicleId: '',
-    type: '',
+    templateId: '',
     dateStr: '',
-    status: 'scheduled',
-    description: '',
-    mileageAtService: 0,
-    serviceProvider: '',
+    mileage: 0,
+    supplierId: null,
     laborCost: 0,
     partsCost: 0,
     totalCost: 0,
@@ -424,21 +417,29 @@ export class MaintenancePopupComponent implements OnInit, OnChanges {
   }
 
   initForm() {
+    // NOTE: edition d'un log existant n'est pas supportée par /mark-done.
+    // Le popup fonctionne en mode "nouvelle saisie" uniquement; si `record`
+    // est fourni, on préremplit ce qui est compatible.
     if (this.record) {
-      const date = new Date(this.record.date);
+      const date = this.record.date ? new Date(this.record.date) : new Date();
       this.formData = {
-        ...this.record,
-        dateStr: date.toISOString().split('T')[0]
+        vehicleId: this.record.vehicleId ?? '',
+        templateId: '',
+        dateStr: date.toISOString().split('T')[0],
+        mileage: this.record.mileageAtService ?? 0,
+        supplierId: null,
+        laborCost: this.record.laborCost ?? 0,
+        partsCost: this.record.partsCost ?? 0,
+        totalCost: this.record.totalCost ?? 0,
+        notes: this.record.notes ?? ''
       };
     } else {
       this.formData = {
         vehicleId: '',
-        type: '',
+        templateId: '',
         dateStr: new Date().toISOString().split('T')[0],
-        status: 'scheduled',
-        description: '',
-        mileageAtService: 0,
-        serviceProvider: '',
+        mileage: 0,
+        supplierId: null,
         laborCost: 0,
         partsCost: 0,
         totalCost: 0,
@@ -448,7 +449,15 @@ export class MaintenancePopupComponent implements OnInit, OnChanges {
   }
 
   calculateTotal() {
-    this.formData.totalCost = (this.formData.laborCost || 0) + (this.formData.partsCost || 0);
+    const labor = parseFloat(this.formData.laborCost) || 0;
+    const parts = parseFloat(this.formData.partsCost) || 0;
+    this.formData.totalCost = labor + parts;
+  }
+
+  canSubmit(): boolean {
+    const vId = parseInt(this.formData.vehicleId, 10);
+    const tId = parseInt(this.formData.templateId, 10);
+    return !!vId && !!tId && !!this.formData.dateStr;
   }
 
   onOverlayClick(event: MouseEvent) {
@@ -462,16 +471,28 @@ export class MaintenancePopupComponent implements OnInit, OnChanges {
   }
 
   onSubmit() {
-    const result: Partial<MaintenanceRecord> = {
-      ...this.formData,
-      vehicleId: parseInt(this.formData.vehicleId, 10) || 0,
-      date: new Date(this.formData.dateStr),
-      mileageAtService: parseInt(this.formData.mileageAtService, 10) || 0,
-      laborCost: parseFloat(this.formData.laborCost) || 0,
-      partsCost: parseFloat(this.formData.partsCost) || 0,
-      totalCost: parseFloat(this.formData.totalCost) || 0
+    if (!this.canSubmit()) {
+      return;
+    }
+    const labor = parseFloat(this.formData.laborCost) || 0;
+    const parts = parseFloat(this.formData.partsCost) || 0;
+    const total = labor + parts;
+    const supplierId = this.formData.supplierId != null
+      ? parseInt(this.formData.supplierId, 10) || undefined
+      : undefined;
+
+    const payload: MarkMaintenanceDoneRequest = {
+      vehicleId: parseInt(this.formData.vehicleId, 10),
+      templateId: parseInt(this.formData.templateId, 10),
+      date: new Date(this.formData.dateStr).toISOString(),
+      mileage: parseInt(this.formData.mileage, 10) || 0,
+      cost: total,
+      laborCost: labor,
+      partsCost: parts,
+      supplierId,
+      notes: (this.formData.notes ?? '').trim() || undefined,
+      applyFreeBenefit: true
     };
-    delete (result as any).dateStr;
-    this.saved.emit(result);
+    this.saved.emit(payload);
   }
 }

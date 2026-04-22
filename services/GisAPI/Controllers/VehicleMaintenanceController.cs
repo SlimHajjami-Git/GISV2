@@ -124,6 +124,8 @@ public class VehicleMaintenanceController : ControllerBase
             request.Cost,
             request.SupplierId,
             request.Notes,
+            LaborCost: request.LaborCost,
+            PartsCost: request.PartsCost,
             ApplyFreeBenefit: request.ApplyFreeBenefit ?? true
         );
 
@@ -204,7 +206,9 @@ public record MarkDoneRequest(
     decimal Cost,
     int? SupplierId,
     string? Notes,
-    bool? ApplyFreeBenefit = null
+    bool? ApplyFreeBenefit = null,
+    decimal? LaborCost = null,
+    decimal? PartsCost = null
 );
 
 public record DeclareFreeRequest(
