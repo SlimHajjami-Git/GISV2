@@ -36,6 +36,7 @@ import { SystemAdminGuard } from './guards/system-admin.guard';
 import { SecuriteGuard } from './guards/securite.guard';
 import { LocationCompanyGuard } from './guards/location-company.guard';
 import { VehicleLoansComponent } from './components/vehicle-loans.component';
+import { PrivacyPolicyComponent } from './components/privacy-policy.component';
 
 
 export const routes: Routes = [
@@ -43,6 +44,8 @@ export const routes: Routes = [
   { path: '', component: LandingComponent },
   { path: 'login', component: LoginComponent },
   { path: 'device-check', component: DeviceCheckComponent },
+  { path: 'politique-de-confidentialite', component: PrivacyPolicyComponent },
+  { path: 'privacy-policy', redirectTo: 'politique-de-confidentialite', pathMatch: 'full' },
   // Protected routes - Dashboard (always accessible when logged in)
   { path: 'dashboard', component: DashboardComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'dashboard' } },
 

@@ -132,7 +132,7 @@ import { Subscription } from '../models/types';
             <div class="form-group">
               <label class="checkbox-label">
                 <input type="checkbox" [(ngModel)]="formData.acceptTerms" name="acceptTerms" required />
-                <span>J'accepte les <a href="#" class="link">conditions d'utilisation</a> et la <a href="#" class="link">politique de confidentialité</a></span>
+                <span>J'accepte les <a href="#" class="link">conditions d'utilisation</a> et la <a [routerLink]="['/politique-de-confidentialite']" target="_blank" rel="noopener" class="link">politique de confidentialité</a></span>
               </label>
             </div>
 

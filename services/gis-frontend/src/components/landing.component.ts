@@ -1,12 +1,12 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { ApiService } from '../services/api.service';
 
 @Component({
   selector: 'app-landing',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, RouterLink],
   template: `
     <div class="landing-page">
       <header class="header">
@@ -188,6 +188,7 @@ import { ApiService } from '../services/api.service';
               <a href="#">À propos</a>
               <a href="#contact">Contact</a>
               <a href="#">Mentions légales</a>
+              <a [routerLink]="['/politique-de-confidentialite']">Politique de confidentialité</a>
             </div>
             <div class="footer-section">
               <h4>Support</h4>
