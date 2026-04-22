@@ -3261,8 +3261,6 @@ export interface MarkMaintenanceDoneRequest {
   supplierId?: number;
   notes?: string;
   applyFreeBenefit?: boolean;
-  laborCost?: number;
-  partsCost?: number;
 }
 
 export interface DeclareFreeMaintenancesRequest {

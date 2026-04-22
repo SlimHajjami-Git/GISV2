@@ -12,7 +12,6 @@ import { MonthlyReportComponent } from './components/monthly-report.component';
 import { GeofencesComponent } from './components/geofences.component';
 import { NotificationsComponent } from './components/notifications.component';
 import { GPSDevicesComponent } from './components/gps-devices.component';
-import { MaintenanceComponent } from './components/maintenance.component';
 import { VehicleCostsComponent } from './components/vehicle-costs.component';
 import { ProfileComponent } from './components/profile.component';
 import { SettingsComponent } from './components/settings.component';
@@ -62,7 +61,6 @@ export const routes: Routes = [
   { path: 'gps-devices', component: GPSDevicesComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'monitoring' } },
   
   // Maintenance module
-  { path: 'maintenance', component: MaintenanceComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'maintenance' } },
   { path: 'entretiens-maitres', component: MaintenanceTemplatesComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'maintenance' } },
   { path: 'maintenance-templates', component: MaintenanceTemplatesComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'maintenance' } },
   { path: 'entretien-programmable', component: MaintenanceTemplatesComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'maintenance' } },
