@@ -268,6 +268,182 @@ public class BatteryMonitoringServiceTests
         lowHits.Should().Be(0);
     }
 
+    // ── Threshold boundary ──────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(34, true)]   // strictly below threshold — counts as low
+    [InlineData(35, false)]  // exactly on the threshold — NOT low (strict <)
+    [InlineData(36, false)]  // above threshold — healthy
+    public async Task LowVoltageRule_ThresholdIsStrictlyLessThan35(int voltage, bool shouldCount)
+    {
+        using var context = TestDbContextFactory.Create();
+        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
+
+        var now = DateTime.UtcNow;
+        for (int i = 0; i < RecentFramesWindow; i++)
+        {
+            SeedPosition(context, NemsLDeviceId, now.AddMinutes(-(RecentFramesWindow - i)),
+                powerVoltage: voltage, ignitionOn: true);
+        }
+
+        await context.SaveChangesAsync();
+
+        var (lowHits, _) = await EvaluateAsync(context, NemsLDeviceId);
+        if (shouldCount) lowHits.Should().Be(RecentFramesWindow);
+        else             lowHits.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task LowVoltageRule_VeryLowVoltageCountsAsHit()
+    {
+        // Real dying-battery readings can drop into single digits (we've seen
+        // raw=5 during prod incidents). These must absolutely count.
+        using var context = TestDbContextFactory.Create();
+        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
+
+        var now = DateTime.UtcNow;
+        SeedPosition(context, NemsLDeviceId, now.AddMinutes(-5), powerVoltage: 5,  ignitionOn: true);
+        SeedPosition(context, NemsLDeviceId, now.AddMinutes(-4), powerVoltage: 3,  ignitionOn: true);
+        SeedPosition(context, NemsLDeviceId, now.AddMinutes(-3), powerVoltage: 7,  ignitionOn: true);
+        SeedPosition(context, NemsLDeviceId, now.AddMinutes(-2), powerVoltage: 10, ignitionOn: true);
+        SeedPosition(context, NemsLDeviceId, now.AddMinutes(-1), powerVoltage: 15, ignitionOn: true);
+
+        await context.SaveChangesAsync();
+
+        var (lowHits, ignitionHits) = await EvaluateAsync(context, NemsLDeviceId);
+        lowHits.Should().Be(5);
+        ignitionHits.Should().Be(5);
+    }
+
+    // ── Cooldown boundary ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CooldownFilter_DeviceAlertedExactlyAt24hMinusOneSecondIsSkipped()
+    {
+        using var context = TestDbContextFactory.Create();
+        var now = DateTime.UtcNow;
+        var cooldownCutoff = now.AddHours(-CooldownHours);
+
+        // Inside cooldown by 1 second
+        SeedDevice(context, id: 601, protocolType: "gps_type_1", vehicleId: 801,
+            lastAlertAt: cooldownCutoff.AddSeconds(1));
+        await context.SaveChangesAsync();
+
+        var picked = await context.GpsDevices
+            .Where(d => d.ProtocolType == "gps_type_1"
+                     && d.Vehicle != null
+                     && (d.LastBatteryAlertAt == null
+                         || d.LastBatteryAlertAt < cooldownCutoff))
+            .Select(d => d.Id)
+            .ToListAsync();
+
+        picked.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CooldownFilter_DeviceAlertedJustBeforeCutoffIsPickedUp()
+    {
+        using var context = TestDbContextFactory.Create();
+        var now = DateTime.UtcNow;
+        var cooldownCutoff = now.AddHours(-CooldownHours);
+
+        // Past cooldown by 1 second
+        SeedDevice(context, id: 602, protocolType: "gps_type_1", vehicleId: 802,
+            lastAlertAt: cooldownCutoff.AddSeconds(-1));
+        await context.SaveChangesAsync();
+
+        var picked = await context.GpsDevices
+            .Where(d => d.ProtocolType == "gps_type_1"
+                     && d.Vehicle != null
+                     && (d.LastBatteryAlertAt == null
+                         || d.LastBatteryAlertAt < cooldownCutoff))
+            .Select(d => d.Id)
+            .ToListAsync();
+
+        picked.Should().BeEquivalentTo(new[] { 602 });
+    }
+
+    // ── Stamp & re-arm ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task StampingLastBatteryAlertAt_RemovesDeviceFromNextCycleCandidates()
+    {
+        using var context = TestDbContextFactory.Create();
+        var device = SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
+        await context.SaveChangesAsync();
+
+        var now = DateTime.UtcNow;
+        var cooldownCutoff = now.AddHours(-CooldownHours);
+
+        // Before stamp: device is a candidate
+        var beforeStamp = await context.GpsDevices
+            .Where(d => d.ProtocolType == "gps_type_1"
+                     && d.Vehicle != null
+                     && (d.LastBatteryAlertAt == null
+                         || d.LastBatteryAlertAt < cooldownCutoff))
+            .Select(d => d.Id)
+            .ToListAsync();
+        beforeStamp.Should().Contain(NemsLDeviceId);
+
+        // Stamp (mimicking the service's flag action)
+        device.LastBatteryAlertAt = now;
+        device.UpdatedAt = now;
+        await context.SaveChangesAsync();
+
+        // After stamp: device is NOT a candidate until the cooldown expires
+        var afterStamp = await context.GpsDevices
+            .Where(d => d.ProtocolType == "gps_type_1"
+                     && d.Vehicle != null
+                     && (d.LastBatteryAlertAt == null
+                         || d.LastBatteryAlertAt < cooldownCutoff))
+            .Select(d => d.Id)
+            .ToListAsync();
+        afterStamp.Should().NotContain(NemsLDeviceId);
+    }
+
+    // ── Multi-device cycle ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CandidateFilter_HandlesMultipleDevicesInSameCycleIndependently()
+    {
+        using var context = TestDbContextFactory.Create();
+        var now = DateTime.UtcNow;
+
+        // Device A: low battery — must be flagged
+        SeedDevice(context, id: 800, protocolType: "gps_type_1", vehicleId: 900);
+        for (int i = 0; i < 5; i++)
+        {
+            SeedPosition(context, 800, now.AddMinutes(-(5 - i)),
+                powerVoltage: 25, ignitionOn: true);
+        }
+
+        // Device B: healthy battery — must stay silent
+        SeedDevice(context, id: 801, protocolType: "gps_type_1", vehicleId: 901);
+        for (int i = 0; i < 5; i++)
+        {
+            SeedPosition(context, 801, now.AddMinutes(-(5 - i)),
+                powerVoltage: 45, ignitionOn: true);
+        }
+
+        // Device C: low voltage but ignition off — parked, not flagged
+        SeedDevice(context, id: 802, protocolType: "gps_type_1", vehicleId: 902);
+        for (int i = 0; i < 5; i++)
+        {
+            SeedPosition(context, 802, now.AddMinutes(-(5 - i)),
+                powerVoltage: 25, ignitionOn: false);
+        }
+
+        await context.SaveChangesAsync();
+
+        var (lowA, ignA) = await EvaluateAsync(context, 800);
+        var (lowB, ignB) = await EvaluateAsync(context, 801);
+        var (lowC, ignC) = await EvaluateAsync(context, 802);
+
+        (lowA >= LowVoltageHits && ignA >= IgnitionOnHits).Should().BeTrue("device A has sustained low voltage under load");
+        (lowB >= LowVoltageHits).Should().BeFalse("device B is healthy");
+        (ignC >= IgnitionOnHits).Should().BeFalse("device C is parked");
+    }
+
     // ── Helper: replays the in-memory evaluation done by IsBatteryLowAsync ─
 
     private static async Task<(int lowHits, int ignitionHits)> EvaluateAsync(
