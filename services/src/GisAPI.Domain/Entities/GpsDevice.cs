@@ -53,6 +53,17 @@ public class GpsDevice : TenantEntity
     /// </summary>
     public string CommandStop { get; set; } = "AJ+STOP#1311\n";
 
+    /// <summary>
+    /// Timestamp of the last low-voltage notification fan-out.
+    /// Used by <c>BatteryMonitoringService</c> to enforce a 24h cooldown
+    /// per device — a battery that stays below the threshold must not
+    /// trigger an alert every 5 minutes.
+    ///
+    /// <para>Null means no alert has ever been raised (or the column was
+    /// just added by the migration).</para>
+    /// </summary>
+    public DateTime? LastBatteryAlertAt { get; set; }
+
     public Societe? Societe { get; set; }
     public Vehicle? Vehicle { get; set; }
 

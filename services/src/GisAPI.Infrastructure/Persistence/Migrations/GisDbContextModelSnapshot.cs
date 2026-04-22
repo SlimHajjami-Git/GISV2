@@ -1537,6 +1537,10 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("label");
 
+                    b.Property<DateTime?>("LastBatteryAlertAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_battery_alert_at");
+
                     b.Property<DateTime?>("LastCommunication")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_communication");

@@ -59,6 +59,12 @@ builder.Services.AddHostedService<GisAPI.Services.AccidentDetectionService>();
 // the moment 3 consecutive frames exceed 5 km/h (the tow truck starts moving).
 builder.Services.AddHostedService<GisAPI.Services.AccidentTowMonitoringService>();
 
+// Battery Monitoring Service — scans NEMS L (gps_type_1) devices every 5 min
+// for a sustained drop in power_voltage (≥4/5 recent frames under raw 35 with
+// ignition on) and fans out a low-voltage alert to company admins. 24h cooldown
+// via GpsDevice.LastBatteryAlertAt to avoid alert spam.
+builder.Services.AddHostedService<GisAPI.Services.BatteryMonitoringService>();
+
 // Geocoding Service with cache
 builder.Services.AddSingleton<GisAPI.Domain.Interfaces.IGeocodingService, GisAPI.Services.GeocodingService>();
 
