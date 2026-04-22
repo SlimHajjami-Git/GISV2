@@ -335,6 +335,14 @@ import * as L from 'leaflet';
                   </svg>
                   <span>Gestion Flotte</span>
                 </a>
+                <a *ngIf="hasModule('vehicles')" class="dropdown-item" (click)="onVehiclesClick()">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/>
+                    <path d="M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/>
+                    <path d="M5 17h-2v-6l2-5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0h-6m-6 -6h15m-6 0v-5"/>
+                  </svg>
+                  <span>Véhicules</span>
+                </a>
                 <a *ngIf="hasModule('fleet_management') && isLocationCompany()" class="dropdown-item" (click)="onEmpruntsClick()">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="1" y="3" width="15" height="13" rx="2"/>
@@ -1333,6 +1341,11 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   onFleetManagementClick() {
     this.showUserMenu = false;
     this.router.navigate(['/fleet-management']);
+  }
+
+  onVehiclesClick() {
+    this.showUserMenu = false;
+    this.router.navigate(['/vehicles']);
   }
 
   onEmpruntsClick() {
