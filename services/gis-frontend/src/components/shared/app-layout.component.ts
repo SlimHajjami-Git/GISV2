@@ -63,63 +63,62 @@ import * as L from 'leaflet';
             <span>Sécurité</span>
           </a>
 
-          <!-- Opérations dropdown -->
-          <div class="nav-group" *ngIf="hasModule('reports') || hasModule('geofences') || hasModule('tours')">
-            <button class="nav-group-btn" [class.active]="openNavGroup === 'ops'" (click)="toggleNavGroup('ops', $event)">
+          <!-- Exploitation dropdown -->
+          <div class="nav-group" *ngIf="hasModule('vehicles') || hasModule('employees') || hasModule('tours') || hasModule('geofences')">
+            <button class="nav-group-btn" [class.active]="openNavGroup === 'exploitation'" (click)="toggleNavGroup('exploitation', $event)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
+                <path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M5 17h-2v-6l2-5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0h-6m-6 -6h15m-6 0v-5"/>
               </svg>
-              <span>Opérations</span>
+              <span>Exploitation</span>
               <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
-            <div class="nav-group-dropdown" *ngIf="openNavGroup === 'ops'" (click)="$event.stopPropagation()">
-              <a *ngIf="hasModule('reports')" [routerLink]="['/reports']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
-                Rapports
+            <div class="nav-group-dropdown" *ngIf="openNavGroup === 'exploitation'" (click)="$event.stopPropagation()">
+              <a *ngIf="hasModule('vehicles')" [routerLink]="['/vehicles']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M5 17h-2v-6l2-5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0h-6m-6 -6h15m-6 0v-5"/></svg>
+                Véhicules
               </a>
-              <a *ngIf="hasModule('geofences')" [routerLink]="['/geofences']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 7 8 11.7z"/></svg>
-                Géozones
+              <a *ngIf="hasModule('employees')" [routerLink]="['/drivers']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                Chauffeurs
               </a>
               <a *ngIf="hasModule('tours')" [routerLink]="['/tournees']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H5a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm12-2h-4a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2z"/><polyline points="9 17 12 5 15 17"/></svg>
                 Tournées
               </a>
+              <a *ngIf="hasModule('geofences')" [routerLink]="['/geofences']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 7 8 11.7z"/></svg>
+                Géofencing
+              </a>
             </div>
           </div>
 
-          <!-- Flotte dropdown -->
-          <div class="nav-group" *ngIf="hasModule('vehicles') || hasModule('maintenance') || hasModule('suppliers')">
-            <button class="nav-group-btn" [class.active]="openNavGroup === 'fleet'" (click)="toggleNavGroup('fleet', $event)">
+          <!-- Maintenance dropdown -->
+          <div class="nav-group" *ngIf="hasModule('maintenance') || hasModule('carburant')">
+            <button class="nav-group-btn" [class.active]="openNavGroup === 'maintenance'" (click)="toggleNavGroup('maintenance', $event)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
               </svg>
-              <span>Flotte</span>
+              <span>Maintenance</span>
               <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
-            <div class="nav-group-dropdown" *ngIf="openNavGroup === 'fleet'" (click)="$event.stopPropagation()">
-              <a *ngIf="hasModule('vehicles')" [routerLink]="['/vehicles']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M5 17h-2v-6l2-5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0h-6m-6 -6h15m-6 0v-5"/></svg>
-                Véhicules
-              </a>
+            <div class="nav-group-dropdown" *ngIf="openNavGroup === 'maintenance'" (click)="$event.stopPropagation()">
               <a *ngIf="hasModule('maintenance')" [routerLink]="['/entretien-programmable']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                Entretien
+                Entretiens
               </a>
               <a *ngIf="hasModule('maintenance')" [routerLink]="['/reparations']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
                 Réparations
               </a>
-              <a *ngIf="hasModule('suppliers')" [routerLink]="['/suppliers']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/></svg>
-                Fournisseurs
+              <a *ngIf="hasModule('carburant')" [routerLink]="['/carburant']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 22V8l9-6 9 6v14"/><path d="M12 22V12"/><circle cx="18" cy="6" r="2"/></svg>
+                Carburants
               </a>
             </div>
           </div>
 
           <!-- Finances dropdown -->
-          <div class="nav-group" *ngIf="hasModule('costs') || hasModule('carburant')">
+          <div class="nav-group" *ngIf="hasModule('costs') || hasModule('documents') || hasModule('suppliers')">
             <button class="nav-group-btn" [class.active]="openNavGroup === 'finance'" (click)="toggleNavGroup('finance', $event)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
@@ -132,32 +131,27 @@ import * as L from 'leaflet';
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                 Dépenses
               </a>
-              <a *ngIf="hasModule('carburant')" [routerLink]="['/carburant']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 22V8l9-6 9 6v14"/><path d="M12 22V12"/><circle cx="18" cy="6" r="2"/></svg>
-                Carburant
-              </a>
-            </div>
-          </div>
-
-          <!-- Personnel dropdown -->
-          <div class="nav-group" *ngIf="hasModule('employees') || hasModule('documents') || hasModule('accidents')">
-            <button class="nav-group-btn" [class.active]="openNavGroup === 'hr'" (click)="toggleNavGroup('hr', $event)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                <circle cx="9" cy="7" r="4"/>
-              </svg>
-              <span>Personnel</span>
-              <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            <div class="nav-group-dropdown" *ngIf="openNavGroup === 'hr'" (click)="$event.stopPropagation()">
-              <a *ngIf="hasModule('employees')" [routerLink]="['/drivers']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-                Chauffeurs
-              </a>
               <a *ngIf="hasModule('documents')" [routerLink]="['/documents']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 Échéances
               </a>
+              <a *ngIf="hasModule('suppliers')" [routerLink]="['/suppliers']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/></svg>
+                Fournisseurs
+              </a>
+            </div>
+          </div>
+
+          <!-- Incidents dropdown -->
+          <div class="nav-group" *ngIf="hasModule('accidents')">
+            <button class="nav-group-btn" [class.active]="openNavGroup === 'incidents'" (click)="toggleNavGroup('incidents', $event)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <span>Incidents</span>
+              <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="nav-group-dropdown" *ngIf="openNavGroup === 'incidents'" (click)="$event.stopPropagation()">
               <a *ngIf="hasModule('accidents')" [routerLink]="['/sinistres']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                 Sinistres
@@ -168,6 +162,17 @@ import * as L from 'leaflet';
               </a>
             </div>
           </div>
+
+          <!-- Rapports (standalone) -->
+          <a *ngIf="hasModule('reports')" [routerLink]="['/reports']" routerLinkActive="active" class="nav-link" title="Rapports">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+            <span>Rapports</span>
+          </a>
         </div>
 
         <!-- Right Actions -->
