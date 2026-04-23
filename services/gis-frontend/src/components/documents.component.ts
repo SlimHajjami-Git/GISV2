@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
-import { DocumentRenewalPopupComponent } from './shared/document-renewal-popup.component';
+import { DocumentRenewalPopupComponent, VehicleDocument as RenewableVehicleDocument } from './shared/document-renewal-popup.component';
 import { ApiService } from '../services/api.service';
 import { trigger, transition, style, animate } from '@angular/animations';
 
@@ -186,7 +186,7 @@ export interface VehicleDocument {
                   <span *ngIf="!doc.lastRenewalCost" class="no-data">-</span>
                 </td>
                 <td class="actions-cell">
-                  <button class="btn-action renew" (click)="openRenewalPopup(doc)" title="Renouveler">
+                  <button *ngIf="doc.type !== 'driver_permit'" class="btn-action renew" (click)="openRenewalPopup(doc)" title="Renouveler">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="1 4 1 10 7 10"/>
                       <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
@@ -658,7 +658,7 @@ export class DocumentsComponent implements OnInit, OnDestroy {
   sortDirection: 'asc' | 'desc' = 'asc';
 
   isRenewalPopupOpen = false;
-  selectedDocument: VehicleDocument | null = null;
+  selectedDocument: RenewableVehicleDocument | null = null;
 
   constructor(private apiService: ApiService, private cdr: ChangeDetectorRef) {}
 
@@ -881,7 +881,12 @@ export class DocumentsComponent implements OnInit, OnDestroy {
   }
 
   openRenewalPopup(doc: VehicleDocument): void {
-    this.selectedDocument = doc;
+    // Driver permits are renewed from the drivers page, not through the
+    // vehicle-document renewal popup (the popup's schema is narrower and
+    // doesn't cover driver_permit). Bail silently — the template also hides
+    // the renew button for driver_permit rows.
+    if (doc.type === 'driver_permit') return;
+    this.selectedDocument = doc as RenewableVehicleDocument;
     this.isRenewalPopupOpen = true;
   }
 
