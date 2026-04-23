@@ -8,7 +8,7 @@ public class AccidentClaim : TenantEntity
     public int VehicleId { get; set; }
     public Vehicle? Vehicle { get; set; }
     public int? DriverId { get; set; }
-    public User? Driver { get; set; }
+    public Driver? Driver { get; set; }
     
     public DateTime AccidentDate { get; set; }
     public TimeSpan AccidentTime { get; set; }

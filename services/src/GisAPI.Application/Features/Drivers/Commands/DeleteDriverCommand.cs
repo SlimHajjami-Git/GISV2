@@ -25,12 +25,8 @@ public class DeleteDriverCommandHandler : IRequestHandler<DeleteDriverCommand>
             ?? throw new DomainException("Société non identifiée");
 
         var driver = await _context.Drivers
-            .Include(d => d.User)
             .FirstOrDefaultAsync(d => d.Id == request.Id && d.CompanyId == companyId, ct)
             ?? throw new NotFoundException("Chauffeur", request.Id);
-
-        // Clear employeeRole on user
-        driver.User.EmployeeRole = null;
 
         _context.Drivers.Remove(driver);
         await _context.SaveChangesAsync(ct);

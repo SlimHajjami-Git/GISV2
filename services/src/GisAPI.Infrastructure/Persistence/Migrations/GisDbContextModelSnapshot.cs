@@ -654,6 +654,95 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                     b.ToTable("departments", (string)null);
                 });
 
+            modelBuilder.Entity("GisAPI.Domain.Entities.Driver", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("AssignedVehicleId")
+                        .HasColumnType("integer")
+                        .HasColumnName("assigned_vehicle_id");
+
+                    b.Property<string>("CIN")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("cin");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("integer")
+                        .HasColumnName("company_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("DateOfBirth")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("date_of_birth");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("first_name");
+
+                    b.Property<DateTime?>("HireDate")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("hire_date");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("last_name");
+
+                    b.Property<DateTime?>("PermitExpiry")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("permit_expiry");
+
+                    b.Property<string>("PermitNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("permit_number");
+
+                    b.Property<string>("PermitType")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("permit_type");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("active")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex(new[] { "CompanyId", "LastName", "FirstName" }, "ix_drivers_company_id_name");
+
+                    b.ToTable("drivers", (string)null);
+                });
+
             modelBuilder.Entity("GisAPI.Domain.Entities.DriverAssignment", b =>
                 {
                     b.Property<int>("Id")
@@ -4990,7 +5079,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("CreatedByUserId");
 
-                    b.HasOne("GisAPI.Domain.Entities.User", "Driver")
+                    b.HasOne("GisAPI.Domain.Entities.Driver", "Driver")
                         .WithMany()
                         .HasForeignKey("DriverId");
 
@@ -5083,7 +5172,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("AssignedByUserId");
 
-                    b.HasOne("GisAPI.Domain.Entities.User", "Driver")
+                    b.HasOne("GisAPI.Domain.Entities.Driver", "Driver")
                         .WithMany()
                         .HasForeignKey("DriverId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -5104,7 +5193,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("GisAPI.Domain.Entities.DriverScore", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.User", "Driver")
+                    b.HasOne("GisAPI.Domain.Entities.Driver", "Driver")
                         .WithMany()
                         .HasForeignKey("DriverId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -5115,7 +5204,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("GisAPI.Domain.Entities.DrivingEvent", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.User", "Driver")
+                    b.HasOne("GisAPI.Domain.Entities.Driver", "Driver")
                         .WithMany()
                         .HasForeignKey("DriverId");
 
@@ -5138,7 +5227,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("GisAPI.Domain.Entities.FuelEntry", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.User", "Driver")
+                    b.HasOne("GisAPI.Domain.Entities.Driver", "Driver")
                         .WithMany()
                         .HasForeignKey("DriverId")
                         .OnDelete(DeleteBehavior.SetNull);
@@ -5186,7 +5275,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("DeviceId");
 
-                    b.HasOne("GisAPI.Domain.Entities.User", "Driver")
+                    b.HasOne("GisAPI.Domain.Entities.Driver", "Driver")
                         .WithMany()
                         .HasForeignKey("DriverId");
 
@@ -5608,7 +5697,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("ApprovedByUserId");
 
-                    b.HasOne("GisAPI.Domain.Entities.User", "AssignedDriver")
+                    b.HasOne("GisAPI.Domain.Entities.Driver", "AssignedDriver")
                         .WithMany()
                         .HasForeignKey("AssignedDriverId");
 
@@ -5738,7 +5827,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Trip", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.User", "Driver")
+                    b.HasOne("GisAPI.Domain.Entities.Driver", "Driver")
                         .WithMany()
                         .HasForeignKey("DriverId");
 
@@ -5900,7 +5989,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("GisAPI.Domain.Entities.Vehicle", b =>
                 {
-                    b.HasOne("GisAPI.Domain.Entities.User", "AssignedDriver")
+                    b.HasOne("GisAPI.Domain.Entities.Driver", "AssignedDriver")
                         .WithMany()
                         .HasForeignKey("AssignedDriverId")
                         .OnDelete(DeleteBehavior.SetNull);
@@ -6030,7 +6119,7 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("DeviceId");
 
-                    b.HasOne("GisAPI.Domain.Entities.User", "Driver")
+                    b.HasOne("GisAPI.Domain.Entities.Driver", "Driver")
                         .WithMany()
                         .HasForeignKey("DriverId");
 

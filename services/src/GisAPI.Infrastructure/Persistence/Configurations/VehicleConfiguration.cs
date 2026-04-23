@@ -58,6 +58,9 @@ public class VehicleConfiguration : IEntityTypeConfiguration<Vehicle>
             .WithMany(c => c.Vehicles)
             .HasForeignKey(e => e.CompanyId);
 
+        // Vehicle.AssignedDriver is a scalar nav to Driver. Driver side has NO
+        // reciprocal navigation (see Driver.cs), so this configures cleanly as
+        // a standard N-to-1 relationship.
         builder.HasOne(e => e.AssignedDriver)
             .WithMany()
             .HasForeignKey(e => e.AssignedDriverId)

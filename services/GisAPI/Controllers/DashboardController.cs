@@ -725,24 +725,34 @@ public class DashboardController : ControllerBase
         }).ToList();
 
         // ── 10. Drivers ──
-        var drivers = await _context.Drivers.AsNoTracking()
-            .Where(d => d.CompanyId == companyId)
-            .Include(d => d.User)
-            .Include(d => d.AssignedVehicle)
-            .Take(20)
-            .ToListAsync();
+        // Driver.AssignedVehicle is NOT a nav (EF would collide with Vehicle.AssignedDriver).
+        // Manual join on AssignedVehicleId to pull the vehicle plate.
+        var driversRaw = await (from d in _context.Drivers.AsNoTracking()
+                                where d.CompanyId == companyId
+                                join v in _context.Vehicles.AsNoTracking()
+                                    on d.AssignedVehicleId equals v.Id into vJoin
+                                from vehicle in vJoin.DefaultIfEmpty()
+                                select new
+                                {
+                                    d.FirstName,
+                                    d.LastName,
+                                    d.Status,
+                                    VehiclePlate = vehicle != null ? vehicle.Plate : null
+                                })
+                                .Take(20)
+                                .ToListAsync();
 
-        var driversList = drivers.Select(d =>
+        var driversList = driversRaw.Select(d =>
         {
-            var name = d.User?.FullName ?? "Conducteur";
-            if (string.IsNullOrWhiteSpace(name)) name = "Conducteur";
+            var fullName = $"{d.FirstName} {d.LastName}".Trim();
+            var name = !string.IsNullOrWhiteSpace(fullName) ? fullName : "Conducteur";
             var initials = string.Join("", name.Split(' ').Where(w => w.Length > 0).Select(w => w[0].ToString().ToUpper()));
             if (initials.Length > 2) initials = initials[..2];
             return new
             {
                 name,
                 initials,
-                vehicle = d.AssignedVehicle?.Plate ?? "",
+                vehicle = d.VehiclePlate ?? "",
                 active = d.Status != "inactive"
             };
         }).ToList();
@@ -889,16 +899,28 @@ public class DashboardController : ControllerBase
 
         var onlineDevices = movingCount + ignitionOnCount;
 
-        // Employee stats - server-side counts (use DB column EmployeeRole, not computed Roles/UserType)
-        var totalDrivers = await _context.Users
+        // Driver stats — drivers are a standalone entity, not users.
+        // "Employees" (admin staff tagged with EmployeeRole == "employee") are still counted here
+        // because the dashboard groups fleet workforce (drivers + non-admin employees).
+        var driversFromDriverTable = await _context.Drivers
             .AsNoTracking()
-            .Where(e => e.CompanyId == companyId && (e.EmployeeRole == "driver" || e.EmployeeRole == "employee"))
+            .Where(d => d.CompanyId == companyId)
             .CountAsync();
+        var employeesFromUserTable = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.CompanyId == companyId && u.EmployeeRole == "employee")
+            .CountAsync();
+        var totalDrivers = driversFromDriverTable + employeesFromUserTable;
 
-        var activeDrivers = await _context.Users
+        var activeDriversFromDriverTable = await _context.Drivers
             .AsNoTracking()
-            .Where(e => e.CompanyId == companyId && (e.EmployeeRole == "driver" || e.EmployeeRole == "employee") && e.Status == "active")
+            .Where(d => d.CompanyId == companyId && d.Status == "active")
             .CountAsync();
+        var activeEmployeesFromUserTable = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.CompanyId == companyId && u.EmployeeRole == "employee" && u.Status == "active")
+            .CountAsync();
+        var activeDrivers = activeDriversFromDriverTable + activeEmployeesFromUserTable;
 
         // Alert stats - server-side counts with subquery
         var unresolvedAlerts = await _context.GpsAlerts

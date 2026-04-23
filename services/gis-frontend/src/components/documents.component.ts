@@ -12,7 +12,7 @@ export interface VehicleDocument {
   vehicleId: number;
   vehicleName: string;
   vehiclePlate: string;
-  type: 'insurance' | 'tax' | 'technical_inspection' | 'registration' | 'transport_permit';
+  type: 'insurance' | 'tax' | 'technical_inspection' | 'registration' | 'transport_permit' | 'driver_permit';
   expiryDate: Date;
   documentNumber?: string;
   documentUrl?: string;
@@ -59,6 +59,7 @@ export interface VehicleDocument {
             <option value="technical_inspection">Visite technique</option>
             <option value="registration">Carte grise</option>
             <option value="transport_permit">Autorisation transport</option>
+            <option value="driver_permit">Permis conducteur</option>
           </select>
           <select class="filter-select" [(ngModel)]="filterStatus" (change)="filterDocuments()">
             <option value="">Tous les statuts</option>
@@ -835,7 +836,8 @@ export class DocumentsComponent implements OnInit, OnDestroy {
       'tax': 'Vignette',
       'technical_inspection': 'Visite technique',
       'registration': 'Carte grise',
-      'transport_permit': 'Autorisation'
+      'transport_permit': 'Autorisation',
+      'driver_permit': 'Permis conducteur'
     };
     return labels[type] || type;
   }
@@ -846,7 +848,8 @@ export class DocumentsComponent implements OnInit, OnDestroy {
       'tax': '📋',
       'technical_inspection': '🔧',
       'registration': '📄',
-      'transport_permit': '🚛'
+      'transport_permit': '🚛',
+      'driver_permit': '🪪'
     };
     return icons[type] || '📄';
   }

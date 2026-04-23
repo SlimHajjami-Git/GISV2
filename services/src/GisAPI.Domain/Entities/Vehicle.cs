@@ -21,7 +21,7 @@ public class Vehicle : TenantEntity
     public bool IsRented { get; set; } = false;
 
     public int? AssignedDriverId { get; set; }
-    public User? AssignedDriver { get; set; }
+    public Driver? AssignedDriver { get; set; }
     
     public int? AssignedSupervisorId { get; set; }
     public User? AssignedSupervisor { get; set; }

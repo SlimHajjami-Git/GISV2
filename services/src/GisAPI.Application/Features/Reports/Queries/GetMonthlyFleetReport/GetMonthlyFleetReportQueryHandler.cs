@@ -44,11 +44,11 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
             .Distinct()
             .ToList();
         
-        var drivers = driverIds.Any() 
-            ? await _context.Users.AsNoTracking()
-                .Where(u => driverIds.Contains(u.Id))
+        var drivers = driverIds.Any()
+            ? await _context.Drivers.AsNoTracking()
+                .Where(d => driverIds.Contains(d.Id))
                 .ToListAsync(ct)
-            : new List<User>();
+            : new List<Driver>();
 
         // Build the report
         var report = new MonthlyFleetReportDto
@@ -400,7 +400,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         return maintenance;
     }
 
-    private DriverPerformanceDto BuildDriverPerformance(List<User> drivers, List<Vehicle> vehicles, List<GpsPosition> positions)
+    private DriverPerformanceDto BuildDriverPerformance(List<Driver> drivers, List<Vehicle> vehicles, List<GpsPosition> positions)
     {
         var performance = new DriverPerformanceDto
         {

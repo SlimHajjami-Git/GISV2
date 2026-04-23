@@ -20,36 +20,33 @@ public class GetDriversQueryHandler : IRequestHandler<GetDriversQuery, List<Driv
 
     public async Task<List<DriverDto>> Handle(GetDriversQuery request, CancellationToken ct)
     {
-        var companyId = _tenantService.CompanyId;
-
-        // Use IgnoreQueryFilters to prevent the User global query filter from
-        // filtering out users via the Include (which would cause null d.User).
-        // We apply the company filter manually on the Drivers side.
-        return await _context.Drivers
-            .IgnoreQueryFilters()
-            .Where(d => _tenantService.IsSystemAdmin || companyId == null || d.CompanyId == companyId)
-            .Include(d => d.User)
-            .Include(d => d.AssignedVehicle)
-            .OrderBy(d => d.User != null ? d.User.FirstName : string.Empty)
-            .ThenBy(d => d.User != null ? d.User.LastName : string.Empty)
-            .Select(d => new DriverDto(
-                d.Id,
-                d.UserId,
-                d.User != null ? d.User.FirstName : string.Empty,
-                d.User != null ? d.User.LastName : string.Empty,
-                d.User != null ? d.User.Email : string.Empty,
-                d.User != null ? d.User.Phone : null,
-                d.PermitNumber,
-                d.PermitType,
-                d.PermitExpiry,
-                d.CIN,
-                d.DateOfBirth,
-                d.AssignedVehicleId,
-                d.AssignedVehicle != null ? d.AssignedVehicle.Name : null,
-                d.AssignedVehicle != null ? d.AssignedVehicle.Plate : null,
-                d.Status,
-                d.CreatedAt
-            ))
-            .ToListAsync(ct);
+        // Driver is a standalone entity with native fields — no Include on User.
+        // Driver.AssignedVehicle is NOT a navigation (see Driver.cs) because it
+        // would collide with Vehicle.AssignedDriver in EF's relationship discovery.
+        // We join on AssignedVehicleId manually to project vehicle name/plate.
+        return await (from d in _context.Drivers
+                      join v in _context.Vehicles
+                          on d.AssignedVehicleId equals v.Id into vehicleJoin
+                      from vehicle in vehicleJoin.DefaultIfEmpty()
+                      orderby d.LastName, d.FirstName
+                      select new DriverDto(
+                          d.Id,
+                          d.FirstName,
+                          d.LastName,
+                          d.Email,
+                          d.Phone,
+                          d.PermitNumber,
+                          d.PermitType,
+                          d.PermitExpiry,
+                          d.CIN,
+                          d.DateOfBirth,
+                          d.HireDate,
+                          d.AssignedVehicleId,
+                          vehicle != null ? vehicle.Name : null,
+                          vehicle != null ? vehicle.Plate : null,
+                          d.Status,
+                          d.CreatedAt
+                      ))
+                      .ToListAsync(ct);
     }
 }

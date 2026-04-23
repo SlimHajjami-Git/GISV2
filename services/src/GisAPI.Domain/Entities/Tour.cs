@@ -11,7 +11,7 @@ public class Tour : TenantEntity
     public int VehicleId { get; set; }
     public Vehicle? Vehicle { get; set; }
     public int? DriverId { get; set; }
-    public User? Driver { get; set; }
+    public Driver? Driver { get; set; }
 
     // Status: planned, in_progress, completed, cancelled
     public string Status { get; set; } = "planned";
