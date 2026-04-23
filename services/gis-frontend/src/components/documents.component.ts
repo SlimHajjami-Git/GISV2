@@ -3,7 +3,10 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
-import { DocumentRenewalPopupComponent } from './shared/document-renewal-popup.component';
+import {
+  DocumentRenewalPopupComponent,
+  VehicleDocument as RenewableVehicleDocument,
+} from './shared/document-renewal-popup.component';
 import { ApiService } from '../services/api.service';
 import { trigger, transition, style, animate } from '@angular/animations';
 
@@ -12,7 +15,7 @@ export interface VehicleDocument {
   vehicleId: number;
   vehicleName: string;
   vehiclePlate: string;
-  type: 'insurance' | 'tax' | 'technical_inspection' | 'registration' | 'transport_permit';
+  type: 'insurance' | 'tax' | 'technical_inspection' | 'registration' | 'transport_permit' | 'driver_permit';
   expiryDate: Date;
   documentNumber?: string;
   documentUrl?: string;
@@ -59,6 +62,7 @@ export interface VehicleDocument {
             <option value="technical_inspection">Visite technique</option>
             <option value="registration">Carte grise</option>
             <option value="transport_permit">Autorisation transport</option>
+            <option value="driver_permit">Permis conducteur</option>
           </select>
           <select class="filter-select" [(ngModel)]="filterStatus" (change)="filterDocuments()">
             <option value="">Tous les statuts</option>
@@ -185,7 +189,7 @@ export interface VehicleDocument {
                   <span *ngIf="!doc.lastRenewalCost" class="no-data">-</span>
                 </td>
                 <td class="actions-cell">
-                  <button class="btn-action renew" (click)="openRenewalPopup(doc)" title="Renouveler">
+                  <button class="btn-action renew" *ngIf="doc.type !== 'driver_permit'" (click)="openRenewalPopup(doc)" title="Renouveler">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="1 4 1 10 7 10"/>
                       <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
@@ -657,7 +661,9 @@ export class DocumentsComponent implements OnInit, OnDestroy {
   sortDirection: 'asc' | 'desc' = 'asc';
 
   isRenewalPopupOpen = false;
-  selectedDocument: VehicleDocument | null = null;
+  // Narrowed to the popup's own type — driver_permit rows don't go through
+  // the renewal popup (driver licence is edited from the drivers page).
+  selectedDocument: RenewableVehicleDocument | null = null;
 
   constructor(private apiService: ApiService, private cdr: ChangeDetectorRef) {}
 
@@ -835,7 +841,8 @@ export class DocumentsComponent implements OnInit, OnDestroy {
       'tax': 'Vignette',
       'technical_inspection': 'Visite technique',
       'registration': 'Carte grise',
-      'transport_permit': 'Autorisation'
+      'transport_permit': 'Autorisation',
+      'driver_permit': 'Permis conducteur'
     };
     return labels[type] || type;
   }
@@ -846,7 +853,8 @@ export class DocumentsComponent implements OnInit, OnDestroy {
       'tax': '📋',
       'technical_inspection': '🔧',
       'registration': '📄',
-      'transport_permit': '🚛'
+      'transport_permit': '🚛',
+      'driver_permit': '🪪'
     };
     return icons[type] || '📄';
   }
@@ -878,7 +886,11 @@ export class DocumentsComponent implements OnInit, OnDestroy {
   }
 
   openRenewalPopup(doc: VehicleDocument): void {
-    this.selectedDocument = doc;
+    // Driver permits are renewed from the drivers page, not here. The
+    // renew button is hidden for driver_permit rows, but guard anyway so
+    // we never pass an incompatible doc to the popup.
+    if (doc.type === 'driver_permit') return;
+    this.selectedDocument = doc as RenewableVehicleDocument;
     this.isRenewalPopupOpen = true;
   }
 
