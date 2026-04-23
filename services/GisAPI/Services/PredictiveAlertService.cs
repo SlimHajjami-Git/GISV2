@@ -64,9 +64,6 @@ public class PredictiveAlertService : BackgroundService
                 await CheckMaintenanceDue(context, notifService, alertDispatcher, vehicle, companyId, ct);
                 await CheckFuelAnomaly(context, notifService, vehicle, companyId, ct);
             }
-
-            // Driver permit expiries — not attached to any vehicle, so run once per company.
-            await CheckDriverPermitExpiry(context, notifService, companyId, ct);
         }
 
         _logger.LogInformation("PredictiveAlertService completed check for {Count} companies", companies.Count);
@@ -159,72 +156,6 @@ public class PredictiveAlertService : BackgroundService
                     }
                 }
             }
-        }
-    }
-
-    /// <summary>
-    /// Notifies company admins when a driver's driving-licence (permis conducteur)
-    /// is expired, or expires within 15 / 30 days. Admin-only in-app notification —
-    /// there's no dedicated <c>alert_emails</c> type for this yet.
-    /// </summary>
-    private async Task CheckDriverPermitExpiry(GisDbContext context, INotificationService notifService,
-        int companyId, CancellationToken ct)
-    {
-        var now = DateTime.UtcNow;
-        var in15Days = now.AddDays(15);
-        var in30Days = now.AddDays(30);
-
-        var drivers = await context.Drivers
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .Include(d => d.User)
-            .Where(d => d.CompanyId == companyId
-                     && d.PermitExpiry != null
-                     && d.Status == "active")
-            .ToListAsync(ct);
-
-        foreach (var driver in drivers)
-        {
-            var expiry = driver.PermitExpiry!.Value;
-            string? message = null;
-            string priority = "normal";
-            // FirstName/LastName live on the linked User — the Driver entity
-            // itself stores only permit data since the decoupling commit d1670d8.
-            var fullName = driver.User != null
-                ? $"{driver.User.FirstName} {driver.User.LastName}".Trim()
-                : "Conducteur";
-
-            if (expiry < now)
-            {
-                message = $"Permis conducteur expiré pour {fullName} depuis le {expiry:dd/MM/yyyy}";
-                priority = "urgent";
-            }
-            else if (expiry < in15Days)
-            {
-                var days = Math.Max(0, (int)(expiry - now).TotalDays);
-                message = $"Permis conducteur expire dans {days} jour(s) pour {fullName}";
-                priority = "urgent";
-            }
-            else if (expiry < in30Days)
-            {
-                var days = (int)(expiry - now).TotalDays;
-                message = $"Permis conducteur expire dans {days} jour(s) pour {fullName}";
-                priority = "normal";
-            }
-
-            if (message == null) continue;
-
-            // Dedup on (companyId, type, driver.Id) — same pattern as vehicle docs but keyed
-            // on driver so two drivers in the same company don't race-condition each other.
-            var alreadySent = await HasRecentNotification(context, companyId,
-                "driver_permit_expiry", driver.Id, "driver_permit", ct);
-            if (alreadySent) continue;
-
-            await SendToCompanyAdmins(context, notifService, companyId,
-                "driver_permit_expiry",
-                $"Permis conducteur: {fullName}",
-                message,
-                priority, "driver", driver.Id, "/documents?type=driver_permit", ct);
         }
     }
 

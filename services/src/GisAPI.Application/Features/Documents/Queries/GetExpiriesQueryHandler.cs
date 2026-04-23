@@ -35,16 +35,12 @@ public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, Paginat
             expiries.AddRange(vehicleExpiries);
         }
 
-        // Add driver permit expiries. Source of truth is the `drivers` table
-        // (decoupled from User since commit d1670d8) — permit fields on User
-        // are legacy carry-overs that new code shouldn't rely on.
+        // Add driver permit expiries (from users with PermitExpiry)
         if (!request.VehicleId.HasValue)
         {
-            var drivers = await _context.Drivers
-                .IgnoreQueryFilters()
+            var drivers = await _context.Users
                 .AsNoTracking()
-                .Include(d => d.User)
-                .Where(d => d.PermitExpiry != null && d.Status == "active")
+                .Where(u => u.PermitExpiry != null && u.EmployeeRole == "driver")
                 .ToListAsync(cancellationToken);
 
             foreach (var driver in drivers)
@@ -54,21 +50,12 @@ public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, Paginat
                     : daysUntil <= 30 ? "expiring_soon"
                     : "ok";
 
-                // driver.AssignedVehicleId is the authoritative side — the
-                // inverse leg on vehicles.assigned_driver_id is not always
-                // kept in sync by the drivers popup, which only writes the
-                // driver-side field.
-                var assignedVehicle = driver.AssignedVehicleId.HasValue
-                    ? vehicles.FirstOrDefault(v => v.Id == driver.AssignedVehicleId.Value)
-                    : null;
-
-                var fullName = driver.User != null
-                    ? $"{driver.User.FirstName} {driver.User.LastName}".Trim()
-                    : "Conducteur";
+                // Find the vehicle assigned to this driver (if any)
+                var assignedVehicle = vehicles.FirstOrDefault(v => v.AssignedDriverId == driver.Id);
 
                 expiries.Add(new VehicleExpiryDto(
                     assignedVehicle?.Id ?? 0,
-                    fullName,
+                    $"{driver.FirstName} {driver.LastName}".Trim(),
                     driver.PermitType != null ? $"Permis {driver.PermitType}" : "Permis",
                     "driver_permit",
                     driver.PermitExpiry,
