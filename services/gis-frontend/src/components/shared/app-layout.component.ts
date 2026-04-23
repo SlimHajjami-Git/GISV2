@@ -9,14 +9,16 @@ import { PermissionService, ModuleKey } from '../../services/permission.service'
 import { NotificationService, Notification } from '../../services/notification.service';
 import { SignalRService } from '../../services/signalr.service';
 import { GeocodingService } from '../../services/geocoding.service';
+import { OfflineVehiclesService } from '../../services/offline-vehicles.service';
 import { ChatComponent } from './chat.component';
 import { AccidentDecisionModalComponent } from './accident-decision-modal.component';
+import { OfflineVehiclesBellComponent } from './offline-vehicles-bell.component';
 import * as L from 'leaflet';
 
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterModule, ChatComponent, AccidentDecisionModalComponent],
+  imports: [CommonModule, RouterModule, ChatComponent, AccidentDecisionModalComponent, OfflineVehiclesBellComponent],
   template: `
     <div class="app-container">
       <!-- WIALON-STYLE TOP NAVIGATION BAR -->
@@ -199,6 +201,9 @@ import * as L from 'leaflet';
               <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
             </svg>
           </button>
+
+          <!-- Offline Vehicles Bell (same look as notification bell, red badge when vehicles are offline) -->
+          <app-offline-vehicles-bell></app-offline-vehicles-bell>
 
           <!-- Notification Bell -->
           <div class="notification-wrapper">
@@ -1254,6 +1259,7 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     private notificationService: NotificationService,
     private signalR: SignalRService,
     private geocodingService: GeocodingService,
+    private offlineVehiclesService: OfflineVehiclesService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -1272,6 +1278,9 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     this.loadNotifications();
     this.notificationService.loadUnreadCount();
 
+    // Start the offline-vehicles watcher so the header bell stays in sync on every page
+    this.offlineVehiclesService.start();
+
     // Subscribe to real-time unread count
     this.subs.push(
       this.notificationService.unreadCount$.subscribe(count => {
@@ -1289,6 +1298,7 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.subs.forEach(s => s.unsubscribe());
+    this.offlineVehiclesService.stop();
     this.signalR.stopConnection();
   }
 
