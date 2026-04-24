@@ -190,7 +190,8 @@ interface CompanyUser {
                   </div>
                 </td>
                 <td><span class="plate-tag" *ngIf="v.plate">{{ v.plate }}</span><span *ngIf="!v.plate" class="text-muted">-</span></td>
-                <td class="text-mono">{{ v.mileage | number:'1.0-0' }} km</td>
+                <!-- Calypso 6 (P11): no thousand separator -->
+                <td class="text-mono">{{ v.mileage }} km</td>
                 <td>
                   <span class="status-dot" [class.active]="v.hasGps" [class.inactive]="!v.hasGps"></span>
                   {{ v.hasGps ? 'Actif' : 'Non' }}
@@ -254,7 +255,8 @@ interface CompanyUser {
                 <td>{{ r.assignedDriverName || r.requestedByUserName || '-' }}</td>
                 <td><span class="text-muted">{{ r.purpose || '-' }}</span></td>
                 <td class="text-mono-sm">{{ r.startDateTime | date:'dd/MM/yy HH:mm' }}</td>
-                <td class="text-mono-sm">{{ r.startMileage ? (r.startMileage | number:'1.0-0') + ' km' : '-' }}</td>
+                <!-- Calypso 6 (P11): no thousand separator -->
+                <td class="text-mono-sm">{{ r.startMileage ? r.startMileage + ' km' : '-' }}</td>
                 <td><span class="duration-badge">{{ getDuration(r.startDateTime) }}</span></td>
                 <td>
                   <div class="action-group">
@@ -299,10 +301,11 @@ interface CompanyUser {
                 <td>{{ r.assignedDriverName || r.requestedByUserName || '-' }}</td>
                 <td><span class="text-muted">{{ r.purpose || '-' }}</span></td>
                 <td class="text-mono-sm">{{ r.startDateTime | date:'dd/MM' }} — {{ r.endDateTime | date:'dd/MM/yy' }}</td>
-                <td class="text-mono-sm">{{ r.startMileage ? (r.startMileage | number:'1.0-0') : '-' }}</td>
-                <td class="text-mono-sm">{{ r.endMileage ? (r.endMileage | number:'1.0-0') : '-' }}</td>
+                <!-- Calypso 6 (P11): no thousand separator -->
+                <td class="text-mono-sm">{{ r.startMileage != null ? r.startMileage : '-' }}</td>
+                <td class="text-mono-sm">{{ r.endMileage != null ? r.endMileage : '-' }}</td>
                 <td>
-                  <span class="km-value" *ngIf="r.actualKm != null">{{ r.actualKm | number:'1.0-0' }} km</span>
+                  <span class="km-value" *ngIf="r.actualKm != null">{{ r.actualKm }} km</span>
                   <span class="text-muted" *ngIf="r.actualKm == null">-</span>
                 </td>
                 <td>

@@ -376,13 +376,27 @@ interface PartPricing {
                   </button>
                 </div>
 
+                <!-- Calypso 6 (P11): search box for remote control vehicles -->
+                <div class="remote-search-bar">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                  <input
+                    type="text"
+                    [(ngModel)]="remoteSearchTerm"
+                    placeholder="Rechercher un véhicule par nom ou immatriculation..."
+                    class="remote-search-input"
+                  />
+                  <button *ngIf="remoteSearchTerm" class="remote-search-clear" (click)="remoteSearchTerm = ''" title="Effacer">×</button>
+                </div>
+
                 <div class="loading-state" *ngIf="loadingRemote">
                   <div class="spinner"></div>
                   <span>Chargement des véhicules...</span>
                 </div>
 
-                <div class="remote-grid" *ngIf="!loadingRemote">
-                  <div class="remote-card" *ngFor="let v of remoteVehicles" [class.online]="v.isOnline" [class.offline]="!v.isOnline">
+                <div class="remote-list" *ngIf="!loadingRemote">
+                  <div class="remote-row" *ngFor="let v of filteredRemoteVehicles()" [class.online]="v.isOnline" [class.offline]="!v.isOnline">
                     <div class="remote-card-header">
                       <div class="remote-card-icon" [class.online]="v.isOnline">
                         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -445,6 +459,9 @@ interface PartPricing {
 
                   <div class="empty-list" *ngIf="remoteVehicles.length === 0">
                     <p>Aucun véhicule avec GPS</p>
+                  </div>
+                  <div class="empty-list" *ngIf="remoteVehicles.length > 0 && filteredRemoteVehicles().length === 0">
+                    <p>Aucun véhicule ne correspond à la recherche</p>
                   </div>
                 </div>
               </div>
@@ -1449,6 +1466,65 @@ interface PartPricing {
     }
 
     /* ===== REMOTE CONTROL ===== */
+    /* Calypso 6 (P11): search bar */
+    .remote-search-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      margin: 8px 0 14px;
+      color: #6b7280;
+    }
+
+    .remote-search-input {
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      font-size: 14px;
+      color: #1f2937;
+    }
+
+    .remote-search-clear {
+      background: none;
+      border: none;
+      color: #6b7280;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0 4px;
+    }
+
+    .remote-search-clear:hover {
+      color: #1f2937;
+    }
+
+    /* Calypso 6 (P11): vertical list layout (row per vehicle) */
+    .remote-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .remote-row {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      overflow: hidden;
+      transition: all 0.2s;
+    }
+
+    .remote-row:hover {
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    }
+
+    .remote-row.offline {
+      opacity: 0.65;
+    }
+
     .remote-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -1718,7 +1794,22 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
   // Remote control
   remoteVehicles: any[] = [];
   loadingRemote = false;
+  // Calypso 6 (P11): search term for remote control list
+  remoteSearchTerm = '';
   commandHistory: Record<number, any[]> = {};
+
+  /**
+   * Calypso 6 (P11): Filters remote control vehicles by search term on name or plate.
+   */
+  filteredRemoteVehicles(): any[] {
+    const term = (this.remoteSearchTerm || '').trim().toLowerCase();
+    if (!term) return this.remoteVehicles;
+    return this.remoteVehicles.filter(v => {
+      const name = (v.name || '').toLowerCase();
+      const plate = (v.plate || '').toLowerCase();
+      return name.includes(term) || plate.includes(term);
+    });
+  }
 
   constructor(private http: HttpClient, private cdr: ChangeDetectorRef, private apiService: ApiService) {}
 

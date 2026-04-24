@@ -483,13 +483,55 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Update a single vehicle in filteredVehicles without re-filtering all
   private updateFilteredVehicle(vehicle: any) {
     const index = this.filteredVehicles.findIndex(v => v.id === vehicle.id);
+
+    // Calypso 6 (P11): when an active filter is set, re-evaluate whether the
+    // updated vehicle still matches it. Previously, toggling a vehicle online
+    // while the "Offline" filter was active kept it on the map because we
+    // only replaced the object in place without checking the filter.
+    const matchesFilter = this.vehicleMatchesCurrentFilter(vehicle);
+
     if (index !== -1) {
-      // Create new array reference to trigger Angular change detection
-      this.filteredVehicles = [
-        ...this.filteredVehicles.slice(0, index),
-        vehicle,
-        ...this.filteredVehicles.slice(index + 1)
-      ];
+      if (matchesFilter) {
+        // Create new array reference to trigger Angular change detection
+        this.filteredVehicles = [
+          ...this.filteredVehicles.slice(0, index),
+          vehicle,
+          ...this.filteredVehicles.slice(index + 1)
+        ];
+      } else {
+        // No longer matches filter — remove it
+        this.filteredVehicles = [
+          ...this.filteredVehicles.slice(0, index),
+          ...this.filteredVehicles.slice(index + 1)
+        ];
+      }
+    } else if (matchesFilter) {
+      // Newly matches filter — append it
+      this.filteredVehicles = [...this.filteredVehicles, vehicle];
+    }
+  }
+
+  /**
+   * Calypso 6 (P11): returns true if the vehicle matches the current
+   * search + status filter. Mirrors the logic in applyFilters().
+   */
+  private vehicleMatchesCurrentFilter(v: any): boolean {
+    // Search filter
+    const q = (this.searchQuery || '').trim().toLowerCase();
+    if (q) {
+      const name = (v.name || '').toLowerCase();
+      const plate = (v.plate || '').toLowerCase();
+      if (!name.includes(q) && !plate.includes(q)) return false;
+    }
+    // Status filter
+    switch (this.filterStatus) {
+      case 'all':     return true;
+      case 'online':  return !!v.isOnline;
+      case 'moving':  return !!v.isOnline && !!v.ignitionOn && (v.currentSpeed || 0) > 5;
+      case 'idle':    return !!v.isOnline && !!v.ignitionOn && (v.currentSpeed || 0) <= 5;
+      case 'parked':  return !!v.isOnline && !v.ignitionOn;
+      case 'offline': return !v.isOnline;
+      default:        return true;
     }
   }
 
@@ -2270,7 +2312,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     const addrKey = `${position.latitude.toFixed(4)},${position.longitude.toFixed(4)}`;
     const cachedAddr = this.playbackAddressCache.get(addrKey) || '';
     
-    this.playbackMarker.bindPopup(`
+    const popupHtml = `
       <div style="font-family:'Inter',-apple-system,sans-serif;min-width:240px;padding:0;margin:-14px -20px;">
         <div style="background:linear-gradient(135deg,${statusColor},${statusColor}dd);padding:10px 14px;border-radius:8px 8px 0 0;display:flex;align-items:center;justify-content:space-between;">
           <span style="font-weight:600;font-size:12px;color:#fff;">${statusLabel}</span>
@@ -2286,7 +2328,22 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           ${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)} · ${heading}°
         </div>
       </div>
-    `);
+    `;
+
+    // Calypso 6 (P4): keep popup visible across frames. Previously each frame
+    // re-bound the popup, which closed it if the user had it open. Now we only
+    // rebind the first time, then update content in place; if the popup was
+    // open when the frame changed, it stays open with refreshed data.
+    const popup = this.playbackMarker.getPopup();
+    const wasOpen = !!popup && this.playbackMarker.isPopupOpen();
+    if (!popup) {
+      this.playbackMarker.bindPopup(popupHtml, { autoClose: false, closeOnClick: false });
+    } else {
+      popup.setContent(popupHtml);
+    }
+    if (wasOpen && this.playbackMarker.getPopup() && !this.playbackMarker.isPopupOpen()) {
+      this.playbackMarker.openPopup();
+    }
 
     // Throttled address update for the live info panel (every 5th marker update)
     this.playbackAddressThrottle++;

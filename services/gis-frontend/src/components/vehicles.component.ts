@@ -358,42 +358,7 @@ interface VehicleTrip {
               </div>
             </div>
 
-            <!-- GPS Info -->
-            <div class="info-section" *ngIf="selectedDetailVehicle.hasGPS">
-              <h3 class="section-title">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
-                  <circle cx="12" cy="10" r="3"/>
-                </svg>
-                Données GPS
-              </h3>
-              <div class="gps-stats-row">
-                <div class="gps-stat-box">
-                  <span class="gps-stat-value">{{ vehicleTrips.length }}</span>
-                  <span class="gps-stat-label">Trajets ce mois</span>
-                </div>
-                <div class="gps-stat-box">
-                  <span class="gps-stat-value">{{ calculateMonthlyDistance() }}</span>
-                  <span class="gps-stat-label">km ce mois</span>
-                </div>
-              </div>
-              <div class="current-location" *ngIf="currentLocation">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <circle cx="12" cy="12" r="3"/>
-                </svg>
-                <span>{{ currentLocation }}</span>
-              </div>
-              <button class="btn-sync-mileage" (click)="syncMileageFromGps()" [disabled]="syncingMileage">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                  <path d="M3 3v5h5"/>
-                  <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-                  <path d="M16 21h5v-5"/>
-                </svg>
-                {{ syncingMileage ? 'Synchronisation...' : 'Sync kilométrage GPS' }}
-              </button>
-            </div>
+            <!-- Calypso 6 (P6): GPS Info section removed (was "Données GPS") -->
 
             <!-- Dépenses -->
             <div class="info-section">
@@ -462,30 +427,7 @@ interface VehicleTrip {
               </div>
             </div>
 
-            <!-- Trajets récents -->
-            <div class="info-section" *ngIf="selectedDetailVehicle.hasGPS && vehicleTrips.length > 0">
-              <h3 class="section-title">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-                </svg>
-                Trajets récents
-              </h3>
-              <div class="trips-list">
-                <div class="trip-item" *ngFor="let trip of vehicleTrips.slice(0, 5)">
-                  <div class="trip-route">
-                    <span class="trip-start">{{ trip.startAddress }}</span>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
-                    </svg>
-                    <span class="trip-end">{{ trip.endAddress }}</span>
-                  </div>
-                  <div class="trip-meta">
-                    <span>{{ formatDate(trip.startTime) }}</span>
-                    <span class="trip-distance">{{ trip.distance }} km</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <!-- Calypso 6 (P6): Trajets récents section removed per PDF requirement -->
           </div>
 
           <!-- Footer avec actions -->

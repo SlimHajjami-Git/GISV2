@@ -1169,8 +1169,10 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   closeMarkDone() { this.isMarkOpen = false; this.markData = this.getEmptyMark(); }
   isMarkValid() {
     if (!this.markData.date || !this.markData.mileage) return false;
-    const hasExisting = this.markData.invoiceLines.some((l: InvoiceLine) => l.templateId && l.price);
-    const hasNew = this.markData.invoiceLines.some((l: InvoiceLine) => l.isNewTemplate && l.newTemplateName && l.price);
+    // Calypso 6 (P6.3): accept price === 0 (free maintenance under warranty).
+    // Previously `l.price` was truthy-checked, which rejected a legitimate 0 TND line.
+    const hasExisting = this.markData.invoiceLines.some((l: InvoiceLine) => l.templateId && l.price != null);
+    const hasNew = this.markData.invoiceLines.some((l: InvoiceLine) => l.isNewTemplate && l.newTemplateName && l.price != null);
     return hasExisting || hasNew;
   }
   addInvoiceLine() { this.markData.invoiceLines.push({ templateId: null, description: '', price: null, isCustom: false, isNewTemplate: false, newTemplateName: '', newTemplateCategory: '', newTemplateIntervalKm: null, newTemplateIntervalMonths: null }); }
@@ -1199,8 +1201,10 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   getInvoiceTotal(): number { return this.markData.invoiceLines.reduce((s: number, l: any) => s + (l.price || 0), 0); }
   confirmMarkDone() {
     const vehicleId = parseInt(this.markData.vehicleId);
-    const existingLines = this.markData.invoiceLines.filter((l: InvoiceLine) => l.templateId && l.price);
-    const newTplLines = this.markData.invoiceLines.filter((l: InvoiceLine) => l.isNewTemplate && l.newTemplateName && l.price);
+    // Calypso 6 (P6.3): keep lines with price === 0 (warranty / free maintenance).
+    // Using `l.price != null` so 0 DT is persisted instead of silently dropped.
+    const existingLines = this.markData.invoiceLines.filter((l: InvoiceLine) => l.templateId && l.price != null);
+    const newTplLines = this.markData.invoiceLines.filter((l: InvoiceLine) => l.isNewTemplate && l.newTemplateName && l.price != null);
     const totalLines = existingLines.length + newTplLines.length;
     if (totalLines === 0) { this.closeMarkDone(); return; }
 
