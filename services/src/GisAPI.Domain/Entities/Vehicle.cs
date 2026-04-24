@@ -45,6 +45,9 @@ public class Vehicle : TenantEntity
     // Acquisition info
     public string AcquisitionType { get; set; } = "purchase"; // "purchase" or "leasing"
     public decimal? PurchasePrice { get; set; }
+    // Calypso 6 (P5): separate "Date d'achat" from "Date mise en circulation"
+    [Column("purchase_date")]
+    public DateTime? PurchaseDate { get; set; }
     public decimal? LeasingMonthlyPayment { get; set; }
     public int? LeasingDurationMonths { get; set; } // Nombre de mois du leasing
     public DateTime? LeasingStartDate { get; set; } // Date début du leasing

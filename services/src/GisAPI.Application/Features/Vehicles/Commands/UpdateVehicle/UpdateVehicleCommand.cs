@@ -20,6 +20,7 @@ public record UpdateVehicleCommand(
     // Acquisition info
     string? AcquisitionType,
     decimal? PurchasePrice,
+    DateTime? PurchaseDate,
     decimal? LeasingMonthlyPayment,
     int? LeasingDurationMonths,
     DateTime? LeasingStartDate,

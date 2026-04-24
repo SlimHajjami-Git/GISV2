@@ -84,7 +84,13 @@ import { ApiService } from '../services/api.service';
                   </select>
                 </div>
                 <div class="form-group">
-                  <label>Prix d'achat</label>
+                  <label>Date d'achat</label>
+                  <input type="date" [(ngModel)]="vehicleForm.dateAchat" name="dateAchat">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>{{ vehicleForm.typeAcquisition === 'leasing' ? 'Montant Auto-financement' : "Prix d'achat" }}</label>
                   <div class="input-with-suffix">
                     <input type="number" [(ngModel)]="vehicleForm.prixAchat" name="prixAchat" placeholder="0.00">
                     <span class="input-suffix">TND</span>
@@ -537,6 +543,7 @@ export class VehicleInfoComponent implements OnChanges {
     dateMiseEnCirculation: '',
     carburant: '',
     typeAcquisition: 'achat',
+    dateAchat: '',
     prixAchat: null,
     traiteMensuelle: null,
     leasingDurationMonths: null,
@@ -595,13 +602,23 @@ export class VehicleInfoComponent implements OnChanges {
         if (vehicle) {
           this.vehicleForm.marque = vehicle.marque || vehicle.brand || '';
           this.vehicleForm.modele = vehicle.modele || vehicle.model || '';
-          this.vehicleForm.dateMiseEnCirculation = vehicle.dateMiseEnCirculation || vehicle.registrationDate || '';
+          // Calypso 6 (P5): dates arrive from backend as ISO strings
+          // (e.g. "2024-03-15T00:00:00Z"). HTML <input type="date"> needs
+          // pure YYYY-MM-DD — slice the first 10 chars to hydrate correctly.
+          const rawMec = vehicle.dateMiseEnCirculation || vehicle.registrationDate || '';
+          this.vehicleForm.dateMiseEnCirculation = rawMec ? String(rawMec).substring(0, 10) : '';
           this.vehicleForm.carburant = vehicle.carburant || vehicle.fuelType || '';
-          this.vehicleForm.typeAcquisition = vehicle.typeAcquisition || vehicle.acquisitionType || 'achat';
+          // Backend returns acquisitionType as "purchase" | "leasing"; the
+          // dropdown expects "achat" | "leasing" — map explicitly so the
+          // <select> has a matching <option> and does not reset to empty.
+          const backendAcq = vehicle.typeAcquisition || vehicle.acquisitionType || '';
+          this.vehicleForm.typeAcquisition = backendAcq === 'leasing' ? 'leasing' : 'achat';
+          const rawPurchase = vehicle.dateAchat || vehicle.purchaseDate || rawMec || '';
+          this.vehicleForm.dateAchat = rawPurchase ? String(rawPurchase).substring(0, 10) : '';
           this.vehicleForm.prixAchat = vehicle.prixAchat || vehicle.purchasePrice || null;
           this.vehicleForm.traiteMensuelle = vehicle.traiteMensuelle || vehicle.leasingMonthlyPayment || null;
           this.vehicleForm.leasingDurationMonths = vehicle.leasingDurationMonths || null;
-          this.vehicleForm.leasingStartDate = vehicle.leasingStartDate ? vehicle.leasingStartDate.substring(0, 10) : '';
+          this.vehicleForm.leasingStartDate = vehicle.leasingStartDate ? String(vehicle.leasingStartDate).substring(0, 10) : '';
           this.vehicleForm.leasingPaymentDay = vehicle.leasingPaymentDay || null;
           // Load models for the existing brand
           if (this.vehicleForm.marque) {
@@ -627,13 +644,65 @@ export class VehicleInfoComponent implements OnChanges {
   save(): void {
     if (!this.vehicleId) return;
     this.saving = true;
-    this.api.updateVehicle(this.vehicleId, this.vehicleForm).subscribe({
-      next: () => {
-        this.saving = false;
-        this.showSuccess = true;
-        this.saved.emit();
-        setTimeout(() => { this.showSuccess = false; this.cdr.detectChanges(); }, 3000);
-        this.cdr.detectChanges();
+
+    // Calypso 6 (P5): the backend UpdateVehicleCommand uses camelCase English
+    // property names (brand, model, purchaseDate, purchasePrice, ...). The
+    // form uses French names (marque, modele, dateAchat, prixAchat, ...).
+    // We must load the current vehicle first, merge the form deltas into the
+    // English payload and then PUT — otherwise required scalar fields
+    // (Name, Type, Status, Mileage) would be wiped to null/0 on save.
+    this.api.getVehicle(this.vehicleId).subscribe({
+      next: (existing: any) => {
+        const typeAcq = this.vehicleForm.typeAcquisition === 'leasing' ? 'leasing' : 'purchase';
+        const payload: any = {
+          id: this.vehicleId,
+          name: existing?.name ?? '',
+          type: existing?.type ?? 'camion',
+          brand: this.vehicleForm.marque || existing?.brand || null,
+          model: this.vehicleForm.modele || existing?.model || null,
+          plate: existing?.plate ?? null,
+          year: existing?.year ?? null,
+          color: existing?.color ?? null,
+          status: existing?.status ?? 'available',
+          mileage: existing?.mileage ?? 0,
+          fuelType: this.vehicleForm.carburant || existing?.fuelType || null,
+          fuelTankCapacity: existing?.fuelTankCapacity ?? null,
+          assignedDriverId: existing?.assignedDriverId ?? null,
+          assignedSupervisorId: existing?.assignedSupervisorId ?? null,
+          // Acquisition
+          acquisitionType: typeAcq,
+          purchasePrice: this.vehicleForm.prixAchat ?? null,
+          purchaseDate: this.vehicleForm.dateAchat || null,
+          leasingMonthlyPayment: this.vehicleForm.traiteMensuelle ?? null,
+          leasingDurationMonths: this.vehicleForm.leasingDurationMonths ?? null,
+          leasingStartDate: this.vehicleForm.leasingStartDate || null,
+          leasingPaymentDay: this.vehicleForm.leasingPaymentDay ?? null,
+          registrationDate: this.vehicleForm.dateMiseEnCirculation || existing?.registrationDate || null,
+          // Document dates (preserve existing, the info panel doesn't edit them)
+          insuranceStartDate: existing?.insuranceStartDate ?? null,
+          insuranceExpiry: existing?.insuranceExpiry ?? null,
+          insuranceReminderDays: existing?.insuranceReminderDays ?? null,
+          taxStartDate: existing?.taxStartDate ?? null,
+          taxExpiry: existing?.taxExpiry ?? null,
+          taxReminderDays: existing?.taxReminderDays ?? null,
+          technicalInspectionStartDate: existing?.technicalInspectionStartDate ?? null,
+          technicalInspectionExpiry: existing?.technicalInspectionExpiry ?? null,
+          technicalInspectionReminderDays: existing?.technicalInspectionReminderDays ?? null
+        };
+
+        this.api.updateVehicle(this.vehicleId!, payload).subscribe({
+          next: () => {
+            this.saving = false;
+            this.showSuccess = true;
+            this.saved.emit();
+            setTimeout(() => { this.showSuccess = false; this.cdr.detectChanges(); }, 3000);
+            this.cdr.detectChanges();
+          },
+          error: () => {
+            this.saving = false;
+            this.cdr.detectChanges();
+          }
+        });
       },
       error: () => {
         this.saving = false;

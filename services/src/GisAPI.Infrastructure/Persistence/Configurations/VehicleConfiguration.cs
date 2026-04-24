@@ -35,6 +35,8 @@ public class VehicleConfiguration : IEntityTypeConfiguration<Vehicle>
         // Acquisition info (created via manual SQL migration 025 as snake_case)
         builder.Property(e => e.AcquisitionType).HasColumnName("acquisition_type").HasMaxLength(20);
         builder.Property(e => e.PurchasePrice).HasColumnName("purchase_price").HasColumnType("decimal(12,2)");
+        // Calypso 6 (P5): "Date d'achat" separate from "Date mise en circulation"
+        builder.Property(e => e.PurchaseDate).HasColumnName("purchase_date");
         builder.Property(e => e.LeasingMonthlyPayment).HasColumnName("leasing_monthly_payment").HasColumnType("decimal(10,2)");
         builder.Property(e => e.LeasingDurationMonths).HasColumnName("leasing_duration_months");
         builder.Property(e => e.LeasingStartDate).HasColumnName("leasing_start_date");

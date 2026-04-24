@@ -4520,6 +4520,10 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("plate_number");
 
+                    b.Property<DateTime?>("PurchaseDate")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("purchase_date");
+
                     b.Property<DateTime?>("RegistrationExpiry")
                         .HasColumnType("timestamp with time zone");
 

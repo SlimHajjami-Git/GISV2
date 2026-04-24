@@ -44,6 +44,8 @@ public class UpdateVehicleCommandHandler : IRequestHandler<UpdateVehicleCommand>
         // Acquisition info
         if (request.AcquisitionType != null) vehicle.AcquisitionType = request.AcquisitionType;
         if (request.PurchasePrice.HasValue) vehicle.PurchasePrice = request.PurchasePrice;
+        // Calypso 6 (P5): persist purchase date separate from registration date
+        if (request.PurchaseDate.HasValue) vehicle.PurchaseDate = request.PurchaseDate;
         if (request.LeasingMonthlyPayment.HasValue) vehicle.LeasingMonthlyPayment = request.LeasingMonthlyPayment;
         if (request.LeasingDurationMonths.HasValue) vehicle.LeasingDurationMonths = request.LeasingDurationMonths;
         if (request.LeasingStartDate.HasValue) vehicle.LeasingStartDate = request.LeasingStartDate;

@@ -106,6 +106,7 @@ public class GetVehicleDetailsQueryHandler : IRequestHandler<GetVehicleDetailsQu
             // Acquisition info
             vehicle.AcquisitionType,
             vehicle.PurchasePrice,
+            vehicle.PurchaseDate,
             vehicle.LeasingMonthlyPayment,
             vehicle.LeasingDurationMonths,
             vehicle.LeasingStartDate,
