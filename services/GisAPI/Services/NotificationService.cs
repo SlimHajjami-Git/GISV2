@@ -2,6 +2,7 @@ using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
 using GisAPI.Hubs;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace GisAPI.Services;
@@ -115,6 +116,23 @@ public class NotificationService : INotificationService
         // are dispatched via IAlertEmailDispatcher from the producers that actually
         // know the alert type (e.g. PredictiveAlertService). In-app notifications
         // (SignalR + FCM above) continue to fire for every notification.
+
+        // Calypso 6 (P9): push the authoritative unread count so the bell
+        // badge updates in real-time for ALL notification types (geofence,
+        // document expiry, accident, tow detected, etc.). Previously only
+        // the NewNotification event fired, and clients had to increment
+        // locally — which caused desync when the client missed the event.
+        try
+        {
+            var unreadCount = await _context.Notifications
+                .AsNoTracking()
+                .CountAsync(n => n.UserId == userId && !n.IsRead, ct);
+            await SendUnreadCountAsync(userId, unreadCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to push unread count to user {UserId}", userId);
+        }
 
         return notification;
     }
