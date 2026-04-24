@@ -9,14 +9,16 @@ import { PermissionService, ModuleKey } from '../../services/permission.service'
 import { NotificationService, Notification } from '../../services/notification.service';
 import { SignalRService } from '../../services/signalr.service';
 import { GeocodingService } from '../../services/geocoding.service';
+import { OfflineVehiclesService } from '../../services/offline-vehicles.service';
 import { ChatComponent } from './chat.component';
 import { AccidentDecisionModalComponent } from './accident-decision-modal.component';
+import { OfflineVehiclesBellComponent } from './offline-vehicles-bell.component';
 import * as L from 'leaflet';
 
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterModule, ChatComponent, AccidentDecisionModalComponent],
+  imports: [CommonModule, RouterModule, ChatComponent, AccidentDecisionModalComponent, OfflineVehiclesBellComponent],
   template: `
     <div class="app-container">
       <!-- WIALON-STYLE TOP NAVIGATION BAR -->
@@ -200,6 +202,9 @@ import * as L from 'leaflet';
             </svg>
           </button>
 
+          <!-- Offline Vehicles Bell (same look as notification bell, red badge when vehicles are offline) -->
+          <app-offline-vehicles-bell></app-offline-vehicles-bell>
+
           <!-- Notification Bell -->
           <div class="notification-wrapper">
             <button class="nav-icon-btn notification-btn" [class.has-unread]="unreadCount > 0" (click)="toggleNotifications($event)" title="Notifications">
@@ -334,6 +339,14 @@ import * as L from 'leaflet';
                     <path d="M2 12l10 5 10-5"/>
                   </svg>
                   <span>Gestion Flotte</span>
+                </a>
+                <a *ngIf="hasModule('vehicles')" class="dropdown-item" (click)="onVehiclesClick()">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/>
+                    <path d="M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/>
+                    <path d="M5 17h-2v-6l2-5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0h-6m-6 -6h15m-6 0v-5"/>
+                  </svg>
+                  <span>Véhicules</span>
                 </a>
                 <a *ngIf="hasModule('fleet_management') && isLocationCompany()" class="dropdown-item" (click)="onEmpruntsClick()">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1246,6 +1259,7 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     private notificationService: NotificationService,
     private signalR: SignalRService,
     private geocodingService: GeocodingService,
+    private offlineVehiclesService: OfflineVehiclesService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -1264,6 +1278,9 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     this.loadNotifications();
     this.notificationService.loadUnreadCount();
 
+    // Start the offline-vehicles watcher so the header bell stays in sync on every page
+    this.offlineVehiclesService.start();
+
     // Subscribe to real-time unread count
     this.subs.push(
       this.notificationService.unreadCount$.subscribe(count => {
@@ -1281,6 +1298,7 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.subs.forEach(s => s.unsubscribe());
+    this.offlineVehiclesService.stop();
     this.signalR.stopConnection();
   }
 
@@ -1333,6 +1351,11 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   onFleetManagementClick() {
     this.showUserMenu = false;
     this.router.navigate(['/fleet-management']);
+  }
+
+  onVehiclesClick() {
+    this.showUserMenu = false;
+    this.router.navigate(['/vehicles']);
   }
 
   onEmpruntsClick() {

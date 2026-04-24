@@ -100,7 +100,7 @@ public static class GpsDeviceResolver
             GpsSimOperator = v.GpsDevice?.SimOperator,
             GpsInstallationDate = v.GpsDevice?.InstallationDate,
             AssignedDriverId = v.AssignedDriverId,
-            AssignedDriverName = v.AssignedDriver?.Name,
+            AssignedDriverName = v.AssignedDriver?.FullName,
             CreatedAt = v.CreatedAt, UpdatedAt = v.UpdatedAt
         };
     }

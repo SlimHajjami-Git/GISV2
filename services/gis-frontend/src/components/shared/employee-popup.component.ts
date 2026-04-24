@@ -54,16 +54,12 @@ import { Vehicle } from '../../models/types';
                 <input type="text" id="lastName" name="lastName" [(ngModel)]="formData.lastName" required placeholder="Ex: Ben Ali" />
               </div>
               <div class="form-group">
-                <label for="email">Email *</label>
-                <input type="email" id="email" name="email" [(ngModel)]="formData.email" required placeholder="chauffeur@exemple.com" [disabled]="!!driver" />
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" [(ngModel)]="formData.email" placeholder="chauffeur@exemple.com (optionnel)" />
               </div>
               <div class="form-group">
                 <label for="phone">Téléphone</label>
                 <input type="tel" id="phone" name="phone" [(ngModel)]="formData.phone" placeholder="+216 50 123 456" />
-              </div>
-              <div class="form-group" *ngIf="!driver">
-                <label for="password">Mot de passe *</label>
-                <input type="password" id="password" name="password" [(ngModel)]="formData.password" required placeholder="••••••••" />
               </div>
               <div class="form-group">
                 <label for="cin">N° CIN</label>
@@ -72,6 +68,10 @@ import { Vehicle } from '../../models/types';
               <div class="form-group">
                 <label for="dateOfBirth">Date de naissance</label>
                 <input type="date" id="dateOfBirth" name="dateOfBirth" [(ngModel)]="formData.dateOfBirth" />
+              </div>
+              <div class="form-group">
+                <label for="hireDate">Date d'embauche</label>
+                <input type="date" id="hireDate" name="hireDate" [(ngModel)]="formData.hireDate" />
               </div>
             </div>
           </div>
@@ -401,14 +401,15 @@ export class EmployeePopupComponent implements OnChanges {
         permitReminderDays: this.driver.permitReminderDays || 30,
         cin: this.driver.cin || '',
         dateOfBirth: this.driver.dateOfBirth ? new Date(this.driver.dateOfBirth).toISOString().split('T')[0] : '',
+        hireDate: this.driver.hireDate ? new Date(this.driver.hireDate).toISOString().split('T')[0] : '',
         assignedVehicleId: this.driver.assignedVehicleId || null,
         status: this.driver.status || 'active'
       };
     } else {
       this.formData = {
-        firstName: '', lastName: '', email: '', phone: '', password: '',
+        firstName: '', lastName: '', email: '', phone: '',
         permitNumber: '', permitType: '', permitExpiry: '', permitReminderDays: 30,
-        cin: '', dateOfBirth: '',
+        cin: '', dateOfBirth: '', hireDate: '',
         assignedVehicleId: null, status: 'active'
       };
     }
@@ -428,15 +429,15 @@ export class EmployeePopupComponent implements OnChanges {
     this.saved.emit({
       firstName: this.formData.firstName,
       lastName: this.formData.lastName,
-      email: this.formData.email,
+      email: this.formData.email || null,
       phone: this.formData.phone || null,
-      password: this.formData.password || undefined,
       permitNumber: this.formData.permitNumber || null,
       permitType: this.formData.permitType || null,
       permitExpiry: this.formData.permitExpiry || null,
       permitReminderDays: this.formData.permitReminderDays || 30,
       cin: this.formData.cin || null,
       dateOfBirth: this.formData.dateOfBirth || null,
+      hireDate: this.formData.hireDate || null,
       assignedVehicleId: this.formData.assignedVehicleId || null,
       status: this.formData.status
     });

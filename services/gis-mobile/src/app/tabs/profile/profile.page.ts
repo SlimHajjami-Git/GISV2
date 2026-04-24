@@ -91,7 +91,7 @@ import { environment } from '../../../environments/environment';
       </div>
 
       <div class="version-text">
-        Calypso v1.0.0
+        Calypso v1.0.9
       </div>
     </ion-content>
   `,
@@ -170,7 +170,7 @@ export class ProfilePage implements OnInit {
     const alert = await this.alertCtrl.create({
       header: 'Calypso',
       message: `
-        <p><strong>Version:</strong> 1.0.0</p>
+        <p><strong>Version:</strong> 1.0.9</p>
         <p><strong>Plateforme:</strong> Ionic + Angular + Capacitor</p>
         <p><strong>Backend:</strong> .NET 8 API</p>
         <p><strong>GPS:</strong> Temps réel via SignalR</p>

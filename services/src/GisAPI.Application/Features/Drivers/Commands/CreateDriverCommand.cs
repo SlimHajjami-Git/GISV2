@@ -8,19 +8,21 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Application.Features.Drivers.Commands;
 
+/// <summary>
+/// Creates a driver record. Drivers are standalone — they don't log in,
+/// don't have credentials, and don't consume a user seat.
+/// </summary>
 public record CreateDriverCommand(
-    // User fields
     string FirstName,
     string LastName,
-    string Email,
+    string? Email,
     string? Phone,
-    string Password,
-    // Driver fields
     string? PermitNumber,
     string? PermitType,
     DateTime? PermitExpiry,
     string? CIN,
     DateTime? DateOfBirth,
+    DateTime? HireDate,
     int? AssignedVehicleId
 ) : IRequest<DriverDto>;
 
@@ -28,14 +30,12 @@ public class CreateDriverCommandHandler : IRequestHandler<CreateDriverCommand, D
 {
     private readonly IGisDbContext _context;
     private readonly ICurrentTenantService _tenantService;
-    private readonly IPasswordHasher _passwordHasher;
     private readonly IPublisher _publisher;
 
-    public CreateDriverCommandHandler(IGisDbContext context, ICurrentTenantService tenantService, IPasswordHasher passwordHasher, IPublisher publisher)
+    public CreateDriverCommandHandler(IGisDbContext context, ICurrentTenantService tenantService, IPublisher publisher)
     {
         _context = context;
         _tenantService = tenantService;
-        _passwordHasher = passwordHasher;
         _publisher = publisher;
     }
 
@@ -43,29 +43,6 @@ public class CreateDriverCommandHandler : IRequestHandler<CreateDriverCommand, D
     {
         var companyId = _tenantService.CompanyId
             ?? throw new DomainException("Société non identifiée");
-
-        // Check email uniqueness
-        if (await _context.Users.AnyAsync(u => u.Email == request.Email, ct))
-            throw new ConflictException("Un utilisateur avec cet email existe déjà");
-
-        // Find or create a "Chauffeur" role for this company
-        var driverRole = await _context.Roles
-            .FirstOrDefaultAsync(r => r.SocieteId == companyId && r.Name == "Chauffeur", ct);
-
-        if (driverRole == null)
-        {
-            driverRole = new Role
-            {
-                Name = "Chauffeur",
-                Description = "Rôle chauffeur (créé automatiquement)",
-                SocieteId = companyId,
-                IsCompanyAdmin = false,
-                IsSystemRole = false,
-                Permissions = new Dictionary<string, object>()
-            };
-            _context.Roles.Add(driverRole);
-            await _context.SaveChangesAsync(ct);
-        }
 
         // Validate vehicle if provided
         if (request.AssignedVehicleId.HasValue)
@@ -76,31 +53,19 @@ public class CreateDriverCommandHandler : IRequestHandler<CreateDriverCommand, D
                 throw new DomainException("Véhicule invalide");
         }
 
-        // Create User account
-        var user = new User
+        var driver = new Driver
         {
+            CompanyId = companyId,
             FirstName = request.FirstName,
             LastName = request.LastName,
             Email = request.Email,
             Phone = request.Phone,
-            PasswordHash = _passwordHasher.HashPassword(request.Password),
-            RoleId = driverRole.Id,
-            CompanyId = companyId,
-            Status = "active",
-            EmployeeRole = "driver"
-        };
-        _context.Users.Add(user);
-
-        // Create Driver record (single SaveChanges = atomic)
-        var driver = new Driver
-        {
-            CompanyId = companyId,
-            User = user,
             PermitNumber = request.PermitNumber,
             PermitType = request.PermitType,
             PermitExpiry = request.PermitExpiry.HasValue ? DateTime.SpecifyKind(request.PermitExpiry.Value, DateTimeKind.Utc) : null,
             CIN = request.CIN,
             DateOfBirth = request.DateOfBirth.HasValue ? DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc) : null,
+            HireDate = request.HireDate.HasValue ? DateTime.SpecifyKind(request.HireDate.Value, DateTimeKind.Utc) : null,
             AssignedVehicleId = request.AssignedVehicleId,
             Status = "active"
         };
@@ -123,10 +88,10 @@ public class CreateDriverCommandHandler : IRequestHandler<CreateDriverCommand, D
             : null;
 
         return new DriverDto(
-            driver.Id, driver.UserId,
-            user.FirstName, user.LastName, user.Email, user.Phone,
+            driver.Id,
+            driver.FirstName, driver.LastName, driver.Email, driver.Phone,
             driver.PermitNumber, driver.PermitType, driver.PermitExpiry,
-            driver.CIN, driver.DateOfBirth,
+            driver.CIN, driver.DateOfBirth, driver.HireDate,
             driver.AssignedVehicleId,
             vehicle?.Name, vehicle?.Plate,
             driver.Status, driver.CreatedAt

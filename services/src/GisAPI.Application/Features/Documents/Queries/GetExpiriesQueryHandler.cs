@@ -35,12 +35,12 @@ public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, Paginat
             expiries.AddRange(vehicleExpiries);
         }
 
-        // Add driver permit expiries (from users with PermitExpiry)
+        // Add driver permit expiries (from the standalone drivers table)
         if (!request.VehicleId.HasValue)
         {
-            var drivers = await _context.Users
+            var drivers = await _context.Drivers
                 .AsNoTracking()
-                .Where(u => u.PermitExpiry != null && u.EmployeeRole == "driver")
+                .Where(d => d.PermitExpiry != null)
                 .ToListAsync(cancellationToken);
 
             foreach (var driver in drivers)
@@ -50,12 +50,17 @@ public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, Paginat
                     : daysUntil <= 30 ? "expiring_soon"
                     : "ok";
 
-                // Find the vehicle assigned to this driver (if any)
-                var assignedVehicle = vehicles.FirstOrDefault(v => v.AssignedDriverId == driver.Id);
+                // Find the vehicle assigned to this driver (if any).
+                // Source of truth is driver.AssignedVehicleId — vehicles.AssignedDriverId
+                // is the reverse leg and not always kept in sync when forms only write the
+                // driver-side field (see drivers popup which only edits AssignedVehicleId).
+                var assignedVehicle = driver.AssignedVehicleId.HasValue
+                    ? vehicles.FirstOrDefault(v => v.Id == driver.AssignedVehicleId.Value)
+                    : null;
 
                 expiries.Add(new VehicleExpiryDto(
                     assignedVehicle?.Id ?? 0,
-                    $"{driver.FirstName} {driver.LastName}".Trim(),
+                    driver.FullName,
                     driver.PermitType != null ? $"Permis {driver.PermitType}" : "Permis",
                     "driver_permit",
                     driver.PermitExpiry,

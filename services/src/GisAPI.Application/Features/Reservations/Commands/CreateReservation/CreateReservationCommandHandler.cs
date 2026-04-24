@@ -94,7 +94,7 @@ public class CreateReservationCommandHandler : IRequestHandler<CreateReservation
             : null;
 
         var assignedDriver = request.AssignedDriverId.HasValue
-            ? await _context.Users.FirstOrDefaultAsync(u => u.Id == request.AssignedDriverId.Value, ct)
+            ? await _context.Drivers.FirstOrDefaultAsync(d => d.Id == request.AssignedDriverId.Value, ct)
             : null;
 
         return new ReservationDto(

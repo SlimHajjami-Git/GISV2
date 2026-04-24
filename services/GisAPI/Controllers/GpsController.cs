@@ -211,7 +211,7 @@ public class GpsController : ControllerBase
             VehicleId = v.Id,
             VehicleName = v.Name,
             Plate = v.Plate,
-            DriverName = v.AssignedDriver?.Name,
+            DriverName = v.AssignedDriver?.FullName,
             DeviceId = v.GpsDeviceId,
             DeviceUid = v.GpsDevice?.DeviceUid,
             LastPosition = v.GpsDeviceId.HasValue && latestPositions.TryGetValue(v.GpsDeviceId.Value, out var pos) ? pos : null,
@@ -254,7 +254,7 @@ public class GpsController : ControllerBase
             VehicleId = vehicle.Id,
             VehicleName = vehicle.Name,
             Plate = vehicle.Plate,
-            DriverName = vehicle.AssignedDriver?.Name,
+            DriverName = vehicle.AssignedDriver?.FullName,
             DeviceId = vehicle.GpsDeviceId,
             DeviceUid = vehicle.GpsDevice?.DeviceUid,
             LastPosition = lastPosition != null ? new PositionDto

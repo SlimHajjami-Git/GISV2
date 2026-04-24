@@ -34,11 +34,11 @@ public class GetExpiryStatsQueryHandler : IRequestHandler<GetExpiryStatsQuery, E
             CountExpiry(vehicle.TransportPermitExpiry, today, ref expiredCount, ref expiringSoonCount, ref okCount, ref totalCount);
         }
 
-        // Include driver permit expiries in stats
-        var driverPermitExpiries = await _context.Users
+        // Include driver permit expiries in stats (from the standalone drivers table)
+        var driverPermitExpiries = await _context.Drivers
             .AsNoTracking()
-            .Where(u => u.PermitExpiry != null && u.EmployeeRole == "driver")
-            .Select(u => u.PermitExpiry)
+            .Where(d => d.PermitExpiry != null)
+            .Select(d => d.PermitExpiry)
             .ToListAsync(cancellationToken);
 
         foreach (var permitExpiry in driverPermitExpiries)
