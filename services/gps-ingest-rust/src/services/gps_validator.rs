@@ -26,10 +26,27 @@ const MAX_REALISTIC_ODOMETER_KM: u32 = 500_000;
 /// 250 km/h = ~4.2 km/min, so 5km is a reasonable max
 const MAX_JUMP_DISTANCE_M: f64 = 5000.0;
 
-/// Maximum absolute jump distance in meters regardless of time gap.
-/// Even hours apart, a fleet vehicle cannot teleport 200km between frames
-/// without a continuous trail of intermediate positions.
-const MAX_ABSOLUTE_JUMP_DISTANCE_M: f64 = 200_000.0; // 200 km
+/// Maximum implied average speed (km/h) between two consecutive frames of the
+/// same device. Replaces the former MAX_ABSOLUTE_JUMP_DISTANCE_M rule: now the
+/// threshold scales naturally with the time gap, so devices that reconnect
+/// after long offline periods (e.g. 3h+ coverage loss on long-haul trips) are
+/// no longer wrongly rejected just because their last known position is far.
+///
+/// Examples:
+///   - 200 km in  1 h   → 200 km/h → REJECTED (physically suspect)
+///   - 200 km in  6 h   →  33 km/h → ACCEPTED (device was offline, resync)
+///   - 500 km in 10 min → 3000 km/h → REJECTED (teleportation)
+///
+/// Set at 1.5× MAX_SPEED_KPH to allow for missed intermediate frames during
+/// short bursts of fast driving.
+const MAX_IMPLIED_AVG_SPEED_KPH: f64 = 375.0; // == MAX_SPEED_KPH * 1.5
+
+/// When the gap between two frames exceeds this threshold we consider it an
+/// extended reconnection and emit an INFO log for observability. The frame is
+/// still validated against MAX_IMPLIED_AVG_SPEED_KPH so spoofing attempts
+/// remain blocked, but the log lets operators spot "long offline → resumed"
+/// events in the pipeline.
+const RESYNC_LOG_THRESHOLD_SECS: i64 = 3600; // 1 h
 
 /// Minimum number of satellites for a reliable GPS fix.
 /// 3 satellites = 2D fix (no altitude), 4 = 3D fix.
@@ -227,27 +244,57 @@ impl GpsValidator {
             frame.latitude, frame.longitude,
         );
 
-        // Check for GPS jump (teleportation)
-        // Two thresholds:
-        //   - Short gap (< 2 min): reject if > 5 km (physically impossible acceleration)
-        //   - Any gap: reject if > 200 km (absolute teleportation, no continuous trail)
-        let is_short_jump = distance_m > MAX_JUMP_DISTANCE_M && time_diff_secs < 120;
-        let is_absolute_teleport = distance_m > MAX_ABSOLUTE_JUMP_DISTANCE_M;
-        if is_short_jump || is_absolute_teleport {
+        // Check for GPS jump (teleportation) — two layered rules:
+        //   1. Short-gap burst: > 5 km in < 2 min (physically impossible acceleration).
+        //   2. Implied avg speed: distance / time > 375 km/h at any gap.
+        //      This scales with time, replacing the old 200km-absolute rule that
+        //      wrongly rejected legitimate reconnections after long offline periods.
+        if distance_m > MAX_JUMP_DISTANCE_M && time_diff_secs < 120 {
             warn!(
                 device_id,
                 distance_m,
                 time_diff_secs,
-                threshold = if is_absolute_teleport { "absolute" } else { "short-gap" },
+                threshold = "short-gap",
                 "GPS jump detected - position rejected"
             );
             return ValidationResult::Invalid {
                 reason: format!(
-                    "GPS jump: {:.0} m in {} seconds (threshold: {})",
-                    distance_m, time_diff_secs,
-                    if is_absolute_teleport { "200km absolute" } else { "5km short-gap" }
+                    "GPS short-gap jump: {:.0} m in {} seconds (threshold: 5km within 2min)",
+                    distance_m, time_diff_secs
                 ),
             };
+        }
+
+        let time_diff_hours = time_diff_secs as f64 / 3600.0;
+        let implied_avg_speed_kph = (distance_m / 1000.0) / time_diff_hours;
+
+        if implied_avg_speed_kph > MAX_IMPLIED_AVG_SPEED_KPH {
+            warn!(
+                device_id,
+                distance_m,
+                time_diff_secs,
+                implied_avg_speed_kph,
+                threshold = "implied-speed",
+                "GPS jump detected - position rejected"
+            );
+            return ValidationResult::Invalid {
+                reason: format!(
+                    "GPS jump: {:.0} m in {} s implies {:.0} km/h avg (max {:.0} km/h)",
+                    distance_m, time_diff_secs,
+                    implied_avg_speed_kph, MAX_IMPLIED_AVG_SPEED_KPH
+                ),
+            };
+        }
+
+        // Extended reconnection: accept but log for observability.
+        if time_diff_secs >= RESYNC_LOG_THRESHOLD_SECS {
+            info!(
+                device_id,
+                distance_m,
+                time_diff_hours,
+                implied_avg_speed_kph,
+                "Device reconnection after extended offline - position jump accepted"
+            );
         }
 
         // Speed coherence check (only if time gap is reasonable)
@@ -407,18 +454,50 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_absolute_teleport_rejection() {
+    async fn test_implied_speed_rejects_fast_teleport() {
         let validator = GpsValidator::new();
 
-        // Establish position in Tunis
+        // Establish position in Tunis.
         let frame1 = create_test_frame(36.8, 10.1, 50.0, "2026-01-29 12:00:00");
         validator.validate(20, &frame1).await;
 
-        // 10 minutes later, jump to Sfax (250km away) - should be rejected
-        // even though time gap > 120s
+        // 10 minutes later, jump to Sfax (~250 km away).
+        // Implied avg speed: 250 km / (10/60) h = 1500 km/h → rejected.
         let frame2 = create_test_frame(34.74, 10.76, 50.0, "2026-01-29 12:10:00");
         let result = validator.validate(20, &frame2).await;
-        assert!(!result.is_valid(), "Should reject 250km jump even with 10min gap");
+        assert!(!result.is_valid(), "Should reject 250 km jump in 10 min (1500 km/h implied)");
+    }
+
+    #[tokio::test]
+    async fn test_long_offline_reconnection_accepted() {
+        let validator = GpsValidator::new();
+
+        // Establish position in Tunis at noon.
+        let frame1 = create_test_frame(36.8, 10.1, 50.0, "2026-01-29 12:00:00");
+        validator.validate(21, &frame1).await;
+
+        // Device offline for 4 hours, reappears in Sfax (~250 km away).
+        // Implied avg speed: 250 / 4 ≈ 62.5 km/h → realistic highway average,
+        // should be ACCEPTED. Under the old 200 km absolute rule this was wrongly
+        // rejected and caused "stuck on old position" symptoms in the monitoring UI.
+        let frame2 = create_test_frame(34.74, 10.76, 50.0, "2026-01-29 16:00:00");
+        let result = validator.validate(21, &frame2).await;
+        assert!(result.is_valid(), "Should accept 250 km jump after 4 h offline (62 km/h implied)");
+    }
+
+    #[tokio::test]
+    async fn test_implied_speed_rejects_slow_teleport() {
+        let validator = GpsValidator::new();
+
+        // Establish position in Tunis.
+        let frame1 = create_test_frame(36.8, 10.1, 50.0, "2026-01-29 12:00:00");
+        validator.validate(22, &frame1).await;
+
+        // 1 hour later, device reports being ~400 km south (still within Tunisia bounds).
+        // Implied avg speed: 400 km / 1 h = 400 km/h → > 375 km/h max → rejected.
+        let frame2 = create_test_frame(33.2, 10.1, 50.0, "2026-01-29 13:00:00");
+        let result = validator.validate(22, &frame2).await;
+        assert!(!result.is_valid(), "Should reject 400 km jump in 1 h (400 km/h implied > 375 max)");
     }
 
     #[tokio::test]
