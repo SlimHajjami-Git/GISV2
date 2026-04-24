@@ -496,6 +496,9 @@ interface FlatRow {
               <div><strong>{{ historyVehicleName }}</strong> — {{ historyTemplateName }}<br><span class="text-muted">{{ historyVehiclePlate }}</span></div>
             </div>
             <div class="history-loading" *ngIf="historyLoading">Chargement...</div>
+            <div class="history-estimated" *ngIf="!historyLoading && historyLogs.length > 0 && historyEstimatedCost > 0">
+              Coût estimé: <strong>{{ historyEstimatedCost | number:'1.2-2' }} DT</strong>
+            </div>
             <div class="history-list" *ngIf="!historyLoading && historyLogs.length > 0">
               <div class="history-item" *ngFor="let log of historyLogs">
                 <div class="history-dot"></div>
@@ -503,7 +506,8 @@ interface FlatRow {
                   <div class="history-date">{{ formatDate(log.doneDate) }}</div>
                   <div class="history-details">
                     <span class="history-km">{{ log.doneKm | number }} km</span>
-                    <span class="history-cost">{{ log.actualCost | number:'1.2-2' }} DT</span>
+                    <span class="history-cost" title="Coût réel">Réel: {{ log.actualCost | number:'1.2-2' }} DT</span>
+                    <span class="history-cost-estimated" *ngIf="historyEstimatedCost > 0" title="Coût estimé">Estimé: {{ historyEstimatedCost | number:'1.2-2' }} DT</span>
                     <span class="history-supplier" *ngIf="log.supplierName">{{ log.supplierName }}</span>
                   </div>
                   <div class="history-notes" *ngIf="log.notes">{{ log.notes }}</div>
@@ -514,7 +518,12 @@ interface FlatRow {
               <p>Aucun historique pour cet entretien</p>
             </div>
           </div>
-          <div class="panel-foot"><button class="btn-cancel" (click)="closeHistory()">Fermer</button></div>
+          <div class="panel-foot">
+            <button class="btn-cancel" (click)="closeHistory()">Fermer</button>
+            <button class="btn-save orange" (click)="exportHistoryPdf()" [disabled]="!historyLogs || historyLogs.length === 0">
+              Exporter PDF
+            </button>
+          </div>
         </div>
       </div>
     </app-layout>
@@ -693,6 +702,11 @@ interface FlatRow {
     .history-details { display:flex; gap:12px; flex-wrap:wrap; }
     .history-km { font-size:12px; color:#3b82f6; font-weight:500; background:#eff6ff; padding:2px 8px; border-radius:3px; }
     .history-cost { font-size:12px; color:#16a34a; font-weight:500; background:#f0fdf4; padding:2px 8px; border-radius:3px; }
+    .history-cost-estimated { font-size:12px; color:#f59e0b; font-weight:500; background:#fffbeb; padding:2px 8px; border-radius:3px; }
+    .history-estimated { padding:8px 12px; background:#fef3c7; border-left:3px solid #f59e0b; border-radius:4px; font-size:12px; color:#78350f; margin-bottom:12px; }
+    .btn-save.orange { background:#f59e0b; color:#fff; }
+    .btn-save.orange:hover { background:#d97706; }
+    .btn-save.orange:disabled { background:#fef3c7; color:#a8a29e; cursor:not-allowed; }
     .history-supplier { font-size:12px; color:#7c3aed; font-weight:500; background:#f5f3ff; padding:2px 8px; border-radius:3px; }
     .history-notes { font-size:11px; color:#94a3b8; margin-top:4px; font-style:italic; }
 
@@ -904,6 +918,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   historyVehicleName = '';
   historyVehiclePlate = '';
   historyTemplateName = '';
+  historyEstimatedCost = 0;
   sortColumn = 'status';
   sortDir: 'asc' | 'desc' = 'asc';
   allRows: FlatRow[] = [];
@@ -1244,15 +1259,112 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     this.historyVehicleName = row.vehicleName;
     this.historyVehiclePlate = row.vehiclePlate;
     this.historyTemplateName = row.templateName;
+    this.historyEstimatedCost = this.getTemplateEstimatedCost(row.templateId);
     this.historyLogs = [];
     this.historyLoading = true;
     this.isHistoryOpen = true;
     this.apiService.getMaintenanceLogs(parseInt(row.vehicleId), parseInt(row.templateId)).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (logs) => { this.ngZone.run(() => { this.historyLogs = logs; this.historyLoading = false; this.cdr.detectChanges(); }); },
+      next: (logs) => {
+        // Dedup by (doneDate + doneKm + actualCost) — prevents duplicates from accidental double-submit
+        const seen = new Set<string>();
+        const deduped: any[] = [];
+        for (const log of (logs || [])) {
+          const key = `${log.doneDate}|${log.doneKm}|${log.actualCost}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            deduped.push(log);
+          }
+        }
+        this.ngZone.run(() => { this.historyLogs = deduped; this.historyLoading = false; this.cdr.detectChanges(); });
+      },
       error: (err) => { console.error(err); this.historyLoading = false; }
     });
   }
   closeHistory() { this.isHistoryOpen = false; this.historyLogs = []; }
+
+  private getTemplateEstimatedCost(templateId: string): number {
+    const t = this.templates.find(x => x.id === templateId);
+    return t?.estimatedCost || 0;
+  }
+
+  exportHistoryPdf() {
+    if (!this.historyLogs || this.historyLogs.length === 0) return;
+    const win = window.open('', '_blank');
+    if (!win) return;
+
+    const estimated = this.historyEstimatedCost || 0;
+    const totalReal = this.historyLogs.reduce((s, l) => s + (Number(l.actualCost) || 0), 0);
+    const rows = this.historyLogs.map(l => {
+      const real = Number(l.actualCost) || 0;
+      const diff = real - estimated;
+      const diffClass = diff > 0 ? 'color:#dc2626' : (diff < 0 ? 'color:#16a34a' : 'color:#64748b');
+      const date = new Date(l.doneDate).toLocaleDateString('fr-FR');
+      return `
+        <tr>
+          <td>${date}</td>
+          <td>${(l.doneKm || 0).toLocaleString('fr-FR')} km</td>
+          <td>${estimated.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</td>
+          <td>${real.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</td>
+          <td style="${diffClass}; font-weight:600">${(diff >= 0 ? '+' : '')}${diff.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</td>
+          <td>${l.supplierName || '—'}</td>
+          <td>${l.notes || ''}</td>
+        </tr>
+      `;
+    }).join('');
+
+    win.document.write(`
+      <!DOCTYPE html>
+      <html lang="fr">
+      <head>
+        <meta charset="utf-8">
+        <title>Historique entretien — ${this.historyTemplateName}</title>
+        <style>
+          @page { size: A4 landscape; margin: 1cm; }
+          body { font-family: Arial, sans-serif; color: #1e293b; font-size: 12px; }
+          h1 { font-size: 18px; margin: 0 0 4px 0; color: #f59e0b; }
+          .meta { color:#64748b; margin-bottom: 16px; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; }
+          th { background: #f8fafc; font-weight: 600; }
+          tfoot td { font-weight: 700; background: #fffbeb; }
+          .summary { margin-top: 12px; font-size: 11px; color:#475569; }
+        </style>
+      </head>
+      <body>
+        <h1>Historique d'entretien</h1>
+        <div class="meta">
+          <strong>${this.historyVehicleName}</strong> (${this.historyVehiclePlate}) — ${this.historyTemplateName}<br>
+          Coût estimé: <strong>${estimated.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</strong>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Kilométrage</th>
+              <th>Coût estimé</th>
+              <th>Coût réel</th>
+              <th>Écart</th>
+              <th>Fournisseur</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+          <tfoot>
+            <tr>
+              <td colspan="3">TOTAL</td>
+              <td>${totalReal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</td>
+              <td>${(totalReal - estimated * this.historyLogs.length).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</td>
+              <td colspan="2">${this.historyLogs.length} entrée(s)</td>
+            </tr>
+          </tfoot>
+        </table>
+        <div class="summary">Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div>
+      </body>
+      </html>
+    `);
+    win.document.close();
+    setTimeout(() => { win.print(); }, 300);
+  }
 
   loadAllVehicles() {
     this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({

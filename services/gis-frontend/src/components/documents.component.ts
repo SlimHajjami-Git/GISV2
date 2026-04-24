@@ -55,10 +55,8 @@ export interface VehicleDocument {
           <select class="filter-select" [(ngModel)]="filterType" (change)="filterDocuments()">
             <option value="">Tous les types</option>
             <option value="insurance">Assurance</option>
-            <option value="tax">Vignette</option>
             <option value="technical_inspection">Visite technique</option>
-            <option value="registration">Carte grise</option>
-            <option value="transport_permit">Autorisation transport</option>
+            <option value="tax">Vignette</option>
           </select>
           <select class="filter-select" [(ngModel)]="filterStatus" (change)="filterDocuments()">
             <option value="">Tous les statuts</option>
@@ -114,18 +112,6 @@ export interface VehicleDocument {
             <div class="stat-content">
               <span class="stat-value">{{ okCount }}</span>
               <span class="stat-label">En règle</span>
-            </div>
-          </div>
-          <div class="stat-item" (click)="filterByStatus('')">
-            <div class="stat-icon total">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-              </svg>
-            </div>
-            <div class="stat-content">
-              <span class="stat-value">{{ allDocuments.length }}</span>
-              <span class="stat-label">Total</span>
             </div>
           </div>
         </div>
@@ -666,67 +652,100 @@ export class DocumentsComponent implements OnInit, OnDestroy {
   }
 
   loadDocuments(): void {
-    // Use the proper API endpoint that returns all document types (insurance, tax, technical_inspection, etc.)
-    this.apiService.getDocumentExpiries({ pageSize: 500 }).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (result) => {
-        this.allDocuments = (result.items || []).map((dto: any) => {
-          const typeMap: Record<string, string> = {
-            'Assurance': 'insurance',
-            'Vignette': 'tax',
-            'Contrôle technique': 'technical_inspection',
-            'Carte grise': 'registration',
-            'Permis de transport': 'transport_permit'
-          };
-          const type = (typeMap[dto.documentType] || dto.documentType) as VehicleDocument['type'];
-          const expiryDate = dto.expiryDate ? new Date(dto.expiryDate) : null;
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          let daysUntilExpiry = dto.daysUntilExpiry ?? -999;
-          let status: 'expired' | 'expiring_soon' | 'ok' = 'ok';
-          if (daysUntilExpiry < 0) status = 'expired';
-          else if (daysUntilExpiry <= 30) status = 'expiring_soon';
-
-          return {
-            vehicleId: dto.vehicleId,
-            vehicleName: dto.vehicleName || '',
-            vehiclePlate: dto.vehiclePlate || 'N/A',
-            type,
-            expiryDate: expiryDate || new Date(),
-            documentNumber: dto.documentNumber,
-            lastRenewalDate: dto.lastRenewalDate ? new Date(dto.lastRenewalDate) : undefined,
-            lastRenewalCost: dto.lastRenewalCost,
-            reminderDays: 30,
-            status,
-            daysUntilExpiry
-          } as VehicleDocument;
-        });
-        this.filterDocuments();
-        this.cdr.detectChanges();
-      },
-      error: (err) => {
-        console.error('Error loading document expiries, falling back to vehicles:', err);
-        // Fallback: build from vehicles
-        this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
-          next: (vehicles) => {
-            this.allDocuments = [];
-            vehicles.forEach(vehicle => {
-              if (vehicle.insuranceExpiry) {
-                this.allDocuments.push(this.createDocumentEntry(vehicle, 'insurance', new Date(vehicle.insuranceExpiry)));
-              } else {
-                this.allDocuments.push(this.createDocumentEntry(vehicle, 'insurance', null));
-              }
-              if ((vehicle as any).technicalInspectionExpiry) {
-                this.allDocuments.push(this.createDocumentEntry(vehicle, 'technical_inspection', new Date((vehicle as any).technicalInspectionExpiry)));
-              } else {
-                this.allDocuments.push(this.createDocumentEntry(vehicle, 'technical_inspection', null));
-              }
+    // Load both: (a) every vehicle (so the list always shows ALL vehicles, even without documents)
+    // (b) any known document expiries (insurance / tax / technical_inspection only — on demand of the user).
+    const REQUIRED_TYPES: Array<VehicleDocument['type']> = ['insurance', 'technical_inspection', 'tax'];
+    this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (vehicles) => {
+        const baseByVehicle = new Map<number, { vehicleId: number; vehicleName: string; vehiclePlate: string; insuranceExpiry?: any; technicalInspectionExpiry?: any }>();
+        vehicles.forEach((v: any) => {
+          const id = Number(v.id);
+          if (!isNaN(id)) {
+            baseByVehicle.set(id, {
+              vehicleId: id,
+              vehicleName: v.name || `${v.brand || ''} ${v.model || ''}`.trim() || 'N/A',
+              vehiclePlate: v.plate || 'N/A',
+              insuranceExpiry: v.insuranceExpiry,
+              technicalInspectionExpiry: v.technicalInspectionExpiry
             });
+          }
+        });
+
+        this.apiService.getDocumentExpiries({ pageSize: 500 }).pipe(takeUntil(this.destroy$)).subscribe({
+          next: (result) => {
+            const typeMap: Record<string, VehicleDocument['type']> = {
+              'Assurance': 'insurance',
+              'Vignette': 'tax',
+              'Contrôle technique': 'technical_inspection',
+              'Carte grise': 'registration',
+              'Permis de transport': 'transport_permit'
+            };
+            const docs: VehicleDocument[] = [];
+            const seen = new Set<string>(); // "vehicleId:type"
+
+            (result.items || []).forEach((dto: any) => {
+              const type = (typeMap[dto.documentType] || dto.documentType) as VehicleDocument['type'];
+              if (!REQUIRED_TYPES.includes(type)) return; // only 3 requested types
+              const expiryDate = dto.expiryDate ? new Date(dto.expiryDate) : null;
+              let daysUntilExpiry = dto.daysUntilExpiry ?? -999;
+              let status: 'expired' | 'expiring_soon' | 'ok' = 'ok';
+              if (daysUntilExpiry < 0) status = 'expired';
+              else if (daysUntilExpiry <= 30) status = 'expiring_soon';
+
+              docs.push({
+                vehicleId: dto.vehicleId,
+                vehicleName: dto.vehicleName || baseByVehicle.get(dto.vehicleId)?.vehicleName || '',
+                vehiclePlate: dto.vehiclePlate || baseByVehicle.get(dto.vehicleId)?.vehiclePlate || 'N/A',
+                type,
+                expiryDate: expiryDate || new Date(),
+                documentNumber: dto.documentNumber,
+                lastRenewalDate: dto.lastRenewalDate ? new Date(dto.lastRenewalDate) : undefined,
+                lastRenewalCost: dto.lastRenewalCost,
+                reminderDays: 30,
+                status,
+                daysUntilExpiry
+              } as VehicleDocument);
+              seen.add(`${dto.vehicleId}:${type}`);
+            });
+
+            // Ensure all vehicles appear for all 3 types (missing docs = expired/missing).
+            baseByVehicle.forEach((b) => {
+              REQUIRED_TYPES.forEach(type => {
+                if (!seen.has(`${b.vehicleId}:${type}`)) {
+                  docs.push({
+                    vehicleId: b.vehicleId,
+                    vehicleName: b.vehicleName,
+                    vehiclePlate: b.vehiclePlate,
+                    type,
+                    expiryDate: new Date(),
+                    reminderDays: 30,
+                    status: 'expired',
+                    daysUntilExpiry: -999
+                  } as VehicleDocument);
+                }
+              });
+            });
+
+            this.allDocuments = docs;
             this.filterDocuments();
             this.cdr.detectChanges();
           },
-          error: () => this.cdr.detectChanges()
+          error: (err) => {
+            console.error('Error loading document expiries, falling back to vehicles:', err);
+            // Fallback: build from vehicles (only insurance + technical_inspection from the direct vehicle columns)
+            this.allDocuments = [];
+            baseByVehicle.forEach((b) => {
+              const vLike: any = { id: b.vehicleId, name: b.vehicleName, plate: b.vehiclePlate };
+              this.allDocuments.push(this.createDocumentEntry(vLike, 'insurance', b.insuranceExpiry ? new Date(b.insuranceExpiry) : null));
+              this.allDocuments.push(this.createDocumentEntry(vLike, 'technical_inspection', b.technicalInspectionExpiry ? new Date(b.technicalInspectionExpiry) : null));
+              this.allDocuments.push(this.createDocumentEntry(vLike, 'tax', null));
+            });
+            this.filterDocuments();
+            this.cdr.detectChanges();
+          }
         });
-      }
+      },
+      error: () => this.cdr.detectChanges()
     });
   }
 

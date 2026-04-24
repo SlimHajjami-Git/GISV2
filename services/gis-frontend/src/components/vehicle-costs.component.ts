@@ -248,8 +248,8 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                 </div>
 
                 <div class="form-group">
-                  <label for="costAmount">Montant (DT) *</label>
-                  <input type="number" id="costAmount" [(ngModel)]="costForm.amount" name="amount" required min="0" placeholder="0" />
+                  <label for="costAmount">Montant (DT)</label>
+                  <input type="number" id="costAmount" [(ngModel)]="costForm.amount" name="amount" min="0" step="0.01" placeholder="0" />
                 </div>
 
                 <div class="form-group full-width">
@@ -976,8 +976,10 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
   }
 
   saveCost() {
+    const amount = Number(this.costForm.amount ?? 0);
     const costData: Partial<VehicleCost> = {
       ...this.costForm,
+      amount: isFinite(amount) ? amount : 0,
       date: new Date(this.costForm.dateStr),
       companyId: this.company?.id
     };

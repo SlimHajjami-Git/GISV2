@@ -46,9 +46,13 @@ export class NotificationService implements OnDestroy {
     // Listen for real-time notifications from SignalR
     this.subscriptions.push(
       this.signalR.notification$.subscribe(notification => {
+        // Dedup: ignore a notification whose id is already in the list
+        const current = this.notifications$.value;
+        if (current.some(n => n.id === notification.id)) {
+          return;
+        }
         this.newNotification$.next(notification);
         // Prepend to local list
-        const current = this.notifications$.value;
         const mapped: Notification = {
           id: notification.id,
           userId: 0,
