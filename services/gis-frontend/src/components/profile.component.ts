@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { ApiService } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -27,6 +27,7 @@ interface ProfileModel {
 }
 
 const PREFERENCES_KEY = 'userProfilePreferences';
+const ALERT_PREFS_KEY = 'userAlertPreferences';
 
 const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
   position: '',
@@ -47,7 +48,7 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
 @Component({
   selector: 'app-profile',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, RouterLink, AppLayoutComponent],
   template: `
     <app-layout>
       <div class="profile-page">
@@ -289,6 +290,125 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
             </div>
           </article>
         </div>
+
+        <!-- Alerts preferences (tabs: Vitesse / Géofencing+Documents+Remorquage / Offline / Entretiens) -->
+        <article class="section-card" style="--stagger:5; margin-top:20px;">
+          <header class="section-head">
+            <div class="section-medal gradient-violet">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+            </div>
+            <div class="section-text">
+              <h2>Notifications</h2>
+              <p>Choisissez les alertes à recevoir dans la cloche.</p>
+            </div>
+          </header>
+          <div class="section-body">
+            <div class="alert-grid">
+              <label class="alert-check">
+                <input type="checkbox" [(ngModel)]="alertPrefs.vitesse">
+                <div class="alert-info">
+                  <span class="alert-title">🏎️ Vitesse</span>
+                  <span class="alert-desc">Excès de vitesse / infractions</span>
+                </div>
+              </label>
+              <label class="alert-check">
+                <input type="checkbox" [(ngModel)]="alertPrefs.geofencingDocsTow">
+                <div class="alert-info">
+                  <span class="alert-title">🗺️ Géofencing + Documents + Remorquage</span>
+                  <span class="alert-desc">Franchissement zone, échéance doc, remorquage</span>
+                </div>
+              </label>
+              <label class="alert-check">
+                <input type="checkbox" [(ngModel)]="alertPrefs.offline">
+                <div class="alert-info">
+                  <span class="alert-title">🔌 Offline</span>
+                  <span class="alert-desc">Véhicules hors ligne</span>
+                </div>
+              </label>
+              <label class="alert-check">
+                <input type="checkbox" [(ngModel)]="alertPrefs.entretiens">
+                <div class="alert-info">
+                  <span class="alert-title">🔧 Entretiens</span>
+                  <span class="alert-desc">Rappels d'entretien</span>
+                </div>
+              </label>
+            </div>
+          </div>
+        </article>
+
+        <!-- Password change -->
+        <article class="section-card" style="--stagger:6; margin-top:20px;">
+          <header class="section-head">
+            <div class="section-medal gradient-amber">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
+            <div class="section-text">
+              <h2>Mot de passe</h2>
+              <p>Modifiez votre mot de passe en toute sécurité.</p>
+            </div>
+          </header>
+          <div class="section-body">
+            <div class="field">
+              <label>Mot de passe actuel</label>
+              <input type="password" [(ngModel)]="passwordForm.current" placeholder="••••••••" autocomplete="current-password">
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label>Nouveau mot de passe</label>
+                <input type="password" [(ngModel)]="passwordForm.next" placeholder="6 caractères minimum" autocomplete="new-password">
+              </div>
+              <div class="field">
+                <label>Confirmation</label>
+                <input type="password" [(ngModel)]="passwordForm.confirm" placeholder="Répéter le mot de passe" autocomplete="new-password">
+              </div>
+            </div>
+            <div class="pwd-actions">
+              <button class="btn-save" (click)="changePassword()" [disabled]="changingPassword">
+                <span *ngIf="!changingPassword" class="save-content">
+                  Changer le mot de passe
+                </span>
+                <span *ngIf="changingPassword" class="save-content">
+                  <span class="spinner"></span> Modification...
+                </span>
+              </button>
+            </div>
+            <div *ngIf="passwordMessage" class="inline-feedback" [class.error]="passwordMessage.type === 'error'">
+              {{ passwordMessage.text }}
+            </div>
+          </div>
+        </article>
+
+        <!-- Rapport d'accident quick link -->
+        <article class="section-card" style="--stagger:7; margin-top:20px;">
+          <header class="section-head">
+            <div class="section-medal gradient-amber" style="background:linear-gradient(140deg,#f87171 0%,#dc2626 100%);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <div class="section-text">
+              <h2>Rapport d'accident</h2>
+              <p>Accédez aux rapports d'accidents détectés automatiquement.</p>
+            </div>
+          </header>
+          <div class="section-body">
+            <a routerLink="/accidents" class="btn-save" style="text-decoration:none; display:inline-flex; width:fit-content;">
+              Ouvrir les rapports
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"/>
+                <polyline points="12 5 19 12 12 19"/>
+              </svg>
+            </a>
+          </div>
+        </article>
 
         <!-- Floating toast -->
         <div class="toast-slot" *ngIf="message" [class.toast-error]="message.type === 'error'">
@@ -678,6 +798,46 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
       cursor: not-allowed;
     }
 
+    /* ============ ALERT PREFS ============ */
+    .alert-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .alert-check {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px 14px;
+      border: 1px solid var(--ink-200);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: border-color .2s ease, background .2s ease;
+    }
+    .alert-check:hover { border-color: #cbd5e1; background: var(--ink-50); }
+    .alert-check input[type="checkbox"] {
+      width: 16px; height: 16px; accent-color: var(--primary);
+      margin-top: 2px; cursor: pointer;
+    }
+    .alert-info { display: flex; flex-direction: column; gap: 2px; }
+    .alert-title { font-size: 13px; font-weight: 600; color: var(--ink-900); }
+    .alert-desc { font-size: 11px; color: var(--ink-500); }
+
+    /* ============ PASSWORD ACTIONS ============ */
+    .pwd-actions { display: flex; justify-content: flex-end; }
+    .inline-feedback {
+      margin-top: 8px; padding: 10px 14px; border-radius: 8px;
+      background: #ecfdf5; color: #047857; font-size: 12px; font-weight: 600;
+      border: 1px solid #a7f3d0;
+    }
+    .inline-feedback.error {
+      background: var(--danger-soft); color: #991b1b; border-color: #fecaca;
+    }
+
+    @media (max-width: 720px) {
+      .alert-grid { grid-template-columns: 1fr; }
+    }
+
     /* ============ ACTION BAR ============ */
     .action-bar {
       position: sticky;
@@ -886,6 +1046,19 @@ export class ProfileComponent implements OnInit {
   saving = false;
   message: { type: 'success' | 'error'; text: string } | null = null;
 
+  // Password change form
+  passwordForm = { current: '', next: '', confirm: '' };
+  changingPassword = false;
+  passwordMessage: { type: 'success' | 'error'; text: string } | null = null;
+
+  // Alert preferences (local-only right now; read by notification bell to filter types)
+  alertPrefs = {
+    vitesse: true,
+    geofencingDocsTow: true,
+    offline: true,
+    entretiens: true
+  };
+
   profile: ProfileModel = {
     fullName: '',
     email: '',
@@ -940,6 +1113,56 @@ export class ProfileComponent implements OnInit {
     } catch {
       Object.assign(this.profile, DEFAULT_PREFERENCES);
     }
+
+    // Alert preferences (stored locally)
+    try {
+      const storedAlerts = localStorage.getItem(ALERT_PREFS_KEY);
+      if (storedAlerts) {
+        Object.assign(this.alertPrefs, JSON.parse(storedAlerts));
+      }
+    } catch {
+      /* keep defaults */
+    }
+  }
+
+  changePassword() {
+    if (this.changingPassword) return;
+    this.passwordMessage = null;
+    const { current, next, confirm } = this.passwordForm;
+    if (!current) {
+      this.passwordMessage = { type: 'error', text: 'Veuillez saisir votre mot de passe actuel.' };
+      return;
+    }
+    if (!next || next.length < 6) {
+      this.passwordMessage = { type: 'error', text: 'Le nouveau mot de passe doit faire au moins 6 caractères.' };
+      return;
+    }
+    if (next !== confirm) {
+      this.passwordMessage = { type: 'error', text: 'La confirmation ne correspond pas.' };
+      return;
+    }
+    if (next === current) {
+      this.passwordMessage = { type: 'error', text: 'Le nouveau mot de passe doit être différent de l\'ancien.' };
+      return;
+    }
+
+    this.changingPassword = true;
+    this.apiService.changeMyPassword({ currentPassword: current, newPassword: next }).subscribe({
+      next: () => {
+        this.changingPassword = false;
+        this.passwordForm = { current: '', next: '', confirm: '' };
+        this.passwordMessage = { type: 'success', text: 'Mot de passe modifié avec succès.' };
+        setTimeout(() => { this.passwordMessage = null; }, 4000);
+      },
+      error: (err: any) => {
+        this.changingPassword = false;
+        const apiMessage = err?.error?.message || err?.error?.Message || err?.error?.title;
+        this.passwordMessage = {
+          type: 'error',
+          text: apiMessage || 'Impossible de modifier le mot de passe.'
+        };
+      }
+    });
   }
 
   getInitials(): string {
@@ -998,6 +1221,7 @@ export class ProfileComponent implements OnInit {
           temperatureUnit: this.profile.temperatureUnit
         };
         localStorage.setItem(PREFERENCES_KEY, JSON.stringify(prefs));
+        localStorage.setItem(ALERT_PREFS_KEY, JSON.stringify(this.alertPrefs));
 
         // Sync AuthService so sidebar/header update immediately
         this.authService.patchCurrentUser({

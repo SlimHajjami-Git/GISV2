@@ -80,7 +80,7 @@ import { ApiService } from '../services/api.service';
                   <label>Type d'acquisition</label>
                   <select [(ngModel)]="vehicleForm.typeAcquisition" name="typeAcquisition">
                     <option value="achat">Achat</option>
-                    <option value="leasing">Leasing</option>
+                    <option value="leasing">Auto-financement</option>
                   </select>
                 </div>
                 <div class="form-group">
@@ -153,6 +153,9 @@ import { ApiService } from '../services/api.service';
         <!-- Panel Footer -->
         <div class="panel-footer">
           <button type="button" class="btn-secondary" (click)="close()">Annuler</button>
+          <button type="button" class="btn-secondary" *ngIf="vehicleForm.typeAcquisition === 'leasing'" (click)="openCredit()">
+            Visualiser crédit
+          </button>
           <button type="button" class="btn-primary" (click)="save()" [disabled]="saving">
             {{ saving ? 'Enregistrement...' : 'Enregistrer' }}
           </button>
@@ -671,6 +674,19 @@ export class VehicleInfoComponent implements OnChanges {
   onOverlayClick(event: MouseEvent): void {
     if (event.target === event.currentTarget) {
       this.close();
+    }
+  }
+
+  openCredit(): void {
+    // Scroll smoothly to the payment schedule section if it's visible
+    const el = document.querySelector('.leasing-schedule');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    // If schedule isn't showing yet (missing data) warn the user
+    if (!this.vehicleForm.traiteMensuelle || !this.vehicleForm.leasingDurationMonths || !this.vehicleForm.leasingStartDate) {
+      alert('Complétez la traite mensuelle, la durée et la date de début pour visualiser le crédit.');
     }
   }
 }

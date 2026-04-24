@@ -1192,6 +1192,10 @@ export class ApiService {
     return this.http.put<any>(`${this.API_URL}/users/me`, payload, { headers: this.getHeaders() });
   }
 
+  changeMyPassword(payload: { currentPassword: string; newPassword: string }): Observable<void> {
+    return this.http.put<void>(`${this.API_URL}/users/me/password`, payload, { headers: this.getHeaders() });
+  }
+
   // ==================== FUEL RECORDS ====================
 
   getFuelRecords(options: {

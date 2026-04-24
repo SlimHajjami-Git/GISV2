@@ -7,6 +7,7 @@ using GisAPI.Application.Features.Users;
 using GisAPI.Application.Features.Users.Commands.CreateUser;
 using GisAPI.Application.Features.Users.Commands.UpdateUser;
 using GisAPI.Application.Features.Users.Commands.UpdateProfile;
+using GisAPI.Application.Features.Users.Commands.ChangeMyPassword;
 using GisAPI.Application.Features.Users.Commands.DeleteUser;
 using GisAPI.Application.Features.Users.Queries.GetUsers;
 using GisAPI.Application.Features.Users.Queries.GetUserById;
@@ -167,6 +168,15 @@ public class UsersController : ControllerBase
         var user = await _mediator.Send(command);
         return Ok(user);
     }
+
+    [HttpPut("me/password")]
+    public async Task<IActionResult> ChangeMyPassword([FromBody] ChangeMyPasswordRequest request)
+    {
+        await _mediator.Send(new ChangeMyPasswordCommand(
+            request.CurrentPassword ?? string.Empty,
+            request.NewPassword ?? string.Empty));
+        return NoContent();
+    }
 }
 
 public record UpdateProfileRequest(
@@ -174,4 +184,9 @@ public record UpdateProfileRequest(
     string LastName,
     string Email,
     string? Phone
+);
+
+public record ChangeMyPasswordRequest(
+    string CurrentPassword,
+    string NewPassword
 );

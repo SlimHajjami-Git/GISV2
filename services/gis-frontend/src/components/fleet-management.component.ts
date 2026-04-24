@@ -240,6 +240,7 @@ interface PartPricing {
                           <polyline points="20 6 9 17 4 12"/>
                         </svg>
                       </button>
+                      <span class="saved-chip" *ngIf="savedSpeedIds.has(vehicle.id)">Enregistré</span>
                     </div>
                   </div>
                   <div class="empty-list" *ngIf="vehicles.length === 0">
@@ -1663,6 +1664,7 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
   fuelTypes: FuelType[] = [];
   vehicles: Vehicle[] = [];
   defaultSpeedLimit = 90;
+  savedSpeedIds = new Set<number>();
   
   showDepartmentModal = false;
   editingDepartment: Department | null = null;
@@ -1766,7 +1768,15 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
   loadFuelTypes() {
     this.http.get<any>('/api/fleet/fuel-types').pipe(takeUntil(this.destroy$)).subscribe({
       next: (data) => {
-        this.fuelTypes = data || [];
+        // Dedup by code (defensive: backend may return duplicates if seed was run twice)
+        const arr = Array.isArray(data) ? data : [];
+        const seen = new Set<string>();
+        this.fuelTypes = arr.filter((ft: any) => {
+          const key = (ft.code || ft.name || '').toLowerCase();
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
         this.loading = false;
         this.cdr.detectChanges();
       },
@@ -1872,18 +1882,62 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
   }
 
   saveSpeedLimit(vehicle: Vehicle) {
-    this.http.patch(`/api/vehicles/${vehicle.id}`, {
-      speedLimit: vehicle.speedLimit
+    const limit = Number(vehicle.speedLimit);
+    if (!Number.isFinite(limit) || limit <= 0 || limit > 200) {
+      alert('Veuillez saisir une limite de vitesse valide (1-200 km/h)');
+      return;
+    }
+    this.http.put(`/api/fleet/vehicles/${vehicle.id}/speed-limit`, {
+      speedLimit: limit
     }).subscribe({
-      next: () => console.log('Speed limit saved'),
-      error: (err) => console.error('Error saving speed limit:', err)
+      next: () => {
+        this.savedSpeedIds.add(vehicle.id);
+        setTimeout(() => {
+          this.savedSpeedIds.delete(vehicle.id);
+          this.cdr.detectChanges();
+        }, 2000);
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Error saving speed limit:', err);
+        alert('Erreur lors de l\'enregistrement de la limite de vitesse');
+      }
     });
   }
 
   applyDefaultSpeed() {
-    if (confirm(`Appliquer la limite de ${this.defaultSpeedLimit} km/h à tous les véhicules ?`)) {
-      this.vehicles.forEach(v => v.speedLimit = this.defaultSpeedLimit);
+    const limit = Number(this.defaultSpeedLimit);
+    if (!Number.isFinite(limit) || limit <= 0 || limit > 200) {
+      alert('Veuillez saisir une limite de vitesse valide (1-200 km/h)');
+      return;
     }
+    if (!confirm(`Appliquer la limite de ${limit} km/h à tous les véhicules ?`)) return;
+
+    // Fire requests for every vehicle, update local on each success.
+    let successCount = 0;
+    let errorCount = 0;
+    const total = this.vehicles.length;
+    if (total === 0) return;
+
+    this.vehicles.forEach(v => {
+      this.http.put(`/api/fleet/vehicles/${v.id}/speed-limit`, { speedLimit: limit }).subscribe({
+        next: () => {
+          v.speedLimit = limit;
+          successCount++;
+          if (successCount + errorCount === total) {
+            alert(`Limite appliquée: ${successCount} succès, ${errorCount} erreurs`);
+            this.cdr.detectChanges();
+          }
+        },
+        error: () => {
+          errorCount++;
+          if (successCount + errorCount === total) {
+            alert(`Limite appliquée: ${successCount} succès, ${errorCount} erreurs`);
+            this.cdr.detectChanges();
+          }
+        }
+      });
+    });
   }
 
   // Vehicle Assignment Methods
