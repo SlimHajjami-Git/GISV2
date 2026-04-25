@@ -1205,6 +1205,15 @@ export class ApiService {
     return this.http.post<any>(`${this.API_URL}/auth/change-password`, payload, { headers: this.getHeaders() });
   }
 
+  /**
+   * Backwards-compat alias for {@link changePassword}. Older callers (profile page,
+   * Calypso I spec) call this name and hit `PUT /api/users/me/password`. Both URLs
+   * are wired to the same CQRS handler on the backend.
+   */
+  changeMyPassword(payload: { currentPassword: string; newPassword: string }): Observable<void> {
+    return this.http.put<void>(`${this.API_URL}/users/me/password`, payload, { headers: this.getHeaders() });
+  }
+
   // ==================== FUEL RECORDS ====================
 
   getFuelRecords(options: {
