@@ -5,8 +5,10 @@ using MediatR;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Application.Features.Auth.Commands.Login;
 using GisAPI.Application.Features.Auth.Commands.RefreshToken;
+using GisAPI.Application.Features.Users.Commands.ChangeMyPassword;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
+using GisAPI.DTOs;
 
 namespace GisAPI.Controllers;
 
@@ -177,9 +179,26 @@ public class AuthController : ControllerBase
 
         return Ok(new { valid = true });
     }
+
+    /// <summary>
+    /// Self-service password change. Thin wrapper around the
+    /// <see cref="ChangeMyPasswordCommand"/> CQRS handler so the frontend
+    /// can call <c>POST /api/auth/change-password</c> (alias of
+    /// <c>PUT /api/users/me/password</c> on UsersController).
+    /// </summary>
+    [Authorize]
+    [HttpPost("change-password")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        await _mediator.Send(new ChangeMyPasswordCommand(
+            request.CurrentPassword ?? string.Empty,
+            request.NewPassword ?? string.Empty));
+        return NoContent();
+    }
 }
 
 // Request DTOs for AuthController
 public record LoginRequest(string Email, string Password);
 public record RefreshRequest(string Token, string RefreshToken);
 public record VerifyPasswordRequest(string Password);
+// ChangePasswordRequest is defined in GisAPI.DTOs.AuthDTOs.cs

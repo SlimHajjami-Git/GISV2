@@ -592,7 +592,10 @@ export class CarburantComponent implements OnInit, OnDestroy {
   }
 
   saveManualEntry() {
-    if (!this.isManualEntryValid()) return;
+    if (!this.isManualEntryValid()) {
+      alert('Veuillez remplir tous les champs obligatoires (matricule, type, volume, prix, date)');
+      return;
+    }
     this.isSaving = true;
     this.apiService.createFuelEntry({
       vehiclePlate: this.manualEntry.vehiclePlate,
@@ -601,8 +604,18 @@ export class CarburantComponent implements OnInit, OnDestroy {
       pricePerLiter: this.manualEntry.pricePerLiter,
       invoiceDate: this.manualEntry.invoiceDate
     }).pipe(takeUntil(this.destroy$)).subscribe({
-      next: () => { this.isSaving = false; this.resetManualEntry(); this.loadHistory(); },
-      error: (err) => { console.error(err); this.isSaving = false; }
+      next: () => {
+        this.isSaving = false;
+        this.resetManualEntry();
+        this.loadHistory();
+        alert('Entrée carburant enregistrée avec succès');
+      },
+      error: (err) => {
+        console.error(err);
+        this.isSaving = false;
+        const msg = err?.error?.message || err?.message || 'Erreur lors de l\u0027enregistrement';
+        alert(msg);
+      }
     });
   }
 

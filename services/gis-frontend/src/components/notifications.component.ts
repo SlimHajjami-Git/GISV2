@@ -487,14 +487,26 @@ export class NotificationsComponent implements OnInit, OnDestroy {
       driving_behavior: 'Conduite',
       maintenance_due: 'Maintenance',
       power_cut: 'Coupure',
-      admin_action: 'Système'
+      admin_action: 'Système',
+      document_expiry: 'Document',
+      driver_permit_expiry: 'Permis conducteur',
+      accident_detected: 'Accident',
+      accident_possible_damage: 'Choc',
+      battery_low: 'Batterie'
     };
     return labels[type] || type;
   }
 
+  private parseUtc(dateStr: string): Date {
+    if (!dateStr) return new Date(NaN);
+    // Ensure backend timestamps (without Z) are treated as UTC, then displayed in local tz (GMT+1 for Tunis)
+    const s = dateStr.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(dateStr) ? dateStr : dateStr + 'Z';
+    return new Date(s);
+  }
+
   formatTime(dateStr: string): string {
     if (!dateStr) return '';
-    const date = new Date(dateStr);
+    const date = this.parseUtc(dateStr);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const minutes = Math.floor(diff / 60000);
@@ -509,7 +521,7 @@ export class NotificationsComponent implements OnInit, OnDestroy {
 
   formatDateTime(dateStr: string): string {
     if (!dateStr) return '';
-    const date = new Date(dateStr);
+    const date = this.parseUtc(dateStr);
     return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   }
 }

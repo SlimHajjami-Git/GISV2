@@ -271,7 +271,7 @@ interface Vehicle {
               </div>
               <div class="vehicle-info-box" *ngIf="selectedVehicle">
                 <span class="info-label">Kilometrage actuel:</span>
-                <span class="info-value">{{ selectedVehicle.mileage | number }} km</span>
+                <span class="info-value">{{ selectedVehicle.mileage || 0 }} km</span>
               </div>
             </div>
 
@@ -437,7 +437,7 @@ interface Vehicle {
               </div>
               <div class="detail-row" *ngIf="viewingRepair.mileageAtRepair">
                 <span class="detail-label">Kilometrage</span>
-                <span class="detail-value">{{ viewingRepair.mileageAtRepair | number }} km</span>
+                <span class="detail-value">{{ viewingRepair.mileageAtRepair || 0 }} km</span>
               </div>
             </div>
 

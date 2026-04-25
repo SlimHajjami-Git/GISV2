@@ -91,7 +91,7 @@ import { MockDataService } from '../../services/mock-data.service';
                     <span class="cost-desc">{{ cost.description }}</span>
                     <span class="cost-meta">
                       {{ getTypeLabel(cost.type) }}
-                      <span *ngIf="cost.mileage"> • {{ cost.mileage | number }} km</span>
+                      <span *ngIf="cost.mileage"> • {{ cost.mileage }} km</span>
                       <span *ngIf="cost.liters"> • {{ cost.liters }}L</span>
                     </span>
                   </div>

@@ -15,14 +15,15 @@ public class GetFuelTypesQueryHandler : IRequestHandler<GetFuelTypesQuery, List<
 
     public async Task<List<FuelTypeDto>> Handle(GetFuelTypesQuery request, CancellationToken cancellationToken)
     {
-        return await _context.FuelTypes
+        var all = await _context.FuelTypes
             .OrderBy(ft => ft.Name)
-            .Select(ft => new FuelTypeDto(
-                ft.Id,
-                ft.Code,
-                ft.Name,
-                ft.IsSystem
-            ))
             .ToListAsync(cancellationToken);
+
+        // Deduplicate by normalized code/name to avoid "Même type de carburant" appearing twice
+        return all
+            .GroupBy(ft => (ft.Code ?? ft.Name ?? string.Empty).Trim().ToLowerInvariant())
+            .Select(g => g.OrderByDescending(ft => ft.IsSystem).ThenBy(ft => ft.Id).First())
+            .Select(ft => new FuelTypeDto(ft.Id, ft.Code, ft.Name, ft.IsSystem))
+            .ToList();
     }
 }

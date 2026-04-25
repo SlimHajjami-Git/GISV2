@@ -1462,9 +1462,17 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     return typeMap[type] || 'other';
   }
 
+  private parseUtcTs(ts: string | Date): Date {
+    if (ts instanceof Date) return ts;
+    if (!ts) return new Date(NaN);
+    // Backend returns UTC without 'Z'; coerce to UTC so display uses local tz (GMT+1)
+    const s = ts.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(ts) ? ts : ts + 'Z';
+    return new Date(s);
+  }
+
   formatNotifTime(timestamp: string | Date): string {
     const now = new Date();
-    const date = new Date(timestamp);
+    const date = this.parseUtcTs(timestamp);
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
@@ -1479,7 +1487,7 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
 
   formatNotifDate(timestamp: string | Date): string {
     if (!timestamp) return '';
-    const date = new Date(timestamp);
+    const date = this.parseUtcTs(timestamp);
     return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
       + ' ' + date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   }

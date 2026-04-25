@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { MockDataService } from '../services/mock-data.service';
+import { ApiService } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 
 @Component({
@@ -842,7 +843,8 @@ export class SettingsComponent implements OnInit {
 
   constructor(
     private router: Router,
-    private dataService: MockDataService
+    private dataService: MockDataService,
+    private api: ApiService
   ) {}
 
   ngOnInit() {
@@ -872,8 +874,23 @@ export class SettingsComponent implements OnInit {
       alert('Les mots de passe ne correspondent pas');
       return;
     }
-    alert('Mot de passe changé avec succès!');
-    this.passwordForm = { current: '', new: '', confirm: '' };
+    if (this.passwordForm.new.length < 6) {
+      alert('Le nouveau mot de passe doit contenir au moins 6 caractères');
+      return;
+    }
+    this.api.changePassword({
+      currentPassword: this.passwordForm.current,
+      newPassword: this.passwordForm.new
+    }).subscribe({
+      next: () => {
+        alert('Mot de passe modifié avec succès');
+        this.passwordForm = { current: '', new: '', confirm: '' };
+      },
+      error: (err) => {
+        const msg = err?.error?.message || 'Erreur lors du changement de mot de passe';
+        alert(msg);
+      }
+    });
   }
 
   logoutAllSessions() {

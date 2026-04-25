@@ -304,6 +304,15 @@ export class ApiService {
     return this.http.put<void>(`${this.API_URL}/vehicles/${id}`, vehicle, { headers: this.getHeaders() });
   }
 
+  patchVehicle(id: number, patch: any): Observable<void> {
+    // Partial update — sends only the fields provided, preserves others
+    if (this.isMockUser()) {
+      this.mockDataService.updateVehicle({ ...patch, id: id.toString() });
+      return of(void 0);
+    }
+    return this.http.patch<void>(`${this.API_URL}/vehicles/${id}`, patch, { headers: this.getHeaders() });
+  }
+
   // Brands & Models
   getBrands(): Observable<any[]> {
     return this.http.get<any[]>(`${this.API_URL}/brands`, { headers: this.getHeaders() });
@@ -1192,8 +1201,8 @@ export class ApiService {
     return this.http.put<any>(`${this.API_URL}/users/me`, payload, { headers: this.getHeaders() });
   }
 
-  changeMyPassword(payload: { currentPassword: string; newPassword: string }): Observable<void> {
-    return this.http.put<void>(`${this.API_URL}/users/me/password`, payload, { headers: this.getHeaders() });
+  changePassword(payload: { currentPassword: string; newPassword: string }): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/auth/change-password`, payload, { headers: this.getHeaders() });
   }
 
   // ==================== FUEL RECORDS ====================

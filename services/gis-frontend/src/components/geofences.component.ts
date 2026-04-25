@@ -499,6 +499,22 @@ import * as L from 'leaflet';
     </div>
   `,
   styles: [`
+    /* Permanent label on geofence zones — doesn't disappear on mouseout */
+    ::ng-deep .leaflet-tooltip.gf-label {
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid rgba(100, 116, 139, 0.4);
+      color: #1e293b;
+      font-weight: 600;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+      pointer-events: none;
+    }
+    ::ng-deep .leaflet-tooltip.gf-label::before {
+      display: none;
+    }
+
     .geofences-page {
       flex: 1;
       background: #f1f5f9;
@@ -1564,6 +1580,20 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     
     this.overviewLayers.clearLayers();
 
+    const buildPopup = (g: any) => `
+      <div style="font-family:'Inter',sans-serif;min-width:200px;">
+        <div style="font-weight:600;font-size:13px;color:#1e293b;margin-bottom:4px;">${g.name || 'Zone'}</div>
+        ${g.description ? `<div style="font-size:11px;color:#64748b;margin-bottom:6px;">${g.description}</div>` : ''}
+        <div style="display:flex;gap:6px;font-size:11px;color:#334155;">
+          <span style="padding:2px 6px;border-radius:4px;background:${g.isActive ? '#dcfce7' : '#f1f5f9'};color:${g.isActive ? '#166534' : '#64748b'};">
+            ${g.isActive ? 'Active' : 'Inactive'}
+          </span>
+          <span style="padding:2px 6px;border-radius:4px;background:#f1f5f9;color:#475569;">
+            ${g.type === 'circle' ? 'Cercle' : 'Polygone'}
+          </span>
+        </div>
+      </div>`;
+
     this.allGeofences.forEach(g => {
       if (g.type === 'circle' && g.center) {
         const circle = L.circle([g.center.lat, g.center.lng], {
@@ -1574,7 +1604,10 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
           weight: 2,
           dashArray: g.isActive ? '' : '5,5'
         });
-        circle.bindTooltip(g.name, { permanent: false });
+        // Permanent tooltip with name (doesn't disappear on mouseout)
+        circle.bindTooltip(g.name, { permanent: true, direction: 'center', className: 'gf-label' });
+        // Sticky popup with details (stays open until manually closed)
+        circle.bindPopup(buildPopup(g), { autoClose: false, closeOnClick: false });
         circle.on('click', () => this.focusGeofence(g));
         this.overviewLayers.addLayer(circle);
       } else if (g.type === 'polygon' && g.coordinates?.length) {
@@ -1586,7 +1619,8 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
           weight: 2,
           dashArray: g.isActive ? '' : '5,5'
         });
-        polygon.bindTooltip(g.name, { permanent: false });
+        polygon.bindTooltip(g.name, { permanent: true, direction: 'center', className: 'gf-label' });
+        polygon.bindPopup(buildPopup(g), { autoClose: false, closeOnClick: false });
         polygon.on('click', () => this.focusGeofence(g));
         this.overviewLayers.addLayer(polygon);
       }

@@ -22,9 +22,16 @@ public class GetFuelTypesQueryHandler : IRequestHandler<GetFuelTypesQuery, List<
         var now = DateTime.UtcNow;
 
         // Get all fuel types first
-        var fuelTypes = await _context.FuelTypes
+        var allFuelTypes = await _context.FuelTypes
             .OrderBy(ft => ft.Name)
             .ToListAsync(cancellationToken);
+
+        // Deduplicate by normalized code/name (fix for "Même type de carburant dans paramètres")
+        // Prefer the system row when duplicates exist, otherwise the first by id
+        var fuelTypes = allFuelTypes
+            .GroupBy(ft => (ft.Code ?? ft.Name ?? string.Empty).Trim().ToLowerInvariant())
+            .Select(g => g.OrderByDescending(ft => ft.IsSystem).ThenBy(ft => ft.Id).First())
+            .ToList();
 
         // Get current pricing for each fuel type if company is set
         Dictionary<int, (decimal Price, DateTime EffectiveFrom)> currentPrices = new();

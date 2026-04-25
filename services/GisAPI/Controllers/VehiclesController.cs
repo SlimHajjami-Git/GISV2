@@ -5,6 +5,7 @@ using GisAPI.Application.Features.Vehicles.Queries.GetVehicles;
 using GisAPI.Application.Features.Vehicles.Queries.GetVehicleDetails;
 using GisAPI.Application.Features.Vehicles.Commands.CreateVehicle;
 using GisAPI.Application.Features.Vehicles.Commands.UpdateVehicle;
+using GisAPI.Application.Features.Vehicles.Commands.PatchVehicle;
 using GisAPI.Application.Features.Vehicles.Commands.DeleteVehicle;
 using GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions;
 using GisAPI.Application.Features.Vehicles.Commands.SyncMileage;
@@ -64,6 +65,15 @@ public class VehiclesController : ControllerBase
             return BadRequest("ID mismatch");
 
         await _mediator.Send(command);
+        return NoContent();
+    }
+
+    [HttpPatch("{id}")]
+    public async Task<ActionResult> PatchVehicle(int id, [FromBody] PatchVehicleCommand command)
+    {
+        // Accept body without id or use id from URL
+        var effectiveCommand = command with { Id = id };
+        await _mediator.Send(effectiveCommand);
         return NoContent();
     }
 

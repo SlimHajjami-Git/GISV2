@@ -35,6 +35,27 @@ public class PatchVehicleCommandHandler : IRequestHandler<PatchVehicleCommand, U
         if (!string.IsNullOrEmpty(request.FuelType))
             vehicle.FuelType = request.FuelType;
 
+        // Identification
+        if (request.Brand != null) vehicle.Brand = request.Brand;
+        if (request.Model != null) vehicle.Model = request.Model;
+        if (request.Plate != null) vehicle.Plate = request.Plate;
+        if (request.Year.HasValue) vehicle.Year = request.Year;
+        if (request.Color != null) vehicle.Color = request.Color;
+        if (request.Mileage.HasValue) vehicle.Mileage = request.Mileage.Value;
+        if (request.FuelTankCapacity.HasValue) vehicle.FuelTankCapacity = request.FuelTankCapacity;
+
+        // Acquisition
+        if (!string.IsNullOrEmpty(request.AcquisitionType)) vehicle.AcquisitionType = request.AcquisitionType;
+        if (request.PurchasePrice.HasValue) vehicle.PurchasePrice = request.PurchasePrice;
+        if (request.LeasingMonthlyPayment.HasValue) vehicle.LeasingMonthlyPayment = request.LeasingMonthlyPayment;
+        if (request.LeasingDurationMonths.HasValue) vehicle.LeasingDurationMonths = request.LeasingDurationMonths;
+        if (request.LeasingStartDate.HasValue) vehicle.LeasingStartDate = request.LeasingStartDate;
+        if (request.LeasingPaymentDay.HasValue) vehicle.LeasingPaymentDay = request.LeasingPaymentDay;
+        if (request.RegistrationDate.HasValue) vehicle.RegistrationDate = request.RegistrationDate;
+        if (request.PurchaseDate.HasValue) vehicle.PurchaseDate = request.PurchaseDate;
+
+        vehicle.UpdatedAt = DateTime.UtcNow;
+
         await _context.SaveChangesAsync(cancellationToken);
 
         return Unit.Value;
