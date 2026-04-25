@@ -65,6 +65,15 @@ builder.Services.AddHostedService<GisAPI.Services.AccidentTowMonitoringService>(
 // via GpsDevice.LastBatteryAlertAt to avoid alert spam.
 builder.Services.AddHostedService<GisAPI.Services.BatteryMonitoringService>();
 
+// Document Expiry Monitoring Service — Calypso 6 (P8.1) "Dès la date de
+// notification, on affiche une notification dans la cloche". Every 60 min,
+// scans Vehicles for assurance / vignette / visite technique entering their
+// reminder window (today >= expiry - reminderDays) and fans out a
+// document_expiry notification to company admins. Dedupes against existing
+// notifications by (vehicleId, docType, expiryDate) so the same approaching
+// deadline does not refire on every cycle.
+builder.Services.AddHostedService<GisAPI.Services.DocumentExpiryMonitoringService>();
+
 // Geocoding Service with cache
 builder.Services.AddSingleton<GisAPI.Domain.Interfaces.IGeocodingService, GisAPI.Services.GeocodingService>();
 

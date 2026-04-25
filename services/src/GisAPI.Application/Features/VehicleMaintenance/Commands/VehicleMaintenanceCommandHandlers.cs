@@ -150,7 +150,13 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
         schedule.LastDoneKm = request.Mileage;
         schedule.NextDueKm = template.IntervalKm.HasValue ? request.Mileage + template.IntervalKm.Value : null;
         schedule.NextDueDate = template.IntervalMonths.HasValue ? request.Date.AddMonths(template.IntervalMonths.Value) : null;
-        schedule.Status = CalculateStatus(schedule, vehicle.Mileage);
+        // Calypso 6 (P7.1): use the freshly bumped vehicle mileage AND the
+        // already-loaded template (the schedule was fetched without Include
+        // so schedule.Template was null inside CalculateStatus, falling back
+        // to default warning thresholds — that made the new "next due" appear
+        // already "imminent" right after marking done).
+        var newMileage = request.Mileage > vehicle.Mileage ? request.Mileage : vehicle.Mileage;
+        schedule.Status = CalculateStatus(schedule, newMileage, template);
         schedule.UpdatedAt = DateTime.UtcNow;
 
         // Decrement free uses counter if benefit was applied
@@ -193,11 +199,14 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
         return log.Id;
     }
 
-    private static string CalculateStatus(VehicleMaintenanceSchedule schedule, int currentMileage)
+    private static string CalculateStatus(VehicleMaintenanceSchedule schedule, int currentMileage, MaintenanceTemplate? template = null)
     {
         var today = DateTime.UtcNow.Date;
-        var template = schedule.Template;
-        
+        // Calypso 6 (P7.1): callers that loaded the template separately can pass
+        // it in. The fallback to schedule.Template stays for queries that DID
+        // include it (so older code keeps working).
+        template ??= schedule.Template;
+
         var warningKm = template?.WarningKm ?? 1000;
         var warningDays = template?.WarningDays ?? 30;
         var criticalKm = template?.CriticalKm ?? 0;

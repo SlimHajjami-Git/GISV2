@@ -109,7 +109,7 @@ interface FlatRow {
           <select class="filter-select" [(ngModel)]="statusFilter" (change)="rebuildRows()">
             <option value="">Tous les statuts</option>
             <option value="overdue">En retard</option>
-            <option value="due">A faire</option>
+            <option value="due">Imminent</option>
             <option value="upcoming">A venir</option>
             <option value="ok">OK</option>
           </select>
@@ -493,7 +493,15 @@ interface FlatRow {
           <div class="panel-body">
             <div class="recap-box">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-              <div><strong>{{ historyVehicleName }}</strong> — {{ historyTemplateName }}<br><span class="text-muted">{{ historyVehiclePlate }}</span></div>
+              <div>
+                <strong>{{ historyVehicleName }}</strong> — {{ historyTemplateName }}
+                <!-- Calypso 6 (P7.3): hide plate when it is already part of the
+                     vehicle name (users often name vehicles by their plate, which
+                     produced "236 TU 6536" twice in the history header). -->
+                <ng-container *ngIf="historyVehiclePlate && !historyVehicleName.includes(historyVehiclePlate)">
+                  <br><span class="text-muted">{{ historyVehiclePlate }}</span>
+                </ng-container>
+              </div>
             </div>
             <div class="history-loading" *ngIf="historyLoading">Chargement...</div>
             <div class="history-estimated" *ngIf="!historyLoading && historyLogs.length > 0 && historyEstimatedCost > 0">
@@ -1070,7 +1078,13 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   getTemplateCount(id: string): number { return this.allRows.filter(r => r.templateId === id).length; }
 
   getPriorityLabel(p: string) { return { low:'Faible', medium:'Moyenne', high:'Haute', critical:'Critique' }[p] || p; }
-  getStatusLabel(s: string) { return { ok:'OK', upcoming:'A venir', due:'A faire', overdue:'En retard' }[s] || s; }
+  // Calypso 6 (P7.4): "A faire" was ambiguous (everything is "to do" in some
+  // sense). Renamed to "Imminent" to make the warning-threshold meaning clear:
+  //   ok       -> aucune action proche
+  //   upcoming -> echeance future, pas urgent ("A prevoir")
+  //   due      -> echeance dans la fenetre de prevenance ("Imminent")
+  //   overdue  -> echeance depassee ("En retard")
+  getStatusLabel(s: string) { return { ok:'OK', upcoming:'A prevoir', due:'Imminent', overdue:'En retard' }[s] || s; }
   formatDate(d: Date) { return new Date(d).toLocaleDateString('fr-FR'); }
   getCount(v: VehicleMaintenanceStatus, s: string) { return v.maintenanceItems.filter(m => m.status === s).length; }
   toggleVehicle(id: string) { this.expanded.includes(id) ? this.expanded = this.expanded.filter(x => x !== id) : this.expanded.push(id); }
@@ -1355,7 +1369,10 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
           <tbody>${rows}</tbody>
           <tfoot>
             <tr>
-              <td colspan="3">TOTAL</td>
+              <td colspan="2">TOTAL</td>
+              <!-- Calypso 6 (P7.2): show total estimated AND total real side by
+                   side in the footer so the comparison is immediate. -->
+              <td>${(estimated * this.historyLogs.length).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</td>
               <td>${totalReal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</td>
               <td>${(totalReal - estimated * this.historyLogs.length).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</td>
               <td colspan="2">${this.historyLogs.length} entrée(s)</td>

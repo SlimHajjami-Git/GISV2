@@ -158,32 +158,15 @@ import { DateFilterBarComponent } from './ui/date-filter-bar.component';
               Score de conduite
             </h3>
 
-            <!-- Behavior Metrics -->
-            <div class="metrics-row">
-              <div class="metric-tile braking">
-                <div class="mt-header">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                  <span class="mt-count">{{ driverScore?.harshBrakingCount || 0 }}</span>
-                </div>
-                <span class="mt-label">Freinages brusques</span>
-                <div class="mt-bar"><div class="mt-fill" [style.width.%]="getMetricPercent(driverScore?.harshBrakingCount || 0)"></div></div>
+            <!-- Calypso 6 (P8.2): "Pour le score on met juste la moyenne de
+                 son score" — the 3-tile breakdown (harsh braking / acceleration
+                 / speeding) was removed and replaced with a single average tile
+                 so the panel matches the client's expectation. -->
+            <div class="avg-score-tile" [style.border-color]="getScoreColor(driverScore?.overallScore || 0)">
+              <div class="avg-score-value" [style.color]="getScoreColor(driverScore?.overallScore || 0)">
+                {{ driverScore?.overallScore || 0 }}<span class="avg-score-unit">/100</span>
               </div>
-              <div class="metric-tile acceleration">
-                <div class="mt-header">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-                  <span class="mt-count">{{ driverScore?.harshAccelerationCount || 0 }}</span>
-                </div>
-                <span class="mt-label">Accélérations brusques</span>
-                <div class="mt-bar"><div class="mt-fill" [style.width.%]="getMetricPercent(driverScore?.harshAccelerationCount || 0)"></div></div>
-              </div>
-              <div class="metric-tile speeding">
-                <div class="mt-header">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/></svg>
-                  <span class="mt-count">{{ driverScore?.speedingCount || 0 }}</span>
-                </div>
-                <span class="mt-label">Excès de vitesse</span>
-                <div class="mt-bar"><div class="mt-fill" [style.width.%]="getMetricPercent(driverScore?.speedingCount || 0)"></div></div>
-              </div>
+              <span class="avg-score-label">Moyenne du score</span>
             </div>
           </div>
 
@@ -374,26 +357,15 @@ import { DateFilterBarComponent } from './ui/date-filter-bar.component';
       font-size: 11px; font-weight: 700; letter-spacing: 0.5px; flex-shrink: 0;
     }
 
-    /* Metrics */
-    .metrics-row { display: flex; gap: 10px; }
-    .metric-tile {
-      flex: 1; padding: 14px; border-radius: 10px; border: 1px solid;
+    /* Average score tile (Calypso 6 P8.2) */
+    .avg-score-tile {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 24px 16px; border-radius: 12px; border: 2px solid;
+      background: #f8fafc; gap: 6px;
     }
-    .metric-tile.braking { background: #fef3c7; border-color: #fde68a; }
-    .metric-tile.braking svg { color: #d97706; }
-    .metric-tile.acceleration { background: #fee2e2; border-color: #fecaca; }
-    .metric-tile.acceleration svg { color: #dc2626; }
-    .metric-tile.speeding { background: #dbeafe; border-color: #bfdbfe; }
-    .metric-tile.speeding svg { color: #2563eb; }
-
-    .mt-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-    .mt-count { font-size: 22px; font-weight: 800; color: #0f172a; }
-    .mt-label { font-size: 10px; color: #475569; text-transform: uppercase; letter-spacing: 0.3px; }
-    .mt-bar { height: 4px; background: rgba(0,0,0,0.08); border-radius: 2px; margin-top: 8px; }
-    .mt-fill { height: 100%; border-radius: 2px; background: currentColor; transition: width 0.3s; }
-    .metric-tile.braking .mt-fill { background: #d97706; }
-    .metric-tile.acceleration .mt-fill { background: #dc2626; }
-    .metric-tile.speeding .mt-fill { background: #2563eb; }
+    .avg-score-value { font-size: 56px; font-weight: 800; line-height: 1; }
+    .avg-score-unit { font-size: 22px; font-weight: 600; color: #94a3b8; margin-left: 4px; }
+    .avg-score-label { font-size: 11px; color: #475569; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
 
     /* Consumption Table */
     .consumption-table { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
