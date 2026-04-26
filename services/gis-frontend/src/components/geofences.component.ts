@@ -1928,7 +1928,13 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       activeEndTime: (geofence as any).activeEndTime || null,
       activeDays: (geofence as any).activeDays || [],
       groupId: (geofence as any).groupId || null,
-      assignedVehicleIds: geofence.assignedVehicleIds ? [...geofence.assignedVehicleIds] : []
+      // Calypso 6 (P4): backend returns AssignedVehicleIds as List<int> while
+      // the frontend Vehicle.id is a string ("1" vs 1) — Array.includes
+      // failed silently, so the checkboxes appeared empty during edit even
+      // when the geofence had vehicles assigned. Normalize to string here.
+      assignedVehicleIds: geofence.assignedVehicleIds
+        ? geofence.assignedVehicleIds.map((id: any) => String(id))
+        : []
     };
     this.showPopup = true;
     this.initDrawMap();
@@ -2087,7 +2093,11 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       activeEndTime: this.geofenceForm.activeEndTime || null,
       activeDays: this.geofenceForm.activeDays?.length > 0 ? this.geofenceForm.activeDays : null,
       groupId: this.geofenceForm.groupId || null,
-      assignedVehicleIds: this.geofenceForm.assignedVehicleIds || []
+      // Calypso 6 (P4): backend expects List<int>; frontend stores strings
+      // for consistency with Vehicle.id. Convert back here on save.
+      assignedVehicleIds: (this.geofenceForm.assignedVehicleIds || [])
+        .map((id: any) => Number(id))
+        .filter((n: number) => Number.isFinite(n))
     };
 
     if (this.geofenceForm.type === 'circle') {

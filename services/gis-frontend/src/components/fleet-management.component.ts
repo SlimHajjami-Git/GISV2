@@ -1962,16 +1962,35 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
   }
 
   saveFuelPrice() {
-    if (!this.newPrice.fuelTypeId || !this.newPrice.price) return;
-    
+    // Calypso 6 (P5): "Enregistrer ne fonctionne pas" — the request was
+    // firing but with no visual feedback the user could not tell if it
+    // succeeded. Now the form gives an explicit success/error toast and
+    // the in-memory list is refreshed via change detection.
+    if (!this.newPrice.fuelTypeId) {
+      alert('Veuillez sélectionner un type de carburant');
+      return;
+    }
+    const price = Number(this.newPrice.price);
+    if (!Number.isFinite(price) || price <= 0) {
+      alert('Veuillez saisir un prix par litre valide (> 0)');
+      return;
+    }
+
     this.http.post(`/api/fleet/fuel-types/${this.newPrice.fuelTypeId}/price`, {
-      pricePerLiter: this.newPrice.price
+      pricePerLiter: price
     }).subscribe({
       next: () => {
+        const fuelName = this.fuelTypes.find(f => f.id === this.newPrice.fuelTypeId)?.name || 'carburant';
         this.newPrice = { fuelTypeId: null, price: null };
         this.loadFuelTypes();
+        this.cdr.detectChanges();
+        alert(`Prix enregistré pour ${fuelName} : ${price.toFixed(3)} DT/L`);
       },
-      error: (err) => console.error('Error saving fuel price:', err)
+      error: (err) => {
+        console.error('Error saving fuel price:', err);
+        const msg = err?.error?.message || err?.message || 'Erreur lors de l\'enregistrement du prix';
+        alert(msg);
+      }
     });
   }
 

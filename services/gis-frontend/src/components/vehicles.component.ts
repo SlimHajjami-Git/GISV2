@@ -230,6 +230,20 @@ interface VehicleTrip {
                         </svg>
                         <span>Fiche</span>
                       </button>
+                      <!-- Calypso 6 (P5): "Visualiser Crédit" — visible only for
+                           leasing vehicles. Opens an inline popup showing the
+                           total amount = monthly payment × duration. -->
+                      <button class="btn-table-action credit"
+                              *ngIf="vehicle.acquisitionType === 'leasing'"
+                              (click)="openCreditPopup(vehicle); $event.stopPropagation()"
+                              title="Visualiser Crédit">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <rect x="2" y="5" width="20" height="14" rx="2"/>
+                          <line x1="2" y1="10" x2="22" y2="10"/>
+                          <line x1="6" y1="15" x2="10" y2="15"/>
+                        </svg>
+                        <span>Crédit</span>
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -248,6 +262,50 @@ interface VehicleTrip {
           </div>
         </div>
 
+      </div>
+
+      <!-- Calypso 6 (P5): "Visualiser Crédit" popup — total = monthly × duration -->
+      <div class="credit-overlay" *ngIf="creditPopupVehicle" (click)="closeCreditPopup()">
+        <div class="credit-modal" (click)="$event.stopPropagation()">
+          <div class="credit-head">
+            <div class="credit-head-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            </div>
+            <div class="credit-head-text">
+              <h3>Crédit / Leasing</h3>
+              <span>{{ creditPopupVehicle.name }}<span *ngIf="creditPopupVehicle.plate"> — {{ creditPopupVehicle.plate }}</span></span>
+            </div>
+            <button class="credit-close" (click)="closeCreditPopup()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="credit-body">
+            <div class="credit-row">
+              <span class="credit-label">Mensualité</span>
+              <span class="credit-value">{{ formatMoney(creditPopupVehicle.leasingMonthlyPayment) }} DT</span>
+            </div>
+            <div class="credit-row">
+              <span class="credit-label">Durée du leasing</span>
+              <span class="credit-value">{{ creditPopupVehicle.leasingDurationMonths || 0 }} mois</span>
+            </div>
+            <div class="credit-row" *ngIf="creditPopupVehicle.leasingStartDate">
+              <span class="credit-label">Début du leasing</span>
+              <span class="credit-value">{{ creditPopupVehicle.leasingStartDate | date:'dd/MM/yyyy' }}</span>
+            </div>
+            <div class="credit-divider"></div>
+            <div class="credit-row credit-total">
+              <span class="credit-label">Montant total</span>
+              <span class="credit-value">{{ formatMoney(getCreditTotal(creditPopupVehicle)) }} DT</span>
+            </div>
+            <p class="credit-note" *ngIf="!creditPopupVehicle.leasingMonthlyPayment || !creditPopupVehicle.leasingDurationMonths">
+              Renseignez la mensualité et la durée du leasing dans la fiche véhicule pour voir le détail complet.
+            </p>
+          </div>
+          <div class="credit-foot">
+            <button class="btn-secondary" (click)="closeCreditPopup()">Fermer</button>
+            <button class="btn-primary" (click)="goToVehicleInfo(creditPopupVehicle); closeCreditPopup()">Modifier la fiche</button>
+          </div>
+        </div>
       </div>
 
       <!-- PANNEAU DÉTAIL VÉHICULE (slide-in depuis la droite) -->
@@ -953,6 +1011,80 @@ interface VehicleTrip {
       background: #4f46e5;
       border-color: #4f46e5;
     }
+
+    /* Calypso 6 (P5): "Visualiser Crédit" button + popup */
+    .btn-table-action.credit {
+      background: #f59e0b;
+      border-color: #f59e0b;
+      color: white;
+    }
+    .btn-table-action.credit:hover {
+      background: #d97706;
+      border-color: #d97706;
+    }
+
+    .credit-overlay {
+      position: fixed; inset: 0; background: rgba(15,23,42,.55);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1100; padding: 20px;
+    }
+    .credit-modal {
+      width: 100%; max-width: 460px; background: white;
+      border-radius: 14px; box-shadow: 0 20px 50px rgba(0,0,0,.25);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .credit-head {
+      display: flex; align-items: center; gap: 12px;
+      padding: 16px 20px;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: white;
+    }
+    .credit-head-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: rgba(255,255,255,.18);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .credit-head-text { flex: 1; min-width: 0; }
+    .credit-head-text h3 { margin: 0; font-size: 16px; font-weight: 700; }
+    .credit-head-text span { font-size: 12px; opacity: .9; }
+    .credit-close {
+      width: 28px; height: 28px; border-radius: 8px;
+      background: rgba(255,255,255,.2); border: none; color: white; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .credit-close:hover { background: rgba(255,255,255,.32); }
+    .credit-body { padding: 20px; }
+    .credit-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 0;
+      font-size: 13px;
+    }
+    .credit-row .credit-label { color: #475569; font-weight: 500; }
+    .credit-row .credit-value { color: #0f172a; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .credit-divider { height: 1px; background: #e2e8f0; margin: 8px 0; }
+    .credit-row.credit-total .credit-label { font-size: 14px; font-weight: 700; color: #78350f; }
+    .credit-row.credit-total .credit-value { font-size: 18px; font-weight: 800; color: #d97706; }
+    .credit-note {
+      margin: 12px 0 0; padding: 10px 12px;
+      background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
+      font-size: 11px; color: #92400e;
+    }
+    .credit-foot {
+      display: flex; gap: 8px; justify-content: flex-end;
+      padding: 14px 20px; border-top: 1px solid #f1f5f9;
+      background: #f8fafc;
+    }
+    .credit-foot .btn-secondary {
+      padding: 8px 14px; border: 1px solid #e2e8f0; background: white;
+      border-radius: 8px; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer;
+    }
+    .credit-foot .btn-secondary:hover { background: #f1f5f9; }
+    .credit-foot .btn-primary {
+      padding: 8px 14px; border: none; background: #6366f1; color: white;
+      border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .credit-foot .btn-primary:hover { background: #4f46e5; }
 
     /* Column widths */
     .col-vehicle { min-width: 200px; }
@@ -2450,6 +2582,48 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     this.vehicleExpenses = [];
     this.vehicleTrips = [];
     this.currentLocation = '';
+  }
+
+  // Calypso 6 (P5): "Visualiser Crédit" popup state + helpers.
+  // The list payload already includes the leasing fields (acquisitionType,
+  // leasingMonthlyPayment, leasingDurationMonths, leasingStartDate), but we
+  // refresh from /vehicles/{id} on open to make sure the displayed total
+  // reflects the latest edits if the user just changed the fiche.
+  creditPopupVehicle: any = null;
+
+  openCreditPopup(vehicle: Vehicle) {
+    // Show the row data immediately so the modal opens without a flash, then
+    // refresh from API in the background.
+    this.creditPopupVehicle = { ...(vehicle as any) };
+    const id = parseInt(vehicle.id);
+    if (!isNaN(id)) {
+      this.apiService.getVehicle(id).pipe(takeUntil(this.destroy$)).subscribe({
+        next: (full) => {
+          if (full && this.creditPopupVehicle && this.creditPopupVehicle.id === vehicle.id) {
+            this.creditPopupVehicle = { ...this.creditPopupVehicle, ...full };
+            this.cdr.detectChanges();
+          }
+        },
+        error: (err) => console.error('Error loading credit details:', err)
+      });
+    }
+  }
+
+  closeCreditPopup() {
+    this.creditPopupVehicle = null;
+  }
+
+  getCreditTotal(vehicle: any): number {
+    const monthly = Number(vehicle?.leasingMonthlyPayment ?? 0);
+    const months = Number(vehicle?.leasingDurationMonths ?? 0);
+    if (!Number.isFinite(monthly) || !Number.isFinite(months)) return 0;
+    return monthly * months;
+  }
+
+  formatMoney(value: any): string {
+    const n = Number(value ?? 0);
+    if (!Number.isFinite(n)) return '0,00';
+    return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
   loadVehicleData(vehicle: Vehicle) {

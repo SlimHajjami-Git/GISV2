@@ -469,7 +469,14 @@ export class ApiService {
   private transformGeofence(g: any): any {
     return {
       ...g,
-      center: (g.centerLat != null && g.centerLng != null) ? { lat: g.centerLat, lng: g.centerLng } : undefined
+      center: (g.centerLat != null && g.centerLng != null) ? { lat: g.centerLat, lng: g.centerLng } : undefined,
+      // Calypso 6 (P4): backend returns AssignedVehicleIds as int[] but the
+      // frontend Vehicle.id is a string. Normalize here so includes/equality
+      // work consistently across the geofence editor (the previous mismatch
+      // caused the "monitored vehicles" checkboxes to all appear unchecked).
+      assignedVehicleIds: Array.isArray(g.assignedVehicleIds)
+        ? g.assignedVehicleIds.map((id: any) => String(id))
+        : []
     };
   }
 

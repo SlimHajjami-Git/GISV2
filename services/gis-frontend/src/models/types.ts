@@ -65,6 +65,16 @@ export interface Vehicle {
   gpsModel?: string;
   gpsBrand?: string;
   gpsInstallationDate?: Date;
+
+  // Acquisition / leasing (Calypso 6 P5: surfaced for the "Visualiser Crédit" popup)
+  acquisitionType?: 'purchase' | 'leasing';
+  purchasePrice?: number;
+  purchaseDate?: Date | string;
+  leasingMonthlyPayment?: number;
+  leasingDurationMonths?: number;
+  leasingStartDate?: Date | string;
+  leasingPaymentDay?: number;
+  registrationDate?: Date | string;
 }
 
 export interface VehicleDocument {
