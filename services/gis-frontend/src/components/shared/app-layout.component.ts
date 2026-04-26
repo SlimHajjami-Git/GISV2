@@ -1291,7 +1291,7 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     // Subscribe to real-time new notifications
     this.subs.push(
       this.notificationService.notifications$.subscribe(notifications => {
-        this.notifications = notifications;
+        this.notifications = this.filterByAlertPrefs(notifications);
       })
     );
   }
@@ -1302,10 +1302,55 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     this.signalR.stopConnection();
   }
 
+  /**
+   * Calypso 6 (P9): the Profile page has 4 checkboxes (vitesse, géofencing+
+   * documents+remorquage, offline, entretiens) that the user can toggle to
+   * mute categories of notifications. They were saved to localStorage but
+   * the bell never read them — every notification still showed up. This
+   * helper applies the mute mask so a disabled category disappears from the
+   * dropdown. Critical types (accident, admin, low_voltage, password) stay
+   * visible regardless because the user must always see them.
+   */
+  private filterByAlertPrefs(items: any[]): any[] {
+    if (!items || items.length === 0) return items || [];
+    let prefs: any = null;
+    try {
+      const raw = localStorage.getItem('userAlertPreferences');
+      if (raw) prefs = JSON.parse(raw);
+    } catch { /* ignore corrupted storage */ }
+    if (!prefs) return items;
+
+    const isAllowed = (type: string): boolean => {
+      switch (type) {
+        case 'speed_alert':
+        case 'speeding':
+          return prefs.vitesse !== false;
+        case 'geofence_violation':
+        case 'geofence_entry':
+        case 'geofence_exit':
+        case 'document_expiry':
+        case 'tow_detected':
+        case 'accident_tow':
+          return prefs.geofencingDocsTow !== false;
+        case 'offline_vehicle':
+        case 'vehicle_offline':
+          return prefs.offline !== false;
+        case 'maintenance_due':
+        case 'maintenance_prediction':
+          return prefs.entretiens !== false;
+        default:
+          // Critical types (accident, admin_action, low_voltage, password,
+          // power_cut, …) and anything we did not list always pass through.
+          return true;
+      }
+    };
+    return items.filter(n => isAllowed(n.type));
+  }
+
   loadNotifications() {
     this.notificationService.getNotifications(1, 20).subscribe({
       next: (page) => {
-        this.notifications = page.items;
+        this.notifications = this.filterByAlertPrefs(page.items);
         this.unreadCount = page.unreadCount;
         this.notificationService.notifications$.next(page.items);
         this.notificationService.unreadCount$.next(page.unreadCount);

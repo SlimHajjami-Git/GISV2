@@ -231,7 +231,10 @@ interface PartPricing {
                       <span class="item-desc">{{ vehicle.plate || 'Sans immatriculation' }}</span>
                     </div>
                     <div class="speed-input">
-                      <input type="number" [(ngModel)]="vehicle.speedLimit" min="0" max="200" placeholder="km/h">
+                      <!-- Calypso 6 (P10): auto-save on blur/change so users
+                           don't need to discover the explicit save button. -->
+                      <input type="number" [(ngModel)]="vehicle.speedLimit" min="0" max="200" placeholder="km/h"
+                             (change)="saveSpeedLimit(vehicle)">
                       <span class="unit">km/h</span>
                     </div>
                     <div class="item-actions">

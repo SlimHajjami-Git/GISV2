@@ -685,7 +685,12 @@ interface FlatRow {
     /* Panels */
     .overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; justify-content:flex-end; z-index:1000; }
     .panel { width:100%; max-width:460px; height:100vh; background:white; display:flex; flex-direction:column; box-shadow:-4px 0 20px rgba(0,0,0,.1); }
-    .panel-head { display:flex; justify-content:space-between; align-items:center; padding:18px 20px; color:white; }
+    /* Calypso 6 (P6): "Dépasse le menu" — long template names with long
+       priority/active badges were leaking past the gradient header. Cap to
+       100% width and wrap so badges stay inside their container. */
+    .panel-head { display:flex; justify-content:space-between; align-items:center; padding:18px 20px; color:white; overflow:hidden; max-width:100%; gap:10px; }
+    .panel-head h2 { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1; }
+    .detail-badges { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
     .panel-head.blue { background:linear-gradient(135deg,#3b82f6,#2563eb); }
     .panel-head.green { background:linear-gradient(135deg,#22c55e,#16a34a); }
     .panel-head.purple { background:linear-gradient(135deg,#8b5cf6,#7c3aed); }
