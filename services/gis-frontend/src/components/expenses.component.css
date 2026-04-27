@@ -485,8 +485,32 @@
 }
 
 .total-cell { font-weight: 600; color: #059669; }
+/* Calypso 7 — insurance refund row: amount in green with leading minus sign,
+   the row gets a subtle blue tint so it's obviously a credit, not an expense. */
+.total-cell.refund-amount { color: #059669; }
+tr.refund { background: #f0fdfa; }
+tr.refund:hover { background: #ccfbf1; }
+tr.accident-linked:not(.refund) { background: #fef9c3; }
+tr.accident-linked:not(.refund):hover { background: #fef08a; }
+
+.accident-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-left: 6px;
+  padding: 2px 8px;
+  background: #fee2e2;
+  color: #991b1b;
+  border-radius: 999px;
+  font-size: 10px; font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.accident-badge:hover { background: #fecaca; }
 
 .actions-cell { display: flex; gap: 6px; }
+.btn-action.delete:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 .btn-action {
   width: 28px;

@@ -321,17 +321,31 @@
       </thead>
       <tbody>
         @for (e of filteredExpenses; track e.id) {
-          <tr>
+          <tr [class.accident-linked]="e.accidentEventId" [class.refund]="e.isRefund">
             <td>{{ e.date | date:'dd/MM/yyyy' }}</td>
             <td><span class="plate-badge">{{ e.vehiclePlate }}</span></td>
-            <td><span class="category-badge">{{ getCategoryIcon(e.category) }} {{ getCategoryLabel(e.category) }}</span></td>
+            <td>
+              <span class="category-badge">{{ getCategoryIcon(e.category) }} {{ getCategoryLabel(e.category) }}</span>
+              <!-- Calypso 7 — accident link badge. Click opens the
+                   /rapport-accident/:id page so the admin can jump from
+                   an expense to the accident timeline that produced it. -->
+              <a *ngIf="e.accidentEventId"
+                 class="accident-badge"
+                 [routerLink]="['/rapport-accident', e.accidentEventId]"
+                 (click)="$event.stopPropagation()"
+                 [title]="e.isRefund ? 'Remboursement assurance — voir le rapport' : 'Réparation après accident — voir le rapport'">
+                🚗 Accident #{{ e.accidentEventId }}
+              </a>
+            </td>
             <td class="label-cell">{{ e.label }}</td>
-            <td class="total-cell">{{ e.totalAmount | number:'1.2-2' }} TND</td>
+            <td class="total-cell" [class.refund-amount]="e.isRefund">
+              {{ e.isRefund ? '−' : '' }}{{ e.totalAmount | number:'1.2-2' }} TND
+            </td>
             <td class="actions-cell">
               <button class="btn-action detail" (click)="openDetailPanel(e); $event.stopPropagation()" title="Détail dépense">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               </button>
-              <button class="btn-action delete" (click)="confirmDeleteExpense(e)" title="Supprimer">
+              <button class="btn-action delete" (click)="confirmDeleteExpense(e)" title="Supprimer" [disabled]="!!e.accidentEventId">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               </button>
             </td>

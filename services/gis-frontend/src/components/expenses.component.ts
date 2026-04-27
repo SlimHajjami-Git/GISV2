@@ -1,7 +1,7 @@
 ﻿import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Subject, takeUntil, forkJoin } from 'rxjs';
 import { ApiService, FuelTypeDto, FuelPriceFullDto, MaintenanceTemplateDto, VehiclePartDto } from '../services/api.service';
 import { PdfExportService, PdfGroup, GroupedPdfReportConfig } from '../services/pdf-export.service';
@@ -21,6 +21,13 @@ export interface Expense {
   description?: string;
   createdAt: Date;
   sourceTable?: string;
+
+  // Calypso 7 — when set, this expense was auto-created from an accident
+  // timeline (Phase 5 repair or Phase 6 insurance refund). The list shows
+  // a small "🚗 Accident #X" badge and the row links back to the report.
+  accidentEventId?: number | null;
+  /** True when the row is an insurance refund — UI renders amount as a credit (green). */
+  isRefund?: boolean;
 }
 
 export interface RepairPart {
@@ -33,7 +40,7 @@ export interface RepairPart {
 @Component({
   selector: 'app-expenses',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, RouterLink, AppLayoutComponent],
   templateUrl: './expenses.component.html',
   styleUrls: ['./expenses.component.css']
 })
@@ -162,8 +169,11 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       next: (result) => {
         const allExpenses: Expense[] = [];
         
-        // VehicleCosts (péage, stationnement, amende, autre)
+        // VehicleCosts — including the auto-synced rows from accident
+        // phases 5 & 6 (type='repair' / 'insurance_refund' carry an
+        // accidentEventId for the badge and the link to the report).
         (result.costs || []).forEach((c: any) => {
+          const isRefund = c.type === 'insurance_refund';
           allExpenses.push({
             id: 'cost_' + c.id,
             vehicleId: c.vehicleId,
@@ -177,7 +187,9 @@ export class ExpensesComponent implements OnInit, OnDestroy {
             date: new Date(c.date),
             description: c.description,
             createdAt: new Date(c.createdAt || c.date),
-            sourceTable: 'costs'
+            sourceTable: 'costs',
+            accidentEventId: c.accidentEventId ?? null,
+            isRefund,
           });
         });
 
@@ -569,19 +581,36 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   }
 
   getCategoryLabel(category: string): string {
-    const labels: Record<string, string> = { 
+    const labels: Record<string, string> = {
       'carburant': 'Carburant', 'fuel': 'Carburant',
       'entretien': 'Entretien', 'maintenance': 'Maintenance',
-      'reparation': 'Réparation', 
+      'reparation': 'Réparation',
       'insurance': 'Assurance', 'assurance': 'Assurance',
       'tax': 'Vignette/Taxe',
       'peage': 'Péage', 'toll': 'Péage',
       'stationnement': 'Stationnement', 'parking': 'Parking',
-      'amende': 'Amende', 
+      'amende': 'Amende',
       'autre': 'Autre',
-      'technical_inspection': 'Visite technique'
+      'technical_inspection': 'Visite technique',
+      // Calypso 7 — accident-driven categories.
+      'repair': 'Réparation accident',
+      'insurance_refund': 'Remb. assurance',
     };
     return labels[category] || category;
+  }
+
+  /**
+   * Calypso 7 — net total = expenses minus insurance refunds. Surfaced
+   * next to the gross total so the admin sees their actual out-of-pocket
+   * cost after insurance settlements.
+   */
+  getNetTotal(): number {
+    return this.filteredExpenses.reduce((sum, e) => sum + (e.isRefund ? -e.totalAmount : e.totalAmount), 0);
+  }
+
+  /** Total of insurance refunds in the filtered window (positive number, for display). */
+  getRefundTotal(): number {
+    return this.filteredExpenses.filter(e => e.isRefund).reduce((sum, e) => sum + e.totalAmount, 0);
   }
 
   exportPdf(): void {

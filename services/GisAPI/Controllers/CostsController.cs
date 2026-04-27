@@ -72,7 +72,10 @@ public class CostsController : ControllerBase
                 c.Date,
                 c.Mileage,
                 c.ReceiptNumber,
-                c.CreatedAt
+                c.CreatedAt,
+                // Calypso 7 — link to the accident timeline that produced
+                // this cost (Phase 5 repair / Phase 6 insurance refund).
+                c.AccidentEventId,
             })
             .ToListAsync();
 
