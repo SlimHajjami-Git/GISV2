@@ -167,8 +167,20 @@ interface ChartAxisLabel {
               (visite d'expert, devis garage, réparation, suivi assurance…).
             </p>
 
+            <!--
+              Calypso 7: never write a flip-style toggle handler here, e.g.
+              (toggle)="phaseOpen.X = !phaseOpen.X". The native details element
+              fires its toggle event whenever the open property changes,
+              including when Angular property-binding reflects state back to
+              the DOM. A flip-style handler then re-assigns the value back,
+              Angular re-writes [open], the DOM fires toggle again, and the
+              handler keeps flipping — observed at ~9000 toggles per 500 ms
+              during repro. Always READ the new DOM state from
+              $event.target.open and store it; never mutate it.
+            -->
+
             <!-- Phase 2 — Initial damages -->
-            <details class="phase" [open]="phaseOpen.initial" (toggle)="phaseOpen.initial = !phaseOpen.initial">
+            <details class="phase" [open]="phaseOpen.initial" (toggle)="phaseOpen.initial = $any($event.target).open">
               <summary class="phase-head">
                 <span class="phase-num">2</span>
                 <span class="phase-title">Dégâts visibles (jour de l'accident)</span>
@@ -222,7 +234,7 @@ interface ChartAxisLabel {
             </details>
 
             <!-- Phase 3 — Expert -->
-            <details class="phase" [open]="phaseOpen.expert" (toggle)="phaseOpen.expert = !phaseOpen.expert">
+            <details class="phase" [open]="phaseOpen.expert" (toggle)="phaseOpen.expert = $any($event.target).open">
               <summary class="phase-head">
                 <span class="phase-num">3</span>
                 <span class="phase-title">Expertise assurance (jour J+N)</span>
@@ -264,7 +276,7 @@ interface ChartAxisLabel {
             </details>
 
             <!-- Phase 4 — Mechanic quote -->
-            <details class="phase" [open]="phaseOpen.mechanic" (toggle)="phaseOpen.mechanic = !phaseOpen.mechanic">
+            <details class="phase" [open]="phaseOpen.mechanic" (toggle)="phaseOpen.mechanic = $any($event.target).open">
               <summary class="phase-head">
                 <span class="phase-num">4</span>
                 <span class="phase-title">Devis garage (jour J+M)</span>
@@ -296,7 +308,7 @@ interface ChartAxisLabel {
             </details>
 
             <!-- Phase 5 — Repair (auto-syncs to /depenses) -->
-            <details class="phase" [open]="phaseOpen.repair" (toggle)="phaseOpen.repair = !phaseOpen.repair">
+            <details class="phase" [open]="phaseOpen.repair" (toggle)="phaseOpen.repair = $any($event.target).open">
               <summary class="phase-head">
                 <span class="phase-num">5</span>
                 <span class="phase-title">Réparation (jour J+X)</span>
@@ -329,7 +341,7 @@ interface ChartAxisLabel {
             </details>
 
             <!-- Phase 6 — Insurance settlement (auto-syncs refund to /depenses) -->
-            <details class="phase" [open]="phaseOpen.claim" (toggle)="phaseOpen.claim = !phaseOpen.claim">
+            <details class="phase" [open]="phaseOpen.claim" (toggle)="phaseOpen.claim = $any($event.target).open">
               <summary class="phase-head">
                 <span class="phase-num">6</span>
                 <span class="phase-title">Suivi assurance (jour J+Y)</span>
