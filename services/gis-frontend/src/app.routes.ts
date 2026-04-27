@@ -20,6 +20,7 @@ import { SuppliersComponent } from './components/suppliers.component';
 import { DocumentsComponent } from './components/documents.component';
 import { AccidentClaimsComponent } from './components/accident-claims.component';
 import { AccidentReportComponent } from './components/accident-report.component';
+import { AccidentReportsListComponent } from './components/accident-reports-list.component';
 import { MaintenanceTemplatesComponent } from './components/maintenance-templates.component';
 import { FleetManagementComponent } from './components/fleet-management.component';
 import { RepairsComponent } from './components/repairs.component';
@@ -111,6 +112,9 @@ export const routes: Routes = [
   // Accidents module
   { path: 'accidents', component: AccidentClaimsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
   { path: 'sinistres', component: AccidentClaimsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
+  // Calypso 6 (P9): list of detected + manually-added accident events
+  { path: 'accident-reports', component: AccidentReportsListComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
+  { path: 'rapports-accident', component: AccidentReportsListComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
   { path: 'rapport-accident', component: AccidentReportComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
   { path: 'rapport-accident/:accidentId', component: AccidentReportComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
   

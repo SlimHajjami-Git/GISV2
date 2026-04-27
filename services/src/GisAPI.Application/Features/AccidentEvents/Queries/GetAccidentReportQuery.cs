@@ -34,7 +34,18 @@ public record AccidentReportDto(
     int? DecidedByUserId,
     string? DecidedByName,
     DateTime? DecidedAt,
-    DateTime? TowDetectedAt);
+    DateTime? TowDetectedAt,
+    // Calypso 6 (P9): PDF report URL + damages capture.
+    string? PdfReportUrl,
+    AccidentReportDamagesDto? Damages);
+
+public record AccidentReportDamagesDto(
+    string? Description,
+    string? Severity,            // "minor" | "moderate" | "severe" | "total"
+    decimal? EstimatedCost,
+    string? ClaimNumber,
+    string? InternalNotes,
+    DateTime? ManualTowDate);
 
 public record AccidentReportStoryEventDto(
     string Time,

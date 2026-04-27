@@ -41,6 +41,14 @@ public class AccidentEventConfiguration : IEntityTypeConfiguration<AccidentEvent
         builder.Property(e => e.DecidedAt).HasColumnName("decided_at");
         builder.Property(e => e.TowDetectedAt).HasColumnName("tow_detected_at");
 
+        // Calypso 6 (P9): PDF report URL + damages JSON.
+        builder.Property(e => e.PdfReportUrl)
+            .HasColumnName("pdf_report_url")
+            .HasMaxLength(500);
+        builder.Property(e => e.DamagesJson)
+            .HasColumnName("damages_json")
+            .HasColumnType("jsonb");
+
         builder.Property(e => e.CreatedAt).HasColumnName("created_at");
         builder.Property(e => e.UpdatedAt).HasColumnName("updated_at");
 

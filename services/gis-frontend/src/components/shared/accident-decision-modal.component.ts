@@ -5,6 +5,7 @@ import { filter } from 'rxjs/operators';
 import { ApiService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { SignalRService, SignalRNotification } from '../../services/signalr.service';
+import { AccidentPdfService } from '../../services/accident-pdf.service';
 
 /**
  * Pending accident shown in the modal.
@@ -298,6 +299,7 @@ export class AccidentDecisionModalComponent implements OnInit, OnDestroy {
     private signalr: SignalRService,
     private auth: AuthService,
     private api: ApiService,
+    private accidentPdf: AccidentPdfService,
     private ngZone: NgZone,
     private cdr: ChangeDetectorRef
   ) {}
@@ -351,8 +353,18 @@ export class AccidentDecisionModalComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Accident confirmed → backend stamps status=confirmed and the tow
-   * monitor starts watching. Any error surfaces inline; the modal stays
+   * Accident confirmed → backend stamps status='awaiting_details' and the
+   * tow monitor starts watching. Calypso 6 (P9): we then auto-generate
+   * the report PDF (via AccidentPdfService) and upload it so a row in the
+   * /accident-reports table immediately carries an attached PDF the admin
+   * can download or hand to an expert.
+   *
+   * The PDF generation and upload are best-effort: the modal closes as
+   * soon as the confirm call returns. If the PDF step fails (network
+   * blip, server hiccup) the row is still confirmed; the admin can
+   * always re-attach a PDF from the /accident-reports page.
+   *
+   * Any error on the confirm itself surfaces inline; the modal stays
    * open until the admin retries or picks another action.
    */
   confirm(): void {
@@ -361,11 +373,47 @@ export class AccidentDecisionModalComponent implements OnInit, OnDestroy {
     this.errorMessage = null;
     const id = this.current.accidentEventId;
     this.api.confirmAccident(id).subscribe({
-      next: () => this.finishCurrent(),
+      next: () => {
+        // Confirm succeeded → fire the auto-PDF step in the background and
+        // close the modal immediately so the next queued accident (if any)
+        // can show. Errors during PDF gen / upload are logged but don't
+        // block the user.
+        this.attachAutoPdf(id);
+        this.finishCurrent();
+      },
       error: () => {
         this.busy = null;
         this.errorMessage = "Impossible de confirmer l'accident. Veuillez réessayer.";
         this.cdr.detectChanges();
+      }
+    });
+  }
+
+  /**
+   * Calypso 6 (P9) — fetch the freshly-confirmed report, render it as PDF
+   * with jsPDF, and upload it back so the row carries an attached file
+   * straight away. Best-effort; logs and exits silently on any error.
+   */
+  private attachAutoPdf(accidentId: number): void {
+    this.api.getAccidentReport(accidentId).subscribe({
+      next: (report) => {
+        try {
+          const pdfBlob = this.accidentPdf.generate(report);
+          this.api.uploadAccidentReportPdf(accidentId, pdfBlob, `rapport-accident-${accidentId}.pdf`).subscribe({
+            next: () => {
+              // Success — nothing visible to the user; the row will pick
+              // up the PDF on the next /accident-reports refresh.
+            },
+            error: (err) => {
+              console.warn('[AccidentDecisionModal] PDF upload failed (non-blocking):', err);
+            }
+          });
+        } catch (genErr) {
+          console.warn('[AccidentDecisionModal] PDF generation failed (non-blocking):', genErr);
+        }
+      },
+      error: (err) => {
+        console.warn('[AccidentDecisionModal] could not fetch report for auto-PDF (non-blocking):', err);
       }
     });
   }

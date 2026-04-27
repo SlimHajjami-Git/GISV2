@@ -66,8 +66,16 @@ public class AccidentEvent : TenantEntity
     // and stamps TowDetectedAt the moment the vehicle starts moving again.
 
     /// <summary>
-    /// Lifecycle status. One of <c>"pending"</c>, <c>"confirmed"</c>, <c>"dismissed"</c>.
-    /// Defaults to <c>"pending"</c> on creation.
+    /// Lifecycle status. Calypso 6 (P9) extended to 4 values:
+    /// <list type="bullet">
+    ///   <item><c>"pending"</c> — detection created the row, awaiting admin decision in the modal.</item>
+    ///   <item><c>"awaiting_details"</c> — admin confirmed via the modal, PDF was auto-generated and
+    ///     attached, but the damages form is still empty.</item>
+    ///   <item><c>"confirmed"</c> — admin filled the damages form and finalised the report.</item>
+    ///   <item><c>"dismissed"</c> — fausse alerte; not a real accident.</item>
+    /// </list>
+    /// Manual reports (uploaded by the user for accidents the system missed) are
+    /// inserted directly with status <c>"confirmed"</c>.
     /// </summary>
     public string Status { get; set; } = "pending";
 
@@ -83,4 +91,32 @@ public class AccidentEvent : TenantEntity
     /// the vehicle is still immobilised or the event has not been confirmed.
     /// </summary>
     public DateTime? TowDetectedAt { get; set; }
+
+    // ── Calypso 6 (P9): PDF report + damages capture ───────────────────────
+
+    /// <summary>
+    /// Public URL (under the <c>/uploads</c> static-files endpoint) of the
+    /// auto-generated or manually-uploaded accident report PDF. Null until
+    /// the admin clicks "Confirmer" (auto path) or uploads a file (manual
+    /// path). Format: <c>/uploads/accident-reports/{id}/{guid}.pdf</c>.
+    /// </summary>
+    public string? PdfReportUrl { get; set; }
+
+    /// <summary>
+    /// Free-form damages capture filled by the admin after confirmation.
+    /// Stored as JSON to avoid a column explosion for fields that may
+    /// evolve. Expected shape:
+    /// <code>
+    /// {
+    ///   "description": "...",
+    ///   "severity":    "minor" | "moderate" | "severe" | "total",
+    ///   "estimatedCost": 1234.56,
+    ///   "claimNumber":   "AAS-2026-0123",
+    ///   "internalNotes": "...",
+    ///   "manualTowDate": "2026-04-27T08:30:00Z"
+    /// }
+    /// </code>
+    /// All fields are optional. Null until the admin saves the damages form.
+    /// </summary>
+    public string? DamagesJson { get; set; }
 }

@@ -1587,6 +1587,60 @@ export class ApiService {
     return this.http.post<{ accidentEventId: number }>(`${this.API_URL}/accident-reports/simulate`, null, { headers: this.getHeaders() });
   }
 
+  /**
+   * Calypso 6 (P9) — paged list of accident events for the /accident-reports
+   * admin page. Excludes dismissed rows by default.
+   */
+  listAccidentEvents(options?: {
+    page?: number;
+    pageSize?: number;
+    status?: string;
+    vehicleId?: number;
+    includeDismissed?: boolean;
+  }): Observable<ListAccidentEventsResult> {
+    let params = new HttpParams();
+    if (options?.page) params = params.set('page', options.page.toString());
+    if (options?.pageSize) params = params.set('pageSize', options.pageSize.toString());
+    if (options?.status) params = params.set('status', options.status);
+    if (options?.vehicleId) params = params.set('vehicleId', options.vehicleId.toString());
+    if (options?.includeDismissed) params = params.set('includeDismissed', 'true');
+    return this.http.get<ListAccidentEventsResult>(`${this.API_URL}/accident-reports`, { headers: this.getHeaders(), params });
+  }
+
+  /**
+   * Calypso 6 (P9) — finalise an accident: persists the damages form and
+   * flips status='confirmed' (when previously 'awaiting_details') or
+   * just refreshes the damages on an already-confirmed row.
+   */
+  updateAccidentDamages(id: number, payload: UpdateAccidentDamagesRequest): Observable<void> {
+    return this.http.patch<void>(`${this.API_URL}/accident-reports/${id}/damages`, payload, { headers: this.getHeaders() });
+  }
+
+  /**
+   * Calypso 6 (P9) — uploads the PDF report for an accident event.
+   * Used both for the auto-generated jsPDF blob (right after Confirm in
+   * the modal) and for an externally-supplied PDF (insurance expert).
+   * Multipart/form-data with field name "file".
+   */
+  uploadAccidentReportPdf(id: number, file: File | Blob, fileName?: string): Observable<{ pdfReportUrl: string }> {
+    const formData = new FormData();
+    formData.append('file', file, fileName ?? 'accident-report.pdf');
+    // NB: do NOT set Content-Type manually — Angular sets the multipart
+    // boundary automatically. We just need the auth token.
+    const headers = this.getHeaders().delete('Content-Type');
+    return this.http.post<{ pdfReportUrl: string }>(`${this.API_URL}/accident-reports/${id}/upload-pdf`, formData, { headers });
+  }
+
+  /**
+   * Calypso 6 (P9) — creates an accident the system did not auto-detect.
+   * The admin fills the form (vehicle, date, optional location, damages)
+   * and the row lands as status='confirmed'. The caller can then attach
+   * an external PDF via uploadAccidentReportPdf().
+   */
+  createManualAccident(payload: CreateManualAccidentRequest): Observable<{ accidentEventId: number }> {
+    return this.http.post<{ accidentEventId: number }>(`${this.API_URL}/accident-reports/manual`, payload, { headers: this.getHeaders() });
+  }
+
   // ==================== MAINTENANCE TEMPLATES ====================
 
   getMaintenanceTemplates(options?: { category?: string; isActive?: boolean; page?: number; pageSize?: number }): Observable<PaginatedResult<MaintenanceTemplateDto>> {
@@ -3167,13 +3221,76 @@ export interface AccidentReportDto {
   reasons: AccidentReportReasonDto[] | null;
   indicators: AccidentReportIndicatorDto[] | null;
   // Decision workflow — status defaults to 'pending' from the backend and
-  // moves to 'confirmed' / 'dismissed' once an admin clicks through the
-  // modal. towDetectedAt is stamped by AccidentTowMonitoringService.
-  status: 'pending' | 'confirmed' | 'dismissed';
+  // moves to 'awaiting_details' (admin confirmed) → 'confirmed' (damages
+  // form submitted) or 'dismissed'. towDetectedAt is stamped by
+  // AccidentTowMonitoringService.
+  status: 'pending' | 'awaiting_details' | 'confirmed' | 'dismissed';
   decidedByUserId: number | null;
   decidedByName: string | null;
   decidedAt: string | null;
   towDetectedAt: string | null;
+
+  // Calypso 6 (P9): PDF report URL + structured damages capture.
+  pdfReportUrl: string | null;
+  damages: AccidentReportDamagesDto | null;
+}
+
+export interface AccidentReportDamagesDto {
+  description: string | null;
+  severity: 'minor' | 'moderate' | 'severe' | 'total' | null;
+  estimatedCost: number | null;
+  claimNumber: string | null;
+  internalNotes: string | null;
+  manualTowDate: string | null;
+}
+
+export interface AccidentEventListItemDto {
+  id: number;
+  vehicleId: number | null;
+  vehicleLabel: string | null;
+  incidentAt: string;
+  latitude: number;
+  longitude: number;
+  locationCommune: string | null;
+  locationGovernorate: string | null;
+  confidence: number;
+  status: 'pending' | 'awaiting_details' | 'confirmed' | 'dismissed';
+  decidedAt: string | null;
+  decidedByName: string | null;
+  towDetectedAt: string | null;
+  pdfReportUrl: string | null;
+  severity: 'minor' | 'moderate' | 'severe' | 'total' | null;
+  estimatedCost: number | null;
+}
+
+export interface ListAccidentEventsResult {
+  items: AccidentEventListItemDto[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface UpdateAccidentDamagesRequest {
+  description?: string | null;
+  severity?: 'minor' | 'moderate' | 'severe' | 'total' | null;
+  estimatedCost?: number | null;
+  claimNumber?: string | null;
+  internalNotes?: string | null;
+  manualTowDate?: string | null;
+}
+
+export interface CreateManualAccidentRequest {
+  vehicleId: number;
+  incidentAt: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  locationCommune?: string | null;
+  locationGovernorate?: string | null;
+  description?: string | null;
+  severity?: 'minor' | 'moderate' | 'severe' | 'total' | null;
+  estimatedCost?: number | null;
+  claimNumber?: string | null;
+  internalNotes?: string | null;
 }
 
 export interface AccidentReportStoryEventDto {

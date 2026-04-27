@@ -305,6 +305,16 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnName("tow_detected_at")
                         .HasColumnType("timestamp with time zone");
 
+                    // Calypso 6 (P9): PDF report URL + damages JSON.
+                    b.Property<string>("PdfReportUrl")
+                        .HasColumnName("pdf_report_url")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("DamagesJson")
+                        .HasColumnName("damages_json")
+                        .HasColumnType("jsonb");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnName("created_at")
                         .HasColumnType("timestamp with time zone");

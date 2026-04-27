@@ -121,6 +121,7 @@ interface ChartAxisLabel {
           <section class="status-banner" *ngIf="status" [attr.data-status]="status">
             <div class="status-head">
               <span class="status-pill" [class.is-pending]="status === 'pending'"
+                                         [class.is-awaiting]="status === 'awaiting_details'"
                                          [class.is-confirmed]="status === 'confirmed'"
                                          [class.is-dismissed]="status === 'dismissed'">
                 <span class="status-dot"></span>
@@ -132,6 +133,10 @@ interface ChartAxisLabel {
               <span class="status-tow" *ngIf="towDetectedAtFormatted">
                 Remorquage détecté le {{ towDetectedAtFormatted }}
               </span>
+              <a *ngIf="pdfReportUrl" [href]="pdfReportUrl" target="_blank" class="status-pdf">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Télécharger le rapport PDF
+              </a>
             </div>
             <div class="status-actions" *ngIf="status === 'pending' && isAdmin">
               <p class="status-hint">
@@ -150,6 +155,76 @@ interface ChartAxisLabel {
                 </button>
               </div>
               <p class="status-error" *ngIf="decisionError">{{ decisionError }}</p>
+            </div>
+          </section>
+
+          <!-- Calypso 6 (P9): damages capture form. Visible to admins on
+               'awaiting_details' (mandatory next step) and 'confirmed'
+               (lets them tweak the amount after the expert visit). -->
+          <section class="damages-card"
+                   *ngIf="isAdmin && (status === 'awaiting_details' || status === 'confirmed')">
+            <h3 class="damages-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
+              Évaluation des dégâts
+            </h3>
+            <p class="damages-sub">
+              <ng-container *ngIf="status === 'awaiting_details'">
+                Veuillez compléter ces informations pour finaliser le rapport. Vous pourrez modifier les détails plus tard.
+              </ng-container>
+              <ng-container *ngIf="status === 'confirmed'">
+                Rapport finalisé. Vous pouvez modifier les détails ci-dessous si nécessaire.
+              </ng-container>
+            </p>
+
+            <div class="dmg-row">
+              <label class="dmg-field" style="flex:2 1 0;">
+                <span>Description des dégâts</span>
+                <textarea rows="3" [(ngModel)]="damagesForm.description" placeholder="Aile avant droite enfoncée, pare-chocs cassé..."></textarea>
+              </label>
+            </div>
+
+            <div class="dmg-row">
+              <label class="dmg-field">
+                <span>Sévérité</span>
+                <select [(ngModel)]="damagesForm.severity">
+                  <option [ngValue]="null">—</option>
+                  <option value="minor">Légère</option>
+                  <option value="moderate">Modérée</option>
+                  <option value="severe">Grave</option>
+                  <option value="total">Totale</option>
+                </select>
+              </label>
+              <label class="dmg-field">
+                <span>Coût estimé (DT)</span>
+                <input type="number" step="0.01" [(ngModel)]="damagesForm.estimatedCost" placeholder="0.00">
+              </label>
+              <label class="dmg-field">
+                <span>N° de sinistre (assurance)</span>
+                <input type="text" [(ngModel)]="damagesForm.claimNumber" placeholder="AAS-2026-0123">
+              </label>
+            </div>
+
+            <div class="dmg-row">
+              <label class="dmg-field">
+                <span>Date de remorquage (manuelle)</span>
+                <input type="date" [(ngModel)]="damagesForm.manualTowDate">
+              </label>
+              <label class="dmg-field" style="flex:2 1 0;">
+                <span>Notes internes</span>
+                <textarea rows="2" [(ngModel)]="damagesForm.internalNotes" placeholder="Visible uniquement par les administrateurs..."></textarea>
+              </label>
+            </div>
+
+            <div class="dmg-actions">
+              <button type="button" class="dmg-btn dmg-btn-save"
+                      (click)="saveDamages()"
+                      [disabled]="damagesBusy">
+                <span *ngIf="!damagesBusy">{{ status === 'awaiting_details' ? 'Confirmer les dégâts' : 'Enregistrer les modifications' }}</span>
+                <span *ngIf="damagesBusy">Envoi…</span>
+              </button>
+              <p class="dmg-feedback" *ngIf="damagesMessage" [class.is-error]="damagesMessage.type === 'error'">
+                {{ damagesMessage.text }}
+              </p>
             </div>
           </section>
 
@@ -504,6 +579,10 @@ interface ChartAxisLabel {
       background: #fff7ed;
       border-color: #fed7aa;
     }
+    .status-banner[data-status="awaiting_details"] {
+      background: #eff6ff;
+      border-color: #bfdbfe;
+    }
     .status-banner[data-status="confirmed"] {
       background: #fef2f2;
       border-color: #fecaca;
@@ -533,8 +612,71 @@ interface ChartAxisLabel {
       background: #e2e8f0;
     }
     .status-pill.is-pending   { background: #fed7aa; color: #9a3412; }
+    .status-pill.is-awaiting  { background: #bfdbfe; color: #1e40af; }
     .status-pill.is-confirmed { background: #fecaca; color: #991b1b; }
     .status-pill.is-dismissed { background: #cbd5e1; color: #334155; }
+    .status-pdf {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 12px; background: #fee2e2; color: #dc2626;
+      border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 12px;
+      margin-left: auto;
+    }
+    .status-pdf:hover { background: #fecaca; }
+    /* Damages capture (Calypso 6 P9) */
+    .damages-card {
+      margin-bottom: 28px;
+      padding: 20px 22px;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      background: white;
+      box-shadow: 0 1px 2px rgba(0,0,0,.03);
+    }
+    .damages-title {
+      display: flex; align-items: center; gap: 8px;
+      margin: 0 0 6px 0;
+      font-size: 14px; font-weight: 700; color: #0f172a;
+    }
+    .damages-title svg { color: #dc2626; }
+    .damages-sub {
+      margin: 0 0 16px 0;
+      font-size: 12px; color: #64748b;
+    }
+    .dmg-row {
+      display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;
+    }
+    .dmg-field {
+      flex: 1 1 0; min-width: 180px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .dmg-field > span {
+      font-size: 11px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .dmg-field input, .dmg-field select, .dmg-field textarea {
+      width: 100%;
+      padding: 8px 10px; font-size: 13px;
+      border: 1px solid #e2e8f0; border-radius: 6px; background: white; color: #0f172a;
+      font-family: inherit;
+    }
+    .dmg-field input:focus, .dmg-field select:focus, .dmg-field textarea:focus {
+      outline: none; border-color: #3b82f6;
+    }
+    .dmg-field textarea { resize: vertical; }
+    .dmg-actions {
+      display: flex; align-items: center; gap: 12px; margin-top: 8px;
+    }
+    .dmg-btn {
+      padding: 9px 18px;
+      border: none; border-radius: 8px;
+      font-weight: 600; font-size: 13px; cursor: pointer;
+      transition: background 120ms ease;
+    }
+    .dmg-btn-save { background: #16a34a; color: white; }
+    .dmg-btn-save:hover { background: #15803d; }
+    .dmg-btn-save:disabled { opacity: .6; cursor: not-allowed; }
+    .dmg-feedback {
+      margin: 0; font-size: 12px; color: #15803d; font-weight: 600;
+    }
+    .dmg-feedback.is-error { color: #dc2626; }
     .status-dot {
       width: 8px;
       height: 8px;
@@ -1339,7 +1481,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
    * Kept null until the DTO lands so the banner isn't rendered in the
    * fallback scenario (no :accidentId in the URL).
    */
-  status: 'pending' | 'confirmed' | 'dismissed' | null = null;
+  status: 'pending' | 'awaiting_details' | 'confirmed' | 'dismissed' | null = null;
   decidedByName: string | null = null;
   decidedAtFormatted: string | null = null;
   towDetectedAtFormatted: string | null = null;
@@ -1351,6 +1493,19 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   /** Inline busy indicator on the fallback buttons. */
   decisionBusy: 'confirm' | 'dismiss' | null = null;
   decisionError: string | null = null;
+
+  // Calypso 6 (P9) — PDF + damages form state.
+  pdfReportUrl: string | null = null;
+  damagesForm = {
+    description: '' as string,
+    severity: null as 'minor' | 'moderate' | 'severe' | 'total' | null,
+    estimatedCost: null as number | null,
+    claimNumber: '' as string,
+    internalNotes: '' as string,
+    manualTowDate: '' as string,
+  };
+  damagesBusy = false;
+  damagesMessage: { type: 'success' | 'error'; text: string } | null = null;
 
   private map?: L.Map;
   private impactMarker?: L.Marker;
@@ -1367,10 +1522,11 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
 
   get statusLabel(): string {
     switch (this.status) {
-      case 'pending':   return 'En attente de décision';
-      case 'confirmed': return 'Accident confirmé';
-      case 'dismissed': return 'Fausse alerte';
-      default:          return '';
+      case 'pending':          return 'En attente de décision';
+      case 'awaiting_details': return 'Dégâts à compléter';
+      case 'confirmed':        return 'Accident confirmé';
+      case 'dismissed':        return 'Fausse alerte';
+      default:                 return '';
     }
   }
 
@@ -1448,6 +1604,19 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     this.decidedByName = dto.decidedByName ?? null;
     this.decidedAtFormatted = this.formatShortDateTime(dto.decidedAt);
     this.towDetectedAtFormatted = this.formatShortDateTime(dto.towDetectedAt);
+
+    // Calypso 6 (P9) — PDF + damages capture.
+    this.pdfReportUrl = dto.pdfReportUrl ?? null;
+    if (dto.damages) {
+      this.damagesForm.description = dto.damages.description ?? '';
+      this.damagesForm.severity = dto.damages.severity ?? null;
+      this.damagesForm.estimatedCost = dto.damages.estimatedCost ?? null;
+      this.damagesForm.claimNumber = dto.damages.claimNumber ?? '';
+      this.damagesForm.internalNotes = dto.damages.internalNotes ?? '';
+      this.damagesForm.manualTowDate = dto.damages.manualTowDate
+        ? new Date(dto.damages.manualTowDate).toISOString().slice(0, 10)
+        : '';
+    }
 
     if (dto.locationCommune) this.locationCommune = dto.locationCommune;
     if (dto.locationGovernorate) this.locationGovernorate = dto.locationGovernorate;
@@ -1997,6 +2166,47 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       error: () => {
         this.decisionBusy = null;
         this.decisionError = "Impossible d'enregistrer la fausse alerte. Veuillez réessayer.";
+        this.cdr.markForCheck();
+      },
+    });
+    this.subs.push(sub);
+  }
+
+  /**
+   * Calypso 6 (P9) — finalises the accident by posting the damages form.
+   * The status flips from <c>awaiting_details</c> to <c>confirmed</c> on
+   * the backend; we re-fetch the DTO so the page picks up the new banner
+   * state (and any side-effects like a fresh decided_at). The form stays
+   * editable on already-confirmed rows so the admin can tweak the amount
+   * after the expert visit.
+   */
+  saveDamages(): void {
+    if (!this.accidentEventId || this.damagesBusy) return;
+    this.damagesBusy = true;
+    this.damagesMessage = null;
+    const id = this.accidentEventId;
+
+    const payload = {
+      description: this.damagesForm.description?.trim() || null,
+      severity: this.damagesForm.severity,
+      estimatedCost: this.damagesForm.estimatedCost,
+      claimNumber: this.damagesForm.claimNumber?.trim() || null,
+      internalNotes: this.damagesForm.internalNotes?.trim() || null,
+      manualTowDate: this.damagesForm.manualTowDate
+        ? new Date(this.damagesForm.manualTowDate).toISOString()
+        : null,
+    };
+
+    const sub = this.apiService.updateAccidentDamages(id, payload).subscribe({
+      next: () => {
+        this.damagesBusy = false;
+        this.damagesMessage = { type: 'success', text: "Dégâts enregistrés et accident confirmé." };
+        this.reloadAfterDecision(id, 'confirmed');
+      },
+      error: (err: any) => {
+        this.damagesBusy = false;
+        const msg = err?.error?.message || "Impossible d'enregistrer les dégâts. Veuillez réessayer.";
+        this.damagesMessage = { type: 'error', text: msg };
         this.cdr.markForCheck();
       },
     });

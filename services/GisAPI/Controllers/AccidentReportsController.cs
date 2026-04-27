@@ -8,6 +8,7 @@ using GisAPI.Infrastructure.Persistence;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Controllers;
 
@@ -26,6 +27,7 @@ public class AccidentReportsController : ControllerBase
     private readonly GisDbContext _context;
     private readonly INotificationService _notifService;
     private readonly ICurrentTenantService _tenantService;
+    private readonly IWebHostEnvironment _env;
     private readonly ILogger<AccidentReportsController> _logger;
 
     public AccidentReportsController(
@@ -33,13 +35,141 @@ public class AccidentReportsController : ControllerBase
         GisDbContext context,
         INotificationService notifService,
         ICurrentTenantService tenantService,
+        IWebHostEnvironment env,
         ILogger<AccidentReportsController> logger)
     {
         _mediator = mediator;
         _context = context;
         _notifService = notifService;
         _tenantService = tenantService;
+        _env = env;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Calypso 6 (P9) — paged list of all accident events for the current
+    /// tenant. Default excludes <c>dismissed</c> rows (noise). Supports
+    /// optional filters on <c>status</c> and <c>vehicleId</c>.
+    /// </summary>
+    [HttpGet]
+    public async Task<ActionResult<ListAccidentEventsResult>> List(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? status = null,
+        [FromQuery] int? vehicleId = null,
+        [FromQuery] bool includeDismissed = false,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new ListAccidentEventsQuery(page, pageSize, status, vehicleId, includeDismissed),
+            ct);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Calypso 6 (P9) — finalise the accident: persists the damages form
+    /// (description, severity, estimated cost, claim number, internal
+    /// notes, manual tow date) and flips <c>status = "confirmed"</c>.
+    /// Only valid when the row is currently in <c>awaiting_details</c> or
+    /// already <c>confirmed</c> (re-edit). Returns 400 otherwise.
+    /// </summary>
+    [HttpPatch("{id:int}/damages")]
+    public async Task<IActionResult> UpdateDamages(int id, [FromBody] UpdateAccidentDamagesRequest request, CancellationToken ct)
+    {
+        try
+        {
+            await _mediator.Send(new UpdateAccidentDamagesCommand(
+                AccidentEventId: id,
+                Description: request.Description,
+                Severity: request.Severity,
+                EstimatedCost: request.EstimatedCost,
+                ClaimNumber: request.ClaimNumber,
+                InternalNotes: request.InternalNotes,
+                ManualTowDate: request.ManualTowDate
+            ), ct);
+            return NoContent();
+        }
+        catch (NotFoundException) { return NotFound(); }
+        catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    /// <summary>
+    /// Calypso 6 (P9) — store the PDF accident report attached to an event.
+    /// Used both for the auto-generated frontend PDF (uploaded right after
+    /// confirm) and for an externally-supplied PDF (insurance expert) on
+    /// manual reports. The file is written under
+    /// <c>uploads/accident-reports/{id}/{guid}.pdf</c> and the public
+    /// URL is persisted on the row.
+    /// </summary>
+    [HttpPost("{id:int}/upload-pdf")]
+    [RequestSizeLimit(20_000_000)] // 20 MB max
+    public async Task<ActionResult<object>> UploadPdf(int id, [FromForm] IFormFile file, CancellationToken ct)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest(new { message = "Fichier requis" });
+        if (file.Length > 20_000_000)
+            return BadRequest(new { message = "Fichier trop volumineux (max 20 Mo)" });
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext != ".pdf")
+            return BadRequest(new { message = "Format non supporté — uniquement PDF" });
+
+        // Make sure the row exists and belongs to the caller's tenant before
+        // we touch the disk. The Attach command re-checks but we want to
+        // fail early on missing/cross-tenant rows without writing files.
+        var companyId = _tenantService.CompanyId;
+        if (companyId == null) return BadRequest(new { message = "Société non identifiée" });
+        var ev = await _context.AccidentEvents
+            .FirstOrDefaultAsync(e => e.Id == id && e.CompanyId == companyId.Value, ct);
+        if (ev == null) return NotFound();
+
+        var uploadsDir = Path.Combine(_env.ContentRootPath, "uploads", "accident-reports", id.ToString());
+        if (!Directory.Exists(uploadsDir)) Directory.CreateDirectory(uploadsDir);
+
+        var uniqueName = $"{Guid.NewGuid()}.pdf";
+        var filePath = Path.Combine(uploadsDir, uniqueName);
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream, ct);
+        }
+
+        var publicUrl = $"/uploads/accident-reports/{id}/{uniqueName}";
+        await _mediator.Send(new AttachAccidentPdfCommand(id, publicUrl), ct);
+
+        _logger.LogInformation(
+            "AccidentReportsController.UploadPdf: accident {AccidentId} attached PDF at {Url} ({Size} bytes)",
+            id, publicUrl, file.Length);
+
+        return Ok(new { pdfReportUrl = publicUrl });
+    }
+
+    /// <summary>
+    /// Calypso 6 (P9) — manual accident creation (admin records an accident
+    /// the system did not auto-detect). Returns the new id; the caller can
+    /// then call <c>POST /:id/upload-pdf</c> to attach an expert report.
+    /// </summary>
+    [HttpPost("manual")]
+    public async Task<ActionResult<object>> CreateManual([FromBody] CreateManualAccidentRequest request, CancellationToken ct)
+    {
+        try
+        {
+            var id = await _mediator.Send(new CreateManualAccidentCommand(
+                VehicleId: request.VehicleId,
+                IncidentAt: request.IncidentAt,
+                Latitude: request.Latitude,
+                Longitude: request.Longitude,
+                LocationCommune: request.LocationCommune,
+                LocationGovernorate: request.LocationGovernorate,
+                Description: request.Description,
+                Severity: request.Severity,
+                EstimatedCost: request.EstimatedCost,
+                ClaimNumber: request.ClaimNumber,
+                InternalNotes: request.InternalNotes
+            ), ct);
+            return Ok(new { accidentEventId = id });
+        }
+        catch (NotFoundException) { return NotFound(); }
+        catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
     /// <summary>
@@ -204,3 +334,26 @@ public class AccidentReportsController : ControllerBase
         return Ok(new { accidentEventId = ev.Id });
     }
 }
+
+// ── Calypso 6 (P9) request DTOs ────────────────────────────────────────────
+
+public record UpdateAccidentDamagesRequest(
+    string? Description,
+    string? Severity,            // "minor" | "moderate" | "severe" | "total"
+    decimal? EstimatedCost,
+    string? ClaimNumber,
+    string? InternalNotes,
+    DateTime? ManualTowDate);
+
+public record CreateManualAccidentRequest(
+    int VehicleId,
+    DateTime IncidentAt,
+    double? Latitude,
+    double? Longitude,
+    string? LocationCommune,
+    string? LocationGovernorate,
+    string? Description,
+    string? Severity,
+    decimal? EstimatedCost,
+    string? ClaimNumber,
+    string? InternalNotes);

@@ -68,7 +68,10 @@ public class GetAccidentReportQueryHandler
             ev.DecidedByUserId,
             decidedByName,
             ev.DecidedAt,
-            ev.TowDetectedAt);
+            ev.TowDetectedAt,
+            // Calypso 6 (P9): PDF + damages.
+            ev.PdfReportUrl,
+            Deserialize<AccidentReportDamagesDto>(ev.DamagesJson));
     }
 
     private static T? Deserialize<T>(string? json) where T : class

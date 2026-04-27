@@ -78,7 +78,12 @@ public class ConfirmAccidentCommandHandler : IRequestHandler<ConfirmAccidentComm
             return Unit.Value;
         }
 
-        ev.Status = "confirmed";
+        // Calypso 6 (P9): the workflow now has an intermediate state.
+        // Confirming the modal moves the row to 'awaiting_details' (admin
+        // said "yes it's a real accident" → PDF will be auto-generated and
+        // attached, then the admin must fill the damages form to finalise).
+        // The transition to 'confirmed' happens in UpdateAccidentDamagesCommand.
+        ev.Status = "awaiting_details";
         ev.DecidedByUserId = currentUserId;
         ev.DecidedAt = DateTime.UtcNow;
         ev.UpdatedAt = DateTime.UtcNow;
@@ -86,7 +91,7 @@ public class ConfirmAccidentCommandHandler : IRequestHandler<ConfirmAccidentComm
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "ConfirmAccidentCommand: accident {AccidentId} confirmed by user {UserId} (company {CompanyId})",
+            "ConfirmAccidentCommand: accident {AccidentId} moved to 'awaiting_details' by user {UserId} (company {CompanyId})",
             ev.Id, currentUserId, companyId);
 
         // Audit notification: tell the other admins the decision is done so

@@ -83,12 +83,15 @@ public class AccidentTowMonitoringService : BackgroundService
 
         var cutoff = DateTime.UtcNow.AddDays(-TowWatchDays);
 
-        // Candidate events: confirmed, not yet marked towed, still inside the
-        // 14-day watch window. We need the tracked entity back to stamp
-        // tow_detected_at, so no AsNoTracking().
+        // Candidate events: admin said "yes it's a real accident", not yet
+        // marked towed, still inside the 14-day watch window. We need the
+        // tracked entity back to stamp tow_detected_at, so no AsNoTracking().
+        // Calypso 6 (P9): "awaiting_details" is the post-confirm state where
+        // the admin has not yet filled the damages form — tow monitoring must
+        // kick in immediately, not wait for the form to be completed.
         var events = await context.AccidentEvents
             .IgnoreQueryFilters()
-            .Where(e => e.Status == "confirmed"
+            .Where(e => (e.Status == "confirmed" || e.Status == "awaiting_details")
                      && e.TowDetectedAt == null
                      && e.IncidentAt >= cutoff
                      && e.GpsDeviceId != null)
