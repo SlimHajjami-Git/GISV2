@@ -18,7 +18,9 @@ import { SettingsComponent } from './components/settings.component';
 import { UserManagementComponent } from './components/user-management.component';
 import { SuppliersComponent } from './components/suppliers.component';
 import { DocumentsComponent } from './components/documents.component';
-import { AccidentClaimsComponent } from './components/accident-claims.component';
+// Calypso 7 — AccidentClaimsComponent + accident-claim-form removed; the
+// unified accident timeline lives in AccidentReportsListComponent +
+// AccidentReportComponent. /accidents and /sinistres now redirect.
 import { AccidentReportComponent } from './components/accident-report.component';
 import { AccidentReportsListComponent } from './components/accident-reports-list.component';
 import { MaintenanceTemplatesComponent } from './components/maintenance-templates.component';
@@ -109,11 +111,12 @@ export const routes: Routes = [
   { path: 'documents', component: DocumentsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'documents' } },
   { path: 'echeances', component: DocumentsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'documents' } },
   
-  // Accidents module
-  { path: 'accidents', component: AccidentClaimsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
-  { path: 'sinistres', component: AccidentClaimsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
-  // Calypso 6 (P9): list of detected + manually-added accident events
-  { path: 'accident-reports', component: AccidentReportsListComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
+  // Accidents module — Calypso 7 unified timeline.
+  // /accidents and /sinistres redirect to the new list page so existing
+  // bookmarks and menu links keep working.
+  { path: 'accidents',         redirectTo: '/accident-reports', pathMatch: 'full' },
+  { path: 'sinistres',         redirectTo: '/accident-reports', pathMatch: 'full' },
+  { path: 'accident-reports',  component: AccidentReportsListComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
   { path: 'rapports-accident', component: AccidentReportsListComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
   { path: 'rapport-accident', component: AccidentReportComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
   { path: 'rapport-accident/:accidentId', component: AccidentReportComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },

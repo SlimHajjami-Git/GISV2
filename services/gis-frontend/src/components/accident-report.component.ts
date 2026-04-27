@@ -122,7 +122,6 @@ interface ChartAxisLabel {
           <section class="status-banner" *ngIf="status" [attr.data-status]="status">
             <div class="status-head">
               <span class="status-pill" [class.is-pending]="status === 'pending'"
-                                         [class.is-awaiting]="status === 'awaiting_details'"
                                          [class.is-confirmed]="status === 'confirmed'"
                                          [class.is-dismissed]="status === 'dismissed'">
                 <span class="status-dot"></span>
@@ -159,74 +158,229 @@ interface ChartAxisLabel {
             </div>
           </section>
 
-          <!-- Calypso 6 (P9): damages capture form. Visible to admins on
-               'awaiting_details' (mandatory next step) and 'confirmed'
-               (lets them tweak the amount after the expert visit). -->
-          <section class="damages-card"
-                   *ngIf="isAdmin && (status === 'awaiting_details' || status === 'confirmed')">
-            <h3 class="damages-title">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
-              Évaluation des dégâts
-            </h3>
-            <p class="damages-sub">
-              <ng-container *ngIf="status === 'awaiting_details'">
-                Veuillez compléter ces informations pour finaliser le rapport. Vous pourrez modifier les détails plus tard.
-              </ng-container>
-              <ng-container *ngIf="status === 'confirmed'">
-                Rapport finalisé. Vous pouvez modifier les détails ci-dessous si nécessaire.
-              </ng-container>
+          <!-- Calypso 7 — Accident timeline (6 phases, each independently
+               editable as the real-world events unfold over multiple days). -->
+          <section class="timeline" *ngIf="isAdmin && status === 'confirmed'">
+            <h3 class="timeline-title">Suivi de l'accident</h3>
+            <p class="timeline-sub">
+              Chaque phase peut être complétée indépendamment au fur et à mesure
+              (visite d'expert, devis garage, réparation, suivi assurance…).
             </p>
 
-            <div class="dmg-row">
-              <label class="dmg-field" style="flex:2 1 0;">
-                <span>Description des dégâts</span>
-                <textarea rows="3" [(ngModel)]="damagesForm.description" placeholder="Aile avant droite enfoncée, pare-chocs cassé..."></textarea>
-              </label>
-            </div>
+            <!-- Phase 2 — Initial damages -->
+            <details class="phase" [open]="phaseOpen.initial" (toggle)="phaseOpen.initial = !phaseOpen.initial">
+              <summary class="phase-head">
+                <span class="phase-num">2</span>
+                <span class="phase-title">Dégâts visibles (jour de l'accident)</span>
+                <span class="phase-status" [class.done]="!!phase2.description || !!phase2.severity">
+                  {{ phase2.description || phase2.severity ? 'Renseigné' : 'À compléter' }}
+                </span>
+              </summary>
+              <div class="phase-body">
+                <div class="phase-row">
+                  <label class="phase-field" style="flex:2 1 0;">
+                    <span>Description des dégâts visibles</span>
+                    <textarea rows="3" [(ngModel)]="phase2.description" placeholder="Aile avant droite enfoncée, pare-chocs cassé..."></textarea>
+                  </label>
+                </div>
+                <div class="phase-row">
+                  <label class="phase-field">
+                    <span>Sévérité apparente</span>
+                    <select [(ngModel)]="phase2.severity">
+                      <option [ngValue]="null">—</option>
+                      <option value="minor">Légère</option>
+                      <option value="moderate">Modérée</option>
+                      <option value="severe">Grave</option>
+                      <option value="total">Totale</option>
+                    </select>
+                  </label>
+                  <label class="phase-field">
+                    <span>Kilométrage à l'accident</span>
+                    <input type="number" [(ngModel)]="phase2.mileageAtAccident" placeholder="50000">
+                  </label>
+                  <label class="phase-field">
+                    <span>N° rapport de police</span>
+                    <input type="text" [(ngModel)]="phase2.policeReportNumber" placeholder="...">
+                  </label>
+                </div>
+                <div class="phase-row">
+                  <label class="phase-field">
+                    <span>Conditions météo</span>
+                    <input type="text" [(ngModel)]="phase2.weatherConditions" placeholder="Pluvieux, brumeux...">
+                  </label>
+                  <label class="phase-field">
+                    <span>État de la route</span>
+                    <input type="text" [(ngModel)]="phase2.roadConditions" placeholder="Mouillée, verglas...">
+                  </label>
+                </div>
+                <div class="phase-actions">
+                  <button class="phase-btn save" (click)="savePhase2()" [disabled]="phaseBusy === 'phase2'">
+                    {{ phaseBusy === 'phase2' ? 'Enregistrement…' : 'Enregistrer' }}
+                  </button>
+                </div>
+              </div>
+            </details>
 
-            <div class="dmg-row">
-              <label class="dmg-field">
-                <span>Sévérité</span>
-                <select [(ngModel)]="damagesForm.severity">
-                  <option [ngValue]="null">—</option>
-                  <option value="minor">Légère</option>
-                  <option value="moderate">Modérée</option>
-                  <option value="severe">Grave</option>
-                  <option value="total">Totale</option>
-                </select>
-              </label>
-              <label class="dmg-field">
-                <span>Coût estimé (DT)</span>
-                <input type="number" step="0.01" [(ngModel)]="damagesForm.estimatedCost" placeholder="0.00">
-              </label>
-              <label class="dmg-field">
-                <span>N° de sinistre (assurance)</span>
-                <input type="text" [(ngModel)]="damagesForm.claimNumber" placeholder="AAS-2026-0123">
-              </label>
-            </div>
+            <!-- Phase 3 — Expert -->
+            <details class="phase" [open]="phaseOpen.expert" (toggle)="phaseOpen.expert = !phaseOpen.expert">
+              <summary class="phase-head">
+                <span class="phase-num">3</span>
+                <span class="phase-title">Expertise assurance (jour J+N)</span>
+                <span class="phase-status" [class.done]="!!phase3.visitedAt">
+                  {{ phase3.visitedAt ? 'Visite enregistrée' : 'En attente' }}
+                </span>
+              </summary>
+              <div class="phase-body">
+                <div class="phase-row">
+                  <label class="phase-field">
+                    <span>Date de visite</span>
+                    <input type="date" [(ngModel)]="phase3.visitedAt">
+                  </label>
+                  <label class="phase-field">
+                    <span>Nom expert</span>
+                    <input type="text" [(ngModel)]="phase3.expertName" placeholder="Nom de l'expert">
+                  </label>
+                  <label class="phase-field">
+                    <span>Société d'expertise</span>
+                    <input type="text" [(ngModel)]="phase3.expertCompany" placeholder="Cabinet d'expertise">
+                  </label>
+                </div>
+                <div class="phase-row">
+                  <label class="phase-field" style="flex:2 1 0;">
+                    <span>Évaluation</span>
+                    <textarea rows="2" [(ngModel)]="phase3.assessment" placeholder="Description des dégâts par l'expert..."></textarea>
+                  </label>
+                  <label class="phase-field">
+                    <span>Montant estimé (DT)</span>
+                    <input type="number" step="0.01" [(ngModel)]="phase3.estimatedAmount" placeholder="0.00">
+                  </label>
+                </div>
+                <div class="phase-actions">
+                  <button class="phase-btn save" (click)="savePhase3()" [disabled]="phaseBusy === 'phase3'">
+                    {{ phaseBusy === 'phase3' ? 'Enregistrement…' : 'Enregistrer' }}
+                  </button>
+                </div>
+              </div>
+            </details>
 
-            <div class="dmg-row">
-              <label class="dmg-field">
-                <span>Date de remorquage (manuelle)</span>
-                <input type="date" [(ngModel)]="damagesForm.manualTowDate">
-              </label>
-              <label class="dmg-field" style="flex:2 1 0;">
-                <span>Notes internes</span>
-                <textarea rows="2" [(ngModel)]="damagesForm.internalNotes" placeholder="Visible uniquement par les administrateurs..."></textarea>
-              </label>
-            </div>
+            <!-- Phase 4 — Mechanic quote -->
+            <details class="phase" [open]="phaseOpen.mechanic" (toggle)="phaseOpen.mechanic = !phaseOpen.mechanic">
+              <summary class="phase-head">
+                <span class="phase-num">4</span>
+                <span class="phase-title">Devis garage (jour J+M)</span>
+                <span class="phase-status" [class.done]="!!phase4.quoteAt || phase4.quotedAmount != null">
+                  {{ phase4.quoteAt || phase4.quotedAmount != null ? 'Devis reçu' : 'En attente' }}
+                </span>
+              </summary>
+              <div class="phase-body">
+                <div class="phase-row">
+                  <label class="phase-field">
+                    <span>Date du devis</span>
+                    <input type="date" [(ngModel)]="phase4.quoteAt">
+                  </label>
+                  <label class="phase-field">
+                    <span>Nom du garage</span>
+                    <input type="text" [(ngModel)]="phase4.mechanicName" placeholder="Garage XYZ">
+                  </label>
+                  <label class="phase-field">
+                    <span>Montant devis (DT)</span>
+                    <input type="number" step="0.01" [(ngModel)]="phase4.quotedAmount" placeholder="0.00">
+                  </label>
+                </div>
+                <div class="phase-actions">
+                  <button class="phase-btn save" (click)="savePhase4()" [disabled]="phaseBusy === 'phase4'">
+                    {{ phaseBusy === 'phase4' ? 'Enregistrement…' : 'Enregistrer' }}
+                  </button>
+                </div>
+              </div>
+            </details>
 
-            <div class="dmg-actions">
-              <button type="button" class="dmg-btn dmg-btn-save"
-                      (click)="saveDamages()"
-                      [disabled]="damagesBusy">
-                <span *ngIf="!damagesBusy">{{ status === 'awaiting_details' ? 'Confirmer les dégâts' : 'Enregistrer les modifications' }}</span>
-                <span *ngIf="damagesBusy">Envoi…</span>
-              </button>
-              <p class="dmg-feedback" *ngIf="damagesMessage" [class.is-error]="damagesMessage.type === 'error'">
-                {{ damagesMessage.text }}
-              </p>
-            </div>
+            <!-- Phase 5 — Repair (auto-syncs to /depenses) -->
+            <details class="phase" [open]="phaseOpen.repair" (toggle)="phaseOpen.repair = !phaseOpen.repair">
+              <summary class="phase-head">
+                <span class="phase-num">5</span>
+                <span class="phase-title">Réparation (jour J+X)</span>
+                <span class="phase-status" [class.done]="phase5.actualCost != null">
+                  {{ phase5.actualCost != null ? 'Réparé' : 'En attente' }}
+                </span>
+              </summary>
+              <div class="phase-body">
+                <p class="phase-hint">💡 Une fois enregistrée, cette réparation apparaîtra automatiquement dans le module Dépenses.</p>
+                <div class="phase-row">
+                  <label class="phase-field">
+                    <span>Début réparation</span>
+                    <input type="date" [(ngModel)]="phase5.startedAt">
+                  </label>
+                  <label class="phase-field">
+                    <span>Fin réparation</span>
+                    <input type="date" [(ngModel)]="phase5.completedAt">
+                  </label>
+                  <label class="phase-field">
+                    <span>Coût réel facture (DT)</span>
+                    <input type="number" step="0.01" [(ngModel)]="phase5.actualCost" placeholder="0.00">
+                  </label>
+                </div>
+                <div class="phase-actions">
+                  <button class="phase-btn save" (click)="savePhase5()" [disabled]="phaseBusy === 'phase5'">
+                    {{ phaseBusy === 'phase5' ? 'Enregistrement…' : 'Enregistrer la réparation' }}
+                  </button>
+                </div>
+              </div>
+            </details>
+
+            <!-- Phase 6 — Insurance settlement (auto-syncs refund to /depenses) -->
+            <details class="phase" [open]="phaseOpen.claim" (toggle)="phaseOpen.claim = !phaseOpen.claim">
+              <summary class="phase-head">
+                <span class="phase-num">6</span>
+                <span class="phase-title">Suivi assurance (jour J+Y)</span>
+                <span class="phase-status" [class.done]="!!phase6.claimNumber || !!phase6.status">
+                  {{ phase6.claimNumber || phase6.status ? phaseClaimLabel(phase6.status) : 'Non déclaré' }}
+                </span>
+              </summary>
+              <div class="phase-body">
+                <p class="phase-hint">💡 Le montant approuvé par l'assurance sera automatiquement reporté en remboursement dans Dépenses.</p>
+                <div class="phase-row">
+                  <label class="phase-field">
+                    <span>N° de sinistre</span>
+                    <input type="text" [(ngModel)]="phase6.claimNumber" placeholder="AAS-2026-0123">
+                  </label>
+                  <label class="phase-field">
+                    <span>Date soumission</span>
+                    <input type="date" [(ngModel)]="phase6.submittedAt">
+                  </label>
+                  <label class="phase-field">
+                    <span>Statut</span>
+                    <select [(ngModel)]="phase6.status">
+                      <option [ngValue]="null">—</option>
+                      <option value="pending">En cours</option>
+                      <option value="approved">Approuvé</option>
+                      <option value="partial">Partiellement approuvé</option>
+                      <option value="rejected">Rejeté</option>
+                      <option value="closed">Clos</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="phase-row">
+                  <label class="phase-field">
+                    <span>Montant approuvé (DT)</span>
+                    <input type="number" step="0.01" [(ngModel)]="phase6.approvedAmount" placeholder="0.00">
+                  </label>
+                  <label class="phase-field" style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" [(ngModel)]="phase6.thirdPartyInvolved">
+                    <span>Tiers impliqué</span>
+                  </label>
+                </div>
+                <div class="phase-actions">
+                  <button class="phase-btn save" (click)="savePhase6()" [disabled]="phaseBusy === 'phase6'">
+                    {{ phaseBusy === 'phase6' ? 'Enregistrement…' : 'Enregistrer le suivi' }}
+                  </button>
+                </div>
+              </div>
+            </details>
+
+            <p class="phase-feedback" *ngIf="phaseMessage" [class.is-error]="phaseMessage.type === 'error'">
+              {{ phaseMessage.text }}
+            </p>
           </section>
 
           <!-- Synthèse -->
@@ -613,9 +767,84 @@ interface ChartAxisLabel {
       background: #e2e8f0;
     }
     .status-pill.is-pending   { background: #fed7aa; color: #9a3412; }
-    .status-pill.is-awaiting  { background: #bfdbfe; color: #1e40af; }
     .status-pill.is-confirmed { background: #fecaca; color: #991b1b; }
     .status-pill.is-dismissed { background: #cbd5e1; color: #334155; }
+
+    /* Calypso 7 — accident timeline (6 phases) */
+    .timeline {
+      margin-bottom: 28px;
+      padding: 20px 22px;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      background: white;
+      box-shadow: 0 1px 2px rgba(0,0,0,.03);
+    }
+    .timeline-title { margin: 0 0 4px; font-size: 16px; font-weight: 700; color: #0f172a; }
+    .timeline-sub { margin: 0 0 16px; font-size: 12px; color: #64748b; }
+
+    .phase {
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .phase[open] { border-color: #cbd5e1; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+    .phase-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 14px; cursor: pointer; list-style: none;
+      background: #f8fafc;
+      font-size: 13px;
+    }
+    .phase-head::-webkit-details-marker { display: none; }
+    .phase[open] .phase-head { background: white; border-bottom: 1px solid #f1f5f9; }
+    .phase-num {
+      flex-shrink: 0;
+      width: 26px; height: 26px; border-radius: 50%;
+      background: #1e293b; color: white;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 12px;
+    }
+    .phase-title { flex: 1; font-weight: 600; color: #0f172a; }
+    .phase-status {
+      padding: 3px 10px; border-radius: 999px;
+      background: #fef3c7; color: #92400e;
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .phase-status.done { background: #dcfce7; color: #166534; }
+
+    .phase-body { padding: 16px; }
+    .phase-row { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+    .phase-field { flex: 1 1 0; min-width: 180px; display: flex; flex-direction: column; gap: 4px; }
+    .phase-field > span {
+      font-size: 11px; font-weight: 600; color: #475569;
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .phase-field input, .phase-field select, .phase-field textarea {
+      padding: 8px 10px; font-size: 13px;
+      border: 1px solid #e2e8f0; border-radius: 6px; background: white; color: #0f172a;
+      font-family: inherit;
+    }
+    .phase-field input:focus, .phase-field select:focus, .phase-field textarea:focus {
+      outline: none; border-color: #3b82f6;
+    }
+    .phase-field textarea { resize: vertical; }
+    .phase-hint {
+      margin: 0 0 12px;
+      padding: 8px 10px; border-radius: 6px;
+      background: #eff6ff; color: #1e40af;
+      font-size: 11px; border-left: 3px solid #3b82f6;
+    }
+    .phase-actions { display: flex; gap: 10px; margin-top: 4px; }
+    .phase-btn {
+      padding: 8px 16px; border: none; border-radius: 6px;
+      font-weight: 600; font-size: 12px; cursor: pointer;
+      transition: background 120ms ease;
+    }
+    .phase-btn.save { background: #16a34a; color: white; }
+    .phase-btn.save:hover { background: #15803d; }
+    .phase-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .phase-feedback { margin: 12px 0 0; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; background: #dcfce7; color: #166534; }
+    .phase-feedback.is-error { background: #fee2e2; color: #991b1b; }
     .status-pdf {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 6px 12px; background: #fee2e2; color: #dc2626;
@@ -1482,7 +1711,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
    * Kept null until the DTO lands so the banner isn't rendered in the
    * fallback scenario (no :accidentId in the URL).
    */
-  status: 'pending' | 'awaiting_details' | 'confirmed' | 'dismissed' | null = null;
+  status: 'pending' | 'confirmed' | 'dismissed' | null = null;
   decidedByName: string | null = null;
   decidedAtFormatted: string | null = null;
   towDetectedAtFormatted: string | null = null;
@@ -1495,18 +1724,23 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   decisionBusy: 'confirm' | 'dismiss' | null = null;
   decisionError: string | null = null;
 
-  // Calypso 6 (P9) — PDF + damages form state.
+  // Calypso 7 — timeline state. One form object per phase, edited
+  // independently. The frontend keeps everything in memory and only POSTs
+  // when the admin clicks the per-phase "Enregistrer" button.
   pdfReportUrl: string | null = null;
-  damagesForm = {
-    description: '' as string,
-    severity: null as 'minor' | 'moderate' | 'severe' | 'total' | null,
-    estimatedCost: null as number | null,
-    claimNumber: '' as string,
-    internalNotes: '' as string,
-    manualTowDate: '' as string,
-  };
-  damagesBusy = false;
-  damagesMessage: { type: 'success' | 'error'; text: string } | null = null;
+  phase2 = { description: '' as string, severity: null as 'minor' | 'moderate' | 'severe' | 'total' | null,
+             mileageAtAccident: null as number | null, policeReportNumber: '' as string,
+             weatherConditions: '' as string, roadConditions: '' as string };
+  phase3 = { visitedAt: '' as string, expertName: '' as string, expertCompany: '' as string,
+             assessment: '' as string, estimatedAmount: null as number | null };
+  phase4 = { quoteAt: '' as string, mechanicName: '' as string, quotedAmount: null as number | null };
+  phase5 = { startedAt: '' as string, completedAt: '' as string, actualCost: null as number | null };
+  phase6 = { claimNumber: '' as string, submittedAt: '' as string, approvedAmount: null as number | null,
+             status: null as 'pending' | 'approved' | 'partial' | 'rejected' | 'closed' | null,
+             thirdPartyInvolved: false };
+  phaseOpen = { initial: true, expert: false, mechanic: false, repair: false, claim: false };
+  phaseBusy: 'phase2' | 'phase3' | 'phase4' | 'phase5' | 'phase6' | null = null;
+  phaseMessage: { type: 'success' | 'error'; text: string } | null = null;
 
   private map?: L.Map;
   private impactMarker?: L.Marker;
@@ -1523,12 +1757,22 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
 
   get statusLabel(): string {
     switch (this.status) {
-      case 'pending':          return 'En attente de décision';
-      case 'awaiting_details': return 'Dégâts à compléter';
-      case 'confirmed':        return 'Accident confirmé';
-      case 'dismissed':        return 'Fausse alerte';
-      default:                 return '';
+      case 'pending':   return 'En attente de décision';
+      case 'confirmed': return 'Accident confirmé';
+      case 'dismissed': return 'Fausse alerte';
+      default:          return '';
     }
+  }
+
+  phaseClaimLabel(s: string | null): string {
+    if (!s) return 'Non déclaré';
+    return ({
+      pending: 'En cours',
+      approved: 'Approuvé',
+      partial: 'Partiellement approuvé',
+      rejected: 'Rejeté',
+      closed: 'Clos',
+    } as Record<string, string>)[s] || s;
   }
 
   ngOnInit(): void {
@@ -1606,18 +1850,40 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     this.decidedAtFormatted = this.formatShortDateTime(dto.decidedAt);
     this.towDetectedAtFormatted = this.formatShortDateTime(dto.towDetectedAt);
 
-    // Calypso 6 (P9) — PDF + damages capture.
+    // Calypso 7 — populate the 5 phase forms from the unified DTO.
     this.pdfReportUrl = dto.pdfReportUrl ?? null;
-    if (dto.damages) {
-      this.damagesForm.description = dto.damages.description ?? '';
-      this.damagesForm.severity = dto.damages.severity ?? null;
-      this.damagesForm.estimatedCost = dto.damages.estimatedCost ?? null;
-      this.damagesForm.claimNumber = dto.damages.claimNumber ?? '';
-      this.damagesForm.internalNotes = dto.damages.internalNotes ?? '';
-      this.damagesForm.manualTowDate = dto.damages.manualTowDate
-        ? new Date(dto.damages.manualTowDate).toISOString().slice(0, 10)
-        : '';
-    }
+    this.phase2 = {
+      description: dto.initialDescription ?? '',
+      severity: dto.initialSeverity ?? null,
+      mileageAtAccident: dto.mileageAtAccident ?? null,
+      policeReportNumber: dto.policeReportNumber ?? '',
+      weatherConditions: dto.weatherConditions ?? '',
+      roadConditions: dto.roadConditions ?? '',
+    };
+    this.phase3 = {
+      visitedAt: dto.expertVisitedAt ? new Date(dto.expertVisitedAt).toISOString().slice(0, 10) : '',
+      expertName: dto.expertName ?? '',
+      expertCompany: dto.expertCompany ?? '',
+      assessment: dto.expertAssessment ?? '',
+      estimatedAmount: dto.expertEstimatedAmount ?? null,
+    };
+    this.phase4 = {
+      quoteAt: dto.mechanicQuoteAt ? new Date(dto.mechanicQuoteAt).toISOString().slice(0, 10) : '',
+      mechanicName: dto.mechanicName ?? '',
+      quotedAmount: dto.mechanicQuotedAmount ?? null,
+    };
+    this.phase5 = {
+      startedAt: dto.repairStartedAt ? new Date(dto.repairStartedAt).toISOString().slice(0, 10) : '',
+      completedAt: dto.repairCompletedAt ? new Date(dto.repairCompletedAt).toISOString().slice(0, 10) : '',
+      actualCost: dto.actualRepairCost ?? null,
+    };
+    this.phase6 = {
+      claimNumber: dto.claimNumber ?? '',
+      submittedAt: dto.claimSubmittedAt ? new Date(dto.claimSubmittedAt).toISOString().slice(0, 10) : '',
+      approvedAmount: dto.claimApprovedAmount ?? null,
+      status: dto.claimStatus ?? null,
+      thirdPartyInvolved: dto.thirdPartyInvolved ?? false,
+    };
 
     if (dto.locationCommune) this.locationCommune = dto.locationCommune;
     if (dto.locationGovernorate) this.locationGovernorate = dto.locationGovernorate;
@@ -2173,41 +2439,80 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     this.subs.push(sub);
   }
 
+  // Calypso 7 — phase save methods. Each posts only its own phase
+  // payload, sets a busy flag for inline feedback, then re-fetches the
+  // DTO so the timeline reflects server-side changes (including the
+  // auto-VehicleCost upsert from Phase 5/6).
+
+  savePhase2(): void {
+    this.runPhase('phase2', () => this.apiService.updateAccidentInitialDamages(this.accidentEventId!, {
+      description: this.phase2.description?.trim() || null,
+      severity: this.phase2.severity,
+      damagedZones: null,
+      policeReportNumber: this.phase2.policeReportNumber?.trim() || null,
+      mileageAtAccident: this.phase2.mileageAtAccident,
+      weatherConditions: this.phase2.weatherConditions?.trim() || null,
+      roadConditions: this.phase2.roadConditions?.trim() || null,
+    }));
+  }
+
+  savePhase3(): void {
+    this.runPhase('phase3', () => this.apiService.registerAccidentExpertAssessment(this.accidentEventId!, {
+      visitedAt: this.phase3.visitedAt ? new Date(this.phase3.visitedAt).toISOString() : null,
+      expertName: this.phase3.expertName?.trim() || null,
+      expertCompany: this.phase3.expertCompany?.trim() || null,
+      assessment: this.phase3.assessment?.trim() || null,
+      estimatedAmount: this.phase3.estimatedAmount,
+    }));
+  }
+
+  savePhase4(): void {
+    this.runPhase('phase4', () => this.apiService.registerAccidentMechanicQuote(this.accidentEventId!, {
+      quoteAt: this.phase4.quoteAt ? new Date(this.phase4.quoteAt).toISOString() : null,
+      mechanicName: this.phase4.mechanicName?.trim() || null,
+      quotedAmount: this.phase4.quotedAmount,
+    }));
+  }
+
+  savePhase5(): void {
+    this.runPhase('phase5', () => this.apiService.registerAccidentRepair(this.accidentEventId!, {
+      startedAt: this.phase5.startedAt ? new Date(this.phase5.startedAt).toISOString() : null,
+      completedAt: this.phase5.completedAt ? new Date(this.phase5.completedAt).toISOString() : null,
+      actualCost: this.phase5.actualCost,
+    }));
+  }
+
+  savePhase6(): void {
+    this.runPhase('phase6', () => this.apiService.registerAccidentClaim(this.accidentEventId!, {
+      claimNumber: this.phase6.claimNumber?.trim() || null,
+      submittedAt: this.phase6.submittedAt ? new Date(this.phase6.submittedAt).toISOString() : null,
+      approvedAmount: this.phase6.approvedAmount,
+      status: this.phase6.status,
+      thirdPartyInvolved: this.phase6.thirdPartyInvolved,
+    }));
+  }
+
   /**
-   * Calypso 6 (P9) — finalises the accident by posting the damages form.
-   * The status flips from <c>awaiting_details</c> to <c>confirmed</c> on
-   * the backend; we re-fetch the DTO so the page picks up the new banner
-   * state (and any side-effects like a fresh decided_at). The form stays
-   * editable on already-confirmed rows so the admin can tweak the amount
-   * after the expert visit.
+   * Shared phase-save plumbing: sets the busy flag, runs the API call,
+   * shows the appropriate success / error toast, then refreshes the DTO
+   * so the timeline picks up server-side derived values (e.g. auto
+   * VehicleCost upserts on Phase 5 / 6).
    */
-  saveDamages(): void {
-    if (!this.accidentEventId || this.damagesBusy) return;
-    this.damagesBusy = true;
-    this.damagesMessage = null;
+  private runPhase(phase: 'phase2' | 'phase3' | 'phase4' | 'phase5' | 'phase6', call: () => any): void {
+    if (!this.accidentEventId || this.phaseBusy) return;
     const id = this.accidentEventId;
-
-    const payload = {
-      description: this.damagesForm.description?.trim() || null,
-      severity: this.damagesForm.severity,
-      estimatedCost: this.damagesForm.estimatedCost,
-      claimNumber: this.damagesForm.claimNumber?.trim() || null,
-      internalNotes: this.damagesForm.internalNotes?.trim() || null,
-      manualTowDate: this.damagesForm.manualTowDate
-        ? new Date(this.damagesForm.manualTowDate).toISOString()
-        : null,
-    };
-
-    const sub = this.apiService.updateAccidentDamages(id, payload).subscribe({
+    this.phaseBusy = phase;
+    this.phaseMessage = null;
+    const sub = call().subscribe({
       next: () => {
-        this.damagesBusy = false;
-        this.damagesMessage = { type: 'success', text: "Dégâts enregistrés et accident confirmé." };
+        this.phaseBusy = null;
+        this.phaseMessage = { type: 'success', text: 'Phase enregistrée.' };
         this.reloadAfterDecision(id, 'confirmed');
       },
       error: (err: any) => {
-        this.damagesBusy = false;
-        const msg = err?.error?.message || "Impossible d'enregistrer les dégâts. Veuillez réessayer.";
-        this.damagesMessage = { type: 'error', text: msg };
+        this.phaseBusy = null;
+        const msg = err?.error?.message || "Impossible d'enregistrer la phase. Veuillez réessayer.";
+        this.phaseMessage = { type: 'error', text: msg };
         this.cdr.markForCheck();
       },
     });

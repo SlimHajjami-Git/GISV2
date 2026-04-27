@@ -1481,79 +1481,12 @@ export class ApiService {
     return this.http.get<VehicleExpiryDto[]>(`${this.API_URL}/documents/alerts`, { headers: this.getHeaders(), params });
   }
 
-  // ==================== ACCIDENT CLAIMS ====================
-
-  getAccidentClaims(options?: { searchTerm?: string; status?: string; severity?: string; vehicleId?: number; page?: number; pageSize?: number }): Observable<PaginatedResult<AccidentClaimDto>> {
-    let params = new HttpParams();
-    if (options?.searchTerm) params = params.set('searchTerm', options.searchTerm);
-    if (options?.status) params = params.set('status', options.status);
-    if (options?.severity) params = params.set('severity', options.severity);
-    if (options?.vehicleId) params = params.set('vehicleId', options.vehicleId.toString());
-    if (options?.page) params = params.set('page', options.page.toString());
-    if (options?.pageSize) params = params.set('pageSize', options.pageSize.toString());
-    return this.http.get<PaginatedResult<AccidentClaimDto>>(`${this.API_URL}/accident-claims`, { headers: this.getHeaders(), params });
-  }
-
-  getAccidentClaim(id: number): Observable<AccidentClaimDto> {
-    return this.http.get<AccidentClaimDto>(`${this.API_URL}/accident-claims/${id}`, { headers: this.getHeaders() });
-  }
-
-  getAccidentClaimStats(): Observable<AccidentClaimStatsDto> {
-    return this.http.get<AccidentClaimStatsDto>(`${this.API_URL}/accident-claims/stats`, { headers: this.getHeaders() });
-  }
-
-  getVehicleAccidentClaims(vehicleId: number): Observable<PaginatedResult<AccidentClaimDto>> {
-    return this.http.get<PaginatedResult<AccidentClaimDto>>(`${this.API_URL}/accident-claims/vehicle/${vehicleId}`, { headers: this.getHeaders() });
-  }
-
-  createAccidentClaim(claim: CreateAccidentClaimRequest): Observable<number> {
-    return this.http.post<number>(`${this.API_URL}/accident-claims`, claim, { headers: this.getHeaders() });
-  }
-
-  updateAccidentClaim(id: number, claim: UpdateAccidentClaimRequest): Observable<void> {
-    return this.http.put<void>(`${this.API_URL}/accident-claims/${id}`, claim, { headers: this.getHeaders() });
-  }
-
-  deleteAccidentClaim(id: number): Observable<void> {
-    return this.http.delete<void>(`${this.API_URL}/accident-claims/${id}`, { headers: this.getHeaders() });
-  }
-
-  submitAccidentClaim(id: number): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${this.API_URL}/accident-claims/${id}/submit`, {}, { headers: this.getHeaders() });
-  }
-
-  approveAccidentClaim(id: number, approvedAmount: number): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${this.API_URL}/accident-claims/${id}/approve`, { approvedAmount }, { headers: this.getHeaders() });
-  }
-
-  rejectAccidentClaim(id: number, reason?: string): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${this.API_URL}/accident-claims/${id}/reject`, { reason }, { headers: this.getHeaders() });
-  }
-
-  closeAccidentClaim(id: number): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${this.API_URL}/accident-claims/${id}/close`, {}, { headers: this.getHeaders() });
-  }
-
-  uploadAccidentClaimDocuments(claimId: number, files: File[], documentType?: string): Observable<AccidentClaimDocumentDto[]> {
-    const formData = new FormData();
-    files.forEach(f => formData.append('files', f));
-    if (documentType) formData.append('documentType', documentType);
-    const headers = this.getHeaders().delete('Content-Type');
-    return this.http.post<AccidentClaimDocumentDto[]>(`${this.API_URL}/accident-claims/${claimId}/documents`, formData, { headers });
-  }
-
-  getAccidentClaimDocuments(claimId: number): Observable<AccidentClaimDocumentDto[]> {
-    return this.http.get<AccidentClaimDocumentDto[]>(`${this.API_URL}/accident-claims/${claimId}/documents`, { headers: this.getHeaders() });
-  }
-
-  deleteAccidentClaimDocument(claimId: number, documentId: number): Observable<void> {
-    return this.http.delete<void>(`${this.API_URL}/accident-claims/${claimId}/documents/${documentId}`, { headers: this.getHeaders() });
-  }
-
   // ==================== ACCIDENT REPORTS ====================
-  // Persisted server-side detection reports (the narrative read by the
-  // formal accident report page). Decoupled from accident-claims, which
-  // are insurance-side records entered manually by the user.
+  //
+  // Calypso 7 — single unified accident timeline. The old AccidentClaim
+  // methods were removed; the AccidentEvent endpoints below cover the
+  // full lifecycle (detection → confirmation → expert → mechanic →
+  // repair → insurance) with phase-specific PATCH endpoints.
 
   getAccidentReport(id: number): Observable<AccidentReportDto> {
     return this.http.get<AccidentReportDto>(`${this.API_URL}/accident-reports/${id}`, { headers: this.getHeaders() });
@@ -1607,13 +1540,61 @@ export class ApiService {
     return this.http.get<ListAccidentEventsResult>(`${this.API_URL}/accident-reports`, { headers: this.getHeaders(), params });
   }
 
+  // ── Calypso 7 — phase commands ────────────────────────────────────────
+  //
+  // Each phase is editable independently and over multiple days. The
+  // backend only accepts these on a row whose status is 'confirmed'.
+
+  /** Phase 2 — initial visible damages (description, severity, zones, weather, …). */
+  updateAccidentInitialDamages(id: number, payload: UpdateInitialDamagesRequest): Observable<void> {
+    return this.http.patch<void>(`${this.API_URL}/accident-reports/${id}/initial-damages`, payload, { headers: this.getHeaders() });
+  }
+
+  /** Phase 3 — insurance expert visit: name, company, assessment, estimated amount. */
+  registerAccidentExpertAssessment(id: number, payload: RegisterExpertAssessmentRequest): Observable<void> {
+    return this.http.patch<void>(`${this.API_URL}/accident-reports/${id}/expert`, payload, { headers: this.getHeaders() });
+  }
+
+  /** Phase 4 — mechanic / garage quote. */
+  registerAccidentMechanicQuote(id: number, payload: RegisterMechanicQuoteRequest): Observable<void> {
+    return this.http.patch<void>(`${this.API_URL}/accident-reports/${id}/mechanic-quote`, payload, { headers: this.getHeaders() });
+  }
+
+  /** Phase 5 — repair tracking. Server auto-creates a VehicleCost row. */
+  registerAccidentRepair(id: number, payload: RegisterRepairRequest): Observable<void> {
+    return this.http.patch<void>(`${this.API_URL}/accident-reports/${id}/repair`, payload, { headers: this.getHeaders() });
+  }
+
+  /** Phase 6 — insurance claim follow-up. Server auto-creates a refund VehicleCost row. */
+  registerAccidentClaim(id: number, payload: RegisterClaimRequest): Observable<void> {
+    return this.http.patch<void>(`${this.API_URL}/accident-reports/${id}/claim`, payload, { headers: this.getHeaders() });
+  }
+
+  /** Add a third party (other vehicle / driver involved). */
+  addAccidentThirdParty(id: number, payload: AddThirdPartyRequest): Observable<{ thirdPartyId: number }> {
+    return this.http.post<{ thirdPartyId: number }>(`${this.API_URL}/accident-reports/${id}/third-parties`, payload, { headers: this.getHeaders() });
+  }
+
+  /** Remove a third party. */
+  deleteAccidentThirdParty(id: number, thirdPartyId: number): Observable<void> {
+    return this.http.delete<void>(`${this.API_URL}/accident-reports/${id}/third-parties/${thirdPartyId}`, { headers: this.getHeaders() });
+  }
+
   /**
-   * Calypso 6 (P9) — finalise an accident: persists the damages form and
-   * flips status='confirmed' (when previously 'awaiting_details') or
-   * just refreshes the damages on an already-confirmed row.
+   * Multi-file upload typed by phase (expert_report, mechanic_quote,
+   * repair_invoice, insurance_response, police_report, photo, other).
    */
-  updateAccidentDamages(id: number, payload: UpdateAccidentDamagesRequest): Observable<void> {
-    return this.http.patch<void>(`${this.API_URL}/accident-reports/${id}/damages`, payload, { headers: this.getHeaders() });
+  uploadAccidentDocument(id: number, file: File, documentType: string): Observable<{ documentId: number; fileUrl: string }> {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    formData.append('documentType', documentType);
+    const headers = this.getHeaders().delete('Content-Type');
+    return this.http.post<{ documentId: number; fileUrl: string }>(`${this.API_URL}/accident-reports/${id}/documents`, formData, { headers });
+  }
+
+  /** Remove a previously-uploaded accident document. */
+  deleteAccidentDocument(id: number, documentId: number): Observable<void> {
+    return this.http.delete<void>(`${this.API_URL}/accident-reports/${id}/documents/${documentId}`, { headers: this.getHeaders() });
   }
 
   /**
@@ -3091,121 +3072,25 @@ export interface RenewalHistoryDto {
   documentUrl?: string;
 }
 
-// ==================== ACCIDENT CLAIMS ====================
-export interface AccidentClaimDto {
-  id: number;
-  claimNumber: string;
-  vehicleId: number;
-  vehicleName: string;
-  vehiclePlate?: string;
-  driverId?: number;
-  driverName?: string;
-  accidentDate: string;
-  accidentTime: string;
-  location: string;
-  latitude?: number;
-  longitude?: number;
-  description: string;
-  severity: string;
-  estimatedDamage: number;
-  approvedAmount?: number;
-  status: string;
-  thirdPartyInvolved: boolean;
-  policeReportNumber?: string;
-  mileageAtAccident?: number;
-  damagedZones?: string[];
-  createdAt: string;
-  updatedAt: string;
-  thirdParties: AccidentClaimThirdPartyDto[];
-  documents: AccidentClaimDocumentDto[];
-}
+// Calypso 7 — AccidentClaim* DTOs deleted; the unified AccidentReportDto
+// below replaces them.
 
-export interface AccidentClaimThirdPartyDto {
-  id: number;
-  name?: string;
-  phone?: string;
-  vehiclePlate?: string;
-  vehicleModel?: string;
-  insuranceCompany?: string;
-  insuranceNumber?: string;
-}
+// ==================== ACCIDENT REPORTS (Calypso 7) ====================
+// Mirrors services/src/GisAPI.Application/Features/AccidentEvents/Queries/
+// GetAccidentReportQuery.cs — full timeline (6 phases).
 
-export interface AccidentClaimDocumentDto {
-  id: number;
-  documentType: string;
-  fileName: string;
-  fileUrl: string;
-  fileSize?: number;
-  mimeType?: string;
-  uploadedAt: string;
-}
+export type AccidentSeverity = 'minor' | 'moderate' | 'severe' | 'total';
+export type AccidentStatus = 'pending' | 'confirmed' | 'dismissed';
+export type AccidentClaimStatus = 'pending' | 'approved' | 'partial' | 'rejected' | 'closed';
+export type AccidentOrigin = 'auto' | 'manual';
 
-export interface AccidentClaimStatsDto {
-  totalClaims: number;
-  draftCount: number;
-  submittedCount: number;
-  underReviewCount: number;
-  approvedCount: number;
-  rejectedCount: number;
-  closedCount: number;
-  totalEstimatedDamage: number;
-  totalApprovedAmount: number;
-}
-
-export interface CreateAccidentClaimRequest {
-  vehicleId: number;
-  driverId?: number;
-  accidentDate: string;
-  accidentTime: string;
-  location: string;
-  latitude?: number;
-  longitude?: number;
-  description: string;
-  severity: string;
-  estimatedDamage: number;
-  damagedZones?: string[];
-  thirdPartyInvolved?: boolean;
-  thirdPartyName?: string;
-  thirdPartyPhone?: string;
-  thirdPartyVehiclePlate?: string;
-  thirdPartyVehicleModel?: string;
-  thirdPartyInsurance?: string;
-  thirdPartyInsuranceNumber?: string;
-  policeReportNumber?: string;
-  mileageAtAccident?: number;
-  witnesses?: string;
-  additionalNotes?: string;
-}
-
-export interface UpdateAccidentClaimRequest {
-  vehicleId?: number;
-  driverId?: number;
-  accidentDate?: string;
-  accidentTime?: string;
-  location?: string;
-  latitude?: number;
-  longitude?: number;
-  description?: string;
-  severity?: string;
-  estimatedDamage?: number;
-  damagedZones?: string[];
-  thirdPartyInvolved?: boolean;
-  policeReportNumber?: string;
-  mileageAtAccident?: number;
-  witnesses?: string;
-  additionalNotes?: string;
-  status?: string;
-}
-
-// ==================== ACCIDENT REPORTS ====================
-// Server-persisted accident detection report. Mirrors the backend
-// AccidentReportDto record (services/src/GisAPI.Application/Features/
-// AccidentEvents/Queries/GetAccidentReportQuery.cs).
 export interface AccidentReportDto {
   id: number;
   companyId: number;
+  origin: AccidentOrigin;
   vehicleId: number | null;
   gpsDeviceId: number | null;
+  driverId: number | null;
   deviceUid: string;
   incidentAt: string;
   latitude: number;
@@ -3215,37 +3100,85 @@ export interface AccidentReportDto {
   locationCommune: string | null;
   locationGovernorate: string | null;
   locationRoadType: string | null;
+
+  // Phase 1 — Detection
   synthesisText: string | null;
   confidence: number;
   story: AccidentReportStoryEventDto[] | null;
   reasons: AccidentReportReasonDto[] | null;
   indicators: AccidentReportIndicatorDto[] | null;
-  // Decision workflow — status defaults to 'pending' from the backend and
-  // moves to 'awaiting_details' (admin confirmed) → 'confirmed' (damages
-  // form submitted) or 'dismissed'. towDetectedAt is stamped by
-  // AccidentTowMonitoringService.
-  status: 'pending' | 'awaiting_details' | 'confirmed' | 'dismissed';
+  weatherConditions: string | null;
+  roadConditions: string | null;
+  policeReportNumber: string | null;
+  mileageAtAccident: number | null;
+
+  // Phase 2 — Confirmation
+  status: AccidentStatus;
   decidedByUserId: number | null;
   decidedByName: string | null;
   decidedAt: string | null;
+  initialDescription: string | null;
+  initialSeverity: AccidentSeverity | null;
+  damagedZones: string[] | null;
+
+  // Phase 3 — Expert
+  expertVisitedAt: string | null;
+  expertName: string | null;
+  expertCompany: string | null;
+  expertAssessment: string | null;
+  expertEstimatedAmount: number | null;
+
+  // Phase 4 — Mechanic quote
+  mechanicQuoteAt: string | null;
+  mechanicName: string | null;
+  mechanicQuotedAmount: number | null;
+
+  // Phase 5 — Repair
+  repairStartedAt: string | null;
+  repairCompletedAt: string | null;
+  actualRepairCost: number | null;
   towDetectedAt: string | null;
 
-  // Calypso 6 (P9): PDF report URL + structured damages capture.
+  // Phase 6 — Insurance settlement
+  claimNumber: string | null;
+  claimSubmittedAt: string | null;
+  claimApprovedAmount: number | null;
+  claimStatus: AccidentClaimStatus | null;
+  thirdPartyInvolved: boolean;
+
+  // Misc
+  witnesses: string | null;
+  additionalNotes: string | null;
   pdfReportUrl: string | null;
-  damages: AccidentReportDamagesDto | null;
+
+  // Children
+  documents: AccidentReportDocumentDto[];
+  thirdParties: AccidentReportThirdPartyDto[];
 }
 
-export interface AccidentReportDamagesDto {
-  description: string | null;
-  severity: 'minor' | 'moderate' | 'severe' | 'total' | null;
-  estimatedCost: number | null;
-  claimNumber: string | null;
-  internalNotes: string | null;
-  manualTowDate: string | null;
+export interface AccidentReportDocumentDto {
+  id: number;
+  documentType: string;
+  fileName: string;
+  fileUrl: string;
+  fileSize: number | null;
+  mimeType: string | null;
+  uploadedAt: string;
+}
+
+export interface AccidentReportThirdPartyDto {
+  id: number;
+  name: string | null;
+  phone: string | null;
+  vehiclePlate: string | null;
+  vehicleModel: string | null;
+  insuranceCompany: string | null;
+  insuranceNumber: string | null;
 }
 
 export interface AccidentEventListItemDto {
   id: number;
+  origin: AccidentOrigin;
   vehicleId: number | null;
   vehicleLabel: string | null;
   incidentAt: string;
@@ -3254,13 +3187,21 @@ export interface AccidentEventListItemDto {
   locationCommune: string | null;
   locationGovernorate: string | null;
   confidence: number;
-  status: 'pending' | 'awaiting_details' | 'confirmed' | 'dismissed';
+  status: AccidentStatus;
   decidedAt: string | null;
   decidedByName: string | null;
   towDetectedAt: string | null;
   pdfReportUrl: string | null;
-  severity: 'minor' | 'moderate' | 'severe' | 'total' | null;
-  estimatedCost: number | null;
+  initialSeverity: AccidentSeverity | null;
+  expertVisitedAt: string | null;
+  expertEstimatedAmount: number | null;
+  mechanicQuotedAmount: number | null;
+  repairCompletedAt: string | null;
+  actualRepairCost: number | null;
+  claimNumber: string | null;
+  claimStatus: AccidentClaimStatus | null;
+  claimApprovedAmount: number | null;
+  currentPhase: 'detection' | 'confirmed' | 'expertise' | 'quote' | 'repair' | 'claim' | 'closed' | 'dismissed';
 }
 
 export interface ListAccidentEventsResult {
@@ -3270,13 +3211,53 @@ export interface ListAccidentEventsResult {
   pageSize: number;
 }
 
-export interface UpdateAccidentDamagesRequest {
+// ── Phase request payloads ───────────────────────────────────────────────
+
+export interface UpdateInitialDamagesRequest {
   description?: string | null;
-  severity?: 'minor' | 'moderate' | 'severe' | 'total' | null;
-  estimatedCost?: number | null;
+  severity?: AccidentSeverity | null;
+  damagedZones?: string[] | null;
+  policeReportNumber?: string | null;
+  mileageAtAccident?: number | null;
+  weatherConditions?: string | null;
+  roadConditions?: string | null;
+}
+
+export interface RegisterExpertAssessmentRequest {
+  visitedAt?: string | null;
+  expertName?: string | null;
+  expertCompany?: string | null;
+  assessment?: string | null;
+  estimatedAmount?: number | null;
+}
+
+export interface RegisterMechanicQuoteRequest {
+  quoteAt?: string | null;
+  mechanicName?: string | null;
+  quotedAmount?: number | null;
+}
+
+export interface RegisterRepairRequest {
+  startedAt?: string | null;
+  completedAt?: string | null;
+  actualCost?: number | null;
+}
+
+export interface RegisterClaimRequest {
   claimNumber?: string | null;
-  internalNotes?: string | null;
-  manualTowDate?: string | null;
+  submittedAt?: string | null;
+  approvedAmount?: number | null;
+  status?: AccidentClaimStatus | null;
+  thirdPartyInvolved?: boolean | null;
+}
+
+export interface AddThirdPartyRequest {
+  name?: string | null;
+  phone?: string | null;
+  vehiclePlate?: string | null;
+  vehicleModel?: string | null;
+  insuranceCompany?: string | null;
+  insuranceNumber?: string | null;
 }
 
 export interface CreateManualAccidentRequest {
@@ -3287,7 +3268,7 @@ export interface CreateManualAccidentRequest {
   locationCommune?: string | null;
   locationGovernorate?: string | null;
   description?: string | null;
-  severity?: 'minor' | 'moderate' | 'severe' | 'total' | null;
+  severity?: AccidentSeverity | null;
   estimatedCost?: number | null;
   claimNumber?: string | null;
   internalNotes?: string | null;

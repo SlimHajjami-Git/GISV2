@@ -47,11 +47,12 @@ import { Vehicle } from '../models/types';
           </button>
         </div>
 
-        <!-- Status filter chips -->
+        <!-- Calypso 7 — status filter chips. Pending = awaiting admin
+             decision; Confirmed = real accident, currently somewhere
+             along the timeline; Dismissed = false alarm. -->
         <div class="filter-row">
           <button class="chip" [class.active]="statusFilter === ''" (click)="setStatus('')">Tous</button>
           <button class="chip pending" [class.active]="statusFilter === 'pending'" (click)="setStatus('pending')">En attente</button>
-          <button class="chip awaiting" [class.active]="statusFilter === 'awaiting_details'" (click)="setStatus('awaiting_details')">À compléter</button>
           <button class="chip confirmed" [class.active]="statusFilter === 'confirmed'" (click)="setStatus('confirmed')">Confirmé</button>
           <label class="chip-toggle">
             <input type="checkbox" [(ngModel)]="includeDismissed" (change)="reload()">
@@ -82,9 +83,12 @@ import { Vehicle } from '../models/types';
                 <td>{{ row.incidentAt | date:'dd/MM/yyyy HH:mm' }}</td>
                 <td><span class="vh-label">{{ row.vehicleLabel || ('Véhicule #' + row.vehicleId) }}</span></td>
                 <td>{{ formatLocation(row) }}</td>
-                <td><span class="status-tag" [class]="row.status">{{ statusLabel(row.status) }}</span></td>
-                <td>{{ severityLabel(row.severity) }}</td>
-                <td>{{ row.estimatedCost != null ? (row.estimatedCost | number:'1.2-2') + ' DT' : '—' }}</td>
+                <td>
+                  <span class="status-tag" [class]="row.currentPhase">{{ phaseLabel(row.currentPhase) }}</span>
+                  <span *ngIf="row.origin === 'manual'" class="origin-tag">Manuel</span>
+                </td>
+                <td>{{ severityLabel(row.initialSeverity) }}</td>
+                <td>{{ formatBestCost(row) }}</td>
                 <td>{{ row.decidedByName || '—' }}</td>
                 <td>
                   <a *ngIf="row.pdfReportUrl" [href]="row.pdfReportUrl" target="_blank" (click)="$event.stopPropagation()" class="pdf-link" title="Télécharger le rapport PDF">
@@ -223,7 +227,6 @@ import { Vehicle } from '../models/types';
     .chip:hover { background:#f8fafc; }
     .chip.active { background:#0f172a; color:white; border-color:#0f172a; }
     .chip.pending.active { background:#f59e0b; border-color:#f59e0b; }
-    .chip.awaiting.active { background:#3b82f6; border-color:#3b82f6; }
     .chip.confirmed.active { background:#16a34a; border-color:#16a34a; }
     .chip-toggle { display:inline-flex; align-items:center; gap:6px; font-size:11px; color:#64748b; }
 
@@ -236,10 +239,21 @@ import { Vehicle } from '../models/types';
     .vh-label { font-weight:600; color:#0f172a; }
 
     .status-tag { display:inline-block; padding:3px 9px; border-radius:999px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
-    .status-tag.pending { background:#fef3c7; color:#b45309; }
-    .status-tag.awaiting_details { background:#dbeafe; color:#1e40af; }
-    .status-tag.confirmed { background:#dcfce7; color:#166534; }
-    .status-tag.dismissed { background:#f1f5f9; color:#64748b; }
+    /* Calypso 7 — phases */
+    .status-tag.detection  { background:#fef3c7; color:#b45309; }
+    .status-tag.confirmed  { background:#dbeafe; color:#1e40af; }
+    .status-tag.expertise  { background:#e0e7ff; color:#4338ca; }
+    .status-tag.quote      { background:#fce7f3; color:#9d174d; }
+    .status-tag.repair     { background:#fed7aa; color:#9a3412; }
+    .status-tag.claim      { background:#cffafe; color:#0e7490; }
+    .status-tag.closed     { background:#dcfce7; color:#166534; }
+    .status-tag.dismissed  { background:#f1f5f9; color:#64748b; }
+    .origin-tag {
+      display:inline-block; margin-left:4px;
+      padding:2px 6px; border-radius:4px;
+      background:#f8fafc; color:#475569;
+      font-size:9px; font-weight:600; text-transform:uppercase; letter-spacing:.05em;
+    }
 
     .pdf-link {
       display:inline-flex; align-items:center; gap:4px;
@@ -384,6 +398,31 @@ export class AccidentReportsListComponent implements OnInit, OnDestroy {
       severe: 'Grave',
       total: 'Totale',
     } as Record<string, string>)[s] || s;
+  }
+
+  phaseLabel(phase: string): string {
+    return ({
+      detection: 'Détection',
+      confirmed: 'Confirmé',
+      expertise: 'Expertise',
+      quote: 'Devis',
+      repair: 'Réparation',
+      claim: 'Assurance',
+      closed: 'Clos',
+      dismissed: 'Fausse alerte',
+    } as Record<string, string>)[phase] || phase;
+  }
+
+  /**
+   * Calypso 7 — show the most informative cost we have, in priority:
+   * actual repair cost (Phase 5) → mechanic quote (Phase 4) → expert
+   * estimate (Phase 3). Falls back to em-dash when the timeline has no
+   * cost yet (typical on day 0).
+   */
+  formatBestCost(row: AccidentEventListItemDto): string {
+    const value = row.actualRepairCost ?? row.mechanicQuotedAmount ?? row.expertEstimatedAmount ?? null;
+    if (value == null) return '—';
+    return `${value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT`;
   }
 
   // Manual creation form ---------------------------------------------------
