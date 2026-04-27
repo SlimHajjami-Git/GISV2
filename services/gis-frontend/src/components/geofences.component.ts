@@ -170,12 +170,12 @@ import * as L from 'leaflet';
                       </svg>
                       Sortie
                     </span>
-                    <span class="alert-badge speed" *ngIf="geofence.alertSpeed" [class.enabled]="true">
+                    <span class="alert-badge speed" *ngIf="geofence.alertSpeedLimit" [class.enabled]="true">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"/>
                         <polyline points="12 6 12 12 16 14"/>
                       </svg>
-                      {{ geofence.alertSpeed }} km/h
+                      {{ geofence.alertSpeedLimit }} km/h
                     </span>
                   </div>
 
@@ -1918,14 +1918,24 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       coordinates: geofence.coordinates ? [...geofence.coordinates] : [],
       alertOnEntry: geofence.alertOnEntry,
       alertOnExit: geofence.alertOnExit,
-      alertSpeedEnabled: !!(geofence.alertSpeed),
-      alertSpeed: geofence.alertSpeed || null,
-      alertMinStopEnabled: !!(geofence as any).minStopMinutes,
-      minStopMinutes: (geofence as any).minStopMinutes || null,
+      // Calypso 7 (P-geo-edit): backend GeofenceDto exposes the speed limit
+      // as `AlertSpeedLimit` (camelCased to `alertSpeedLimit` on the wire),
+      // not `alertSpeed`. The mismatch silently kept the field empty during
+      // edit even when the geofence had a limit configured. Same story for
+      // `maxStayDurationMinutes` vs the legacy `minStopMinutes` we read
+      // before. Read the canonical field, then fall back to the legacy name
+      // to stay compatible with any cached payload still floating around.
+      alertSpeedEnabled: !!((geofence as any).alertSpeedLimit ?? (geofence as any).alertSpeed),
+      alertSpeed: (geofence as any).alertSpeedLimit ?? (geofence as any).alertSpeed ?? null,
+      alertMinStopEnabled: !!((geofence as any).maxStayDurationMinutes ?? (geofence as any).minStopMinutes),
+      minStopMinutes: (geofence as any).maxStayDurationMinutes ?? (geofence as any).minStopMinutes ?? null,
       autoStopOnEntry: (geofence as any).autoStopOnEntry || false,
       notificationCooldownMinutes: (geofence as any).notificationCooldownMinutes || 5,
-      activeStartTime: (geofence as any).activeStartTime || null,
-      activeEndTime: (geofence as any).activeEndTime || null,
+      // <input type="time"> expects HH:mm; .NET serializes TimeSpan as
+      // "HH:mm:ss" (or with fractional seconds). Trim once at edit time so
+      // the picker can rebind the existing value instead of showing empty.
+      activeStartTime: this.toTimeInput((geofence as any).activeStartTime),
+      activeEndTime: this.toTimeInput((geofence as any).activeEndTime),
       activeDays: (geofence as any).activeDays || [],
       groupId: (geofence as any).groupId || null,
       // Calypso 6 (P4): backend returns AssignedVehicleIds as List<int> while
@@ -2086,7 +2096,11 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       alertOnEntry: this.geofenceForm.alertOnEntry,
       alertOnExit: this.geofenceForm.alertOnExit,
       alertSpeedLimit: this.geofenceForm.alertSpeedEnabled ? (this.geofenceForm.alertSpeed || null) : null,
-      minStopMinutes: this.geofenceForm.alertMinStopEnabled ? (this.geofenceForm.minStopMinutes || null) : null,
+      // Calypso 7 (P-geo-edit): the EF entity calls this column
+      // `MaxStayDurationMinutes`. Sending `minStopMinutes` was silently
+      // dropped by the model binder, so the value never persisted. Send
+      // the canonical name now.
+      maxStayDurationMinutes: this.geofenceForm.alertMinStopEnabled ? (this.geofenceForm.minStopMinutes || null) : null,
       autoStopOnEntry: this.geofenceForm.autoStopOnEntry || false,
       notificationCooldownMinutes: this.geofenceForm.notificationCooldownMinutes || 5,
       activeStartTime: this.geofenceForm.activeStartTime || null,
@@ -2129,6 +2143,25 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
         error: (err) => console.error('Error creating geofence:', err)
       });
     }
+  }
+
+  /**
+   * Normalize a TimeSpan-like value coming from the backend into the
+   * `HH:mm` shape expected by `<input type="time">`.
+   *
+   * .NET serializes `TimeSpan?` as `"08:00:00"` (or with fractional
+   * seconds). The HTML picker rejects anything but `HH:mm` / `HH:mm:ss`,
+   * and once it normalizes the value it rounds back to `HH:mm`. So we
+   * just trim to the first 5 chars when the input looks like a time
+   * string; null / empty stays null.
+   */
+  private toTimeInput(value: any): string | null {
+    if (value == null) return null;
+    const str = String(value);
+    if (str.length === 0) return null;
+    // Accept "HH:mm", "HH:mm:ss", "HH:mm:ss.fffffff" — keep only "HH:mm".
+    const match = /^(\d{2}:\d{2})/.exec(str);
+    return match ? match[1] : null;
   }
 
   refreshData() {

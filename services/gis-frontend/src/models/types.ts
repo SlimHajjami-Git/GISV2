@@ -230,22 +230,39 @@ export interface Geofence {
   description?: string;
   type: 'polygon' | 'circle';
   color: string;
-  
+  iconName?: string;
+
   // For polygon type
   coordinates?: GeofencePoint[];
-  
+
   // For circle type
   center?: GeofencePoint;
+  centerLat?: number;
+  centerLng?: number;
   radius?: number; // in meters
-  
-  // Alert settings
+
+  // Alert settings — names mirror the backend GeofenceDto so payload
+  // round-trips without surprises. The legacy `alertSpeed` / `minStopMinutes`
+  // keys never existed on the wire and silently produced empty fields in
+  // the editor (Calypso 7 / P-geo-edit fix).
   alertOnEntry: boolean;
   alertOnExit: boolean;
-  alertSpeed?: number; // Speed limit inside geofence
-  
+  alertSpeedLimit?: number | null;        // Speed limit (km/h) inside geofence
+  maxStayDurationMinutes?: number | null; // Min stop duration trigger (minutes)
+  autoStopOnEntry?: boolean;
+  notificationCooldownMinutes?: number;
+
+  // Active hours
+  activeStartTime?: string | null;        // "HH:mm:ss" from backend, "HH:mm" from form
+  activeEndTime?: string | null;
+  activeDays?: string[];
+
+  // Group
+  groupId?: number | null;
+
   // Assignment
   assignedVehicleIds?: string[];
-  
+
   // Status
   isActive: boolean;
   createdAt: Date;
