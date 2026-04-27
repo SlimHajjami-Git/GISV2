@@ -1,5 +1,6 @@
 import { Component, OnInit, OnDestroy, AfterViewInit, ElementRef, ViewChild, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { Subscription } from 'rxjs';
 import * as L from 'leaflet';
@@ -57,7 +58,7 @@ interface ChartAxisLabel {
 @Component({
   selector: 'app-accident-report',
   standalone: true,
-  imports: [CommonModule, RouterModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, RouterModule, AppLayoutComponent],
   template: `
     <app-layout>
       <div class="doc-page">
