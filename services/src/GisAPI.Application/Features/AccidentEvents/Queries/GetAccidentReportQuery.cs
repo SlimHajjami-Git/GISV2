@@ -3,17 +3,22 @@ using GisAPI.Application.Common.Interfaces;
 namespace GisAPI.Application.Features.AccidentEvents.Queries;
 
 /// <summary>
-/// Fetches the full persisted accident report for a given <c>accident_events.id</c>.
-/// Returns <c>null</c> when the row doesn't exist or belongs to another tenant
-/// (the global tenant query filter takes care of cross-company leaks).
+/// Calypso 7 — fetches the full timeline-aware accident report.
+/// Returns the parent <see cref="AccidentReportDto"/> plus the
+/// associated documents and third parties.
+///
+/// Returns <c>null</c> when the row doesn't exist or belongs to
+/// another tenant (the global tenant filter takes care of this).
 /// </summary>
 public record GetAccidentReportQuery(int AccidentId) : IQuery<AccidentReportDto?>;
 
 public record AccidentReportDto(
     int Id,
     int CompanyId,
+    string Origin,
     int? VehicleId,
     int? GpsDeviceId,
+    int? DriverId,
     string DeviceUid,
     DateTime IncidentAt,
     double Latitude,
@@ -23,41 +28,79 @@ public record AccidentReportDto(
     string? LocationCommune,
     string? LocationGovernorate,
     string? LocationRoadType,
+
+    // Phase 1 — Detection / sensor
     string? SynthesisText,
     int Confidence,
     List<AccidentReportStoryEventDto>? Story,
     List<AccidentReportReasonDto>? Reasons,
     List<AccidentReportIndicatorDto>? Indicators,
-    // Decision workflow — null/empty until an admin clicks through the
-    // modal on /rapport-accident/:id.
+    string? WeatherConditions,
+    string? RoadConditions,
+    string? PoliceReportNumber,
+    int? MileageAtAccident,
+
+    // Phase 2 — Confirmation
     string Status,
     int? DecidedByUserId,
     string? DecidedByName,
     DateTime? DecidedAt,
+    string? InitialDescription,
+    string? InitialSeverity,
+    List<string>? DamagedZones,
+
+    // Phase 3 — Expert
+    DateTime? ExpertVisitedAt,
+    string? ExpertName,
+    string? ExpertCompany,
+    string? ExpertAssessment,
+    decimal? ExpertEstimatedAmount,
+
+    // Phase 4 — Mechanic quote
+    DateTime? MechanicQuoteAt,
+    string? MechanicName,
+    decimal? MechanicQuotedAmount,
+
+    // Phase 5 — Repair
+    DateTime? RepairStartedAt,
+    DateTime? RepairCompletedAt,
+    decimal? ActualRepairCost,
     DateTime? TowDetectedAt,
-    // Calypso 6 (P9): PDF report URL + damages capture.
-    string? PdfReportUrl,
-    AccidentReportDamagesDto? Damages);
 
-public record AccidentReportDamagesDto(
-    string? Description,
-    string? Severity,            // "minor" | "moderate" | "severe" | "total"
-    decimal? EstimatedCost,
+    // Phase 6 — Insurance settlement
     string? ClaimNumber,
-    string? InternalNotes,
-    DateTime? ManualTowDate);
+    DateTime? ClaimSubmittedAt,
+    decimal? ClaimApprovedAmount,
+    string? ClaimStatus,
+    bool ThirdPartyInvolved,
 
-public record AccidentReportStoryEventDto(
-    string Time,
-    string Title,
-    string Body,
-    string Severity);
+    // Misc
+    string? Witnesses,
+    string? AdditionalNotes,
+    string? PdfReportUrl,
 
-public record AccidentReportReasonDto(
-    string Title,
-    string Text);
+    // Children
+    List<AccidentReportDocumentDto> Documents,
+    List<AccidentReportThirdPartyDto> ThirdParties);
 
-public record AccidentReportIndicatorDto(
-    string Label,
-    string Value,
-    string? Hint);
+public record AccidentReportStoryEventDto(string Time, string Title, string Body, string Severity);
+public record AccidentReportReasonDto(string Title, string Text);
+public record AccidentReportIndicatorDto(string Label, string Value, string? Hint);
+
+public record AccidentReportDocumentDto(
+    int Id,
+    string DocumentType,
+    string FileName,
+    string FileUrl,
+    int? FileSize,
+    string? MimeType,
+    DateTime UploadedAt);
+
+public record AccidentReportThirdPartyDto(
+    int Id,
+    string? Name,
+    string? Phone,
+    string? VehiclePlate,
+    string? VehicleModel,
+    string? InsuranceCompany,
+    string? InsuranceNumber);

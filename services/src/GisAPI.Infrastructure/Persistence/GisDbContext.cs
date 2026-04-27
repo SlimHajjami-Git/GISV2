@@ -89,13 +89,11 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<UserDeviceToken> UserDeviceTokens => Set<UserDeviceToken>();
 
-    // Accident Claims
-    public DbSet<AccidentClaim> AccidentClaims => Set<AccidentClaim>();
-    public DbSet<AccidentClaimThirdParty> AccidentClaimThirdParties => Set<AccidentClaimThirdParty>();
-    public DbSet<AccidentClaimDocument> AccidentClaimDocuments => Set<AccidentClaimDocument>();
-
-    // Accident Events (persisted accident reports)
+    // Calypso 7 — AccidentClaim merged into AccidentEvent. Documents and
+    // third parties are now child tables of accident_events.
     public DbSet<AccidentEvent> AccidentEvents => Set<AccidentEvent>();
+    public DbSet<AccidentEventDocument> AccidentEventDocuments => Set<AccidentEventDocument>();
+    public DbSet<AccidentEventThirdParty> AccidentEventThirdParties => Set<AccidentEventThirdParty>();
 
     // Maintenance Templates
     public DbSet<MaintenanceTemplate> MaintenanceTemplates => Set<MaintenanceTemplate>();
@@ -168,7 +166,6 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<Notification>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<VehicleStop>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<FuelRecord>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
-        modelBuilder.Entity<AccidentClaim>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<AccidentEvent>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<MaintenanceTemplate>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<GpsAlert>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);

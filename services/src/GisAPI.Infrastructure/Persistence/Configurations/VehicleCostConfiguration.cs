@@ -27,8 +27,18 @@ public class VehicleCostConfiguration : IEntityTypeConfiguration<VehicleCost>
         builder.Property(e => e.CreatedByUserId).HasColumnName("created_by_user_id");
         builder.Property(e => e.CreatedAt).HasColumnName("created_at");
 
+        // Calypso 7 — back-reference to the originating accident (Phase 5
+        // repair or Phase 6 insurance refund). Null on every cost row that
+        // was entered manually or by another module.
+        builder.Property(e => e.AccidentEventId).HasColumnName("accident_event_id");
+        builder.HasOne(e => e.AccidentEvent)
+            .WithMany()
+            .HasForeignKey(e => e.AccidentEventId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         builder.HasIndex(e => e.CompanyId);
         builder.HasIndex(e => e.VehicleId);
+        builder.HasIndex(e => e.AccidentEventId);
 
         builder.HasOne(e => e.Vehicle)
             .WithMany(v => v.Costs)

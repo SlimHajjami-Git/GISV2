@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("GisAPI")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0d28f7acf32ea98b53e9e4d52d83cc7481223b17")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5fc24b1585818683ddc363e43f5cd06b413c2c14")]
 [assembly: System.Reflection.AssemblyProductAttribute("GisAPI")]
 [assembly: System.Reflection.AssemblyTitleAttribute("GisAPI")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

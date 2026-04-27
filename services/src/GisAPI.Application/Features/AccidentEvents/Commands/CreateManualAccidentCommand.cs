@@ -79,20 +79,15 @@ public class CreateManualAccidentCommandHandler : IRequestHandler<CreateManualAc
                   : !string.IsNullOrWhiteSpace(vehicle.Name)  ? vehicle.Name
                   : $"Véhicule #{vehicle.Id}";
 
+        // Calypso 7 — manual creation pre-fills Phase 2 (initial damages)
+        // from the form. Phases 3-6 stay empty — the admin fills them as
+        // the real-world events unfold (expert visit, mechanic quote,
+        // repair, insurance settlement).
         var severity = NormaliseSeverity(request.Severity);
-        var damages = new
-        {
-            description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
-            severity,
-            estimatedCost = request.EstimatedCost,
-            claimNumber = string.IsNullOrWhiteSpace(request.ClaimNumber) ? null : request.ClaimNumber.Trim(),
-            internalNotes = string.IsNullOrWhiteSpace(request.InternalNotes) ? null : request.InternalNotes.Trim(),
-            manualTowDate = (DateTime?)null,
-        };
-
         var ev = new AccidentEvent
         {
             CompanyId = companyId,
+            Origin = "manual",
             VehicleId = vehicle.Id,
             GpsDeviceId = vehicle.GpsDeviceId,
             DeviceUid = vehicle.GpsDevice?.DeviceUid ?? string.Empty,
@@ -104,15 +99,21 @@ public class CreateManualAccidentCommandHandler : IRequestHandler<CreateManualAc
             LocationCommune = request.LocationCommune,
             LocationGovernorate = request.LocationGovernorate,
             Confidence = 100,
-            // No story / reasons / indicators — this is human-entered, not
-            // sensor-derived. The frontend handles null gracefully.
+            // No story / reasons / indicators — manual entry is not
+            // sensor-derived.
             StoryJson = null,
             ReasonsJson = null,
             IndicatorsJson = null,
             Status = "confirmed",
             DecidedByUserId = currentUserId,
             DecidedAt = DateTime.UtcNow,
-            DamagesJson = System.Text.Json.JsonSerializer.Serialize(damages),
+            // Phase 2 — initial damages
+            InitialDescription = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+            InitialSeverity = severity,
+            // Optional: seed Phase 6 if the admin already has a claim number / cost
+            ClaimNumber = string.IsNullOrWhiteSpace(request.ClaimNumber) ? null : request.ClaimNumber.Trim(),
+            ExpertEstimatedAmount = request.EstimatedCost,
+            AdditionalNotes = string.IsNullOrWhiteSpace(request.InternalNotes) ? null : request.InternalNotes.Trim(),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };

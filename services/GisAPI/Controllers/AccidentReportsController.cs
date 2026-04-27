@@ -13,10 +13,30 @@ using Microsoft.EntityFrameworkCore;
 namespace GisAPI.Controllers;
 
 /// <summary>
-/// Access to persisted accident report data. Read via <c>GET {id}</c>,
-/// decision workflow via <c>POST {id}/confirm</c> and
-/// <c>POST {id}/dismiss</c> (both admin-initiated from the blocking
-/// modal on the frontend).
+/// Calypso 7 — single entry point for the unified accident lifecycle.
+/// Replaces the old <c>AccidentClaimsController</c> (deleted) — manual
+/// claim data was migrated into <c>accident_events</c> by the
+/// <c>UnifyAccidentEventLifecycle</c> migration.
+///
+/// <para>Endpoints map to the timeline phases:</para>
+/// <list type="bullet">
+///   <item><c>GET    /                          </c> — paged list</item>
+///   <item><c>GET    /:id                       </c> — full timeline DTO</item>
+///   <item><c>POST   /:id/confirm               </c> — Phase 2 trigger (status → confirmed)</item>
+///   <item><c>POST   /:id/dismiss               </c> — false alarm</item>
+///   <item><c>POST   /manual                    </c> — create a manually-declared accident</item>
+///   <item><c>PATCH  /:id/initial-damages       </c> — Phase 2 form fields</item>
+///   <item><c>PATCH  /:id/expert                </c> — Phase 3</item>
+///   <item><c>PATCH  /:id/mechanic-quote        </c> — Phase 4</item>
+///   <item><c>PATCH  /:id/repair                </c> — Phase 5 (auto-syncs VehicleCost)</item>
+///   <item><c>PATCH  /:id/claim                 </c> — Phase 6 (auto-syncs VehicleCost as refund)</item>
+///   <item><c>POST   /:id/third-parties         </c> — add a third party</item>
+///   <item><c>DELETE /:id/third-parties/:tpId   </c> — remove a third party</item>
+///   <item><c>POST   /:id/upload-pdf            </c> — auto-generated PDF (Phase 2)</item>
+///   <item><c>POST   /:id/documents             </c> — multi-file upload typed by phase</item>
+///   <item><c>DELETE /:id/documents/:docId      </c> — remove a document</item>
+///   <item><c>POST   /simulate                  </c> — debug-only, user 1</item>
+/// </list>
 /// </summary>
 [ApiController]
 [Route("api/accident-reports")]
@@ -46,108 +66,48 @@ public class AccidentReportsController : ControllerBase
         _logger = logger;
     }
 
-    /// <summary>
-    /// Calypso 6 (P9) — paged list of all accident events for the current
-    /// tenant. Default excludes <c>dismissed</c> rows (noise). Supports
-    /// optional filters on <c>status</c> and <c>vehicleId</c>.
-    /// </summary>
+    // ── Read endpoints ──────────────────────────────────────────────────────
+
     [HttpGet]
     public async Task<ActionResult<ListAccidentEventsResult>> List(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] string? status = null,
         [FromQuery] int? vehicleId = null,
+        [FromQuery] string? origin = null,
         [FromQuery] bool includeDismissed = false,
         CancellationToken ct = default)
     {
         var result = await _mediator.Send(
-            new ListAccidentEventsQuery(page, pageSize, status, vehicleId, includeDismissed),
+            new ListAccidentEventsQuery(page, pageSize, status, vehicleId, origin, includeDismissed),
             ct);
         return Ok(result);
     }
 
-    /// <summary>
-    /// Calypso 6 (P9) — finalise the accident: persists the damages form
-    /// (description, severity, estimated cost, claim number, internal
-    /// notes, manual tow date) and flips <c>status = "confirmed"</c>.
-    /// Only valid when the row is currently in <c>awaiting_details</c> or
-    /// already <c>confirmed</c> (re-edit). Returns 400 otherwise.
-    /// </summary>
-    [HttpPatch("{id:int}/damages")]
-    public async Task<IActionResult> UpdateDamages(int id, [FromBody] UpdateAccidentDamagesRequest request, CancellationToken ct)
+    [HttpGet("{id:int}")]
+    public async Task<ActionResult<AccidentReportDto>> GetReport(int id, CancellationToken ct)
     {
-        try
-        {
-            await _mediator.Send(new UpdateAccidentDamagesCommand(
-                AccidentEventId: id,
-                Description: request.Description,
-                Severity: request.Severity,
-                EstimatedCost: request.EstimatedCost,
-                ClaimNumber: request.ClaimNumber,
-                InternalNotes: request.InternalNotes,
-                ManualTowDate: request.ManualTowDate
-            ), ct);
-            return NoContent();
-        }
+        var report = await _mediator.Send(new GetAccidentReportQuery(id), ct);
+        if (report == null) return NotFound();
+        return Ok(report);
+    }
+
+    // ── Confirmation / dismissal ───────────────────────────────────────────
+
+    [HttpPost("{id:int}/confirm")]
+    public async Task<IActionResult> Confirm(int id, CancellationToken ct)
+    {
+        try { await _mediator.Send(new ConfirmAccidentCommand(id), ct); return NoContent(); }
         catch (NotFoundException) { return NotFound(); }
-        catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
-    /// <summary>
-    /// Calypso 6 (P9) — store the PDF accident report attached to an event.
-    /// Used both for the auto-generated frontend PDF (uploaded right after
-    /// confirm) and for an externally-supplied PDF (insurance expert) on
-    /// manual reports. The file is written under
-    /// <c>uploads/accident-reports/{id}/{guid}.pdf</c> and the public
-    /// URL is persisted on the row.
-    /// </summary>
-    [HttpPost("{id:int}/upload-pdf")]
-    [RequestSizeLimit(20_000_000)] // 20 MB max
-    public async Task<ActionResult<object>> UploadPdf(int id, [FromForm] IFormFile file, CancellationToken ct)
+    [HttpPost("{id:int}/dismiss")]
+    public async Task<IActionResult> Dismiss(int id, CancellationToken ct)
     {
-        if (file == null || file.Length == 0)
-            return BadRequest(new { message = "Fichier requis" });
-        if (file.Length > 20_000_000)
-            return BadRequest(new { message = "Fichier trop volumineux (max 20 Mo)" });
-
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (ext != ".pdf")
-            return BadRequest(new { message = "Format non supporté — uniquement PDF" });
-
-        // Make sure the row exists and belongs to the caller's tenant before
-        // we touch the disk. The Attach command re-checks but we want to
-        // fail early on missing/cross-tenant rows without writing files.
-        var companyId = _tenantService.CompanyId;
-        if (companyId == null) return BadRequest(new { message = "Société non identifiée" });
-        var ev = await _context.AccidentEvents
-            .FirstOrDefaultAsync(e => e.Id == id && e.CompanyId == companyId.Value, ct);
-        if (ev == null) return NotFound();
-
-        var uploadsDir = Path.Combine(_env.ContentRootPath, "uploads", "accident-reports", id.ToString());
-        if (!Directory.Exists(uploadsDir)) Directory.CreateDirectory(uploadsDir);
-
-        var uniqueName = $"{Guid.NewGuid()}.pdf";
-        var filePath = Path.Combine(uploadsDir, uniqueName);
-        using (var stream = new FileStream(filePath, FileMode.Create))
-        {
-            await file.CopyToAsync(stream, ct);
-        }
-
-        var publicUrl = $"/uploads/accident-reports/{id}/{uniqueName}";
-        await _mediator.Send(new AttachAccidentPdfCommand(id, publicUrl), ct);
-
-        _logger.LogInformation(
-            "AccidentReportsController.UploadPdf: accident {AccidentId} attached PDF at {Url} ({Size} bytes)",
-            id, publicUrl, file.Length);
-
-        return Ok(new { pdfReportUrl = publicUrl });
+        try { await _mediator.Send(new DismissAccidentCommand(id), ct); return NoContent(); }
+        catch (NotFoundException) { return NotFound(); }
     }
 
-    /// <summary>
-    /// Calypso 6 (P9) — manual accident creation (admin records an accident
-    /// the system did not auto-detect). Returns the new id; the caller can
-    /// then call <c>POST /:id/upload-pdf</c> to attach an expert report.
-    /// </summary>
     [HttpPost("manual")]
     public async Task<ActionResult<object>> CreateManual([FromBody] CreateManualAccidentRequest request, CancellationToken ct)
     {
@@ -172,103 +132,169 @@ public class AccidentReportsController : ControllerBase
         catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
-    /// <summary>
-    /// Get the persisted accident report by id. Returns 404 if the row
-    /// doesn't exist OR belongs to another company (tenant filter).
-    /// </summary>
-    [HttpGet("{id:int}")]
-    public async Task<ActionResult<AccidentReportDto>> GetReport(int id, CancellationToken ct)
-    {
-        var report = await _mediator.Send(new GetAccidentReportQuery(id), ct);
-        if (report == null) return NotFound();
-        return Ok(report);
-    }
+    // ── Phase commands ─────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Confirm the accident — stamps <c>status = 'confirmed'</c>, records
-    /// the deciding admin, and fans an audit notification to the other
-    /// admins. Idempotent (a second call on an already-decided event is a
-    /// no-op). 404 when the event doesn't exist or belongs to another
-    /// company.
-    /// </summary>
-    [HttpPost("{id:int}/confirm")]
-    public async Task<IActionResult> Confirm(int id, CancellationToken ct)
+    [HttpPatch("{id:int}/initial-damages")]
+    public async Task<IActionResult> UpdateInitialDamages(int id, [FromBody] UpdateInitialDamagesRequest req, CancellationToken ct)
     {
         try
         {
-            await _mediator.Send(new ConfirmAccidentCommand(id), ct);
+            await _mediator.Send(new UpdateInitialDamagesCommand(id, req.Description, req.Severity,
+                req.DamagedZones, req.PoliceReportNumber, req.MileageAtAccident,
+                req.WeatherConditions, req.RoadConditions), ct);
             return NoContent();
         }
-        catch (NotFoundException)
-        {
-            return NotFound();
-        }
+        catch (NotFoundException) { return NotFound(); }
+        catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
-    /// <summary>
-    /// Dismiss the accident as a false positive — stamps
-    /// <c>status = 'dismissed'</c> and broadcasts a "Choc violent détecté —
-    /// dégâts possibles" notification to the OTHER admins of the company
-    /// (no driver, no email). Idempotent. 404 on missing / cross-tenant.
-    /// </summary>
-    [HttpPost("{id:int}/dismiss")]
-    public async Task<IActionResult> Dismiss(int id, CancellationToken ct)
+    [HttpPatch("{id:int}/expert")]
+    public async Task<IActionResult> RegisterExpert(int id, [FromBody] RegisterExpertAssessmentRequest req, CancellationToken ct)
     {
         try
         {
-            await _mediator.Send(new DismissAccidentCommand(id), ct);
+            await _mediator.Send(new RegisterExpertAssessmentCommand(id, req.VisitedAt, req.ExpertName,
+                req.ExpertCompany, req.Assessment, req.EstimatedAmount), ct);
             return NoContent();
         }
-        catch (NotFoundException)
+        catch (NotFoundException) { return NotFound(); }
+        catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    [HttpPatch("{id:int}/mechanic-quote")]
+    public async Task<IActionResult> RegisterMechanicQuote(int id, [FromBody] RegisterMechanicQuoteRequest req, CancellationToken ct)
+    {
+        try
         {
-            return NotFound();
+            await _mediator.Send(new RegisterMechanicQuoteCommand(id, req.QuoteAt, req.MechanicName, req.QuotedAmount), ct);
+            return NoContent();
         }
+        catch (NotFoundException) { return NotFound(); }
+        catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    [HttpPatch("{id:int}/repair")]
+    public async Task<IActionResult> RegisterRepair(int id, [FromBody] RegisterRepairRequest req, CancellationToken ct)
+    {
+        try
+        {
+            await _mediator.Send(new RegisterRepairCommand(id, req.StartedAt, req.CompletedAt, req.ActualCost), ct);
+            return NoContent();
+        }
+        catch (NotFoundException) { return NotFound(); }
+        catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    [HttpPatch("{id:int}/claim")]
+    public async Task<IActionResult> RegisterClaim(int id, [FromBody] RegisterClaimRequest req, CancellationToken ct)
+    {
+        try
+        {
+            await _mediator.Send(new RegisterClaimCommand(id, req.ClaimNumber, req.SubmittedAt,
+                req.ApprovedAmount, req.Status, req.ThirdPartyInvolved), ct);
+            return NoContent();
+        }
+        catch (NotFoundException) { return NotFound(); }
+        catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    // ── Third parties ──────────────────────────────────────────────────────
+
+    [HttpPost("{id:int}/third-parties")]
+    public async Task<ActionResult<object>> AddThirdParty(int id, [FromBody] AddThirdPartyRequest req, CancellationToken ct)
+    {
+        try
+        {
+            var tpId = await _mediator.Send(new AddThirdPartyCommand(id, req.Name, req.Phone,
+                req.VehiclePlate, req.VehicleModel, req.InsuranceCompany, req.InsuranceNumber), ct);
+            return Ok(new { thirdPartyId = tpId });
+        }
+        catch (NotFoundException) { return NotFound(); }
+        catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    [HttpDelete("{id:int}/third-parties/{tpId:int}")]
+    public async Task<IActionResult> DeleteThirdParty(int id, int tpId, CancellationToken ct)
+    {
+        try { await _mediator.Send(new DeleteThirdPartyCommand(id, tpId), ct); return NoContent(); }
+        catch (NotFoundException) { return NotFound(); }
+        catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    // ── Documents ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Auto-generated PDF (Phase 2) — single PDF per accident, stored as
+    /// <c>pdf_report_url</c> on the row. Replaces any previously attached
+    /// auto-PDF.
+    /// </summary>
+    [HttpPost("{id:int}/upload-pdf")]
+    [RequestSizeLimit(20_000_000)]
+    public async Task<ActionResult<object>> UploadPdf(int id, [FromForm] IFormFile file, CancellationToken ct)
+    {
+        var (ev, error) = await ValidateUploadAsync(id, file, allowedExt: ".pdf", maxSize: 20_000_000, ct);
+        if (error != null) return error;
+
+        var (publicUrl, _) = await SaveFileAsync(id, file!, ".pdf", ct);
+        await _mediator.Send(new AttachAccidentPdfCommand(id, publicUrl), ct);
+        return Ok(new { pdfReportUrl = publicUrl });
     }
 
     /// <summary>
-    /// <b>Debug-only.</b> Simulates the accident-detection fan-out: inserts a
-    /// <c>pending</c> <c>AccidentEvent</c> row in the caller's company and
-    /// sends the blocking-modal notification <b>to the caller alone</b>
-    /// (UserId = 1). Every other admin of the company is skipped — this
-    /// lets one operator walk the full decision workflow (confirm →
-    /// tow-monitoring, dismiss, or postpone) end-to-end on prod without
-    /// spamming their colleagues.
-    ///
-    /// <para>Gated to <c>UserId == 1</c>. Anyone else gets 403. Once the
-    /// simulated event is created, the caller can confirm / dismiss it via
-    /// the normal <c>/confirm</c> / <c>/dismiss</c> endpoints — those
-    /// handlers do broadcast to other admins, so use a throwaway test
-    /// company or let the team know a simulation is in progress.</para>
-    ///
-    /// <para>Returns <c>{ accidentEventId }</c> so the frontend can log the
-    /// row it just kicked off.</para>
+    /// Multi-file upload typed by phase — accepts pdf / images / docs.
+    /// Payload: <c>file</c> (the file) + <c>documentType</c> (one of
+    /// <c>expert_report | mechanic_quote | repair_invoice | insurance_response | police_report | photo | other</c>).
     /// </summary>
+    [HttpPost("{id:int}/documents")]
+    [RequestSizeLimit(50_000_000)]
+    public async Task<ActionResult<object>> AddDocument(int id, [FromForm] IFormFile file, [FromForm] string? documentType, CancellationToken ct)
+    {
+        var (_, error) = await ValidateUploadAsync(id, file, allowedExt: null, maxSize: 50_000_000, ct);
+        if (error != null) return error;
+
+        var ext = Path.GetExtension(file!.FileName).ToLowerInvariant();
+        var allowed = new[] { ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".doc", ".docx" };
+        if (!allowed.Contains(ext))
+            return BadRequest(new { message = $"Format non supporté ({ext}). Accepté: PDF, images, Word." });
+
+        var (publicUrl, _) = await SaveFileAsync(id, file, ext, ct);
+        var docId = await _mediator.Send(new AddAccidentDocumentCommand(
+            AccidentEventId: id,
+            DocumentType: documentType ?? "other",
+            FileName: file.FileName,
+            FileUrl: publicUrl,
+            FileSize: (int)file.Length,
+            MimeType: file.ContentType
+        ), ct);
+
+        return Ok(new { documentId = docId, fileUrl = publicUrl });
+    }
+
+    [HttpDelete("{id:int}/documents/{docId:int}")]
+    public async Task<IActionResult> DeleteDocument(int id, int docId, CancellationToken ct)
+    {
+        try { await _mediator.Send(new DeleteAccidentDocumentCommand(id, docId), ct); return NoContent(); }
+        catch (NotFoundException) { return NotFound(); }
+        catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    // ── Simulate (debug-only) ─────────────────────────────────────────────
+
     [HttpPost("simulate")]
     public async Task<IActionResult> Simulate(CancellationToken ct)
     {
         var currentUserId = _tenantService.UserId;
         var currentCompanyId = _tenantService.CompanyId;
-
-        // Hard gate — we want this endpoint to be obviously off-limits to
-        // anyone other than the primary account. Intentionally not using a
-        // role/permission check: this is a manual test hook, not a feature.
-        if (currentUserId != 1)
-        {
-            return Forbid();
-        }
-
-        if (currentCompanyId == null)
-        {
-            return BadRequest(new { error = "Société non identifiée" });
-        }
+        if (currentUserId != 1) return Forbid();
+        if (currentCompanyId == null) return BadRequest(new { error = "Société non identifiée" });
 
         var now = DateTime.UtcNow;
         var ev = new AccidentEvent
         {
             CompanyId = currentCompanyId.Value,
+            Origin = "auto",
             DeviceUid = "SIMULATE-USER-1",
             IncidentAt = now,
-            // Tunis — close enough for a realistic map pin on the report page.
             Latitude = 36.8188,
             Longitude = 10.1657,
             Confidence = 95,
@@ -284,9 +310,6 @@ public class AccidentReportsController : ControllerBase
             "AccidentReportsController.Simulate: created simulated accident {AccidentId} for user {UserId} in company {CompanyId}",
             ev.Id, currentUserId.Value, currentCompanyId.Value);
 
-        // Mirror AccidentDetectionService.NotifyCompanyAsync's metadata shape
-        // exactly so the AccidentDecisionModalComponent cannot tell the
-        // difference between a real accident and the simulated one.
         var metadata = new Dictionary<string, object>
         {
             ["accidentEventId"] = ev.Id,
@@ -297,30 +320,22 @@ public class AccidentReportsController : ControllerBase
             ["longitude"] = ev.Longitude,
             ["magnitude"] = 8000,
             ["speedBeforeKph"] = 65,
-            // String "true" — SignalR coerces the dictionary to JSON; the
-            // frontend modal filters on metadata.requiresDecision === 'true'.
             ["requiresDecision"] = "true",
         };
 
         var localTime = now.ToString("dd/MM/yyyy 'à' HH'h'mm");
-        var title = "Accident détecté sur votre véhicule";
-        var message =
-            $"🧪 SIMULATION — événement test déclenché le {localTime} UTC " +
-            $"sur le véhicule {ev.VehicleLabel}. Cliquez pour consulter le rapport détaillé.";
-        var actionUrl = $"/rapport-accident/{ev.Id}";
-
         try
         {
             await _notifService.CreateAndSendAsync(
                 companyId: currentCompanyId.Value,
                 userId: currentUserId.Value,
                 type: "accident_detected",
-                title: title,
-                message: message,
+                title: "Accident détecté sur votre véhicule",
+                message: $"🧪 SIMULATION — événement test déclenché le {localTime} UTC sur le véhicule {ev.VehicleLabel}.",
                 priority: "critical",
                 referenceType: "accident_event",
                 referenceId: ev.Id,
-                actionUrl: actionUrl,
+                actionUrl: $"/rapport-accident/{ev.Id}",
                 metadata: metadata,
                 ct: ct);
         }
@@ -333,17 +348,45 @@ public class AccidentReportsController : ControllerBase
 
         return Ok(new { accidentEventId = ev.Id });
     }
+
+    // ── File upload helpers ───────────────────────────────────────────────
+
+    private async Task<(AccidentEvent? Ev, ActionResult? Error)> ValidateUploadAsync(
+        int id, IFormFile? file, string? allowedExt, long maxSize, CancellationToken ct)
+    {
+        if (file == null || file.Length == 0)
+            return (null, BadRequest(new { message = "Fichier requis" }));
+        if (file.Length > maxSize)
+            return (null, BadRequest(new { message = $"Fichier trop volumineux (max {maxSize / 1_000_000} Mo)" }));
+        if (allowedExt != null)
+        {
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (ext != allowedExt) return (null, BadRequest(new { message = $"Format non supporté — uniquement {allowedExt}" }));
+        }
+        var companyId = _tenantService.CompanyId;
+        if (companyId == null) return (null, BadRequest(new { message = "Société non identifiée" }));
+        var ev = await _context.AccidentEvents
+            .FirstOrDefaultAsync(e => e.Id == id && e.CompanyId == companyId.Value, ct);
+        if (ev == null) return (null, NotFound());
+        return (ev, null);
+    }
+
+    private async Task<(string PublicUrl, string DiskPath)> SaveFileAsync(
+        int accidentId, IFormFile file, string ext, CancellationToken ct)
+    {
+        var uploadsDir = Path.Combine(_env.ContentRootPath, "uploads", "accident-reports", accidentId.ToString());
+        if (!Directory.Exists(uploadsDir)) Directory.CreateDirectory(uploadsDir);
+        var uniqueName = $"{Guid.NewGuid()}{ext}";
+        var filePath = Path.Combine(uploadsDir, uniqueName);
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream, ct);
+        }
+        return ($"/uploads/accident-reports/{accidentId}/{uniqueName}", filePath);
+    }
 }
 
-// ── Calypso 6 (P9) request DTOs ────────────────────────────────────────────
-
-public record UpdateAccidentDamagesRequest(
-    string? Description,
-    string? Severity,            // "minor" | "moderate" | "severe" | "total"
-    decimal? EstimatedCost,
-    string? ClaimNumber,
-    string? InternalNotes,
-    DateTime? ManualTowDate);
+// ── Request DTOs ────────────────────────────────────────────────────────────
 
 public record CreateManualAccidentRequest(
     int VehicleId,
@@ -357,3 +400,44 @@ public record CreateManualAccidentRequest(
     decimal? EstimatedCost,
     string? ClaimNumber,
     string? InternalNotes);
+
+public record UpdateInitialDamagesRequest(
+    string? Description,
+    string? Severity,
+    List<string>? DamagedZones,
+    string? PoliceReportNumber,
+    int? MileageAtAccident,
+    string? WeatherConditions,
+    string? RoadConditions);
+
+public record RegisterExpertAssessmentRequest(
+    DateTime? VisitedAt,
+    string? ExpertName,
+    string? ExpertCompany,
+    string? Assessment,
+    decimal? EstimatedAmount);
+
+public record RegisterMechanicQuoteRequest(
+    DateTime? QuoteAt,
+    string? MechanicName,
+    decimal? QuotedAmount);
+
+public record RegisterRepairRequest(
+    DateTime? StartedAt,
+    DateTime? CompletedAt,
+    decimal? ActualCost);
+
+public record RegisterClaimRequest(
+    string? ClaimNumber,
+    DateTime? SubmittedAt,
+    decimal? ApprovedAmount,
+    string? Status,
+    bool? ThirdPartyInvolved);
+
+public record AddThirdPartyRequest(
+    string? Name,
+    string? Phone,
+    string? VehiclePlate,
+    string? VehicleModel,
+    string? InsuranceCompany,
+    string? InsuranceNumber);

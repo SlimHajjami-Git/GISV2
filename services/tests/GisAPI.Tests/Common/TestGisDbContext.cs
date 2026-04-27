@@ -47,10 +47,10 @@ public class TestGisDbContext : DbContext, IGisDbContext
     public DbSet<UserVehicle> UserVehicles => Set<UserVehicle>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
     public DbSet<SupplierService> SupplierServices => Set<SupplierService>();
-    public DbSet<AccidentClaim> AccidentClaims => Set<AccidentClaim>();
-    public DbSet<AccidentClaimThirdParty> AccidentClaimThirdParties => Set<AccidentClaimThirdParty>();
-    public DbSet<AccidentClaimDocument> AccidentClaimDocuments => Set<AccidentClaimDocument>();
+    // Calypso 7 — AccidentClaim merged into AccidentEvent.
     public DbSet<AccidentEvent> AccidentEvents => Set<AccidentEvent>();
+    public DbSet<AccidentEventDocument> AccidentEventDocuments => Set<AccidentEventDocument>();
+    public DbSet<AccidentEventThirdParty> AccidentEventThirdParties => Set<AccidentEventThirdParty>();
     public DbSet<MaintenanceTemplate> MaintenanceTemplates => Set<MaintenanceTemplate>();
     public DbSet<VehicleMaintenanceSchedule> VehicleMaintenanceSchedules => Set<VehicleMaintenanceSchedule>();
     public DbSet<MaintenanceLog> MaintenanceLogs => Set<MaintenanceLog>();

@@ -7,31 +7,26 @@ using Microsoft.EntityFrameworkCore;
 namespace GisAPI.Application.Features.AccidentEvents.Queries;
 
 /// <summary>
-/// Calypso 6 (P9) — paged list of accident events for the new
-/// <c>/accident-reports</c> admin page. Filters at the company level
-/// (no global view), excludes <c>dismissed</c> rows by default since
-/// they are noise, and orders newest first.
+/// Calypso 7 — paged list of accident events for the unified
+/// <c>/accident-reports</c> admin page. Returns enough data to render
+/// the table (vehicle, date, status, severity, repair cost, claim
+/// status) plus a small derived progress indicator.
 ///
-/// <para>Optional filters:</para>
-/// <list type="bullet">
-///   <item><description><c>Status</c> — filter to a specific lifecycle
-///     value (<c>pending</c>, <c>awaiting_details</c>, <c>confirmed</c>, …).</description></item>
-///   <item><description><c>VehicleId</c> — only events for a specific
-///     vehicle.</description></item>
-///   <item><description><c>IncludeDismissed</c> — true to also include
-///     dismissed rows in the result.</description></item>
-/// </list>
+/// <para>Optional filters: <c>Status</c>, <c>VehicleId</c>,
+/// <c>Origin</c> (<c>auto|manual</c>), <c>IncludeDismissed</c>.</para>
 /// </summary>
 public record ListAccidentEventsQuery(
     int Page = 1,
     int PageSize = 20,
     string? Status = null,
     int? VehicleId = null,
+    string? Origin = null,
     bool IncludeDismissed = false
 ) : IRequest<ListAccidentEventsResult>;
 
 public record AccidentEventListItemDto(
     int Id,
+    string Origin,
     int? VehicleId,
     string? VehicleLabel,
     DateTime IncidentAt,
@@ -45,8 +40,22 @@ public record AccidentEventListItemDto(
     string? DecidedByName,
     DateTime? TowDetectedAt,
     string? PdfReportUrl,
-    string? Severity,           // Pulled out of damages_json for the table
-    decimal? EstimatedCost      // Pulled out of damages_json for the table
+    // Phase 2 — initial damages
+    string? InitialSeverity,
+    // Phase 3 — expert
+    DateTime? ExpertVisitedAt,
+    decimal? ExpertEstimatedAmount,
+    // Phase 4 — mechanic quote
+    decimal? MechanicQuotedAmount,
+    // Phase 5 — repair
+    DateTime? RepairCompletedAt,
+    decimal? ActualRepairCost,
+    // Phase 6 — claim
+    string? ClaimNumber,
+    string? ClaimStatus,
+    decimal? ClaimApprovedAmount,
+    // Derived
+    string CurrentPhase  // "detection" | "confirmed" | "expertise" | "quote" | "repair" | "claim" | "closed" | "dismissed"
 );
 
 public record ListAccidentEventsResult(
@@ -61,9 +70,7 @@ public class ListAccidentEventsQueryHandler : IRequestHandler<ListAccidentEvents
     private readonly IGisDbContext _context;
     private readonly ICurrentTenantService _tenantService;
 
-    public ListAccidentEventsQueryHandler(
-        IGisDbContext context,
-        ICurrentTenantService tenantService)
+    public ListAccidentEventsQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
         _tenantService = tenantService;
@@ -87,36 +94,18 @@ public class ListAccidentEventsQueryHandler : IRequestHandler<ListAccidentEvents
         if (!string.IsNullOrWhiteSpace(request.Status))
             query = query.Where(e => e.Status == request.Status);
 
+        if (!string.IsNullOrWhiteSpace(request.Origin))
+            query = query.Where(e => e.Origin == request.Origin);
+
         if (request.VehicleId.HasValue)
             query = query.Where(e => e.VehicleId == request.VehicleId.Value);
 
         var totalCount = await query.CountAsync(ct);
 
-        // Pull the rows + a small denormalised name lookup for the decider.
-        // Keep it as a simple LINQ shape — the dataset is small (one row
-        // per real accident, dozens per company per year at most).
         var rows = await query
             .OrderByDescending(e => e.IncidentAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(e => new
-            {
-                e.Id,
-                e.VehicleId,
-                e.VehicleLabel,
-                e.IncidentAt,
-                e.Latitude,
-                e.Longitude,
-                e.LocationCommune,
-                e.LocationGovernorate,
-                e.Confidence,
-                e.Status,
-                e.DecidedAt,
-                e.DecidedByUserId,
-                e.TowDetectedAt,
-                e.PdfReportUrl,
-                e.DamagesJson,
-            })
             .ToListAsync(ct);
 
         var deciderIds = rows
@@ -131,60 +120,52 @@ public class ListAccidentEventsQueryHandler : IRequestHandler<ListAccidentEvents
                 .IgnoreQueryFilters()
                 .AsNoTracking()
                 .Where(u => deciderIds.Contains(u.Id))
-                .ToDictionaryAsync(u => u.Id, u => u.FullName ?? u.Email, ct);
+                .ToDictionaryAsync(u => u.Id, u => (string?)u.FullName ?? u.Email ?? string.Empty, ct);
 
-        var items = rows.Select(r =>
-        {
-            var (severity, estimatedCost) = ExtractDamagesSummary(r.DamagesJson);
-            return new AccidentEventListItemDto(
-                Id: r.Id,
-                VehicleId: r.VehicleId,
-                VehicleLabel: r.VehicleLabel,
-                IncidentAt: r.IncidentAt,
-                Latitude: r.Latitude,
-                Longitude: r.Longitude,
-                LocationCommune: r.LocationCommune,
-                LocationGovernorate: r.LocationGovernorate,
-                Confidence: r.Confidence,
-                Status: r.Status,
-                DecidedAt: r.DecidedAt,
-                DecidedByName: r.DecidedByUserId.HasValue && deciderNames.TryGetValue(r.DecidedByUserId.Value, out var n) ? n : null,
-                TowDetectedAt: r.TowDetectedAt,
-                PdfReportUrl: r.PdfReportUrl,
-                Severity: severity,
-                EstimatedCost: estimatedCost
-            );
-        }).ToList();
+        var items = rows.Select(r => new AccidentEventListItemDto(
+            Id: r.Id,
+            Origin: r.Origin,
+            VehicleId: r.VehicleId,
+            VehicleLabel: r.VehicleLabel,
+            IncidentAt: r.IncidentAt,
+            Latitude: r.Latitude,
+            Longitude: r.Longitude,
+            LocationCommune: r.LocationCommune,
+            LocationGovernorate: r.LocationGovernorate,
+            Confidence: r.Confidence,
+            Status: r.Status,
+            DecidedAt: r.DecidedAt,
+            DecidedByName: r.DecidedByUserId.HasValue && deciderNames.TryGetValue(r.DecidedByUserId.Value, out var n) ? n : null,
+            TowDetectedAt: r.TowDetectedAt,
+            PdfReportUrl: r.PdfReportUrl,
+            InitialSeverity: r.InitialSeverity,
+            ExpertVisitedAt: r.ExpertVisitedAt,
+            ExpertEstimatedAmount: r.ExpertEstimatedAmount,
+            MechanicQuotedAmount: r.MechanicQuotedAmount,
+            RepairCompletedAt: r.RepairCompletedAt,
+            ActualRepairCost: r.ActualRepairCost,
+            ClaimNumber: r.ClaimNumber,
+            ClaimStatus: r.ClaimStatus,
+            ClaimApprovedAmount: r.ClaimApprovedAmount,
+            CurrentPhase: DerivePhase(r)
+        )).ToList();
 
         return new ListAccidentEventsResult(items, totalCount, page, pageSize);
     }
 
     /// <summary>
-    /// Cheap parse of the damages JSON to extract just the two fields we
-    /// surface in the list table. Anything unexpected (null, malformed,
-    /// missing fields) safely returns nulls — the row stays usable.
+    /// Tags a row with the most-advanced phase it has reached.
+    /// Drives the phase chip / color in the list UI.
     /// </summary>
-    private static (string? Severity, decimal? EstimatedCost) ExtractDamagesSummary(string? json)
+    private static string DerivePhase(GisAPI.Domain.Entities.AccidentEvent e)
     {
-        if (string.IsNullOrWhiteSpace(json)) return (null, null);
-        try
-        {
-            using var doc = System.Text.Json.JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            string? sev = null;
-            decimal? cost = null;
-            if (root.TryGetProperty("severity", out var sevEl) && sevEl.ValueKind == System.Text.Json.JsonValueKind.String)
-                sev = sevEl.GetString();
-            if (root.TryGetProperty("estimatedCost", out var costEl))
-            {
-                if (costEl.ValueKind == System.Text.Json.JsonValueKind.Number)
-                    cost = costEl.GetDecimal();
-            }
-            return (sev, cost);
-        }
-        catch
-        {
-            return (null, null);
-        }
+        if (e.Status == "dismissed") return "dismissed";
+        if (e.Status == "pending") return "detection";
+        if (!string.IsNullOrEmpty(e.ClaimStatus) && e.ClaimStatus is "closed" or "approved" or "rejected") return "closed";
+        if (e.ClaimSubmittedAt.HasValue || !string.IsNullOrEmpty(e.ClaimNumber)) return "claim";
+        if (e.RepairCompletedAt.HasValue || e.ActualRepairCost.HasValue) return "repair";
+        if (e.MechanicQuoteAt.HasValue || e.MechanicQuotedAmount.HasValue) return "quote";
+        if (e.ExpertVisitedAt.HasValue || e.ExpertEstimatedAmount.HasValue) return "expertise";
+        return "confirmed";
     }
 }

@@ -28,10 +28,11 @@ public interface IGisDbContext
     DbSet<UserVehicle> UserVehicles { get; }
     DbSet<Supplier> Suppliers { get; }
     DbSet<SupplierService> SupplierServices { get; }
-    DbSet<AccidentClaim> AccidentClaims { get; }
-    DbSet<AccidentClaimThirdParty> AccidentClaimThirdParties { get; }
-    DbSet<AccidentClaimDocument> AccidentClaimDocuments { get; }
+    // Calypso 7 — AccidentClaim was unified into AccidentEvent. Documents
+    // and third parties are now child tables of accident_events.
     DbSet<AccidentEvent> AccidentEvents { get; }
+    DbSet<AccidentEventDocument> AccidentEventDocuments { get; }
+    DbSet<AccidentEventThirdParty> AccidentEventThirdParties { get; }
     DbSet<MaintenanceTemplate> MaintenanceTemplates { get; }
     DbSet<VehicleMaintenanceSchedule> VehicleMaintenanceSchedules { get; }
     DbSet<MaintenanceLog> MaintenanceLogs { get; }
