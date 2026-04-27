@@ -1986,25 +1986,36 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     };
   }
 
-  // Vehicle multi-select helpers
-  isVehicleSelected(vehicleId: string): boolean {
-    return this.geofenceForm.assignedVehicleIds?.includes(vehicleId) || false;
+  // Vehicle multi-select helpers.
+  //
+  // Calypso 7 (P-geo-edit, follow-up): the Vehicle.id type is declared as
+  // `string` in the TS model but the backend returns it as an int over the
+  // wire — JSON keeps it as a number at runtime. Meanwhile editGeofence
+  // normalizes assignedVehicleIds to strings so .includes() works
+  // consistently. Without coercing the input vehicleId to a string here,
+  // ["125"].includes(125) was returning false and the checkboxes always
+  // rendered unchecked even when the geofence had vehicles assigned. We
+  // coerce both sides to strings on every read/write.
+  isVehicleSelected(vehicleId: string | number): boolean {
+    const id = String(vehicleId);
+    return this.geofenceForm.assignedVehicleIds?.includes(id) || false;
   }
 
-  toggleVehicle(vehicleId: string) {
+  toggleVehicle(vehicleId: string | number) {
+    const id = String(vehicleId);
     if (!this.geofenceForm.assignedVehicleIds) {
       this.geofenceForm.assignedVehicleIds = [];
     }
-    const idx = this.geofenceForm.assignedVehicleIds.indexOf(vehicleId);
+    const idx = this.geofenceForm.assignedVehicleIds.indexOf(id);
     if (idx > -1) {
       this.geofenceForm.assignedVehicleIds.splice(idx, 1);
     } else {
-      this.geofenceForm.assignedVehicleIds.push(vehicleId);
+      this.geofenceForm.assignedVehicleIds.push(id);
     }
   }
 
   selectAllVehicles() {
-    this.geofenceForm.assignedVehicleIds = this.vehicles.map(v => v.id);
+    this.geofenceForm.assignedVehicleIds = this.vehicles.map(v => String(v.id));
   }
 
   deselectAllVehicles() {
@@ -2126,19 +2137,50 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       geofenceData.radius = null;
     }
 
+    // Calypso 7 (P-geo-edit): the PUT/POST controller deserializes the
+    // body into a Geofence entity which has no `AssignedVehicleIds`
+    // property — the field is silently dropped by the model binder. So
+    // we have to call the dedicated POST /:id/vehicles endpoint right
+    // after the scalar save to actually persist the vehicle assignments.
+    // Without this second call, ticking a vehicle and saving was a
+    // no-op as far as the database was concerned.
+    const vehicleIds: number[] = (geofenceData.assignedVehicleIds as number[]) || [];
+
     if (this.editingGeofence) {
-      this.apiService.updateGeofence(parseInt(this.editingGeofence.id), geofenceData).subscribe({
+      const id = parseInt(this.editingGeofence.id);
+      this.apiService.updateGeofence(id, geofenceData).subscribe({
         next: () => {
-          this.closePopup();
-          this.refreshData();
+          this.apiService.assignGeofenceVehicles(id, vehicleIds).subscribe({
+            next: () => {
+              this.closePopup();
+              this.refreshData();
+            },
+            error: (err) => {
+              console.error('Error assigning geofence vehicles:', err);
+              this.closePopup();
+              this.refreshData();
+            }
+          });
         },
         error: (err) => console.error('Error updating geofence:', err)
       });
     } else {
       this.apiService.createGeofence(geofenceData).subscribe({
-        next: () => {
-          this.closePopup();
-          this.refreshData();
+        next: (created: any) => {
+          const newId = Number(created?.id);
+          if (Number.isFinite(newId) && vehicleIds.length > 0) {
+            this.apiService.assignGeofenceVehicles(newId, vehicleIds).subscribe({
+              next: () => { this.closePopup(); this.refreshData(); },
+              error: (err) => {
+                console.error('Error assigning geofence vehicles:', err);
+                this.closePopup();
+                this.refreshData();
+              }
+            });
+          } else {
+            this.closePopup();
+            this.refreshData();
+          }
         },
         error: (err) => console.error('Error creating geofence:', err)
       });
