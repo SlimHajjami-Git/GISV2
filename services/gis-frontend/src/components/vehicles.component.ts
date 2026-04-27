@@ -10,7 +10,9 @@ import { Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { VehiclePopupComponent } from './shared/vehicle-popup.component';
 import { VehicleCostsPopupComponent } from './shared/vehicle-costs-popup.component';
-import { VehicleInfoComponent } from './vehicle-info.component';
+// Calypso 7: VehicleInfoComponent has been folded into VehiclePopupComponent.
+// The unified popup handles identification + GPS (admin-only) + acquisition
+// in a single surface, so the legacy slide-panel is no longer needed here.
 
 interface VehicleExtended extends Vehicle {
   fuelLevel?: number;
@@ -43,7 +45,7 @@ interface VehicleTrip {
 @Component({
   selector: 'app-vehicles',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, VehiclePopupComponent, VehicleCostsPopupComponent, VehicleInfoComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, VehiclePopupComponent, VehicleCostsPopupComponent],
   animations: [
     trigger('slideIn', [
       transition(':enter', [
@@ -222,13 +224,12 @@ interface VehicleTrip {
                   </td>
                   <td class="col-actions">
                     <div class="actions-cell">
-                      <button class="btn-table-action primary" (click)="goToVehicleInfo(vehicle); $event.stopPropagation()" title="Fiche véhicule">
+                      <button class="btn-table-action primary" (click)="openEditPopup(vehicle); $event.stopPropagation()" title="Modifier le véhicule">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                          <line x1="3" y1="9" x2="21" y2="9"/>
-                          <line x1="9" y1="21" x2="9" y2="9"/>
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                         </svg>
-                        <span>Fiche</span>
+                        <span>Modifier</span>
                       </button>
                       <!-- Calypso 6 (P5): "Visualiser Crédit" — visible only for
                            leasing vehicles. Opens an inline popup showing the
@@ -303,7 +304,7 @@ interface VehicleTrip {
           </div>
           <div class="credit-foot">
             <button class="btn-secondary" (click)="closeCreditPopup()">Fermer</button>
-            <button class="btn-primary" (click)="goToVehicleInfo(creditPopupVehicle); closeCreditPopup()">Modifier la fiche</button>
+            <button class="btn-primary" (click)="openEditPopup(creditPopupVehicle); closeCreditPopup()">Modifier le véhicule</button>
           </div>
         </div>
       </div>
@@ -497,12 +498,6 @@ interface VehicleTrip {
               </svg>
               Modifier
             </button>
-            <button class="btn-action-footer info" (click)="goToVehicleInfo(selectedDetailVehicle)" style="background:#6366f1;color:white;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-              </svg>
-              Fiche véhicule
-            </button>
             <button class="btn-action-footer costs" (click)="openCostsPopup(selectedDetailVehicle)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="1" x2="12" y2="23"/>
@@ -668,14 +663,6 @@ interface VehicleTrip {
         [isOpen]="isCostsPopupOpen"
         [vehicle]="selectedVehicleForCosts"
         (closed)="closeCostsPopup()"
-      />
-
-      <app-vehicle-info
-        [isOpen]="isInfoPanelOpen"
-        [vehicleId]="selectedInfoVehicleId"
-        [vehicleName]="selectedInfoVehicleName"
-        (closed)="closeInfoPanel()"
-        (saved)="onInfoSaved()"
       />
     </app-layout>
   `,
@@ -2410,10 +2397,6 @@ export class VehiclesComponent implements OnInit, OnDestroy {
   // Costs popup
   isCostsPopupOpen = false;
   selectedVehicleForCosts: Vehicle | null = null;
-  isInfoPanelOpen = false;
-  selectedInfoVehicleId: number | null = null;
-  selectedInfoVehicleName: string = '';
-
   // Free maintenance modal
   isFreeMaintModalOpen = false;
   freeMaintVehicle: Vehicle | null = null;
@@ -2874,10 +2857,26 @@ export class VehiclesComponent implements OnInit, OnDestroy {
       mileage: vehicleData.mileage || 0,
       fuelType: vehicleData.fuelType || null,
       fuelTankCapacity: vehicleData.fuelTankCapacity || null,
-      status: vehicleData.status || 'available'
+      status: vehicleData.status || 'available',
+      // Calypso 7 — Acquisition & financement (formerly handled by the
+      // separate vehicle-info panel). The API command already accepts
+      // these fields; we just stopped having a UI surface for some of
+      // them when the panel disappeared, hence forwarding them here.
+      acquisitionType: vehicleData.acquisitionType === 'leasing' ? 'leasing' : 'purchase',
+      purchaseDate: vehicleData.purchaseDate || null,
+      purchasePrice: vehicleData.purchasePrice ?? null,
+      leasingMonthlyPayment: vehicleData.leasingMonthlyPayment ?? null,
+      leasingDurationMonths: vehicleData.leasingDurationMonths ?? null,
+      leasingStartDate: vehicleData.leasingStartDate || null,
+      leasingPaymentDay: vehicleData.leasingPaymentDay ?? null,
+      registrationDate: vehicleData.registrationDate || null
     };
 
-    // GPS device handling
+    // GPS device handling — only relevant when the popup ran in admin
+    // context (the only place that exposes the GPS section). When a
+    // company user saves their own vehicle, vehicleData carries the
+    // original GPS columns untouched (preserved by VehiclePopupComponent),
+    // and we don't try to re-link the device.
     if (vehicleData.hasGPS) {
       if (vehicleData.gpsDeviceId) {
         payload.gpsDeviceId = parseInt(vehicleData.gpsDeviceId, 10);
@@ -3047,23 +3046,6 @@ export class VehiclesComponent implements OnInit, OnDestroy {
         this.cdr.detectChanges();
       }
     });
-  }
-
-  goToVehicleInfo(vehicle: any) {
-    this.selectedInfoVehicleId = vehicle.id;
-    this.selectedInfoVehicleName = (vehicle.brand || '') + ' ' + (vehicle.model || '') + (vehicle.plate ? ' (' + vehicle.plate + ')' : '');
-    this.isInfoPanelOpen = true;
-    this.cdr.detectChanges();
-  }
-
-  closeInfoPanel() {
-    this.isInfoPanelOpen = false;
-    this.selectedInfoVehicleId = null;
-    this.cdr.detectChanges();
-  }
-
-  onInfoSaved() {
-    this.loadVehicles();
   }
 
   // Document Expiry Alert Methods

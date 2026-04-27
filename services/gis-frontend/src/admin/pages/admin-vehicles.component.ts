@@ -170,6 +170,7 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
           [vehicle]="selectedVehicleForPopup"
           [companies]="companiesForPopup"
           [defaultCompanyId]="companies.length > 0 ? companies[0].id : null"
+          [isSystemAdminContext]="true"
           (closed)="closeModals()"
           (saved)="onVehicleSaved($event)">
         </app-vehicle-popup>
