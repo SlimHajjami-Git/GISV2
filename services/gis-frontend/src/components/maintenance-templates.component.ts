@@ -341,7 +341,8 @@ interface FlatRow {
                   En cochant ci-dessous, le coût sera automatiquement mis à 0 DT et le compteur sera décrémenté.
                 </div>
                 <label class="free-banner-check">
-                  <input type="checkbox" [(ngModel)]="markData.applyFreeBenefit" name="applyFreeBenefit">
+                  <input type="checkbox" [(ngModel)]="markData.applyFreeBenefit" name="applyFreeBenefit"
+                         (ngModelChange)="onApplyFreeBenefitChange()">
                   <span class="check-box"></span>
                   <span class="check-label">Appliquer le crédit gratuit (recommandé)</span>
                 </label>
@@ -380,7 +381,19 @@ interface FlatRow {
                   </div>
                   <div class="inv-bottom">
                     <input class="inv-desc" [(ngModel)]="line.description" [placeholder]="line.isCustom ? 'Description...' : (line.isNewTemplate ? line.newTemplateName || 'Nom...' : line.description)" [readonly]="!line.isCustom && !line.isNewTemplate && line.templateId">
-                    <div class="inv-price"><input type="number" [(ngModel)]="line.price" placeholder="0"><span>DT</span></div>
+                    <!--
+                      Calypso 7 (P-free-credit): when the user applies a free
+                      maintenance credit, the corresponding invoice line is
+                      pinned to 0 DT and the input goes read-only — the
+                      whole point of the credit is "free under warranty".
+                      Other invoice lines (different templates) stay editable.
+                    -->
+                    <div class="inv-price">
+                      <input type="number" [(ngModel)]="line.price" placeholder="0"
+                             [readonly]="isLineFree(line)"
+                             [class.is-free]="isLineFree(line)">
+                      <span>DT</span>
+                    </div>
                   </div>
                   <div class="inv-hint" *ngIf="line.templateId && lastPaidPrices.get(line.templateId)">Dernier prix: {{ lastPaidPrices.get(line.templateId) | number }} DT</div>
                 </div>
@@ -873,6 +886,7 @@ interface FlatRow {
     .inv-desc:not([readonly]) { background:white; }
     .inv-price { display:flex; align-items:center; gap:4px; }
     .inv-price input { width:80px; padding:6px 10px; border:1px solid #e2e8f0; border-radius:3px; font-size:12px; text-align:right; }
+    .inv-price input.is-free { background:#f0fdf4; border-color:#bbf7d0; color:#166534; cursor:not-allowed; }
     .inv-price span { font-size:11px; color:#64748b; }
     .inv-hint { margin-top:6px; padding:6px 8px; background:#dbeafe; border-radius:3px; font-size:10px; color:#1d4ed8; }
     .new-tpl-fields { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:10px; margin-bottom:8px; }
@@ -1155,12 +1169,47 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
       freeExpiryDate: m.freeExpiryDate || null,
       applyFreeBenefit: hasFree, // auto-checked when a credit is available
       invoiceLines: [{
-        templateId: m.templateId, description: m.templateName, price: lastPrice,
+        // Calypso 7 (P-free-credit): when a free credit is auto-applied,
+        // the line price is pinned to 0 so the invoice total reflects the
+        // covered cost AND the validation passes (`price != null`). Without
+        // this, the user had to manually type 0 to enable the Confirm
+        // button — counterintuitive when the entire UI says "offert".
+        templateId: m.templateId, description: m.templateName,
+        price: hasFree ? 0 : lastPrice,
         isCustom: false, isNewTemplate: false, newTemplateName: '',
         newTemplateCategory: '', newTemplateIntervalKm: null, newTemplateIntervalMonths: null
       }]
     };
     this.isMarkOpen = true;
+  }
+
+  /**
+   * Calypso 7 (P-free-credit): keep the invoice line price in sync with
+   * the "Appliquer le crédit gratuit" toggle. When the user opts in, we
+   * zero out the price for the line whose templateId matches the credit
+   * (other lines on the form stay untouched). When the user opts out,
+   * we clear the price so they enter the real invoice amount.
+   */
+  onApplyFreeBenefitChange(): void {
+    const apply = !!this.markData.applyFreeBenefit;
+    const parentId = this.markData.templateId;
+    if (!parentId) return;
+    for (const line of this.markData.invoiceLines as InvoiceLine[]) {
+      if (line.templateId !== parentId) continue;
+      line.price = apply ? 0 : null;
+    }
+  }
+
+  /**
+   * True when this invoice line is the one being covered by a free
+   * credit. Used to (a) lock the price input to 0 and (b) tag it with
+   * the .is-free class so it is visually muted.
+   */
+  isLineFree(line: InvoiceLine): boolean {
+    return !!this.markData.applyFreeBenefit
+        && (this.markData.freeUsesRemaining ?? 0) > 0
+        && !!line.templateId
+        && line.templateId === this.markData.templateId;
   }
 
   openMarkDoneFromRow(row: FlatRow) {

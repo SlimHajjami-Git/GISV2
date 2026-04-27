@@ -355,6 +355,11 @@ export interface CompanyOption {
               </div>
             </div>
           </div>
+            </div>
+            <!-- ↑ closes the admin-gated GPS .form-section. Without this
+                 close, the Acquisition section below was nested INSIDE the
+                 GPS section and disappeared whenever isSystemAdminContext
+                 was false (i.e. for every company-level user). -->
 
             <!--
               Acquisition & financement — moved from the legacy vehicle-info
@@ -452,8 +457,6 @@ export interface CompanyOption {
                   </div>
                 </div>
               </ng-container>
-            </div>
-
             </div>
           </form>
         </div>
