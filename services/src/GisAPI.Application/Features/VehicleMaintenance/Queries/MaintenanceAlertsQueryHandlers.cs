@@ -46,11 +46,44 @@ public class GetMaintenanceAlertsQueryHandler : IRequestHandler<GetMaintenanceAl
             odometerMap = latestOdometers.ToDictionary(x => x.DeviceId, x => x.OdometerKm ?? 0);
         }
 
+        // Calypso 7 (P-maint-couche1, follow-up): batch trips totals so the
+        // alerts list also benefits from the trips fallback when neither
+        // GPS odometer nor a positive vehicle.Mileage is available. Without
+        // this, alerts on silent-tracker vehicles would compare NextDueKm
+        // against vehicle.Mileage = 0 and report a misleading kmUntilDue.
+        var alertsVehicleIds = schedules
+            .Where(s => s.Vehicle != null)
+            .Select(s => s.Vehicle!.Id)
+            .Distinct()
+            .ToList();
+        var tripsTotalsMap = new Dictionary<int, int>();
+        if (alertsVehicleIds.Count > 0)
+        {
+            var tripsTotalsRaw = await _context.Trips
+                .Where(t => alertsVehicleIds.Contains(t.VehicleId) && t.EndTime != null)
+                .GroupBy(t => t.VehicleId)
+                .Select(g => new { VehicleId = g.Key, KmSum = g.Sum(t => (double?)t.DistanceKm) ?? 0 })
+                .ToListAsync(cancellationToken);
+            tripsTotalsMap = tripsTotalsRaw.ToDictionary(x => x.VehicleId, x => (int)Math.Round(x.KmSum));
+        }
+
         return schedules.Select(s =>
         {
-            var vehicleMileage = s.Vehicle?.Mileage ?? 0;
+            // Smart cascade — same priority as
+            // MaintenanceSchedulerService.GetCurrentMileageAsync.
+            int vehicleMileage;
             if (s.Vehicle?.GpsDevice != null && odometerMap.TryGetValue(s.Vehicle.GpsDevice.Id, out var odo) && odo > 0)
+            {
                 vehicleMileage = (int)odo;
+            }
+            else if ((s.Vehicle?.Mileage ?? 0) > 0)
+            {
+                vehicleMileage = s.Vehicle!.Mileage;
+            }
+            else
+            {
+                vehicleMileage = (s.Vehicle != null && tripsTotalsMap.TryGetValue(s.Vehicle.Id, out var tripsKm)) ? tripsKm : 0;
+            }
 
             var kmUntilDue = s.NextDueKm.HasValue && s.Vehicle != null 
                 ? s.NextDueKm.Value - vehicleMileage 

@@ -57,12 +57,41 @@ public class GetVehicleMaintenanceQueryHandler : IRequestHandler<GetVehicleMaint
             odometerMap = latestOdometers.ToDictionary(x => x.DeviceId, x => x.OdometerKm ?? 0);
         }
 
+        // Calypso 7 (P-maint-couche1, follow-up): batch trips totals so the
+        // 3rd fallback in the smart resolver works even when neither GPS
+        // odometer nor a positive vehicle.Mileage is available. Without this
+        // batch, /entretien-programmable kept showing currentMileage = 0
+        // for any vehicle whose tracker has no FMS odometer wired (e.g. the
+        // 257 TU 6114 with disconnected CAN bus). Mirrors the cascade in
+        // MaintenanceSchedulerService.GetCurrentMileageAsync.
+        var vehicleIds = vehicles.Select(v => v.Id).ToList();
+        var tripsTotalsRaw = await _context.Trips
+            .Where(t => vehicleIds.Contains(t.VehicleId) && t.EndTime != null)
+            .GroupBy(t => t.VehicleId)
+            .Select(g => new { VehicleId = g.Key, KmSum = g.Sum(t => (double?)t.DistanceKm) ?? 0 })
+            .ToListAsync(cancellationToken);
+        var tripsTotalKmMap = tripsTotalsRaw.ToDictionary(x => x.VehicleId, x => (int)Math.Round(x.KmSum));
+
         foreach (var vehicle in vehicles)
         {
-            // Override mileage for firmware "L" devices
-            var currentMileage = vehicle.Mileage;
+            // Smart mileage cascade — same priority as
+            // MaintenanceSchedulerService.GetCurrentMileageAsync:
+            //   1) GPS odometer (firmware L, batched above)
+            //   2) vehicle.Mileage if > 0
+            //   3) trips total fallback (silent-tracker case)
+            int currentMileage;
             if (vehicle.GpsDevice != null && odometerMap.TryGetValue(vehicle.GpsDevice.Id, out var odo) && odo > 0)
+            {
                 currentMileage = (int)odo;
+            }
+            else if (vehicle.Mileage > 0)
+            {
+                currentMileage = vehicle.Mileage;
+            }
+            else
+            {
+                currentMileage = tripsTotalKmMap.TryGetValue(vehicle.Id, out var tripsKm) ? tripsKm : 0;
+            }
 
             var vehicleSchedules = schedules.Where(s => s.VehicleId == vehicle.Id).ToList();
             if (vehicleSchedules.Count == 0 && request.Status != null) continue;
