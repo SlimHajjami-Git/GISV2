@@ -311,6 +311,90 @@ impl Database {
 
         // MAT is the GPS logical identifier (e.g., "NR08G0664"), distinct from vehicle plate_number
         let mat = info.mat.as_ref().map(|m| m.trim().to_string());
+
+        // Calypso 7 strict frame validation: before we let the UPSERT touch
+        // the row, peek at any existing values for this IMEI and reject the
+        // entire info frame if the device tries to advertise a MAT or
+        // firmware that contradicts what is already known. The check is one-
+        // way: an empty stored value still accepts the incoming one (first
+        // write wins). A mismatch is logged to `frame_debug_log` for forensic
+        // review and bubbles up as an `Err`, which the TCP handler treats as
+        // a terminal failure for that connection — the device will reconnect
+        // and either send a coherent frame or get kicked again. We never
+        // silently overwrite admin-known identifiers from device traffic.
+        let existing_row = sqlx::query(
+            r#"SELECT mat, firmware_version FROM gps_devices WHERE device_uid = $1"#,
+        )
+        .bind(&imei)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(row) = existing_row {
+            let stored_mat: Option<String> = row.try_get("mat").ok().flatten();
+            let stored_fw: Option<String> = row.try_get("firmware_version").ok().flatten();
+
+            // MAT mismatch: stored is non-empty and incoming is non-empty and they disagree.
+            if let (Some(stored), Some(incoming)) = (
+                stored_mat.as_ref().filter(|s| !s.is_empty()),
+                mat.as_ref().filter(|s| !s.is_empty()),
+            ) {
+                if stored != incoming {
+                    tracing::warn!(
+                        imei = %imei,
+                        stored_mat = %stored,
+                        incoming_mat = %incoming,
+                        "REJECTED info frame: MAT mismatch — frame stored to debug log, no upsert performed"
+                    );
+                    let _ = self.log_frame_debug(
+                        None,
+                        Some(&imei),
+                        Some(incoming),
+                        "info",
+                        None,
+                        None,
+                        &format!("info(imei={}, mat={}, fw={})", imei, incoming, firmware),
+                        &format!("mat_mismatch: stored={} incoming={}", stored, incoming),
+                        None,
+                    ).await;
+                    anyhow::bail!(
+                        "Frame rejected: MAT mismatch for device {} (stored={}, incoming={})",
+                        imei, stored, incoming
+                    );
+                }
+            }
+
+            // Firmware mismatch: same logic, applied to the canonical value
+            // we would otherwise persist (firmware_value, derived from the
+            // protocol metadata when available, else the raw frame value).
+            if let (Some(stored), Some(incoming)) = (
+                stored_fw.as_ref().filter(|s| !s.is_empty()),
+                Some(&firmware_value).filter(|s| !s.is_empty()),
+            ) {
+                if stored != incoming {
+                    tracing::warn!(
+                        imei = %imei,
+                        stored_firmware = %stored,
+                        incoming_firmware = %incoming,
+                        "REJECTED info frame: firmware mismatch — frame stored to debug log, no upsert performed"
+                    );
+                    let _ = self.log_frame_debug(
+                        None,
+                        Some(&imei),
+                        mat.as_deref(),
+                        "info",
+                        None,
+                        None,
+                        &format!("info(imei={}, mat={:?}, fw={})", imei, mat, incoming),
+                        &format!("firmware_mismatch: stored={} incoming={}", stored, incoming),
+                        None,
+                    ).await;
+                    anyhow::bail!(
+                        "Frame rejected: firmware mismatch for device {} (stored={}, incoming={})",
+                        imei, stored, incoming
+                    );
+                }
+            }
+        }
         
         // Use MAT as GPS model if it looks like a model number (e.g., "NR08G0664")
         // This is important to differentiate GPS capabilities (FMS support, etc.)
