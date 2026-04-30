@@ -74,15 +74,27 @@ public class GetVehicleMaintenanceQueryHandler : IRequestHandler<GetVehicleMaint
 
         foreach (var vehicle in vehicles)
         {
-            // Calypso 7 (P-maint-couche1, follow-up #2): MAX-cascade des
-            // trois sources pour qu'un trips total qui grimpe écrase un
-            // vehicle.Mileage gelé. Sinon les vehicules dont le CAN bus
-            // est mort restent figés sur la valeur statique de
-            // vehicle.Mileage et l'entretien ne se déclenche jamais.
+            // Calypso 7 (P-maint-couche1, follow-up #3): cascade CONDITIONNELLE
+            // pour ne pas faire monter `currentMileage` plus haut que
+            // l'odomètre quand le CAN bus est sain — voir le commentaire dans
+            // MaintenanceSchedulerService.GetCurrentMileageAsync pour la
+            // justification complète. Le trip-detector peut sur-compter
+            // légèrement et faire croire que le véhicule a roulé plus que
+            // son odomètre indique.
             long gpsOdo = (vehicle.GpsDevice != null && odometerMap.TryGetValue(vehicle.GpsDevice.Id, out var odo) && odo > 0) ? odo : 0;
             int manualMileage = vehicle.Mileage;
-            int tripsMileage = tripsTotalKmMap.TryGetValue(vehicle.Id, out var tripsKm) ? tripsKm : 0;
-            int currentMileage = (int)Math.Max(Math.Max(gpsOdo, manualMileage), tripsMileage);
+            int currentMileage;
+            if (gpsOdo > 0)
+            {
+                // CAN bus actif : odo GPS au cœur, vehicle.Mileage comme floor.
+                currentMileage = (int)Math.Max(gpsOdo, manualMileage);
+            }
+            else
+            {
+                // CAN bus muet : trips comme rattrapage progressif.
+                int tripsMileage = tripsTotalKmMap.TryGetValue(vehicle.Id, out var tripsKm) ? tripsKm : 0;
+                currentMileage = Math.Max(manualMileage, tripsMileage);
+            }
 
             var vehicleSchedules = schedules.Where(s => s.VehicleId == vehicle.Id).ToList();
             if (vehicleSchedules.Count == 0 && request.Status != null) continue;

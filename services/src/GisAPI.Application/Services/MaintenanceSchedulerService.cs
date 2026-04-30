@@ -86,21 +86,35 @@ public class MaintenanceSchedulerService : IMaintenanceSchedulerService
         // ─── Source 2 : compteur manuel / Haversine non-FMS ──────────────────
         var manualMileage = vehicle.Mileage;
 
-        // ─── Source 3 : somme des trips fermés ───────────────────────────────
+        // Calypso 7 (P-maint-couche1, follow-up #3): cascade CONDITIONNELLE
+        // pour ne pas dégrader les véhicules à CAN bus sain.
+        //
+        // Quand le GPS odomètre marche (> 0), c'est de loin la source la
+        // plus fiable. On le retient et on prend juste le max avec
+        // vehicle.Mileage comme garde-fou (cas où l'admin a saisi un
+        // compteur initial supérieur). On NE consulte PAS la table
+        // trips, parce qu'un trip-detector qui sur-compte de quelques
+        // pourcents peut faire diverger les chiffres et faire croire que
+        // le véhicule a roulé plus que son odomètre indique.
+        //
+        // Quand le GPS odomètre est mort (= 0, cas silent-tracker), on
+        // tombe sur vehicle.Mileage et on le complète avec trips pour
+        // que les km accumulés depuis le dernier mark-done remontent
+        // dans le resolver (le scénario 257 TU 6114 / NEMS-L sans CAN
+        // bus que la Couche 1 visait initialement).
+        if (gpsOdometer > 0)
+        {
+            return (int)Math.Max(gpsOdometer, manualMileage);
+        }
+
+        // GPS muet : on prend la trips total comme remonte progressive,
+        // bornée par vehicle.Mileage si l'admin l'a saisi à l'avance.
         var tripsKm = await _context.Trips
             .Where(t => t.VehicleId == vehicleId && t.EndTime != null)
             .SumAsync(t => (double?)t.DistanceKm, ct) ?? 0;
         var tripsMileage = (int)Math.Round(tripsKm);
 
-        // Calypso 7 (P-maint-couche1, follow-up #2): MAX-cascade au lieu d'un
-        // short-circuit "first non-zero". Quand le tracker n'a plus de CAN
-        // bus (vehicle.Mileage gelé) ET que les trips continuent à
-        // s'accumuler dans la base, on veut que le resolver suive les trips
-        // dès qu'ils dépassent la valeur statique de vehicle.Mileage.
-        // Sans le MAX, le resolver renvoyait 6211 km à perpétuité même
-        // après 50 000 km de trajets, et l'entretien ne pouvait jamais
-        // basculer en "due".
-        return (int)Math.Max(Math.Max(gpsOdometer, manualMileage), tripsMileage);
+        return Math.Max(manualMileage, tripsMileage);
     }
 
     /// <summary>
