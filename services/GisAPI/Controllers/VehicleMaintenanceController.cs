@@ -87,6 +87,21 @@ public class VehicleMaintenanceController : ControllerBase
     }
 
     /// <summary>
+    /// Calypso 7 (P-maint-ter): rebase a schedule's NextDueKm using the
+    /// current mileage from the smart resolver. Intended for schedules
+    /// created on vehicles whose tracker had no FMS odometer at the time
+    /// of assignment, leaving NextDueKm anchored on a stale baseline.
+    /// </summary>
+    [HttpPost("{scheduleId}/rebase")]
+    public async Task<ActionResult> RebaseSchedule(int scheduleId)
+    {
+        var success = await _mediator.Send(new RebaseMaintenanceScheduleCommand(scheduleId));
+        if (!success)
+            return NotFound();
+        return Ok(new { success = true });
+    }
+
+    /// <summary>
     /// Get maintenance history/logs for a vehicle
     /// </summary>
     [HttpGet("vehicle/{vehicleId}/logs")]

@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Services;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -9,10 +10,12 @@ namespace GisAPI.Application.Features.VehicleMaintenance.Commands;
 public class AssignMaintenanceTemplateCommandHandler : IRequestHandler<AssignMaintenanceTemplateCommand, int>
 {
     private readonly IGisDbContext _context;
+    private readonly IMaintenanceSchedulerService _scheduler;
 
-    public AssignMaintenanceTemplateCommandHandler(IGisDbContext context)
+    public AssignMaintenanceTemplateCommandHandler(IGisDbContext context, IMaintenanceSchedulerService scheduler)
     {
         _context = context;
+        _scheduler = scheduler;
     }
 
     public async Task<int> Handle(AssignMaintenanceTemplateCommand request, CancellationToken cancellationToken)
@@ -36,12 +39,19 @@ public class AssignMaintenanceTemplateCommandHandler : IRequestHandler<AssignMai
         if (vehicle == null)
             throw new InvalidOperationException($"Vehicle not found: {request.VehicleId}");
 
-        // Calculate next due based on current mileage and date
+        // Calypso 7 (P-maint-bis): use the smart mileage resolver instead of
+        // raw vehicle.Mileage. The resolver cascades GPS odometer → manual
+        // mileage → trips total, which is the correct snapshot when the
+        // tracker has no FMS odometer wired (CAN bus disconnected).
+        // Without this, NextDueKm was anchored on vehicle.Mileage = 0 and the
+        // schedule was effectively dead-on-arrival.
+        var currentMileage = await _scheduler.GetCurrentMileageAsync(request.VehicleId, cancellationToken);
+
         var schedule = new VehicleMaintenanceSchedule
         {
             VehicleId = request.VehicleId,
             TemplateId = request.TemplateId,
-            NextDueKm = template.IntervalKm.HasValue ? vehicle.Mileage + template.IntervalKm.Value : null,
+            NextDueKm = template.IntervalKm.HasValue ? currentMileage + template.IntervalKm.Value : null,
             NextDueDate = template.IntervalMonths.HasValue ? DateTime.UtcNow.AddMonths(template.IntervalMonths.Value) : null,
             Status = "upcoming"
         };
@@ -50,6 +60,72 @@ public class AssignMaintenanceTemplateCommandHandler : IRequestHandler<AssignMai
         await _context.SaveChangesAsync(cancellationToken);
 
         return schedule.Id;
+    }
+}
+
+/// <summary>
+/// Calypso 7 (P-maint-ter): one-shot rebase for a schedule whose
+/// <c>NextDueKm</c> was anchored on a stale mileage source (typically a
+/// tracker with no FMS odometer that left <c>vehicle.Mileage = 0</c> at
+/// assignment time). Reads the current mileage via the smart resolver
+/// (GPS odometer → manual → trips total) and re-snaps <c>NextDueKm</c>
+/// to <c>currentMileage + intervalKm</c>. Also refreshes the persisted
+/// <c>Status</c> so the alerts pipeline immediately sees the correct
+/// state on the next read.
+///
+/// <para>Idempotent: rebasing twice in a row is harmless if mileage
+/// hasn't moved. Does NOT touch <c>LastDoneKm/Date</c> — this is a
+/// correction, not a maintenance event.</para>
+/// </summary>
+public class RebaseMaintenanceScheduleCommandHandler : IRequestHandler<RebaseMaintenanceScheduleCommand, bool>
+{
+    private readonly IGisDbContext _context;
+    private readonly IMaintenanceSchedulerService _scheduler;
+
+    public RebaseMaintenanceScheduleCommandHandler(IGisDbContext context, IMaintenanceSchedulerService scheduler)
+    {
+        _context = context;
+        _scheduler = scheduler;
+    }
+
+    public async Task<bool> Handle(RebaseMaintenanceScheduleCommand request, CancellationToken cancellationToken)
+    {
+        var schedule = await _context.VehicleMaintenanceSchedules
+            .Include(s => s.Template)
+            .FirstOrDefaultAsync(s => s.Id == request.ScheduleId, cancellationToken);
+
+        if (schedule == null) return false;
+        if (schedule.Template == null) return false;
+
+        var currentMileage = await _scheduler.GetCurrentMileageAsync(schedule.VehicleId, cancellationToken);
+
+        var intervalKm = schedule.CustomIntervalKm ?? schedule.Template.IntervalKm;
+
+        // Anchor on the later of "current mileage" and the existing baseline,
+        // so rebasing a schedule whose owner already drove past the original
+        // anchor doesn't accidentally pull NextDueKm backwards.
+        var anchor = Math.Max(currentMileage, schedule.LastDoneKm ?? 0);
+
+        if (intervalKm.HasValue)
+        {
+            schedule.NextDueKm = anchor + intervalKm.Value;
+        }
+
+        // The date schedule is left untouched on rebase — date intervals are
+        // typically fine, the bug we're patching is purely on the km axis.
+        // Reset the notification dedup so the operator gets a fresh ping if
+        // the rebased schedule is now in a "due" state.
+        schedule.NotificationCount = 0;
+        schedule.LastNotificationAt = null;
+        schedule.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        // Recompute persisted Status against the new NextDueKm so the alerts
+        // pipeline reflects reality without waiting for the background job.
+        await _scheduler.UpdateVehicleScheduleStatusesAsync(schedule.VehicleId, cancellationToken);
+
+        return true;
     }
 }
 
@@ -407,10 +483,12 @@ public class AcknowledgeMaintenanceNotificationCommandHandler : IRequestHandler<
 public class DeclareFreeMaintenancesCommandHandler : IRequestHandler<DeclareFreeMaintenancesCommand, int>
 {
     private readonly IGisDbContext _context;
+    private readonly IMaintenanceSchedulerService _scheduler;
 
-    public DeclareFreeMaintenancesCommandHandler(IGisDbContext context)
+    public DeclareFreeMaintenancesCommandHandler(IGisDbContext context, IMaintenanceSchedulerService scheduler)
     {
         _context = context;
+        _scheduler = scheduler;
     }
 
     public async Task<int> Handle(DeclareFreeMaintenancesCommand request, CancellationToken cancellationToken)
@@ -436,12 +514,18 @@ public class DeclareFreeMaintenancesCommandHandler : IRequestHandler<DeclareFree
 
         if (schedule == null)
         {
+            // Calypso 7 (P-maint-bis): use the smart mileage resolver, same
+            // reason as AssignMaintenanceTemplateCommandHandler — keep
+            // NextDueKm consistent with the trips fallback when the tracker
+            // has no FMS odometer wired.
+            var currentMileage = await _scheduler.GetCurrentMileageAsync(request.VehicleId, cancellationToken);
+
             // Create schedule with initial due calculation (same logic as AssignMaintenanceTemplateCommandHandler)
             schedule = new VehicleMaintenanceSchedule
             {
                 VehicleId = request.VehicleId,
                 TemplateId = request.TemplateId,
-                NextDueKm = template.IntervalKm.HasValue ? vehicle.Mileage + template.IntervalKm.Value : null,
+                NextDueKm = template.IntervalKm.HasValue ? currentMileage + template.IntervalKm.Value : null,
                 NextDueDate = template.IntervalMonths.HasValue ? DateTime.UtcNow.AddMonths(template.IntervalMonths.Value) : null,
                 Status = "upcoming",
                 FreeUsesTotal = request.Count,

@@ -1683,6 +1683,20 @@ export class ApiService {
     return this.http.delete<void>(`${this.API_URL}/vehicle-maintenance/${scheduleId}`, { headers: this.getHeaders() });
   }
 
+  /**
+   * Calypso 7 (P-maint-ter): force a schedule to re-snap its NextDueKm
+   * against the current mileage (GPS odometer → manual → trips fallback).
+   * Used to repair schedules created on a vehicle whose tracker had no
+   * FMS odometer wired at assignment time — the original NextDueKm was
+   * anchored on vehicle.Mileage = 0 and would never trigger correctly.
+   */
+  rebaseMaintenanceSchedule(scheduleId: number): Observable<{ success: boolean }> {
+    return this.http.post<{ success: boolean }>(
+      `${this.API_URL}/vehicle-maintenance/${scheduleId}/rebase`, {},
+      { headers: this.getHeaders() }
+    );
+  }
+
   markMaintenanceDone(request: MarkMaintenanceDoneRequest): Observable<{ logId: number; message: string }> {
     return this.http.post<{ logId: number; message: string }>(`${this.API_URL}/vehicle-maintenance/mark-done`, request, { headers: this.getHeaders() });
   }

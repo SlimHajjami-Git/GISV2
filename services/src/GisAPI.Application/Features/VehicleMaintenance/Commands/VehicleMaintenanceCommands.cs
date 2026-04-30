@@ -9,6 +9,20 @@ public record AssignMaintenanceTemplateCommand(
 
 public record RemoveMaintenanceScheduleCommand(int ScheduleId) : ICommand<bool>;
 
+/// <summary>
+/// Calypso 7 (P-maint-ter): re-anchors <c>NextDueKm</c> on a schedule whose
+/// snapshot was taken with a stale or absent mileage source. Recomputes
+/// <c>NextDueKm = currentMileage + intervalKm</c> using the smart mileage
+/// resolver, refreshes <c>Status</c> in the same pass.
+///
+/// <para>Used when the operator notices that a schedule was created on a
+/// vehicle whose tracker had no odometer (so <c>vehicle.Mileage</c> was 0
+/// at assignment) and the existing <c>NextDueKm</c> is therefore wrong.
+/// One-shot rebase ; no log entry is created (this is not a maintenance
+/// event, just a correction).</para>
+/// </summary>
+public record RebaseMaintenanceScheduleCommand(int ScheduleId) : ICommand<bool>;
+
 public record MarkMaintenanceDoneCommand(
     int VehicleId,
     int TemplateId,

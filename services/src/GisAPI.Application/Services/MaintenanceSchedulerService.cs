@@ -26,7 +26,35 @@ public class MaintenanceSchedulerService : IMaintenanceSchedulerService
     }
 
     /// <summary>
-    /// Récupère le kilométrage actuel d'un véhicule depuis GPS ou manuel
+    /// Récupère le kilométrage "actuel" d'un véhicule en cascadant trois sources
+    /// dans l'ordre de fiabilité décroissante :
+    ///
+    /// <list type="number">
+    ///   <item>
+    ///     <description><b>Odomètre FMS du tracker GPS</b> — la valeur la plus
+    ///     précise quand elle existe (CAN bus du véhicule câblé au tracker).
+    ///     C'est ce que les NEMS L V3 remontent dans <c>gps_positions.odometer_km</c>.</description>
+    ///   </item>
+    ///   <item>
+    ///     <description><b>Compteur manuel</b> — la colonne <c>vehicles.mileage</c>
+    ///     entrée par l'admin à la création du véhicule, ou mise à jour
+    ///     incrémentalement par l'accumulateur Haversine du Rust ingest pour
+    ///     les trackers non-FMS (NEMS S / Noron).</description>
+    ///   </item>
+    ///   <item>
+    ///     <description><b>Somme des trips</b> — fallback ultime quand le tracker
+    ///     est en panne odomètre <i>et</i> que le compteur manuel n'a jamais été
+    ///     renseigné. Les trips sont calculés par le <c>trip_detector</c> Rust
+    ///     à partir des positions GPS — la distance est moins précise que
+    ///     l'odomètre CAN bus mais reflète bien la réalité (validé sur le
+    ///     257 TU 6114 : 5393 km de trips ↔ 5448 km Haversine, écart 1 %).</description>
+    ///   </item>
+    /// </list>
+    ///
+    /// <para>Le 3ᵉ étage corrige le bug Calypso 7 du 257 TU 6114 où un véhicule
+    /// NEMS L avec CAN bus débranché restait à <c>vehicle.mileage = 0</c>
+    /// indéfiniment, ce qui figeait le statut de tous ses entretiens
+    /// programmables sur "upcoming" et masquait silencieusement les alertes.</para>
     /// </summary>
     public async Task<int> GetCurrentMileageAsync(int vehicleId, CancellationToken ct = default)
     {
@@ -36,7 +64,7 @@ public class MaintenanceSchedulerService : IMaintenanceSchedulerService
 
         if (vehicle == null) return 0;
 
-        // Si le véhicule a un GPS, chercher le dernier odometer_km
+        // ─── Source 1 : odomètre FMS du GPS (le plus fiable) ─────────────────
         if (vehicle.GpsDeviceId.HasValue)
         {
             var firmwareVersion = vehicle.GpsDevice?.FirmwareVersion;
@@ -44,8 +72,8 @@ public class MaintenanceSchedulerService : IMaintenanceSchedulerService
                 && firmwareVersion.StartsWith("L", StringComparison.OrdinalIgnoreCase);
 
             var lastOdometer = await _context.GpsPositions
-                .Where(p => p.DeviceId == vehicle.GpsDeviceId.Value 
-                         && p.OdometerKm.HasValue 
+                .Where(p => p.DeviceId == vehicle.GpsDeviceId.Value
+                         && p.OdometerKm.HasValue
                          && p.OdometerKm > 0
                          && p.OdometerKm != 1048574)
                 .OrderByDescending(p => p.RecordedAt)
@@ -56,17 +84,30 @@ public class MaintenanceSchedulerService : IMaintenanceSchedulerService
             {
                 if (isFirmwareL)
                 {
-                    // Firmware "L": odometer_km is reliable
+                    // Firmware "L": odometer FMS de confiance, ne jamais
+                    // sous-estimer la valeur — quitte à dépasser vehicle.Mileage
+                    // si l'admin avait saisi un compteur initial trop bas.
                     return (int)lastOdometer.Value;
                 }
-                else if (lastOdometer.Value > vehicle.Mileage)
+                if (lastOdometer.Value > vehicle.Mileage)
                 {
                     return (int)lastOdometer.Value;
                 }
             }
         }
 
-        return vehicle.Mileage;
+        // ─── Source 2 : compteur manuel / Haversine non-FMS ──────────────────
+        if (vehicle.Mileage > 0)
+        {
+            return vehicle.Mileage;
+        }
+
+        // ─── Source 3 : somme des trips (fallback véhicule à odomètre cassé) ─
+        var tripsKm = await _context.Trips
+            .Where(t => t.VehicleId == vehicleId && t.EndTime != null)
+            .SumAsync(t => (double?)t.DistanceKm, ct) ?? 0;
+
+        return (int)Math.Round(tripsKm);
     }
 
     /// <summary>

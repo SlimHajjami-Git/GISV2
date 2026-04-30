@@ -245,6 +245,16 @@ interface FlatRow {
                     <button class="btn-act history" (click)="openHistory(row)" title="Historique">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                     </button>
+                    <!--
+                      Calypso 7 (P-maint-ter): "Recalculer" — re-snaps NextDueKm
+                      using the current mileage from the smart resolver. Visible
+                      whenever the schedule has not yet been marked done; useful
+                      to repair schedules created with a stale baseline (typical
+                      case: tracker without FMS odometer at assignment time).
+                    -->
+                    <button class="btn-act rebase" *ngIf="!row.lastDoneDate" (click)="rebaseFromRow(row)" title="Recalculer la prochaine échéance avec le kilométrage actuel">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    </button>
                     <button class="btn-act done" (click)="openMarkDoneFromRow(row)" title="Marquer fait">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                     </button>
@@ -687,6 +697,8 @@ interface FlatRow {
     .btn-act.history:hover { background:#fef3c7; border-color:#f59e0b; }
     .btn-act.del { color:#dc2626; }
     .btn-act.del:hover { background:#fee2e2; border-color:#dc2626; }
+    .btn-act.rebase { color:#0ea5e9; }
+    .btn-act.rebase:hover { background:#e0f2fe; border-color:#0ea5e9; }
 
     /* Empty */
     .empty-state { text-align:center; padding:60px 20px; color:#94a3b8; }
@@ -1234,9 +1246,37 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Calypso 7 (P-maint-ter): re-anchor NextDueKm on the smart resolver's
+   * current mileage. Useful when a schedule was created on a vehicle whose
+   * tracker has no FMS odometer wired (so vehicle.Mileage was 0 at
+   * assignment), leaving NextDueKm stuck on a baseline that the truck has
+   * already passed. After this call, the alerts pipeline reflects reality
+   * within seconds (the handler also bumps the persisted Status).
+   */
+  rebaseFromRow(row: FlatRow) {
+    if (!row.scheduleId) return;
+    if (!confirm("Recalculer l'échéance de cet entretien à partir du kilométrage actuel ?\n\n" +
+                 "À utiliser si l'odomètre du tracker n'était pas câblé au moment de l'assignation.")) return;
+    this.apiService.rebaseMaintenanceSchedule(row.scheduleId).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => this.loadVehicles(),
+      error: (err) => {
+        console.error('rebase failed', err);
+        alert("Erreur lors du recalcul. Voir la console pour les détails.");
+      }
+    });
+  }
+
   closeMarkDone() { this.isMarkOpen = false; this.markData = this.getEmptyMark(); }
   isMarkValid() {
-    if (!this.markData.date || !this.markData.mileage) return false;
+    // Calypso 7 (P-maint-couche3): mileage = 0 is a legitimate value for a
+    // brand-new vehicle whose tracker has no FMS odometer wired. The previous
+    // truthy check (`!this.markData.mileage`) rejected 0 as falsy, leaving
+    // the Confirmer button perpetually disabled for these vehicles. Use an
+    // explicit null/undefined check so the user can submit any non-negative
+    // mileage including 0.
+    if (!this.markData.date) return false;
+    if (this.markData.mileage == null || this.markData.mileage < 0) return false;
     // Calypso 6 (P6.3): accept price === 0 (free maintenance under warranty).
     // Previously `l.price` was truthy-checked, which rejected a legitimate 0 TND line.
     const hasExisting = this.markData.invoiceLines.some((l: InvoiceLine) => l.templateId && l.price != null);

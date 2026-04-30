@@ -46,6 +46,18 @@ builder.Services.AddHostedService<GisAPI.Services.TourMonitoringService>();
 // Predictive Alert Service (document expiry, maintenance due, fuel anomaly)
 builder.Services.AddHostedService<GisAPI.Services.PredictiveAlertService>();
 
+// Calypso 7 (P-maint-couche2): keeps the persisted vehicle_maintenance_schedules.status
+// in sync with the computed reality. Without this, the alert pipeline reads
+// a stale status and silently misses every maintenance threshold a vehicle
+// crosses between two MarkDone events.
+builder.Services.AddHostedService<GisAPI.Services.MaintenanceStatusRefreshService>();
+
+// Calypso 7 (P-maint-couche4): daily canary that warns admins when a tracker
+// stops reporting its FMS odometer. Maintenance still works via the trips
+// fallback in the smart resolver, but the operator should be told that the
+// CAN bus is silent so they can investigate the wiring.
+builder.Services.AddHostedService<GisAPI.Services.TrackerOdometerHealthService>();
+
 // Device Event Consumer (RabbitMQ -> Power cut notifications)
 builder.Services.AddHostedService<GisAPI.Services.DeviceEventConsumer>();
 
