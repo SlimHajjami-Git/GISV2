@@ -52,11 +52,14 @@ builder.Services.AddHostedService<GisAPI.Services.PredictiveAlertService>();
 // crosses between two MarkDone events.
 builder.Services.AddHostedService<GisAPI.Services.MaintenanceStatusRefreshService>();
 
-// Calypso 7 (P-maint-couche4): daily canary that warns admins when a tracker
-// stops reporting its FMS odometer. Maintenance still works via the trips
-// fallback in the smart resolver, but the operator should be told that the
-// CAN bus is silent so they can investigate the wiring.
-builder.Services.AddHostedService<GisAPI.Services.TrackerOdometerHealthService>();
+// Calypso 7 (P-maint-couche4): DESACTIVÉ. La notif "tracker odomètre muet"
+// était trop technique pour les clients (mention CAN bus / FMS) et ne leur
+// apportait aucune action utile — le fallback trips couvre déjà le cas.
+// On garde le service en code mais on ne le wire pas comme HostedService.
+// Si on veut le ressusciter un jour, le faire en envoyant uniquement aux
+// system admins (équipe Calypso) et pas aux company admins.
+//
+// builder.Services.AddHostedService<GisAPI.Services.TrackerOdometerHealthService>();
 
 // Device Event Consumer (RabbitMQ -> Power cut notifications)
 builder.Services.AddHostedService<GisAPI.Services.DeviceEventConsumer>();
