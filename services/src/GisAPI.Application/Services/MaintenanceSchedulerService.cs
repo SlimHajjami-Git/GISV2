@@ -64,13 +64,10 @@ public class MaintenanceSchedulerService : IMaintenanceSchedulerService
 
         if (vehicle == null) return 0;
 
-        // ─── Source 1 : odomètre FMS du GPS (le plus fiable) ─────────────────
+        // ─── Source 1 : odomètre FMS du GPS ──────────────────────────────────
+        long gpsOdometer = 0;
         if (vehicle.GpsDeviceId.HasValue)
         {
-            var firmwareVersion = vehicle.GpsDevice?.FirmwareVersion;
-            var isFirmwareL = !string.IsNullOrEmpty(firmwareVersion)
-                && firmwareVersion.StartsWith("L", StringComparison.OrdinalIgnoreCase);
-
             var lastOdometer = await _context.GpsPositions
                 .Where(p => p.DeviceId == vehicle.GpsDeviceId.Value
                          && p.OdometerKm.HasValue
@@ -82,32 +79,28 @@ public class MaintenanceSchedulerService : IMaintenanceSchedulerService
 
             if (lastOdometer.HasValue && lastOdometer.Value > 0)
             {
-                if (isFirmwareL)
-                {
-                    // Firmware "L": odometer FMS de confiance, ne jamais
-                    // sous-estimer la valeur — quitte à dépasser vehicle.Mileage
-                    // si l'admin avait saisi un compteur initial trop bas.
-                    return (int)lastOdometer.Value;
-                }
-                if (lastOdometer.Value > vehicle.Mileage)
-                {
-                    return (int)lastOdometer.Value;
-                }
+                gpsOdometer = lastOdometer.Value;
             }
         }
 
         // ─── Source 2 : compteur manuel / Haversine non-FMS ──────────────────
-        if (vehicle.Mileage > 0)
-        {
-            return vehicle.Mileage;
-        }
+        var manualMileage = vehicle.Mileage;
 
-        // ─── Source 3 : somme des trips (fallback véhicule à odomètre cassé) ─
+        // ─── Source 3 : somme des trips fermés ───────────────────────────────
         var tripsKm = await _context.Trips
             .Where(t => t.VehicleId == vehicleId && t.EndTime != null)
             .SumAsync(t => (double?)t.DistanceKm, ct) ?? 0;
+        var tripsMileage = (int)Math.Round(tripsKm);
 
-        return (int)Math.Round(tripsKm);
+        // Calypso 7 (P-maint-couche1, follow-up #2): MAX-cascade au lieu d'un
+        // short-circuit "first non-zero". Quand le tracker n'a plus de CAN
+        // bus (vehicle.Mileage gelé) ET que les trips continuent à
+        // s'accumuler dans la base, on veut que le resolver suive les trips
+        // dès qu'ils dépassent la valeur statique de vehicle.Mileage.
+        // Sans le MAX, le resolver renvoyait 6211 km à perpétuité même
+        // après 50 000 km de trajets, et l'entretien ne pouvait jamais
+        // basculer en "due".
+        return (int)Math.Max(Math.Max(gpsOdometer, manualMileage), tripsMileage);
     }
 
     /// <summary>

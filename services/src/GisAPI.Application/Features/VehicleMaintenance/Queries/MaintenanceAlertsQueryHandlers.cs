@@ -69,21 +69,14 @@ public class GetMaintenanceAlertsQueryHandler : IRequestHandler<GetMaintenanceAl
 
         return schedules.Select(s =>
         {
-            // Smart cascade — same priority as
-            // MaintenanceSchedulerService.GetCurrentMileageAsync.
-            int vehicleMileage;
-            if (s.Vehicle?.GpsDevice != null && odometerMap.TryGetValue(s.Vehicle.GpsDevice.Id, out var odo) && odo > 0)
-            {
-                vehicleMileage = (int)odo;
-            }
-            else if ((s.Vehicle?.Mileage ?? 0) > 0)
-            {
-                vehicleMileage = s.Vehicle!.Mileage;
-            }
-            else
-            {
-                vehicleMileage = (s.Vehicle != null && tripsTotalsMap.TryGetValue(s.Vehicle.Id, out var tripsKm)) ? tripsKm : 0;
-            }
+            // Calypso 7 (P-maint-couche1, follow-up #2): MAX-cascade.
+            // Voir MaintenanceSchedulerService.GetCurrentMileageAsync pour
+            // la justification (vehicle.Mileage gelé qui empechait les
+            // trips d'incrementer le compteur du resolver).
+            long gpsOdo = (s.Vehicle?.GpsDevice != null && odometerMap.TryGetValue(s.Vehicle.GpsDevice.Id, out var odo) && odo > 0) ? odo : 0;
+            int manualMileage = s.Vehicle?.Mileage ?? 0;
+            int tripsMileage = (s.Vehicle != null && tripsTotalsMap.TryGetValue(s.Vehicle.Id, out var tripsKm)) ? tripsKm : 0;
+            int vehicleMileage = (int)Math.Max(Math.Max(gpsOdo, manualMileage), tripsMileage);
 
             var kmUntilDue = s.NextDueKm.HasValue && s.Vehicle != null 
                 ? s.NextDueKm.Value - vehicleMileage 

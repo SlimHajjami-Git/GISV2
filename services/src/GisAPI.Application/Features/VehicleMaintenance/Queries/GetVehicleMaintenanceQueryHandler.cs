@@ -74,24 +74,15 @@ public class GetVehicleMaintenanceQueryHandler : IRequestHandler<GetVehicleMaint
 
         foreach (var vehicle in vehicles)
         {
-            // Smart mileage cascade — same priority as
-            // MaintenanceSchedulerService.GetCurrentMileageAsync:
-            //   1) GPS odometer (firmware L, batched above)
-            //   2) vehicle.Mileage if > 0
-            //   3) trips total fallback (silent-tracker case)
-            int currentMileage;
-            if (vehicle.GpsDevice != null && odometerMap.TryGetValue(vehicle.GpsDevice.Id, out var odo) && odo > 0)
-            {
-                currentMileage = (int)odo;
-            }
-            else if (vehicle.Mileage > 0)
-            {
-                currentMileage = vehicle.Mileage;
-            }
-            else
-            {
-                currentMileage = tripsTotalKmMap.TryGetValue(vehicle.Id, out var tripsKm) ? tripsKm : 0;
-            }
+            // Calypso 7 (P-maint-couche1, follow-up #2): MAX-cascade des
+            // trois sources pour qu'un trips total qui grimpe écrase un
+            // vehicle.Mileage gelé. Sinon les vehicules dont le CAN bus
+            // est mort restent figés sur la valeur statique de
+            // vehicle.Mileage et l'entretien ne se déclenche jamais.
+            long gpsOdo = (vehicle.GpsDevice != null && odometerMap.TryGetValue(vehicle.GpsDevice.Id, out var odo) && odo > 0) ? odo : 0;
+            int manualMileage = vehicle.Mileage;
+            int tripsMileage = tripsTotalKmMap.TryGetValue(vehicle.Id, out var tripsKm) ? tripsKm : 0;
+            int currentMileage = (int)Math.Max(Math.Max(gpsOdo, manualMileage), tripsMileage);
 
             var vehicleSchedules = schedules.Where(s => s.VehicleId == vehicle.Id).ToList();
             if (vehicleSchedules.Count == 0 && request.Status != null) continue;
