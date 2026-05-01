@@ -192,11 +192,32 @@ impl Database {
             );
         }
 
-        // GPS-based mileage calculation for non-FMS devices (NEMS S, Noron)
-        // Accumulate Haversine distance between consecutive positions.
-        // NEMS L (is_fms_device) is excluded: its mileage comes from CAN bus odometer_km,
-        // even when it occasionally sends V1 frames without FMS data.
-        if !is_fms_device && !has_fms && position_id > 0 && frame.speed_kph > 0.0 && frame.is_valid {
+        // GPS-based mileage accumulation (Calypso 7 — fallback hybride).
+        //
+        // Règle :
+        //   - Non-FMS (NEMS S, Noron) : Haversine systématique. Comportement
+        //     historique inchangé.
+        //   - NEMS L (FMS) avec odomètre CAN bus présent dans la trame :
+        //     PAS de Haversine. L'auto-update plus haut a déjà mis
+        //     vehicle.mileage à la vraie valeur de l'odomètre.
+        //   - NEMS L (FMS) avec odomètre absent (CAN bus muet sur cette
+        //     trame, ou V1 frame, ou sentinel filtré → frame.odometer_km == 0) :
+        //     ON ACTIVE le Haversine en fallback. vehicle.mileage continue
+        //     à grimper même quand le CAN bus est silencieux. Quand une
+        //     trame avec odomètre valide revient, l'auto-update reprend
+        //     le dessus (cf. condition `mileage < $1` qui ne baisse jamais
+        //     la valeur). Couvre le cas 257 TU 6112 NEMS L dont le CAN
+        //     bus est mort depuis le 28 mars : sans ce fallback,
+        //     vehicle.mileage restait gelé à 5974 km à perpétuité.
+        let frame_carries_valid_odometer = is_fms_device
+            && has_fms
+            && frame.odometer_km > 0;
+        let run_haversine = position_id > 0
+            && frame.speed_kph > 0.0
+            && frame.is_valid
+            && !frame_carries_valid_odometer;
+
+        if run_haversine {
             if let Some(ref last) = last_pos {
                 let distance_km = haversine_distance_km(
                     last.latitude, last.longitude,

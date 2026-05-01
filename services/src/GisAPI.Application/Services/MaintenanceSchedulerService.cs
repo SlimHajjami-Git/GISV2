@@ -26,101 +26,46 @@ public class MaintenanceSchedulerService : IMaintenanceSchedulerService
     }
 
     /// <summary>
-    /// Récupère le kilométrage "actuel" d'un véhicule en cascadant trois sources
-    /// dans l'ordre de fiabilité décroissante :
+    /// Récupère le kilométrage "actuel" d'un véhicule.
     ///
-    /// <list type="number">
+    /// <para>Calypso 7 — architecture finale : <c>vehicles.mileage</c> est
+    /// l'unique source. C'est la colonne que le Rust ingest tient à jour
+    /// pour chaque type de tracker :</para>
+    ///
+    /// <list type="bullet">
     ///   <item>
-    ///     <description><b>Odomètre FMS du tracker GPS</b> — la valeur la plus
-    ///     précise quand elle existe (CAN bus du véhicule câblé au tracker).
-    ///     C'est ce que les NEMS L V3 remontent dans <c>gps_positions.odometer_km</c>.</description>
+    ///     <description><b>NEMS L (FMS, CAN bus actif)</b> — Rust auto-update
+    ///     sur l'odomètre CAN bus reçu dans chaque trame V3 valide.
+    ///     <c>vehicles.mileage</c> mirror le compteur réel du véhicule.</description>
     ///   </item>
     ///   <item>
-    ///     <description><b>Compteur manuel</b> — la colonne <c>vehicles.mileage</c>
-    ///     entrée par l'admin à la création du véhicule, ou mise à jour
-    ///     incrémentalement par l'accumulateur Haversine du Rust ingest pour
-    ///     les trackers non-FMS (NEMS S / Noron).</description>
+    ///     <description><b>NEMS L avec CAN bus muet ou intermittent</b> —
+    ///     Rust active l'accumulateur Haversine en fallback. Tant que
+    ///     les trames arrivent sans odomètre valide,
+    ///     <c>vehicles.mileage</c> grimpe via la distance Haversine entre
+    ///     positions consécutives. Quand le CAN bus revient, l'auto-update
+    ///     CAN bus reprend le dessus (la condition <c>mileage &lt; $newOdo</c>
+    ///     du UPDATE empêche toute régression).</description>
     ///   </item>
     ///   <item>
-    ///     <description><b>Somme des trips</b> — fallback ultime quand le tracker
-    ///     est en panne odomètre <i>et</i> que le compteur manuel n'a jamais été
-    ///     renseigné. Les trips sont calculés par le <c>trip_detector</c> Rust
-    ///     à partir des positions GPS — la distance est moins précise que
-    ///     l'odomètre CAN bus mais reflète bien la réalité (validé sur le
-    ///     257 TU 6114 : 5393 km de trips ↔ 5448 km Haversine, écart 1 %).</description>
+    ///     <description><b>NEMS S / Noron (non-FMS)</b> — Rust accumule
+    ///     Haversine systématiquement, comme avant. <c>vehicles.mileage</c>
+    ///     est notre estimation des km parcourus depuis l'installation.</description>
     ///   </item>
     /// </list>
     ///
-    /// <para>Le 3ᵉ étage corrige le bug Calypso 7 du 257 TU 6114 où un véhicule
-    /// NEMS L avec CAN bus débranché restait à <c>vehicle.mileage = 0</c>
-    /// indéfiniment, ce qui figeait le statut de tous ses entretiens
-    /// programmables sur "upcoming" et masquait silencieusement les alertes.</para>
+    /// <para>Conséquence : le resolver maintenance n'a plus besoin de
+    /// cascade compliquée — il lit juste <c>vehicles.mileage</c> et fait
+    /// confiance à la source. Toute logique de fallback / freshness vit
+    /// dans le Rust ingest, là où la donnée naît.</para>
     /// </summary>
     public async Task<int> GetCurrentMileageAsync(int vehicleId, CancellationToken ct = default)
     {
         var vehicle = await _context.Vehicles
-            .Include(v => v.GpsDevice)
             .FirstOrDefaultAsync(v => v.Id == vehicleId, ct);
 
-        if (vehicle == null) return 0;
-
-        // ─── Source 1 : odomètre FMS du GPS, GATÉ par une fenêtre de fraîcheur ─
-        //
-        // Un odomètre vieux d'un mois (cas observé sur 257 TU 6112 :
-        // dernière valeur valide il y a 33 jours, CAN bus intermittent)
-        // n'est PAS un signal fiable. La cascade conditionnelle précédente
-        // se verrouillait dessus parce qu'il était > 0, et le compteur
-        // restait gelé même si le camion roulait. Maintenant on n'utilise
-        // l'odo GPS QUE s'il date de moins de FreshnessWindow.
-        long gpsOdometer = 0;
-        if (vehicle.GpsDeviceId.HasValue)
-        {
-            var lastOdoRow = await _context.GpsPositions
-                .Where(p => p.DeviceId == vehicle.GpsDeviceId.Value
-                         && p.OdometerKm.HasValue
-                         && p.OdometerKm > 0
-                         && p.OdometerKm != 1048574)
-                .OrderByDescending(p => p.RecordedAt)
-                .Select(p => new { p.OdometerKm, p.RecordedAt })
-                .FirstOrDefaultAsync(ct);
-
-            if (lastOdoRow != null
-                && lastOdoRow.OdometerKm.HasValue
-                && (DateTime.UtcNow - lastOdoRow.RecordedAt) < OdometerFreshnessWindow)
-            {
-                gpsOdometer = lastOdoRow.OdometerKm.Value;
-            }
-        }
-
-        // ─── Source 2 : compteur manuel / Haversine non-FMS ──────────────────
-        var manualMileage = vehicle.Mileage;
-
-        // ─── Source 3 : somme des trips fermés ───────────────────────────────
-        var tripsKm = await _context.Trips
-            .Where(t => t.VehicleId == vehicleId && t.EndTime != null)
-            .SumAsync(t => (double?)t.DistanceKm, ct) ?? 0;
-        var tripsMileage = (int)Math.Round(tripsKm);
-
-        // Calypso 7 (P-maint-couche1, follow-up #4): MAX-cascade des trois
-        // sources, où la Source 1 a déjà été nettoyée par la fenêtre de
-        // fraîcheur. Trois cas couverts proprement :
-        //
-        //   - CAN bus actif (gpsOdo frais)  : MAX dominé par gpsOdo, pas de
-        //                                     régression vs comportement OLD.
-        //   - CAN bus intermittent (gpsOdo  : gpsOdometer = 0, MAX(manuel, trips)
-        //     existe mais date > 48h)         → trips reprennent la main.
-        //   - CAN bus jamais (gpsOdo NULL)  : idem cas intermittent.
-        return (int)Math.Max(Math.Max(gpsOdometer, manualMileage), tripsMileage);
+        return vehicle?.Mileage ?? 0;
     }
-
-    /// <summary>
-    /// Au-delà de cette fenêtre, l'odomètre GPS est considéré comme stale
-    /// et ignoré au profit de la cascade trips. 48h couvre confortablement
-    /// un week-end de stationnement (le tracker peut envoyer des trames
-    /// idle sans odomètre frais sur 2-3 jours sans qu'on bascule sur
-    /// trips). Au-delà, c'est anormal et on traite comme une panne CAN bus.
-    /// </summary>
-    private static readonly TimeSpan OdometerFreshnessWindow = TimeSpan.FromHours(48);
 
     /// <summary>
     /// Met à jour le statut de tous les schedules d'une société ou de toutes les sociétés

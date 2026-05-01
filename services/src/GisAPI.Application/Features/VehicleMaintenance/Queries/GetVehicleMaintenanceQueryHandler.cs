@@ -22,7 +22,6 @@ public class GetVehicleMaintenanceQueryHandler : IRequestHandler<GetVehicleMaint
             vehiclesQuery = vehiclesQuery.Where(v => v.Id == request.VehicleId.Value);
 
         var vehicles = await vehiclesQuery
-            .Include(v => v.GpsDevice)
             .ToListAsync(cancellationToken);
 
         var schedules = await _context.VehicleMaintenanceSchedules
@@ -36,70 +35,16 @@ public class GetVehicleMaintenanceQueryHandler : IRequestHandler<GetVehicleMaint
         var today = DateTime.UtcNow.Date;
         var results = new List<VehicleMaintenanceStatusDto>();
 
-        // Firmware "L": batch fetch latest odometer_km for all firmware L devices
-        var firmwareLDeviceIds = vehicles
-            .Where(v => v.GpsDevice != null
-                     && !string.IsNullOrEmpty(v.GpsDevice.FirmwareVersion)
-                     && v.GpsDevice.FirmwareVersion.StartsWith("L", StringComparison.OrdinalIgnoreCase))
-            .Select(v => v.GpsDevice!.Id)
-            .ToList();
-
-        var odometerMap = new Dictionary<int, long>();
-        if (firmwareLDeviceIds.Any())
-        {
-            // Calypso 7 (P-maint-couche1, follow-up #4): include the
-            // recorded_at timestamp in the projection so we can apply the
-            // 48h freshness gate below. Without this the resolver picks
-            // up odometer values from weeks ago (case 257 TU 6112) and
-            // freezes the maintenance counter.
-            var freshnessCutoff = DateTime.UtcNow.AddHours(-48);
-            var latestOdometers = await _context.GpsPositions
-                .Where(p => firmwareLDeviceIds.Contains(p.DeviceId)
-                         && p.OdometerKm.HasValue && p.OdometerKm > 0
-                         && p.OdometerKm != 1048574)
-                .GroupBy(p => p.DeviceId)
-                .Select(g => new
-                {
-                    DeviceId = g.Key,
-                    OdometerKm = g.OrderByDescending(p => p.RecordedAt).First().OdometerKm,
-                    RecordedAt = g.Max(p => p.RecordedAt)
-                })
-                .ToListAsync(cancellationToken);
-            // Only keep readings within the freshness window.
-            odometerMap = latestOdometers
-                .Where(x => x.RecordedAt >= freshnessCutoff)
-                .ToDictionary(x => x.DeviceId, x => x.OdometerKm ?? 0);
-        }
-
-        // Calypso 7 (P-maint-couche1, follow-up): batch trips totals so the
-        // 3rd fallback in the smart resolver works even when neither GPS
-        // odometer nor a positive vehicle.Mileage is available. Without this
-        // batch, /entretien-programmable kept showing currentMileage = 0
-        // for any vehicle whose tracker has no FMS odometer wired (e.g. the
-        // 257 TU 6114 with disconnected CAN bus). Mirrors the cascade in
-        // MaintenanceSchedulerService.GetCurrentMileageAsync.
-        var vehicleIds = vehicles.Select(v => v.Id).ToList();
-        var tripsTotalsRaw = await _context.Trips
-            .Where(t => vehicleIds.Contains(t.VehicleId) && t.EndTime != null)
-            .GroupBy(t => t.VehicleId)
-            .Select(g => new { VehicleId = g.Key, KmSum = g.Sum(t => (double?)t.DistanceKm) ?? 0 })
-            .ToListAsync(cancellationToken);
-        var tripsTotalKmMap = tripsTotalsRaw.ToDictionary(x => x.VehicleId, x => (int)Math.Round(x.KmSum));
-
         foreach (var vehicle in vehicles)
         {
-            // Calypso 7 (P-maint-couche1, follow-up #4): MAX-cascade avec
-            // gpsOdo déjà nettoyé par la fenêtre de fraîcheur 48h dans
-            // odometerMap ci-dessus. Voir
-            // MaintenanceSchedulerService.GetCurrentMileageAsync pour le
-            // détail. Trois cas couverts :
-            //   - CAN bus actif frais     : gpsOdo gagne le MAX
-            //   - CAN bus stale (>48h)    : gpsOdo absent du dict → trips reprennent
-            //   - CAN bus jamais          : idem
-            long gpsOdo = (vehicle.GpsDevice != null && odometerMap.TryGetValue(vehicle.GpsDevice.Id, out var odo) && odo > 0) ? odo : 0;
-            int manualMileage = vehicle.Mileage;
-            int tripsMileage = tripsTotalKmMap.TryGetValue(vehicle.Id, out var tripsKm) ? tripsKm : 0;
-            int currentMileage = (int)Math.Max(Math.Max(gpsOdo, manualMileage), tripsMileage);
+            // Calypso 7 — vehicles.mileage est l'unique source. Le Rust ingest
+            // la tient à jour pour tous les types de tracker :
+            //   - NEMS L (CAN bus actif)  : mirror de l'odomètre du véhicule
+            //   - NEMS L (CAN bus muet)   : Haversine fallback (db.rs:199)
+            //   - NEMS S / Noron          : Haversine systématique
+            // Voir MaintenanceSchedulerService.GetCurrentMileageAsync pour
+            // la justification complète de cette simplification.
+            int currentMileage = vehicle.Mileage;
 
             var vehicleSchedules = schedules.Where(s => s.VehicleId == vehicle.Id).ToList();
             if (vehicleSchedules.Count == 0 && request.Status != null) continue;

@@ -1,8 +1,10 @@
 using FluentAssertions;
 using GisAPI.Application.Features.VehicleMaintenance.Commands;
 using GisAPI.Application.Features.VehicleMaintenance.Queries;
+using GisAPI.Application.Services;
 using GisAPI.Domain.Entities;
 using GisAPI.Tests.Common;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace GisAPI.Tests.Application.MaintenanceTemplates;
@@ -27,7 +29,8 @@ public class VehicleMaintenanceTests
         });
         await context.SaveChangesAsync();
 
-        var handler = new AssignMaintenanceTemplateCommandHandler(context);
+        var scheduler = new MaintenanceSchedulerService(context, NullLogger<MaintenanceSchedulerService>.Instance);
+        var handler = new AssignMaintenanceTemplateCommandHandler(context, scheduler);
         var command = new AssignMaintenanceTemplateCommand(VehicleId: 1, TemplateId: 1);
 
         // Act
@@ -66,7 +69,8 @@ public class VehicleMaintenanceTests
         });
         await context.SaveChangesAsync();
 
-        var handler = new AssignMaintenanceTemplateCommandHandler(context);
+        var scheduler = new MaintenanceSchedulerService(context, NullLogger<MaintenanceSchedulerService>.Instance);
+        var handler = new AssignMaintenanceTemplateCommandHandler(context, scheduler);
         var command = new AssignMaintenanceTemplateCommand(VehicleId: 1, TemplateId: 1);
 
         // Act

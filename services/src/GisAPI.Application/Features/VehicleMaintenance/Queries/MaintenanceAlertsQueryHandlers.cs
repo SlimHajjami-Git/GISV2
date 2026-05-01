@@ -18,77 +18,22 @@ public class GetMaintenanceAlertsQueryHandler : IRequestHandler<GetMaintenanceAl
         var schedules = await _context.VehicleMaintenanceSchedules
             .Include(s => s.Template)
             .Include(s => s.Vehicle)
-                .ThenInclude(v => v!.GpsDevice)
             .Where(s => s.Status == "overdue" || s.Status == "due")
             .ToListAsync(cancellationToken);
 
         var today = DateTime.UtcNow.Date;
 
-        // Firmware "L": batch fetch latest odometer_km
-        var firmwareLDeviceIds = schedules
-            .Where(s => s.Vehicle?.GpsDevice != null
-                     && !string.IsNullOrEmpty(s.Vehicle.GpsDevice.FirmwareVersion)
-                     && s.Vehicle.GpsDevice.FirmwareVersion.StartsWith("L", StringComparison.OrdinalIgnoreCase))
-            .Select(s => s.Vehicle!.GpsDevice!.Id)
-            .Distinct()
-            .ToList();
-
-        var odometerMap = new Dictionary<int, long>();
-        if (firmwareLDeviceIds.Any())
-        {
-            // Calypso 7 (P-maint-couche1, follow-up #4): freshness gate 48h —
-            // voir GetVehicleMaintenanceQueryHandler / SchedulerService.
-            var freshnessCutoff = DateTime.UtcNow.AddHours(-48);
-            var latestOdometers = await _context.GpsPositions
-                .Where(p => firmwareLDeviceIds.Contains(p.DeviceId)
-                         && p.OdometerKm.HasValue && p.OdometerKm > 0
-                         && p.OdometerKm != 1048574)
-                .GroupBy(p => p.DeviceId)
-                .Select(g => new
-                {
-                    DeviceId = g.Key,
-                    OdometerKm = g.OrderByDescending(p => p.RecordedAt).First().OdometerKm,
-                    RecordedAt = g.Max(p => p.RecordedAt)
-                })
-                .ToListAsync(cancellationToken);
-            odometerMap = latestOdometers
-                .Where(x => x.RecordedAt >= freshnessCutoff)
-                .ToDictionary(x => x.DeviceId, x => x.OdometerKm ?? 0);
-        }
-
-        // Calypso 7 (P-maint-couche1, follow-up): batch trips totals so the
-        // alerts list also benefits from the trips fallback when neither
-        // GPS odometer nor a positive vehicle.Mileage is available. Without
-        // this, alerts on silent-tracker vehicles would compare NextDueKm
-        // against vehicle.Mileage = 0 and report a misleading kmUntilDue.
-        var alertsVehicleIds = schedules
-            .Where(s => s.Vehicle != null)
-            .Select(s => s.Vehicle!.Id)
-            .Distinct()
-            .ToList();
-        var tripsTotalsMap = new Dictionary<int, int>();
-        if (alertsVehicleIds.Count > 0)
-        {
-            var tripsTotalsRaw = await _context.Trips
-                .Where(t => alertsVehicleIds.Contains(t.VehicleId) && t.EndTime != null)
-                .GroupBy(t => t.VehicleId)
-                .Select(g => new { VehicleId = g.Key, KmSum = g.Sum(t => (double?)t.DistanceKm) ?? 0 })
-                .ToListAsync(cancellationToken);
-            tripsTotalsMap = tripsTotalsRaw.ToDictionary(x => x.VehicleId, x => (int)Math.Round(x.KmSum));
-        }
-
         return schedules.Select(s =>
         {
-            // Calypso 7 (P-maint-couche1, follow-up #4): MAX-cascade avec
-            // gpsOdo déjà gaté par 48h dans odometerMap. Voir
-            // MaintenanceSchedulerService.GetCurrentMileageAsync.
-            long gpsOdo = (s.Vehicle?.GpsDevice != null && odometerMap.TryGetValue(s.Vehicle.GpsDevice.Id, out var odo) && odo > 0) ? odo : 0;
-            int manualMileage = s.Vehicle?.Mileage ?? 0;
-            int tripsMileage = (s.Vehicle != null && tripsTotalsMap.TryGetValue(s.Vehicle.Id, out var tripsKm)) ? tripsKm : 0;
-            int vehicleMileage = (int)Math.Max(Math.Max(gpsOdo, manualMileage), tripsMileage);
+            // Calypso 7 — vehicles.mileage est l'unique source. Cf.
+            // MaintenanceSchedulerService.GetCurrentMileageAsync pour la
+            // justification (Rust ingest tient mileage à jour pour tous
+            // les types de tracker, y compris NEMS L à CAN bus muet via
+            // Haversine fallback). Plus de cascade ici.
+            int vehicleMileage = s.Vehicle?.Mileage ?? 0;
 
-            var kmUntilDue = s.NextDueKm.HasValue && s.Vehicle != null 
-                ? s.NextDueKm.Value - vehicleMileage 
+            var kmUntilDue = s.NextDueKm.HasValue && s.Vehicle != null
+                ? s.NextDueKm.Value - vehicleMileage
                 : (int?)null;
             var daysUntilDue = s.NextDueDate.HasValue 
                 ? (int)(s.NextDueDate.Value - today).TotalDays 
