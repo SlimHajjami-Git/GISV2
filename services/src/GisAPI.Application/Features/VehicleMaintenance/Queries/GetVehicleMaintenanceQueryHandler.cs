@@ -47,14 +47,28 @@ public class GetVehicleMaintenanceQueryHandler : IRequestHandler<GetVehicleMaint
         var odometerMap = new Dictionary<int, long>();
         if (firmwareLDeviceIds.Any())
         {
+            // Calypso 7 (P-maint-couche1, follow-up #4): include the
+            // recorded_at timestamp in the projection so we can apply the
+            // 48h freshness gate below. Without this the resolver picks
+            // up odometer values from weeks ago (case 257 TU 6112) and
+            // freezes the maintenance counter.
+            var freshnessCutoff = DateTime.UtcNow.AddHours(-48);
             var latestOdometers = await _context.GpsPositions
                 .Where(p => firmwareLDeviceIds.Contains(p.DeviceId)
                          && p.OdometerKm.HasValue && p.OdometerKm > 0
                          && p.OdometerKm != 1048574)
                 .GroupBy(p => p.DeviceId)
-                .Select(g => new { DeviceId = g.Key, OdometerKm = g.OrderByDescending(p => p.RecordedAt).First().OdometerKm })
+                .Select(g => new
+                {
+                    DeviceId = g.Key,
+                    OdometerKm = g.OrderByDescending(p => p.RecordedAt).First().OdometerKm,
+                    RecordedAt = g.Max(p => p.RecordedAt)
+                })
                 .ToListAsync(cancellationToken);
-            odometerMap = latestOdometers.ToDictionary(x => x.DeviceId, x => x.OdometerKm ?? 0);
+            // Only keep readings within the freshness window.
+            odometerMap = latestOdometers
+                .Where(x => x.RecordedAt >= freshnessCutoff)
+                .ToDictionary(x => x.DeviceId, x => x.OdometerKm ?? 0);
         }
 
         // Calypso 7 (P-maint-couche1, follow-up): batch trips totals so the
@@ -74,27 +88,18 @@ public class GetVehicleMaintenanceQueryHandler : IRequestHandler<GetVehicleMaint
 
         foreach (var vehicle in vehicles)
         {
-            // Calypso 7 (P-maint-couche1, follow-up #3): cascade CONDITIONNELLE
-            // pour ne pas faire monter `currentMileage` plus haut que
-            // l'odomètre quand le CAN bus est sain — voir le commentaire dans
-            // MaintenanceSchedulerService.GetCurrentMileageAsync pour la
-            // justification complète. Le trip-detector peut sur-compter
-            // légèrement et faire croire que le véhicule a roulé plus que
-            // son odomètre indique.
+            // Calypso 7 (P-maint-couche1, follow-up #4): MAX-cascade avec
+            // gpsOdo déjà nettoyé par la fenêtre de fraîcheur 48h dans
+            // odometerMap ci-dessus. Voir
+            // MaintenanceSchedulerService.GetCurrentMileageAsync pour le
+            // détail. Trois cas couverts :
+            //   - CAN bus actif frais     : gpsOdo gagne le MAX
+            //   - CAN bus stale (>48h)    : gpsOdo absent du dict → trips reprennent
+            //   - CAN bus jamais          : idem
             long gpsOdo = (vehicle.GpsDevice != null && odometerMap.TryGetValue(vehicle.GpsDevice.Id, out var odo) && odo > 0) ? odo : 0;
             int manualMileage = vehicle.Mileage;
-            int currentMileage;
-            if (gpsOdo > 0)
-            {
-                // CAN bus actif : odo GPS au cœur, vehicle.Mileage comme floor.
-                currentMileage = (int)Math.Max(gpsOdo, manualMileage);
-            }
-            else
-            {
-                // CAN bus muet : trips comme rattrapage progressif.
-                int tripsMileage = tripsTotalKmMap.TryGetValue(vehicle.Id, out var tripsKm) ? tripsKm : 0;
-                currentMileage = Math.Max(manualMileage, tripsMileage);
-            }
+            int tripsMileage = tripsTotalKmMap.TryGetValue(vehicle.Id, out var tripsKm) ? tripsKm : 0;
+            int currentMileage = (int)Math.Max(Math.Max(gpsOdo, manualMileage), tripsMileage);
 
             var vehicleSchedules = schedules.Where(s => s.VehicleId == vehicle.Id).ToList();
             if (vehicleSchedules.Count == 0 && request.Status != null) continue;

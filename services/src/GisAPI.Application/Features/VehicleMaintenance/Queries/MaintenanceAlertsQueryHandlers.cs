@@ -36,14 +36,24 @@ public class GetMaintenanceAlertsQueryHandler : IRequestHandler<GetMaintenanceAl
         var odometerMap = new Dictionary<int, long>();
         if (firmwareLDeviceIds.Any())
         {
+            // Calypso 7 (P-maint-couche1, follow-up #4): freshness gate 48h —
+            // voir GetVehicleMaintenanceQueryHandler / SchedulerService.
+            var freshnessCutoff = DateTime.UtcNow.AddHours(-48);
             var latestOdometers = await _context.GpsPositions
                 .Where(p => firmwareLDeviceIds.Contains(p.DeviceId)
                          && p.OdometerKm.HasValue && p.OdometerKm > 0
                          && p.OdometerKm != 1048574)
                 .GroupBy(p => p.DeviceId)
-                .Select(g => new { DeviceId = g.Key, OdometerKm = g.OrderByDescending(p => p.RecordedAt).First().OdometerKm })
+                .Select(g => new
+                {
+                    DeviceId = g.Key,
+                    OdometerKm = g.OrderByDescending(p => p.RecordedAt).First().OdometerKm,
+                    RecordedAt = g.Max(p => p.RecordedAt)
+                })
                 .ToListAsync(cancellationToken);
-            odometerMap = latestOdometers.ToDictionary(x => x.DeviceId, x => x.OdometerKm ?? 0);
+            odometerMap = latestOdometers
+                .Where(x => x.RecordedAt >= freshnessCutoff)
+                .ToDictionary(x => x.DeviceId, x => x.OdometerKm ?? 0);
         }
 
         // Calypso 7 (P-maint-couche1, follow-up): batch trips totals so the
@@ -69,22 +79,13 @@ public class GetMaintenanceAlertsQueryHandler : IRequestHandler<GetMaintenanceAl
 
         return schedules.Select(s =>
         {
-            // Calypso 7 (P-maint-couche1, follow-up #3): cascade
-            // CONDITIONNELLE — voir MaintenanceSchedulerService pour la
-            // justification (zéro régression sur les véhicules à CAN bus
-            // sain, et trips fallback uniquement quand l'odo GPS est mort).
+            // Calypso 7 (P-maint-couche1, follow-up #4): MAX-cascade avec
+            // gpsOdo déjà gaté par 48h dans odometerMap. Voir
+            // MaintenanceSchedulerService.GetCurrentMileageAsync.
             long gpsOdo = (s.Vehicle?.GpsDevice != null && odometerMap.TryGetValue(s.Vehicle.GpsDevice.Id, out var odo) && odo > 0) ? odo : 0;
             int manualMileage = s.Vehicle?.Mileage ?? 0;
-            int vehicleMileage;
-            if (gpsOdo > 0)
-            {
-                vehicleMileage = (int)Math.Max(gpsOdo, manualMileage);
-            }
-            else
-            {
-                int tripsMileage = (s.Vehicle != null && tripsTotalsMap.TryGetValue(s.Vehicle.Id, out var tripsKm)) ? tripsKm : 0;
-                vehicleMileage = Math.Max(manualMileage, tripsMileage);
-            }
+            int tripsMileage = (s.Vehicle != null && tripsTotalsMap.TryGetValue(s.Vehicle.Id, out var tripsKm)) ? tripsKm : 0;
+            int vehicleMileage = (int)Math.Max(Math.Max(gpsOdo, manualMileage), tripsMileage);
 
             var kmUntilDue = s.NextDueKm.HasValue && s.Vehicle != null 
                 ? s.NextDueKm.Value - vehicleMileage 

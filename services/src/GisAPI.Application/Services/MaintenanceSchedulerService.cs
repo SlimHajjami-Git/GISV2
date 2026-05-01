@@ -64,58 +64,63 @@ public class MaintenanceSchedulerService : IMaintenanceSchedulerService
 
         if (vehicle == null) return 0;
 
-        // ─── Source 1 : odomètre FMS du GPS ──────────────────────────────────
+        // ─── Source 1 : odomètre FMS du GPS, GATÉ par une fenêtre de fraîcheur ─
+        //
+        // Un odomètre vieux d'un mois (cas observé sur 257 TU 6112 :
+        // dernière valeur valide il y a 33 jours, CAN bus intermittent)
+        // n'est PAS un signal fiable. La cascade conditionnelle précédente
+        // se verrouillait dessus parce qu'il était > 0, et le compteur
+        // restait gelé même si le camion roulait. Maintenant on n'utilise
+        // l'odo GPS QUE s'il date de moins de FreshnessWindow.
         long gpsOdometer = 0;
         if (vehicle.GpsDeviceId.HasValue)
         {
-            var lastOdometer = await _context.GpsPositions
+            var lastOdoRow = await _context.GpsPositions
                 .Where(p => p.DeviceId == vehicle.GpsDeviceId.Value
                          && p.OdometerKm.HasValue
                          && p.OdometerKm > 0
                          && p.OdometerKm != 1048574)
                 .OrderByDescending(p => p.RecordedAt)
-                .Select(p => p.OdometerKm)
+                .Select(p => new { p.OdometerKm, p.RecordedAt })
                 .FirstOrDefaultAsync(ct);
 
-            if (lastOdometer.HasValue && lastOdometer.Value > 0)
+            if (lastOdoRow != null
+                && lastOdoRow.OdometerKm.HasValue
+                && (DateTime.UtcNow - lastOdoRow.RecordedAt) < OdometerFreshnessWindow)
             {
-                gpsOdometer = lastOdometer.Value;
+                gpsOdometer = lastOdoRow.OdometerKm.Value;
             }
         }
 
         // ─── Source 2 : compteur manuel / Haversine non-FMS ──────────────────
         var manualMileage = vehicle.Mileage;
 
-        // Calypso 7 (P-maint-couche1, follow-up #3): cascade CONDITIONNELLE
-        // pour ne pas dégrader les véhicules à CAN bus sain.
-        //
-        // Quand le GPS odomètre marche (> 0), c'est de loin la source la
-        // plus fiable. On le retient et on prend juste le max avec
-        // vehicle.Mileage comme garde-fou (cas où l'admin a saisi un
-        // compteur initial supérieur). On NE consulte PAS la table
-        // trips, parce qu'un trip-detector qui sur-compte de quelques
-        // pourcents peut faire diverger les chiffres et faire croire que
-        // le véhicule a roulé plus que son odomètre indique.
-        //
-        // Quand le GPS odomètre est mort (= 0, cas silent-tracker), on
-        // tombe sur vehicle.Mileage et on le complète avec trips pour
-        // que les km accumulés depuis le dernier mark-done remontent
-        // dans le resolver (le scénario 257 TU 6114 / NEMS-L sans CAN
-        // bus que la Couche 1 visait initialement).
-        if (gpsOdometer > 0)
-        {
-            return (int)Math.Max(gpsOdometer, manualMileage);
-        }
-
-        // GPS muet : on prend la trips total comme remonte progressive,
-        // bornée par vehicle.Mileage si l'admin l'a saisi à l'avance.
+        // ─── Source 3 : somme des trips fermés ───────────────────────────────
         var tripsKm = await _context.Trips
             .Where(t => t.VehicleId == vehicleId && t.EndTime != null)
             .SumAsync(t => (double?)t.DistanceKm, ct) ?? 0;
         var tripsMileage = (int)Math.Round(tripsKm);
 
-        return Math.Max(manualMileage, tripsMileage);
+        // Calypso 7 (P-maint-couche1, follow-up #4): MAX-cascade des trois
+        // sources, où la Source 1 a déjà été nettoyée par la fenêtre de
+        // fraîcheur. Trois cas couverts proprement :
+        //
+        //   - CAN bus actif (gpsOdo frais)  : MAX dominé par gpsOdo, pas de
+        //                                     régression vs comportement OLD.
+        //   - CAN bus intermittent (gpsOdo  : gpsOdometer = 0, MAX(manuel, trips)
+        //     existe mais date > 48h)         → trips reprennent la main.
+        //   - CAN bus jamais (gpsOdo NULL)  : idem cas intermittent.
+        return (int)Math.Max(Math.Max(gpsOdometer, manualMileage), tripsMileage);
     }
+
+    /// <summary>
+    /// Au-delà de cette fenêtre, l'odomètre GPS est considéré comme stale
+    /// et ignoré au profit de la cascade trips. 48h couvre confortablement
+    /// un week-end de stationnement (le tracker peut envoyer des trames
+    /// idle sans odomètre frais sur 2-3 jours sans qu'on bascule sur
+    /// trips). Au-delà, c'est anormal et on traite comme une panne CAN bus.
+    /// </summary>
+    private static readonly TimeSpan OdometerFreshnessWindow = TimeSpan.FromHours(48);
 
     /// <summary>
     /// Met à jour le statut de tous les schedules d'une société ou de toutes les sociétés
