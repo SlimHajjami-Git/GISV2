@@ -27,7 +27,7 @@ public class DeviceCommand : TenantEntity
     public string CommandType { get; set; } = string.Empty;
 
     /// <summary>
-    /// The raw command text to send to the device (e.g., "AJ+STOP#1311\n")
+    /// The raw command text to send to the device (e.g., "AJ+STOP#9999\n")
     /// Stored in DB so nothing is hardcoded — can vary per device/protocol
     /// </summary>
     public string CommandText { get; set; } = string.Empty;

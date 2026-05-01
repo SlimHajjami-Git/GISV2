@@ -13,7 +13,7 @@ namespace GisAPI.Application.Common.Interfaces;
 public interface IRustCommandPusher
 {
     /// <param name="deviceId">gps_devices.id</param>
-    /// <param name="command">Full command text (e.g. "AJ+GO#1311\n" or "AJ+STOP#1311\n") — newline included.</param>
+    /// <param name="command">Full command text (e.g. "AJ+GO#9999\n" or "AJ+STOP#9999\n") — newline included.
     Task<RustPushResult> PushAsync(int deviceId, string command, CancellationToken ct = default);
 }
 

@@ -1881,7 +1881,7 @@ mod tests {
         }
 
         async fn get_immobilization_state(&self, _device_id: i32) -> anyhow::Result<(bool, String)> {
-            Ok((false, "AJ+GO#1311\n".to_string())) // Default: not immobilized, standard GO command
+            Ok((false, "AJ+GO#9999\n".to_string())) // Default: not immobilized, standard GO command
         }
 
         async fn get_pending_command(&self, _device_id: i32) -> anyhow::Result<Option<(i64, String)>> {

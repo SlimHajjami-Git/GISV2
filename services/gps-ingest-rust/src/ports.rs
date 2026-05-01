@@ -69,7 +69,7 @@ pub trait TelemetryStore: Send + Sync {
     /// Check immobilization state for a device.
     /// Returns (immobilization_active, command_go) from gps_devices table.
     /// If immobilization_active is true, auto-recovery should NOT be sent.
-    /// command_go is the full command from DB (e.g. "AJ+GO#1311\n"), sent as-is.
+    /// command_go is the full command from DB (e.g. "AJ+GO#9999\n"), sent as-is.
     async fn get_immobilization_state(&self, device_id: i32) -> anyhow::Result<(bool, String)>;
 
     /// Get the oldest pending command for a device and mark it as 'sent'

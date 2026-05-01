@@ -42,16 +42,16 @@ public class GpsDevice : TenantEntity
     public DateTime? ImmobilizationAt { get; set; }
 
     /// <summary>
-    /// Full command to resume the vehicle, sent as-is over TCP (e.g. "AJ+GO#1311\n").
+    /// Full command to resume the vehicle, sent as-is over TCP (e.g. "AJ+GO#9999\n").
     /// Changeable per device from the app — nothing hardcoded.
     /// </summary>
-    public string CommandGo { get; set; } = "AJ+GO#1311\n";
+    public string CommandGo { get; set; } = "AJ+GO#9999\n";
 
     /// <summary>
-    /// Full command to stop the vehicle, sent as-is over TCP (e.g. "AJ+STOP#1311\n").
+    /// Full command to stop the vehicle, sent as-is over TCP (e.g. "AJ+STOP#9999\n").
     /// Changeable per device from the app.
     /// </summary>
-    public string CommandStop { get; set; } = "AJ+STOP#1311\n";
+    public string CommandStop { get; set; } = "AJ+STOP#9999\n";
 
     /// <summary>
     /// Timestamp of the last low-voltage notification fan-out.

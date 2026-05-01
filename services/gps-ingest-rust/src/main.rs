@@ -96,7 +96,7 @@ struct PushCommandResponse {
 /// to deliver the command to the Rust-owned TCP socket with ~ms latency instead
 /// of waiting for the next device frame (typically 5s–5min).
 ///
-/// Body: { "device_id": 42, "command": "AJ+STOP#1311\n" }
+/// Body: { "device_id": 42, "command": "AJ+STOP#9999\n" }
 ///
 /// Returns:
 ///   - 200 { status: "pushed" }      — command queued on the TCP handler's channel

@@ -986,7 +986,7 @@ impl TelemetryStore for Database {
             r#"
             SELECT
                 COALESCE(immobilization_active, false) AS immobilization_active,
-                COALESCE(command_go, E'AJ+GO#1311\n') AS command_go
+                COALESCE(command_go, E'AJ+GO#9999\n') AS command_go
             FROM gps_devices
             WHERE id = $1
             "#,
@@ -1001,7 +1001,7 @@ impl TelemetryStore for Database {
                 let command_go: String = r.get("command_go");
                 Ok((active, command_go))
             }
-            None => Ok((false, "AJ+GO#1311\n".to_string())),
+            None => Ok((false, "AJ+GO#9999\n".to_string())),
         }
     }
 
