@@ -853,7 +853,7 @@ type NotifBucket = Notification | NotifThreadGroup;
       position: absolute;
       top: calc(100% + 8px);
       right: 0;
-      width: 560px;
+      width: 720px;
       max-height: 540px;
       background: white;
       border-radius: 8px;
@@ -1311,20 +1311,25 @@ type NotifBucket = Notification | NotifThreadGroup;
     .notif-tabs {
       display: flex;
       align-items: center;
+      justify-content: flex-start;
       gap: 0;
       padding: 0 8px;
       border-bottom: 1px solid #e2e8f0;
       background: white;
       overflow-x: auto;
-      scrollbar-width: none;
+      overflow-y: hidden;
+      scrollbar-width: thin;
     }
-    .notif-tabs::-webkit-scrollbar { display: none; }
+    .notif-tabs::-webkit-scrollbar { height: 4px; }
+    .notif-tabs::-webkit-scrollbar-track { background: transparent; }
+    .notif-tabs::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+    .notif-tabs::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     .tab-btn {
       flex-shrink: 0;
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      padding: 10px 8px;
+      padding: 10px 9px;
       background: transparent;
       border: none;
       border-bottom: 2px solid transparent;
