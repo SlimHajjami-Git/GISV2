@@ -116,8 +116,17 @@ public class GetTripsReportQueryHandler : IRequestHandler<GetTripsReportQuery, T
     /// <summary>
     /// Detect trips from GPS positions based on ignition_on == true.
     /// A trip = continuous period where ignition is ON.
-    /// Adjacent trips separated by < 60s gap are merged (noisy ignition debounce).
+    /// Adjacent trips separated by &lt; 180s gap are merged (noisy ignition debounce).
     /// Distance calculated via Haversine with GPS noise filter.
+    ///
+    /// Bloc B2 (correction Calypso 7) : certains trackers (notamment NEMS L
+    /// avec capteur d'allumage cassé ou Noron qui n'envoie jamais ignition_off)
+    /// laissent ignition_on=true des heures voire des jours après l'arrêt
+    /// physique du véhicule. Sans garde-fou, le détecteur fusionne 5 jours de
+    /// stationnement avec ignition allumée en un seul « trajet de 140h ».
+    /// On ajoute donc une étape de découpage : tout intervalle de plus de
+    /// STATIONARY_BREAK_SECONDS (15 min) sans mouvement réel (vitesse moyenne
+    /// &lt; 2 km/h sur la fenêtre) coupe le trajet en deux.
     /// </summary>
     internal static List<TripEntryDto> DetectTrips(List<TripPositionSlim> positions)
     {
@@ -185,9 +194,55 @@ public class GetTripsReportQueryHandler : IRequestHandler<GetTripsReportQuery, T
             merged.Add((trip.Start, trip.End, new List<TripPositionSlim>(trip.Positions)));
         }
 
+        // Step 2.5 (bloc B2): split each merged trip whenever the vehicle stays
+        // stationary (speed < 2 km/h) for more than STATIONARY_BREAK_SECONDS.
+        // Defends against trackers that never lower ignition_on while parked.
+        const int STATIONARY_BREAK_SECONDS = 15 * 60;     // 15 min
+        const double MOVING_SPEED_KPH = 2.0;
+        var split = new List<(DateTime Start, DateTime End, List<TripPositionSlim> Positions)>();
+        foreach (var trip in merged)
+        {
+            var segment = new List<TripPositionSlim>();
+            DateTime? lastMovingAt = null;
+
+            foreach (var p in trip.Positions)
+            {
+                var isMoving = (p.SpeedKph ?? 0) > MOVING_SPEED_KPH;
+
+                if (segment.Count == 0)
+                {
+                    segment.Add(p);
+                    if (isMoving) lastMovingAt = p.RecordedAt;
+                    continue;
+                }
+
+                // If we haven't moved for too long, close the current segment
+                // before adding this point.
+                if (lastMovingAt.HasValue
+                    && (p.RecordedAt - lastMovingAt.Value).TotalSeconds > STATIONARY_BREAK_SECONDS)
+                {
+                    if (segment.Count > 1)
+                    {
+                        split.Add((segment[0].RecordedAt, segment[^1].RecordedAt, segment));
+                    }
+                    segment = new List<TripPositionSlim> { p };
+                    lastMovingAt = isMoving ? p.RecordedAt : (DateTime?)null;
+                    continue;
+                }
+
+                segment.Add(p);
+                if (isMoving) lastMovingAt = p.RecordedAt;
+            }
+
+            if (segment.Count > 1)
+            {
+                split.Add((segment[0].RecordedAt, segment[^1].RecordedAt, segment));
+            }
+        }
+
         // Step 3: Build trip DTOs with distance calculation
         var result = new List<TripEntryDto>();
-        foreach (var trip in merged)
+        foreach (var trip in split)
         {
             var durationSeconds = (int)(trip.End - trip.Start).TotalSeconds;
             if (durationSeconds < 60) continue; // Skip micro-trips < 1 min
