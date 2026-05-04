@@ -737,7 +737,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const dir = this.sortDirection === 'asc' ? 1 : -1;
     // Columns that have a dedicated numeric sort key (e.g. 'period' → '_periodSort')
     const sortKeyColumn = `_${column}Sort`;
-    this.tableData = [...this.tableData].sort((a: any, b: any) => {
+
+    // Bloc B3 (correction Calypso 7) : on retire les pseudo-lignes « day-header »
+    // avant le tri. Sinon elles n'ont pas de _xxxSort et finissent toutes à la
+    // fin, ce qui casse le tri visible sur la colonne Date du tableau Trajets.
+    const dataRows = this.tableData.filter((r: any) => !r.isDayHeader);
+    const sorted = [...dataRows].sort((a: any, b: any) => {
       // Use dedicated sort key if available (for dates/periods stored as display strings)
       let valA = a[sortKeyColumn] !== undefined ? a[sortKeyColumn] : a[column];
       let valB = b[sortKeyColumn] !== undefined ? b[sortKeyColumn] : b[column];
@@ -758,8 +763,56 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // String sort
       return String(valA).localeCompare(String(valB), 'fr') * dir;
     });
+
+    // Si la colonne triée est temporelle ET que le tableau utilisait
+    // initialement un groupement par jour (trips/stops), on régénère les
+    // entêtes de jour suivant le nouvel ordre. Sinon on rend le tableau plat,
+    // car des entêtes répétés au milieu d'un tri par distance/vitesse n'ont
+    // aucun sens.
+    const dateColumns = ['startTime', 'endTime', 'time', 'date'];
+    const hadDayHeaders = this.tableData.some((r: any) => r.isDayHeader);
+    if (hadDayHeaders && dateColumns.includes(column)) {
+      this.tableData = this.regroupRowsByDay(sorted);
+    } else {
+      this.tableData = sorted;
+    }
     this.currentPage = 1;
     this.cdr.detectChanges();
+  }
+
+  /**
+   * Regenerate "📅 day" header rows around an already-sorted list of trip /
+   * stop rows. Used by sortBy() so day grouping survives a re-sort on a
+   * date column (Bloc B3 — correction Calypso 7).
+   */
+  private regroupRowsByDay(rows: any[]): any[] {
+    const grouped: any[] = [];
+    let currentDay = '';
+    const type = this.selectedTemplate?.type;
+    for (const row of rows) {
+      // Both trips (startTime) and stops (time) put the date as the first
+      // space-separated token of the formatted string.
+      const stamp = row.startTime || row.time || '';
+      const dayKey = typeof stamp === 'string' ? stamp.split(' ')[0] : '';
+      if (dayKey && dayKey !== currentDay) {
+        currentDay = dayKey;
+        if (type === 'trips') {
+          const dayTrips = rows.filter((r: any) => r.startTime?.startsWith?.(dayKey) && r.isTrip);
+          const tripNums = dayTrips.map((r: any) => r.tripNumber).filter((n: any) => n != null);
+          const dayLabel = tripNums.length > 0
+            ? `📅 ${dayKey} — Trajets ${Math.min(...tripNums)} à ${Math.max(...tripNums)}`
+            : `📅 ${dayKey}`;
+          grouped.push({ isDayHeader: true, dayLabel, _sortKey: dayKey });
+        } else if (type === 'stops') {
+          const dayStops = rows.filter((r: any) => r.time?.startsWith?.(dayKey));
+          grouped.push({ isDayHeader: true, dayLabel: `📅 ${dayKey} — ${dayStops.length} arrêt(s)`, _sortKey: dayKey });
+        } else {
+          grouped.push({ isDayHeader: true, dayLabel: `📅 ${dayKey}`, _sortKey: dayKey });
+        }
+      }
+      grouped.push(row);
+    }
+    return grouped;
   }
 
   getSortIcon(column: string): string {
@@ -1361,7 +1414,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.apiService.getTripsReport(vehicleId, startDate, endDate).pipe(takeUntil(this.destroy$)).subscribe({
       next: (report: any) => {
         this.ngZone.run(() => {
-          this.processTripsFromBackend([report]);
+          this.processTripsFromBackend([report], startDate, endDate);
           this.reportGenerated = true;
           this.loading = false;
           this.activeTab = 'table';
@@ -1390,7 +1443,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.apiService.getTripsReportAll(startDate, endDate).pipe(takeUntil(this.destroy$)).subscribe({
       next: (reports: any[]) => {
         this.ngZone.run(() => {
-          this.processTripsFromBackend(reports);
+          this.processTripsFromBackend(reports, startDate, endDate);
           this.reportGenerated = true;
           this.loading = false;
           this.activeTab = 'table';
@@ -4147,8 +4200,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /**
    * Process trips report from backend API response.
    * Backend returns data grouped by day with ignition_on == true periods.
+   *
+   * Bloc B (correction Calypso 7): pour fixer les bugs B1/B2/B4, le graphique
+   * couvre maintenant toujours la plage demandée par l'utilisateur. Les jours
+   * sans trajet sont représentés par une barre à 0 km au lieu d'être omis,
+   * ce qui évite les sauts visuels (« 26/01 → 1/02 directement ») et la
+   * confusion entre l'intervalle filtré et l'intervalle réellement affiché.
    */
-  processTripsFromBackend(reports: any[]) {
+  processTripsFromBackend(reports: any[], rangeStart?: Date, rangeEnd?: Date) {
     if (!reports || reports.length === 0) {
       this.tableData = [];
       this.chartData = [];
@@ -4156,7 +4215,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Format duration helper
+    // Format duration helper (seconds → "Xh Ymin" / "Xmin" / "Xs")
     const formatDuration = (seconds: number): string => {
       if (seconds < 60) return `${seconds}s`;
       const minutes = seconds / 60;
@@ -4166,6 +4225,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
         return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
       }
       return `${Math.round(minutes)}min`;
+    };
+
+    // Format minutes → "Xh Ymin" (used by chart tooltip)
+    const formatMinutesPretty = (minutes: number): string => {
+      if (!minutes || minutes < 1) return '0min';
+      const total = Math.round(minutes);
+      if (total < 60) return `${total}min`;
+      const hours = Math.floor(total / 60);
+      const mins = total % 60;
+      return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
     };
 
     // Flatten all trips from all reports (multi-vehicle support)
@@ -4223,31 +4292,81 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Chart data - distance per trip (oldest left → newest right)
     const tripRows = [...this.tableData].filter((t: any) => t.isTrip).reverse();
 
-    if (tripRows.length > 30) {
-      // Too many trips: aggregate by day for readability
+    // Compute the range covered by data alone (fallback when no filter is given)
+    const tripDays = tripRows
+      .map((t: any) => t._startTimeSort ? new Date(t._startTimeSort) : null)
+      .filter((d): d is Date => d !== null);
+    const dataMinDay = tripDays.length > 0
+      ? new Date(Math.min(...tripDays.map(d => d.getTime())))
+      : null;
+    const dataMaxDay = tripDays.length > 0
+      ? new Date(Math.max(...tripDays.map(d => d.getTime())))
+      : null;
+
+    // Pick the chart's effective range: prefer the user filter, fallback to data range
+    const effectiveStart = rangeStart || dataMinDay;
+    const effectiveEnd = rangeEnd || dataMaxDay;
+    const rangeSpansMultipleDays = effectiveStart && effectiveEnd
+      && this.toLocalDate(effectiveStart) !== this.toLocalDate(effectiveEnd);
+
+    // Use daily aggregation if the filter spans more than a single day, OR if the
+    // dataset is large. Below, daily aggregation always emits one bar per day in
+    // the requested range — including 0-km days — so the X axis matches the
+    // user's date filter (B1 + B4).
+    const useDailyAggregation = rangeSpansMultipleDays || tripRows.length > 30;
+
+    if (useDailyAggregation) {
       const dailyMap = new Map<string, { distance: number; trips: number; duration: number }>();
       for (const t of tripRows) {
         const rawTs = t._startTimeSort;
-        const dayKey = rawTs ? this.toLocalDate(new Date(rawTs)) : 'unknown';
+        const dayKey = rawTs ? this.toLocalDate(new Date(rawTs)) : null;
+        if (!dayKey) continue;
         const entry = dailyMap.get(dayKey) || { distance: 0, trips: 0, duration: 0 };
         entry.distance += t.distanceKm || 0;
         entry.trips += 1;
         entry.duration += t.durationMin || 0;
         dailyMap.set(dayKey, entry);
       }
-      const sortedDays = [...dailyMap.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-      this.chartData = sortedDays.map(([day, data]) => ({
-        label: day !== 'unknown' ? new Date(day).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) : day,
-        value: Math.round(data.distance * 10) / 10,
-        trips: data.trips,
-        duration: data.duration,
-        _isDailyAggregation: true
-      }));
+
+      // Build the day axis from the effective range to ensure we always span the
+      // user's filter (no gaps, no truncation).
+      const axisDays: string[] = [];
+      if (effectiveStart && effectiveEnd) {
+        const cursor = new Date(effectiveStart.getFullYear(), effectiveStart.getMonth(), effectiveStart.getDate());
+        const stop = new Date(effectiveEnd.getFullYear(), effectiveEnd.getMonth(), effectiveEnd.getDate());
+        while (cursor.getTime() <= stop.getTime()) {
+          axisDays.push(this.toLocalDate(cursor));
+          cursor.setDate(cursor.getDate() + 1);
+        }
+      } else {
+        // No range info — fall back to populated days only
+        axisDays.push(...[...dailyMap.keys()].sort());
+      }
+
+      // Hard cap to keep the chart usable (~120 bars max).
+      // If the range is huge, fall back to populated days only.
+      const cappedDays = axisDays.length > 120
+        ? [...dailyMap.keys()].sort()
+        : axisDays;
+
+      this.chartData = cappedDays.map(day => {
+        const data = dailyMap.get(day) || { distance: 0, trips: 0, duration: 0 };
+        return {
+          label: new Date(day).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }),
+          value: Math.round(data.distance * 10) / 10,
+          trips: data.trips,
+          duration: data.duration,
+          durationFormatted: formatMinutesPretty(data.duration),
+          _isDailyAggregation: true,
+          _dayKey: day
+        };
+      });
     } else {
       this.chartData = tripRows.map((t: any) => ({
         label: `T${t.tripNumber}`,
         value: t.distanceKm,
         duration: t.durationMin,
+        durationFormatted: formatMinutesPretty(t.durationMin || 0),
         _isDailyAggregation: false
       }));
     }
@@ -4324,6 +4443,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const distances = this.chartData.map(d => d.value);
       const labels = this.chartData.map(d => d.label);
 
+      // Local helper: minutes → "Xh Ymin" (matches processTripsFromBackend)
+      const fmtMin = (minutes: number): string => {
+        if (!minutes || minutes < 1) return '0min';
+        const total = Math.round(minutes);
+        if (total < 60) return `${total}min`;
+        const hours = Math.floor(total / 60);
+        const mins = total % 60;
+        return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+      };
+
       if (isDailyAgg) {
         // Daily aggregation: clean area chart with trip count on secondary axis
         const tripCounts = this.chartData.map(d => d.trips || 0);
@@ -4370,7 +4499,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
                     const idx = context[0]?.dataIndex;
                     if (idx !== undefined) {
                       const d = this.chartData[idx];
-                      return d?.duration ? `⏱️ Conduite: ${Math.round(d.duration)} min` : '';
+                      const dur = d?.duration || 0;
+                      return dur > 0 ? `⏱️ Conduite: ${fmtMin(dur)}` : '';
                     }
                     return '';
                   }
@@ -4416,7 +4546,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
                     const idx = context[0]?.dataIndex;
                     if (idx !== undefined) {
                       const dur = durations[idx];
-                      return dur ? `⏱️ Durée: ${Math.round(dur)} min` : '';
+                      return dur > 0 ? `⏱️ Durée: ${fmtMin(dur)}` : '';
                     }
                     return '';
                   }
@@ -5111,15 +5241,21 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   // Helper methods for secondary charts
+  // Bloc B5 (correction Calypso 7) : on filtre directement sur le champ
+  // `severityLevel` que processSpeedInfractionReport calcule à partir du
+  // pourcentage d'excès (≤10 % léger, 10-20 % modéré, >20 % grave). Avant ce
+  // patch, le donut utilisait des seuils km/h (≤20, 20-40, >40) totalement
+  // décorrélés de ceux du tableau, d'où l'incohérence rapportée par le client
+  // (« le tableau dit Grave mais le donut est tout vert »).
   getSeverityDistribution(): { label: string; value: number }[] {
-    const light = this.tableData.filter((r: any) => r.excessValue && r.excessValue <= 20).length;
-    const medium = this.tableData.filter((r: any) => r.excessValue && r.excessValue > 20 && r.excessValue <= 40).length;
-    const severe = this.tableData.filter((r: any) => r.excessValue && r.excessValue > 40).length;
+    const light = this.tableData.filter((r: any) => r.severityLevel === 'leger').length;
+    const medium = this.tableData.filter((r: any) => r.severityLevel === 'modere').length;
+    const severe = this.tableData.filter((r: any) => r.severityLevel === 'grave').length;
     if (light + medium + severe === 0) return [];
     return [
-      { label: '🟢 Léger (≤20 km/h)', value: light },
-      { label: '🟡 Modéré (20-40 km/h)', value: medium },
-      { label: '🔴 Grave (>40 km/h)', value: severe }
+      { label: '🟢 Léger (+1-10%)', value: light },
+      { label: '🟡 Modéré (+11-20%)', value: medium },
+      { label: '🔴 Grave (+21%+)', value: severe }
     ];
   }
 
