@@ -248,15 +248,17 @@ type NotifBucket = Notification | NotifThreadGroup;
               <!-- Calypso 7 (bell threading) : onglets de catégorie. Le clic
                    sur un onglet filtre la liste. Les compteurs montrent le
                    total brut (avant regroupement) pour que l'utilisateur sache
-                   exactement combien d'événements il y a. -->
+                   exactement combien d'événements il y a. Toutes les catégories
+                   sont toujours affichees, meme a 0, pour que l'utilisateur
+                   ait une vision complete de la structure de ses notifs. -->
               <div class="notif-tabs">
                 <button class="tab-btn" [class.active]="activeNotifTab === 'all'" (click)="setNotifTab('all')">Tout<span class="tab-count">{{ notifTabCount('all') }}</span></button>
-                <button class="tab-btn critical" [class.active]="activeNotifTab === 'critical'" (click)="setNotifTab('critical')" *ngIf="notifTabCount('critical') > 0">Critiques<span class="tab-count">{{ notifTabCount('critical') }}</span></button>
-                <button class="tab-btn" [class.active]="activeNotifTab === 'geofence'" (click)="setNotifTab('geofence')" *ngIf="notifTabCount('geofence') > 0">Géofences<span class="tab-count">{{ notifTabCount('geofence') }}</span></button>
-                <button class="tab-btn" [class.active]="activeNotifTab === 'driving'" (click)="setNotifTab('driving')" *ngIf="notifTabCount('driving') > 0">Conduite<span class="tab-count">{{ notifTabCount('driving') }}</span></button>
-                <button class="tab-btn" [class.active]="activeNotifTab === 'maintenance'" (click)="setNotifTab('maintenance')" *ngIf="notifTabCount('maintenance') > 0">Maintenance<span class="tab-count">{{ notifTabCount('maintenance') }}</span></button>
-                <button class="tab-btn" [class.active]="activeNotifTab === 'tours'" (click)="setNotifTab('tours')" *ngIf="notifTabCount('tours') > 0">Tournées<span class="tab-count">{{ notifTabCount('tours') }}</span></button>
-                <button class="tab-btn" [class.active]="activeNotifTab === 'system'" (click)="setNotifTab('system')" *ngIf="notifTabCount('system') > 0">Système<span class="tab-count">{{ notifTabCount('system') }}</span></button>
+                <button class="tab-btn critical" [class.active]="activeNotifTab === 'critical'" [class.empty]="notifTabCount('critical') === 0" (click)="setNotifTab('critical')">Critiques<span class="tab-count">{{ notifTabCount('critical') }}</span></button>
+                <button class="tab-btn" [class.active]="activeNotifTab === 'geofence'" [class.empty]="notifTabCount('geofence') === 0" (click)="setNotifTab('geofence')">Géofences<span class="tab-count">{{ notifTabCount('geofence') }}</span></button>
+                <button class="tab-btn" [class.active]="activeNotifTab === 'driving'" [class.empty]="notifTabCount('driving') === 0" (click)="setNotifTab('driving')">Conduite<span class="tab-count">{{ notifTabCount('driving') }}</span></button>
+                <button class="tab-btn" [class.active]="activeNotifTab === 'maintenance'" [class.empty]="notifTabCount('maintenance') === 0" (click)="setNotifTab('maintenance')">Maintenance<span class="tab-count">{{ notifTabCount('maintenance') }}</span></button>
+                <button class="tab-btn" [class.active]="activeNotifTab === 'tours'" [class.empty]="notifTabCount('tours') === 0" (click)="setNotifTab('tours')">Tournées<span class="tab-count">{{ notifTabCount('tours') }}</span></button>
+                <button class="tab-btn" [class.active]="activeNotifTab === 'system'" [class.empty]="notifTabCount('system') === 0" (click)="setNotifTab('system')">Système<span class="tab-count">{{ notifTabCount('system') }}</span></button>
               </div>
 
               <div class="dropdown-body">
@@ -851,7 +853,7 @@ type NotifBucket = Notification | NotifThreadGroup;
       position: absolute;
       top: calc(100% + 8px);
       right: 0;
-      width: 420px;
+      width: 560px;
       max-height: 540px;
       background: white;
       border-radius: 8px;
@@ -1310,7 +1312,7 @@ type NotifBucket = Notification | NotifThreadGroup;
       display: flex;
       align-items: center;
       gap: 0;
-      padding: 0 16px;
+      padding: 0 8px;
       border-bottom: 1px solid #e2e8f0;
       background: white;
       overflow-x: auto;
@@ -1321,8 +1323,8 @@ type NotifBucket = Notification | NotifThreadGroup;
       flex-shrink: 0;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 10px 12px;
+      gap: 5px;
+      padding: 10px 8px;
       background: transparent;
       border: none;
       border-bottom: 2px solid transparent;
@@ -1357,6 +1359,11 @@ type NotifBucket = Notification | NotifThreadGroup;
     }
     .tab-btn.active .tab-count { background: #dbeafe; color: #2563eb; }
     .tab-btn.critical.active .tab-count { background: #fee2e2; color: #dc2626; }
+    /* Onglet sans aucune notif : toujours visible mais grise pour
+       indiquer qu'il est cliquable / consultable sans contenu actuel. */
+    .tab-btn.empty { color: #cbd5e1; }
+    .tab-btn.empty .tab-count { background: #f8fafc; color: #cbd5e1; }
+    .tab-btn.empty:hover { color: #94a3b8; }
 
     /* Thread card — matche le style notification-item, juste un chevron
        en plus pour le toggle, et un badge discret avec le compteur. */
