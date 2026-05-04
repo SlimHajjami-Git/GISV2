@@ -228,12 +228,12 @@ type NotifBucket = Notification | NotifThreadGroup;
 
           <!-- Notification Bell -->
           <div class="notification-wrapper">
-            <button class="nav-icon-btn notification-btn" [class.has-unread]="unreadCount > 0" (click)="toggleNotifications($event)" title="Notifications">
+            <button class="nav-icon-btn notification-btn" [class.has-unread]="bellBadgeCount > 0" (click)="toggleNotifications($event)" title="Notifications">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
                 <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
               </svg>
-              <span class="notification-badge" *ngIf="unreadCount > 0">{{ unreadCount > 9 ? '9+' : unreadCount }}</span>
+              <span class="notification-badge" *ngIf="bellBadgeCount > 0">{{ bellBadgeCount > 9 ? '9+' : bellBadgeCount }}</span>
             </button>
 
             <!-- Notification Dropdown -->
@@ -1445,6 +1445,20 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   activeNotifTab: NotifTabKey = 'all';
   expandedThreads: { [key: string]: boolean } = {};
 
+  /**
+   * Compteur affiche sur la pastille de la cloche : on ignore volontairement
+   * les notifs de type geofence_event qui floodent la base (87% du volume),
+   * sinon le badge resterait coince a "9+" en permanence et ne servirait
+   * plus de signal pour les vraies alertes (accident, maintenance, etc.).
+   * Les events geofence restent visibles dans l'onglet Geofences avec leur
+   * propre compteur.
+   */
+  get bellBadgeCount(): number {
+    return this.notifications.filter(n =>
+      !n.isRead && this.notifCategory(n.type) !== 'geofence'
+    ).length;
+  }
+
   // Geofence event modal (global, available on any page)
   showGeofenceModal = false;
   gfModalData: {
@@ -1599,11 +1613,15 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
       case 'speed_alert':
       case 'speeding':
       case 'driving_behavior':
+      // Calypso 7 (post-threading) : un permis de conduire concerne le
+      // chauffeur (pas le vehicule), donc semantiquement il appartient a
+      // la categorie « Conduite » et pas a « Maintenance ». document_expiry
+      // (assurance / vignette / visite technique) reste sur Maintenance.
+      case 'driver_permit_expiry':
         return 'driving';
       case 'maintenance_due':
       case 'maintenance_prediction':
       case 'document_expiry':
-      case 'driver_permit_expiry':
         return 'maintenance';
       case 'tour_started':
       case 'tour_waypoint':
@@ -1805,7 +1823,26 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     this.showNotifications = !this.showNotifications;
     if (this.showNotifications) {
       this.showUserMenu = false;
-      this.loadNotifications();
+      // Calypso 7 (post-threading) : ouvrir la cloche = consulter les
+      // notifs = tout marquer comme lu, sans laisser le badge clignoter
+      // pour rien. On chaine load -> markAllAsRead pour eviter une race
+      // condition ou la reponse de getNotifications arrivait apres
+      // markAllAsRead et ecrasait l'etat local marque-lu.
+      this.notificationService.getNotifications(1, 200).subscribe({
+        next: (page) => {
+          this.notifications = this.filterByAlertPrefs(page.items);
+          this.unreadCount = page.unreadCount;
+          this.notificationService.notifications$.next(page.items);
+          this.notificationService.unreadCount$.next(page.unreadCount);
+          // Mark all as read APRES la mise a jour locale.
+          this.markAllAsRead();
+        },
+        error: (err) => {
+          console.error('Error loading notifications:', err);
+          // Si le load fail, on marque quand meme ce qu'on a en local.
+          this.markAllAsRead();
+        }
+      });
     }
   }
 
