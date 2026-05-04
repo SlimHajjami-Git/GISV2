@@ -15,6 +15,26 @@ import { AccidentDecisionModalComponent } from './accident-decision-modal.compon
 import { OfflineVehiclesBellComponent } from './offline-vehicles-bell.component';
 import * as L from 'leaflet';
 
+// Bell threading (Calypso 7) ─ catégories utilisées pour ranger les
+// notifications dans des onglets, et regrouper les événements géofence
+// répétitifs en threads pour qu'un véhicule qui fait 50 entrées/sorties
+// n'occupe qu'une ligne dans la cloche au lieu de 50.
+export type NotifTabKey = 'all' | 'critical' | 'geofence' | 'driving' | 'maintenance' | 'tours' | 'system';
+
+interface NotifThreadGroup {
+  isThread: true;
+  key: string;
+  vehicleName: string;
+  geofenceName: string;
+  count: number;
+  unreadCount: number;
+  firstAt: string;
+  lastAt: string;
+  children: Notification[];
+}
+
+type NotifBucket = Notification | NotifThreadGroup;
+
 @Component({
   selector: 'app-layout',
   standalone: true,
@@ -224,62 +244,113 @@ import * as L from 'leaflet';
                   Tout marquer comme lu
                 </button>
               </div>
+
+              <!-- Calypso 7 (bell threading) : onglets de catégorie. Le clic
+                   sur un onglet filtre la liste. Les compteurs montrent le
+                   total brut (avant regroupement) pour que l'utilisateur sache
+                   exactement combien d'événements il y a. -->
+              <div class="notif-tabs">
+                <button class="tab-btn" [class.active]="activeNotifTab === 'all'" (click)="setNotifTab('all')">Tout <span class="tab-count">{{ notifTabCount('all') }}</span></button>
+                <button class="tab-btn critical" [class.active]="activeNotifTab === 'critical'" (click)="setNotifTab('critical')" *ngIf="notifTabCount('critical') > 0">⚠ Critiques <span class="tab-count">{{ notifTabCount('critical') }}</span></button>
+                <button class="tab-btn" [class.active]="activeNotifTab === 'geofence'" (click)="setNotifTab('geofence')" *ngIf="notifTabCount('geofence') > 0">📍 Géofences <span class="tab-count">{{ notifTabCount('geofence') }}</span></button>
+                <button class="tab-btn" [class.active]="activeNotifTab === 'driving'" (click)="setNotifTab('driving')" *ngIf="notifTabCount('driving') > 0">🚗 Conduite <span class="tab-count">{{ notifTabCount('driving') }}</span></button>
+                <button class="tab-btn" [class.active]="activeNotifTab === 'maintenance'" (click)="setNotifTab('maintenance')" *ngIf="notifTabCount('maintenance') > 0">🔧 Maintenance <span class="tab-count">{{ notifTabCount('maintenance') }}</span></button>
+                <button class="tab-btn" [class.active]="activeNotifTab === 'tours'" (click)="setNotifTab('tours')" *ngIf="notifTabCount('tours') > 0">🛣 Tournées <span class="tab-count">{{ notifTabCount('tours') }}</span></button>
+                <button class="tab-btn" [class.active]="activeNotifTab === 'system'" (click)="setNotifTab('system')" *ngIf="notifTabCount('system') > 0">⚙ Système <span class="tab-count">{{ notifTabCount('system') }}</span></button>
+              </div>
+
               <div class="dropdown-body">
-                <div class="notification-list" *ngIf="notifications.length > 0">
-                  @for (notif of notifications; track notif.id) {
-                    <div class="notification-item" [class.unread]="!notif.isRead" (click)="onNotificationClick(notif)">
-                      <div class="notif-icon" [class]="getNotifIconClass(notif.type)">
-                        <!-- Accident detected -->
-                        <svg *ngIf="notif.type === 'accident_detected'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                          <line x1="12" y1="9" x2="12" y2="13"/>
-                          <line x1="12" y1="17" x2="12.01" y2="17"/>
-                        </svg>
-                        <!-- Speed / Driving behavior -->
-                        <svg *ngIf="notif.type === 'speed_alert' || notif.type === 'driving_behavior'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                        </svg>
-                        <!-- Geofence -->
-                        <svg *ngIf="notif.type === 'geofence' || notif.type === 'geofence_event'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <circle cx="12" cy="10" r="3"/><path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 7 8 11.7z"/>
-                        </svg>
-                        <!-- Admin action (employee actions) -->
-                        <svg *ngIf="notif.type === 'admin_action'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                        </svg>
-                        <!-- Maintenance -->
-                        <svg *ngIf="notif.type === 'maintenance_due'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-                        </svg>
-                        <!-- Vehicle stop -->
-                        <svg *ngIf="notif.type === 'vehicle_stop'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
-                        </svg>
-                        <!-- Tour events -->
-                        <svg *ngIf="notif.type === 'tour_started' || notif.type === 'tour_waypoint' || notif.type === 'tour_completed'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M9 17H5a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm12-2h-4a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2z"/><polyline points="9 17 12 5 15 17"/>
-                        </svg>
-                        <!-- Default -->
-                        <svg *ngIf="!['accident_detected','speed_alert','driving_behavior','geofence','geofence_event','admin_action','maintenance_due','vehicle_stop','tour_started','tour_waypoint','tour_completed'].includes(notif.type)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                        </svg>
-                      </div>
-                      <div class="notif-content">
-                        <span class="notif-title">{{ notif.title }}</span>
-                        <span class="notif-message">{{ notif.message }}</span>
-                        <span class="notif-time">{{ formatNotifTime(notif.createdAt) }} · {{ formatNotifDate(notif.createdAt) }}</span>
-                      </div>
-                      <div class="notif-unread-dot" *ngIf="!notif.isRead"></div>
-                    </div>
-                  }
-                </div>
-                <div class="empty-notifications" *ngIf="notifications.length === 0">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                  </svg>
-                  <p>Aucune notification</p>
-                </div>
+                @if (visibleBuckets().length > 0) {
+                  <div class="notification-list">
+                    @for (bucket of visibleBuckets(); track $index) {
+                      @if (isThread(bucket)) {
+                        <!-- Thread géofence : N événements même véhicule + même zone, fenêtre 1h -->
+                        <div class="notif-thread" [class.has-unread]="bucket.unreadCount > 0">
+                          <div class="thread-header" (click)="toggleThread(bucket.key, $event)">
+                            <div class="notif-icon geofence">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="10" r="3"/><path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 7 8 11.7z"/>
+                              </svg>
+                            </div>
+                            <div class="notif-content">
+                              <span class="notif-title">
+                                {{ bucket.vehicleName }} ↔ {{ bucket.geofenceName }}
+                                <span class="thread-badge">{{ bucket.count }}</span>
+                              </span>
+                              <span class="notif-message">{{ threadSummary(bucket) }} · {{ threadRange(bucket) }}</span>
+                            </div>
+                            <svg class="thread-caret" [class.open]="isThreadExpanded(bucket.key)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                          </div>
+                          @if (isThreadExpanded(bucket.key)) {
+                            <div class="thread-children">
+                              @for (child of bucket.children; track child.id) {
+                                <div class="notification-item nested" [class.unread]="!child.isRead" (click)="onNotificationClick(child)">
+                                  <div class="notif-icon geofence">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                      <circle cx="12" cy="10" r="3"/><path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 7 8 11.7z"/>
+                                    </svg>
+                                  </div>
+                                  <div class="notif-content">
+                                    <span class="notif-message">{{ child.message }}</span>
+                                    <span class="notif-time">{{ formatNotifTime(child.createdAt) }} · {{ formatNotifDate(child.createdAt) }}</span>
+                                  </div>
+                                  <div class="notif-unread-dot" *ngIf="!child.isRead"></div>
+                                </div>
+                              }
+                            </div>
+                          }
+                        </div>
+                      } @else {
+                        <div class="notification-item" [class.unread]="!bucket.isRead" (click)="onNotificationClick(bucket)">
+                          <div class="notif-icon" [class]="getNotifIconClass(bucket.type)">
+                            <svg *ngIf="bucket.type === 'accident_detected'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                              <line x1="12" y1="9" x2="12" y2="13"/>
+                              <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            <svg *ngIf="bucket.type === 'speed_alert' || bucket.type === 'driving_behavior'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            <svg *ngIf="bucket.type === 'geofence' || bucket.type === 'geofence_event'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <circle cx="12" cy="10" r="3"/><path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 7 8 11.7z"/>
+                            </svg>
+                            <svg *ngIf="bucket.type === 'admin_action'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                            </svg>
+                            <svg *ngIf="bucket.type === 'maintenance_due'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                            </svg>
+                            <svg *ngIf="bucket.type === 'vehicle_stop'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+                            </svg>
+                            <svg *ngIf="bucket.type === 'tour_started' || bucket.type === 'tour_waypoint' || bucket.type === 'tour_completed'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <path d="M9 17H5a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm12-2h-4a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2z"/><polyline points="9 17 12 5 15 17"/>
+                            </svg>
+                            <svg *ngIf="!['accident_detected','speed_alert','driving_behavior','geofence','geofence_event','admin_action','maintenance_due','vehicle_stop','tour_started','tour_waypoint','tour_completed'].includes(bucket.type)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                            </svg>
+                          </div>
+                          <div class="notif-content">
+                            <span class="notif-title">{{ bucket.title }}</span>
+                            <span class="notif-message">{{ bucket.message }}</span>
+                            <span class="notif-time">{{ formatNotifTime(bucket.createdAt) }} · {{ formatNotifDate(bucket.createdAt) }}</span>
+                          </div>
+                          <div class="notif-unread-dot" *ngIf="!bucket.isRead"></div>
+                        </div>
+                      }
+                    }
+                  </div>
+                } @else {
+                  <div class="empty-notifications">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                      <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                    </svg>
+                    <p>Aucune notification dans cette catégorie</p>
+                  </div>
+                }
               </div>
               <div class="dropdown-footer">
                 <a (click)="viewAllNotifications()">Voir toutes les notifications</a>
@@ -1230,6 +1301,102 @@ import * as L from 'leaflet';
     }
     .gf-event-badge.entry { background: #dcfce7; color: #166534; }
     .gf-event-badge.exit { background: #fee2e2; color: #991b1b; }
+
+    /* Calypso 7 — bell tabs + threading */
+    .notif-tabs {
+      display: flex;
+      gap: 4px;
+      padding: 8px 12px 0;
+      border-bottom: 1px solid #f1f5f9;
+      flex-wrap: wrap;
+      background: white;
+    }
+    .tab-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 10px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      font-size: 11px;
+      color: #64748b;
+      cursor: pointer;
+      font-weight: 500;
+      border-radius: 4px 4px 0 0;
+    }
+    .tab-btn:hover { background: #f8fafc; color: #334155; }
+    .tab-btn.active {
+      color: #2563eb;
+      border-bottom-color: #2563eb;
+      background: #eff6ff;
+    }
+    .tab-btn.critical { color: #dc2626; }
+    .tab-btn.critical.active { color: #dc2626; border-bottom-color: #dc2626; background: #fef2f2; }
+    .tab-count {
+      background: #e2e8f0;
+      color: #475569;
+      padding: 1px 6px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 700;
+      min-width: 18px;
+      text-align: center;
+    }
+    .tab-btn.active .tab-count { background: #2563eb; color: white; }
+    .tab-btn.critical.active .tab-count { background: #dc2626; }
+
+    .notif-thread {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      overflow: hidden;
+      margin: 4px 0;
+    }
+    .notif-thread.has-unread {
+      border-left: 3px solid #2563eb;
+      background: #fafbff;
+    }
+    .thread-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .thread-header:hover { background: #f8fafc; }
+    .thread-badge {
+      display: inline-block;
+      background: #2563eb;
+      color: white;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 7px;
+      border-radius: 10px;
+      margin-left: 6px;
+    }
+    .thread-caret {
+      flex-shrink: 0;
+      color: #94a3b8;
+      transition: transform 0.2s;
+    }
+    .thread-caret.open { transform: rotate(180deg); }
+    .thread-children {
+      background: #f8fafc;
+      border-top: 1px solid #e2e8f0;
+      padding: 4px 8px;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+    .notification-item.nested {
+      padding: 8px 8px;
+      margin: 2px 0;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+    }
+    .notification-item.nested .notif-content { gap: 2px; }
+    .notification-item.nested .notif-message { font-size: 11px; }
   `]
 })
 export class AppLayoutComponent implements OnInit, OnDestroy {
@@ -1239,6 +1406,10 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   openNavGroup: string | null = null;
   unreadCount = 0;
   private subs: Subscription[] = [];
+
+  // Bell tabs + threading state (Calypso 7)
+  activeNotifTab: NotifTabKey = 'all';
+  expandedThreads: { [key: string]: boolean } = {};
 
   // Geofence event modal (global, available on any page)
   showGeofenceModal = false;
@@ -1349,7 +1520,11 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   }
 
   loadNotifications() {
-    this.notificationService.getNotifications(1, 20).subscribe({
+    // Calypso 7 (bell threading) : on charge plus d'items (200 au lieu de 20)
+    // pour que le regroupement par véhicule + zone ait du sens. Sans ça, un
+    // véhicule qui fait 50 entrées/sorties sur Ezzahra remplissait toute la
+    // cloche avec des doublons et noyait les alertes critiques.
+    this.notificationService.getNotifications(1, 200).subscribe({
       next: (page) => {
         this.notifications = this.filterByAlertPrefs(page.items);
         this.unreadCount = page.unreadCount;
@@ -1358,6 +1533,173 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
       },
       error: (err) => console.error('Error loading notifications:', err)
     });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Bell tabs + threading (Calypso 7)
+  // ─────────────────────────────────────────────────────────────────────
+
+  /**
+   * Map d'un type de notification vers une catégorie d'onglet de la cloche.
+   * Tout type non listé tombe dans "system".
+   */
+  private notifCategory(type: string): NotifTabKey {
+    switch (type) {
+      case 'accident_detected':
+      case 'accident_possible_damage':
+      case 'accident_tow_detected':
+      case 'accident_decision':
+      case 'accident_tow':
+      case 'immobilization_request':
+      case 'immobilization_response':
+      case 'power_cut':
+      case 'low_voltage':
+      case 'battery_low':
+        return 'critical';
+      case 'geofence':
+      case 'geofence_event':
+      case 'geofence_entry':
+      case 'geofence_exit':
+      case 'geofence_violation':
+        return 'geofence';
+      case 'speed_alert':
+      case 'speeding':
+      case 'driving_behavior':
+        return 'driving';
+      case 'maintenance_due':
+      case 'maintenance_prediction':
+      case 'document_expiry':
+      case 'driver_permit_expiry':
+        return 'maintenance';
+      case 'tour_started':
+      case 'tour_waypoint':
+      case 'tour_completed':
+      case 'tour_overdue':
+        return 'tours';
+      default:
+        return 'system';
+    }
+  }
+
+  /**
+   * Compteur d'éléments d'une catégorie. Le compte d'un thread géofence est
+   * le nombre d'événements regroupés (chaque enfant compte 1), pas 1 pour
+   * tout le thread, pour que l'utilisateur voie qu'il y a bien 50 events si
+   * 50 events.
+   */
+  notifTabCount(tab: NotifTabKey): number {
+    if (tab === 'all') return this.notifications.length;
+    return this.notifications.filter(n => this.notifCategory(n.type) === tab).length;
+  }
+
+  setNotifTab(tab: NotifTabKey) {
+    this.activeNotifTab = tab;
+  }
+
+  /**
+   * Construit la liste à afficher dans la cloche pour l'onglet actif.
+   *
+   * Pour les notifications géofence, on regroupe en threads les événements
+   * consécutifs partageant le même véhicule ET la même zone, avec une
+   * fenêtre glissante d'1h entre événements. Un thread isolé d'un seul
+   * événement reste affiché tel quel (pas de header inutile).
+   *
+   * Pour les autres catégories, la liste reste plate (un événement = une
+   * ligne) — c'est le flood géofence le vrai problème, pas les autres.
+   */
+  visibleBuckets(): NotifBucket[] {
+    let pool = this.notifications;
+    if (this.activeNotifTab !== 'all') {
+      pool = pool.filter(n => this.notifCategory(n.type) === this.activeNotifTab);
+    }
+
+    const buckets: NotifBucket[] = [];
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    let openGroup: NotifThreadGroup | null = null;
+
+    const closeGroup = () => {
+      if (openGroup) {
+        if (openGroup.count >= 2) {
+          buckets.push(openGroup);
+        } else {
+          buckets.push(openGroup.children[0]);
+        }
+        openGroup = null;
+      }
+    };
+
+    for (const n of pool) {
+      const isGeofence = this.notifCategory(n.type) === 'geofence';
+      if (!isGeofence) {
+        closeGroup();
+        buckets.push(n);
+        continue;
+      }
+
+      const m = n.metadata || {};
+      const vid = m.vehicleId ?? m.VehicleId;
+      const gid = m.geofenceId ?? m.GeofenceId;
+      const key = `${vid ?? 'v'}:${gid ?? 'g'}`;
+      const ts = new Date(n.createdAt).getTime();
+
+      if (openGroup
+          && openGroup.key === key
+          && Math.abs(new Date(openGroup.lastAt).getTime() - ts) <= ONE_HOUR_MS) {
+        openGroup.children.push(n);
+        openGroup.count = openGroup.children.length;
+        if (!n.isRead) openGroup.unreadCount++;
+        // children are listed most-recent first because the API returns DESC,
+        // so lastAt is the *first* element (oldest of the conversation when
+        // scrolling) and firstAt is the most recent. Keep both up to date.
+        if (ts < new Date(openGroup.lastAt).getTime()) openGroup.lastAt = n.createdAt;
+        if (ts > new Date(openGroup.firstAt).getTime()) openGroup.firstAt = n.createdAt;
+        continue;
+      }
+
+      closeGroup();
+      openGroup = {
+        isThread: true,
+        key,
+        vehicleName: m.vehicleName ?? m.VehicleName ?? '?',
+        geofenceName: m.geofenceName ?? m.GeofenceName ?? '?',
+        count: 1,
+        unreadCount: n.isRead ? 0 : 1,
+        firstAt: n.createdAt,
+        lastAt: n.createdAt,
+        children: [n]
+      };
+    }
+    closeGroup();
+    return buckets;
+  }
+
+  isThread(b: NotifBucket): b is NotifThreadGroup {
+    return (b as any).isThread === true;
+  }
+
+  toggleThread(key: string, ev: Event) {
+    ev.stopPropagation();
+    this.expandedThreads[key] = !this.expandedThreads[key];
+  }
+
+  isThreadExpanded(key: string): boolean {
+    return !!this.expandedThreads[key];
+  }
+
+  threadSummary(t: NotifThreadGroup): string {
+    const entries = t.children.filter((c: any) => (c.metadata?.eventType ?? c.metadata?.EventType) === 'entry').length;
+    const exits = t.children.filter((c: any) => (c.metadata?.eventType ?? c.metadata?.EventType) === 'exit').length;
+    if (entries > 0 && exits > 0) return `${entries} entrée(s) · ${exits} sortie(s)`;
+    if (entries > 0) return `${entries} entrée(s)`;
+    if (exits > 0) return `${exits} sortie(s)`;
+    return `${t.count} événement(s)`;
+  }
+
+  threadRange(t: NotifThreadGroup): string {
+    const a = this.formatNotifTime(t.lastAt);
+    const b = this.formatNotifTime(t.firstAt);
+    if (a === b) return a;
+    return `${a} → ${b}`;
   }
 
   navigate(path: string) {
