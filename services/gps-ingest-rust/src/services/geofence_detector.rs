@@ -102,7 +102,14 @@ impl GeofenceDetector {
             geofences: Arc::new(RwLock::new(Vec::new())),
             device_states: Arc::new(RwLock::new(HashMap::new())),
             last_refresh: Arc::new(RwLock::new(DateTime::<Utc>::MIN_UTC)),
-            refresh_interval_secs: 60, // Refresh geofences every 60 seconds
+            // Calypso 7 (G4) : raccourci de 60s à 15s. Avec un véhicule à
+            // l'arrêt qui n'envoie qu'une frame toutes les 30 s, l'ancien
+            // intervalle générait un retard de notification d'entrée/sortie
+            // pouvant atteindre 90 s (60 s de refresh + 30 s de frame). On
+            // descend à 15 s pour ramener le pire cas à environ 45 s, ce qui
+            // reste léger côté charge DB (la table geofences est petite et
+            // déjà indexée par company_id).
+            refresh_interval_secs: 15,
         }
     }
 

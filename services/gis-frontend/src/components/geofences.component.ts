@@ -116,7 +116,12 @@ import * as L from 'leaflet';
           <div class="geofences-list">
             @for (geofence of geofences; track geofence.id) {
               <div class="geofence-card" [class.inactive]="!geofence.isActive">
-                <div class="card-header">
+                <!-- Calypso 7 (G1) : carte cliquable pour centrer la map sur la zone.
+                     Sans ce handler, les zones cachées sous une plus grande étaient
+                     impossibles à atteindre depuis le panneau latéral. -->
+                <div class="card-header" style="cursor:pointer;"
+                     (click)="focusGeofence(geofence)"
+                     title="Centrer la carte sur cette zone">
                   <div class="zone-icon" [style.background]="geofence.color + '20'" [style.color]="geofence.color">
                     <svg *ngIf="geofence.type === 'circle'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <circle cx="12" cy="12" r="10"/>
@@ -126,7 +131,7 @@ import * as L from 'leaflet';
                     </svg>
                   </div>
                   <div class="card-title-section">
-                    <h3>{{ geofence.name }}</h3>
+                    <h3>{{ geofence.name || '(Sans nom)' }}</h3>
                     <span class="zone-type">{{ geofence.type === 'circle' ? 'Cercle' : 'Polygone' }}</span>
                   </div>
                   <div class="status-badge" [class.active]="geofence.isActive" [class.inactive]="!geofence.isActive">
@@ -1594,9 +1599,18 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
         </div>
       </div>`;
 
+    // Calypso 7 (G1) : on tag chaque calque avec l'id de la zone pour que
+    // focusGeofence puisse retrouver le bon calque et ouvrir son popup
+    // depuis le panneau latéral, même quand la zone est cachée sous une
+    // autre. Le label vide d'une zone non nommée est remplacé par
+    // « (Sans nom) » pour éviter un tooltip vide qui obscurcit la carte.
+    const labelOf = (g: Geofence) => (g.name && g.name.trim().length > 0)
+      ? g.name
+      : '(Sans nom)';
+
     this.allGeofences.forEach(g => {
       if (g.type === 'circle' && g.center) {
-        const circle = L.circle([g.center.lat, g.center.lng], {
+        const circle: any = L.circle([g.center.lat, g.center.lng], {
           radius: g.radius || 500,
           color: g.color,
           fillColor: g.color,
@@ -1604,22 +1618,24 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
           weight: 2,
           dashArray: g.isActive ? '' : '5,5'
         });
+        circle._geofenceId = g.id;
         // Permanent tooltip with name (doesn't disappear on mouseout)
-        circle.bindTooltip(g.name, { permanent: true, direction: 'center', className: 'gf-label' });
+        circle.bindTooltip(labelOf(g), { permanent: true, direction: 'center', className: 'gf-label' });
         // Sticky popup with details (stays open until manually closed)
         circle.bindPopup(buildPopup(g), { autoClose: false, closeOnClick: false });
         circle.on('click', () => this.focusGeofence(g));
         this.overviewLayers.addLayer(circle);
       } else if (g.type === 'polygon' && g.coordinates?.length) {
         const latLngs = g.coordinates.map(c => [c.lat, c.lng] as L.LatLngExpression);
-        const polygon = L.polygon(latLngs, {
+        const polygon: any = L.polygon(latLngs, {
           color: g.color,
           fillColor: g.color,
           fillOpacity: g.isActive ? 0.3 : 0.1,
           weight: 2,
           dashArray: g.isActive ? '' : '5,5'
         });
-        polygon.bindTooltip(g.name, { permanent: true, direction: 'center', className: 'gf-label' });
+        polygon._geofenceId = g.id;
+        polygon.bindTooltip(labelOf(g), { permanent: true, direction: 'center', className: 'gf-label' });
         polygon.bindPopup(buildPopup(g), { autoClose: false, closeOnClick: false });
         polygon.on('click', () => this.focusGeofence(g));
         this.overviewLayers.addLayer(polygon);
@@ -1635,14 +1651,33 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  private focusGeofence(geofence: Geofence) {
+  /**
+   * Center the overview map on the given geofence and open its popup.
+   *
+   * Calypso 7 (G1) : avant ce patch la méthode était `private` et n'était
+   * appelée qu'au clic ON THE SHAPE elle-même sur la carte. Quand plusieurs
+   * zones se chevauchent (la grande zone Tunisie cachait toutes les autres),
+   * impossible de naviguer vers une zone précise. On la rend publique pour
+   * que le panneau latéral puisse appeler focusGeofence(zone) au clic sur
+   * la carte de la zone.
+   */
+  focusGeofence(geofence: Geofence) {
     if (!this.overviewMap) return;
-    
+
+    let target: L.Layer | null = null;
+    this.overviewLayers.eachLayer((layer: any) => {
+      if (layer._geofenceId === geofence.id) target = layer;
+    });
+
     if (geofence.type === 'circle' && geofence.center) {
       this.overviewMap.setView([geofence.center.lat, geofence.center.lng], 14);
     } else if (geofence.coordinates?.length) {
       const latLngs = geofence.coordinates.map(c => [c.lat, c.lng] as L.LatLngExpression);
       this.overviewMap.fitBounds(L.latLngBounds(latLngs), { padding: [50, 50] });
+    }
+
+    if (target && (target as any).openPopup) {
+      (target as any).openPopup();
     }
   }
 
