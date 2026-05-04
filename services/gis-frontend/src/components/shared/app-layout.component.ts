@@ -250,13 +250,13 @@ type NotifBucket = Notification | NotifThreadGroup;
                    total brut (avant regroupement) pour que l'utilisateur sache
                    exactement combien d'événements il y a. -->
               <div class="notif-tabs">
-                <button class="tab-btn" [class.active]="activeNotifTab === 'all'" (click)="setNotifTab('all')">Tout <span class="tab-count">{{ notifTabCount('all') }}</span></button>
-                <button class="tab-btn critical" [class.active]="activeNotifTab === 'critical'" (click)="setNotifTab('critical')" *ngIf="notifTabCount('critical') > 0">⚠ Critiques <span class="tab-count">{{ notifTabCount('critical') }}</span></button>
-                <button class="tab-btn" [class.active]="activeNotifTab === 'geofence'" (click)="setNotifTab('geofence')" *ngIf="notifTabCount('geofence') > 0">📍 Géofences <span class="tab-count">{{ notifTabCount('geofence') }}</span></button>
-                <button class="tab-btn" [class.active]="activeNotifTab === 'driving'" (click)="setNotifTab('driving')" *ngIf="notifTabCount('driving') > 0">🚗 Conduite <span class="tab-count">{{ notifTabCount('driving') }}</span></button>
-                <button class="tab-btn" [class.active]="activeNotifTab === 'maintenance'" (click)="setNotifTab('maintenance')" *ngIf="notifTabCount('maintenance') > 0">🔧 Maintenance <span class="tab-count">{{ notifTabCount('maintenance') }}</span></button>
-                <button class="tab-btn" [class.active]="activeNotifTab === 'tours'" (click)="setNotifTab('tours')" *ngIf="notifTabCount('tours') > 0">🛣 Tournées <span class="tab-count">{{ notifTabCount('tours') }}</span></button>
-                <button class="tab-btn" [class.active]="activeNotifTab === 'system'" (click)="setNotifTab('system')" *ngIf="notifTabCount('system') > 0">⚙ Système <span class="tab-count">{{ notifTabCount('system') }}</span></button>
+                <button class="tab-btn" [class.active]="activeNotifTab === 'all'" (click)="setNotifTab('all')">Tout<span class="tab-count">{{ notifTabCount('all') }}</span></button>
+                <button class="tab-btn critical" [class.active]="activeNotifTab === 'critical'" (click)="setNotifTab('critical')" *ngIf="notifTabCount('critical') > 0">Critiques<span class="tab-count">{{ notifTabCount('critical') }}</span></button>
+                <button class="tab-btn" [class.active]="activeNotifTab === 'geofence'" (click)="setNotifTab('geofence')" *ngIf="notifTabCount('geofence') > 0">Géofences<span class="tab-count">{{ notifTabCount('geofence') }}</span></button>
+                <button class="tab-btn" [class.active]="activeNotifTab === 'driving'" (click)="setNotifTab('driving')" *ngIf="notifTabCount('driving') > 0">Conduite<span class="tab-count">{{ notifTabCount('driving') }}</span></button>
+                <button class="tab-btn" [class.active]="activeNotifTab === 'maintenance'" (click)="setNotifTab('maintenance')" *ngIf="notifTabCount('maintenance') > 0">Maintenance<span class="tab-count">{{ notifTabCount('maintenance') }}</span></button>
+                <button class="tab-btn" [class.active]="activeNotifTab === 'tours'" (click)="setNotifTab('tours')" *ngIf="notifTabCount('tours') > 0">Tournées<span class="tab-count">{{ notifTabCount('tours') }}</span></button>
+                <button class="tab-btn" [class.active]="activeNotifTab === 'system'" (click)="setNotifTab('system')" *ngIf="notifTabCount('system') > 0">Système<span class="tab-count">{{ notifTabCount('system') }}</span></button>
               </div>
 
               <div class="dropdown-body">
@@ -851,8 +851,8 @@ type NotifBucket = Notification | NotifThreadGroup;
       position: absolute;
       top: calc(100% + 8px);
       right: 0;
-      width: 380px;
-      max-height: 480px;
+      width: 420px;
+      max-height: 540px;
       background: white;
       border-radius: 8px;
       box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
@@ -1302,71 +1302,82 @@ type NotifBucket = Notification | NotifThreadGroup;
     .gf-event-badge.entry { background: #dcfce7; color: #166534; }
     .gf-event-badge.exit { background: #fee2e2; color: #991b1b; }
 
-    /* Calypso 7 — bell tabs + threading */
+    /* Calypso 7 — bell tabs + threading
+       Style « Linear / Gmail » : segments fins, une seule ligne,
+       fitting 5-6 onglets dans 420px. Pas d'emoji dans les libellés
+       (l'icône colorée à gauche de chaque event suffit). */
     .notif-tabs {
       display: flex;
-      gap: 4px;
-      padding: 8px 12px 0;
-      border-bottom: 1px solid #f1f5f9;
-      flex-wrap: wrap;
+      align-items: center;
+      gap: 0;
+      padding: 0 16px;
+      border-bottom: 1px solid #e2e8f0;
       background: white;
+      overflow-x: auto;
+      scrollbar-width: none;
     }
+    .notif-tabs::-webkit-scrollbar { display: none; }
     .tab-btn {
+      flex-shrink: 0;
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 6px 10px;
+      gap: 6px;
+      padding: 10px 12px;
       background: transparent;
       border: none;
       border-bottom: 2px solid transparent;
-      font-size: 11px;
+      font-size: 12px;
       color: #64748b;
       cursor: pointer;
       font-weight: 500;
-      border-radius: 4px 4px 0 0;
+      transition: color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+      margin-bottom: -1px;
     }
-    .tab-btn:hover { background: #f8fafc; color: #334155; }
+    .tab-btn:hover { color: #1e293b; }
     .tab-btn.active {
       color: #2563eb;
       border-bottom-color: #2563eb;
-      background: #eff6ff;
+      font-weight: 600;
     }
-    .tab-btn.critical { color: #dc2626; }
-    .tab-btn.critical.active { color: #dc2626; border-bottom-color: #dc2626; background: #fef2f2; }
+    .tab-btn.critical.active {
+      color: #dc2626;
+      border-bottom-color: #dc2626;
+    }
     .tab-count {
-      background: #e2e8f0;
-      color: #475569;
-      padding: 1px 6px;
+      background: #f1f5f9;
+      color: #64748b;
+      padding: 1px 7px;
       border-radius: 10px;
       font-size: 10px;
-      font-weight: 700;
-      min-width: 18px;
+      font-weight: 600;
+      min-width: 20px;
       text-align: center;
+      transition: all 0.15s;
     }
-    .tab-btn.active .tab-count { background: #2563eb; color: white; }
-    .tab-btn.critical.active .tab-count { background: #dc2626; }
+    .tab-btn.active .tab-count { background: #dbeafe; color: #2563eb; }
+    .tab-btn.critical.active .tab-count { background: #fee2e2; color: #dc2626; }
 
-    .notif-thread {
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      overflow: hidden;
-      margin: 4px 0;
-    }
-    .notif-thread.has-unread {
-      border-left: 3px solid #2563eb;
-      background: #fafbff;
-    }
+    /* Thread card — matche le style notification-item, juste un chevron
+       en plus pour le toggle, et un badge discret avec le compteur. */
+    .notif-thread { display: block; }
     .thread-header {
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
+      gap: 12px;
+      padding: 12px 16px;
       cursor: pointer;
       transition: background 0.15s;
+      border-bottom: 1px solid #f1f5f9;
+      background: white;
     }
     .thread-header:hover { background: #f8fafc; }
+    .notif-thread.has-unread .thread-header { background: #f0f7ff; }
+    .notif-thread.has-unread .thread-header:hover { background: #e6f1ff; }
     .thread-badge {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       background: #2563eb;
       color: white;
       font-size: 10px;
@@ -1374,29 +1385,40 @@ type NotifBucket = Notification | NotifThreadGroup;
       padding: 1px 7px;
       border-radius: 10px;
       margin-left: 6px;
+      min-width: 20px;
     }
     .thread-caret {
       flex-shrink: 0;
       color: #94a3b8;
-      transition: transform 0.2s;
+      transition: transform 0.2s ease;
     }
     .thread-caret.open { transform: rotate(180deg); }
     .thread-children {
       background: #f8fafc;
-      border-top: 1px solid #e2e8f0;
-      padding: 4px 8px;
-      max-height: 240px;
+      max-height: 280px;
       overflow-y: auto;
+      border-bottom: 1px solid #f1f5f9;
     }
-    .notification-item.nested {
-      padding: 8px 8px;
-      margin: 2px 0;
-      background: white;
-      border: 1px solid #e2e8f0;
-      border-radius: 6px;
+    .thread-children .notification-item {
+      padding: 10px 16px 10px 36px;
+      border: none;
+      border-bottom: 1px solid #e2e8f0;
+      border-radius: 0;
+      background: transparent;
+      position: relative;
     }
-    .notification-item.nested .notif-content { gap: 2px; }
-    .notification-item.nested .notif-message { font-size: 11px; }
+    .thread-children .notification-item:last-child { border-bottom: none; }
+    .thread-children .notification-item:hover { background: #eff6ff; }
+    .thread-children .notification-item::before {
+      content: '';
+      position: absolute;
+      left: 22px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: #cbd5e1;
+    }
+    .thread-children .notification-item .notif-icon { display: none; }
   `]
 })
 export class AppLayoutComponent implements OnInit, OnDestroy {
