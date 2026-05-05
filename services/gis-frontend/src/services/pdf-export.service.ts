@@ -44,6 +44,50 @@ export class PdfExportService {
   private readonly accentColor: [number, number, number] = [59, 130, 246];
   private readonly lightBg: [number, number, number] = [241, 245, 249];
 
+  /**
+   * Calypso 7 — branding PDF : on charge le logo Calypso une seule fois au
+   * boot du service (data URL base64) puis on l'embarque dans chaque PDF
+   * via doc.addImage(). Le footer est rebrandé « Calypso · Belive » au
+   * lieu de l'ancien « GIS Fleet Management ».
+   */
+  private logoDataUrl: string | null = null;
+  private logoLoading: Promise<string | null> | null = null;
+
+  constructor() {
+    // Préchargement non bloquant : le premier export attendra cette promise,
+    // les suivants utilisent la valeur cachée.
+    this.preloadLogo();
+  }
+
+  private preloadLogo(): Promise<string | null> {
+    if (this.logoDataUrl) return Promise.resolve(this.logoDataUrl);
+    if (this.logoLoading) return this.logoLoading;
+    this.logoLoading = fetch('assets/logo/calypso-logo.png')
+      .then(r => r.ok ? r.blob() : null)
+      .then(blob => {
+        if (!blob) return null;
+        return new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const url = (reader.result as string) || '';
+            this.logoDataUrl = url;
+            resolve(url);
+          };
+          reader.readAsDataURL(blob);
+        });
+      })
+      .catch(() => null);
+    return this.logoLoading;
+  }
+
+  /** Logo Calypso à insérer dans le header du PDF. Retourne le data URL ou null si l'asset n'est pas dispo. */
+  private getLogo(): string | null {
+    return this.logoDataUrl;
+  }
+
+  /** Texte du footer rebrandé Calypso (remplace l'ancien « GIS Fleet Management »). */
+  private readonly footerBrand = 'Calypso · Belive';
+
   private sanitizeText(text: string): string {
     if (!text) return '';
     // Normalize to NFC (composed form) — keeps é, è, ê, à, ç etc. as single characters
@@ -62,7 +106,13 @@ export class PdfExportService {
       .replace(/\s{2,}/g, ' '); // collapse multiple spaces into one
   }
 
-  exportReport(config: PdfReportConfig): void {
+  async exportReport(config: PdfReportConfig): Promise<void> {
+    // Calypso 7 — on attend le logo (preloaded au boot du service).
+    await this.preloadLogo();
+    return this.exportReportSync(config);
+  }
+
+  private exportReportSync(config: PdfReportConfig): void {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
     let y = 15;
@@ -74,7 +124,16 @@ export class PdfExportService {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
-    doc.text(this.sanitizeText(config.title), 14, 14);
+    // Logo Calypso a gauche dans un cartouche blanc, titre decale a droite.
+    const logo = this.getLogo();
+    const titleLeft = logo ? 38 : 14;
+    if (logo) {
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(8, 4, 26, 24, 2, 2, 'F');
+      try { doc.addImage(logo, 'PNG', 10, 5, 22, 22); } catch {}
+    }
+    doc.setTextColor(255, 255, 255);
+    doc.text(this.sanitizeText(config.title), titleLeft, 14);
 
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
@@ -82,7 +141,7 @@ export class PdfExportService {
     if (config.vehicleName) meta.push(`V\u00e9hicule: ${this.sanitizeText(config.vehicleName)}`);
     if (config.dateRange) meta.push(`P\u00e9riode: ${this.sanitizeText(config.dateRange)}`);
     meta.push(`G\u00e9n\u00e9r\u00e9 le: ${new Date().toLocaleDateString('fr-FR')} \u00e0 ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
-    doc.text(meta.join('  |  '), 14, 22);
+    doc.text(meta.join('  |  '), titleLeft, 22);
 
     if (config.subtitle) {
       doc.setFontSize(9);
@@ -179,7 +238,7 @@ export class PdfExportService {
         doc.setTextColor(148, 163, 184);
         doc.setFont('helvetica', 'normal');
         const footerY = doc.internal.pageSize.getHeight() - 7;
-        doc.text(`GIS Fleet Management - ${this.sanitizeText(config.title)}`, 10, footerY);
+        doc.text(`${this.footerBrand} · ${this.sanitizeText(config.title)}`, 10, footerY);
         doc.text(`Page ${pageNum} / ${pageCount}`, pageWidth - 10, footerY, { align: 'right' });
       }
     });
@@ -195,7 +254,12 @@ export class PdfExportService {
    * each with its own subtotal line, followed by a grand total.
    * Reuses the same header bar, footer, column sizing and sanitizer as exportReport.
    */
-  exportGroupedReport(config: GroupedPdfReportConfig): void {
+  async exportGroupedReport(config: GroupedPdfReportConfig): Promise<void> {
+    await this.preloadLogo();
+    return this.exportGroupedReportSync(config);
+  }
+
+  private exportGroupedReportSync(config: GroupedPdfReportConfig): void {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -205,17 +269,26 @@ export class PdfExportService {
     doc.setFillColor(...this.primaryColor);
     doc.rect(0, 0, pageWidth, 32, 'F');
 
+    // Logo Calypso a gauche dans un cartouche blanc.
+    const logo = this.getLogo();
+    const titleLeft = logo ? 38 : 14;
+    if (logo) {
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(8, 4, 26, 24, 2, 2, 'F');
+      try { doc.addImage(logo, 'PNG', 10, 5, 22, 22); } catch {}
+    }
+
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
-    doc.text(this.sanitizeText(config.title), 14, 14);
+    doc.text(this.sanitizeText(config.title), titleLeft, 14);
 
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     const meta: string[] = [];
     if (config.dateRange) meta.push(`P\u00e9riode: ${this.sanitizeText(config.dateRange)}`);
     meta.push(`G\u00e9n\u00e9r\u00e9 le: ${new Date().toLocaleDateString('fr-FR')} \u00e0 ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
-    doc.text(meta.join('  |  '), 14, 22);
+    doc.text(meta.join('  |  '), titleLeft, 22);
 
     if (config.subtitle) {
       doc.setFontSize(9);
