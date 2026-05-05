@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, Input } from '@angular/core';
+import { Component, OnInit, OnDestroy, Input, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
@@ -608,7 +608,7 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
 
   private destroy$ = new Subject<void>();
 
-  constructor(private api: ApiService) {}
+  constructor(private api: ApiService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.loadAlertEmails();
@@ -621,13 +621,19 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
 
   loadAlertEmails(): void {
     this.loading = true;
+    // Calypso 7 (post-embed) : detectChanges() apres chaque mutation
+    // d'etat. Sans ca, en mode embedded dans UserManagement la vue ne
+    // se met pas a jour tant que l'utilisateur ne clique pas ailleurs
+    // dans la page (Angular zone qui ne propage pas le tick au parent).
     this.api.getAlertEmails().pipe(takeUntil(this.destroy$)).subscribe({
       next: (data) => {
         this.alertEmails = data;
         this.loading = false;
+        this.cdr.detectChanges();
       },
       error: () => {
         this.loading = false;
+        this.cdr.detectChanges();
       }
     });
   }
@@ -638,11 +644,13 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
     // Pre-fill with admin email if no alert emails configured yet
     const adminEmail = this.api.getCurrentUserSync()?.email || '';
     this.newEmail = { email: this.alertEmails.length === 0 ? adminEmail : '', alertType: '' };
+    this.cdr.detectChanges();
   }
 
   cancelAdd(): void {
     this.showAddForm = false;
     this.newEmail = { email: '', alertType: '' };
+    this.cdr.detectChanges();
   }
 
   createAlertEmail(): void {
@@ -660,11 +668,13 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
   startEdit(item: AlertEmail): void {
     this.editingId = item.id;
     this.editEmail = { email: item.email, alertType: item.alertType };
+    this.cdr.detectChanges();
   }
 
   cancelEdit(): void {
     this.editingId = null;
     this.editEmail = { email: '', alertType: '' };
+    this.cdr.detectChanges();
   }
 
   saveEdit(): void {
@@ -681,10 +691,12 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
   // --- Delete ---
   confirmDelete(item: AlertEmail): void {
     this.deletingItem = item;
+    this.cdr.detectChanges();
   }
 
   cancelDelete(): void {
     this.deletingItem = null;
+    this.cdr.detectChanges();
   }
 
   executeDelete(): void {
@@ -701,6 +713,7 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
   sendTest(item: AlertEmail): void {
     if (this.testingId !== null) return;
     this.testingId = item.id;
+    this.cdr.detectChanges();
     this.api.testAlertEmail(item.id).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         this.testingId = null;
@@ -715,7 +728,11 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
 
   private showToast(kind: 'success' | 'error', message: string): void {
     this.toast = { kind, message };
+    this.cdr.detectChanges();
     if (this.toastTimer) clearTimeout(this.toastTimer);
-    this.toastTimer = setTimeout(() => { this.toast = null; }, 4000);
+    this.toastTimer = setTimeout(() => {
+      this.toast = null;
+      this.cdr.detectChanges();
+    }, 4000);
   }
 }
