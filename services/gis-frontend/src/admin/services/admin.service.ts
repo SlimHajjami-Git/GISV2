@@ -448,10 +448,14 @@ export class AdminService {
     if (status && status !== 'all') params.push(`status=${status}`);
     if (companyId) params.push(`companyId=${companyId}`);
     if (params.length > 0) url += '?' + params.join('&');
-    
+
+    // Calypso 7 — diagnostic logs : la liste affichait 0 utilisateurs alors
+    // que l API renvoyait 17. On veut savoir si c est l API qui renvoie un
+    // payload vide ou si c est le frontend qui n affecte pas la liste.
     return this.http.get<SystemUser[]>(url, { headers: this.getHeaders() }).pipe(
+      tap(users => console.log('[admin.service] GET /admin/users ->', Array.isArray(users) ? users.length : typeof users, 'item(s)')),
       catchError(err => {
-        console.error('Error fetching users:', err);
+        console.error('[admin.service] Error fetching users:', err?.status, err?.message, err);
         return of([]);
       })
     );
@@ -493,6 +497,16 @@ export class AdminService {
 
   updateUserRoles(userId: number, roles: string[]): Observable<void> {
     return this.http.put<void>(`${this.apiUrl}/admin/users/${userId}/roles`, { roles }, { headers: this.getHeaders() });
+  }
+
+  /**
+   * Calypso 7 — assigne un nouveau RoleId a un utilisateur. Le backend
+   * AdminUserController expose PUT /admin/users/:id/role (singular) qui
+   * appelle UpdateAdminUserRoleCommand. Avec ce role, l utilisateur recoit
+   * automatiquement les permissions definies sur le role (cf. CreateSociete).
+   */
+  updateUserRoleAssignment(userId: number, roleId: number): Observable<void> {
+    return this.http.put<void>(`${this.apiUrl}/admin/users/${userId}/role`, { roleId }, { headers: this.getHeaders() });
   }
 
   suspendUser(userId: number): Observable<void> {

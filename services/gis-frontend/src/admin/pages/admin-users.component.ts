@@ -1,11 +1,20 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { Subject, forkJoin, of } from 'rxjs';
+import { takeUntil, switchMap, tap, finalize } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
-import { AdminService, SystemUser, Client } from '../services/admin.service';
+import { AdminService, SystemUser, Client, Role } from '../services/admin.service';
+
+interface EditUserForm {
+  name: string;
+  email: string;
+  phone: string;
+  status: 'active' | 'suspended' | 'inactive';
+  roleId: number | null;
+  password: string;
+}
 
 @Component({
   selector: 'admin-users',
@@ -48,12 +57,11 @@ import { AdminService, SystemUser, Client } from '../services/admin.service';
           <table class="users-table">
             <thead>
               <tr>
-                <th>User</th>
-                <th>Company</th>
-                <th>Roles</th>
-                <th>Permissions</th>
-                <th>Status</th>
-                <th>Last Login</th>
+                <th>Utilisateur</th>
+                <th>Société</th>
+                <th>Rôle</th>
+                <th>Statut</th>
+                <th>Dernière connexion</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -75,20 +83,7 @@ import { AdminService, SystemUser, Client } from '../services/admin.service';
                   <span class="company-badge">{{ user.companyName }}</span>
                 </td>
                 <td>
-                  <div class="roles">
-                    <span class="role-tag" *ngFor="let role of user.roles">{{ role }}</span>
-                  </div>
-                </td>
-                <td>
-                  <div class="permissions-cell">
-                    <span class="perm-count">{{ user.permissions.length }} pages</span>
-                    <button class="edit-perms-btn" (click)="openPermissionsModal(user)" title="Edit Permissions">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                      </svg>
-                    </button>
-                  </div>
+                  <span class="role-tag">{{ user.roleName || '—' }}</span>
                 </td>
                 <td>
                   <span class="status-badge" [class]="user.status">{{ user.status | titlecase }}</span>
@@ -98,8 +93,14 @@ import { AdminService, SystemUser, Client } from '../services/admin.service';
                 </td>
                 <td>
                   <div class="actions">
+                    <button class="action-btn primary" (click)="openEditModal(user)" title="Modifier l'utilisateur">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
                     <button class="action-btn" [class.suspend]="user.status === 'active'" [class.activate]="user.status !== 'active'"
-                            (click)="toggleUserStatus(user)" [title]="user.status === 'active' ? 'Suspend' : 'Activate'">
+                            (click)="toggleUserStatus(user)" [title]="user.status === 'active' ? 'Suspendre' : 'Activer'">
                       <svg *ngIf="user.status === 'active'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
                       </svg>
@@ -107,9 +108,15 @@ import { AdminService, SystemUser, Client } from '../services/admin.service';
                         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/>
                       </svg>
                     </button>
-                    <button class="action-btn view" (click)="viewUserActivity(user)" title="View Activity">
+                    <button class="action-btn view" (click)="viewUserActivity(user)" title="Voir l'activité">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
+                      </svg>
+                    </button>
+                    <button class="action-btn danger" (click)="askDelete(user)" title="Supprimer">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                       </svg>
                     </button>
                   </div>
@@ -119,16 +126,22 @@ import { AdminService, SystemUser, Client } from '../services/admin.service';
           </table>
         </div>
 
-        <div class="popup-overlay" *ngIf="showPermissionsModal" (click)="closeModal()">
-          <div class="popup-container permissions-popup" (click)="$event.stopPropagation()">
+        <!-- Calypso 7 — modale unifiee « Modifier l utilisateur ».
+             Auparavant la page n offrait qu une edition de permissions a
+             plat qui appelait un endpoint inexistant (404). Maintenant on
+             expose les vraies operations supportees par AdminUserController :
+             update info, change role, reset password, suspend/activate. -->
+        <div class="popup-overlay" *ngIf="showEditModal" (click)="closeModal()">
+          <div class="popup-container edit-user-popup" (click)="$event.stopPropagation()">
             <div class="popup-header">
               <div class="header-title">
                 <div class="header-icon">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                   </svg>
                 </div>
-                <h2>Modifier les permissions</h2>
+                <h2>Modifier l'utilisateur</h2>
               </div>
               <button class="close-btn" (click)="closeModal()" title="Fermer">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -137,49 +150,90 @@ import { AdminService, SystemUser, Client } from '../services/admin.service';
               </button>
             </div>
 
-            <div class="popup-body" *ngIf="selectedUser">
-              <div class="form-section">
-                <div class="user-header">
-                  <div class="user-avatar large">{{ selectedUser.name?.charAt(0) || 'U' }}</div>
-                  <div>
-                    <h3>{{ selectedUser.name }}</h3>
-                    <span class="user-company">{{ selectedUser.companyName }}</span>
-                  </div>
+            <div class="popup-body" *ngIf="selectedUser && editForm">
+              <div class="user-header">
+                <div class="user-avatar large">{{ editForm.name?.charAt(0) || 'U' }}</div>
+                <div>
+                  <h3>{{ selectedUser.name }}</h3>
+                  <span class="user-company">{{ selectedUser.companyName }}</span>
                 </div>
               </div>
 
-              <div class="form-section">
-                <div class="section-title">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                  </svg>
-                  <span>Accès aux pages</span>
+              <div class="form-grid">
+                <div class="form-field">
+                  <label>Nom complet *</label>
+                  <input type="text" [(ngModel)]="editForm.name" placeholder="Prénom Nom" />
                 </div>
-                <p class="section-desc">Sélectionnez les pages auxquelles cet utilisateur peut accéder</p>
-
-                <div class="permissions-grid">
-                  <label class="permission-item" *ngFor="let page of allPages" [class.selected]="selectedPermissions.includes(page)">
-                    <input type="checkbox" [checked]="selectedPermissions.includes(page)" (change)="togglePermission(page)" />
-                    <span class="checkmark"></span>
-                    <span class="permission-label">{{ formatPageName(page) }}</span>
-                  </label>
+                <div class="form-field">
+                  <label>Email *</label>
+                  <input type="email" [(ngModel)]="editForm.email" placeholder="email@domaine.com" />
                 </div>
-
-                <div class="quick-actions">
-                  <button class="quick-btn" (click)="selectAll()">Tout sélectionner</button>
-                  <button class="quick-btn" (click)="deselectAll()">Tout désélectionner</button>
+                <div class="form-field">
+                  <label>Téléphone</label>
+                  <input type="tel" [(ngModel)]="editForm.phone" placeholder="+216 …" />
+                </div>
+                <div class="form-field">
+                  <label>Statut</label>
+                  <select [(ngModel)]="editForm.status">
+                    <option value="active">Actif</option>
+                    <option value="suspended">Suspendu</option>
+                    <option value="inactive">Inactif</option>
+                  </select>
+                </div>
+                <div class="form-field full">
+                  <label>Rôle (définit les droits)</label>
+                  <select [(ngModel)]="editForm.roleId">
+                    <option [ngValue]="null" *ngIf="!editForm.roleId">— Choisir —</option>
+                    <option *ngFor="let r of companyRoles" [ngValue]="r.id">
+                      {{ r.name }}{{ r.roleType === 'company_admin' ? ' (admin société)' : '' }}
+                    </option>
+                  </select>
+                  <p class="field-hint" *ngIf="selectedRole?.description">{{ selectedRole?.description }}</p>
+                  <p class="field-hint muted" *ngIf="loadingRoles">Chargement des rôles…</p>
+                </div>
+                <div class="form-field full">
+                  <label>Réinitialiser le mot de passe (optionnel)</label>
+                  <input type="text" [(ngModel)]="editForm.password" placeholder="Laisser vide pour ne pas changer" />
+                  <p class="field-hint">Au moins 8 caractères. L'utilisateur devra se reconnecter.</p>
                 </div>
               </div>
+
+              <p class="form-error" *ngIf="editError">{{ editError }}</p>
             </div>
 
             <div class="popup-footer">
-              <button class="btn-secondary" (click)="closeModal()">Annuler</button>
-              <button class="btn-primary" (click)="savePermissions()">
+              <button class="btn-secondary" (click)="closeModal()" [disabled]="saving">Annuler</button>
+              <button class="btn-primary" (click)="saveEditUser()" [disabled]="saving">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
                 </svg>
-                Enregistrer
+                {{ saving ? 'Enregistrement…' : 'Enregistrer' }}
               </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Delete confirmation -->
+        <div class="popup-overlay" *ngIf="userToDelete" (click)="userToDelete = null">
+          <div class="popup-container delete-popup" (click)="$event.stopPropagation()">
+            <div class="popup-header">
+              <div class="header-title">
+                <div class="header-icon danger">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                </div>
+                <h2>Supprimer l'utilisateur ?</h2>
+              </div>
+            </div>
+            <div class="popup-body">
+              <p>Voulez-vous vraiment supprimer <strong>{{ userToDelete.name }}</strong> ({{ userToDelete.email }}) ?</p>
+              <p class="warning">Cette action est définitive. L'utilisateur perdra immédiatement l'accès.</p>
+            </div>
+            <div class="popup-footer">
+              <button class="btn-secondary" (click)="userToDelete = null">Annuler</button>
+              <button class="btn-danger" (click)="confirmDelete()">Supprimer</button>
             </div>
           </div>
         </div>
@@ -795,6 +849,105 @@ import { AdminService, SystemUser, Client } from '../services/admin.service';
       font-weight: 600;
       cursor: pointer;
     }
+    .btn-primary:disabled, .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-danger {
+      padding: 10px 20px;
+      background: #ef4444;
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-danger:hover { background: #dc2626; }
+
+    /* Calypso 7 — refonte modale Edit User */
+    .edit-user-popup, .delete-popup { max-width: 560px; }
+    .edit-user-popup .popup-body { padding: 20px 24px; }
+
+    .user-header {
+      display: flex; align-items: center; gap: 14px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      margin-bottom: 20px;
+    }
+    .user-avatar.large {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
+      color: #fff; font-size: 18px; font-weight: 700;
+    }
+    .user-header h3 { margin: 0; color: #e7e9ea; font-size: 16px; }
+    .user-company { color: #8b98a5; font-size: 12px; }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px 16px;
+    }
+    .form-field { display: flex; flex-direction: column; gap: 6px; }
+    .form-field.full { grid-column: 1 / -1; }
+    .form-field label {
+      font-size: 11px; font-weight: 600;
+      color: #8b98a5;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .form-field input, .form-field select {
+      padding: 9px 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      color: #e7e9ea;
+      font-size: 13px;
+      outline: none;
+    }
+    .form-field input:focus, .form-field select:focus {
+      border-color: #00d4aa;
+      box-shadow: 0 0 0 2px rgba(0,212,170,0.18);
+    }
+    .field-hint {
+      font-size: 11px;
+      color: #8b98a5;
+      margin: 0;
+    }
+    .field-hint.muted { font-style: italic; }
+    .form-error {
+      margin-top: 14px;
+      padding: 10px 12px;
+      background: rgba(239,68,68,0.12);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 8px;
+      color: #fca5a5;
+      font-size: 12px;
+    }
+
+    .header-icon.danger { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .delete-popup .warning {
+      color: #fca5a5;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+
+    .action-btn.primary {
+      background: rgba(0,212,170,0.15);
+      color: #00d4aa;
+      border-color: rgba(0,212,170,0.3);
+    }
+    .action-btn.primary:hover { background: rgba(0,212,170,0.25); }
+    .action-btn.danger {
+      background: rgba(239,68,68,0.12);
+      color: #ef4444;
+      border-color: rgba(239,68,68,0.3);
+    }
+    .action-btn.danger:hover { background: rgba(239,68,68,0.2); }
+
+    @media (max-width: 640px) {
+      .form-grid { grid-template-columns: 1fr; }
+    }
   `]
 })
 export class AdminUsersComponent implements OnInit, OnDestroy {
@@ -802,23 +955,37 @@ export class AdminUsersComponent implements OnInit, OnDestroy {
   users: SystemUser[] = [];
   filteredUsers: SystemUser[] = [];
   companies: Client[] = [];
-  allPages: string[] = [];
 
   searchQuery = '';
   companyFilter = 'all';
   statusFilter = 'all';
 
-  showPermissionsModal = false;
+  // Edit modal state
+  showEditModal = false;
   selectedUser: SystemUser | null = null;
-  selectedPermissions: string[] = [];
+  editForm: EditUserForm | null = null;
+  companyRoles: Role[] = [];
+  loadingRoles = false;
+  saving = false;
+  editError = '';
+
+  // Delete confirmation
+  userToDelete: SystemUser | null = null;
 
   get onlineCount(): number {
     return this.users.filter(u => u.isOnline).length;
   }
 
+  get selectedRole(): Role | undefined {
+    if (!this.editForm?.roleId) return undefined;
+    return this.companyRoles.find(r => r.id === this.editForm!.roleId);
+  }
+
   constructor(
     private router: Router,
-    private adminService: AdminService
+    private adminService: AdminService,
+    private cdr: ChangeDetectorRef,
+    private zone: NgZone
   ) {}
 
   ngOnInit() {
@@ -826,18 +993,42 @@ export class AdminUsersComponent implements OnInit, OnDestroy {
       this.router.navigate(['/admin/login']);
       return;
     }
-    this.allPages = this.adminService.getAllPages();
     this.loadData();
   }
 
+  // Calypso 7 — bug : la liste affichait 0 utilisateurs alors que l API
+  // renvoyait 17, et il fallait cliquer pour qu elle apparaisse. Cause :
+  // l observable HTTP atterrissait hors de la zone Angular (les interceptors
+  // utilisent switchMap qui peut ejecter le callback de la zone). Sans clic
+  // pour reentrer, aucune detection de changement.
+  // Solution : encapsuler explicitement dans NgZone.run() + detectChanges()
+  // pour garantir que le rendu suit immediatement la reponse HTTP.
   loadData() {
-    this.adminService.getUsers().pipe(takeUntil(this.destroy$)).subscribe(users => {
-      this.users = users;
-      this.filterUsers();
+    console.log('[admin-users] loadData() start, token=', !!localStorage.getItem('admin_token'));
+    this.adminService.getUsers().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (users) => {
+        this.zone.run(() => {
+          console.log('[admin-users] getUsers() -> received', users?.length, 'users', users?.[0]);
+          this.users = users || [];
+          this.filterUsers();
+          this.cdr.detectChanges();
+        });
+      },
+      error: (err) => {
+        this.zone.run(() => {
+          console.error('[admin-users] getUsers() FAILED:', err);
+          this.users = [];
+          this.filterUsers();
+          this.cdr.detectChanges();
+        });
+      }
     });
 
     this.adminService.getClients().pipe(takeUntil(this.destroy$)).subscribe(clients => {
-      this.companies = clients;
+      this.zone.run(() => {
+        this.companies = clients || [];
+        this.cdr.detectChanges();
+      });
     });
   }
 
@@ -854,66 +1045,161 @@ export class AdminUsersComponent implements OnInit, OnDestroy {
     });
   }
 
-  openPermissionsModal(user: SystemUser) {
+  // ─── Edit user modal ──────────────────────────────────────────────────
+  openEditModal(user: SystemUser) {
     this.selectedUser = user;
-    this.selectedPermissions = [...user.permissions];
-    this.showPermissionsModal = true;
+    this.editForm = {
+      name: user.name || '',
+      email: user.email || '',
+      phone: user.phone || '',
+      status: (user.status as any) || 'active',
+      roleId: user.roleId || null,
+      password: ''
+    };
+    this.editError = '';
+    this.showEditModal = true;
+
+    // Charger les rôles disponibles pour la société de cet utilisateur
+    // afin de pouvoir reassigner un rôle valide (Administrateur / Utilisateur
+    // ou tout custom créé par cette société). Cf. CreateSocieteCommandHandler
+    // qui crée 2 rôles par défaut.
+    this.loadingRoles = true;
+    this.companyRoles = [];
+    this.adminService.getCompanyRoles(user.companyId).pipe(
+      takeUntil(this.destroy$),
+      finalize(() => this.loadingRoles = false)
+    ).subscribe({
+      next: (roles) => { this.companyRoles = roles || []; },
+      error: () => { this.companyRoles = []; }
+    });
   }
 
-  togglePermission(page: string) {
-    const index = this.selectedPermissions.indexOf(page);
-    if (index > -1) {
-      this.selectedPermissions.splice(index, 1);
-    } else {
-      this.selectedPermissions.push(page);
+  saveEditUser() {
+    if (!this.selectedUser || !this.editForm) return;
+    if (!this.editForm.name?.trim() || !this.editForm.email?.trim()) {
+      this.editError = 'Nom et email sont requis.';
+      return;
     }
-  }
+    if (this.editForm.password && this.editForm.password.length < 8) {
+      this.editError = 'Le mot de passe doit faire au moins 8 caractères.';
+      return;
+    }
 
-  selectAll() {
-    this.selectedPermissions = [...this.allPages];
-  }
+    const id = this.selectedUser.id;
+    const f = this.editForm;
+    const original = this.selectedUser;
 
-  deselectAll() {
-    this.selectedPermissions = [];
-  }
+    this.saving = true;
+    this.editError = '';
 
-  savePermissions() {
-    if (this.selectedUser) {
-      this.adminService.updateUserPermissions(this.selectedUser.id, this.selectedPermissions).pipe(takeUntil(this.destroy$)).subscribe(() => {
-        this.selectedUser!.permissions = [...this.selectedPermissions];
+    // Sequence : update info → role → status (si changes). On enchaine pour
+    // garder l'erreur explicite si une etape echoue.
+    const calls: any[] = [];
+
+    // 1) Info de base + mot de passe optionnel via PUT /admin/users/:id
+    calls.push(this.adminService.updateUser(id, {
+      name: f.name.trim(),
+      email: f.email.trim(),
+      phone: f.phone?.trim() || undefined,
+      ...(f.password ? { password: f.password } : {})
+    }));
+
+    // 2) Role (uniquement si change). On utilise l endpoint dedie
+    //    PUT /admin/users/:id/role qui prend un RoleId entier et
+    //    s appuie sur UpdateAdminUserRoleCommand cote backend.
+    if (f.roleId && f.roleId !== original.roleId) {
+      calls.push(this.adminService.updateUserRoleAssignment(id, f.roleId));
+    }
+
+    // 3) Statut (uniquement si change)
+    if (f.status !== original.status) {
+      if (f.status === 'suspended' || f.status === 'inactive') {
+        calls.push(this.adminService.suspendUser(id));
+      } else {
+        calls.push(this.adminService.activateUser(id));
+      }
+    }
+
+    forkJoin(calls).pipe(
+      takeUntil(this.destroy$),
+      finalize(() => { this.saving = false; this.cdr.detectChanges(); })
+    ).subscribe({
+      next: () => {
+        // Mise a jour locale pour refleter immediatement dans la liste.
+        original.name = f.name.trim();
+        original.email = f.email.trim();
+        original.phone = f.phone?.trim();
+        original.status = f.status as any;
+        if (f.roleId && f.roleId !== original.roleId) {
+          original.roleId = f.roleId;
+          const role = this.companyRoles.find(r => r.id === f.roleId);
+          original.roleName = role?.name;
+        }
+        this.filterUsers();
         this.closeModal();
-      });
-    }
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Update user failed:', err);
+        this.editError = err?.error?.message || err?.error?.title || 'Échec de la mise à jour. Vérifiez les valeurs.';
+        this.cdr.detectChanges();
+      }
+    });
   }
 
+  closeModal() {
+    this.showEditModal = false;
+    this.selectedUser = null;
+    this.editForm = null;
+    this.companyRoles = [];
+    this.editError = '';
+  }
+
+  // ─── Suspend / Activate (quick action) ────────────────────────────────
   toggleUserStatus(user: SystemUser) {
     if (user.status === 'active') {
       this.adminService.suspendUser(user.id).pipe(takeUntil(this.destroy$)).subscribe(() => {
         user.status = 'suspended';
+        this.cdr.detectChanges();
       });
     } else {
       this.adminService.activateUser(user.id).pipe(takeUntil(this.destroy$)).subscribe(() => {
         user.status = 'active';
+        this.cdr.detectChanges();
       });
     }
+  }
+
+  // ─── Delete ───────────────────────────────────────────────────────────
+  askDelete(user: SystemUser) {
+    this.userToDelete = user;
+  }
+
+  confirmDelete() {
+    if (!this.userToDelete) return;
+    const id = this.userToDelete.id;
+    this.adminService.deleteUser(id).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        this.users = this.users.filter(u => u.id !== id);
+        this.filterUsers();
+        this.userToDelete = null;
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Delete user failed:', err);
+        this.userToDelete = null;
+        this.cdr.detectChanges();
+      }
+    });
   }
 
   viewUserActivity(user: SystemUser) {
     this.router.navigate(['/admin/activity'], { queryParams: { userId: user.id } });
   }
 
-  closeModal() {
-    this.showPermissionsModal = false;
-    this.selectedUser = null;
-  }
-
-  formatPageName(page: string): string {
-    return page.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-  }
-
   formatDate(date: Date | undefined): string {
-    if (!date) return 'Never';
-    return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    if (!date) return 'Jamais';
+    return new Date(date).toLocaleDateString('fr-FR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
   ngOnDestroy() {
