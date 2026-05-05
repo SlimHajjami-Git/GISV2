@@ -99,6 +99,11 @@ export const routes: Routes = [
   
   // Settings module
   { path: 'settings', component: SettingsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'settings' } },
+
+  // Calypso 7 — la page Alertes email vit maintenant comme onglet dans
+  // /users (UserManagementComponent), donc on redirige les anciens liens.
+  { path: 'alertes-email', redirectTo: '/users', pathMatch: 'full' },
+  { path: 'alert-emails', redirectTo: '/users', pathMatch: 'full' },
   
   // Users module
   { path: 'users', component: UserManagementComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'users' } },

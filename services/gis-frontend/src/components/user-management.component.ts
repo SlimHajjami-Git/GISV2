@@ -6,6 +6,7 @@ import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ToastService } from '../services/toast.service';
+import { AlertEmailsComponent } from './alert-emails.component';
 
 interface Role {
   id: number;
@@ -79,17 +80,17 @@ interface VehicleOption {
 @Component({
   selector: 'app-user-management',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, AlertEmailsComponent],
   template: `
     <app-layout>
       <div class="user-management-page">
         <div class="page-header">
           <div class="header-left">
             <h1>Gestion des Utilisateurs</h1>
-            <p class="subtitle">Gérez les utilisateurs de votre équipe</p>
+            <p class="subtitle">Comptes Calypso et destinataires d'alertes par email</p>
           </div>
           <div class="header-actions">
-            <button class="btn-primary" (click)="openUserModal()">
+            <button class="btn-primary" (click)="openUserModal()" *ngIf="activeTab === 'users'">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
@@ -98,7 +99,29 @@ interface VehicleOption {
           </div>
         </div>
 
+        <!-- Calypso 7 — onglets : separation Comptes (acces a l'app) /
+             Alertes par email (destinataires externes sans compte). -->
+        <div class="um-tabs">
+          <button class="um-tab" [class.active]="activeTab === 'users'" (click)="activeTab = 'users'">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            Comptes utilisateurs
+            <span class="um-tab-count">{{ users.length }}</span>
+          </button>
+          <button class="um-tab" [class.active]="activeTab === 'emails'" (click)="activeTab = 'emails'">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+              <polyline points="22,6 12,13 2,6"/>
+            </svg>
+            Alertes par email
+          </button>
+        </div>
 
+
+        <!-- USERS TAB -->
+        <ng-container *ngIf="activeTab === 'users'">
         <!-- Stats Cards -->
         <div class="stats-row">
           <div class="stat-card">
@@ -223,6 +246,13 @@ interface VehicleOption {
             </div>
           </div>
         </div>
+        </ng-container>
+        <!-- /USERS TAB -->
+
+        <!-- ALERT EMAILS TAB -->
+        <ng-container *ngIf="activeTab === 'emails'">
+          <app-alert-emails [embedded]="true"></app-alert-emails>
+        </ng-container>
 
         <!-- User Modal -->
         <div class="modal-overlay" *ngIf="showUserModal" (mousedown)="closeUserModal()">
@@ -527,8 +557,49 @@ interface VehicleOption {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
+      margin-bottom: 16px;
+    }
+
+    /* Calypso 7 — onglets compte / alertes email */
+    .um-tabs {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid #e2e8f0;
       margin-bottom: 24px;
     }
+    .um-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      font-size: 13px;
+      font-weight: 500;
+      color: #64748b;
+      cursor: pointer;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .um-tab:hover { color: #1e293b; }
+    .um-tab.active {
+      color: #2563eb;
+      border-bottom-color: #2563eb;
+      font-weight: 600;
+    }
+    .um-tab svg { color: inherit; }
+    .um-tab-count {
+      background: #e2e8f0;
+      color: #475569;
+      padding: 1px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 700;
+      min-width: 22px;
+      text-align: center;
+    }
+    .um-tab.active .um-tab-count { background: #dbeafe; color: #2563eb; }
 
     .header-left h1 {
       font-size: 24px;
@@ -1676,6 +1747,7 @@ interface VehicleOption {
 })
 export class UserManagementComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
+
   // Data
   users: User[] = [];
   filteredUsers: User[] = [];
@@ -1694,8 +1766,9 @@ export class UserManagementComponent implements OnInit, OnDestroy {
   filterRoleId: number | null = null;
   filterStatus = '';
 
-  // Active tab
-  activeTab: 'users' | 'roles' = 'users';
+  // Active tab — Calypso 7 ajout de 'emails' pour l'onglet d'alertes
+  // par email destinataires externes (plus besoin d'une page dediee).
+  activeTab: 'users' | 'roles' | 'emails' = 'users';
 
   // User Modal
   showUserModal = false;
@@ -1982,7 +2055,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
 
   // ============ TAB SWITCHING ============
 
-  setActiveTab(tab: 'users' | 'roles') {
+  setActiveTab(tab: 'users' | 'roles' | 'emails') {
     this.activeTab = tab;
   }
 
