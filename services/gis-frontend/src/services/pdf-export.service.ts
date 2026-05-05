@@ -514,9 +514,12 @@ export class PdfExportService {
   getColumnsForReport(type: string, options?: any): { header: string; dataKey: string }[] {
     switch (type) {
       case 'trips':
+        // Calypso 7 (correction client) : la colonne \u00ab Type \u00bb n a aucune
+        // valeur informative quand les lignes Arret sont deja filtrees a
+        // la source (PDF n affiche que les vrais trajets). On la retire.
         return [
           ...(options?.allVehicles ? [{ header: 'V\u00e9hicule', dataKey: 'vehicleName' }] : []),
-          { header: 'Type', dataKey: '_type' },
+          { header: '#', dataKey: '_tripNumber' },
           { header: 'D\u00e9but', dataKey: 'startTime' },
           { header: 'Fin', dataKey: 'endTime' },
           { header: 'Dur\u00e9e', dataKey: 'duration' },
@@ -644,10 +647,11 @@ export class PdfExportService {
     switch (type) {
       case 'trips':
         return {
-          '_type': (_v: any, row: any) => row.isTrip ? `Trajet T${row.tripNumber}` : 'Arrêt',
-          '_address': (_v: any, row: any) => row.isTrip
-            ? `${row.startAddress || ''} → ${row.endAddress || ''}`
-            : (row.address || '-')
+          // Numéro de trajet seul (T1, T2…). Les pseudos-lignes « Arret »
+          // qui polluaient le PDF sont filtrees a la source dans
+          // reports.component.ts.
+          '_tripNumber': (_v: any, row: any) => `T${row.tripNumber}`,
+          '_address': (_v: any, row: any) => `${row.startAddress || ''} → ${row.endAddress || ''}`
         };
       case 'stops':
         return {

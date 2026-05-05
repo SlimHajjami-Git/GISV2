@@ -4270,10 +4270,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
         duration: trip.durationFormatted || formatDuration(trip.durationSeconds),
         durationSeconds: trip.durationSeconds,
         durationMin,
-        distance: `${trip.distanceKm.toFixed(1)} km`,
+        distance: `${this.formatNumber(trip.distanceKm, 1)} km`,
         distanceValue: trip.distanceKm,
         distanceKm: trip.distanceKm,
-        maxSpeed: `${trip.maxSpeedKph.toFixed(0)} km/h`,
+        maxSpeed: `${this.formatNumber(trip.maxSpeedKph, 0)} km/h`,
         maxSpeedValue: trip.maxSpeedKph,
         startAddress: trip.startAddress || `${trip.startLatitude?.toFixed(5)}, ${trip.startLongitude?.toFixed(5)}`,
         endAddress: trip.endAddress || `${trip.endLatitude?.toFixed(5)}, ${trip.endLongitude?.toFixed(5)}`,
@@ -4371,24 +4371,26 @@ export class ReportsComponent implements OnInit, OnDestroy {
       }));
     }
 
-    // Statistics from backend summary (single vehicle) or computed (multi)
+    // Statistics from backend summary (single vehicle) or computed (multi).
+    // Calypso 7 (correction client) : format FR « xxx xxx,yy » avec espace
+    // toutes les 3 chiffres et virgule decimale (Intl 'fr-FR').
     if (reports.length === 1 && reports[0].summary) {
       const s = reports[0].summary;
       this.statisticsData = {
-        'Nombre de trajets': s.totalTrips.toString(),
-        'Distance totale': `${s.totalDistanceKm} km`,
+        'Nombre de trajets': this.formatNumber(s.totalTrips, 0),
+        'Distance totale': `${this.formatNumber(s.totalDistanceKm, 2)} km`,
         'Temps de conduite': s.totalTripFormatted,
-        'Vitesse max': `${s.maxSpeedKph} km/h`
+        'Vitesse max': `${this.formatNumber(s.maxSpeedKph, 1)} km/h`
       };
     } else {
       const totalDistance = allTrips.reduce((sum: number, t: any) => sum + t.distanceKm, 0);
       const totalDrivingMin = allTrips.reduce((sum: number, t: any) => sum + t.durationSeconds / 60, 0);
       const maxSpeedAll = allTrips.length > 0 ? Math.max(...allTrips.map((t: any) => t.maxSpeedKph)) : 0;
       this.statisticsData = {
-        'Nombre de trajets': allTrips.length.toString(),
-        'Distance totale': `${totalDistance.toFixed(1)} km`,
+        'Nombre de trajets': this.formatNumber(allTrips.length, 0),
+        'Distance totale': `${this.formatNumber(totalDistance, 2)} km`,
         'Temps de conduite': formatDuration(Math.round(totalDrivingMin * 60)),
-        'Vitesse max': `${maxSpeedAll.toFixed(0)} km/h`,
+        'Vitesse max': `${this.formatNumber(maxSpeedAll, 0)} km/h`,
         'Véhicules': new Set(allTrips.map((t: any) => t.vehicleName)).size.toString()
       };
     }
@@ -5349,13 +5351,20 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const columns = this.pdfExportService.getColumnsForReport(type, options);
     const formatters = this.pdfExportService.getFormattersForReport(type);
 
+    // Calypso 7 (correction client) : pour le rapport trajets on retire
+    // les pseudo-lignes day-header et les separateurs « Arret » ; le PDF
+    // ne contient que les vrais trajets, plus lisible.
+    const pdfData = type === 'trips'
+      ? this.tableData.filter((r: any) => r && r.isTrip === true)
+      : this.tableData.filter((r: any) => r && r.isDayHeader !== true);
+
     this.pdfExportService.exportReport({
       title: this.selectedTemplate.name,
       vehicleName,
       dateRange,
       statistics: this.statisticsData,
       columns,
-      data: this.tableData,
+      data: pdfData,
       formatters
     });
   }
