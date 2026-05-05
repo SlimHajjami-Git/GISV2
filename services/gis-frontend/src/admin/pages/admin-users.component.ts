@@ -1,9 +1,9 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef, NgZone } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { Subject, forkJoin, of } from 'rxjs';
-import { takeUntil, switchMap, tap, finalize } from 'rxjs/operators';
+import { BehaviorSubject, Subject, combineLatest, forkJoin } from 'rxjs';
+import { map, takeUntil, finalize } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, SystemUser, Client, Role } from '../services/admin.service';
 
@@ -29,13 +29,13 @@ interface EditUserForm {
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
-              <input type="text" [(ngModel)]="searchQuery" (input)="filterUsers()" placeholder="Search users..." />
+              <input type="text" [(ngModel)]="searchQuery" (ngModelChange)="onSearchChange($event)" placeholder="Search users..." />
             </div>
-            <select class="filter-select" [(ngModel)]="companyFilter" (change)="filterUsers()">
+            <select class="filter-select" [(ngModel)]="companyFilter" (ngModelChange)="onCompanyChange($event)">
               <option value="all">All Companies</option>
-              <option *ngFor="let company of companies" [value]="company.id">{{ company.name }}</option>
+              <option *ngFor="let company of (companies$ | async) || []" [value]="company.id">{{ company.name }}</option>
             </select>
-            <select class="filter-select" [(ngModel)]="statusFilter" (change)="filterUsers()">
+            <select class="filter-select" [(ngModel)]="statusFilter" (ngModelChange)="onStatusChange($event)">
               <option value="all">All Status</option>
               <option value="active">Active</option>
               <option value="suspended">Suspended</option>
@@ -45,10 +45,10 @@ interface EditUserForm {
           <div class="header-stats">
             <div class="stat-chip online">
               <span class="dot"></span>
-              {{ onlineCount }} Online
+              {{ (onlineCount$ | async) || 0 }} Online
             </div>
             <div class="stat-chip total">
-              {{ users.length }} Total Users
+              {{ (totalCount$ | async) || 0 }} Total Users
             </div>
           </div>
         </div>
@@ -66,7 +66,7 @@ interface EditUserForm {
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let user of filteredUsers" [class.suspended]="user.status === 'suspended'">
+              <tr *ngFor="let user of (filteredUsers$ | async); trackBy: trackByUserId" [class.suspended]="user.status === 'suspended'">
                 <td>
                   <div class="user-cell">
                     <div class="user-avatar" [class.online]="user.isOnline">
@@ -952,15 +952,56 @@ interface EditUserForm {
 })
 export class AdminUsersComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
-  users: SystemUser[] = [];
-  filteredUsers: SystemUser[] = [];
-  companies: Client[] = [];
 
+  // Calypso 7 — bug tenace : la liste affichait 0 utilisateurs au chargement
+  // et il fallait cliquer sur un filtre pour qu elle apparaisse. Le callback
+  // HTTP arrivait hors de la zone Angular (probablement a cause des switchMap
+  // dans l auth interceptor pour le refresh proactif), donc ni
+  // cdr.detectChanges() ni NgZone.run() ne suffisaient a re-rendre le *ngFor.
+  //
+  // Solution definitive : transformer l etat (users, companies, filtres) en
+  // BehaviorSubject + utiliser l async pipe dans le template. L async pipe
+  // gere lui-meme la souscription et appelle markForCheck() a chaque emission,
+  // ce qui force un cycle CD peu importe l etat de la zone qui a emis la
+  // valeur. C est le pattern Angular canonique pour ce type de bug.
+  private usersSubject = new BehaviorSubject<SystemUser[]>([]);
+  private companiesSubject = new BehaviorSubject<Client[]>([]);
+  private searchSubject = new BehaviorSubject<string>('');
+  private companyFilterSubject = new BehaviorSubject<string>('all');
+  private statusFilterSubject = new BehaviorSubject<string>('all');
+
+  users$ = this.usersSubject.asObservable();
+  companies$ = this.companiesSubject.asObservable();
+  totalCount$ = this.usersSubject.pipe(map(users => users.length));
+  onlineCount$ = this.usersSubject.pipe(map(users => users.filter(u => u.isOnline).length));
+  filteredUsers$ = combineLatest([
+    this.usersSubject,
+    this.searchSubject,
+    this.companyFilterSubject,
+    this.statusFilterSubject
+  ]).pipe(
+    map(([users, search, companyFilter, statusFilter]) => {
+      const q = (search || '').toLowerCase();
+      return users.filter(user => {
+        const matchesSearch = !q ||
+          user.name?.toLowerCase().includes(q) ||
+          user.email?.toLowerCase().includes(q);
+        const matchesCompany = companyFilter === 'all' || user.companyId?.toString() === companyFilter;
+        const matchesStatus = statusFilter === 'all' ||
+          (statusFilter === 'online' && user.isOnline) ||
+          (statusFilter !== 'online' && user.status === statusFilter);
+        return matchesSearch && matchesCompany && matchesStatus;
+      });
+    })
+  );
+
+  // ngModel state — purement UI, sert juste a binder les inputs.
   searchQuery = '';
   companyFilter = 'all';
   statusFilter = 'all';
 
-  // Edit modal state
+  // Edit modal state (pas dans un Subject, modale ouverte par clic donc
+  // deja dans la zone)
   showEditModal = false;
   selectedUser: SystemUser | null = null;
   editForm: EditUserForm | null = null;
@@ -972,10 +1013,6 @@ export class AdminUsersComponent implements OnInit, OnDestroy {
   // Delete confirmation
   userToDelete: SystemUser | null = null;
 
-  get onlineCount(): number {
-    return this.users.filter(u => u.isOnline).length;
-  }
-
   get selectedRole(): Role | undefined {
     if (!this.editForm?.roleId) return undefined;
     return this.companyRoles.find(r => r.id === this.editForm!.roleId);
@@ -984,8 +1021,7 @@ export class AdminUsersComponent implements OnInit, OnDestroy {
   constructor(
     private router: Router,
     private adminService: AdminService,
-    private cdr: ChangeDetectorRef,
-    private zone: NgZone
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit() {
@@ -996,53 +1032,52 @@ export class AdminUsersComponent implements OnInit, OnDestroy {
     this.loadData();
   }
 
-  // Calypso 7 — bug : la liste affichait 0 utilisateurs alors que l API
-  // renvoyait 17, et il fallait cliquer pour qu elle apparaisse. Cause :
-  // l observable HTTP atterrissait hors de la zone Angular (les interceptors
-  // utilisent switchMap qui peut ejecter le callback de la zone). Sans clic
-  // pour reentrer, aucune detection de changement.
-  // Solution : encapsuler explicitement dans NgZone.run() + detectChanges()
-  // pour garantir que le rendu suit immediatement la reponse HTTP.
   loadData() {
     console.log('[admin-users] loadData() start, token=', !!localStorage.getItem('admin_token'));
     this.adminService.getUsers().pipe(takeUntil(this.destroy$)).subscribe({
       next: (users) => {
-        this.zone.run(() => {
-          console.log('[admin-users] getUsers() -> received', users?.length, 'users', users?.[0]);
-          this.users = users || [];
-          this.filterUsers();
-          this.cdr.detectChanges();
-        });
+        console.log('[admin-users] getUsers() -> received', users?.length, 'users');
+        this.usersSubject.next(users || []);
       },
       error: (err) => {
-        this.zone.run(() => {
-          console.error('[admin-users] getUsers() FAILED:', err);
-          this.users = [];
-          this.filterUsers();
-          this.cdr.detectChanges();
-        });
+        console.error('[admin-users] getUsers() FAILED:', err);
+        this.usersSubject.next([]);
       }
     });
 
     this.adminService.getClients().pipe(takeUntil(this.destroy$)).subscribe(clients => {
-      this.zone.run(() => {
-        this.companies = clients || [];
-        this.cdr.detectChanges();
-      });
+      this.companiesSubject.next(clients || []);
     });
   }
 
-  filterUsers() {
-    this.filteredUsers = this.users.filter(user => {
-      const matchesSearch = !this.searchQuery ||
-        user.name.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
-        user.email.toLowerCase().includes(this.searchQuery.toLowerCase());
-      const matchesCompany = this.companyFilter === 'all' || user.companyId.toString() === this.companyFilter;
-      const matchesStatus = this.statusFilter === 'all' ||
-        (this.statusFilter === 'online' && user.isOnline) ||
-        (this.statusFilter !== 'online' && user.status === this.statusFilter);
-      return matchesSearch && matchesCompany && matchesStatus;
-    });
+  // ─── Filter handlers (push to subjects → re-derive filteredUsers$) ────
+  onSearchChange(value: string) {
+    this.searchQuery = value;
+    this.searchSubject.next(value);
+  }
+
+  onCompanyChange(value: string) {
+    this.companyFilter = value;
+    this.companyFilterSubject.next(value);
+  }
+
+  onStatusChange(value: string) {
+    this.statusFilter = value;
+    this.statusFilterSubject.next(value);
+  }
+
+  trackByUserId(_index: number, user: SystemUser): number {
+    return user.id;
+  }
+
+  // Helpers internes pour les mutations qui doivent reinjecter dans le subject
+  private get currentUsers(): SystemUser[] {
+    return this.usersSubject.value;
+  }
+
+  private replaceUser(id: number, mutate: (u: SystemUser) => SystemUser) {
+    const updated = this.currentUsers.map(u => u.id === id ? mutate(u) : u);
+    this.usersSubject.next(updated);
   }
 
   // ─── Edit user modal ──────────────────────────────────────────────────
@@ -1125,19 +1160,21 @@ export class AdminUsersComponent implements OnInit, OnDestroy {
       finalize(() => { this.saving = false; this.cdr.detectChanges(); })
     ).subscribe({
       next: () => {
-        // Mise a jour locale pour refleter immediatement dans la liste.
-        original.name = f.name.trim();
-        original.email = f.email.trim();
-        original.phone = f.phone?.trim();
-        original.status = f.status as any;
-        if (f.roleId && f.roleId !== original.roleId) {
-          original.roleId = f.roleId;
-          const role = this.companyRoles.find(r => r.id === f.roleId);
-          original.roleName = role?.name;
-        }
-        this.filterUsers();
+        // Mise a jour locale via le subject pour declencher le re-render
+        // de filteredUsers$ via combineLatest.
+        const newRoleName = (f.roleId && f.roleId !== original.roleId)
+          ? this.companyRoles.find(r => r.id === f.roleId)?.name
+          : original.roleName;
+        this.replaceUser(id, u => ({
+          ...u,
+          name: f.name.trim(),
+          email: f.email.trim(),
+          phone: f.phone?.trim(),
+          status: f.status as any,
+          roleId: (f.roleId && f.roleId !== original.roleId) ? f.roleId : u.roleId,
+          roleName: newRoleName
+        }));
         this.closeModal();
-        this.cdr.detectChanges();
       },
       error: (err) => {
         console.error('Update user failed:', err);
@@ -1157,17 +1194,13 @@ export class AdminUsersComponent implements OnInit, OnDestroy {
 
   // ─── Suspend / Activate (quick action) ────────────────────────────────
   toggleUserStatus(user: SystemUser) {
-    if (user.status === 'active') {
-      this.adminService.suspendUser(user.id).pipe(takeUntil(this.destroy$)).subscribe(() => {
-        user.status = 'suspended';
-        this.cdr.detectChanges();
-      });
-    } else {
-      this.adminService.activateUser(user.id).pipe(takeUntil(this.destroy$)).subscribe(() => {
-        user.status = 'active';
-        this.cdr.detectChanges();
-      });
-    }
+    const newStatus: 'active' | 'suspended' = user.status === 'active' ? 'suspended' : 'active';
+    const obs = newStatus === 'suspended'
+      ? this.adminService.suspendUser(user.id)
+      : this.adminService.activateUser(user.id);
+    obs.pipe(takeUntil(this.destroy$)).subscribe(() => {
+      this.replaceUser(user.id, u => ({ ...u, status: newStatus }));
+    });
   }
 
   // ─── Delete ───────────────────────────────────────────────────────────
@@ -1180,8 +1213,7 @@ export class AdminUsersComponent implements OnInit, OnDestroy {
     const id = this.userToDelete.id;
     this.adminService.deleteUser(id).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
-        this.users = this.users.filter(u => u.id !== id);
-        this.filterUsers();
+        this.usersSubject.next(this.currentUsers.filter(u => u.id !== id));
         this.userToDelete = null;
         this.cdr.detectChanges();
       },
@@ -1205,5 +1237,10 @@ export class AdminUsersComponent implements OnInit, OnDestroy {
   ngOnDestroy() {
     this.destroy$.next();
     this.destroy$.complete();
+    this.usersSubject.complete();
+    this.companiesSubject.complete();
+    this.searchSubject.complete();
+    this.companyFilterSubject.complete();
+    this.statusFilterSubject.complete();
   }
 }
