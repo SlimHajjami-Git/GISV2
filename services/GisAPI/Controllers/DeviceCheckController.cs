@@ -126,11 +126,26 @@ public class DeviceCheckController : ControllerBase
         var minutesSinceLastFrame = (DateTime.UtcNow - lastFrameTime).TotalMinutes;
         var isStale = minutesSinceLastFrame > 40;
 
-        // Odometer: use GPS OdometerKm for non-L firmware, else Vehicle.Mileage
+        // Calypso 7 — bug technicien : "Odomètre = 0 km" sur /device-check
+        // pour un véhicule fraîchement installé alors que /monitoring affiche
+        // bien le km. Cause : la logique était INVERSÉE par rapport à
+        // GetVehiclesWithPositionsQueryHandler. Pour le firmware "L" (NEMS L),
+        // c'est précisément le boîtier qui rapporte odometer_km via FMS — il
+        // FAUT préférer position.OdometerKm. Pour les autres firmwares qui
+        // n'ont pas la donnée FMS, on retombe sur vehicle.Mileage.
+        //
+        // Pour un vieux véhicule, vehicle.Mileage avait fini par être synchronisé
+        // à une vraie valeur, donc l'inversion était invisible. Pour un nouveau
+        // véhicule (Mileage=0 par défaut), elle affichait 0 km systématiquement.
+        //
+        // On filtre aussi 1048574 (sentinelle "capteur non initialisé") comme
+        // dans le handler /monitoring.
         long? odometerKm = null;
         var fw = device.FirmwareVersion ?? "";
-        if (!fw.StartsWith("L", StringComparison.OrdinalIgnoreCase)
-            && lastPosition.OdometerKm.HasValue && lastPosition.OdometerKm.Value > 0)
+        if (fw.StartsWith("L", StringComparison.OrdinalIgnoreCase)
+            && lastPosition.OdometerKm.HasValue
+            && lastPosition.OdometerKm.Value > 0
+            && lastPosition.OdometerKm.Value != 1048574)
         {
             odometerKm = lastPosition.OdometerKm.Value;
         }
