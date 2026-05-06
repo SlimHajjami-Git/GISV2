@@ -600,10 +600,24 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return `${y}-${m}-${d}`;
   }
 
-  /** Chart container min-width capped to avoid exceeding browser canvas limits */
+  /** Chart container min-width capped to avoid exceeding browser canvas limits.
+   *  Calypso 7 — pour le rapport Carburant l utilisateur veut voir tout le
+   *  graphe d un coup, sans defiler horizontalement. La courbe etant lisse
+   *  (line chart sur evolution dans le temps) elle reste lisible meme tassee.
+   *  On force donc 'auto' pour ce template pour que le canvas se cale a la
+   *  largeur du conteneur. Pour les autres rapports (souvent des bar charts
+   *  avec beaucoup de categories) le comportement actuel reste le bon. */
   getChartMinWidth(): string {
+    if (this.selectedTemplate?.type === 'fuel') return 'auto';
     if (this.chartData.length <= 20) return 'auto';
     return Math.min(this.chartData.length * 40, 5000) + 'px';
+  }
+
+  /** True quand le rapport courant doit afficher les boutons de scroll
+   *  horizontal autour du graphe. Faux pour Carburant (fit-to-width). */
+  showChartScrollButtons(): boolean {
+    if (this.selectedTemplate?.type === 'fuel') return false;
+    return this.chartData.length > 20;
   }
 
   selectTemplate(template: any) {
