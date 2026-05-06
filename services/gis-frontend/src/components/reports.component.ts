@@ -3857,18 +3857,78 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Fetch addresses asynchronously for positions without address
     this.enrichAllAddresses();
 
-    // Chart data - use cleaned positions for smooth fuel level graph (no spikes)
-    // Downsample if too many points (canvas breaks above ~16k px width)
-    const maxChartPoints = 300;
-    let chartPositions = cleanPositions;
-    if (cleanPositions.length > maxChartPoints) {
-      const step = Math.ceil(cleanPositions.length / maxChartPoints);
-      chartPositions = cleanPositions.filter((_: any, i: number) => i % step === 0 || i === cleanPositions.length - 1);
+    // Calypso 7 — Chart data agrege par bucket de TEMPS (pas par index data).
+    // Avant : 1 label par lecture brute -> les jours avec beaucoup de lectures
+    // dominaient l axe X (ex: 3 labels "16/04 ..." pour 1 seul "11/04 ...")
+    // car Chart.js distribue maxTicksLimit labels uniformement par index.
+    //
+    // Maintenant : on choisit une granularite adaptative selon la duree
+    // couverte par les positions (heure / jour / semaine), on bucketise
+    // les positions, et on emet 1 point par bucket (moyenne du fuelRaw).
+    // Resultat : labels uniformement espaces dans le temps, courbe stable.
+    if (cleanPositions.length > 0) {
+      const firstTs = new Date(cleanPositions[0].recordedAt).getTime();
+      const lastTs = new Date(cleanPositions[cleanPositions.length - 1].recordedAt).getTime();
+      const spanMs = lastTs - firstTs;
+      const HOUR = 3_600_000;
+      const DAY = 24 * HOUR;
+
+      let bucketMs: number;
+      let labelFmt: Intl.DateTimeFormatOptions;
+      if (spanMs <= 36 * HOUR) {
+        // <= 1.5 jours : 1 point par heure
+        bucketMs = HOUR;
+        labelFmt = { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' };
+      } else if (spanMs <= 90 * DAY) {
+        // <= 3 mois : 1 point par jour
+        bucketMs = DAY;
+        labelFmt = { day: '2-digit', month: '2-digit' };
+      } else {
+        // > 3 mois : 1 point par semaine
+        bucketMs = 7 * DAY;
+        labelFmt = { day: '2-digit', month: '2-digit', year: '2-digit' };
+      }
+
+      // Aligner le premier bucket au debut de l unite (jour/heure)
+      const bucketStart = (ts: number) => {
+        const d = new Date(ts);
+        if (bucketMs === HOUR) {
+          d.setMinutes(0, 0, 0);
+        } else if (bucketMs === DAY) {
+          d.setHours(0, 0, 0, 0);
+        } else {
+          // semaine : ramener au lundi (jour 1) 00:00
+          d.setHours(0, 0, 0, 0);
+          const dow = (d.getDay() + 6) % 7; // 0 = lundi
+          d.setDate(d.getDate() - dow);
+        }
+        return d.getTime();
+      };
+
+      const buckets = new Map<number, { sum: number; count: number; ts: number }>();
+      for (const pos of cleanPositions) {
+        const ts = new Date(pos.recordedAt).getTime();
+        const key = bucketStart(ts);
+        const fuel = pos.fuelRaw ?? 0;
+        if (fuel <= 0) continue;
+        const b = buckets.get(key);
+        if (b) {
+          b.sum += fuel;
+          b.count++;
+        } else {
+          buckets.set(key, { sum: fuel, count: 1, ts: key });
+        }
+      }
+
+      this.chartData = Array.from(buckets.values())
+        .sort((a, b) => a.ts - b.ts)
+        .map(b => ({
+          label: new Date(b.ts).toLocaleString('fr-FR', labelFmt),
+          value: Math.round(b.sum / b.count)
+        }));
+    } else {
+      this.chartData = [];
     }
-    this.chartData = chartPositions.map((pos: any) => ({
-      label: new Date(pos.recordedAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
-      value: pos.fuelRaw || 0
-    }));
 
     // Statistics - use cleaned positions to avoid spike pollution
     const fuelValues = cleanPositions.map((p: any) => p.fuelRaw ?? 0).filter((f: number) => f > 0);
