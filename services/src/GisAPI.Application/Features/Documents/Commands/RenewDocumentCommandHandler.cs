@@ -3,6 +3,7 @@ using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace GisAPI.Application.Features.Documents.Commands;
 
@@ -10,12 +11,17 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
 {
     private readonly IGisDbContext _context;
     private readonly ICurrentTenantService _tenantService;
+    private readonly ILogger<RenewDocumentCommandHandler> _logger;
     private static readonly string[] ValidDocumentTypes = { "insurance", "technical_inspection", "tax", "registration", "transport_permit" };
 
-    public RenewDocumentCommandHandler(IGisDbContext context, ICurrentTenantService tenantService)
+    public RenewDocumentCommandHandler(
+        IGisDbContext context,
+        ICurrentTenantService tenantService,
+        ILogger<RenewDocumentCommandHandler> logger)
     {
         _context = context;
         _tenantService = tenantService;
+        _logger = logger;
     }
 
     public async Task<int> Handle(RenewDocumentCommand request, CancellationToken cancellationToken)
@@ -37,12 +43,27 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
         var paymentDateUtc = DateTime.SpecifyKind(request.PaymentDate, DateTimeKind.Utc);
         var expiryDateUtc = DateTime.SpecifyKind(request.NewExpiryDate, DateTimeKind.Utc);
 
+        // Capture pre-update value for diagnostic
+        var oldExpiry = request.DocumentType switch
+        {
+            "insurance" => vehicle.InsuranceExpiry,
+            "technical_inspection" => vehicle.TechnicalInspectionExpiry,
+            "tax" => vehicle.TaxExpiry,
+            "registration" => vehicle.RegistrationExpiry,
+            "transport_permit" => vehicle.TransportPermitExpiry,
+            _ => null
+        };
+
+        _logger.LogInformation(
+            "Renewing {Type} for vehicle {VehicleId} (company {CompanyId}): {OldExpiry} → {NewExpiry}",
+            request.DocumentType, vehicle.Id, vehicle.CompanyId, oldExpiry, expiryDateUtc);
+
         // Create VehicleCost record for the renewal
         var cost = new VehicleCost
         {
             VehicleId = request.VehicleId,
             Type = request.DocumentType,
-            Description = $"Renouvellement {GetDocumentTypeLabel(request.DocumentType)}" + 
+            Description = $"Renouvellement {GetDocumentTypeLabel(request.DocumentType)}" +
                          (string.IsNullOrEmpty(request.Provider) ? "" : $" - {request.Provider}"),
             Amount = request.Amount,
             Date = paymentDateUtc,
@@ -76,7 +97,28 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
 
         vehicle.UpdatedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync(cancellationToken);
+        // Calypso 7 — defensive: verify EF actually picked up the modification
+        // before saving. If the change tracker thinks the entity is Unchanged
+        // (e.g. due to AsNoTracking or a stale instance), force it to Modified.
+        // This guarantees the UPDATE statement is generated and prevents the
+        // bug where the cost row was saved but the vehicle.expiry stayed stale.
+        if (_context is DbContext dbCtx)
+        {
+            var entry = dbCtx.Entry(vehicle);
+            if (entry.State == EntityState.Unchanged || entry.State == EntityState.Detached)
+            {
+                _logger.LogWarning(
+                    "Vehicle {VehicleId} entry was {State} after property update — forcing Modified state.",
+                    vehicle.Id, entry.State);
+                entry.State = EntityState.Modified;
+            }
+        }
+
+        var rowsAffected = await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Renewal saved: cost.Id={CostId}, rowsAffected={RowsAffected}, vehicle.{Type}Expiry now={NewExpiry}",
+            cost.Id, rowsAffected, request.DocumentType, expiryDateUtc);
 
         return cost.Id;
     }
