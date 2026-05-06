@@ -3857,78 +3857,26 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Fetch addresses asynchronously for positions without address
     this.enrichAllAddresses();
 
-    // Calypso 7 — Chart data agrege par bucket de TEMPS (pas par index data).
-    // Avant : 1 label par lecture brute -> les jours avec beaucoup de lectures
-    // dominaient l axe X (ex: 3 labels "16/04 ..." pour 1 seul "11/04 ...")
-    // car Chart.js distribue maxTicksLimit labels uniformement par index.
+    // Calypso 7 — Chart data garde TOUS les points bruts pour conserver
+    // les sauts (remplissages) et les pentes (consommation reelle). Le
+    // probleme historique (labels axe X clusterises sur les jours actifs)
+    // est resolu cote rendu dans createChart : on passe l axe X en
+    // type='linear' avec timestamps, donc Chart.js distribue les labels
+    // uniformement par TEMPS au lieu de par INDEX. La courbe elle-meme
+    // garde tous les details d origine.
     //
-    // Maintenant : on choisit une granularite adaptative selon la duree
-    // couverte par les positions (heure / jour / semaine), on bucketise
-    // les positions, et on emet 1 point par bucket (moyenne du fuelRaw).
-    // Resultat : labels uniformement espaces dans le temps, courbe stable.
-    if (cleanPositions.length > 0) {
-      const firstTs = new Date(cleanPositions[0].recordedAt).getTime();
-      const lastTs = new Date(cleanPositions[cleanPositions.length - 1].recordedAt).getTime();
-      const spanMs = lastTs - firstTs;
-      const HOUR = 3_600_000;
-      const DAY = 24 * HOUR;
-
-      let bucketMs: number;
-      let labelFmt: Intl.DateTimeFormatOptions;
-      if (spanMs <= 36 * HOUR) {
-        // <= 1.5 jours : 1 point par heure
-        bucketMs = HOUR;
-        labelFmt = { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' };
-      } else if (spanMs <= 90 * DAY) {
-        // <= 3 mois : 1 point par jour
-        bucketMs = DAY;
-        labelFmt = { day: '2-digit', month: '2-digit' };
-      } else {
-        // > 3 mois : 1 point par semaine
-        bucketMs = 7 * DAY;
-        labelFmt = { day: '2-digit', month: '2-digit', year: '2-digit' };
-      }
-
-      // Aligner le premier bucket au debut de l unite (jour/heure)
-      const bucketStart = (ts: number) => {
-        const d = new Date(ts);
-        if (bucketMs === HOUR) {
-          d.setMinutes(0, 0, 0);
-        } else if (bucketMs === DAY) {
-          d.setHours(0, 0, 0, 0);
-        } else {
-          // semaine : ramener au lundi (jour 1) 00:00
-          d.setHours(0, 0, 0, 0);
-          const dow = (d.getDay() + 6) % 7; // 0 = lundi
-          d.setDate(d.getDate() - dow);
-        }
-        return d.getTime();
-      };
-
-      const buckets = new Map<number, { sum: number; count: number; ts: number }>();
-      for (const pos of cleanPositions) {
-        const ts = new Date(pos.recordedAt).getTime();
-        const key = bucketStart(ts);
-        const fuel = pos.fuelRaw ?? 0;
-        if (fuel <= 0) continue;
-        const b = buckets.get(key);
-        if (b) {
-          b.sum += fuel;
-          b.count++;
-        } else {
-          buckets.set(key, { sum: fuel, count: 1, ts: key });
-        }
-      }
-
-      this.chartData = Array.from(buckets.values())
-        .sort((a, b) => a.ts - b.ts)
-        .map(b => ({
-          label: new Date(b.ts).toLocaleString('fr-FR', labelFmt),
-          value: Math.round(b.sum / b.count)
-        }));
-    } else {
-      this.chartData = [];
+    // Downsample defensif si > 300 points (canvas peut ramer au dela).
+    const maxChartPoints = 300;
+    let chartPositions = cleanPositions;
+    if (cleanPositions.length > maxChartPoints) {
+      const step = Math.ceil(cleanPositions.length / maxChartPoints);
+      chartPositions = cleanPositions.filter((_: any, i: number) => i % step === 0 || i === cleanPositions.length - 1);
     }
+    this.chartData = chartPositions.map((pos: any) => ({
+      label: new Date(pos.recordedAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+      value: pos.fuelRaw || 0,
+      ts: new Date(pos.recordedAt).getTime()
+    }));
 
     // Statistics - use cleaned positions to avoid spike pollution
     const fuelValues = cleanPositions.map((p: any) => p.fuelRaw ?? 0).filter((f: number) => f > 0);
@@ -4818,14 +4766,30 @@ export class ReportsComponent implements OnInit, OnDestroy {
         }
       };
     } else if (type === 'fuel') {
-      // Area chart with gradient for fuel level
+      // Calypso 7 — Echelle X lineaire en timestamp pour distribuer les
+      // labels uniformement par TEMPS (pas par index data). On garde donc
+      // tous les points bruts (la courbe reste realiste : sauts de
+      // remplissage + pentes de consommation). Les ticks sont formates
+      // en date a la volee. tension=0 pour ne pas lisser les remplissages
+      // en courbe douce — un fill-up est instantane, doit apparaitre
+      // comme un saut.
+      const fuelSpanMs = this.chartData.length > 1
+        ? (this.chartData[this.chartData.length - 1].ts - this.chartData[0].ts)
+        : 0;
+      const HOUR_MS = 3_600_000;
+      const DAY_MS = 24 * HOUR_MS;
+      const tickFmt: Intl.DateTimeFormatOptions = fuelSpanMs <= 36 * HOUR_MS
+        ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }
+        : fuelSpanMs <= 90 * DAY_MS
+          ? { day: '2-digit', month: '2-digit' }
+          : { day: '2-digit', month: '2-digit', year: '2-digit' };
+
       config = {
         type: 'line',
         data: {
-          labels: this.chartData.map(d => d.label),
           datasets: [{
             label: 'Niveau carburant (%)',
-            data: this.chartData.map(d => d.value),
+            data: this.chartData.map(d => ({ x: d.ts, y: d.value })),
             borderColor: '#10B981',
             backgroundColor: (context: any) => {
               const chart = context.chart;
@@ -4839,7 +4803,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
               return gradient;
             },
             borderWidth: 2,
-            tension: 0.4,
+            tension: 0,
             fill: true,
             pointRadius: 0,
             pointHoverRadius: 6
@@ -4848,14 +4812,30 @@ export class ReportsComponent implements OnInit, OnDestroy {
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          interaction: { mode: 'index', intersect: false },
+          interaction: { mode: 'nearest', axis: 'x', intersect: false },
           plugins: {
             legend: { display: false },
-            title: { display: true, text: '⛽ Évolution du niveau de carburant', font: { size: 14, weight: 'bold' } }
+            title: { display: true, text: '⛽ Évolution du niveau de carburant', font: { size: 14, weight: 'bold' } },
+            tooltip: {
+              callbacks: {
+                title: (items: any[]) => {
+                  if (!items?.length) return '';
+                  const ts = items[0].parsed?.x;
+                  return ts ? new Date(ts).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+                }
+              }
+            }
           },
           scales: {
             y: { beginAtZero: true, max: 100, title: { display: true, text: 'Niveau (%)' }, grid: { color: 'rgba(255,255,255,0.1)' } },
-            x: { grid: { display: false }, ticks: { maxTicksLimit: 12 } }
+            x: {
+              type: 'linear',
+              grid: { display: false },
+              ticks: {
+                maxTicksLimit: 12,
+                callback: (val: any) => new Date(val).toLocaleString('fr-FR', tickFmt)
+              }
+            }
           }
         }
       };
