@@ -671,7 +671,20 @@ export class DocumentsComponent implements OnInit, OnDestroy {
           }
         });
 
-        this.apiService.getDocumentExpiries({ pageSize: 500 }).pipe(takeUntil(this.destroy$)).subscribe({
+        // Calypso 7 — bug rapporte : apres avoir renouvele un document
+        // depuis /echeances, la nouvelle date d expiration n apparaissait
+        // pas dans le tableau et le statut restait "Expire". Cause racine :
+        // pageSize=500 etait insuffisant. Pour un system admin, l API
+        // /documents/expiries retourne ALL vehicules x ALL types (insurance,
+        // tax, technical_inspection, registration, transport_permit) +
+        // driver permits = facilement 552+ lignes. Le tri backend met les
+        // expires d abord et les "ok" a la fin. Apres renouvellement, le
+        // doc vient de passer "expire" -> "ok" et se retrouve > 500eme
+        // position, donc absent de la reponse paginee. Le fallback ci-
+        // dessous reinjectait alors un placeholder "Expire" date du jour,
+        // masquant la vraie nouvelle date.
+        // Fix : pageSize 5000 (couvre largement n importe quelle flotte).
+        this.apiService.getDocumentExpiries({ pageSize: 5000 }).pipe(takeUntil(this.destroy$)).subscribe({
           next: (result) => {
             const typeMap: Record<string, VehicleDocument['type']> = {
               'Assurance': 'insurance',
@@ -689,7 +702,9 @@ export class DocumentsComponent implements OnInit, OnDestroy {
               const expiryDate = dto.expiryDate ? new Date(dto.expiryDate) : null;
               let daysUntilExpiry = dto.daysUntilExpiry ?? -999;
               let status: 'expired' | 'expiring_soon' | 'ok' = 'ok';
-              if (daysUntilExpiry < 0) status = 'expired';
+              // Status='unknown' (expiry null) du backend -> on le considere
+              // comme manquant (label "Expire" en UI mais sans nouvelle date).
+              if (dto.status === 'unknown' || daysUntilExpiry < 0) status = 'expired';
               else if (daysUntilExpiry <= 30) status = 'expiring_soon';
 
               docs.push({
@@ -708,7 +723,10 @@ export class DocumentsComponent implements OnInit, OnDestroy {
               seen.add(`${dto.vehicleId}:${type}`);
             });
 
-            // Ensure all vehicles appear for all 3 types (missing docs = expired/missing).
+            // Garde-fou (devrait etre vide avec pageSize=5000 + backend
+            // qui retourne deja TOUTES les combinaisons vehicule x type).
+            // On le garde pour les cas de race / vehicules cree apres
+            // l appel /vehicles mais avant /expiries.
             baseByVehicle.forEach((b) => {
               REQUIRED_TYPES.forEach(type => {
                 if (!seen.has(`${b.vehicleId}:${type}`)) {
