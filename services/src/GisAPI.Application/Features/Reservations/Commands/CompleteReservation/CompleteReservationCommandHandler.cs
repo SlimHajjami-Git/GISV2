@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Services;
 using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -52,10 +53,49 @@ public class CompleteReservationCommandHandler : IRequestHandler<CompleteReserva
         endMileage ??= reservation.Vehicle?.Mileage;
 
         reservation.EndMileage = endMileage;
-        reservation.ActualKm = (reservation.StartMileage.HasValue && endMileage.HasValue)
-            ? endMileage.Value - reservation.StartMileage.Value
-            : null;
-        reservation.EndDateTime = DateTime.UtcNow;
+
+        // Calypso 8 — bug rapporte (page 8 PDF) : "Faux kilometrage" entre
+        // emprunt et rapport km (ex: 247 km vs 976 km sur la meme periode
+        // pour le meme vehicule). Cause : EndMileage - StartMileage repose
+        // sur vehicle.Mileage qui est incremente par Rust avec un floor a
+        // 1 km (perd les fractions) et peut diverger du calcul Haversine
+        // utilise par le rapport km.
+        //
+        // Fix : si on a un GPS associe, on calcule ActualKm via la MEME
+        // logique Haversine que GetMileagePeriodReport — donc les deux
+        // affichages restent coherents pour la meme periode. On retombe sur
+        // EndMileage - StartMileage en derniere recourse (vehicule sans GPS
+        // ou aucune position dans la fenetre).
+        var endTime = DateTime.UtcNow;
+        if (reservation.Vehicle?.GpsDeviceId != null && reservation.StartDateTime != default)
+        {
+            var positions = await _context.GpsPositions
+                .AsNoTracking()
+                .Where(p => p.DeviceId == reservation.Vehicle.GpsDeviceId.Value
+                         && p.RecordedAt >= reservation.StartDateTime
+                         && p.RecordedAt <= endTime)
+                .OrderBy(p => p.RecordedAt)
+                .ToListAsync(ct);
+
+            if (positions.Count >= 2)
+            {
+                var distanceKm = GpsDistanceCalculator.CalculateTotalDistanceKm(positions);
+                reservation.ActualKm = (int)Math.Round(distanceKm);
+            }
+            else
+            {
+                reservation.ActualKm = (reservation.StartMileage.HasValue && endMileage.HasValue)
+                    ? endMileage.Value - reservation.StartMileage.Value
+                    : null;
+            }
+        }
+        else
+        {
+            reservation.ActualKm = (reservation.StartMileage.HasValue && endMileage.HasValue)
+                ? endMileage.Value - reservation.StartMileage.Value
+                : null;
+        }
+        reservation.EndDateTime = endTime;
         reservation.Status = "completed";
         if (request.Notes != null)
             reservation.Notes = request.Notes;

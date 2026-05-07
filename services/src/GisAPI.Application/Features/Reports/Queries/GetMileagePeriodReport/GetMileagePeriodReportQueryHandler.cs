@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Services;
 using GisAPI.Domain.Entities;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -345,43 +346,14 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
         };
     }
 
+    /// <summary>
+    /// Calypso 8 — calcul de distance delegue au service partage
+    /// GpsDistanceCalculator pour que tous les consommateurs (rapport km
+    /// + calcul d emprunt) donnent exactement la meme valeur sur la meme
+    /// fenetre temporelle.
+    /// </summary>
     private static double CalculateTotalDistance(List<GpsPosition> positions)
-    {
-        const double MaxSegmentKm = 10.0;     // Max distance between 2 consecutive points
-        const double MaxImpliedKph = 250.0;    // Max implied speed (distance/time)
-        const double MinSegmentKm = 0.005;     // Ignore micro-movements (< 5m)
-
-        double totalDistance = 0;
-        for (int i = 1; i < positions.Count; i++)
-        {
-            var prev = positions[i - 1];
-            var curr = positions[i];
-            
-            // Only count distance if there's movement
-            if ((curr.SpeedKph ?? 0) > 0 || (prev.SpeedKph ?? 0) > 0)
-            {
-                var segmentKm = HaversineDistance(
-                    prev.Latitude, prev.Longitude,
-                    curr.Latitude, curr.Longitude);
-
-                // Filter aberrant segments (GPS jumps, corrupted historical data)
-                if (segmentKm < MinSegmentKm || segmentKm > MaxSegmentKm)
-                    continue;
-
-                // Check implied speed: distance / time must be realistic
-                var elapsedHours = (curr.RecordedAt - prev.RecordedAt).TotalHours;
-                if (elapsedHours > 0)
-                {
-                    var impliedKph = segmentKm / elapsedHours;
-                    if (impliedKph > MaxImpliedKph)
-                        continue;
-                }
-
-                totalDistance += segmentKm;
-            }
-        }
-        return totalDistance;
-    }
+        => GpsDistanceCalculator.CalculateTotalDistanceKm(positions);
 
     /// <summary>
     /// Calypso 8 — bug rapporte : "Kilometrage 0, trajets 5, vitesse max 8 km/h".
@@ -427,7 +399,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
             if (inTrip && i > 0)
             {
                 var prev = positions[i - 1];
-                var segmentKm = HaversineDistance(prev.Latitude, prev.Longitude, pos.Latitude, pos.Longitude);
+                var segmentKm = GpsDistanceCalculator.HaversineKm(prev.Latitude, prev.Longitude, pos.Latitude, pos.Longitude);
                 if (segmentKm >= MinSegmentKm && segmentKm <= MaxSegmentKm)
                 {
                     currentTripKm += segmentKm;
@@ -465,19 +437,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
         return totalSeconds / 60;
     }
 
-    private static double HaversineDistance(double lat1, double lon1, double lat2, double lon2)
-    {
-        const double R = 6371; // Earth's radius in km
-        var dLat = ToRadians(lat2 - lat1);
-        var dLon = ToRadians(lon2 - lon1);
-        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
-                Math.Cos(ToRadians(lat1)) * Math.Cos(ToRadians(lat2)) *
-                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
-        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-        return R * c;
-    }
-
-    private static double ToRadians(double degrees) => degrees * Math.PI / 180;
+    // Haversine code factorise dans GpsDistanceCalculator (Common/Services).
 
     private static string FormatDuration(int seconds)
     {
