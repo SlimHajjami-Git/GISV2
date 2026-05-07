@@ -3188,6 +3188,8 @@ export interface AccidentReportThirdPartyDto {
   vehicleModel: string | null;
   insuranceCompany: string | null;
   insuranceNumber: string | null;
+  /** Calypso 8 — Date d'expiration de la police d'assurance du tiers. */
+  insuranceExpiry: string | null;
 }
 
 export interface AccidentEventListItemDto {
@@ -3272,6 +3274,8 @@ export interface AddThirdPartyRequest {
   vehicleModel?: string | null;
   insuranceCompany?: string | null;
   insuranceNumber?: string | null;
+  /** Calypso 8 — Date d'expiration de la police d'assurance du tiers. */
+  insuranceExpiry?: string | null;
 }
 
 export interface CreateManualAccidentRequest {

@@ -199,12 +199,24 @@ public class AccidentEventThirdParty : Entity
     public int AccidentEventId { get; set; }
     public AccidentEvent? AccidentEvent { get; set; }
 
+    /// <summary>
+    /// Nom complet du tiers (prenom + nom). Calypso 8 — le client demande de
+    /// pouvoir saisir l identite complete distincte du conducteur Belive.
+    /// </summary>
     public string? Name { get; set; }
     public string? Phone { get; set; }
     public string? VehiclePlate { get; set; }
     public string? VehicleModel { get; set; }
+
+    /// <summary>Compagnie d assurance du tiers (ex: STAR, Comar, AMI...).</summary>
     public string? InsuranceCompany { get; set; }
+    /// <summary>N° de police d assurance du tiers (a NE PAS confondre avec
+    /// celui du vehicule Belive porte par <see cref="Vehicle.InsuranceExpiry"/>).</summary>
     public string? InsuranceNumber { get; set; }
+
+    /// <summary>Calypso 8 — date d expiration de la police d assurance du
+    /// tiers, demandee par le client pour le suivi des sinistres.</summary>
+    public DateTime? InsuranceExpiry { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

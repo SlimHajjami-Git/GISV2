@@ -256,7 +256,8 @@ public record AddThirdPartyCommand(
     string? VehiclePlate,
     string? VehicleModel,
     string? InsuranceCompany,
-    string? InsuranceNumber
+    string? InsuranceNumber,
+    DateTime? InsuranceExpiry
 ) : IRequest<int>;
 
 public class AddThirdPartyCommandHandler : PhaseCommandHandlerBase, IRequestHandler<AddThirdPartyCommand, int>
@@ -276,6 +277,7 @@ public class AddThirdPartyCommandHandler : PhaseCommandHandlerBase, IRequestHand
             VehicleModel = request.VehicleModel?.Trim(),
             InsuranceCompany = request.InsuranceCompany?.Trim(),
             InsuranceNumber = request.InsuranceNumber?.Trim(),
+            InsuranceExpiry = request.InsuranceExpiry,
         };
         Context.AccidentEventThirdParties.Add(tp);
         ev.ThirdPartyInvolved = true;

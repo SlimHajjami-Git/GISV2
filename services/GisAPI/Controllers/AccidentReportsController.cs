@@ -206,7 +206,7 @@ public class AccidentReportsController : ControllerBase
         try
         {
             var tpId = await _mediator.Send(new AddThirdPartyCommand(id, req.Name, req.Phone,
-                req.VehiclePlate, req.VehicleModel, req.InsuranceCompany, req.InsuranceNumber), ct);
+                req.VehiclePlate, req.VehicleModel, req.InsuranceCompany, req.InsuranceNumber, req.InsuranceExpiry), ct);
             return Ok(new { thirdPartyId = tpId });
         }
         catch (NotFoundException) { return NotFound(); }
@@ -440,4 +440,5 @@ public record AddThirdPartyRequest(
     string? VehiclePlate,
     string? VehicleModel,
     string? InsuranceCompany,
-    string? InsuranceNumber);
+    string? InsuranceNumber,
+    DateTime? InsuranceExpiry);

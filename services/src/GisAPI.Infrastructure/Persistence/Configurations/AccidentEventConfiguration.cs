@@ -134,6 +134,7 @@ public class AccidentEventThirdPartyConfiguration : IEntityTypeConfiguration<Acc
         builder.Property(e => e.VehicleModel).HasColumnName("vehicle_model").HasMaxLength(100);
         builder.Property(e => e.InsuranceCompany).HasColumnName("insurance_company").HasMaxLength(200);
         builder.Property(e => e.InsuranceNumber).HasColumnName("insurance_number").HasMaxLength(100);
+        builder.Property(e => e.InsuranceExpiry).HasColumnName("insurance_expiry");
         builder.Property(e => e.CreatedAt).HasColumnName("created_at");
         builder.HasIndex(e => e.AccidentEventId);
     }

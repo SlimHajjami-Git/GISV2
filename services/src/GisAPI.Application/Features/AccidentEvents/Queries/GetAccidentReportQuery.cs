@@ -103,4 +103,5 @@ public record AccidentReportThirdPartyDto(
     string? VehiclePlate,
     string? VehicleModel,
     string? InsuranceCompany,
-    string? InsuranceNumber);
+    string? InsuranceNumber,
+    DateTime? InsuranceExpiry);

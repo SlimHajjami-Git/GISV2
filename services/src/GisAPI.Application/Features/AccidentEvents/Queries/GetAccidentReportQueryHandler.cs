@@ -108,7 +108,7 @@ public class GetAccidentReportQueryHandler
 
             ThirdParties: ev.ThirdParties
                 .OrderBy(t => t.Id)
-                .Select(t => new AccidentReportThirdPartyDto(t.Id, t.Name, t.Phone, t.VehiclePlate, t.VehicleModel, t.InsuranceCompany, t.InsuranceNumber))
+                .Select(t => new AccidentReportThirdPartyDto(t.Id, t.Name, t.Phone, t.VehiclePlate, t.VehicleModel, t.InsuranceCompany, t.InsuranceNumber, t.InsuranceExpiry))
                 .ToList());
     }
 
