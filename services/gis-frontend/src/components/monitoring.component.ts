@@ -1129,11 +1129,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
+    // Calypso 8 — bug rapporte (page 7 PDF) : "Plus de vehicules quand on
+    // change de carte". Cause : le code detruisait completement la carte
+    // (this.map.remove()) puis la recreait vide (initializeMap()), perdant
+    // tous les markers + couches deja affichees. La fonction applyTileLayer
+    // existait deja et fait juste un swap des tileLayers (utilisee pour le
+    // playback). On l utilise aussi ici pour la carte principale : les
+    // markers, geofences, polylines, etc. restent intacts.
     if (this.map) {
-      this.map.remove();
-      this.map = null;
-      this.mapReady = false;
-      this.initializeMap();
+      this.applyTileLayer(this.map);
     }
   }
 
