@@ -3850,9 +3850,27 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // Positions with same fuel level are simply skipped (no odometer update)
     });
 
+    // Calypso 8 — bug rapporte (page 1 PDF) : "Dates en double" sur le rapport
+    // carburant. Cause : deux lectures dans la meme minute mais a des secondes
+    // differentes (ex: 14:14:30 puis 14:14:45) avec un fuel% legerement
+    // different (bruit capteur, jitter du raw 0-255) passaient toutes les deux
+    // le filtre fuel !== lastFuelLevel et generaient deux lignes affichees au
+    // meme timestamp "DD/MM/YYYY HH:MM". L utilisateur voyait des "doublons".
+    //
+    // Fix : dedupe par minute, on garde la derniere entree (chronologiquement
+    // la plus recente) de chaque minute. Bonus : nettoie aussi le bruit
+    // intra-minute en consolidant la valeur finale.
+    const dedupedByMinute = new Map<string, any>();
+    for (const fc of fuelChanges) {
+      // fc.time est deja au format "DD/MM/YYYY HH:MM" — c est notre cle de minute
+      // L iteration prend la derniere valeur car cleanPositions est trie par recordedAt asc
+      dedupedByMinute.set(fc.time, fc);
+    }
+    const dedupedFuelChanges = Array.from(dedupedByMinute.values());
+
     // Reverse to show most recent first
-    fuelChanges.reverse();
-    this.tableData = fuelChanges;
+    dedupedFuelChanges.reverse();
+    this.tableData = dedupedFuelChanges;
 
     // Fetch addresses asynchronously for positions without address
     this.enrichAllAddresses();
