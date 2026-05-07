@@ -2827,9 +2827,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
         end = this.mileagePeriodEndDate ? new Date(this.mileagePeriodEndDate) : new Date();
         break;
       case 'month':
-        // For monthly report, use first day of selected month to last day
-        start = new Date(this.mileagePeriodYear, this.mileagePeriodMonth - 1, 1);
-        end = new Date(this.mileagePeriodYear, this.mileagePeriodMonth, 0); // Last day of month
+        // Calypso 8 — pour le rapport "Par mois", on couvre toute l annee
+        // selectionnee (1er janv -> 31 dec) pour que le backend retourne
+        // 12 barres mensuelles dans le graphe.
+        start = new Date(this.mileagePeriodYear, 0, 1);
+        end = new Date(this.mileagePeriodYear, 11, 31);
         break;
       default:
         start = startDate || new Date();
@@ -2880,8 +2882,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
         end = this.mileagePeriodEndDate ? new Date(this.mileagePeriodEndDate) : new Date();
         break;
       case 'month':
-        start = new Date(this.mileagePeriodYear, this.mileagePeriodMonth - 1, 1);
-        end = new Date(this.mileagePeriodYear, this.mileagePeriodMonth, 0);
+        // Calypso 8 — annee complete pour 12 barres mensuelles
+        start = new Date(this.mileagePeriodYear, 0, 1);
+        end = new Date(this.mileagePeriodYear, 11, 31);
         break;
       default:
         start = startDate || new Date();
