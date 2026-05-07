@@ -383,21 +383,60 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
         return totalDistance;
     }
 
+    /// <summary>
+    /// Calypso 8 — bug rapporte : "Kilometrage 0, trajets 5, vitesse max 8 km/h".
+    /// Cause : la version precedente comptait un trajet a chaque transition
+    /// vitesse <3 -> >3 km/h, sans verifier qu un deplacement reel ait eu lieu.
+    /// Combine au filtre de distance qui ignore les segments < 5m (GPS jitter),
+    /// on pouvait avoir 5 "trajets" comptes mais 0 km accumule (typique d un
+    /// vehicule a l arret avec moteur tournant + jitter GPS qui depasse 3 km/h
+    /// brievement).
+    ///
+    /// Fix : on tracke chaque segment "moving" et on ne le compte comme trajet
+    /// que s il a accumule au moins 100m de distance reelle. On passe aussi le
+    /// seuil de 3 a 5 km/h (aligne avec le reste du code, ex monitoring).
+    /// </summary>
     private static int CountTrips(List<GpsPosition> positions)
     {
-        int tripCount = 0;
-        bool wasMoving = false;
+        const double MovingThresholdKph = 5.0;
+        const double MinTripDistanceKm = 0.1; // 100m minimum reel pour compter un trajet
+        const double MaxSegmentKm = 10.0;
+        const double MinSegmentKm = 0.005;
 
-        foreach (var pos in positions)
+        int tripCount = 0;
+        bool inTrip = false;
+        double currentTripKm = 0;
+
+        for (int i = 0; i < positions.Count; i++)
         {
-            var isMoving = (pos.SpeedKph ?? 0) > 3.0;
-            
-            if (isMoving && !wasMoving)
+            var pos = positions[i];
+            var isMoving = (pos.SpeedKph ?? 0) > MovingThresholdKph;
+
+            if (isMoving && !inTrip)
             {
-                tripCount++;
+                inTrip = true;
+                currentTripKm = 0;
             }
-            wasMoving = isMoving;
+            else if (!isMoving && inTrip)
+            {
+                if (currentTripKm >= MinTripDistanceKm) tripCount++;
+                inTrip = false;
+                currentTripKm = 0;
+            }
+
+            if (inTrip && i > 0)
+            {
+                var prev = positions[i - 1];
+                var segmentKm = HaversineDistance(prev.Latitude, prev.Longitude, pos.Latitude, pos.Longitude);
+                if (segmentKm >= MinSegmentKm && segmentKm <= MaxSegmentKm)
+                {
+                    currentTripKm += segmentKm;
+                }
+            }
         }
+
+        // Trajet ouvert a la fin de la fenetre : on le compte aussi
+        if (inTrip && currentTripKm >= MinTripDistanceKm) tripCount++;
 
         return tripCount;
     }
