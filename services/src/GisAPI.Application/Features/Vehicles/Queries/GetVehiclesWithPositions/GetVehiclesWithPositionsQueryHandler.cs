@@ -146,17 +146,34 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             var isOnline = lastComm.HasValue && (DateTime.UtcNow - lastComm.Value).TotalMinutes < 41;
             // Calculate battery level from latest position's PowerVoltage (same formula as Rust ingest)
             // Fallback to GpsDevice.BatteryLevel if PowerVoltage is not available
+            // ALSO compute the raw voltage in volts so the UI can show "12.6 V"
+            // alongside (or instead of) the percentage — operator preference.
             int? batteryLevel = v.GpsDevice?.BatteryLevel;
-            if (batteryLevel == null && position?.PowerVoltage != null && position.PowerVoltage > 0)
+            double? batteryVoltageV = null;
+            if (position?.PowerVoltage != null && position.PowerVoltage > 0)
             {
                 const double voltageFactor = 0.3;
                 const double batteryMinV = 11.0;
                 const double batteryMaxV = 12.8;
                 var voltage = position.PowerVoltage.Value * voltageFactor;
-                if (voltage <= batteryMinV) batteryLevel = 0;
-                else if (voltage >= batteryMaxV) batteryLevel = 100;
-                else batteryLevel = (int)Math.Round((voltage - batteryMinV) / (batteryMaxV - batteryMinV) * 100.0);
+                batteryVoltageV = Math.Round(voltage, 1);
+                if (batteryLevel == null)
+                {
+                    if (voltage <= batteryMinV) batteryLevel = 0;
+                    else if (voltage >= batteryMaxV) batteryLevel = 100;
+                    else batteryLevel = (int)Math.Round((voltage - batteryMinV) / (batteryMaxV - batteryMinV) * 100.0);
+                }
             }
+
+            // Sticky battery-health flag: any voltage-health alert raised in
+            // the last 7 days surfaces as a warning indicator on the
+            // monitoring page. We deliberately go beyond the 48h cooldown of
+            // the detector so an admin who didn't see the SignalR push still
+            // notices the warning when they open the page.
+            var batteryAlertCutoff = DateTime.UtcNow.AddDays(-7);
+            var hasBatteryHealthAlert =
+                v.GpsDevice?.LastVoltageHealthAlertAt.HasValue == true
+                && v.GpsDevice.LastVoltageHealthAlertAt.Value >= batteryAlertCutoff;
 
             // If ignition is off, speed is 0
             var ignitionOn = position?.IgnitionOn ?? false;
@@ -225,18 +242,19 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                 lastComm,
                 isOnline,
                 position != null ? new PositionDto(
-                    (int)position.Id, 
+                    (int)position.Id,
                     position.Latitude,
                     position.Longitude,
-                    ignitionOn ? Math.Round(position.SpeedKph ?? 0.0) : 0.0, 
+                    ignitionOn ? Math.Round(position.SpeedKph ?? 0.0) : 0.0,
                     position.CourseDeg ?? 0.0,
-                    ignitionOn, 
+                    ignitionOn,
                     position.RecordedAt,
                     position.FuelRaw,
                     temperature,
                     batteryLevel,
                     position.Address,
-                    position.OdometerKm
+                    position.OdometerKm,
+                    batteryVoltageV
                 ) : null,
                 new VehicleStatsDto(
                     currentSpeed,
@@ -244,6 +262,7 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                     fuelLevel,
                     temperature,
                     batteryLevel,
+                    batteryVoltageV,
                     isMoving,
                     !isMoving,
                     TimeSpan.FromMinutes(movingMinutes),
@@ -252,12 +271,13 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                     isMoving ? position?.RecordedAt : null
                 ),
                 // Firmware "L": use GPS odometer_km directly, otherwise use vehicle mileage
-                (v.GpsDevice?.FirmwareVersion != null 
+                (v.GpsDevice?.FirmwareVersion != null
                  && v.GpsDevice.FirmwareVersion.StartsWith("L", StringComparison.OrdinalIgnoreCase)
                  && position?.OdometerKm > 0
                  && position?.OdometerKm != 1048574)
                     ? (int)position!.OdometerKm.Value
-                    : v.Mileage
+                    : v.Mileage,
+                hasBatteryHealthAlert
             );
         }).ToList();
 

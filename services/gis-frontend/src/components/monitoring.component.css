@@ -2309,6 +2309,17 @@
   color: #333;
 }
 
+/* Battery warning highlight: applied when VoltageHealthMonitoringService
+   has a recent (≤7d) alert for this vehicle. Visually echoes the
+   battery-alert indicator color in the vehicle header so the operator
+   spots the issue from any vantage point. */
+.sensor-value.battery-warning {
+  color: #f44336;
+  background: rgba(244, 67, 54, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
 .sensor-value.moving {
   color: #4caf50;
   font-weight: 700;

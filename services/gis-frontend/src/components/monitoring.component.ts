@@ -986,6 +986,37 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return stats?.batteryLevel != null && stats.batteryLevel < 20;
   }
 
+  /**
+   * True when either:
+   *  - The backend's VoltageHealthMonitoringService raised an alert
+   *    in the last 7 days (sticky `hasBatteryHealthAlert` flag), OR
+   *  - The legacy "battery < 20 %" trip is currently active.
+   *
+   * Either signal lights up the warning indicator; the operator
+   * doesn't need to know which detector fired.
+   */
+  hasBatteryHealthIssue(vehicle: any): boolean {
+    return !!vehicle?.hasBatteryHealthAlert || this.isBatteryLow(vehicle);
+  }
+
+  /**
+   * Operator preference: monitoring shows the raw voltage in V (more
+   * actionable than a derived %). Falls back to "%" if voltage isn't
+   * available, then to "N/A". Voltage is rounded to 1 decimal because
+   * the NEMS L byte resolution is ≈0.3 V — anything finer would be
+   * fake precision.
+   */
+  getBatteryDisplay(vehicle: any): string {
+    const stats = this.getVehicleStats(vehicle);
+    if (stats?.batteryVoltage != null) {
+      return `${stats.batteryVoltage.toFixed(1)} V`;
+    }
+    if (stats?.batteryLevel != null) {
+      return `${stats.batteryLevel} %`;
+    }
+    return 'N/A';
+  }
+
   isTemperatureHigh(vehicle: any): boolean {
     if (!vehicle.ignitionOn) return false;
     const stats = this.getVehicleStats(vehicle);

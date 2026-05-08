@@ -64,6 +64,22 @@ public class GpsDevice : TenantEntity
     /// </summary>
     public DateTime? LastBatteryAlertAt { get; set; }
 
+    /// <summary>
+    /// Timestamp of the last battery-health notification (declining
+    /// resting voltage, anomalous charging voltage, or saturated-firmware
+    /// silence pattern). Used by <c>VoltageHealthMonitoringService</c> to
+    /// enforce a 48h cooldown per device. Null means never alerted.
+    /// </summary>
+    public DateTime? LastVoltageHealthAlertAt { get; set; }
+
+    /// <summary>
+    /// Timestamp of the last "device offline" notification fan-out.
+    /// Used by <c>OfflineDeviceMonitoringService</c> to enforce a 24h
+    /// cooldown per device — a tracker that has died (and thus stays
+    /// silent forever) must not retrigger the bell every cycle.
+    /// </summary>
+    public DateTime? LastOfflineAlertAt { get; set; }
+
     public Societe? Societe { get; set; }
     public Vehicle? Vehicle { get; set; }
 

@@ -109,6 +109,10 @@ public class VehiclesController : ControllerBase
                                 {
                                     // Preserve DB values for fields Redis doesn't store
                                     var dbPos = vehicle.LastPosition;
+                                    // BatteryVoltage: Redis already publishes the volts directly
+                                    // (computed in redis_cache.rs with the same 0.3 factor used
+                                    // server-side), so we trust the cache value first; fall back
+                                    // to whatever the DB query returned earlier.
                                     var updatedPosition = new GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions.PositionDto(
                                         dbPos?.Id ?? 0,
                                         cached.Latitude,
@@ -121,7 +125,8 @@ public class VehiclesController : ControllerBase
                                         (short?)(cached.TemperatureC ?? dbPos?.TemperatureC),
                                         cached.BatteryPercent ?? dbPos?.BatteryLevel,
                                         dbPos?.Address,
-                                        cached.OdometerKm ?? dbPos?.OdometerKm
+                                        cached.OdometerKm ?? dbPos?.OdometerKm,
+                                        cached.BatteryVoltage ?? dbPos?.BatteryVoltage
                                     );
                                     
                                     // Create updated vehicle with cached position
@@ -136,13 +141,14 @@ public class VehiclesController : ControllerBase
                                             updatedFuelLevel = cachedFuel.Value; // Already raw %, will be refined by sensor mode if needed
                                         }
 
-                                        vehicles[idx] = vehicle with { 
+                                        vehicles[idx] = vehicle with {
                                             LastPosition = updatedPosition,
                                             Stats = vehicle.Stats with {
                                                 CurrentSpeed = cached.IgnitionOn ? Math.Round(cached.SpeedKph) : 0,
                                                 FuelLevel = updatedFuelLevel,
                                                 Temperature = (short?)(cached.TemperatureC ?? vehicle.Stats.Temperature),
                                                 BatteryLevel = cached.BatteryPercent ?? vehicle.Stats.BatteryLevel,
+                                                BatteryVoltage = cached.BatteryVoltage ?? vehicle.Stats.BatteryVoltage,
                                                 IsMoving = cached.IgnitionOn && cached.SpeedKph > 5,
                                                 IsStopped = !cached.IgnitionOn || cached.SpeedKph <= 5
                                             }
