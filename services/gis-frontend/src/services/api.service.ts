@@ -55,6 +55,8 @@ export interface PositionDto {
   isRealTime?: boolean;
   temperatureC?: number;
   batteryLevel?: number;
+  /** Decoded volts (PowerVoltage byte * 0.3) — preferred on monitoring. */
+  batteryVoltage?: number;
 }
 
 export interface VehicleStatsDto {
@@ -63,6 +65,8 @@ export interface VehicleStatsDto {
   fuelLevel?: number;
   temperature?: number;
   batteryLevel?: number;
+  /** Battery in volts — populated alongside batteryLevel for the monitoring readout. */
+  batteryVoltage?: number;
   isMoving: boolean;
   isStopped: boolean;
   movingTime: string;   // TimeSpan as ISO string
@@ -85,6 +89,8 @@ export interface VehicleWithPositionDto {
   isOnline: boolean;
   lastPosition?: PositionDto;
   stats?: VehicleStatsDto;
+  /** Sticky 7-day battery-health alert flag (VoltageHealthMonitoringService). */
+  hasBatteryHealthAlert?: boolean;
 }
 
 

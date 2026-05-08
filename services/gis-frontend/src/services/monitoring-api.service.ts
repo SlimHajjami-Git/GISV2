@@ -66,6 +66,8 @@ export interface VehicleWithPosition {
   status: string;
   hasGPS: boolean;
   isOnline: boolean;
+  /** Sticky for 7 days after VoltageHealthMonitoringService raises an alert. */
+  hasBatteryHealthAlert?: boolean;
   lastPosition?: {
     latitude: number;
     longitude: number;
@@ -74,6 +76,13 @@ export interface VehicleWithPosition {
     ignitionOn: boolean;
     recordedAt: string;
     address?: string;
+    /** Decoded battery voltage in volts (preferred over batteryLevel for monitoring UX). */
+    batteryVoltage?: number;
+    batteryLevel?: number;
+  };
+  stats?: {
+    batteryLevel?: number;
+    batteryVoltage?: number;
   };
 }
 

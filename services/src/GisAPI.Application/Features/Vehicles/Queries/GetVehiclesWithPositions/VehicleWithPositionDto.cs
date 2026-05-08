@@ -21,7 +21,14 @@ public record VehicleWithPositionDto(
     bool IsOnline,
     PositionDto? LastPosition,
     VehicleStatsDto? Stats,
-    int Mileage
+    int Mileage,
+    // Battery health flag — true when VoltageHealthMonitoringService
+    // raised an alert in the last 7 days. Drives the warning indicator
+    // on the monitoring page so an admin sees at a glance which
+    // vehicles need a battery check. Stays sticky for a week so the
+    // alert doesn't disappear after the 48h cooldown silences the
+    // detector.
+    bool HasBatteryHealthAlert
 );
 
 public record PositionDto(
@@ -36,7 +43,13 @@ public record PositionDto(
     short? TemperatureC,
     int? BatteryLevel,
     string? Address,
-    long? OdometerKm
+    long? OdometerKm,
+    // Decoded battery voltage in volts (PowerVoltage byte * 0.3, the
+    // empirical NEMS L 12V-system calibration). Computed server-side
+    // and exposed alongside BatteryLevel so the frontend can show
+    // either readout — the operator likes V on monitoring but % on
+    // the device-overview screen.
+    double? BatteryVoltage
 );
 
 /// <summary>
@@ -48,6 +61,7 @@ public record VehicleStatsDto(
     int? FuelLevel,                // Niveau de carburant (%)
     short? Temperature,            // Temperature moteur (C)
     int? BatteryLevel,             // Niveau batterie (%)
+    double? BatteryVoltage,        // Tension batterie (V) — préféré côté UI
     bool IsMoving,                 // En circulation
     bool IsStopped,                // En arret
     TimeSpan MovingTime,           // Temps en circulation

@@ -54,9 +54,18 @@ export interface Vehicle {
   stats?: {
     fuelLevel?: number;
     batteryLevel?: number;
+    /** Decoded battery voltage in volts — preferred readout on monitoring. */
+    batteryVoltage?: number;
     temperature?: number;
   };
-  
+
+  /**
+   * Sticky battery-health alert flag (7-day window after the
+   * VoltageHealthMonitoringService raised an alert). Drives the
+   * warning indicator in the monitoring sidebar/markers.
+   */
+  hasBatteryHealthAlert?: boolean;
+
   // GPS Device info (embedded when hasGPS is true)
   gpsDeviceId?: string;
   gpsImei?: string;

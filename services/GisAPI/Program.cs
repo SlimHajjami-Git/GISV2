@@ -80,6 +80,23 @@ builder.Services.AddHostedService<GisAPI.Services.AccidentTowMonitoringService>(
 // via GpsDevice.LastBatteryAlertAt to avoid alert spam.
 builder.Services.AddHostedService<GisAPI.Services.BatteryMonitoringService>();
 
+// Voltage Health Monitoring Service — proactive battery-health detector
+// running every 60 min. Evaluates 4 signals (resting decline, resting critical,
+// charging anomaly, saturated-firmware silence) on industry lead-acid 12V
+// thresholds (12.4V aging, 12.0V critical, 13.0V charging floor). Catches
+// dying batteries days before brown-out, with a 48h cooldown via
+// GpsDevice.LastVoltageHealthAlertAt.
+//
+// Offline silence is intentionally NOT a separate push notification: a
+// vehicle in an underground parking, a tunnel, or a poor-coverage zone
+// can stay silent for hours without any battery problem, and a push for
+// every such case would just create panic. The frontend bell already
+// shows offline vehicles passively (OfflineVehiclesService) — that is
+// the correct surface for "no signal" status. We only push when there
+// is an actual battery health signal (declining voltage, anomalous
+// charging, or the saturated-firmware long-silence pattern).
+builder.Services.AddHostedService<GisAPI.Services.VoltageHealthMonitoringService>();
+
 // Document Expiry Monitoring Service — Calypso 6 (P8.1) "Dès la date de
 // notification, on affiche une notification dans la cloche". Every 60 min,
 // scans Vehicles for assurance / vignette / visite technique entering their

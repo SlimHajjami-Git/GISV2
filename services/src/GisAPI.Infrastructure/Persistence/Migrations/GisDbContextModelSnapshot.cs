@@ -1640,6 +1640,14 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_battery_alert_at");
 
+                    b.Property<DateTime?>("LastVoltageHealthAlertAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_voltage_health_alert_at");
+
+                    b.Property<DateTime?>("LastOfflineAlertAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_offline_alert_at");
+
                     b.Property<DateTime?>("LastCommunication")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_communication");
