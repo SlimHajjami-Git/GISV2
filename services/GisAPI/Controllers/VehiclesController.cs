@@ -124,6 +124,17 @@ public class VehiclesController : ControllerBase
                                     // (computed in redis_cache.rs with the same 0.3 factor used
                                     // server-side), so we trust the cache value first; fall back
                                     // to whatever the DB query returned earlier.
+                                    //
+                                    // Apply the same 14.4 V ceiling as the DB query path
+                                    // (alternator regulator max on a 12 V system). Anything
+                                    // higher is a firmware calibration artefact, not a real
+                                    // reading — capping here keeps the UI consistent whether
+                                    // a vehicle gets its volts from Redis or from DB.
+                                    var rawCachedV = cached.BatteryVoltage ?? dbPos?.BatteryVoltage;
+                                    double? cachedVoltage = rawCachedV.HasValue
+                                        ? Math.Min(rawCachedV.Value, 14.4)
+                                        : (double?)null;
+
                                     var updatedPosition = new GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions.PositionDto(
                                         dbPos?.Id ?? 0,
                                         cached.Latitude,
@@ -137,7 +148,7 @@ public class VehiclesController : ControllerBase
                                         cached.BatteryPercent ?? dbPos?.BatteryLevel,
                                         dbPos?.Address,
                                         cached.OdometerKm ?? dbPos?.OdometerKm,
-                                        cached.BatteryVoltage ?? dbPos?.BatteryVoltage
+                                        cachedVoltage
                                     );
                                     
                                     // Create updated vehicle with cached position
@@ -159,7 +170,7 @@ public class VehiclesController : ControllerBase
                                                 FuelLevel = updatedFuelLevel,
                                                 Temperature = (short?)(cached.TemperatureC ?? vehicle.Stats.Temperature),
                                                 BatteryLevel = cached.BatteryPercent ?? vehicle.Stats.BatteryLevel,
-                                                BatteryVoltage = cached.BatteryVoltage ?? vehicle.Stats.BatteryVoltage,
+                                                BatteryVoltage = cachedVoltage ?? vehicle.Stats.BatteryVoltage,
                                                 IsMoving = cached.IgnitionOn && cached.SpeedKph > 5,
                                                 IsStopped = !cached.IgnitionOn || cached.SpeedKph <= 5,
                                                 // Fresh frame is ignition-on → engine is currently
