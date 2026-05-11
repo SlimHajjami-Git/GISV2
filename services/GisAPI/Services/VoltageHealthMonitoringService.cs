@@ -7,46 +7,38 @@ using Microsoft.EntityFrameworkCore;
 namespace GisAPI.Services;
 
 /// <summary>
-/// Battery-health watcher for NEMS L (<c>protocol_type = 'gps_type_1'</c>)
-/// devices. Runs every hour and looks at the <i>battery only</i> — we do
-/// NOT chase the alternator. Why: an alternator-low reading only matters
-/// because it implies the battery doesn't recharge, but our firmware
-/// saturates at byte 0x2B (≈12.9 V) so we can't tell a healthy 13.8 V
-/// charging system from a weak 12.9 V one. Trying to infer the alternator
-/// state from a saturated sensor produced 49 false positives on a fleet
-/// of mostly-new vehicles — completely unusable.
+/// Battery-death watcher for NEMS L (<c>protocol_type = 'gps_type_1'</c>)
+/// devices. Single, deliberately conservative signal: notify only when
+/// the vehicle's battery is <b>actually dead</b> — not weakening, not
+/// charging slowly, not silent. Just dead.
 ///
-/// <para>The two signals we keep are <b>direct battery</b> indicators
-/// that the firmware CAN expose despite the saturation:</para>
-///
-/// <list type="number">
-///   <item><description><b>resting_voltage_low</b> — at rest (ignition
-///     off), enough recent frames report voltage at or below 12.0 V.
-///     The firmware happily reports byte ≤ 40 when the real voltage is
-///     that low, so this signal is reliable. A 12V lead-acid battery at
-///     12.0 V at rest is at ~50 % SoC and starting compromised; below
-///     that it's effectively unable to start the engine cold.</description></item>
-///   <item><description><b>saturated_silence</b> — firmware-blind safety
-///     net for the brutal-death case: byte stays pinned at 0x2B for 14
-///     consecutive days (no variation seen) AND the device has now been
-///     silent for 24 h+. A parking, tunnel, or coverage hole doesn't last
-///     a full day, so this is a strong signal the boîtier is actually
-///     dead — the pattern we'd have wanted for 236 TU 6532.</description></item>
-/// </list>
+/// <para>The rule: when ≥20 % of recent (last 7 d) ignition-off frames
+/// report voltage <b>below 11.9 V</b>, the battery has lost the
+/// ability to hold charge and cold-cranking is essentially impossible
+/// (lead-acid industry threshold — Midtronics, Optima, AAMCO). That is
+/// the only condition we push a notification for.</para>
 ///
 /// <para><b>What we deliberately do NOT do</b>:</para>
 /// <list type="bullet">
+///   <item><description>No "saturated silence" alert. A vehicle silent
+///     for 24 h+ might genuinely have a dead boîtier — or it might be in
+///     a long-term parking, in the workshop, or at the dealership
+///     waiting for sale. The frontend already has a passive
+///     "Véhicules hors ligne" bell for that; pushing FCM notifications
+///     for it created false alarms on perfectly healthy parked
+///     vehicles.</description></item>
 ///   <item><description>No "alternator suspect" / "charging voltage low"
-///     signal. The firmware saturation overlaps with the textbook
-///     alternator target (13.5 V+) so we cannot distinguish them.</description></item>
-///   <item><description>No "resting voltage decline vs baseline" signal.
-///     A 14-day baseline computed from a saturated firmware is itself
-///     12.9 V, so the delta-from-baseline check never fires meaningfully
-///     — it just adds noise for no diagnostic value.</description></item>
+///     signal. The firmware saturates at ~12.9 V so we cannot reliably
+///     measure charging behaviour from this sensor.</description></item>
+///   <item><description>No "resting voltage decline" / "battery aging"
+///     signal. With a saturated firmware the baseline is always 12.9 V,
+///     so the delta-from-baseline check never fires meaningfully.</description></item>
 /// </list>
 ///
 /// <para><b>Cooldown</b>: 48 h via <c>GpsDevice.LastVoltageHealthAlertAt</c>.
-/// <b>Fan-out</b>: <see cref="BatteryHealthAlertEvent"/> via MediatR.</para>
+/// <b>Fan-out</b>: <see cref="BatteryHealthAlertEvent"/> via MediatR.
+/// <b>Vehicle filter</b>: skips vehicles where <c>Vehicle.IsImmobilized = true</c>
+/// (operator-set "out of service" flag — see Vehicle entity).</para>
 /// </summary>
 public class VoltageHealthMonitoringService : BackgroundService
 {
@@ -54,26 +46,24 @@ public class VoltageHealthMonitoringService : BackgroundService
     // in redis_cache.rs).
     private const double RawToVoltsFactor = 0.3;
 
-    // Battery-only thresholds. 12.0 V is the lead-acid industry
-    // "compromised / cannot reliably crank" point — Midtronics, Optima,
-    // Toyota service manuals all cite it. Anything lower is severe.
-    private const int RestingLowByteThreshold = 40;        // 40 * 0.3 = 12.0 V
-    private const int MinLowFramesForAlert = 10;           // need at least 10 low readings
-    private const double LowFramesMinShare = 0.20;         // and they must be ≥20% of recent
+    // Industry "battery dead" threshold: below 11.9 V at rest a 12 V
+    // lead-acid battery cannot reliably crank the engine.
+    // 11.9 V / 0.3 = 39.67 → byte ≤ 39 means voltage ≤ 11.7 V which is
+    // strictly under 11.9 V. Byte 40 corresponds to 12.0 V which we
+    // consider weak but not yet dead.
+    private const int RestingDeadByteThreshold = 39;       // 11.7 V
+
+    // A handful of bad readings doesn't condemn a battery — we need a
+    // sustained pattern. Empirical: a healthy vehicle with one cold
+    // morning shows < 5 low readings on a 7-day window; a dead battery
+    // shows 30 %+ low.
+    private const int MinDeadFramesForAlert = 10;
+    private const double DeadFramesMinShare = 0.20;
 
     // Statistical floor — don't fire on a device that has barely streamed.
     private const int MinRestingFrames = 50;
 
-    // Saturated-silence parameters. The 24 h silence threshold is
-    // deliberately large to filter out parking / tunnel / poor-coverage
-    // scenarios; a real dying battery never reconnects, while a parking
-    // almost never lasts a full day.
-    private const int SaturationByteValue = 43;            // 0x2B (≈12.9 V)
-    private const int SaturationLookbackDays = 14;
-    private const int SaturationSilenceMinutes = 24 * 60;
-    private const double SaturationDominanceRatio = 0.95;
-
-    // Recent-window for the resting-low signal.
+    // Recent-window for the analysis.
     private const int RecentDays = 7;
 
     // Service cadence.
@@ -95,13 +85,11 @@ public class VoltageHealthMonitoringService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        // Stagger after BatteryMonitoringService so we don't both hit the
-        // DB on the same exact second at cold boot.
         try { await Task.Delay(TimeSpan.FromMinutes(StartupDelayMinutes), ct); }
         catch (TaskCanceledException) { return; }
 
         _logger.LogInformation(
-            "VoltageHealthMonitoringService started (cycle={CycleMin}min, cooldown={Cooldown}h)",
+            "VoltageHealthMonitoringService started (cycle={CycleMin}min, cooldown={Cooldown}h, threshold<11.9V)",
             CycleMinutes, CooldownHours);
 
         while (!ct.IsCancellationRequested)
@@ -159,8 +147,8 @@ public class VoltageHealthMonitoringService : BackgroundService
                 flagged++;
 
                 _logger.LogInformation(
-                    "VoltageHealth: {Signal} ({Severity}) on device {DeviceId} ({Plate}) — observed={Observed:F2}V",
-                    hit.SignalKind, hit.Severity, device.Id,
+                    "VoltageHealth: {Signal} on device {DeviceId} ({Plate}) — observed={Observed:F2}V",
+                    hit.SignalKind, device.Id,
                     VehicleLabel(device.Vehicle) ?? "?",
                     hit.VoltageObservedV ?? 0);
 
@@ -194,10 +182,9 @@ public class VoltageHealthMonitoringService : BackgroundService
     }
 
     /// <summary>
-    /// Tries the two signals in priority order. Resting-low has priority
-    /// because a battery already at ≤ 12.0 V at rest is a direct,
-    /// actionable battery fault. Saturated-silence is the firmware-blind
-    /// safety net and only matters when the device is also offline.
+    /// Single signal: ≥20 % of recent resting frames show voltage strictly
+    /// under 11.9 V. Returns null when the battery is healthy (or there's
+    /// not enough data to decide).
     /// </summary>
     private static async Task<HealthHit?> EvaluateAsync(
         GisDbContext context,
@@ -208,12 +195,8 @@ public class VoltageHealthMonitoringService : BackgroundService
         var deviceId = device.Id;
         var recentStart = now.AddDays(-RecentDays);
 
-        // ── Signal A: Resting voltage low ───────────────────────────────────
         // Count BOTH the total resting frames and the subset reporting
-        // ≤ 12.0 V (byte ≤ 40). The firmware saturates at byte 43 but it
-        // CAN drop below the ceiling when the battery genuinely is below
-        // 12.9 V — so a non-trivial fraction of byte ≤ 40 frames at rest
-        // is a direct, actionable battery signal.
+        // ≤ 11.7 V (byte ≤ 39 = strictly under the 11.9 V "dead" threshold).
         var counts = await context.GpsPositions
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -222,86 +205,45 @@ public class VoltageHealthMonitoringService : BackgroundService
                      && p.IgnitionOn == false
                      && p.PowerVoltage.HasValue
                      && p.PowerVoltage.Value > 0)
-            .GroupBy(p => p.PowerVoltage!.Value <= RestingLowByteThreshold)
-            .Select(g => new { IsLow = g.Key, Count = g.Count() })
+            .GroupBy(p => p.PowerVoltage!.Value <= RestingDeadByteThreshold)
+            .Select(g => new { IsDead = g.Key, Count = g.Count() })
             .ToListAsync(ct);
 
         var totalRest = counts.Sum(c => c.Count);
-        var lowRest = counts.FirstOrDefault(c => c.IsLow)?.Count ?? 0;
+        var deadRest = counts.FirstOrDefault(c => c.IsDead)?.Count ?? 0;
 
-        if (totalRest >= MinRestingFrames
-            && lowRest >= MinLowFramesForAlert
-            && (double)lowRest / totalRest >= LowFramesMinShare)
+        if (totalRest < MinRestingFrames
+            || deadRest < MinDeadFramesForAlert
+            || (double)deadRest / totalRest < DeadFramesMinShare)
         {
-            // We have a real "battery at rest dips below 12.0 V" pattern.
-            // Pick the median low-frame voltage for the description so the
-            // operator sees how bad it really is, not just the threshold.
-            var lowVoltagesRaw = await context.GpsPositions
-                .IgnoreQueryFilters()
-                .AsNoTracking()
-                .Where(p => p.DeviceId == deviceId
-                         && p.RecordedAt >= recentStart
-                         && p.IgnitionOn == false
-                         && p.PowerVoltage.HasValue
-                         && p.PowerVoltage.Value > 0
-                         && p.PowerVoltage.Value <= RestingLowByteThreshold)
-                .Select(p => p.PowerVoltage!.Value)
-                .ToListAsync(ct);
-
-            var medianLowV = Median(lowVoltagesRaw) * RawToVoltsFactor;
-            var sharePct = 100.0 * lowRest / totalRest;
-
-            return new HealthHit(
-                SignalKind: "resting_voltage_low",
-                Severity: "critical",
-                Description:
-                    $"Batterie au repos: {lowRest}/{totalRest} trames sous 12 V " +
-                    $"({sharePct:F0}%), médiane {medianLowV:F2} V",
-                VoltageObservedV: medianLowV,
-                VoltageBaselineV: null);
+            return null;
         }
 
-        // ── Signal B: Saturated silence ─────────────────────────────────────
-        // For devices like 236 TU 6532 where the firmware is pinned at
-        // 12.9 V and we never saw a real pre-decline signal: combine the
-        // saturation pattern over 14 days with a 24 h+ silence to detect
-        // the brutal-death case.
-        var saturationStart = now.AddDays(-SaturationLookbackDays);
-        var satCounts = await context.GpsPositions
+        // Pick the median voltage among the dead frames so the operator
+        // sees how far gone the battery is, not just the threshold.
+        var deadVoltagesRaw = await context.GpsPositions
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(p => p.DeviceId == deviceId
-                     && p.RecordedAt >= saturationStart
+                     && p.RecordedAt >= recentStart
+                     && p.IgnitionOn == false
                      && p.PowerVoltage.HasValue
-                     && p.PowerVoltage.Value > 0)
-            .GroupBy(p => p.PowerVoltage == SaturationByteValue)
-            .Select(g => new { IsSaturated = g.Key, Count = g.Count() })
+                     && p.PowerVoltage.Value > 0
+                     && p.PowerVoltage.Value <= RestingDeadByteThreshold)
+            .Select(p => p.PowerVoltage!.Value)
             .ToListAsync(ct);
 
-        var totalSat = satCounts.Sum(c => c.Count);
-        var saturatedFrames = satCounts.FirstOrDefault(c => c.IsSaturated)?.Count ?? 0;
+        var medianDeadV = Median(deadVoltagesRaw) * RawToVoltsFactor;
+        var sharePct = 100.0 * deadRest / totalRest;
 
-        if (totalSat >= MinRestingFrames
-            && saturatedFrames >= (int)(totalSat * SaturationDominanceRatio))
-        {
-            var lastComm = device.LastCommunication;
-            if (lastComm.HasValue)
-            {
-                var silenceMin = (now - lastComm.Value).TotalMinutes;
-                if (silenceMin >= SaturationSilenceMinutes)
-                {
-                    var silenceHours = silenceMin / 60.0;
-                    return new HealthHit(
-                        SignalKind: "saturated_silence",
-                        Severity: "warning",
-                        Description: $"Tension figée à 12.9 V sur 14j + silence prolongé {silenceHours:F0}h",
-                        VoltageObservedV: SaturationByteValue * RawToVoltsFactor,
-                        VoltageBaselineV: null);
-                }
-            }
-        }
-
-        return null;
+        return new HealthHit(
+            SignalKind: "battery_dead",
+            Severity: "critical",
+            Description:
+                $"Batterie morte: {deadRest}/{totalRest} trames sous 11.9 V " +
+                $"({sharePct:F0}%), médiane {medianDeadV:F2} V",
+            VoltageObservedV: medianDeadV,
+            VoltageBaselineV: null);
     }
 
     private static string? VehicleLabel(Vehicle? vehicle)
@@ -327,9 +269,6 @@ public class VoltageHealthMonitoringService : BackgroundService
             : sorted[mid];
     }
 
-    /// <summary>
-    /// Internal carrier between the evaluator and the publishing loop.
-    /// </summary>
     private sealed record HealthHit(
         string SignalKind,
         string Severity,

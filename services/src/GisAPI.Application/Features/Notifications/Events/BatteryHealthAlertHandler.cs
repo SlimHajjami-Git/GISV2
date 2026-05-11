@@ -123,18 +123,11 @@ public class BatteryHealthAlertHandler : INotificationHandler<BatteryHealthAlert
 
         return e.SignalKind switch
         {
-            "resting_voltage_low" =>
-                ($"Batterie faible — {vehicleLabel}",
-                 $"La batterie du {vehicleLabel} chute régulièrement sous 12.0 V au repos " +
+            "battery_dead" =>
+                ($"Batterie morte — {vehicleLabel}",
+                 $"La batterie du {vehicleLabel} chute régulièrement sous 11.9 V au repos " +
                  $"(médiane {observed}). À ce niveau, la batterie ne tient plus la charge et le " +
-                 "démarrage à froid devient incertain — remplacement à prévoir rapidement."),
-
-            "saturated_silence" =>
-                ($"Panne batterie probable — {vehicleLabel}",
-                 $"Le boîtier du {vehicleLabel} ne communique plus depuis plus de 24 h, après une " +
-                 "période où la tension était figée à la valeur maximale du capteur. Pattern typique " +
-                 "d'une batterie morte brutalement (un parking ou un tunnel ne dure pas aussi " +
-                 "longtemps) — contrôle terrain conseillé."),
+                 "démarrage à froid est compromis — remplacement à prévoir rapidement."),
 
             _ =>
                 ($"Anomalie batterie — {vehicleLabel}",

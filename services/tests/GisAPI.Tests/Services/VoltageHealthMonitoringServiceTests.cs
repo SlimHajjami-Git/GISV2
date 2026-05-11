@@ -7,27 +7,24 @@ using Xunit;
 namespace GisAPI.Tests.Services;
 
 /// <summary>
-/// Pinning tests for the two-signal design that drives
+/// Pinning tests for the single-signal design of
 /// <c>GisAPI.Services.VoltageHealthMonitoringService</c>:
 ///
 /// <list type="bullet">
 ///   <item><description><b>Candidate filter</b> — NEMS L (gps_type_1)
-///     devices with a vehicle, past the 48 h cooldown.</description></item>
-///   <item><description><b>resting_voltage_low</b> — at rest (ignition
-///     off), at least 10 frames AND ≥20 % of recent frames report
-///     voltage ≤ 12.0 V (byte ≤ 40). Direct battery signal that the
-///     firmware CAN expose despite its 12.9 V saturation ceiling.</description></item>
-///   <item><description><b>saturated_silence</b> — ≥95 % of frames at
-///     byte 43 over 14d AND last_communication > 24h. Brutal-death
-///     pattern that gets through the firmware blind-spot.</description></item>
+///     devices with a vehicle, NOT immobilised, past the 48 h cooldown.</description></item>
+///   <item><description><b>battery_dead</b> — at rest (ignition off),
+///     at least 10 frames AND ≥20 % of recent frames report voltage
+///     strictly under 11.9 V (byte ≤ 39). The only signal we push.</description></item>
 /// </list>
 ///
-/// <para>The two signals we DON'T have any more (intentional):
-/// <c>charging_voltage_low</c> (it was the alternator, not the battery,
-/// and the firmware saturation overlap made it 49 false positives), and
-/// <c>resting_voltage_decline</c> (the baseline is always 12.9 V on a
-/// saturated firmware so the delta check never fires meaningfully).
-/// </para>
+/// <para>The signals we intentionally REMOVED (operator feedback after
+/// two false-positive saturated_silence notifications on long-parked
+/// rental vehicles):
+/// <c>saturated_silence</c> (offline alerts were unactionable noise),
+/// <c>charging_voltage_low</c> (alternator, not battery, and unmeasurable
+/// past firmware saturation), and <c>resting_voltage_decline</c>
+/// (baseline always saturated, delta check never meaningful).</para>
 /// </summary>
 public class VoltageHealthMonitoringServiceTests
 {
@@ -36,12 +33,10 @@ public class VoltageHealthMonitoringServiceTests
 
     // Mirror of the service's constants.
     private const double RawToVoltsFactor = 0.3;
-    private const int RestingLowByteThreshold = 40;        // 12.0 V
-    private const int MinLowFramesForAlert = 10;
-    private const double LowFramesMinShare = 0.20;
+    private const int RestingDeadByteThreshold = 39;       // 11.7 V (strictly under 11.9 V)
+    private const int MinDeadFramesForAlert = 10;
+    private const double DeadFramesMinShare = 0.20;
     private const int MinRestingFrames = 50;
-    private const int SaturationByteValue = 43;
-    private const double SaturationDominanceRatio = 0.95;
     private const int CooldownHours = 48;
 
     private static GpsDevice SeedDevice(
@@ -50,7 +45,7 @@ public class VoltageHealthMonitoringServiceTests
         string protocolType,
         int? vehicleId,
         DateTime? lastHealthAlertAt = null,
-        DateTime? lastCommunication = null)
+        bool isImmobilized = false)
     {
         var device = new GpsDevice
         {
@@ -59,8 +54,7 @@ public class VoltageHealthMonitoringServiceTests
             DeviceUid = $"DEV-{id}",
             Status = "active",
             ProtocolType = protocolType,
-            LastVoltageHealthAlertAt = lastHealthAlertAt,
-            LastCommunication = lastCommunication
+            LastVoltageHealthAlertAt = lastHealthAlertAt
         };
         context.GpsDevices.Add(device);
 
@@ -74,7 +68,8 @@ public class VoltageHealthMonitoringServiceTests
                 Plate = $"TN-{vehicleId}",
                 GpsDeviceId = id,
                 Type = "camion",
-                Status = "available"
+                Status = "available",
+                IsImmobilized = isImmobilized
             });
         }
 
@@ -120,7 +115,7 @@ public class VoltageHealthMonitoringServiceTests
     // ── Candidate filter ────────────────────────────────────────────────────
 
     [Fact]
-    public async Task CandidateFilter_OnlyPicksNemsLWithVehiclePastCooldown()
+    public async Task CandidateFilter_OnlyPicksNemsLWithVehicleNotImmobilisedPastCooldown()
     {
         using var context = TestDbContextFactory.Create();
         var now = DateTime.UtcNow;
@@ -133,6 +128,8 @@ public class VoltageHealthMonitoringServiceTests
             lastHealthAlertAt: now.AddHours(-2)); // inside cooldown, skip
         SeedDevice(context, id: 505, protocolType: "noron", vehicleId: 703); // wrong protocol, skip
         SeedDevice(context, id: 506, protocolType: "gps_type_1", vehicleId: null); // no vehicle, skip
+        SeedDevice(context, id: 507, protocolType: "gps_type_1", vehicleId: 705,
+            isImmobilized: true); // operator muted, skip
 
         await context.SaveChangesAsync();
 
@@ -140,6 +137,7 @@ public class VoltageHealthMonitoringServiceTests
             .Include(d => d.Vehicle)
             .Where(d => d.ProtocolType == "gps_type_1"
                      && d.Vehicle != null
+                     && !d.Vehicle.IsImmobilized
                      && (d.LastVoltageHealthAlertAt == null
                          || d.LastVoltageHealthAlertAt < cooldownCutoff))
             .Select(d => d.Id)
@@ -149,17 +147,17 @@ public class VoltageHealthMonitoringServiceTests
         picked.Should().BeEquivalentTo(new[] { NemsLDeviceId, 503 });
     }
 
-    // ── Signal A: resting_voltage_low ────────────────────────────────────────
+    // ── battery_dead signal ─────────────────────────────────────────────────
 
     [Fact]
-    public async Task RestingLow_Fires_WhenAtLeast20PercentOfFramesAreBelow12V()
+    public async Task BatteryDead_Fires_WhenAtLeast20PercentOfFramesAreBelow11_9V()
     {
         using var context = TestDbContextFactory.Create();
         SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
 
         var now = DateTime.UtcNow;
-        // 60 healthy frames at byte 43 (saturation) + 20 critical frames
-        // at byte 38 (11.4 V). 20/80 = 25 % low → above the 20 % bar.
+        // 60 healthy frames at byte 43 (saturation = 12.9 V) + 20 dead
+        // frames at byte 38 (11.4 V, clearly under 11.9 V). 20/80 = 25 %.
         SeedRange(context, NemsLDeviceId, now.AddDays(-7), now.AddDays(-1),
             count: 60, powerVoltage: 43, ignitionOn: false);
         SeedRange(context, NemsLDeviceId, now.AddDays(-1), now,
@@ -167,18 +165,17 @@ public class VoltageHealthMonitoringServiceTests
 
         await context.SaveChangesAsync();
 
-        var (low, total) = await CountAsync(context, NemsLDeviceId, now);
+        var (dead, total) = await CountAsync(context, NemsLDeviceId, now);
         total.Should().BeGreaterThanOrEqualTo(MinRestingFrames);
-        low.Should().BeGreaterThanOrEqualTo(MinLowFramesForAlert);
-        ((double)low / total).Should().BeGreaterThanOrEqualTo(LowFramesMinShare);
+        dead.Should().BeGreaterThanOrEqualTo(MinDeadFramesForAlert);
+        ((double)dead / total).Should().BeGreaterThanOrEqualTo(DeadFramesMinShare);
     }
 
     [Fact]
-    public async Task RestingLow_DoesNotFire_OnHealthyFleetSaturatedAt12_9V()
+    public async Task BatteryDead_DoesNotFire_OnHealthyFleetSaturatedAt12_9V()
     {
-        // The default case for a new fleet: every frame at byte 43.
-        // Critically the signal must NOT trigger here — it was the 49
-        // false positives on the live data that motivated this refactor.
+        // Default state of a healthy fleet: every frame at byte 43.
+        // This must NOT trigger — the whole point of the refactor.
         using var context = TestDbContextFactory.Create();
         SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
 
@@ -188,18 +185,33 @@ public class VoltageHealthMonitoringServiceTests
 
         await context.SaveChangesAsync();
 
-        var (low, total) = await CountAsync(context, NemsLDeviceId, now);
+        var (dead, total) = await CountAsync(context, NemsLDeviceId, now);
         total.Should().BeGreaterThanOrEqualTo(MinRestingFrames);
-        low.Should().Be(0);
+        dead.Should().Be(0);
     }
 
     [Fact]
-    public async Task RestingLow_DoesNotFire_WhenFewerThan10LowFrames()
+    public async Task BatteryDead_DoesNotFire_When12_0VFramesAreFrequent()
     {
-        // 5 low readings out of 100 = 5 % low — under the absolute floor.
-        // Even though the share threshold could conceivably be met on a
-        // tiny sample, the floor of 10 frames prevents single-event
-        // noise from triggering a critical battery alert.
+        // 12.0 V (byte 40) is weak but NOT yet "dead" per the operator
+        // spec: we only alert below 11.9 V. Lots of byte=40 readings must
+        // not trigger the alert.
+        using var context = TestDbContextFactory.Create();
+        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
+
+        var now = DateTime.UtcNow;
+        SeedRange(context, NemsLDeviceId, now.AddDays(-7), now,
+            count: 100, powerVoltage: 40, ignitionOn: false);
+
+        await context.SaveChangesAsync();
+
+        var (dead, total) = await CountAsync(context, NemsLDeviceId, now);
+        dead.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task BatteryDead_DoesNotFire_WhenFewerThan10DeadFrames()
+    {
         using var context = TestDbContextFactory.Create();
         SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
 
@@ -211,17 +223,13 @@ public class VoltageHealthMonitoringServiceTests
 
         await context.SaveChangesAsync();
 
-        var (low, total) = await CountAsync(context, NemsLDeviceId, now);
-        low.Should().BeLessThan(MinLowFramesForAlert);
+        var (dead, total) = await CountAsync(context, NemsLDeviceId, now);
+        dead.Should().BeLessThan(MinDeadFramesForAlert);
     }
 
     [Fact]
-    public async Task RestingLow_DoesNotFire_WhenShareBelow20Percent()
+    public async Task BatteryDead_DoesNotFire_WhenShareBelow20Percent()
     {
-        // 12 low readings out of 200 = 6 % low — above the absolute floor
-        // (10) but below the share threshold (20 %). The share guard
-        // protects against high-volume devices accumulating enough lows
-        // to look problematic by sheer frame count.
         using var context = TestDbContextFactory.Create();
         SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
 
@@ -233,17 +241,14 @@ public class VoltageHealthMonitoringServiceTests
 
         await context.SaveChangesAsync();
 
-        var (low, total) = await CountAsync(context, NemsLDeviceId, now);
-        low.Should().BeGreaterThanOrEqualTo(MinLowFramesForAlert);
-        ((double)low / total).Should().BeLessThan(LowFramesMinShare);
+        var (dead, total) = await CountAsync(context, NemsLDeviceId, now);
+        dead.Should().BeGreaterThanOrEqualTo(MinDeadFramesForAlert);
+        ((double)dead / total).Should().BeLessThan(DeadFramesMinShare);
     }
 
     [Fact]
-    public async Task RestingLow_OnlyCountsIgnitionOffFrames()
+    public async Task BatteryDead_OnlyCountsIgnitionOffFrames()
     {
-        // Cranking dips count in driving frames, which can briefly look
-        // critical. We deliberately filter to ignition_on = false so the
-        // signal reflects battery state at rest, not transient draws.
         using var context = TestDbContextFactory.Create();
         SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
 
@@ -254,19 +259,19 @@ public class VoltageHealthMonitoringServiceTests
 
         await context.SaveChangesAsync();
 
-        var (low, total) = await CountAsync(context, NemsLDeviceId, now);
+        var (dead, total) = await CountAsync(context, NemsLDeviceId, now);
         total.Should().Be(0);
-        low.Should().Be(0);
+        dead.Should().Be(0);
     }
 
     [Theory]
-    [InlineData(40, true)]    // 40 * 0.3 = 12.0 V exactly → counts as low
-    [InlineData(39, true)]    // 11.7 V → counts as low
-    [InlineData(38, true)]    // 11.4 V → counts as low
-    [InlineData(41, false)]   // 12.3 V → does NOT count as low
-    [InlineData(42, false)]   // 12.6 V → does NOT count as low
-    [InlineData(43, false)]   // 12.9 V (saturation) → not low
-    public async Task RestingLow_ThresholdIsByte40Inclusive(int byteValue, bool shouldCount)
+    [InlineData(39, true)]    // 11.7 V → counts as dead
+    [InlineData(38, true)]    // 11.4 V → counts as dead
+    [InlineData(30, true)]    //  9.0 V → counts as dead
+    [InlineData(40, false)]   // 12.0 V → does NOT count (weak but not dead)
+    [InlineData(41, false)]   // 12.3 V → does NOT count
+    [InlineData(43, false)]   // 12.9 V (saturation) → does NOT count
+    public async Task BatteryDead_ThresholdIsByte39Inclusive(int byteValue, bool shouldCount)
     {
         using var context = TestDbContextFactory.Create();
         SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
@@ -277,123 +282,9 @@ public class VoltageHealthMonitoringServiceTests
 
         await context.SaveChangesAsync();
 
-        var (low, total) = await CountAsync(context, NemsLDeviceId, now);
-        if (shouldCount) low.Should().Be(total);
-        else             low.Should().Be(0);
-    }
-
-    // ── Signal B: saturated_silence (unchanged from previous refactor) ───────
-
-    [Fact]
-    public async Task SaturatedSilence_Fires_WhenAllFramesSaturatedAndSilent24h()
-    {
-        using var context = TestDbContextFactory.Create();
-        var now = DateTime.UtcNow;
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700,
-            lastCommunication: now.AddHours(-25));
-
-        SeedRange(context, NemsLDeviceId, now.AddDays(-14), now,
-            count: 200, powerVoltage: SaturationByteValue, ignitionOn: false);
-
-        await context.SaveChangesAsync();
-
-        var counts = await context.GpsPositions
-            .Where(p => p.DeviceId == NemsLDeviceId
-                     && p.RecordedAt >= now.AddDays(-14)
-                     && p.PowerVoltage.HasValue
-                     && p.PowerVoltage.Value > 0)
-            .GroupBy(p => p.PowerVoltage == SaturationByteValue)
-            .Select(g => new { IsSaturated = g.Key, Count = g.Count() })
-            .ToListAsync();
-
-        var total = counts.Sum(c => c.Count);
-        var saturated = counts.FirstOrDefault(c => c.IsSaturated)?.Count ?? 0;
-
-        total.Should().BeGreaterThanOrEqualTo(MinRestingFrames);
-        saturated.Should().Be(total);
-    }
-
-    [Theory]
-    [InlineData(2)]   // 2h underground parking
-    [InlineData(8)]   // overnight in covered garage
-    [InlineData(20)]  // long working day in a low-coverage industrial zone
-    [InlineData(23)]  // edge case just below the 24h threshold
-    public async Task SaturatedSilence_DoesNotFire_ForParkingUnder24Hours(int silenceHours)
-    {
-        using var context = TestDbContextFactory.Create();
-        var now = DateTime.UtcNow;
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700,
-            lastCommunication: now.AddHours(-silenceHours));
-
-        SeedRange(context, NemsLDeviceId, now.AddDays(-14), now,
-            count: 200, powerVoltage: SaturationByteValue, ignitionOn: false);
-
-        await context.SaveChangesAsync();
-
-        var device = await context.GpsDevices.FirstAsync(d => d.Id == NemsLDeviceId);
-        var silenceMin = (now - device.LastCommunication!.Value).TotalMinutes;
-        silenceMin.Should().BeLessThan(24 * 60,
-            "parking-class silence must not cross the saturated_silence threshold");
-    }
-
-    [Fact]
-    public async Task SaturatedSilence_StillFires_WhenLessThanFivePercentAreOutliers()
-    {
-        using var context = TestDbContextFactory.Create();
-        var now = DateTime.UtcNow;
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700,
-            lastCommunication: now.AddHours(-30));
-
-        SeedRange(context, NemsLDeviceId, now.AddDays(-14), now,
-            count: 195, powerVoltage: SaturationByteValue, ignitionOn: false);
-        for (int i = 0; i < 5; i++)
-            SeedPosition(context, NemsLDeviceId, now.AddDays(-2).AddMinutes(i),
-                powerVoltage: 41, ignitionOn: false);
-
-        await context.SaveChangesAsync();
-
-        var counts = await context.GpsPositions
-            .Where(p => p.DeviceId == NemsLDeviceId
-                     && p.RecordedAt >= now.AddDays(-14)
-                     && p.PowerVoltage.HasValue
-                     && p.PowerVoltage.Value > 0)
-            .GroupBy(p => p.PowerVoltage == SaturationByteValue)
-            .Select(g => new { IsSaturated = g.Key, Count = g.Count() })
-            .ToListAsync();
-
-        var total = counts.Sum(c => c.Count);
-        var saturated = counts.FirstOrDefault(c => c.IsSaturated)?.Count ?? 0;
-        saturated.Should().BeGreaterThanOrEqualTo((int)(total * SaturationDominanceRatio));
-    }
-
-    [Fact]
-    public async Task SaturatedSilence_DoesNotFire_WhenMoreThanFivePercentAreOutliers()
-    {
-        using var context = TestDbContextFactory.Create();
-        var now = DateTime.UtcNow;
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700,
-            lastCommunication: now.AddHours(-30));
-
-        SeedRange(context, NemsLDeviceId, now.AddDays(-14), now,
-            count: 180, powerVoltage: SaturationByteValue, ignitionOn: false);
-        for (int i = 0; i < 20; i++)
-            SeedPosition(context, NemsLDeviceId, now.AddDays(-2).AddMinutes(i),
-                powerVoltage: 41, ignitionOn: false);
-
-        await context.SaveChangesAsync();
-
-        var counts = await context.GpsPositions
-            .Where(p => p.DeviceId == NemsLDeviceId
-                     && p.RecordedAt >= now.AddDays(-14)
-                     && p.PowerVoltage.HasValue
-                     && p.PowerVoltage.Value > 0)
-            .GroupBy(p => p.PowerVoltage == SaturationByteValue)
-            .Select(g => new { IsSaturated = g.Key, Count = g.Count() })
-            .ToListAsync();
-
-        var total = counts.Sum(c => c.Count);
-        var saturated = counts.FirstOrDefault(c => c.IsSaturated)?.Count ?? 0;
-        saturated.Should().BeLessThan((int)(total * SaturationDominanceRatio));
+        var (dead, total) = await CountAsync(context, NemsLDeviceId, now);
+        if (shouldCount) dead.Should().Be(total);
+        else             dead.Should().Be(0);
     }
 
     // ── Stamping & re-arm ───────────────────────────────────────────────────
@@ -414,6 +305,7 @@ public class VoltageHealthMonitoringServiceTests
         var afterStamp = await context.GpsDevices
             .Where(d => d.ProtocolType == "gps_type_1"
                      && d.Vehicle != null
+                     && !d.Vehicle.IsImmobilized
                      && (d.LastVoltageHealthAlertAt == null
                          || d.LastVoltageHealthAlertAt < cooldownCutoff))
             .Select(d => d.Id)
@@ -422,9 +314,9 @@ public class VoltageHealthMonitoringServiceTests
         afterStamp.Should().NotContain(NemsLDeviceId);
     }
 
-    // ── Helper: replays the resting low/total LINQ ──────────────────────────
+    // ── Helper: replays the dead/total LINQ ─────────────────────────────────
 
-    private static async Task<(int low, int total)> CountAsync(
+    private static async Task<(int dead, int total)> CountAsync(
         TestGisDbContext context, int deviceId, DateTime now)
     {
         var recentStart = now.AddDays(-7);
@@ -434,12 +326,12 @@ public class VoltageHealthMonitoringServiceTests
                      && p.IgnitionOn == false
                      && p.PowerVoltage.HasValue
                      && p.PowerVoltage.Value > 0)
-            .GroupBy(p => p.PowerVoltage!.Value <= RestingLowByteThreshold)
-            .Select(g => new { IsLow = g.Key, Count = g.Count() })
+            .GroupBy(p => p.PowerVoltage!.Value <= RestingDeadByteThreshold)
+            .Select(g => new { IsDead = g.Key, Count = g.Count() })
             .ToListAsync();
 
         var total = groups.Sum(g => g.Count);
-        var low = groups.FirstOrDefault(g => g.IsLow)?.Count ?? 0;
-        return (low, total);
+        var dead = groups.FirstOrDefault(g => g.IsDead)?.Count ?? 0;
+        return (dead, total);
     }
 }
