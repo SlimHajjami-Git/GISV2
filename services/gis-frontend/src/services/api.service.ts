@@ -73,6 +73,8 @@ export interface VehicleStatsDto {
   stoppedTime: string;  // TimeSpan as ISO string
   lastStopTime?: string;
   lastMoveTime?: string;
+  /** Timestamp of the last frame with ignition_on=true. After this point the engine has been off. */
+  engineOffSince?: string;
 }
 
 export interface VehicleWithPositionDto {
@@ -91,6 +93,14 @@ export interface VehicleWithPositionDto {
   stats?: VehicleStatsDto;
   /** Sticky 7-day battery-health alert flag (VoltageHealthMonitoringService). */
   hasBatteryHealthAlert?: boolean;
+  /**
+   * Operator-toggled immobilisation. When true, every automatic alert
+   * service skips this vehicle. Surfaced on the monitoring page as a
+   * clear badge so the operator knows alerts are muted.
+   */
+  isImmobilized?: boolean;
+  immobilizationReason?: string;
+  immobilizationStartedAt?: string;
 }
 
 
@@ -338,6 +348,29 @@ export class ApiService {
 
   syncVehicleMileage(vehicleId: number): Observable<any> {
     return this.http.post<any>(`${this.API_URL}/vehicles/${vehicleId}/sync-mileage`, {}, { headers: this.getHeaders() });
+  }
+
+  /**
+   * Activate the "immobilisation" flag on a vehicle. While the flag is
+   * active, every automatic alert service (accident, speed, battery,
+   * geofence) is skipped server-side for this vehicle. Use when the
+   * vehicle is at the mechanic, in long-term parking, or has had its
+   * boîtier removed.
+   */
+  immobilizeVehicle(vehicleId: number, reason: string | null): Observable<any> {
+    return this.http.post<any>(
+      `${this.API_URL}/vehicles/${vehicleId}/immobilize`,
+      { reason },
+      { headers: this.getHeaders() }
+    );
+  }
+
+  /** Clear the immobilisation flag — re-enables every alert service for the vehicle. */
+  clearVehicleImmobilization(vehicleId: number): Observable<any> {
+    return this.http.delete<any>(
+      `${this.API_URL}/vehicles/${vehicleId}/immobilize`,
+      { headers: this.getHeaders() }
+    );
   }
 
   // ==================== ALERT EMAILS ====================

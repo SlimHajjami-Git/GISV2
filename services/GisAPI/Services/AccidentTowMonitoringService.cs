@@ -83,18 +83,26 @@ public class AccidentTowMonitoringService : BackgroundService
 
         var cutoff = DateTime.UtcNow.AddDays(-TowWatchDays);
 
-        // Candidate events: admin said "yes it's a real accident", not yet
-        // marked towed, still inside the 14-day watch window. We need the
-        // tracked entity back to stamp tow_detected_at, so no AsNoTracking().
-        // Calypso 6 (P9): "awaiting_details" is the post-confirm state where
-        // the admin has not yet filled the damages form — tow monitoring must
-        // kick in immediately, not wait for the form to be completed.
+        // Candidate events: admin said "yes it's a real accident" (status
+        // "confirmed" or, per Calypso 6 P9, "awaiting_details" — the
+        // post-confirm state where the admin has not yet filled the
+        // damages form: tow monitoring kicks in immediately). Not yet
+        // marked towed, still inside the 14-day watch window. We also
+        // exclude events whose vehicle has been manually immobilised —
+        // when a damaged vehicle is sitting in the mechanic's yard the
+        // boîtier emits spurious motion frames (someone moves the car
+        // in the parking, the engine is bench-tested, …) that would
+        // falsely trigger "tow detected".
+        //
+        // We need the tracked entity back to stamp tow_detected_at, so
+        // no AsNoTracking().
         var events = await context.AccidentEvents
             .IgnoreQueryFilters()
             .Where(e => (e.Status == "confirmed" || e.Status == "awaiting_details")
                      && e.TowDetectedAt == null
                      && e.IncidentAt >= cutoff
-                     && e.GpsDeviceId != null)
+                     && e.GpsDeviceId != null
+                     && !context.Vehicles.Any(v => v.Id == e.VehicleId && v.IsImmobilized))
             .ToListAsync(ct);
 
         if (events.Count == 0) return;

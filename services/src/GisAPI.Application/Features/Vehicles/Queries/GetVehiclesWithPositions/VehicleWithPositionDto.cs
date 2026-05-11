@@ -28,7 +28,15 @@ public record VehicleWithPositionDto(
     // vehicles need a battery check. Stays sticky for a week so the
     // alert doesn't disappear after the 48h cooldown silences the
     // detector.
-    bool HasBatteryHealthAlert
+    bool HasBatteryHealthAlert,
+    // Operator-toggled immobilisation. While true, every automatic
+    // alert service skips this vehicle (mechanic intervention, long-
+    // term parking, boîtier removed for maintenance, …). Surfaced on
+    // monitoring so the operator can see at a glance which vehicles
+    // are deliberately muted from the alert pipeline.
+    bool IsImmobilized,
+    string? ImmobilizationReason,
+    DateTime? ImmobilizationStartedAt
 );
 
 public record PositionDto(
@@ -67,5 +75,10 @@ public record VehicleStatsDto(
     TimeSpan MovingTime,           // Temps en circulation
     TimeSpan StoppedTime,          // Temps en arret
     DateTime? LastStopTime,        // Dernier arret
-    DateTime? LastMoveTime         // Dernier mouvement
+    DateTime? LastMoveTime,        // Dernier mouvement
+    // Timestamp of the most recent frame where ignition_on was true.
+    // Everything after that point the engine has been off — drives the
+    // "moteur coupé depuis X min" copy on the monitoring detail panel.
+    // Null when the vehicle has no recorded ignition-on frame.
+    DateTime? EngineOffSince
 );

@@ -7,25 +7,27 @@ using Xunit;
 namespace GisAPI.Tests.Services;
 
 /// <summary>
-/// Pinning tests for the four detection signals that drive
+/// Pinning tests for the two-signal design that drives
 /// <c>GisAPI.Services.VoltageHealthMonitoringService</c>:
 ///
 /// <list type="bullet">
 ///   <item><description><b>Candidate filter</b> — NEMS L (gps_type_1)
 ///     devices with a vehicle, past the 48 h cooldown.</description></item>
-///   <item><description><b>Signal 1 — resting decline</b>: J-3 average vs
-///     J-30/J-7 baseline drop ≥ 0.6 V AND recent ≤ 12.4 V.</description></item>
-///   <item><description><b>Signal 2 — resting critical</b>: J-3 average ≤
-///     12.0 V (overrides signal 1).</description></item>
-///   <item><description><b>Signal 3 — charging anomaly</b>: ignition on +
-///     speed > 5 readings averaging under 13.0 V.</description></item>
-///   <item><description><b>Signal 4 — saturated silence</b>: 100 % of frames
-///     at byte 43 over 14 d AND last_communication > 90 min.</description></item>
+///   <item><description><b>resting_voltage_low</b> — at rest (ignition
+///     off), at least 10 frames AND ≥20 % of recent frames report
+///     voltage ≤ 12.0 V (byte ≤ 40). Direct battery signal that the
+///     firmware CAN expose despite its 12.9 V saturation ceiling.</description></item>
+///   <item><description><b>saturated_silence</b> — ≥95 % of frames at
+///     byte 43 over 14d AND last_communication > 24h. Brutal-death
+///     pattern that gets through the firmware blind-spot.</description></item>
 /// </list>
 ///
-/// <para>We replay the same LINQ the service uses against an in-memory
-/// SQLite context. The MediatR fan-out is exercised by the
-/// <c>BatteryHealthAlertHandler</c> tests (admin filter, copy templates).</para>
+/// <para>The two signals we DON'T have any more (intentional):
+/// <c>charging_voltage_low</c> (it was the alternator, not the battery,
+/// and the firmware saturation overlap made it 49 false positives), and
+/// <c>resting_voltage_decline</c> (the baseline is always 12.9 V on a
+/// saturated firmware so the delta check never fires meaningfully).
+/// </para>
 /// </summary>
 public class VoltageHealthMonitoringServiceTests
 {
@@ -34,13 +36,10 @@ public class VoltageHealthMonitoringServiceTests
 
     // Mirror of the service's constants.
     private const double RawToVoltsFactor = 0.3;
-    private const double RestingAgingV = 12.4;
-    private const double RestingCriticalV = 12.0;
-    private const double ChargingMinHealthyV = 13.0;
-    private const double DeclineDeltaV = 0.6;
-    private const int MinBaselineFrames = 100;
-    private const int MinRecentFrames = 50;
-    private const int MinChargingFrames = 30;
+    private const int RestingLowByteThreshold = 40;        // 12.0 V
+    private const int MinLowFramesForAlert = 10;
+    private const double LowFramesMinShare = 0.20;
+    private const int MinRestingFrames = 50;
     private const int SaturationByteValue = 43;
     private const double SaturationDominanceRatio = 0.95;
     private const int CooldownHours = 48;
@@ -87,8 +86,7 @@ public class VoltageHealthMonitoringServiceTests
         int deviceId,
         DateTime recordedAt,
         int? powerVoltage,
-        bool? ignitionOn,
-        double speedKph = 0)
+        bool? ignitionOn)
     {
         context.GpsPositions.Add(new GpsPosition
         {
@@ -98,17 +96,10 @@ public class VoltageHealthMonitoringServiceTests
             Longitude = 10.18,
             PowerVoltage = powerVoltage,
             IgnitionOn = ignitionOn,
-            SpeedKph = speedKph,
             IsValid = true
         });
     }
 
-    /// <summary>
-    /// Spreads N readings of identical voltage across the time window
-    /// [windowStart, windowEnd]. Used to seed enough samples to pass the
-    /// MinBaselineFrames / MinRecentFrames floors without writing 100
-    /// individual SeedPosition calls per test.
-    /// </summary>
     private static void SeedRange(
         TestGisDbContext context,
         int deviceId,
@@ -116,14 +107,13 @@ public class VoltageHealthMonitoringServiceTests
         DateTime windowEnd,
         int count,
         int powerVoltage,
-        bool ignitionOn,
-        double speedKph = 0)
+        bool ignitionOn)
     {
         var span = (windowEnd - windowStart).TotalSeconds;
         for (int i = 0; i < count; i++)
         {
             var ts = windowStart.AddSeconds(span * i / count);
-            SeedPosition(context, deviceId, ts, powerVoltage, ignitionOn, speedKph);
+            SeedPosition(context, deviceId, ts, powerVoltage, ignitionOn);
         }
     }
 
@@ -159,178 +149,149 @@ public class VoltageHealthMonitoringServiceTests
         picked.Should().BeEquivalentTo(new[] { NemsLDeviceId, 503 });
     }
 
-    // ── Signal 1: Resting voltage decline ───────────────────────────────────
+    // ── Signal A: resting_voltage_low ────────────────────────────────────────
 
     [Fact]
-    public async Task Signal1_RestingDecline_FiresWhenJ3DropsAtLeastPoint6VBelowBaselineAndIsAtMost12_4V()
+    public async Task RestingLow_Fires_WhenAtLeast20PercentOfFramesAreBelow12V()
     {
         using var context = TestDbContextFactory.Create();
         SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
 
         var now = DateTime.UtcNow;
-        // Baseline window J-30 to J-7 — voltage was 13.0 V (byte 43.3).
-        SeedRange(context, NemsLDeviceId, now.AddDays(-30), now.AddDays(-7),
-            count: 200, powerVoltage: 43, ignitionOn: false);
-        // Recent window J-3 to NOW — voltage at 12.3 V (byte 41), Δ = 0.6 V, ≤ 12.4 V.
-        SeedRange(context, NemsLDeviceId, now.AddDays(-3), now,
-            count: 80, powerVoltage: 41, ignitionOn: false);
+        // 60 healthy frames at byte 43 (saturation) + 20 critical frames
+        // at byte 38 (11.4 V). 20/80 = 25 % low → above the 20 % bar.
+        SeedRange(context, NemsLDeviceId, now.AddDays(-7), now.AddDays(-1),
+            count: 60, powerVoltage: 43, ignitionOn: false);
+        SeedRange(context, NemsLDeviceId, now.AddDays(-1), now,
+            count: 20, powerVoltage: 38, ignitionOn: false);
 
         await context.SaveChangesAsync();
 
-        var (avgBaseline, avgRecent) = await EvaluateRestingAsync(context, NemsLDeviceId, now);
-
-        avgRecent.Should().BeLessThanOrEqualTo(RestingAgingV);
-        (avgBaseline - avgRecent).Should().BeGreaterThanOrEqualTo(DeclineDeltaV);
+        var (low, total) = await CountAsync(context, NemsLDeviceId, now);
+        total.Should().BeGreaterThanOrEqualTo(MinRestingFrames);
+        low.Should().BeGreaterThanOrEqualTo(MinLowFramesForAlert);
+        ((double)low / total).Should().BeGreaterThanOrEqualTo(LowFramesMinShare);
     }
 
     [Fact]
-    public async Task Signal1_RestingDecline_DoesNotFireWhenDropIsBelowDeltaThreshold()
+    public async Task RestingLow_DoesNotFire_OnHealthyFleetSaturatedAt12_9V()
+    {
+        // The default case for a new fleet: every frame at byte 43.
+        // Critically the signal must NOT trigger here — it was the 49
+        // false positives on the live data that motivated this refactor.
+        using var context = TestDbContextFactory.Create();
+        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
+
+        var now = DateTime.UtcNow;
+        SeedRange(context, NemsLDeviceId, now.AddDays(-7), now,
+            count: 100, powerVoltage: 43, ignitionOn: false);
+
+        await context.SaveChangesAsync();
+
+        var (low, total) = await CountAsync(context, NemsLDeviceId, now);
+        total.Should().BeGreaterThanOrEqualTo(MinRestingFrames);
+        low.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task RestingLow_DoesNotFire_WhenFewerThan10LowFrames()
+    {
+        // 5 low readings out of 100 = 5 % low — under the absolute floor.
+        // Even though the share threshold could conceivably be met on a
+        // tiny sample, the floor of 10 frames prevents single-event
+        // noise from triggering a critical battery alert.
+        using var context = TestDbContextFactory.Create();
+        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
+
+        var now = DateTime.UtcNow;
+        SeedRange(context, NemsLDeviceId, now.AddDays(-7), now.AddDays(-1),
+            count: 95, powerVoltage: 43, ignitionOn: false);
+        SeedRange(context, NemsLDeviceId, now.AddDays(-1), now,
+            count: 5, powerVoltage: 38, ignitionOn: false);
+
+        await context.SaveChangesAsync();
+
+        var (low, total) = await CountAsync(context, NemsLDeviceId, now);
+        low.Should().BeLessThan(MinLowFramesForAlert);
+    }
+
+    [Fact]
+    public async Task RestingLow_DoesNotFire_WhenShareBelow20Percent()
+    {
+        // 12 low readings out of 200 = 6 % low — above the absolute floor
+        // (10) but below the share threshold (20 %). The share guard
+        // protects against high-volume devices accumulating enough lows
+        // to look problematic by sheer frame count.
+        using var context = TestDbContextFactory.Create();
+        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
+
+        var now = DateTime.UtcNow;
+        SeedRange(context, NemsLDeviceId, now.AddDays(-7), now.AddDays(-1),
+            count: 188, powerVoltage: 43, ignitionOn: false);
+        SeedRange(context, NemsLDeviceId, now.AddDays(-1), now,
+            count: 12, powerVoltage: 38, ignitionOn: false);
+
+        await context.SaveChangesAsync();
+
+        var (low, total) = await CountAsync(context, NemsLDeviceId, now);
+        low.Should().BeGreaterThanOrEqualTo(MinLowFramesForAlert);
+        ((double)low / total).Should().BeLessThan(LowFramesMinShare);
+    }
+
+    [Fact]
+    public async Task RestingLow_OnlyCountsIgnitionOffFrames()
+    {
+        // Cranking dips count in driving frames, which can briefly look
+        // critical. We deliberately filter to ignition_on = false so the
+        // signal reflects battery state at rest, not transient draws.
+        using var context = TestDbContextFactory.Create();
+        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
+
+        var now = DateTime.UtcNow;
+        // Plenty of low readings, but ALL with ignition on → ignored.
+        SeedRange(context, NemsLDeviceId, now.AddDays(-7), now,
+            count: 100, powerVoltage: 35, ignitionOn: true);
+
+        await context.SaveChangesAsync();
+
+        var (low, total) = await CountAsync(context, NemsLDeviceId, now);
+        total.Should().Be(0);
+        low.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(40, true)]    // 40 * 0.3 = 12.0 V exactly → counts as low
+    [InlineData(39, true)]    // 11.7 V → counts as low
+    [InlineData(38, true)]    // 11.4 V → counts as low
+    [InlineData(41, false)]   // 12.3 V → does NOT count as low
+    [InlineData(42, false)]   // 12.6 V → does NOT count as low
+    [InlineData(43, false)]   // 12.9 V (saturation) → not low
+    public async Task RestingLow_ThresholdIsByte40Inclusive(int byteValue, bool shouldCount)
     {
         using var context = TestDbContextFactory.Create();
         SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
 
         var now = DateTime.UtcNow;
-        // 0.3 V drop: baseline 12.9 V → recent 12.6 V — under the 0.6 V threshold.
-        SeedRange(context, NemsLDeviceId, now.AddDays(-30), now.AddDays(-7),
-            count: 200, powerVoltage: 43, ignitionOn: false);
-        SeedRange(context, NemsLDeviceId, now.AddDays(-3), now,
-            count: 80, powerVoltage: 42, ignitionOn: false);
+        SeedRange(context, NemsLDeviceId, now.AddDays(-7), now,
+            count: 50, powerVoltage: byteValue, ignitionOn: false);
 
         await context.SaveChangesAsync();
 
-        var (avgBaseline, avgRecent) = await EvaluateRestingAsync(context, NemsLDeviceId, now);
-
-        (avgBaseline - avgRecent).Should().BeLessThan(DeclineDeltaV);
+        var (low, total) = await CountAsync(context, NemsLDeviceId, now);
+        if (shouldCount) low.Should().Be(total);
+        else             low.Should().Be(0);
     }
 
-    [Fact]
-    public async Task Signal1_RestingDecline_DoesNotFireWhenRecentSamplesBelowMinimum()
-    {
-        using var context = TestDbContextFactory.Create();
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
-
-        var now = DateTime.UtcNow;
-        SeedRange(context, NemsLDeviceId, now.AddDays(-30), now.AddDays(-7),
-            count: 200, powerVoltage: 43, ignitionOn: false);
-        // Only 10 recent samples — below MinRecentFrames floor.
-        SeedRange(context, NemsLDeviceId, now.AddDays(-3), now,
-            count: 10, powerVoltage: 38, ignitionOn: false);
-
-        await context.SaveChangesAsync();
-
-        var recent = await context.GpsPositions
-            .Where(p => p.DeviceId == NemsLDeviceId
-                     && p.RecordedAt >= now.AddDays(-3)
-                     && p.IgnitionOn == false
-                     && p.PowerVoltage.HasValue
-                     && p.PowerVoltage.Value > 0)
-            .CountAsync();
-
-        recent.Should().BeLessThan(MinRecentFrames);
-    }
-
-    // ── Signal 2: Resting voltage critical ──────────────────────────────────
+    // ── Signal B: saturated_silence (unchanged from previous refactor) ───────
 
     [Fact]
-    public async Task Signal2_RestingCritical_FiresWhenAverageBelow12_0VRegardlessOfBaseline()
-    {
-        using var context = TestDbContextFactory.Create();
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
-
-        var now = DateTime.UtcNow;
-        // Recent at byte 38 → 11.4 V (under 12.0 V critical).
-        // No baseline samples — signal 2 must still trigger.
-        SeedRange(context, NemsLDeviceId, now.AddDays(-3), now,
-            count: 80, powerVoltage: 38, ignitionOn: false);
-
-        await context.SaveChangesAsync();
-
-        var avgRecent = await context.GpsPositions
-            .Where(p => p.DeviceId == NemsLDeviceId
-                     && p.RecordedAt >= now.AddDays(-3)
-                     && p.IgnitionOn == false
-                     && p.PowerVoltage.HasValue
-                     && p.PowerVoltage.Value > 0)
-            .Select(p => p.PowerVoltage!.Value)
-            .ToListAsync();
-
-        var avgRecentV = avgRecent.Average() * RawToVoltsFactor;
-        avgRecent.Count.Should().BeGreaterThanOrEqualTo(MinRecentFrames);
-        avgRecentV.Should().BeLessThanOrEqualTo(RestingCriticalV);
-    }
-
-    // ── Signal 3: Charging voltage anomaly ──────────────────────────────────
-
-    [Fact]
-    public async Task Signal3_ChargingAnomaly_FiresWhenIgnitionOnSpeedAboveThresholdAveragesUnder13V()
-    {
-        using var context = TestDbContextFactory.Create();
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
-
-        var now = DateTime.UtcNow;
-        // 60 frames driving with byte 42 → 12.6 V (alternator should give 13.5+).
-        SeedRange(context, NemsLDeviceId, now.AddDays(-3), now,
-            count: 60, powerVoltage: 42, ignitionOn: true, speedKph: 50);
-
-        await context.SaveChangesAsync();
-
-        var avgChargingV = (await context.GpsPositions
-            .Where(p => p.DeviceId == NemsLDeviceId
-                     && p.RecordedAt >= now.AddDays(-3)
-                     && p.IgnitionOn == true
-                     && p.SpeedKph > 5
-                     && p.PowerVoltage.HasValue
-                     && p.PowerVoltage.Value > 0)
-            .Select(p => p.PowerVoltage!.Value)
-            .ToListAsync())
-            .Average() * RawToVoltsFactor;
-
-        avgChargingV.Should().BeLessThan(ChargingMinHealthyV);
-    }
-
-    [Fact]
-    public async Task Signal3_ChargingAnomaly_DoesNotFireWhenAlternatorGivesHealthyVoltage()
-    {
-        using var context = TestDbContextFactory.Create();
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
-
-        var now = DateTime.UtcNow;
-        // Byte 47 → 14.1 V — typical full-load alternator.
-        SeedRange(context, NemsLDeviceId, now.AddDays(-3), now,
-            count: 60, powerVoltage: 47, ignitionOn: true, speedKph: 50);
-
-        await context.SaveChangesAsync();
-
-        var charging = await context.GpsPositions
-            .Where(p => p.DeviceId == NemsLDeviceId
-                     && p.RecordedAt >= now.AddDays(-3)
-                     && p.IgnitionOn == true
-                     && p.SpeedKph > 5
-                     && p.PowerVoltage.HasValue
-                     && p.PowerVoltage.Value > 0)
-            .Select(p => p.PowerVoltage!.Value)
-            .ToListAsync();
-
-        var avgChargingV = charging.Average() * RawToVoltsFactor;
-        charging.Count.Should().BeGreaterThanOrEqualTo(MinChargingFrames);
-        avgChargingV.Should().BeGreaterThanOrEqualTo(ChargingMinHealthyV);
-    }
-
-    // ── Signal 4: Saturated silence (firmware safety net) ───────────────────
-
-    [Fact]
-    public async Task Signal4_SaturatedSilence_FiresWhenAllFramesAt0x2BAndDeviceSilentForAtLeast24Hours()
+    public async Task SaturatedSilence_Fires_WhenAllFramesSaturatedAndSilent24h()
     {
         using var context = TestDbContextFactory.Create();
         var now = DateTime.UtcNow;
-        // Last comm 25 hours ago → past the 24h silence threshold. The
-        // long requirement is deliberate: a parking, tunnel, or
-        // poor-coverage zone almost never lasts a full day, so silence
-        // beyond 24h is a strong signal the boîtier is actually dead.
         SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700,
             lastCommunication: now.AddHours(-25));
 
-        // 200 frames over the 14d window, ALL at saturation byte.
         SeedRange(context, NemsLDeviceId, now.AddDays(-14), now,
             count: 200, powerVoltage: SaturationByteValue, ignitionOn: false);
 
@@ -348,199 +309,17 @@ public class VoltageHealthMonitoringServiceTests
         var total = counts.Sum(c => c.Count);
         var saturated = counts.FirstOrDefault(c => c.IsSaturated)?.Count ?? 0;
 
-        total.Should().BeGreaterThanOrEqualTo(MinBaselineFrames);
+        total.Should().BeGreaterThanOrEqualTo(MinRestingFrames);
         saturated.Should().Be(total);
-    }
-
-    [Fact]
-    public async Task Signal4_SaturatedSilence_StillFiresWhenLessThanFivePercentAreOutliers()
-    {
-        // Noise tolerance: a few outlier frames (cranking dips, GSM
-        // hiccups) shouldn't disqualify a 14-day stream that is otherwise
-        // pinned at the firmware ceiling. With ≥95 % saturated the signal
-        // remains valid.
-        using var context = TestDbContextFactory.Create();
-        var now = DateTime.UtcNow;
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700,
-            lastCommunication: now.AddHours(-30));
-
-        SeedRange(context, NemsLDeviceId, now.AddDays(-14), now,
-            count: 195, powerVoltage: SaturationByteValue, ignitionOn: false);
-        // 5 outlier frames out of 200 = 2.5 % — still under the 5 % bar.
-        for (int i = 0; i < 5; i++)
-            SeedPosition(context, NemsLDeviceId, now.AddDays(-2).AddMinutes(i), powerVoltage: 41, ignitionOn: false);
-
-        await context.SaveChangesAsync();
-
-        var counts = await context.GpsPositions
-            .Where(p => p.DeviceId == NemsLDeviceId
-                     && p.RecordedAt >= now.AddDays(-14)
-                     && p.PowerVoltage.HasValue
-                     && p.PowerVoltage.Value > 0)
-            .GroupBy(p => p.PowerVoltage == SaturationByteValue)
-            .Select(g => new { IsSaturated = g.Key, Count = g.Count() })
-            .ToListAsync();
-
-        var total = counts.Sum(c => c.Count);
-        var saturated = counts.FirstOrDefault(c => c.IsSaturated)?.Count ?? 0;
-
-        saturated.Should().BeGreaterThanOrEqualTo((int)(total * SaturationDominanceRatio));
-    }
-
-    [Fact]
-    public async Task Signal4_SaturatedSilence_DoesNotFireWhenMoreThanFivePercentAreOutliers()
-    {
-        // Beyond 5 % outliers the firmware was clearly NOT saturated —
-        // the proactive resting/charging signals should have done the
-        // job and we don't want to over-fire on healthy varying devices.
-        using var context = TestDbContextFactory.Create();
-        var now = DateTime.UtcNow;
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700,
-            lastCommunication: now.AddHours(-30));
-
-        SeedRange(context, NemsLDeviceId, now.AddDays(-14), now,
-            count: 180, powerVoltage: SaturationByteValue, ignitionOn: false);
-        // 20 outliers out of 200 = 10 % — exceeds the 5 % bar.
-        for (int i = 0; i < 20; i++)
-            SeedPosition(context, NemsLDeviceId, now.AddDays(-2).AddMinutes(i), powerVoltage: 41, ignitionOn: false);
-
-        await context.SaveChangesAsync();
-
-        var counts = await context.GpsPositions
-            .Where(p => p.DeviceId == NemsLDeviceId
-                     && p.RecordedAt >= now.AddDays(-14)
-                     && p.PowerVoltage.HasValue
-                     && p.PowerVoltage.Value > 0)
-            .GroupBy(p => p.PowerVoltage == SaturationByteValue)
-            .Select(g => new { IsSaturated = g.Key, Count = g.Count() })
-            .ToListAsync();
-
-        var total = counts.Sum(c => c.Count);
-        var saturated = counts.FirstOrDefault(c => c.IsSaturated)?.Count ?? 0;
-
-        saturated.Should().BeLessThan((int)(total * SaturationDominanceRatio));
-    }
-
-    // ── Noise robustness: trimmed mean ──────────────────────────────────────
-
-    [Fact]
-    public void TrimmedMean_DropsTopAndBottomTenPercentBeforeAveraging()
-    {
-        // Stream of 50 normal readings (byte 43) + 5 wildly noisy spikes
-        // (byte 5, sensor glitch). A plain average would drag the mean
-        // down to ≈39.6; the trimmed mean drops the 5 lowest and 5 highest
-        // tails (10 % each, with N=55 → 5 each) and lands back near 43.
-        var values = Enumerable.Repeat(43, 50)
-            .Concat(Enumerable.Repeat(5, 5)) // outliers
-            .ToList();
-
-        var trimmed = TrimmedMean(values);
-        var plain = values.Average();
-
-        trimmed.Should().Be(43);
-        plain.Should().BeLessThan(40);
-    }
-
-    [Fact]
-    public void TrimmedMean_FallsBackToPlainAverageOnSmallSamples()
-    {
-        // Under 10 readings, a 10 % trim becomes a single-element drop
-        // per tail — too aggressive on a tiny window, would erase the
-        // signal. Fall back to plain average instead.
-        var values = new List<int> { 10, 12, 14, 16, 18 };
-        TrimmedMean(values).Should().Be(values.Average());
-    }
-
-    [Fact]
-    public void TrimmedMean_HandlesEmptyInput()
-    {
-        TrimmedMean(new List<int>()).Should().Be(0);
-    }
-
-    // Mirror of VoltageHealthMonitoringService.TrimmedMean — kept here
-    // because the service's helper is private. If the production logic
-    // changes shape we want to see the test re-pinned, not silently drift.
-    private static double TrimmedMean(IReadOnlyList<int> values)
-    {
-        if (values.Count == 0) return 0;
-        if (values.Count < 10) return values.Average();
-        var sorted = values.OrderBy(v => v).ToArray();
-        int trim = (int)(sorted.Length * 0.10);
-        if (trim <= 0) return sorted.Average();
-        var middle = sorted.AsSpan(trim, sorted.Length - 2 * trim);
-        long sum = 0;
-        foreach (var v in middle) sum += v;
-        return (double)sum / middle.Length;
-    }
-
-    [Fact]
-    public async Task Signal2_RestingCritical_IsRobustToHandfulOfNoisySpikes()
-    {
-        // 60 frames at byte 38 (11.4V critical) + 5 outlier spikes at
-        // byte 250 (well outside any real measurement range — sensor
-        // glitches). Plain average is dragged up to ≈ 16.3 V → ABOVE the
-        // 12.0V critical threshold, missing the alert. Trimmed mean drops
-        // the 5 spikes (10 % of 65 → 6 from each tail), leaving 53 normal
-        // readings → correctly averages to 11.4 V → fires the critical signal.
-        using var context = TestDbContextFactory.Create();
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
-
-        var now = DateTime.UtcNow;
-        SeedRange(context, NemsLDeviceId, now.AddDays(-3), now.AddMinutes(-30),
-            count: 60, powerVoltage: 38, ignitionOn: false);
-        // 5 spikes — the kind of bursts a flaky ADC produces in clusters.
-        for (int i = 0; i < 5; i++)
-            SeedPosition(context, NemsLDeviceId, now.AddMinutes(-25 + i), powerVoltage: 250, ignitionOn: false);
-
-        await context.SaveChangesAsync();
-
-        var recent = await context.GpsPositions
-            .Where(p => p.DeviceId == NemsLDeviceId
-                     && p.RecordedAt >= now.AddDays(-3)
-                     && p.IgnitionOn == false
-                     && p.PowerVoltage.HasValue
-                     && p.PowerVoltage.Value > 0)
-            .Select(p => p.PowerVoltage!.Value)
-            .ToListAsync();
-
-        var trimmedV = TrimmedMean(recent) * RawToVoltsFactor;
-        var plainV = recent.Average() * RawToVoltsFactor;
-
-        trimmedV.Should().BeLessThanOrEqualTo(RestingCriticalV, "trimmed mean must catch the critical pattern");
-        plainV.Should().BeGreaterThan(RestingCriticalV, "plain average would miss it because of the spikes");
-    }
-
-    [Fact]
-    public async Task Signal4_SaturatedSilence_DoesNotFireWhenDeviceStillCommunicating()
-    {
-        using var context = TestDbContextFactory.Create();
-        var now = DateTime.UtcNow;
-        // Last comm 5 min ago — well within active communication.
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700,
-            lastCommunication: now.AddMinutes(-5));
-
-        SeedRange(context, NemsLDeviceId, now.AddDays(-14), now,
-            count: 200, powerVoltage: SaturationByteValue, ignitionOn: false);
-
-        await context.SaveChangesAsync();
-
-        var device = await context.GpsDevices.FirstAsync(d => d.Id == NemsLDeviceId);
-        var silenceMin = (now - device.LastCommunication!.Value).TotalMinutes;
-        silenceMin.Should().BeLessThan(24 * 60);
     }
 
     [Theory]
     [InlineData(2)]   // 2h underground parking
-    [InlineData(8)]   // overnight parking in covered garage
+    [InlineData(8)]   // overnight in covered garage
     [InlineData(20)]  // long working day in a low-coverage industrial zone
     [InlineData(23)]  // edge case just below the 24h threshold
-    public async Task Signal4_SaturatedSilence_DoesNotFireForParkingScenariosUnder24Hours(int silenceHours)
+    public async Task SaturatedSilence_DoesNotFire_ForParkingUnder24Hours(int silenceHours)
     {
-        // Acceptance criterion from the operator: a vehicle in an
-        // underground parking, a tunnel, or a poor-coverage zone must NOT
-        // trigger a "battery panne probable" notification. The 24h
-        // requirement is the floor where we can be confident the silence
-        // is no longer a routine parking situation.
         using var context = TestDbContextFactory.Create();
         var now = DateTime.UtcNow;
         SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700,
@@ -557,31 +336,64 @@ public class VoltageHealthMonitoringServiceTests
             "parking-class silence must not cross the saturated_silence threshold");
     }
 
-    // ── Healthy baseline ────────────────────────────────────────────────────
-
     [Fact]
-    public async Task HealthyBattery_StaysSilent()
+    public async Task SaturatedSilence_StillFires_WhenLessThanFivePercentAreOutliers()
     {
-        // Stable 12.9 V at rest, 14.1 V driving — none of the four signals trip.
         using var context = TestDbContextFactory.Create();
         var now = DateTime.UtcNow;
         SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700,
-            lastCommunication: now.AddMinutes(-2));
+            lastCommunication: now.AddHours(-30));
 
-        SeedRange(context, NemsLDeviceId, now.AddDays(-30), now.AddDays(-7),
-            count: 200, powerVoltage: 43, ignitionOn: false);
-        SeedRange(context, NemsLDeviceId, now.AddDays(-3), now,
-            count: 80, powerVoltage: 43, ignitionOn: false);
-        SeedRange(context, NemsLDeviceId, now.AddDays(-3), now,
-            count: 60, powerVoltage: 47, ignitionOn: true, speedKph: 60);
+        SeedRange(context, NemsLDeviceId, now.AddDays(-14), now,
+            count: 195, powerVoltage: SaturationByteValue, ignitionOn: false);
+        for (int i = 0; i < 5; i++)
+            SeedPosition(context, NemsLDeviceId, now.AddDays(-2).AddMinutes(i),
+                powerVoltage: 41, ignitionOn: false);
 
         await context.SaveChangesAsync();
 
-        var (avgBaseline, avgRecent) = await EvaluateRestingAsync(context, NemsLDeviceId, now);
+        var counts = await context.GpsPositions
+            .Where(p => p.DeviceId == NemsLDeviceId
+                     && p.RecordedAt >= now.AddDays(-14)
+                     && p.PowerVoltage.HasValue
+                     && p.PowerVoltage.Value > 0)
+            .GroupBy(p => p.PowerVoltage == SaturationByteValue)
+            .Select(g => new { IsSaturated = g.Key, Count = g.Count() })
+            .ToListAsync();
 
-        avgRecent.Should().BeGreaterThan(RestingAgingV);
-        avgRecent.Should().BeGreaterThan(RestingCriticalV);
-        (avgBaseline - avgRecent).Should().BeLessThan(DeclineDeltaV);
+        var total = counts.Sum(c => c.Count);
+        var saturated = counts.FirstOrDefault(c => c.IsSaturated)?.Count ?? 0;
+        saturated.Should().BeGreaterThanOrEqualTo((int)(total * SaturationDominanceRatio));
+    }
+
+    [Fact]
+    public async Task SaturatedSilence_DoesNotFire_WhenMoreThanFivePercentAreOutliers()
+    {
+        using var context = TestDbContextFactory.Create();
+        var now = DateTime.UtcNow;
+        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700,
+            lastCommunication: now.AddHours(-30));
+
+        SeedRange(context, NemsLDeviceId, now.AddDays(-14), now,
+            count: 180, powerVoltage: SaturationByteValue, ignitionOn: false);
+        for (int i = 0; i < 20; i++)
+            SeedPosition(context, NemsLDeviceId, now.AddDays(-2).AddMinutes(i),
+                powerVoltage: 41, ignitionOn: false);
+
+        await context.SaveChangesAsync();
+
+        var counts = await context.GpsPositions
+            .Where(p => p.DeviceId == NemsLDeviceId
+                     && p.RecordedAt >= now.AddDays(-14)
+                     && p.PowerVoltage.HasValue
+                     && p.PowerVoltage.Value > 0)
+            .GroupBy(p => p.PowerVoltage == SaturationByteValue)
+            .Select(g => new { IsSaturated = g.Key, Count = g.Count() })
+            .ToListAsync();
+
+        var total = counts.Sum(c => c.Count);
+        var saturated = counts.FirstOrDefault(c => c.IsSaturated)?.Count ?? 0;
+        saturated.Should().BeLessThan((int)(total * SaturationDominanceRatio));
     }
 
     // ── Stamping & re-arm ───────────────────────────────────────────────────
@@ -610,32 +422,24 @@ public class VoltageHealthMonitoringServiceTests
         afterStamp.Should().NotContain(NemsLDeviceId);
     }
 
-    // ── Helper: replays the resting-voltage average computation ─────────────
+    // ── Helper: replays the resting low/total LINQ ──────────────────────────
 
-    private static async Task<(double avgBaselineV, double avgRecentV)> EvaluateRestingAsync(
+    private static async Task<(int low, int total)> CountAsync(
         TestGisDbContext context, int deviceId, DateTime now)
     {
-        var baseline = await context.GpsPositions
+        var recentStart = now.AddDays(-7);
+        var groups = await context.GpsPositions
             .Where(p => p.DeviceId == deviceId
-                     && p.RecordedAt >= now.AddDays(-30)
-                     && p.RecordedAt < now.AddDays(-7)
+                     && p.RecordedAt >= recentStart
                      && p.IgnitionOn == false
                      && p.PowerVoltage.HasValue
                      && p.PowerVoltage.Value > 0)
-            .Select(p => p.PowerVoltage!.Value)
+            .GroupBy(p => p.PowerVoltage!.Value <= RestingLowByteThreshold)
+            .Select(g => new { IsLow = g.Key, Count = g.Count() })
             .ToListAsync();
 
-        var recent = await context.GpsPositions
-            .Where(p => p.DeviceId == deviceId
-                     && p.RecordedAt >= now.AddDays(-3)
-                     && p.IgnitionOn == false
-                     && p.PowerVoltage.HasValue
-                     && p.PowerVoltage.Value > 0)
-            .Select(p => p.PowerVoltage!.Value)
-            .ToListAsync();
-
-        var avgBaselineV = baseline.Count > 0 ? baseline.Average() * RawToVoltsFactor : 0;
-        var avgRecentV = recent.Count > 0 ? recent.Average() * RawToVoltsFactor : 0;
-        return (avgBaselineV, avgRecentV);
+        var total = groups.Sum(g => g.Count);
+        var low = groups.FirstOrDefault(g => g.IsLow)?.Count ?? 0;
+        return (low, total);
     }
 }

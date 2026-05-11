@@ -123,22 +123,11 @@ public class BatteryHealthAlertHandler : INotificationHandler<BatteryHealthAlert
 
         return e.SignalKind switch
         {
-            "resting_voltage_decline" =>
-                ($"Batterie en vieillissement — {vehicleLabel}",
-                 $"La tension au repos du {vehicleLabel} a chuté à {observed} (référence {baseline}). " +
-                 "C'est un signe de batterie qui commence à fatiguer — pensez à programmer un contrôle " +
-                 "avant qu'elle ne lâche complètement."),
-
-            "resting_voltage_critical" =>
-                ($"Batterie critique — {vehicleLabel}",
-                 $"La tension au repos du {vehicleLabel} est descendue à {observed}, sous le seuil de " +
-                 "démarrage fiable (12.0 V). Risque imminent de panne — remplacement à prévoir rapidement."),
-
-            "charging_voltage_low" =>
-                ($"Alternateur suspect — {vehicleLabel}",
-                 $"En roulant, la tension du {vehicleLabel} reste à {observed} alors qu'elle devrait " +
-                 "dépasser 13.5 V quand l'alternateur charge. Vérifier alternateur, régulateur ou courroie — " +
-                 "la batterie ne se recharge plus correctement."),
+            "resting_voltage_low" =>
+                ($"Batterie faible — {vehicleLabel}",
+                 $"La batterie du {vehicleLabel} chute régulièrement sous 12.0 V au repos " +
+                 $"(médiane {observed}). À ce niveau, la batterie ne tient plus la charge et le " +
+                 "démarrage à froid devient incertain — remplacement à prévoir rapidement."),
 
             "saturated_silence" =>
                 ($"Panne batterie probable — {vehicleLabel}",

@@ -1017,6 +1017,90 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return 'N/A';
   }
 
+  /**
+   * Returns the user-facing "Moteur coupé depuis X" copy, or null when
+   * there is nothing actionable to show (engine currently running, or
+   * we never recorded an ignition-on frame in the lookback window).
+   * The handler only sets `engineOffSince` when ignition is currently
+   * off, so the value's presence already means "engine off now".
+   */
+  getEngineOffDisplay(vehicle: any): string | null {
+    const stats = this.getVehicleStats(vehicle);
+    if (!stats?.engineOffSince) return null;
+    return this.formatRelative(stats.engineOffSince);
+  }
+
+  /**
+   * Human-readable "Xh Ym" / "X j Yh" relative time from now. Kept
+   * Local — never returns timezone-sensitive copy because the handler
+   * always sends UTC ISO strings.
+   */
+  formatRelative(iso: string | Date): string {
+    const ts = typeof iso === 'string' ? new Date(iso) : iso;
+    const diffMs = Date.now() - ts.getTime();
+    if (diffMs < 0) return 'à l\'instant';
+    const diffMin = Math.floor(diffMs / 60_000);
+    if (diffMin < 1) return 'à l\'instant';
+    if (diffMin < 60) return `${diffMin} min`;
+    const diffH = Math.floor(diffMin / 60);
+    const remMin = diffMin % 60;
+    if (diffH < 24) return remMin > 0 ? `${diffH}h ${remMin}min` : `${diffH}h`;
+    const diffD = Math.floor(diffH / 24);
+    const remH = diffH % 24;
+    return remH > 0 ? `${diffD}j ${remH}h` : `${diffD}j`;
+  }
+
+  /**
+   * Asks the operator for an immobilisation reason (free text), then
+   * POSTs to /api/vehicles/{id}/immobilize. We use prompt() to keep
+   * the flow inline — the reason is optional but strongly recommended
+   * for the audit trail (the second admin should know why alerts are
+   * muted without asking around).
+   */
+  openImmobilizationDialog(vehicle: any): void {
+    const reason = window.prompt(
+      `Immobiliser ${vehicle.plate || vehicle.name} et couper les alertes auto ?\n\n` +
+      'Indiquez une raison (atelier, parking longue durée, boîtier déposé, …).\n' +
+      'Laissez vide si la raison n\'a pas besoin d\'être tracée.',
+      ''
+    );
+    if (reason === null) return; // user cancelled
+
+    this.apiService.immobilizeVehicle(vehicle.id, reason.trim() || null).subscribe({
+      next: (result) => {
+        vehicle.isImmobilized = true;
+        vehicle.immobilizationReason = result?.reason ?? null;
+        vehicle.immobilizationStartedAt = result?.startedAt ?? new Date().toISOString();
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Failed to immobilize vehicle:', err);
+        window.alert('Impossible d\'immobiliser le véhicule — vérifiez la connexion.');
+      }
+    });
+  }
+
+  /**
+   * Re-enables automatic alert services for a previously immobilised
+   * vehicle. We don't ask for confirmation — operators flip this back
+   * the moment the vehicle leaves the garage, and an extra click would
+   * just slow them down.
+   */
+  clearImmobilization(vehicle: any): void {
+    this.apiService.clearVehicleImmobilization(vehicle.id).subscribe({
+      next: () => {
+        vehicle.isImmobilized = false;
+        vehicle.immobilizationReason = null;
+        vehicle.immobilizationStartedAt = null;
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Failed to clear immobilization:', err);
+        window.alert('Impossible de réactiver les alertes — vérifiez la connexion.');
+      }
+    });
+  }
+
   isTemperatureHigh(vehicle: any): boolean {
     if (!vehicle.ignitionOn) return false;
     const stats = this.getVehicleStats(vehicle);

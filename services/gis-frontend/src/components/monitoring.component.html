@@ -198,11 +198,39 @@
                           {{ getStatusTag(vehicle) }}
                         </span>
                       </div>
+                      <!-- "Engine off since": shown only when the engine is
+                           currently off and we have a previous ignition-on
+                           timestamp to report. Hidden when the vehicle is
+                           moving (no "off since" to compute). -->
+                      <div class="sensor-item" *ngIf="getEngineOffDisplay(vehicle) as offCopy">
+                        <span class="sensor-label">⏸ Moteur coupé depuis</span>
+                        <span class="sensor-value">{{ offCopy }}</span>
+                      </div>
                     </div>
+
+                    <!-- Immobilisation banner: clear, persistent indicator
+                         that auto-alerts are muted for this vehicle. -->
+                    <div class="immobilization-banner" *ngIf="vehicle.isImmobilized">
+                      <strong>🔒 Véhicule immobilisé</strong>
+                      <div class="immobilization-reason" *ngIf="vehicle.immobilizationReason">
+                        {{ vehicle.immobilizationReason }}
+                      </div>
+                      <div class="immobilization-since" *ngIf="vehicle.immobilizationStartedAt">
+                        Depuis {{ formatRelative(vehicle.immobilizationStartedAt) }}
+                      </div>
+                      <button class="immobilization-clear" (click)="clearImmobilization(vehicle); $event.stopPropagation()">
+                        Réactiver les alertes
+                      </button>
+                    </div>
+                    <button class="immobilization-toggle"
+                            *ngIf="!vehicle.isImmobilized"
+                            (click)="openImmobilizationDialog(vehicle); $event.stopPropagation()">
+                      🔒 Immobiliser (couper les alertes)
+                    </button>
                   </div>
                 </div>
 
-                
+
               </div>
             </div>
           </div>

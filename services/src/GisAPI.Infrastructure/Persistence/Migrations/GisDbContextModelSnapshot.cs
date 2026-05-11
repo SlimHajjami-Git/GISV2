@@ -4515,6 +4515,25 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("has_gps");
 
+                    b.Property<bool>("IsImmobilized")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_immobilized");
+
+                    b.Property<string>("ImmobilizationReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("immobilization_reason");
+
+                    b.Property<DateTime?>("ImmobilizationStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("immobilization_started_at");
+
+                    b.Property<int?>("ImmobilizationStartedByUserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("immobilization_started_by_user_id");
+
                     b.Property<DateTime?>("InsuranceExpiry")
                         .HasColumnType("timestamp with time zone");
 
@@ -4596,6 +4615,9 @@ namespace GisAPI.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Plate")
                         .HasDatabaseName("idx_vehicles_plate_number");
+
+                    b.HasIndex("IsImmobilized")
+                        .HasDatabaseName("idx_vehicles_is_immobilized");
 
                     b.ToTable("vehicles", (string)null);
                 });

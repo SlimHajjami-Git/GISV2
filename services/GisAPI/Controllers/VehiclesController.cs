@@ -9,6 +9,7 @@ using GisAPI.Application.Features.Vehicles.Commands.PatchVehicle;
 using GisAPI.Application.Features.Vehicles.Commands.DeleteVehicle;
 using GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions;
 using GisAPI.Application.Features.Vehicles.Commands.SyncMileage;
+using GisAPI.Application.Features.Vehicles.Commands.SetVehicleImmobilization;
 using GisAPI.Services;
 
 namespace GisAPI.Controllers;
@@ -160,7 +161,13 @@ public class VehiclesController : ControllerBase
                                                 BatteryLevel = cached.BatteryPercent ?? vehicle.Stats.BatteryLevel,
                                                 BatteryVoltage = cached.BatteryVoltage ?? vehicle.Stats.BatteryVoltage,
                                                 IsMoving = cached.IgnitionOn && cached.SpeedKph > 5,
-                                                IsStopped = !cached.IgnitionOn || cached.SpeedKph <= 5
+                                                IsStopped = !cached.IgnitionOn || cached.SpeedKph <= 5,
+                                                // Fresh frame is ignition-on → engine is currently
+                                                // running, no "off since" to show. Otherwise keep
+                                                // whatever the handler computed from the DB scan.
+                                                EngineOffSince = cached.IgnitionOn
+                                                    ? null
+                                                    : (vehicle.Stats.EngineOffSince ?? cached.RecordedAt)
                                             }
                                         };
                                     }
@@ -194,4 +201,39 @@ public class VehiclesController : ControllerBase
         var result = await _mediator.Send(new SyncMileageCommand(id));
         return Ok(result);
     }
+
+    /// <summary>
+    /// Activate the "immobilisation" flag on a vehicle. While the flag
+    /// is on, all automatic alert services skip this vehicle: accident
+    /// detection, voltage health, speed limit, geofence. The vehicle
+    /// stays visible on the monitoring page with a clear badge.
+    ///
+    /// <para>Idempotent — re-posting just refreshes the reason field.</para>
+    /// </summary>
+    /// <param name="id">Vehicle ID.</param>
+    /// <param name="request">Free-text reason (e.g. "Garage Mahmoud — courroie").</param>
+    [HttpPost("{id}/immobilize")]
+    public async Task<ActionResult<SetVehicleImmobilizationResult>> Immobilize(
+        int id, [FromBody] ImmobilizeRequest request)
+    {
+        var result = await _mediator.Send(
+            new SetVehicleImmobilizationCommand(id, Activate: true, Reason: request?.Reason));
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Clear the immobilisation flag. Re-enables every automatic alert
+    /// service for the vehicle as soon as the next monitoring cycle / next
+    /// GPS frame arrives.
+    /// </summary>
+    [HttpDelete("{id}/immobilize")]
+    public async Task<ActionResult<SetVehicleImmobilizationResult>> ClearImmobilization(int id)
+    {
+        var result = await _mediator.Send(
+            new SetVehicleImmobilizationCommand(id, Activate: false, Reason: null));
+        return Ok(result);
+    }
 }
+
+public record ImmobilizeRequest(string? Reason);
+

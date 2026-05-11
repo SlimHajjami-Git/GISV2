@@ -74,6 +74,48 @@ public class Vehicle : TenantEntity
     public ICollection<VehicleDocument> Documents { get; set; } = new List<VehicleDocument>();
     public ICollection<MaintenanceRecord> MaintenanceRecords { get; set; } = new List<MaintenanceRecord>();
     public ICollection<VehicleCost> Costs { get; set; } = new List<VehicleCost>();
+
+    // ── Immobilisation prévue ──────────────────────────────────────────────
+    // When the operator deliberately takes a vehicle out of service
+    // (mechanic intervention, long-term parking, boîtier removed for
+    // maintenance, fleet seasonal pause…) the GPS device may emit
+    // spurious data — wild MEMS readings while being towed, fake
+    // speeding while on a flatbed truck, no signal at all — that would
+    // otherwise spam the operator with false alarms.
+    //
+    // Setting `IsImmobilized = true` suppresses ALL automatic alert
+    // services for this vehicle (accident detection, voltage health,
+    // driving behaviour, predictive alerts, …) until the operator
+    // clears the flag manually. The vehicle remains visible on the
+    // monitoring page (with a clear "immobilisé" badge) so the
+    // operator never loses sight of it — they just stop receiving
+    // automated complaints about a known-offline asset.
+    [Column("is_immobilized")]
+    public bool IsImmobilized { get; set; } = false;
+
+    /// <summary>
+    /// Free-text reason captured at activation time (e.g. "Garage Mahmoud,
+    /// changement courroie", "Parking longue durée Gabès Q2 2026", …).
+    /// Shown in the immobilisation badge tooltip so a second admin
+    /// understands why the vehicle is muted without asking around.
+    /// </summary>
+    [Column("immobilization_reason")]
+    public string? ImmobilizationReason { get; set; }
+
+    /// <summary>
+    /// Timestamp the immobilisation was activated. Drives the
+    /// "immobilisé depuis 3 jours" copy on the UI.
+    /// </summary>
+    [Column("immobilization_started_at")]
+    public DateTime? ImmobilizationStartedAt { get; set; }
+
+    /// <summary>
+    /// User who flipped <see cref="IsImmobilized"/> to true — auditing
+    /// helper so we can trace who muted alerts on a vehicle that later
+    /// suffered a real incident.
+    /// </summary>
+    [Column("immobilization_started_by_user_id")]
+    public int? ImmobilizationStartedByUserId { get; set; }
 }
 
 public class VehicleDocument : Entity
