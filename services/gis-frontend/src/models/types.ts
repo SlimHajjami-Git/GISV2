@@ -66,6 +66,16 @@ export interface Vehicle {
    */
   hasBatteryHealthAlert?: boolean;
 
+  /**
+   * Operator-toggled "out of service" flag. While true, every automatic
+   * alert service (accident, speed, battery, geofence, …) is skipped
+   * server-side for this vehicle. The flag is set from the monitoring
+   * sidebar with a free-text reason and a start timestamp.
+   */
+  isImmobilized?: boolean;
+  immobilizationReason?: string | null;
+  immobilizationStartedAt?: string | null;
+
   // GPS Device info (embedded when hasGPS is true)
   gpsDeviceId?: string;
   gpsImei?: string;

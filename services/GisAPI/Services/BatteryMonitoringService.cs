@@ -111,6 +111,7 @@ public class BatteryMonitoringService : BackgroundService
             .Include(d => d.Vehicle)
             .Where(d => d.ProtocolType == NemsLProtocol
                      && d.Vehicle != null
+                     && !d.Vehicle.IsImmobilized
                      && (d.LastBatteryAlertAt == null
                          || d.LastBatteryAlertAt < cooldownCutoff))
             .ToListAsync(ct);

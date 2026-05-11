@@ -53,6 +53,16 @@ public class VehicleConfiguration : IEntityTypeConfiguration<Vehicle>
         builder.Property(e => e.TaxReminderDays).HasColumnName("tax_reminder_days");
         builder.Property(e => e.TechnicalInspectionReminderDays).HasColumnName("technical_inspection_reminder_days");
 
+        // Immobilisation flag (suppresses all automatic alert services
+        // while active). Mapped explicitly here as a safety belt — the
+        // [Column] attributes on the entity already cover this, but
+        // keeping it in one place helps when someone goes looking.
+        builder.Property(e => e.IsImmobilized).HasColumnName("is_immobilized").HasDefaultValue(false);
+        builder.Property(e => e.ImmobilizationReason).HasColumnName("immobilization_reason").HasMaxLength(200);
+        builder.Property(e => e.ImmobilizationStartedAt).HasColumnName("immobilization_started_at");
+        builder.Property(e => e.ImmobilizationStartedByUserId).HasColumnName("immobilization_started_by_user_id");
+
+        builder.HasIndex(e => e.IsImmobilized).HasDatabaseName("idx_vehicles_is_immobilized");
         builder.HasIndex(e => e.CompanyId);
         builder.HasIndex(e => e.Plate).HasDatabaseName("idx_vehicles_plate_number");
 

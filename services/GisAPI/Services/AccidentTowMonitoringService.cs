@@ -84,14 +84,20 @@ public class AccidentTowMonitoringService : BackgroundService
         var cutoff = DateTime.UtcNow.AddDays(-TowWatchDays);
 
         // Candidate events: confirmed, not yet marked towed, still inside the
-        // 14-day watch window. We need the tracked entity back to stamp
-        // tow_detected_at, so no AsNoTracking().
+        // 14-day watch window. We also exclude events whose vehicle has
+        // been manually immobilised — when a damaged vehicle is sitting
+        // in the mechanic's yard the boîtier emits spurious motion frames
+        // (someone moves the car in the parking, the engine is bench-
+        // tested, …) that would falsely trigger "tow detected".
+        // We need the tracked entity back to stamp tow_detected_at, so
+        // no AsNoTracking().
         var events = await context.AccidentEvents
             .IgnoreQueryFilters()
             .Where(e => e.Status == "confirmed"
                      && e.TowDetectedAt == null
                      && e.IncidentAt >= cutoff
-                     && e.GpsDeviceId != null)
+                     && e.GpsDeviceId != null
+                     && !context.Vehicles.Any(v => v.Id == e.VehicleId && v.IsImmobilized))
             .ToListAsync(ct);
 
         if (events.Count == 0) return;

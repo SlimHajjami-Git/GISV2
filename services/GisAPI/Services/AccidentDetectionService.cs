@@ -362,6 +362,18 @@ ORDER BY device_id, recorded_at;
             return;
         }
 
+        // Operator-set immobilisation: when a vehicle is in the garage or
+        // sitting on a tow truck, the MEMS values are garbage and we'd
+        // otherwise emit fake "accident detected" alerts. Skip every
+        // candidate for such vehicles.
+        if (vehicle.IsImmobilized)
+        {
+            _logger.LogInformation(
+                "AccidentDetectionService: vehicle {VehicleId} ({Plate}) is immobilised — accident candidate skipped",
+                vehicle.Id, vehicle.Plate ?? vehicle.Name);
+            return;
+        }
+
         // Application-level dedup — belt-and-braces on top of the DB unique
         // index. We allow a ±5 min window so two close candidate frames
         // from the same impact (e.g. 16:02 + 16:03 like the 118013 rollover)

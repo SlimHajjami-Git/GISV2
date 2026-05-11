@@ -20,6 +20,7 @@ public record DeviceCacheEntry(
     string FuelSensorMode,
     int FuelTankCapacity,
     int? SpeedLimit,
+    bool IsImmobilized,
     DateTime CachedAt
 );
 
@@ -114,6 +115,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
                 device.FuelSensorMode ?? "raw_255",
                 device.Vehicle?.FuelTankCapacity ?? 60,
                 device.Vehicle?.SpeedLimit,
+                device.Vehicle?.IsImmobilized ?? false,
                 DateTime.UtcNow);
             _deviceCache[request.DeviceUid] = cached;
         }
@@ -276,8 +278,12 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             }
         }
 
-        // Speed limit check: notify if speed > (vehicle speed limit + 20 km/h)
-        if (cached.VehicleId.HasValue && cached.SpeedLimit.HasValue && speed > 0 && ignitionOn)
+        // Speed limit check: notify if speed > (vehicle speed limit + 20 km/h).
+        // Skipped entirely when the vehicle is immobilised — on a tow truck or
+        // being moved around a garage yard, the speed sensor produces fake
+        // "200 km/h" bursts that would spam the operator.
+        if (cached.VehicleId.HasValue && cached.SpeedLimit.HasValue
+            && speed > 0 && ignitionOn && !cached.IsImmobilized)
         {
             var vehicleSpeedLimit = cached.SpeedLimit.Value;
             var threshold = vehicleSpeedLimit + 20;
@@ -306,8 +312,11 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             }
         }
 
-        // Geofence checking (must be awaited — uses scoped DbContext)
-        if (cached.VehicleId.HasValue && cached.CompanyId > 0)
+        // Geofence checking (must be awaited — uses scoped DbContext).
+        // Immobilised vehicles skip geofencing too — a flatbed truck
+        // moving the vehicle out of an authorised zone would otherwise
+        // trigger geofence-exit notifications.
+        if (cached.VehicleId.HasValue && cached.CompanyId > 0 && !cached.IsImmobilized)
         {
             try
             {

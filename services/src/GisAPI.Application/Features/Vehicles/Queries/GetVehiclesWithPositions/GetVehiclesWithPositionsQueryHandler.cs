@@ -113,6 +113,22 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             .Select(p => new { p.DeviceId, p.RecordedAt, p.SpeedKph })
             .ToListAsync(ct);
 
+        // "Engine off since" — for each device, the most recent frame
+        // where the engine was on. After that timestamp the engine has
+        // been off. We rely on Postgres's DISTINCT ON via a GroupBy + Max
+        // (which Npgsql translates well), with a hard cap at 30 days to
+        // keep the scan bounded — anything older than that and the
+        // operator can read the value as "very long time ago" anyway.
+        var engineOffLookback = DateTime.UtcNow.AddDays(-30);
+        var lastIgnitionOn = await _context.GpsPositions
+            .AsNoTracking()
+            .Where(p => deviceIds.Contains(p.DeviceId)
+                     && p.IgnitionOn == true
+                     && p.RecordedAt >= engineOffLookback)
+            .GroupBy(p => p.DeviceId)
+            .Select(g => new { DeviceId = g.Key, LastOn = g.Max(p => p.RecordedAt) })
+            .ToDictionaryAsync(x => x.DeviceId, x => x.LastOn, ct);
+
         var deviceStats = new Dictionary<int, (double MaxSpeed, double MovingMinutes, double StoppedMinutes, int TotalCount)>();
         foreach (var group in allRecentPositions.GroupBy(p => p.DeviceId))
         {
@@ -268,7 +284,14 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                     TimeSpan.FromMinutes(movingMinutes),
                     TimeSpan.FromMinutes(stoppedMinutes),
                     isMoving ? null : position?.RecordedAt,
-                    isMoving ? position?.RecordedAt : null
+                    isMoving ? position?.RecordedAt : null,
+                    // EngineOffSince: the timestamp of the most recent
+                    // ignition-on frame. Null while the engine is
+                    // currently on, or if there's no ignition-on frame
+                    // in the lookback window.
+                    isMoving
+                        ? null
+                        : (lastIgnitionOn.TryGetValue(deviceId, out var lastOn) ? lastOn : (DateTime?)null)
                 ),
                 // Firmware "L": use GPS odometer_km directly, otherwise use vehicle mileage
                 (v.GpsDevice?.FirmwareVersion != null
@@ -277,7 +300,10 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                  && position?.OdometerKm != 1048574)
                     ? (int)position!.OdometerKm.Value
                     : v.Mileage,
-                hasBatteryHealthAlert
+                hasBatteryHealthAlert,
+                v.IsImmobilized,
+                v.ImmobilizationReason,
+                v.ImmobilizationStartedAt
             );
         }).ToList();
 
