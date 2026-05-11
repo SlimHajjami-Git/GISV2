@@ -171,7 +171,17 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
                 const double voltageFactor = 0.3;
                 const double batteryMinV = 11.0;
                 const double batteryMaxV = 12.8;
+                // Operational ceiling for a 12 V system: textbook regulated
+                // alternator output is 14.4 V (Bosch / Toyota service specs).
+                // Some NEMS L boîtiers report bytes ≥ 49 (≥ 14.7 V) due to a
+                // firmware calibration quirk that breaks above the alternator
+                // range — those values are physically impossible on a 12 V
+                // car and would otherwise display as e.g. "16.5 V" on a
+                // perfectly healthy rental vehicle. We clamp at the display
+                // layer only; the raw byte stays untouched in the DB.
+                const double batteryRealisticMaxV = 14.4;
                 var voltage = position.PowerVoltage.Value * voltageFactor;
+                if (voltage > batteryRealisticMaxV) voltage = batteryRealisticMaxV;
                 batteryVoltageV = Math.Round(voltage, 1);
                 if (batteryLevel == null)
                 {
