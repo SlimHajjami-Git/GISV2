@@ -457,12 +457,6 @@ interface VehicleTrip {
                 </button>
               </div>
               <div *ngIf="!selectedDetailVehicle.isImmobilized" class="immobilization-explain">
-                <p>Quand ce véhicule est à l'atelier ou en parking longue durée,
-                le boîtier peut envoyer des données aberrantes (faux accident,
-                vitesse > 200 km/h sur dépanneuse, etc.). Activer ce mode
-                <strong>coupe toutes les alertes automatiques</strong> pour ce
-                véhicule jusqu'à ce que vous le réactiviez.
-                <strong>Aucune commande n'est envoyée au boîtier.</strong></p>
                 <button class="btn-immobilization-set"
                         (click)="openVehicleImmobilizationDialog(selectedDetailVehicle)">
                   🔒 Immobiliser le véhicule
@@ -2244,16 +2238,9 @@ interface VehicleTrip {
       margin-bottom: 10px;
     }
     .immobilization-explain {
-      padding: 12px 14px;
-      background: #f8fafc;
-      border: 1px dashed #cbd5e1;
-      border-radius: 6px;
-      font-size: 12px;
-      color: #475569;
-      line-height: 1.5;
-    }
-    .immobilization-explain p {
-      margin: 0 0 10px 0;
+      /* No descriptive paragraph anymore — just wraps the toggle
+         button so the section keeps a consistent layout when the
+         vehicle is NOT immobilised. */
     }
     .btn-immobilization-set,
     .btn-immobilization-clear {
