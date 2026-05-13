@@ -75,42 +75,50 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             .Select(v => v.GpsDevice!.Id)
             .ToList();
 
-        // Fetch the latest position per device in ONE Postgres-native
-        // DISTINCT ON query. The previous LINQ form
-        //   GpsPositions.Where(...).GroupBy(DeviceId)
-        //     .Select(g => g.OrderByDescending(RecordedAt).First().Id)
-        // translated to a window-function plan that touched the full
-        // gps_positions table (no time filter, billions of rows on a
-        // multi-year fleet history) — the dominant cause of monitoring
-        // slowness in prod.
+        // Fetch the latest position per device via a LATERAL JOIN —
+        // the only pattern that reliably forces Postgres to do exactly
+        // ONE index seek per device on (device_id, recorded_at DESC).
         //
-        // DISTINCT ON walks the existing (device_id, recorded_at DESC)
-        // index in reverse, picks the first row per device, stops. With
-        // the INCLUDE columns on idx_gps_positions_device_recorded_desc
-        // (latitude, longitude, speed_kph, course_deg, ignition_on,
-        // fuel_raw, temperature_c, address, odometer_km) this is mostly
-        // an index-only scan — constant time per device.
+        // Previous attempts that failed in prod:
+        //   - LINQ GroupBy + OrderByDescending + First → window-function
+        //     plan that scans the full table (~billions of rows).
+        //   - SQL DISTINCT ON → planner picked a bitmap heap scan that
+        //     loaded 96k rows for 5 devices, then sorted in memory
+        //     (measured 2.5 s on local DB, much worse on prod history).
+        //
+        // The LATERAL form forces a NESTED LOOP over each device_id with
+        // a `LIMIT 1 ORDER BY recorded_at DESC` subquery — Postgres reads
+        // the composite index BACKWARD, picks the first row, stops. 1 ms
+        // for 5 devices on the local DB; constant per device regardless
+        // of history depth.
         var latestPositions = new Dictionary<int, LatestPositionData>();
         if (deviceIds.Count > 0)
         {
             const string sql = @"
-SELECT DISTINCT ON (device_id)
-    device_id      AS ""DeviceId"",
-    id             AS ""Id"",
-    latitude       AS ""Latitude"",
-    longitude      AS ""Longitude"",
-    speed_kph      AS ""SpeedKph"",
-    course_deg     AS ""CourseDeg"",
-    ignition_on    AS ""IgnitionOn"",
-    recorded_at    AS ""RecordedAt"",
-    fuel_raw       AS ""FuelRaw"",
-    temperature_c  AS ""TemperatureC"",
-    power_voltage  AS ""PowerVoltage"",
-    address        AS ""Address"",
-    odometer_km    AS ""OdometerKm""
-FROM gps_positions
-WHERE device_id = ANY({0})
-ORDER BY device_id, recorded_at DESC;
+SELECT
+    lp.device_id      AS ""DeviceId"",
+    lp.id             AS ""Id"",
+    lp.latitude       AS ""Latitude"",
+    lp.longitude      AS ""Longitude"",
+    lp.speed_kph      AS ""SpeedKph"",
+    lp.course_deg     AS ""CourseDeg"",
+    lp.ignition_on    AS ""IgnitionOn"",
+    lp.recorded_at    AS ""RecordedAt"",
+    lp.fuel_raw       AS ""FuelRaw"",
+    lp.temperature_c  AS ""TemperatureC"",
+    lp.power_voltage  AS ""PowerVoltage"",
+    lp.address        AS ""Address"",
+    lp.odometer_km    AS ""OdometerKm""
+FROM unnest({0}::integer[]) AS d(device_id)
+CROSS JOIN LATERAL (
+    SELECT id, device_id, latitude, longitude, speed_kph, course_deg,
+           ignition_on, recorded_at, fuel_raw, temperature_c,
+           power_voltage, address, odometer_km
+    FROM gps_positions
+    WHERE device_id = d.device_id
+    ORDER BY recorded_at DESC
+    LIMIT 1
+) lp;
 ";
             var rows = await _context.Database
                 .SqlQueryRaw<LatestPositionData>(sql, deviceIds.ToArray())
@@ -147,15 +155,26 @@ ORDER BY device_id, recorded_at DESC;
         var lastIgnitionOn = new Dictionary<int, DateTime>();
         if (deviceIds.Count > 0)
         {
+            // Same LATERAL JOIN pattern as the latest-position query above.
+            // Forces Postgres to do one index seek per device on the
+            // (device_id, recorded_at DESC) WHERE ignition_on = true
+            // partial index. The DISTINCT ON variant was tolerable here
+            // (17 ms locally) but degrades on prod-scale history; LATERAL
+            // stays constant per device whatever the lookback.
             const string sql = @"
-SELECT DISTINCT ON (device_id)
-    device_id AS ""DeviceId"",
-    recorded_at AS ""LastOn""
-FROM gps_positions
-WHERE device_id = ANY({0})
-  AND ignition_on = TRUE
-  AND recorded_at >= {1}
-ORDER BY device_id, recorded_at DESC;
+SELECT
+    d.device_id      AS ""DeviceId"",
+    lp.recorded_at   AS ""LastOn""
+FROM unnest({0}::integer[]) AS d(device_id)
+CROSS JOIN LATERAL (
+    SELECT recorded_at
+    FROM gps_positions
+    WHERE device_id = d.device_id
+      AND ignition_on = TRUE
+      AND recorded_at >= {1}
+    ORDER BY recorded_at DESC
+    LIMIT 1
+) lp;
 ";
             var rows = await _context.Database
                 .SqlQueryRaw<EngineOffRow>(sql, deviceIds.ToArray(), engineOffLookback)
@@ -239,15 +258,29 @@ ORDER BY device_id, recorded_at DESC;
             var ignitionOn = position?.IgnitionOn ?? false;
             var rawSpeed = position?.SpeedKph ?? 0.0;
 
-            // Stale ignition detection: if last position says ignition ON but speed is 0
-            // and the position is older than 10 minutes, it's likely stale data
-            // (the ignition-OFF frame was missed due to GPS ingest throttling)
-            if (ignitionOn && rawSpeed <= 1 && position != null)
+            // Stale-frame detection: if the most recent frame is older
+            // than 10 minutes, the vehicle's current state is unknown —
+            // we should NOT trust the frame's ignition/speed values for
+            // "currently moving" / "currently running" UI labels.
+            //
+            // Previous logic only kicked in when rawSpeed <= 1, which left
+            // a gaping hole: a vehicle whose last frame showed "ignition
+            // ON, speed 60 km/h" but went silent right after stayed
+            // shown as "moving at 60 km/h" forever on the monitoring
+            // page. Operators reported it as "stopped vehicles displayed
+            // as moving" — the GPS device just lost signal mid-trip and
+            // the last frame happened to capture a moving snapshot.
+            //
+            // The fix: ANY frame older than 10 min → force ignition off
+            // and speed to 0 for display purposes. Better a false
+            // "stopped" than a false "speeding".
+            if (position != null)
             {
                 var positionAge = (DateTime.UtcNow - position.RecordedAt).TotalMinutes;
                 if (positionAge > 10)
                 {
                     ignitionOn = false;
+                    rawSpeed = 0.0;
                 }
             }
 
