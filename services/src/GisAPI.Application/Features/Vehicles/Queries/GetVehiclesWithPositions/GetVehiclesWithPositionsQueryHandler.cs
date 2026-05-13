@@ -115,19 +115,38 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
 
         // "Engine off since" — for each device, the most recent frame
         // where the engine was on. After that timestamp the engine has
-        // been off. We rely on Postgres's DISTINCT ON via a GroupBy + Max
-        // (which Npgsql translates well), with a hard cap at 30 days to
-        // keep the scan bounded — anything older than that and the
-        // operator can read the value as "very long time ago" anyway.
+        // been off.
+        //
+        // We use raw SQL with Postgres' DISTINCT ON because the previous
+        // LINQ GroupBy + Max forced a scan of all ignition-on frames
+        // over 30 days for every device (≈5 M rows on a 121-vehicle
+        // fleet) and produced visible monitoring-page slowness.
+        //
+        // The partial index ix_gps_positions_ignition_on_recent makes
+        // this query satisfiable via a single index scan per device:
+        // Postgres walks the (device_id, recorded_at DESC) entries that
+        // already have ignition_on=true, picks the first row per device,
+        // stops. Constant-time per device regardless of how many frames
+        // are in the 30-day window.
         var engineOffLookback = DateTime.UtcNow.AddDays(-30);
-        var lastIgnitionOn = await _context.GpsPositions
-            .AsNoTracking()
-            .Where(p => deviceIds.Contains(p.DeviceId)
-                     && p.IgnitionOn == true
-                     && p.RecordedAt >= engineOffLookback)
-            .GroupBy(p => p.DeviceId)
-            .Select(g => new { DeviceId = g.Key, LastOn = g.Max(p => p.RecordedAt) })
-            .ToDictionaryAsync(x => x.DeviceId, x => x.LastOn, ct);
+        var lastIgnitionOn = new Dictionary<int, DateTime>();
+        if (deviceIds.Count > 0)
+        {
+            const string sql = @"
+SELECT DISTINCT ON (device_id)
+    device_id AS ""DeviceId"",
+    recorded_at AS ""LastOn""
+FROM gps_positions
+WHERE device_id = ANY({0})
+  AND ignition_on = TRUE
+  AND recorded_at >= {1}
+ORDER BY device_id, recorded_at DESC;
+";
+            var rows = await _context.Database
+                .SqlQueryRaw<EngineOffRow>(sql, deviceIds.ToArray(), engineOffLookback)
+                .ToListAsync(ct);
+            lastIgnitionOn = rows.ToDictionary(r => r.DeviceId, r => r.LastOn);
+        }
 
         var deviceStats = new Dictionary<int, (double MaxSpeed, double MovingMinutes, double StoppedMinutes, int TotalCount)>();
         foreach (var group in allRecentPositions.GroupBy(p => p.DeviceId))
@@ -318,6 +337,16 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
         }).ToList();
 
         return result;
+    }
+
+    /// <summary>
+    /// Carrier for the DISTINCT ON query results — Npgsql needs a
+    /// concrete public type for <c>SqlQueryRaw&lt;T&gt;</c>.
+    /// </summary>
+    public class EngineOffRow
+    {
+        public int DeviceId { get; set; }
+        public DateTime LastOn { get; set; }
     }
 }
 
