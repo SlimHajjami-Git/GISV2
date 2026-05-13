@@ -487,6 +487,47 @@ interface VehicleTrip {
             </div>
 
             <!-- Calypso 6 (P6): Trajets récents section removed per PDF requirement -->
+
+            <!-- Immobilisation: opérateur-set flag to mute every automatic
+                 alert (accident, vitesse, batterie, geofence). Use case:
+                 véhicule à l'atelier, parking longue durée, boîtier GPS
+                 retiré, intervention prévue. La séparation de cette
+                 fonctionnalité ici (et pas sur monitoring) évite que l'on
+                 confonde avec une commande TCP envoyée au boîtier. -->
+            <div class="info-section">
+              <h3 class="section-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                Couper les alertes automatiques
+              </h3>
+              <div class="immobilization-banner" *ngIf="selectedDetailVehicle.isImmobilized">
+                <strong>🔒 Véhicule immobilisé</strong>
+                <div class="immobilization-reason" *ngIf="selectedDetailVehicle.immobilizationReason">
+                  {{ selectedDetailVehicle.immobilizationReason }}
+                </div>
+                <div class="immobilization-since" *ngIf="selectedDetailVehicle.immobilizationStartedAt">
+                  Depuis le {{ formatDate(selectedDetailVehicle.immobilizationStartedAt) }}
+                </div>
+                <button class="btn-immobilization-clear"
+                        (click)="clearVehicleImmobilization(selectedDetailVehicle)">
+                  Réactiver les alertes
+                </button>
+              </div>
+              <div *ngIf="!selectedDetailVehicle.isImmobilized" class="immobilization-explain">
+                <p>Quand ce véhicule est à l'atelier ou en parking longue durée,
+                le boîtier peut envoyer des données aberrantes (faux accident,
+                vitesse > 200 km/h sur dépanneuse, etc.). Activer ce mode
+                <strong>coupe toutes les alertes automatiques</strong> pour ce
+                véhicule jusqu'à ce que vous le réactiviez.
+                <strong>Aucune commande n'est envoyée au boîtier.</strong></p>
+                <button class="btn-immobilization-set"
+                        (click)="openVehicleImmobilizationDialog(selectedDetailVehicle)">
+                  🔒 Immobiliser le véhicule
+                </button>
+              </div>
+            </div>
           </div>
 
           <!-- Footer avec actions -->
@@ -2295,6 +2336,71 @@ interface VehicleTrip {
       margin-top: 12px;
     }
 
+    /* ── Immobilisation block in the vehicle detail panel ──────────────
+       Distinct visual treatment (purple/indigo) so the operator can't
+       confuse it with the "Modifier" / "Dépenses" footer buttons. */
+    .immobilization-banner {
+      background: rgba(99, 102, 241, 0.10);
+      border-left: 3px solid #6366f1;
+      border-radius: 6px;
+      padding: 12px 14px;
+      color: #4338ca;
+      font-size: 13px;
+    }
+    .immobilization-banner strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+    .immobilization-reason {
+      font-style: italic;
+      color: #6366f1;
+      margin-bottom: 4px;
+    }
+    .immobilization-since {
+      font-size: 11px;
+      color: #818cf8;
+      margin-bottom: 10px;
+    }
+    .immobilization-explain {
+      padding: 12px 14px;
+      background: #f8fafc;
+      border: 1px dashed #cbd5e1;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #475569;
+      line-height: 1.5;
+    }
+    .immobilization-explain p {
+      margin: 0 0 10px 0;
+    }
+    .btn-immobilization-set,
+    .btn-immobilization-clear {
+      display: block;
+      width: 100%;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid #6366f1;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-immobilization-set {
+      background: white;
+      color: #4338ca;
+    }
+    .btn-immobilization-set:hover {
+      background: rgba(99, 102, 241, 0.08);
+    }
+    .btn-immobilization-clear {
+      background: #4338ca;
+      color: white;
+    }
+    .btn-immobilization-clear:hover {
+      background: #3730a3;
+    }
+
     .btn-sync-mileage:hover:not(:disabled) {
       box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
     }
@@ -2471,7 +2577,12 @@ export class VehiclesComponent implements OnInit, OnDestroy {
             assignedDriverId: v.assignedDriverId?.toString(),
             assignedDriverName: v.assignedDriverName,
             fuelLevel: Math.floor(Math.random() * 60) + 40,
-            nextMaintenanceKm: v.mileage + Math.floor(Math.random() * 5000) + 1000
+            nextMaintenanceKm: v.mileage + Math.floor(Math.random() * 5000) + 1000,
+            // Immobilisation operator-set state (propagated to the detail
+            // panel toggle that mutes auto-alerts for this vehicle).
+            isImmobilized: !!(v as any).isImmobilized,
+            immobilizationReason: (v as any).immobilizationReason ?? null,
+            immobilizationStartedAt: (v as any).immobilizationStartedAt ?? null
           })) as VehicleExtended[];
           this.vehicles = [...this.allVehicles];
           this.filteredVehicles = [...this.allVehicles];
@@ -2734,6 +2845,78 @@ export class VehiclesComponent implements OnInit, OnDestroy {
         console.error('Failed to sync mileage:', err);
       }
     });
+  }
+
+  /**
+   * Opens a minimal prompt for the immobilisation reason, then POSTs to
+   * /api/vehicles/{id}/immobilize. The reason is optional but strongly
+   * recommended for the audit trail — a second admin should know why
+   * the alerts were muted without asking around.
+   *
+   * Strictly server-side: this never sends any TCP command to the GPS
+   * boîtier (don't confuse with the GO/STOP system).
+   */
+  openVehicleImmobilizationDialog(vehicle: VehicleExtended): void {
+    const reason = window.prompt(
+      `Couper les alertes automatiques pour ${vehicle.plate || vehicle.name} ?\n\n` +
+      'Indiquez une raison (atelier, parking longue durée, boîtier déposé, …).\n' +
+      'Laissez vide si la raison n\'a pas besoin d\'être tracée.\n\n' +
+      'ℹ️ Aucune commande n\'est envoyée au boîtier GPS.',
+      ''
+    );
+    if (reason === null) return; // user cancelled
+
+    this.apiService.immobilizeVehicle(parseInt(vehicle.id), reason.trim() || null)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (result: any) => {
+          vehicle.isImmobilized = true;
+          vehicle.immobilizationReason = result?.reason ?? null;
+          vehicle.immobilizationStartedAt = result?.startedAt ?? new Date().toISOString();
+          // Keep the list-side cached copy in sync (sidebar / list filters
+          // might read it)
+          const inList = this.allVehicles.find(v => v.id === vehicle.id);
+          if (inList) {
+            inList.isImmobilized = true;
+            inList.immobilizationReason = vehicle.immobilizationReason;
+            inList.immobilizationStartedAt = vehicle.immobilizationStartedAt;
+          }
+          this.cdr.detectChanges();
+        },
+        error: (err) => {
+          console.error('Failed to immobilize vehicle:', err);
+          window.alert('Impossible d\'immobiliser le véhicule — vérifiez la connexion.');
+        }
+      });
+  }
+
+  /**
+   * Re-enables every automatic alert service for the vehicle. We don't
+   * ask for confirmation because operators flip this back the second the
+   * vehicle leaves the garage and an extra click would just slow them
+   * down.
+   */
+  clearVehicleImmobilization(vehicle: VehicleExtended): void {
+    this.apiService.clearVehicleImmobilization(parseInt(vehicle.id))
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          vehicle.isImmobilized = false;
+          vehicle.immobilizationReason = null;
+          vehicle.immobilizationStartedAt = null;
+          const inList = this.allVehicles.find(v => v.id === vehicle.id);
+          if (inList) {
+            inList.isImmobilized = false;
+            inList.immobilizationReason = null;
+            inList.immobilizationStartedAt = null;
+          }
+          this.cdr.detectChanges();
+        },
+        error: (err) => {
+          console.error('Failed to clear vehicle immobilization:', err);
+          window.alert('Impossible de réactiver les alertes — vérifiez la connexion.');
+        }
+      });
   }
 
   generateMockExpenses(): VehicleExpense[] {

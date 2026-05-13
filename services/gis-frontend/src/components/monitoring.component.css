@@ -2320,10 +2320,10 @@
   border-radius: 4px;
 }
 
-/* Immobilisation banner — appears below the sensors grid when the
-   operator has muted automatic alerts on a vehicle (mechanic, parking,
-   boîtier removed). Visual goal: unmistakable so a second admin
-   doesn't wonder why no alerts have fired in a week. */
+/* Immobilisation read-only banner. The set/clear toggle moved to the
+   /vehicles detail panel — here we only show a passive indicator that
+   automatic alerts are muted on this vehicle, plus the reason for the
+   operator's quick reference. */
 .immobilization-banner {
   margin-top: 10px;
   padding: 10px 12px;
@@ -2349,35 +2349,12 @@
 .immobilization-since {
   font-size: 10px;
   color: #818cf8;
-  margin-bottom: 8px;
 }
 
-.immobilization-clear,
-.immobilization-toggle {
-  margin-top: 8px;
-  display: block;
-  width: 100%;
-  padding: 6px 8px;
-  font-size: 11px;
-  font-weight: 600;
-  border: 1px solid #6366f1;
-  background: white;
+.immobilization-since em {
   color: #4338ca;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.immobilization-clear {
-  background: #4338ca;
-  color: white;
-}
-
-.immobilization-toggle:hover {
-  background: rgba(99, 102, 241, 0.08);
-}
-
-.immobilization-clear:hover {
-  background: #3730a3;
+  font-style: normal;
+  font-weight: 600;
 }
 
 .sensor-value.moving {

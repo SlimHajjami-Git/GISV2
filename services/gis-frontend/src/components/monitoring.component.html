@@ -208,25 +208,20 @@
                       </div>
                     </div>
 
-                    <!-- Immobilisation banner: clear, persistent indicator
-                         that auto-alerts are muted for this vehicle. -->
+                    <!-- Immobilisation is read-only here — a passive
+                         indicator only. The toggle (set / clear) lives on
+                         the /vehicles detail panel so it's clear it's a
+                         vehicle-level setting, not a TCP command to the
+                         boîtier. -->
                     <div class="immobilization-banner" *ngIf="vehicle.isImmobilized">
-                      <strong>🔒 Véhicule immobilisé</strong>
+                      <strong>🔒 Véhicule immobilisé — alertes coupées</strong>
                       <div class="immobilization-reason" *ngIf="vehicle.immobilizationReason">
                         {{ vehicle.immobilizationReason }}
                       </div>
                       <div class="immobilization-since" *ngIf="vehicle.immobilizationStartedAt">
-                        Depuis {{ formatRelative(vehicle.immobilizationStartedAt) }}
+                        Depuis {{ formatRelative(vehicle.immobilizationStartedAt) }} · Gérer dans <em>Véhicules</em>
                       </div>
-                      <button class="immobilization-clear" (click)="clearImmobilization(vehicle); $event.stopPropagation()">
-                        Réactiver les alertes
-                      </button>
                     </div>
-                    <button class="immobilization-toggle"
-                            *ngIf="!vehicle.isImmobilized"
-                            (click)="openImmobilizationDialog(vehicle); $event.stopPropagation()">
-                      🔒 Immobiliser (couper les alertes)
-                    </button>
                   </div>
                 </div>
 
