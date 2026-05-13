@@ -90,23 +90,50 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
 
         if (deviceIds.Any())
         {
-            // Use two separate simple queries instead of complex GroupBy+OrderBy+FirstOrDefault
-            // which can fail in EF Core query translation on some PostgreSQL versions
-            var odometerBase = _context.GpsPositions.AsNoTracking()
-                .Where(p => deviceIds.Contains(p.DeviceId)
-                         && p.RecordedAt >= startDate && p.RecordedAt < endDate
-                         && p.OdometerKm.HasValue && p.OdometerKm > 0 && p.OdometerKm != 1048574);
-
-            // First odometer per device (earliest in month)
-            var firstOdos = await odometerBase
-                .GroupBy(p => p.DeviceId)
-                .Select(g => new { DeviceId = g.Key, Odo = g.Min(p => p.OdometerKm) })
+            // Take the CHRONOLOGICALLY first and last odometer values per
+            // device, not MIN/MAX. The firmware on some NEMS L boîtiers
+            // sporadically emits low-value odometer "ghost" readings in
+            // the middle of the month (e.g. device 250 TU 5217 emitted
+            // 50,176 alongside the real 58,000-59,000 range from April 9
+            // onwards). Naive MAX-MIN turned that into "9,459 km in
+            // April" for a vehicle that actually did 1,528 km.
+            //
+            // Chronological first/last avoids this: outliers in the
+            // middle don't affect the answer because we only read the
+            // earliest and latest valid frames. Postgres DISTINCT ON
+            // computes this with a single index scan per device.
+            const string firstSql = @"
+SELECT DISTINCT ON (device_id)
+    device_id   AS ""DeviceId"",
+    odometer_km AS ""Odo""
+FROM gps_positions
+WHERE device_id = ANY({0})
+  AND recorded_at >= {1}
+  AND recorded_at <  {2}
+  AND odometer_km IS NOT NULL
+  AND odometer_km > 0
+  AND odometer_km <> 1048574
+ORDER BY device_id, recorded_at ASC;
+";
+            const string lastSql = @"
+SELECT DISTINCT ON (device_id)
+    device_id   AS ""DeviceId"",
+    odometer_km AS ""Odo""
+FROM gps_positions
+WHERE device_id = ANY({0})
+  AND recorded_at >= {1}
+  AND recorded_at <  {2}
+  AND odometer_km IS NOT NULL
+  AND odometer_km > 0
+  AND odometer_km <> 1048574
+ORDER BY device_id, recorded_at DESC;
+";
+            var deviceIdsArr = deviceIds.ToArray();
+            var firstOdos = await _context.Database
+                .SqlQueryRaw<OdometerEndpoint>(firstSql, deviceIdsArr, startDate, endDate)
                 .ToListAsync(ct);
-
-            // Last odometer per device (latest in month)
-            var lastOdos = await odometerBase
-                .GroupBy(p => p.DeviceId)
-                .Select(g => new { DeviceId = g.Key, Odo = g.Max(p => p.OdometerKm) })
+            var lastOdos = await _context.Database
+                .SqlQueryRaw<OdometerEndpoint>(lastSql, deviceIdsArr, startDate, endDate)
                 .ToListAsync(ct);
 
             var firstMap = firstOdos.ToDictionary(x => x.DeviceId, x => x.Odo);
@@ -114,11 +141,14 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
 
             foreach (var deviceId in deviceIds)
             {
-                if (firstMap.TryGetValue(deviceId, out var first) && first.HasValue
-                    && lastMap.TryGetValue(deviceId, out var last) && last.HasValue
+                if (firstMap.TryGetValue(deviceId, out var first)
+                    && lastMap.TryGetValue(deviceId, out var last)
                     && deviceVehicleMap.TryGetValue(deviceId, out var vehicleId))
                 {
-                    var km = Math.Max(0, last.Value - first.Value);
+                    // Clamp to zero if the device's odometer reset
+                    // mid-month — surfacing a negative number would be
+                    // worse than under-reporting.
+                    var km = Math.Max(0, last - first);
                     mileagePerVehicle[vehicleId] = km;
                 }
             }
@@ -221,5 +251,16 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
             Departments = departmentGroups,
             Vehicles = vehicleRows.OrderBy(v => v.DepartmentName).ThenBy(v => v.VehicleName).ToList()
         };
+    }
+
+    /// <summary>
+    /// Carrier for the chronological-first / chronological-last odometer
+    /// raw-SQL queries. Public because Npgsql's <c>SqlQueryRaw&lt;T&gt;</c>
+    /// requires a concrete public type.
+    /// </summary>
+    public class OdometerEndpoint
+    {
+        public int DeviceId { get; set; }
+        public long Odo { get; set; }
     }
 }
