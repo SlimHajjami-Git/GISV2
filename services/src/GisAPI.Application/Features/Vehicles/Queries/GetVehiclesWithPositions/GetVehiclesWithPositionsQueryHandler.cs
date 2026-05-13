@@ -10,8 +10,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions;
 
-// Internal class for query projection
-internal class LatestPositionData
+// Query projection carrier — public because Npgsql's SqlQueryRaw<T>
+// requires a concrete public type. Stays a plain POCO with settable
+// properties so the runtime can hydrate it from the raw SQL columns.
+public class LatestPositionData
 {
     public int DeviceId { get; set; }
     public long Id { get; set; }
@@ -73,35 +75,48 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             .Select(v => v.GpsDevice!.Id)
             .ToList();
 
-        // Fetch latest position per device — ONE query instead of N
-        // Uses GroupBy to get the max position ID per device, then fetches those positions
-        var latestPosIds = await _context.GpsPositions
-            .AsNoTracking()
-            .Where(p => deviceIds.Contains(p.DeviceId))
-            .GroupBy(p => p.DeviceId)
-            .Select(g => g.OrderByDescending(p => p.RecordedAt).Select(p => p.Id).First())
-            .ToListAsync(ct);
-
-        var latestPositions = await _context.GpsPositions
-            .AsNoTracking()
-            .Where(p => latestPosIds.Contains(p.Id))
-            .Select(p => new LatestPositionData
-            {
-                DeviceId = p.DeviceId,
-                Id = p.Id,
-                Latitude = p.Latitude,
-                Longitude = p.Longitude,
-                SpeedKph = p.SpeedKph,
-                CourseDeg = p.CourseDeg,
-                IgnitionOn = p.IgnitionOn,
-                RecordedAt = p.RecordedAt,
-                FuelRaw = p.FuelRaw,
-                TemperatureC = p.TemperatureC,
-                PowerVoltage = p.PowerVoltage,
-                Address = p.Address,
-                OdometerKm = p.OdometerKm
-            })
-            .ToDictionaryAsync(p => p.DeviceId, ct);
+        // Fetch the latest position per device in ONE Postgres-native
+        // DISTINCT ON query. The previous LINQ form
+        //   GpsPositions.Where(...).GroupBy(DeviceId)
+        //     .Select(g => g.OrderByDescending(RecordedAt).First().Id)
+        // translated to a window-function plan that touched the full
+        // gps_positions table (no time filter, billions of rows on a
+        // multi-year fleet history) — the dominant cause of monitoring
+        // slowness in prod.
+        //
+        // DISTINCT ON walks the existing (device_id, recorded_at DESC)
+        // index in reverse, picks the first row per device, stops. With
+        // the INCLUDE columns on idx_gps_positions_device_recorded_desc
+        // (latitude, longitude, speed_kph, course_deg, ignition_on,
+        // fuel_raw, temperature_c, address, odometer_km) this is mostly
+        // an index-only scan — constant time per device.
+        var latestPositions = new Dictionary<int, LatestPositionData>();
+        if (deviceIds.Count > 0)
+        {
+            const string sql = @"
+SELECT DISTINCT ON (device_id)
+    device_id      AS ""DeviceId"",
+    id             AS ""Id"",
+    latitude       AS ""Latitude"",
+    longitude      AS ""Longitude"",
+    speed_kph      AS ""SpeedKph"",
+    course_deg     AS ""CourseDeg"",
+    ignition_on    AS ""IgnitionOn"",
+    recorded_at    AS ""RecordedAt"",
+    fuel_raw       AS ""FuelRaw"",
+    temperature_c  AS ""TemperatureC"",
+    power_voltage  AS ""PowerVoltage"",
+    address        AS ""Address"",
+    odometer_km    AS ""OdometerKm""
+FROM gps_positions
+WHERE device_id = ANY({0})
+ORDER BY device_id, recorded_at DESC;
+";
+            var rows = await _context.Database
+                .SqlQueryRaw<LatestPositionData>(sql, deviceIds.ToArray())
+                .ToListAsync(ct);
+            latestPositions = rows.ToDictionary(p => p.DeviceId);
+        }
 
         // Get today's stats per device (last 24 hours) — ONE query for all devices
         // Fetch all positions for all devices at once, then compute stats in-memory
