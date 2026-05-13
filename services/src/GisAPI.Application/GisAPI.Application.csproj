@@ -13,6 +13,11 @@
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.9.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.1" />
+    <!-- Relational extensions needed for SqlQueryRaw<T> on DatabaseFacade — used
+         by handlers that need raw SQL for queries the LINQ provider can't express
+         efficiently (e.g. Postgres DISTINCT ON, window functions). Provider-
+         agnostic, so Application stays decoupled from Npgsql. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.1" />
   </ItemGroup>
 
   <ItemGroup>

@@ -87,6 +87,15 @@ public interface IGisDbContext
     // Alert Emails
     DbSet<AlertEmail> AlertEmails { get; }
 
+    /// <summary>
+    /// Underlying database facade — exposed so MediatR handlers can run
+    /// raw SQL (<c>Database.SqlQueryRaw&lt;T&gt;</c>) for queries the
+    /// LINQ provider can't express efficiently, e.g. <c>DISTINCT ON</c>
+    /// in Postgres. Same surface as <c>DbContext.Database</c>; do not
+    /// abuse it — prefer LINQ when it's expressive enough.
+    /// </summary>
+    Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade Database { get; }
+
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 
