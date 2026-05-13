@@ -5612,11 +5612,41 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   getRefuelTooltip(refuels: any[]): string {
-    return refuels.map((r: any) => {
+    // Le fuel detector côté serveur peut découper un seul remplissage
+    // physique en plusieurs "jumps" successifs si la jauge se stabilise
+    // par paliers (réservoir qui se remplit, vapeur, etc.). Avant
+    // l'affichage on regroupe les refuels par minute calendaire :
+    // toutes les entrées tombant sur le même YYYY-MM-DD HH:mm sont
+    // fusionnées en une seule ligne, litres et coût additionnés.
+    // Évite les "doublons" visuels du genre :
+    //   21/04/2026 10:48: +35.2 L
+    //   21/04/2026 10:48: +4.0 L
+    //   21/04/2026 10:48: +8.4 L
+    // → désormais une seule ligne 21/04/2026 10:48: +47.6 L.
+    const grouped = new Map<string, { date: Date; liters: number; cost: number }>();
+    for (const r of refuels) {
       const date = new Date(r.timestamp);
-      const dateStr = date.toLocaleDateString('fr-FR') + ' ' + date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-      return `${dateStr}: +${r.fuelAddedLiters.toFixed(1)} L (~${(r.estimatedCost || 0).toFixed(2)} TND)`;
-    }).join('\n');
+      const key = date.toISOString().slice(0, 16); // YYYY-MM-DDTHH:mm
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.liters += (r.fuelAddedLiters || 0);
+        existing.cost += (r.estimatedCost || 0);
+      } else {
+        grouped.set(key, {
+          date,
+          liters: r.fuelAddedLiters || 0,
+          cost: r.estimatedCost || 0
+        });
+      }
+    }
+    return Array.from(grouped.values())
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+      .map(g => {
+        const dateStr = g.date.toLocaleDateString('fr-FR') + ' ' +
+          g.date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        return `${dateStr}: +${g.liters.toFixed(1)} L (~${g.cost.toFixed(2)} TND)`;
+      })
+      .join('\n');
   }
 
   getStatKeys(): string[] {

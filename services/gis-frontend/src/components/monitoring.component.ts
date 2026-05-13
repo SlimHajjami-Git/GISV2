@@ -1050,56 +1050,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     return remH > 0 ? `${diffD}j ${remH}h` : `${diffD}j`;
   }
 
-  /**
-   * Asks the operator for an immobilisation reason (free text), then
-   * POSTs to /api/vehicles/{id}/immobilize. We use prompt() to keep
-   * the flow inline — the reason is optional but strongly recommended
-   * for the audit trail (the second admin should know why alerts are
-   * muted without asking around).
-   */
-  openImmobilizationDialog(vehicle: any): void {
-    const reason = window.prompt(
-      `Immobiliser ${vehicle.plate || vehicle.name} et couper les alertes auto ?\n\n` +
-      'Indiquez une raison (atelier, parking longue durée, boîtier déposé, …).\n' +
-      'Laissez vide si la raison n\'a pas besoin d\'être tracée.',
-      ''
-    );
-    if (reason === null) return; // user cancelled
 
-    this.apiService.immobilizeVehicle(vehicle.id, reason.trim() || null).subscribe({
-      next: (result) => {
-        vehicle.isImmobilized = true;
-        vehicle.immobilizationReason = result?.reason ?? null;
-        vehicle.immobilizationStartedAt = result?.startedAt ?? new Date().toISOString();
-        this.cdr.detectChanges();
-      },
-      error: (err) => {
-        console.error('Failed to immobilize vehicle:', err);
-        window.alert('Impossible d\'immobiliser le véhicule — vérifiez la connexion.');
-      }
-    });
-  }
 
-  /**
-   * Re-enables automatic alert services for a previously immobilised
-   * vehicle. We don't ask for confirmation — operators flip this back
-   * the moment the vehicle leaves the garage, and an extra click would
-   * just slow them down.
-   */
-  clearImmobilization(vehicle: any): void {
-    this.apiService.clearVehicleImmobilization(vehicle.id).subscribe({
-      next: () => {
-        vehicle.isImmobilized = false;
-        vehicle.immobilizationReason = null;
-        vehicle.immobilizationStartedAt = null;
-        this.cdr.detectChanges();
-      },
-      error: (err) => {
-        console.error('Failed to clear immobilization:', err);
-        window.alert('Impossible de réactiver les alertes — vérifiez la connexion.');
-      }
-    });
-  }
+
 
   isTemperatureHigh(vehicle: any): boolean {
     if (!vehicle.ignitionOn) return false;
