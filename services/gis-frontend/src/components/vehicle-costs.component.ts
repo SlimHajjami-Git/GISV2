@@ -6,11 +6,12 @@ import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { VehicleCost, Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 
 @Component({
   selector: 'app-vehicle-costs',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ...USER_PREF_PIPES],
   template: `
     <app-layout>
       <div class="costs-page">
@@ -67,7 +68,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ getFuelCost() | number:'1.0-0' }} DT</span>
+              <span class="stat-value">{{ getFuelCost() | appCurrency:0 }}</span>
               <span class="stat-label">Carburant</span>
             </div>
           </div>
@@ -78,7 +79,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ getMaintenanceCost() | number:'1.0-0' }} DT</span>
+              <span class="stat-value">{{ getMaintenanceCost() | appCurrency:0 }}</span>
               <span class="stat-label">Maintenance</span>
             </div>
           </div>
@@ -89,7 +90,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ getInsuranceCost() | number:'1.0-0' }} DT</span>
+              <span class="stat-value">{{ getInsuranceCost() | appCurrency:0 }}</span>
               <span class="stat-label">Assurance</span>
             </div>
           </div>
@@ -101,7 +102,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ getTotalCost() | number:'1.0-0' }} DT</span>
+              <span class="stat-value">{{ getTotalCost() | appCurrency:0 }}</span>
               <span class="stat-label">Total dépenses</span>
             </div>
           </div>
@@ -120,19 +121,19 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                 <div class="summary-stats">
                   <div class="summary-item">
                     <span class="summary-label">Carburant</span>
-                    <span class="summary-value fuel">{{ summary.fuelCost | number:'1.0-0' }} DT</span>
+                    <span class="summary-value fuel">{{ summary.fuelCost | appCurrency:0 }}</span>
                   </div>
                   <div class="summary-item">
                     <span class="summary-label">Maintenance</span>
-                    <span class="summary-value maintenance">{{ summary.maintenanceCost | number:'1.0-0' }} DT</span>
+                    <span class="summary-value maintenance">{{ summary.maintenanceCost | appCurrency:0 }}</span>
                   </div>
                   <div class="summary-item">
                     <span class="summary-label">Autres</span>
-                    <span class="summary-value other">{{ summary.otherCost | number:'1.0-0' }} DT</span>
+                    <span class="summary-value other">{{ summary.otherCost | appCurrency:0 }}</span>
                   </div>
                   <div class="summary-item total">
                     <span class="summary-label">Total</span>
-                    <span class="summary-value total">{{ summary.totalCost | number:'1.0-0' }} DT</span>
+                    <span class="summary-value total">{{ summary.totalCost | appCurrency:0 }}</span>
                   </div>
                 </div>
               </div>
@@ -167,7 +168,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                     </span>
                   </td>
                   <td class="description-cell">{{ cost.description }}</td>
-                  <td class="amount-cell">{{ cost.amount | number:'1.0-0' }} DT</td>
+                  <td class="amount-cell">{{ cost.amount | appCurrency:0 }}</td>
                   <td class="reference-cell">{{ cost.receiptNumber || '-' }}</td>
                   <td>
                     <div class="action-buttons">
@@ -248,7 +249,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                 </div>
 
                 <div class="form-group">
-                  <label for="costAmount">Montant (DT) *</label>
+                  <label for="costAmount">Montant *</label>
                   <input type="number" id="costAmount" [(ngModel)]="costForm.amount" name="amount" required min="0" placeholder="0" />
                 </div>
 

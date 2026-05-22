@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { ApiService } from '../services/api.service';
 import { PdfExportService, PdfGroup } from '../services/pdf-export.service';
 import { trigger, transition, style, animate } from '@angular/animations';
@@ -49,7 +50,7 @@ interface Vehicle {
 @Component({
   selector: 'app-repairs',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ...USER_PREF_PIPES],
   animations: [
     trigger('fadeIn', [
       transition(':enter', [
@@ -145,7 +146,7 @@ interface Vehicle {
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ stats.totalCost | number:'1.0-0' }} DT</span>
+              <span class="stat-value">{{ stats.totalCost | appCurrency:0 }}</span>
               <span class="stat-label">Cout total</span>
             </div>
           </div>
@@ -271,7 +272,7 @@ interface Vehicle {
               </div>
               <div class="vehicle-info-box" *ngIf="selectedVehicle">
                 <span class="info-label">Kilometrage actuel:</span>
-                <span class="info-value">{{ selectedVehicle.mileage || 0 }} km</span>
+                <span class="info-value">{{ (selectedVehicle.mileage || 0) | appDistance:0 }}</span>
               </div>
             </div>
 
@@ -362,7 +363,7 @@ interface Vehicle {
                   <input class="col-ref" [(ngModel)]="part.partReference" placeholder="Ref">
                   <input class="col-qty" type="number" [(ngModel)]="part.quantity" min="1" (change)="calculatePartSubtotal(part)">
                   <input class="col-price" type="number" [(ngModel)]="part.unitPrice" min="0" step="0.01" (change)="calculatePartSubtotal(part)">
-                  <span class="col-subtotal">{{ part.subtotal | number:'1.2-2' }} DT</span>
+                  <span class="col-subtotal">{{ part.subtotal | appCurrency }}</span>
                   <button class="col-action btn-remove" (click)="removePart(i)">×</button>
                 </div>
               </div>
@@ -385,15 +386,15 @@ interface Vehicle {
             <div class="cost-summary">
               <div class="summary-row">
                 <span>Total pieces</span>
-                <span>{{ getPartsCost() | number:'1.2-2' }} DT</span>
+                <span>{{ getPartsCost() | appCurrency }}</span>
               </div>
               <div class="summary-row">
                 <span>Main d'oeuvre</span>
-                <span>{{ form.laborCost | number:'1.2-2' }} DT</span>
+                <span>{{ form.laborCost | appCurrency }}</span>
               </div>
               <div class="summary-row total">
                 <span>TOTAL</span>
-                <span>{{ getTotalCost() | number:'1.2-2' }} DT</span>
+                <span>{{ getTotalCost() | appCurrency }}</span>
               </div>
             </div>
 
@@ -437,7 +438,7 @@ interface Vehicle {
               </div>
               <div class="detail-row" *ngIf="viewingRepair.mileageAtRepair">
                 <span class="detail-label">Kilometrage</span>
-                <span class="detail-value">{{ viewingRepair.mileageAtRepair || 0 }} km</span>
+                <span class="detail-value">{{ (viewingRepair.mileageAtRepair || 0) | appDistance:0 }}</span>
               </div>
             </div>
 
@@ -469,8 +470,8 @@ interface Vehicle {
                 <div class="detail-parts-row" *ngFor="let part of viewingRepair.parts">
                   <span>{{ part.partName }}<small *ngIf="part.partReference"> ({{ part.partReference }})</small></span>
                   <span>{{ part.quantity }}</span>
-                  <span>{{ part.unitPrice | number:'1.2-2' }} DT</span>
-                  <span>{{ part.subtotal | number:'1.2-2' }} DT</span>
+                  <span>{{ part.unitPrice | appCurrency }}</span>
+                  <span>{{ part.subtotal | appCurrency }}</span>
                 </div>
               </div>
             </div>
@@ -478,15 +479,15 @@ interface Vehicle {
             <div class="detail-costs">
               <div class="detail-cost-row">
                 <span>Total pieces</span>
-                <span>{{ viewingRepair.partsCost | number:'1.2-2' }} DT</span>
+                <span>{{ viewingRepair.partsCost | appCurrency }}</span>
               </div>
               <div class="detail-cost-row">
                 <span>Main d'oeuvre</span>
-                <span>{{ viewingRepair.laborCost | number:'1.2-2' }} DT</span>
+                <span>{{ viewingRepair.laborCost | appCurrency }}</span>
               </div>
               <div class="detail-cost-row total">
                 <span>TOTAL</span>
-                <span>{{ viewingRepair.totalCost | number:'1.2-2' }} DT</span>
+                <span>{{ viewingRepair.totalCost | appCurrency }}</span>
               </div>
             </div>
           </div>

@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { ApiService } from '../services/api.service';
 import { trigger, transition, style, animate } from '@angular/animations';
 
@@ -82,7 +83,7 @@ interface FlatRow {
 @Component({
   selector: 'app-maintenance-templates',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ...USER_PREF_PIPES],
   animations: [
     trigger('fadeIn', [
       transition(':enter', [
@@ -176,7 +177,7 @@ interface FlatRow {
                     <span class="chip-meta">{{ t.intervalKm ? (t.intervalKm | number) + ' km' : '' }}{{ t.intervalKm && t.intervalMonths ? ' / ' : '' }}{{ t.intervalMonths ? t.intervalMonths + ' mois' : '' }} · {{ t.category }}</span>
                   </div>
                 </div>
-                <span class="chip-cost">~{{ t.estimatedCost | number }} DT</span>
+                <span class="chip-cost">~{{ t.estimatedCost | appCurrency:0 }}</span>
               </div>
             }
           </div>
@@ -405,24 +406,24 @@ interface FlatRow {
                       <span>DT</span>
                     </div>
                   </div>
-                  <div class="inv-hint" *ngIf="line.templateId && lastPaidPrices.get(line.templateId)">Dernier prix: {{ lastPaidPrices.get(line.templateId) | number }} DT</div>
+                  <div class="inv-hint" *ngIf="line.templateId && lastPaidPrices.get(line.templateId)">Dernier prix: {{ lastPaidPrices.get(line.templateId) | appCurrency:0 }}</div>
                 </div>
               </div>
               <button class="btn-add-line" (click)="addInvoiceLine()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Ajouter une ligne</button>
-              <div class="inv-total"><span>Total</span><strong>{{ getInvoiceTotal() | number:'1.2-2' }} DT</strong></div>
+              <div class="inv-total"><span>Total</span><strong>{{ getInvoiceTotal() | appCurrency }}</strong></div>
               <div class="cost-comparison" *ngIf="markData.estimatedCost > 0">
                 <div class="cost-row">
                   <span class="cost-label">Estimé (modele)</span>
-                  <span class="cost-val">{{ markData.estimatedCost | number:'1.2-2' }} DT</span>
+                  <span class="cost-val">{{ markData.estimatedCost | appCurrency }}</span>
                 </div>
                 <div class="cost-row">
                   <span class="cost-label">Réel (facture)</span>
-                  <span class="cost-val" [class.over]="getInvoiceTotal() > markData.estimatedCost" [class.under]="getInvoiceTotal() <= markData.estimatedCost">{{ getInvoiceTotal() | number:'1.2-2' }} DT</span>
+                  <span class="cost-val" [class.over]="getInvoiceTotal() > markData.estimatedCost" [class.under]="getInvoiceTotal() <= markData.estimatedCost">{{ getInvoiceTotal() | appCurrency }}</span>
                 </div>
                 <div class="cost-row diff" *ngIf="getInvoiceTotal() !== markData.estimatedCost">
                   <span class="cost-label">Écart</span>
                   <span class="cost-val" [class.over]="getInvoiceTotal() > markData.estimatedCost" [class.under]="getInvoiceTotal() < markData.estimatedCost">
-                    {{ getInvoiceTotal() > markData.estimatedCost ? '+' : '' }}{{ (getInvoiceTotal() - markData.estimatedCost) | number:'1.2-2' }} DT
+                    {{ getInvoiceTotal() > markData.estimatedCost ? '+' : '' }}{{ (getInvoiceTotal() - markData.estimatedCost) | appCurrency }}
                   </span>
                 </div>
               </div>
@@ -485,14 +486,14 @@ interface FlatRow {
             </div>
             <div class="recap-box" *ngIf="addToVehicleData.vehicleId">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-              <div><strong>{{ addToVehicleData.vehicleName }}</strong><br><span class="text-muted">{{ addToVehicleData.vehiclePlate }} - {{ addToVehicleData.vehicleMileage | number }} km</span></div>
+              <div><strong>{{ addToVehicleData.vehicleName }}</strong><br><span class="text-muted">{{ addToVehicleData.vehiclePlate }} - {{ addToVehicleData.vehicleMileage | appDistance:0 }}</span></div>
             </div>
             <div class="tpl-list" *ngIf="addToVehicleData.vehicleId">
               @for (t of getAvailableTemplatesForVehicle(); track t.id) {
                 <div class="tpl-item" [class.selected]="isTemplateSelected(t.id)" (click)="toggleTemplateSelection(t)">
                   <div class="tpl-check" [class.checked]="isTemplateSelected(t.id)"><svg *ngIf="isTemplateSelected(t.id)" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
                   <div class="tpl-item-info"><span class="tpl-item-name">{{ t.name }}</span><span class="tpl-item-interval">{{ t.intervalKm ? (t.intervalKm | number) + ' km' : '' }}{{ t.intervalKm && t.intervalMonths ? ' / ' : '' }}{{ t.intervalMonths ? t.intervalMonths + ' mois' : '' }}</span></div>
-                  <span class="tpl-item-cost">~{{ t.estimatedCost }} DT</span>
+                  <span class="tpl-item-cost">~{{ t.estimatedCost | appCurrency:0 }}</span>
                 </div>
               }
               <div class="empty-state small" *ngIf="getAvailableTemplatesForVehicle().length === 0"><p>Tous les entretiens sont deja assignes</p></div>
@@ -528,7 +529,7 @@ interface FlatRow {
             </div>
             <div class="history-loading" *ngIf="historyLoading">Chargement...</div>
             <div class="history-estimated" *ngIf="!historyLoading && historyLogs.length > 0 && historyEstimatedCost > 0">
-              Coût estimé: <strong>{{ historyEstimatedCost | number:'1.2-2' }} DT</strong>
+              Coût estimé: <strong>{{ historyEstimatedCost | appCurrency }}</strong>
             </div>
             <div class="history-list" *ngIf="!historyLoading && historyLogs.length > 0">
               <div class="history-item" *ngFor="let log of historyLogs">
@@ -536,9 +537,9 @@ interface FlatRow {
                 <div class="history-content">
                   <div class="history-date">{{ formatDate(log.doneDate) }}</div>
                   <div class="history-details">
-                    <span class="history-km">{{ log.doneKm | number }} km</span>
-                    <span class="history-cost" title="Coût réel">Réel: {{ log.actualCost | number:'1.2-2' }} DT</span>
-                    <span class="history-cost-estimated" *ngIf="historyEstimatedCost > 0" title="Coût estimé">Estimé: {{ historyEstimatedCost | number:'1.2-2' }} DT</span>
+                    <span class="history-km">{{ log.doneKm | appDistance:0 }}</span>
+                    <span class="history-cost" title="Coût réel">Réel: {{ log.actualCost | appCurrency }}</span>
+                    <span class="history-cost-estimated" *ngIf="historyEstimatedCost > 0" title="Coût estimé">Estimé: {{ historyEstimatedCost | appCurrency }}</span>
                     <span class="history-supplier" *ngIf="log.supplierName">{{ log.supplierName }}</span>
                   </div>
                   <div class="history-notes" *ngIf="log.notes">{{ log.notes }}</div>
