@@ -616,6 +616,35 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
    *   - re-label after vehicle data refresh: applyVehicleLabel()
    * ────────────────────────────────────────────────────────────────────────── */
 
+  /**
+   * Build a markerClusterGroup with fleet-tuned options, or null if the
+   * plugin failed to attach to L (defensive — never let a missing plugin
+   * make vehicles vanish; callers fall back to adding markers to the map).
+   *
+   * `animate: false` is deliberate. leaflet.markercluster's zoom/cluster
+   * animation sets each marker to opacity 0 and only restores it on the
+   * `transitionend` event. If transitions are zeroed (our global
+   * `body.no-animations` rule, or just browser timing quirks) that event
+   * may never fire, leaving every marker stuck invisible — which is
+   * exactly the "tous les véhicules ont disparu" bug. Turning the
+   * internal animation off makes clustering deterministic.
+   */
+  private createClusterGroup(): any | null {
+    const factory = (L as any).markerClusterGroup;
+    if (typeof factory !== 'function') {
+      console.warn('[monitoring] leaflet.markercluster not available — clustering disabled');
+      return null;
+    }
+    return factory({
+      maxClusterRadius: 60,
+      disableClusteringAtZoom: 16,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      chunkedLoading: true,
+      animate: false,
+    });
+  }
+
   /** Add a freshly-created marker into whichever container is currently active. */
   private addVehicleMarker(marker: L.Marker, vehicle: any): void {
     this.applyVehicleLabel(marker, vehicle);
@@ -691,19 +720,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.markerClusterLayer = null;
     }
     if (!this.markerClusterLayer && clusteringEnabled) {
-      this.markerClusterLayer = (L as any).markerClusterGroup({
-        // Tuned for vehicle fleets: keep clusters fairly tight so the
-        // operator sees the actual marker shapes as soon as they zoom in.
-        maxClusterRadius: 60,
-        disableClusteringAtZoom: 16,
-        spiderfyOnMaxZoom: true,
-        showCoverageOnHover: false,
-        chunkedLoading: true,
-      });
-      this.map.addLayer(this.markerClusterLayer);
+      this.markerClusterLayer = this.createClusterGroup();
+      if (this.markerClusterLayer) {
+        this.map.addLayer(this.markerClusterLayer);
+      }
     }
 
-    // Put every marker back into the (now-active) container.
+    // Put every marker back into the (now-active) container. If the
+    // cluster group couldn't be created, markers fall back to the map so
+    // they never disappear.
     this.vehicleMarkers.forEach((m) => {
       if (this.markerClusterLayer) {
         this.markerClusterLayer.addLayer(m);
@@ -803,14 +828,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         // the L.markerClusterGroup BEFORE markers start arriving so they
         // land in the right container straight away.
         if (this.userPrefs.current.clustering) {
-          this.markerClusterLayer = (L as any).markerClusterGroup({
-            maxClusterRadius: 60,
-            disableClusteringAtZoom: 16,
-            spiderfyOnMaxZoom: true,
-            showCoverageOnHover: false,
-            chunkedLoading: true,
-          });
-          this.map.addLayer(this.markerClusterLayer);
+          this.markerClusterLayer = this.createClusterGroup();
+          if (this.markerClusterLayer) {
+            this.map.addLayer(this.markerClusterLayer);
+          }
         }
 
         this.mapReady = true;

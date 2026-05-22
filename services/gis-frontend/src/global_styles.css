@@ -223,6 +223,19 @@ body.no-animations *::after {
   transition-duration: 0s !important;
   transition-delay: 0s !important;
 }
+/* …but never touch Leaflet's own panes / markers. leaflet.markercluster
+ * and the zoom/pan engine rely on transitionend callbacks to restore
+ * element opacity; zeroing their transitions makes those callbacks never
+ * fire and leaves markers stuck invisible. Scope the reset out of them. */
+body.no-animations .leaflet-pane,
+body.no-animations .leaflet-pane *,
+body.no-animations .leaflet-marker-icon,
+body.no-animations .leaflet-marker-shadow,
+body.no-animations .leaflet-tile,
+body.no-animations .leaflet-zoom-animated {
+  transition-duration: revert !important;
+  animation-duration: revert !important;
+}
 
 /* ---------------------------------------------------------------------------
  * Vehicle label tooltips (Calypso 9 p5 — Settings -> Carte -> Afficher les
