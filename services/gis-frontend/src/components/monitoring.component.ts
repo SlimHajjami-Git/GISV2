@@ -15,6 +15,7 @@ import { getVehicleIcon } from './shared/vehicle-icons';
 import { PlaybackStateService, PlaybackTimelineEntry } from '../services/playback-state.service';
 import * as L from 'leaflet';
 import 'leaflet-routing-machine';
+import 'leaflet.markercluster';
 
 @Component({
   selector: 'app-monitoring',
@@ -29,6 +30,14 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   mapReady = false;
   initialFitDone = false;
   vehicleMarkers = new Map<string, L.Marker>();
+
+  // Calypso 9 p5 — clustering / labels container.
+  // markerClusterLayer is null when the operator has clustering OFF; in
+  // that mode markers are added directly to the map. When clustering
+  // turns on, all existing markers migrate INTO this group and new
+  // markers go straight into it. Toggling the pref tears the group
+  // down or rebuilds it (see syncMapPreferenceContainers).
+  private markerClusterLayer: any = null;
 
   vehicles: Vehicle[] = [];
   filteredVehicles: Vehicle[] = [];
@@ -219,10 +228,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         : (initialPrefs.mapStyle === 'hybrid' ? 'satellite' : 'streets');
       this.mapStyle = ms;
     }
-    // Track the last applied mapLanguage so a pure language change (style
-    // identical) still re-applies the tile layer — otherwise the operator
-    // would have to also toggle the style to see the new labels appear.
+    // Track the last applied values so pref deltas can be detected
+    // individually — language and label toggles are separate from style
+    // changes and must each route to their own hot-swap path.
     let lastLang = this.userPrefs.current.mapLanguage;
+    let lastClustering = this.userPrefs.current.clustering;
+    let lastShowLabels = this.userPrefs.current.showVehicleLabels;
     this.prefsSub = this.userPrefs.prefs$.subscribe(p => {
       const supported = ['streets', 'satellite', 'terrain'] as const;
       const ms = (supported as readonly string[]).includes(p.mapStyle)
@@ -236,6 +247,17 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         // current language from the service — so we route both kinds of
         // change through the same hot-swap path.
         this.changeMapStyle(ms);
+      }
+      // Clustering toggle — rebuild the marker container in place so
+      // existing L.Marker instances (with their icons + popups) survive.
+      if (this.map && p.clustering !== lastClustering) {
+        lastClustering = p.clustering;
+        this.rebuildMarkerContainer(p.clustering);
+      }
+      // Label toggle — re-bind / unbind tooltips on every existing marker.
+      if (this.map && p.showVehicleLabels !== lastShowLabels) {
+        lastShowLabels = p.showVehicleLabels;
+        this.refreshAllVehicleLabels();
       }
     });
 
@@ -582,6 +604,115 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Track active marker animations to cancel them on new updates
   private markerAnimations = new Map<string, number>();
 
+  /* ─────────────────────────── Marker container helpers ───────────────────────
+   * Calypso 9 p5 — `clustering` and `showVehicleLabels` user preferences are
+   * applied here. Markers go into a markerClusterGroup when clustering is on,
+   * otherwise directly on the map. Labels are permanent Leaflet tooltips
+   * bound on each marker, toggled in/out based on the operator's choice.
+   * Call sites:
+   *   - new marker creation: addVehicleMarker()
+   *   - marker removal: removeVehicleMarker()
+   *   - pref-change runtime swap: rebuildMarkerContainer()
+   *   - re-label after vehicle data refresh: applyVehicleLabel()
+   * ────────────────────────────────────────────────────────────────────────── */
+
+  /** Add a freshly-created marker into whichever container is currently active. */
+  private addVehicleMarker(marker: L.Marker, vehicle: any): void {
+    this.applyVehicleLabel(marker, vehicle);
+    if (this.markerClusterLayer) {
+      this.markerClusterLayer.addLayer(marker);
+    } else if (this.map) {
+      marker.addTo(this.map);
+    }
+  }
+
+  /** Remove a marker from whichever container is currently active. */
+  private removeVehicleMarker(marker: L.Marker): void {
+    if (this.markerClusterLayer) {
+      this.markerClusterLayer.removeLayer(marker);
+    } else {
+      marker.remove();
+    }
+  }
+
+  /**
+   * Bind (or unbind) a permanent tooltip showing the vehicle's plate/name.
+   * Called on first marker creation and again whenever the operator flips
+   * "Afficher les noms des véhicules" in /settings.
+   */
+  private applyVehicleLabel(marker: L.Marker, vehicle: any): void {
+    const show = this.userPrefs.current.showVehicleLabels;
+    if (!show) {
+      marker.unbindTooltip();
+      return;
+    }
+    const label = vehicle?.plate || vehicle?.name || '';
+    if (!label) return;
+    // Re-binding overrides the previous tooltip, no need to unbind first.
+    marker.bindTooltip(label, {
+      permanent: true,
+      direction: 'top',
+      offset: [0, -28],
+      className: 'vehicle-label-tooltip',
+      interactive: false,
+    });
+  }
+
+  /** Iterate over every existing marker and (re)apply the label tooltip. */
+  private refreshAllVehicleLabels(): void {
+    this.vehicleMarkers.forEach((marker, markerId) => {
+      const vehicle = this.vehicles.find((v: any) => v.id?.toString() === markerId);
+      if (vehicle) this.applyVehicleLabel(marker, vehicle);
+    });
+  }
+
+  /**
+   * Switch between "clustered" and "flat" marker layouts at runtime.
+   * Pulls every existing marker out of its current container, swaps the
+   * container, and re-adds them. Cheaper than recreating markers from
+   * scratch since the L.Marker instances (with their icons / popups)
+   * survive the swap.
+   */
+  private rebuildMarkerContainer(clusteringEnabled: boolean): void {
+    if (!this.map) return;
+
+    // Take every marker out of the current container.
+    this.vehicleMarkers.forEach((m) => {
+      if (this.markerClusterLayer) {
+        this.markerClusterLayer.removeLayer(m);
+      } else {
+        m.remove();
+      }
+    });
+
+    // Tear down or instantiate the cluster group as needed.
+    if (this.markerClusterLayer && !clusteringEnabled) {
+      this.map.removeLayer(this.markerClusterLayer);
+      this.markerClusterLayer = null;
+    }
+    if (!this.markerClusterLayer && clusteringEnabled) {
+      this.markerClusterLayer = (L as any).markerClusterGroup({
+        // Tuned for vehicle fleets: keep clusters fairly tight so the
+        // operator sees the actual marker shapes as soon as they zoom in.
+        maxClusterRadius: 60,
+        disableClusteringAtZoom: 16,
+        spiderfyOnMaxZoom: true,
+        showCoverageOnHover: false,
+        chunkedLoading: true,
+      });
+      this.map.addLayer(this.markerClusterLayer);
+    }
+
+    // Put every marker back into the (now-active) container.
+    this.vehicleMarkers.forEach((m) => {
+      if (this.markerClusterLayer) {
+        this.markerClusterLayer.addLayer(m);
+      } else if (this.map) {
+        m.addTo(this.map);
+      }
+    });
+  }
+
   updateSingleVehicleMarker(vehicle: any) {
     if (!this.map || !this.mapReady || !vehicle.currentLocation) return;
 
@@ -634,11 +765,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         existingMarker.setLatLng(newLatLng);
       }
     } else {
-      // Create new marker
+      // Create new marker — addVehicleMarker handles cluster group routing
+      // + permanent label tooltip based on the operator's preferences.
       const marker = L.marker(newLatLng, { icon })
         .bindPopup(this.createPopupContent(vehicle))
         .on('click', () => this.selectVehicle(vehicle));
-      marker.addTo(this.map!);
+      this.addVehicleMarker(marker, vehicle);
       this.vehicleMarkers.set(markerId, marker);
     }
 
@@ -666,6 +798,20 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           subdomains: this.userPrefs.getTileSubdomains(this.mapStyle) as any,
           maxZoom: 19
         }).addTo(this.map);
+
+        // Calypso 9 p5 — if clustering is enabled on first load, stand up
+        // the L.markerClusterGroup BEFORE markers start arriving so they
+        // land in the right container straight away.
+        if (this.userPrefs.current.clustering) {
+          this.markerClusterLayer = (L as any).markerClusterGroup({
+            maxClusterRadius: 60,
+            disableClusteringAtZoom: 16,
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false,
+            chunkedLoading: true,
+          });
+          this.map.addLayer(this.markerClusterLayer);
+        }
 
         this.mapReady = true;
 
@@ -794,21 +940,23 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           existingMarker.setIcon(icon);
           existingMarker.setPopupContent(this.createPopupContent(vehicle));
         } else {
-          // Create new marker
+          // Create new marker — see addVehicleMarker for container + label logic.
           const marker = L.marker([vehicle.currentLocation.lat, vehicle.currentLocation.lng], { icon })
             .bindPopup(this.createPopupContent(vehicle))
             .on('click', () => this.selectVehicle(vehicle));
 
-          marker.addTo(this.map!);
+          this.addVehicleMarker(marker, vehicle);
           this.vehicleMarkers.set(markerId, marker);
         }
       }
     });
 
-    // Remove markers for vehicles no longer in filteredVehicles
+    // Remove markers for vehicles no longer in filteredVehicles —
+    // route through the cluster-aware helper so the cluster group
+    // count stays in sync.
     this.vehicleMarkers.forEach((marker, key) => {
       if (!currentIds.has(key)) {
-        marker.remove();
+        this.removeVehicleMarker(marker);
         this.vehicleMarkers.delete(key);
       }
     });
@@ -1127,9 +1275,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     
     const idStr = vehicleId.toString();
     
-    // Hide ALL live markers during playback to avoid confusion
+    // Hide ALL live markers during playback to avoid confusion —
+    // route through cluster-aware helpers so the cluster group count
+    // stays consistent if clustering is enabled.
     this.vehicleMarkers.forEach((marker, key) => {
-      marker.remove();
+      this.removeVehicleMarker(marker);
       this.hiddenLiveMarkers.set(key, marker);
     });
     console.log(`All ${this.hiddenLiveMarkers.size} live markers hidden for playback`);
@@ -1139,7 +1289,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   restoreLiveMarker() {
     if (this.hiddenLiveMarkers.size > 0 && this.map) {
       this.hiddenLiveMarkers.forEach((marker, key) => {
-        marker.addTo(this.map!);
+        const vehicle = this.vehicles.find((v: any) => v.id?.toString() === key);
+        this.addVehicleMarker(marker, vehicle ?? { plate: '', name: '' });
       });
       console.log(`Restored ${this.hiddenLiveMarkers.size} live markers`);
       this.hiddenLiveMarkers.clear();
