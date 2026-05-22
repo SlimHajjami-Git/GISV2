@@ -143,7 +143,7 @@ interface FlatRow {
           </div>
           <div class="stat-item">
             <div class="stat-icon vehicles"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
-            <div class="stat-content"><span class="stat-value">{{ vehicleSchedules.length }}</span><span class="stat-label">Vehicules</span></div>
+            <div class="stat-content"><span class="stat-value">{{ allVehicles.length }}</span><span class="stat-label">Vehicules</span></div>
           </div>
         </div>
 
@@ -1015,7 +1015,11 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   }
 
   loadVehicles() {
-    this.apiService.getVehicleMaintenanceSchedule({ pageSize: 100 }).pipe(takeUntil(this.destroy$)).subscribe({
+    // pageSize 5000 = larger than the biggest subscription tier (CALYPSO
+    // caps at 500 vehicles). The default 100 was capping the on-screen
+    // "Vehicules" stat at exactly 100 and silently dropping per-vehicle
+    // schedule rows past that line so the operator couldn't act on them.
+    this.apiService.getVehicleMaintenanceSchedule({ pageSize: 5000 }).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {
         this.ngZone.run(() => {
           this.vehicleSchedules = result.items.map(v => ({
