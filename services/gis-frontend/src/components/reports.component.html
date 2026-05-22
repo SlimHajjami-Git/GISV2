@@ -279,7 +279,7 @@
               @if (monthlyCostReportType === 'costs') {
                 <div class="stat-card">
                   <span class="stat-label">KM Total</span>
-                  <span class="stat-value">{{ formatNumber(monthlyCostReport.totalKm) }} km</span>
+                  <span class="stat-value">{{ monthlyCostReport.totalKm | appDistance:0 }}</span>
                 </div>
                 <div class="stat-card">
                   <span class="stat-label">Carburant</span>
@@ -300,11 +300,11 @@
               } @else {
                 <div class="stat-card">
                   <span class="stat-label">KM Total</span>
-                  <span class="stat-value">{{ formatNumber(monthlyCostReport.totalKm) }} km</span>
+                  <span class="stat-value">{{ monthlyCostReport.totalKm | appDistance:0 }}</span>
                 </div>
                 <div class="stat-card">
                   <span class="stat-label">Litres Total</span>
-                  <span class="stat-value accent">{{ formatNumber(monthlyCostReport.totalFuelLiters) }} L</span>
+                  <span class="stat-value accent">{{ monthlyCostReport.totalFuelLiters | appVolume:0 }}</span>
                 </div>
                 <div class="stat-card">
                   <span class="stat-label">Coût Carburant</span>
@@ -323,11 +323,11 @@
                 <div class="dept-header">
                   <span class="dept-badge">{{ dept.departmentName }}</span>
                   <span class="dept-summary">
-                    {{ formatNumber(dept.totalKm) }} km
+                    {{ dept.totalKm | appDistance:0 }}
                     @if (monthlyCostReportType === 'costs') {
                       &bull; {{ formatCurrency(dept.totalCostDzd) }}
                     } @else {
-                      &bull; {{ formatNumber(dept.totalFuelLiters) }} L
+                      &bull; {{ dept.totalFuelLiters | appVolume:0 }}
                     }
                   </span>
                 </div>
@@ -504,8 +504,8 @@
               <!-- KPI Summary -->
               <div class="ai-kpi-row">
                 <div class="ai-kpi"><span class="ai-kpi-val">{{ aiFleetReport.fleetSummary.totalVehicles }}</span><span class="ai-kpi-lbl">Véhicules</span></div>
-                <div class="ai-kpi"><span class="ai-kpi-val">{{ aiFleetReport.fleetSummary.totalDistance | number:'1.0-0' }} km</span><span class="ai-kpi-lbl">Distance</span></div>
-                <div class="ai-kpi"><span class="ai-kpi-val">{{ aiFleetReport.fleetSummary.totalCosts | number:'1.0-0' }} DT</span><span class="ai-kpi-lbl">Coûts</span></div>
+                <div class="ai-kpi"><span class="ai-kpi-val">{{ aiFleetReport.fleetSummary.totalDistance | appDistance:0 }}</span><span class="ai-kpi-lbl">Distance</span></div>
+                <div class="ai-kpi"><span class="ai-kpi-val">{{ aiFleetReport.fleetSummary.totalCosts | appCurrency:0 }}</span><span class="ai-kpi-lbl">Coûts</span></div>
                 <div class="ai-kpi"><span class="ai-kpi-val">{{ aiFleetReport.fleetSummary.avgHealthScore }}/100</span><span class="ai-kpi-lbl">Santé moy.</span></div>
                 <div class="ai-kpi"><span class="ai-kpi-val">{{ aiFleetReport.fleetSummary.totalAlerts }}</span><span class="ai-kpi-lbl">Alertes</span></div>
                 <div class="ai-kpi"><span class="ai-kpi-val">{{ aiFleetReport.fleetSummary.overdueSchedules }}</span><span class="ai-kpi-lbl">Retards</span></div>
@@ -541,7 +541,7 @@
                     ]">
                       <span class="ai-cost-dot" [style.background]="c.color"></span>
                       <span class="ai-cost-lbl">{{ c.label }}</span>
-                      <span class="ai-cost-val">{{ c.value | number:'1.0-0' }} DT</span>
+                      <span class="ai-cost-val">{{ c.value | appCurrency:0 }}</span>
                     </div>
                   </div>
                   <div class="ai-cost-bar">
@@ -617,7 +617,7 @@
                           <td><span class="badge" [style.background]="getAiHealthColor(v.healthLevel)" style="color:#fff;padding:2px 8px;border-radius:6px;font-size:11px;">{{ v.healthScore }}/100</span></td>
                           <td><span class="badge" [style.background]="getAiScoreColor(v.drivingScore)" style="color:#fff;padding:2px 8px;border-radius:6px;font-size:11px;">{{ v.drivingScore }}</span></td>
                           <td>{{ v.fuelConsumption > 0 ? (v.fuelConsumption + ' L') : '-' }}</td>
-                          <td>{{ v.totalCosts | number:'1.0-0' }} DT</td>
+                          <td>{{ v.totalCosts | appCurrency:0 }}</td>
                           <td>{{ v.alertCount }}</td>
                         </tr>
                       }
@@ -680,15 +680,15 @@
               <!-- KPI Cards -->
               <div class="fuel-kpi-row">
                 <div class="fuel-kpi">
-                  <span class="fuel-kpi-value accent">{{ fuelEstimationReport.totalFleetFuelCost | number:'1.2-2' }} TND</span>
+                  <span class="fuel-kpi-value accent">{{ fuelEstimationReport.totalFleetFuelCost | appCurrency }}</span>
                   <span class="fuel-kpi-label">Coût Total</span>
                 </div>
                 <div class="fuel-kpi">
-                  <span class="fuel-kpi-value">{{ fuelEstimationReport.totalFleetFuelConsumedLiters | number:'1.1-1' }} L</span>
+                  <span class="fuel-kpi-value">{{ fuelEstimationReport.totalFleetFuelConsumedLiters | appVolume:1 }}</span>
                   <span class="fuel-kpi-label">Consommation</span>
                 </div>
                 <div class="fuel-kpi">
-                  <span class="fuel-kpi-value">{{ fuelEstimationReport.totalFleetDistanceKm | number:'1.0-0' }} km</span>
+                  <span class="fuel-kpi-value">{{ fuelEstimationReport.totalFleetDistanceKm | appDistance:0 }}</span>
                   <span class="fuel-kpi-label">Distance</span>
                 </div>
                 <div class="fuel-kpi">
@@ -733,8 +733,8 @@
                       <th>Carburant</th>
                       <th>Réservoir</th>
                       <th>Distance</th>
-                      <th>Conso. (L)</th>
-                      <th>Coût (TND)</th>
+                      <th>Conso.</th>
+                      <th>Coût</th>
                       <th>L/100km</th>
                       <th>Remplissages</th>
                       <th>Efficacité</th>
@@ -746,15 +746,15 @@
                         <td class="vehicle-cell">{{ vehicle.vehicleName }} <span *ngIf="vehicle.isEstimated" class="badge badge-idle" style="font-size:9px; padding:1px 4px;">estimé</span></td>
                         <td class="plate-cell"><span class="badge badge-stop">{{ vehicle.plate || '-' }}</span></td>
                         <td><span class="badge badge-trip">{{ vehicle.fuelType || '-' }}</span></td>
-                        <td>{{ vehicle.fuelTankCapacity ? vehicle.fuelTankCapacity + ' L' : '-' }}</td>
-                        <td class="distance-cell">{{ vehicle.totalDistanceKm | number:'1.0-0' }} km</td>
-                        <td class="value-cell">{{ vehicle.totalFuelConsumedLiters | number:'1.1-1' }}</td>
-                        <td class="cost-cell" style="font-weight:600; color:#16a34a;">{{ vehicle.totalFuelCost | number:'1.0-0' }}</td>
+                        <td>{{ vehicle.fuelTankCapacity ? (vehicle.fuelTankCapacity | appVolume:0) : '-' }}</td>
+                        <td class="distance-cell">{{ vehicle.totalDistanceKm | appDistance:0 }}</td>
+                        <td class="value-cell">{{ vehicle.totalFuelConsumedLiters | appVolume:1 }}</td>
+                        <td class="cost-cell" style="font-weight:600; color:#16a34a;">{{ vehicle.totalFuelCost | appCurrency:0 }}</td>
                         <td class="speed-cell">{{ vehicle.averageConsumptionPer100Km | number:'1.2-2' }}</td>
                         <td>
                           @if (vehicle.refuels && vehicle.refuels.length > 0) {
                             <span class="badge badge-trip" style="cursor:help;" [title]="getRefuelTooltip(vehicle.refuels)">
-                              ⛽ {{ vehicle.refuels.length }}x ({{ getTotalRefuelLiters(vehicle.refuels) | number:'1.1-1' }} L)
+                              ⛽ {{ vehicle.refuels.length }}x ({{ getTotalRefuelLiters(vehicle.refuels) | appVolume:1 }})
                             </span>
                           } @else {
                             <span style="color:#94a3b8;">-</span>

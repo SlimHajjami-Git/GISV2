@@ -11,6 +11,8 @@ import { PdfExportService } from '../services/pdf-export.service';
 import { ReportStateService } from '../services/report-state.service';
 import { PermissionService } from '../services/permission.service';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
+import { UserPreferencesService } from '../services/user-preferences.service';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked } from 'marked';
@@ -21,7 +23,7 @@ Chart.register(...registerables);
 @Component({
   selector: 'app-reports',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, ButtonComponent, CardComponent, DataTableComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ButtonComponent, CardComponent, DataTableComponent, ...USER_PREF_PIPES],
   templateUrl: './reports.component.html',
   styleUrls: ['./reports.component.css']
 })
@@ -384,7 +386,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     private pdfExportService: PdfExportService,
     private sanitizer: DomSanitizer,
     private reportStateService: ReportStateService,
-    private permissionService: PermissionService
+    private permissionService: PermissionService,
+    private userPrefs: UserPreferencesService
   ) {}
 
   ngOnInit() {
@@ -3623,11 +3626,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   getCurrencyCode(): string {
-    return this.apiService.getCurrentUserSync()?.currency || 'TND';
+    // Calypso 9 — single source of truth is UserPreferencesService so the
+    // currency here matches the appCurrency pipe used elsewhere in the app.
+    return this.userPrefs.current.currency;
   }
 
   formatCurrency(value: number): string {
-    return value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + this.getCurrencyCode();
+    return this.userPrefs.formatCurrency(value);
   }
 
   getKpiStatusClass(status: string): string {

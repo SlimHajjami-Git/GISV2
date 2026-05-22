@@ -2,6 +2,16 @@ import { Pipe, PipeTransform, ChangeDetectorRef, OnDestroy } from '@angular/core
 import { Subscription } from 'rxjs';
 import { UserPreferencesService } from '../services/user-preferences.service';
 
+/** fr-FR number formatting with thousands separators (matches the app's
+ *  existing formatNumber helpers so swapping in a pipe never regresses
+ *  readability of large values like "1 234 567 km"). */
+function fmt(value: number, digits: number): string {
+  return value.toLocaleString('fr-FR', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
 /**
  * Pipes that read from UserPreferencesService and re-emit when the
  * relevant preference changes. Each pipe holds a subscription on the
@@ -33,7 +43,7 @@ export class AppDistancePipe implements PipeTransform, OnDestroy {
   transform(km: number | null | undefined, digits: number = 0): string {
     if (km === null || km === undefined || isNaN(km as number)) return '-';
     const { value, unit } = this.prefs.convertDistance(km);
-    return `${value.toFixed(digits)} ${unit}`;
+    return `${fmt(value, digits)} ${unit}`;
   }
 }
 
@@ -47,7 +57,7 @@ export class AppSpeedPipe implements PipeTransform, OnDestroy {
   transform(kmh: number | null | undefined, digits: number = 0): string {
     if (kmh === null || kmh === undefined || isNaN(kmh as number)) return '-';
     const { value, unit } = this.prefs.convertSpeed(kmh);
-    return `${value.toFixed(digits)} ${unit}`;
+    return `${fmt(value, digits)} ${unit}`;
   }
 }
 
@@ -61,7 +71,7 @@ export class AppVolumePipe implements PipeTransform, OnDestroy {
   transform(liters: number | null | undefined, digits: number = 1): string {
     if (liters === null || liters === undefined || isNaN(liters as number)) return '-';
     const { value, unit } = this.prefs.convertVolume(liters);
-    return `${value.toFixed(digits)} ${unit}`;
+    return `${fmt(value, digits)} ${unit}`;
   }
 }
 
@@ -75,7 +85,7 @@ export class AppTempPipe implements PipeTransform, OnDestroy {
   transform(celsius: number | null | undefined, digits: number = 0): string {
     if (celsius === null || celsius === undefined || isNaN(celsius as number)) return '-';
     const { value, unit } = this.prefs.convertTemperature(celsius);
-    return `${value.toFixed(digits)}${unit}`;
+    return `${fmt(value, digits)}${unit}`;
   }
 }
 
@@ -105,3 +115,17 @@ export class AppDatePipe implements PipeTransform, OnDestroy {
     return this.prefs.formatDate(date);
   }
 }
+
+/**
+ * Convenience bundle so a standalone component can pull in every
+ * preference pipe with a single spread:
+ *   imports: [CommonModule, ...USER_PREF_PIPES]
+ */
+export const USER_PREF_PIPES = [
+  AppDistancePipe,
+  AppSpeedPipe,
+  AppVolumePipe,
+  AppTempPipe,
+  AppCurrencyPipe,
+  AppDatePipe,
+] as const;
