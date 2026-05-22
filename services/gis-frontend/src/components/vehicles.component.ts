@@ -10,6 +10,7 @@ import { Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { VehiclePopupComponent } from './shared/vehicle-popup.component';
 import { VehicleCostsPopupComponent } from './shared/vehicle-costs-popup.component';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 // Calypso 7: VehicleInfoComponent has been folded into VehiclePopupComponent.
 // The unified popup handles identification + GPS (admin-only) + acquisition
 // in a single surface, so the legacy slide-panel is no longer needed here.
@@ -45,7 +46,7 @@ interface VehicleTrip {
 @Component({
   selector: 'app-vehicles',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, VehiclePopupComponent, VehicleCostsPopupComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, VehiclePopupComponent, VehicleCostsPopupComponent, ...USER_PREF_PIPES],
   animations: [
     trigger('slideIn', [
       transition(':enter', [
@@ -203,7 +204,7 @@ interface VehicleTrip {
                   </td>
                   <td class="col-type">{{ getTypeLabel(vehicle.type) }}</td>
                   <td class="col-mileage">
-                    <span class="mileage-value">{{ formatNumber(vehicle.mileage) }} km</span>
+                    <span class="mileage-value">{{ vehicle.mileage | appDistance:0 }}</span>
                   </td>
                   <td class="col-driver">
                     <span *ngIf="vehicle.assignedDriverName" class="driver-name">{{ vehicle.assignedDriverName }}</span>
@@ -283,7 +284,7 @@ interface VehicleTrip {
           <div class="credit-body">
             <div class="credit-row">
               <span class="credit-label">Mensualité</span>
-              <span class="credit-value">{{ formatMoney(creditPopupVehicle.leasingMonthlyPayment) }} DT</span>
+              <span class="credit-value">{{ creditPopupVehicle.leasingMonthlyPayment | appCurrency }}</span>
             </div>
             <div class="credit-row">
               <span class="credit-label">Durée du leasing</span>
@@ -296,7 +297,7 @@ interface VehicleTrip {
             <div class="credit-divider"></div>
             <div class="credit-row credit-total">
               <span class="credit-label">Montant total</span>
-              <span class="credit-value">{{ formatMoney(getCreditTotal(creditPopupVehicle)) }} DT</span>
+              <span class="credit-value">{{ getCreditTotal(creditPopupVehicle) | appCurrency }}</span>
             </div>
             <p class="credit-note" *ngIf="!creditPopupVehicle.leasingMonthlyPayment || !creditPopupVehicle.leasingDurationMonths">
               Renseignez la mensualité et la durée du leasing dans la fiche véhicule pour voir le détail complet.
@@ -370,7 +371,7 @@ interface VehicleTrip {
                 <div class="spec-item">
                   <span class="spec-label">Kilométrage</span>
                   <span class="spec-value">
-                    {{ formatNumber(selectedDetailVehicle.mileage) }} km
+                    {{ selectedDetailVehicle.mileage | appDistance:0 }}
                     <span class="mileage-source" *ngIf="selectedDetailVehicle.hasGPS" title="Données GPS disponibles">📡</span>
                   </span>
                 </div>
@@ -408,7 +409,7 @@ interface VehicleTrip {
               <div class="gauge-item">
                 <div class="gauge-header">
                   <span>Prochaine maintenance</span>
-                  <span class="gauge-value">{{ getMaintenanceRemaining(selectedDetailVehicle) }} km</span>
+                  <span class="gauge-value">{{ getMaintenanceRemaining(selectedDetailVehicle) | appDistance:0 }}</span>
                 </div>
                 <div class="gauge-bar-large">
                   <div class="gauge-fill maintenance" [style.width.%]="getMaintenancePercent(selectedDetailVehicle)">
@@ -2641,9 +2642,9 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     return remaining > 0 && remaining < 2000;
   }
 
-  getMaintenanceRemaining(vehicle: any): string {
+  getMaintenanceRemaining(vehicle: any): number {
     const remaining = (vehicle.nextMaintenanceKm || vehicle.mileage + 5000) - vehicle.mileage;
-    return this.formatNumber(Math.max(0, remaining));
+    return Math.max(0, remaining);
   }
 
   getMaintenancePercent(vehicle: any): number {

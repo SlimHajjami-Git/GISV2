@@ -8,11 +8,12 @@ import { SignalRService } from '../services/signalr.service';
 import { Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './shared/ui';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, DateFilterBarComponent, CardComponent, LegendItemComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, DateFilterBarComponent, CardComponent, LegendItemComponent, ...USER_PREF_PIPES],
   template: `
 <app-layout>
 <div class="aurora">
@@ -204,10 +205,10 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
 
       <!-- Dépenses -->
       <section class="glass-card gc-exp fade-in" style="--d:5">
-        <div class="gc-head"><span class="gc-title">Dépenses</span><span class="neon-badge amber">{{ totalCost|number:'1.0-0' }} DT</span></div>
+        <div class="gc-head"><span class="gc-title">Dépenses</span><span class="neon-badge amber">{{ totalCost | appCurrency:0 }}</span></div>
         <div class="exp-rows">
           <div *ngFor="let e of expItems" class="exp-row">
-            <div class="exp-meta"><span class="dot-glow" [style.--dc]="e.color"></span><span class="exp-name">{{ e.name }}</span><b class="exp-amt">{{ e.value|number:'1.0-0' }} DT</b></div>
+            <div class="exp-meta"><span class="dot-glow" [style.--dc]="e.color"></span><span class="exp-name">{{ e.name }}</span><b class="exp-amt">{{ e.value | appCurrency:0 }}</b></div>
             <div class="bar-track"><div class="bar-fill" [style.width.%]="totalCost?(e.value/totalCost)*100:0" [style.background]="e.color" [style.box-shadow]="'0 0 10px '+e.color+'44'"></div></div>
           </div>
         </div>
@@ -221,7 +222,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
             <span class="row-bar" [style.background]="u.color"></span>
             <span class="row-name" style="min-width:90px">{{ u.name }}</span>
             <div class="bar-track bar-lg"><div class="bar-fill" [style.width.%]="(u.mileage/maxMileage)*100" [style.background]="u.color" [style.box-shadow]="'0 0 10px '+u.color+'44'"></div></div>
-            <span class="row-mono">{{ u.mileage|number:'1.0-0' }} km</span>
+            <span class="row-mono">{{ u.mileage | appDistance:0 }}</span>
           </div>
           <div class="pgr" *ngIf="topUnits.length>5"><button (click)="unP=unP-1" [disabled]="unP===0">&#8249;</button><span>{{ unP+1 }}/{{ Math.ceil(topUnits.length/5) }}</span><button (click)="unP=unP+1" [disabled]="(unP+1)*5>=topUnits.length">&#8250;</button></div>
         </div>
@@ -295,7 +296,7 @@ import { DateFilterBarComponent, CardComponent, LegendItemComponent } from './sh
           <div *ngFor="let v of pFuel" class="fuel-row">
             <div class="fuel-meta"><span class="row-name">{{ v.plate }}</span><b [style.color]="fuelC(v.consumption)">{{ v.consumption|number:'1.1-1' }}</b></div>
             <div class="bar-track bar-sm"><div class="bar-fill" [style.width.%]="(v.consumption/maxFuelConsumption)*100" [style.background]="fuelC(v.consumption)"></div></div>
-            <span class="fuel-sub">{{ v.totalLiters|number:'1.0-0' }}L · {{ v.totalKm|number:'1.0-0' }}km</span>
+            <span class="fuel-sub">{{ v.totalLiters | appVolume:0 }} · {{ v.totalKm | appDistance:0 }}</span>
           </div>
           <div class="pgr" *ngIf="vehicleFuelStats.length>5"><button (click)="fuP=fuP-1" [disabled]="fuP===0">&#8249;</button><span>{{ fuP+1 }}/{{ Math.ceil(vehicleFuelStats.length/5) }}</span><button (click)="fuP=fuP+1" [disabled]="(fuP+1)*5>=vehicleFuelStats.length">&#8250;</button></div>
         </div>
