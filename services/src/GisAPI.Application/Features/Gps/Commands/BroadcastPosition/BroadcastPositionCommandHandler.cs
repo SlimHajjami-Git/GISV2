@@ -68,6 +68,15 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
     private static readonly ConcurrentDictionary<int, (DateTime CachedAt, List<GeofenceCacheEntry> Geofences)> _geofenceCache = new();
     private static readonly TimeSpan _geofenceCacheTtl = TimeSpan.FromMinutes(2);
 
+    // Per-zone speed-alert peak tracking — (vehicleId, geofenceId) → highest
+    // speed already notified for the current in-zone speeding session.
+    // Same escalation rule as the vehicle-wide speed check: a session starts
+    // when speed first exceeds the zone's AlertSpeedLimit, then re-fires every
+    // time speed climbs ≥ 5 km/h above the last notified value. The session
+    // ends (entry removed) when speed drops back under the limit OR the
+    // vehicle leaves the geofence.
+    private static readonly ConcurrentDictionary<(int VehicleId, int GeofenceId), double> _geofenceSpeedingSessionPeak = new();
+
     public BroadcastPositionCommandHandler(
         IGisDbContext context,
         IGpsHubService gpsHubService,
@@ -457,6 +466,67 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
                     timestamp
                 });
             }
+
+            // In-zone speed alert — fires when the vehicle is currently inside
+            // a geofence that has AlertSpeedLimit configured AND its speed
+            // exceeds that limit. Uses per-zone peak escalation: first crossing
+            // fires immediately, then again every time speed climbs ≥ 5 km/h
+            // above the last notified value so the operator sees the actual
+            // max speed reached in the zone (not just the moment we crossed).
+            //
+            // The session peak is cleared when speed drops back under the
+            // limit, OR when the vehicle leaves the zone (handled at the end
+            // of this method via newInside comparison).
+            if (isInside && gf.AlertSpeedLimit.HasValue && speed > 0)
+            {
+                var zoneLimit = gf.AlertSpeedLimit.Value;
+                var key = (vehicleId, gf.Id);
+
+                if (speed > zoneLimit)
+                {
+                    bool fire = false;
+                    if (!_geofenceSpeedingSessionPeak.TryGetValue(key, out var lastNotifiedPeak))
+                    {
+                        fire = true;                       // first crossing this visit
+                    }
+                    else if (speed >= lastNotifiedPeak + SpeedAlertEscalationKph)
+                    {
+                        fire = true;                       // new peak
+                    }
+
+                    if (fire)
+                    {
+                        _geofenceSpeedingSessionPeak[key] = speed;
+                        _logger.LogInformation(
+                            "🚨 In-zone speed exceeded: Vehicle {Vehicle} at {Speed:F0} km/h in \"{Zone}\" (limit: {Limit} km/h)",
+                            vehicleName ?? $"#{vehicleId}", speed, gf.Name, zoneLimit);
+
+                        await _publisher.Publish(new GeofenceSpeedAlertNotificationEvent(
+                            companyId, vehicleId, vehicleName, plate,
+                            gf.Id, gf.Name, zoneLimit,
+                            speed, lat, lng, timestamp
+                        ), ct);
+                    }
+                }
+                else
+                {
+                    // Speed dropped back under the zone limit — clear the peak
+                    // so the next in-zone overspeed fires a fresh "first" alert.
+                    _geofenceSpeedingSessionPeak.TryRemove(key, out _);
+                }
+            }
+        }
+
+        // Vehicle just left these zones — drop any per-zone speed peaks so
+        // re-entry starts a fresh session. (Otherwise a vehicle that hit
+        // 80 km/h in zone A, exited, then re-entered at 60 km/h with zone
+        // limit 50 wouldn't fire because 60 < lastNotifiedPeak 80 + 5.)
+        foreach (var leftGeofenceId in currentInside)
+        {
+            if (!newInside.Contains(leftGeofenceId))
+            {
+                _geofenceSpeedingSessionPeak.TryRemove((vehicleId, leftGeofenceId), out _);
+            }
         }
 
         // Update state
@@ -475,7 +545,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             .Where(g => g.CompanyId == companyId && g.IsActive)
             .Select(g => new GeofenceCacheEntry(
                 g.Id, g.Name, g.Type, g.Coordinates, g.CenterLat, g.CenterLng, g.Radius,
-                g.AlertOnEntry, g.AlertOnExit
+                g.AlertOnEntry, g.AlertOnExit, g.AlertSpeedLimit
             ))
             .ToListAsync(ct);
 
@@ -534,7 +604,8 @@ public record GeofenceCacheEntry(
     double? CenterLng,
     double? Radius,
     bool AlertOnEntry,
-    bool AlertOnExit
+    bool AlertOnExit,
+    int? AlertSpeedLimit
 );
 
 /// <summary>
