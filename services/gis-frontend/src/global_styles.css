@@ -207,3 +207,19 @@ input, select, textarea {
     transform: scale(1.05);
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Animations toggle (Calypso 9 p5 — Settings -> Tableau de bord -> Animations)
+ *
+ * UserPreferencesService flips this class on <body> based on the operator's
+ * choice. We disable every CSS-driven motion globally so the setting is
+ * actually visible, not just persisted.
+ * ------------------------------------------------------------------------- */
+body.no-animations *,
+body.no-animations *::before,
+body.no-animations *::after {
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+}

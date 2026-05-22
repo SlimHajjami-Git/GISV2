@@ -170,11 +170,11 @@
                     <div class="sensors-grid">
                       <div class="sensor-item">
                         <span class="sensor-label">🚗 Vitesse actuelle</span>
-                        <span class="sensor-value">{{ getVehicleStats(vehicle)?.currentSpeed?.toFixed(0) || '0' }} km/h</span>
+                        <span class="sensor-value">{{ getVehicleStats(vehicle)?.currentSpeed | appSpeed }}</span>
                       </div>
                       <div class="sensor-item">
                         <span class="sensor-label">⚡ Vitesse max (24h)</span>
-                        <span class="sensor-value">{{ getVehicleStats(vehicle)?.maxSpeed?.toFixed(0) || '0' }} km/h</span>
+                        <span class="sensor-value">{{ getVehicleStats(vehicle)?.maxSpeed | appSpeed }}</span>
                       </div>
                       <div class="sensor-item">
                         <span class="sensor-label">⛽ Carburant</span>

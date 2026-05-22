@@ -9,6 +9,8 @@ import { GeocodingService } from '../services/geocoding.service';
 import { Vehicle } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { AdminService } from '../admin/services/admin.service';
+import { UserPreferencesService } from '../services/user-preferences.service';
+import { AppSpeedPipe, AppDistancePipe } from '../pipes/user-preference-pipes';
 import { getVehicleIcon } from './shared/vehicle-icons';
 import { PlaybackStateService, PlaybackTimelineEntry } from '../services/playback-state.service';
 import * as L from 'leaflet';
@@ -17,7 +19,7 @@ import 'leaflet-routing-machine';
 @Component({
   selector: 'app-monitoring',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, AppSpeedPipe, AppDistancePipe],
   templateUrl: './monitoring.component.html',
   styleUrls: ['./monitoring.component.css']
 })
@@ -183,8 +185,13 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     private cdr: ChangeDetectorRef,
     private ngZone: NgZone,
     private appRef: ApplicationRef,
-    private adminService: AdminService
+    private adminService: AdminService,
+    private userPrefs: UserPreferencesService
   ) {}
+
+  // Calypso 9 p5 — react to map preference changes pushed by /settings.
+  // Holds the live subscription so we can tear it down in ngOnDestroy.
+  private prefsSub: Subscription | null = null;
 
   private routeSub: Subscription | null = null;
   private queryParamsSub: Subscription | null = null;
@@ -197,6 +204,30 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.router.navigate(['/login']);
       return;
     }
+
+    // Calypso 9 p5 — pick up the operator's persisted map style before the
+    // map is initialised so the first tile layer matches their preference.
+    // Subscribe afterwards so subsequent changes in /settings hot-swap the
+    // tiles via changeMapStyle without a reload.
+    const initialPrefs = this.userPrefs.current;
+    if (initialPrefs.mapStyle && initialPrefs.mapStyle !== this.mapStyle) {
+      // Map only supports the three styles we actually have tile URLs for —
+      // 'hybrid' falls back to satellite, anything else stays default.
+      const supported = ['streets', 'satellite', 'terrain'] as const;
+      const ms = (supported as readonly string[]).includes(initialPrefs.mapStyle)
+        ? initialPrefs.mapStyle as 'streets' | 'satellite' | 'terrain'
+        : (initialPrefs.mapStyle === 'hybrid' ? 'satellite' : 'streets');
+      this.mapStyle = ms;
+    }
+    this.prefsSub = this.userPrefs.prefs$.subscribe(p => {
+      const supported = ['streets', 'satellite', 'terrain'] as const;
+      const ms = (supported as readonly string[]).includes(p.mapStyle)
+        ? p.mapStyle as 'streets' | 'satellite' | 'terrain'
+        : (p.mapStyle === 'hybrid' ? 'satellite' : 'streets');
+      if (this.map && ms !== this.mapStyle) {
+        this.changeMapStyle(ms);
+      }
+    });
 
     // Detect if we're on the /playback route
     if (this.route.snapshot.data['view'] === 'playback') {
@@ -374,6 +405,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     if (this.queryParamsSub) {
       this.queryParamsSub.unsubscribe();
+    }
+    if (this.prefsSub) {
+      this.prefsSub.unsubscribe();
     }
     if (this.loadDataController) {
       this.loadDataController.abort();
@@ -1222,6 +1256,16 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // ALWAYS poll periodically as a safety net — even when SignalR is connected,
     // frames can be lost in the pipeline (Redis PubSub disconnect, RabbitMQ backlog, etc.)
     // When connected: every 2 min (catch-up). When disconnected: every 30s (primary source).
+    //
+    // Calypso 9 p5 — period is driven by UserPreferences.refreshInterval
+    // (seconds). 0 means "manual only" so we skip the polling entirely.
+    // We still clamp the minimum to 10s — anything faster floods the API
+    // with no real upside since SignalR pushes already cover bursts.
+    const prefSeconds = this.userPrefs.current.refreshInterval;
+    if (prefSeconds === 0) {
+      return; // operator opted into manual-only refresh
+    }
+    const pollMs = Math.max(10, Number(prefSeconds) || 30) * 1000;
     this.refreshInterval = setInterval(() => {
       if (this.connectionStatus !== 'Connected') {
         this.loadData();
@@ -1238,7 +1282,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           this.loadData();
         }
       }
-    }, 30000); // Check every 30 seconds
+    }, pollMs);
   }
 
   startStalenessCheck() {

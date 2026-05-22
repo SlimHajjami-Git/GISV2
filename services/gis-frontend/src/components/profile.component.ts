@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { ApiService } from '../services/api.service';
+import { UserPreferencesService } from '../services/user-preferences.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 
 interface ProfileModel {
@@ -1082,7 +1083,8 @@ export class ProfileComponent implements OnInit {
   constructor(
     private router: Router,
     private authService: AuthService,
-    private apiService: ApiService
+    private apiService: ApiService,
+    private userPrefs: UserPreferencesService
   ) {}
 
   ngOnInit() {
@@ -1105,7 +1107,11 @@ export class ProfileComponent implements OnInit {
     this.profile.phone = user.phone || '';
     this.profile.role = (user.roles && user.roles[0]) || 'Utilisateur';
 
-    // Local-only preferences (units, regional, position, company display)
+    // Calypso 9 p5 — regional + units now flow through UserPreferencesService
+    // so the values on screen match what the rest of the app actually uses
+    // (pipes, monitoring map, etc.). The legacy PREFERENCES_KEY is still
+    // read for first-time migration of fields that aren't owned by the
+    // service (position, industry, address, city, country).
     try {
       const stored = localStorage.getItem(PREFERENCES_KEY);
       const prefs = stored ? JSON.parse(stored) : {};
@@ -1113,6 +1119,15 @@ export class ProfileComponent implements OnInit {
     } catch {
       Object.assign(this.profile, DEFAULT_PREFERENCES);
     }
+    const p = this.userPrefs.current;
+    this.profile.language = p.language;
+    this.profile.timezone = p.timezone;
+    this.profile.currency = p.currency;
+    this.profile.dateFormat = p.dateFormat;
+    this.profile.distanceUnit = p.distanceUnit;
+    this.profile.speedUnit = p.speedUnit;
+    this.profile.volumeUnit = p.volumeUnit;
+    this.profile.temperatureUnit = p.temperatureUnit;
 
     // Alert preferences (stored locally)
     try {
@@ -1204,24 +1219,31 @@ export class ProfileComponent implements OnInit {
       phone: this.profile.phone?.trim() || null
     }).subscribe({
       next: (updated: any) => {
-        // Persist local-only preferences
+        // Local-only fields not owned by the central service stay in
+        // PREFERENCES_KEY for backward compatibility.
         const prefs = {
           position: this.profile.position,
           industry: this.profile.industry,
           address: this.profile.address,
           city: this.profile.city,
-          country: this.profile.country,
-          language: this.profile.language,
-          timezone: this.profile.timezone,
-          currency: this.profile.currency,
-          dateFormat: this.profile.dateFormat,
-          distanceUnit: this.profile.distanceUnit,
-          speedUnit: this.profile.speedUnit,
-          volumeUnit: this.profile.volumeUnit,
-          temperatureUnit: this.profile.temperatureUnit
+          country: this.profile.country
         };
         localStorage.setItem(PREFERENCES_KEY, JSON.stringify(prefs));
         localStorage.setItem(ALERT_PREFS_KEY, JSON.stringify(this.alertPrefs));
+
+        // Regional + units go through the shared preferences service so
+        // every consumer (pipes, monitoring, reports, expenses) reacts
+        // immediately to the change.
+        this.userPrefs.update({
+          language: this.profile.language as any,
+          timezone: this.profile.timezone,
+          currency: this.profile.currency as any,
+          dateFormat: this.profile.dateFormat as any,
+          distanceUnit: this.profile.distanceUnit as any,
+          speedUnit: this.profile.speedUnit as any,
+          volumeUnit: this.profile.volumeUnit as any,
+          temperatureUnit: this.profile.temperatureUnit as any
+        });
 
         // Sync AuthService so sidebar/header update immediately
         this.authService.patchCurrentUser({

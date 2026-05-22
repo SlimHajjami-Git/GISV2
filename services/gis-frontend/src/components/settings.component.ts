@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { MockDataService } from '../services/mock-data.service';
 import { ApiService } from '../services/api.service';
+import { UserPreferencesService } from '../services/user-preferences.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 
 @Component({
@@ -844,7 +845,8 @@ export class SettingsComponent implements OnInit {
   constructor(
     private router: Router,
     private dataService: MockDataService,
-    private api: ApiService
+    private api: ApiService,
+    private userPrefs: UserPreferencesService
   ) {}
 
   ngOnInit() {
@@ -853,15 +855,39 @@ export class SettingsComponent implements OnInit {
       return;
     }
 
-    // Load saved settings
-    const saved = localStorage.getItem('appSettings');
-    if (saved) {
-      this.settings = { ...this.settings, ...JSON.parse(saved) };
+    // Calypso 9 p5 — read the display block from the central preferences
+    // service instead of a write-only localStorage key. Notifications /
+    // security / data stay in appSettings for now (no consumer reads
+    // them yet either, but those are out of scope).
+    const legacy = localStorage.getItem('appSettings');
+    if (legacy) {
+      try { this.settings = { ...this.settings, ...JSON.parse(legacy) }; } catch {}
     }
+    const p = this.userPrefs.current;
+    this.settings.display = {
+      theme: p.theme,
+      mapStyle: p.mapStyle,
+      showVehicleLabels: p.showVehicleLabels,
+      clustering: p.clustering,
+      refreshInterval: String(p.refreshInterval),
+      animations: p.animations
+    };
   }
 
   saveSettings() {
-    localStorage.setItem('appSettings', JSON.stringify(this.settings));
+    // Persist display preferences through the shared service so every
+    // subscriber (monitoring map, refresh loop, animations CSS flag)
+    // reacts immediately. Other groups still go to the legacy key.
+    this.userPrefs.update({
+      theme: this.settings.display.theme as any,
+      mapStyle: this.settings.display.mapStyle as any,
+      showVehicleLabels: !!this.settings.display.showVehicleLabels,
+      clustering: !!this.settings.display.clustering,
+      refreshInterval: Number(this.settings.display.refreshInterval) || 30,
+      animations: !!this.settings.display.animations
+    });
+    const { display, ...rest } = this.settings;
+    localStorage.setItem('appSettings', JSON.stringify(rest));
     alert('Paramètres enregistrés avec succès!');
   }
 

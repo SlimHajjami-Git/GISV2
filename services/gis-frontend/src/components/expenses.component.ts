@@ -6,6 +6,7 @@ import { Subject, takeUntil, forkJoin } from 'rxjs';
 import { ApiService, FuelTypeDto, FuelPriceFullDto, MaintenanceTemplateDto, VehiclePartDto } from '../services/api.service';
 import { PdfExportService, PdfGroup, GroupedPdfReportConfig } from '../services/pdf-export.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { AppCurrencyPipe } from '../pipes/user-preference-pipes';
 
 export interface Expense {
   id: string;
@@ -40,7 +41,7 @@ export interface RepairPart {
 @Component({
   selector: 'app-expenses',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, RouterLink, AppLayoutComponent, AppCurrencyPipe],
   templateUrl: './expenses.component.html',
   styleUrls: ['./expenses.component.css']
 })
