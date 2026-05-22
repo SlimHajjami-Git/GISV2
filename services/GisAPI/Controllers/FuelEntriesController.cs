@@ -47,7 +47,8 @@ public class FuelEntriesController : ControllerBase
             request.InvoiceNumber,
             request.Notes,
             request.DriverId,
-            request.OdometerKm
+            request.OdometerKm,
+            request.TotalAmount
         );
 
         var id = await _mediator.Send(command);
@@ -72,7 +73,8 @@ public class FuelEntriesController : ControllerBase
                     request.InvoiceNumber,
                     request.Notes,
                     request.DriverId,
-                    request.OdometerKm
+                    request.OdometerKm,
+                    request.TotalAmount
                 );
                 var id = await _mediator.Send(command);
                 results.Add(new { Id = id, Success = true, Error = (string?)null });

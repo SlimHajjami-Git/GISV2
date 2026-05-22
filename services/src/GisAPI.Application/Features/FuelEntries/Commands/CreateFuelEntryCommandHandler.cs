@@ -35,6 +35,15 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
                 (v.Plate == request.VehiclePlate || v.Name == request.VehiclePlate), 
                 cancellationToken);
 
+        // Calypso 9 p2 — operator may submit a ticket where only the
+        // gross total is legible. Honour an explicit TotalAmount > 0
+        // and fall back to volume × price otherwise. Volume / price
+        // are still persisted as-is (may be 0) so the per-litre stats
+        // simply skip rows with missing breakdown.
+        var totalAmount = request.TotalAmount.HasValue && request.TotalAmount.Value > 0
+            ? request.TotalAmount.Value
+            : request.Volume * request.PricePerLiter;
+
         var entry = new FuelEntry
         {
             CompanyId = companyId,
@@ -43,7 +52,7 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
             FuelTypeId = request.FuelTypeId,
             Volume = request.Volume,
             PricePerLiter = request.PricePerLiter,
-            TotalAmount = request.Volume * request.PricePerLiter,
+            TotalAmount = totalAmount,
             InvoiceDate = invoiceDate,
             StationName = request.StationName,
             InvoiceNumber = request.InvoiceNumber,

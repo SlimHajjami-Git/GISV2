@@ -30,7 +30,10 @@ public record CreateFuelEntryRequest(
     string? InvoiceNumber = null,
     string? Notes = null,
     int? DriverId = null,
-    long? OdometerKm = null
+    long? OdometerKm = null,
+    // Free-text gross amount. Honoured when > 0; otherwise computed
+    // from Volume × PricePerLiter on the server (legacy behaviour).
+    decimal? TotalAmount = null
 );
 
 public record UpdateFuelEntryRequest(

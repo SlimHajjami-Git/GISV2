@@ -140,20 +140,21 @@ interface ColumnMapping {
                   </select>
                 </div>
                 <div class="form-group">
-                  <label>Volume (Litres) <span class="required">*</span></label>
-                  <input type="number" [(ngModel)]="manualEntry.volume" class="form-control" placeholder="Ex: 45.5" step="0.01" min="0">
+                  <label>Volume (Litres)</label>
+                  <input type="number" [(ngModel)]="manualEntry.volume" (ngModelChange)="onVolumeOrPriceChange()" class="form-control" placeholder="Ex: 45.5" step="0.01" min="0">
                 </div>
                 <div class="form-group">
-                  <label>Prix par Litre <span class="required">*</span></label>
-                  <input type="number" [(ngModel)]="manualEntry.pricePerLiter" class="form-control" placeholder="Ex: 12.450" step="0.001" min="0">
+                  <label>Prix par Litre</label>
+                  <input type="number" [(ngModel)]="manualEntry.pricePerLiter" (ngModelChange)="onVolumeOrPriceChange()" class="form-control" placeholder="Ex: 12.450" step="0.001" min="0">
                 </div>
                 <div class="form-group">
                   <label>Date Facture <span class="required">*</span></label>
                   <input type="date" [(ngModel)]="manualEntry.invoiceDate" class="form-control">
                 </div>
                 <div class="form-group">
-                  <label>Montant Total</label>
-                  <div class="computed-value">{{ (manualEntry.volume * manualEntry.pricePerLiter) | number:'1.2-2' }}</div>
+                  <label>Montant Total <span class="required">*</span></label>
+                  <input type="number" [(ngModel)]="manualEntry.totalAmount" (ngModelChange)="onTotalAmountEdit()" class="form-control" placeholder="Ex: 568.45" step="0.01" min="0">
+                  <small class="form-hint">Renseignez volume + prix (calcul auto) OU saisissez directement le montant total.</small>
                 </div>
               </div>
               <div class="form-actions">
@@ -408,7 +409,7 @@ interface ColumnMapping {
     .required { color: #ef4444; }
     .form-control { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; }
     .form-control:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.1); }
-    .computed-value { padding: 8px 12px; background: #f1f5f9; border-radius: 4px; font-size: 14px; font-weight: 600; color: #16a34a; }
+    .form-hint { display: block; font-size: 11px; color: #64748b; margin-top: 4px; line-height: 1.3; }
     .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0; }
     .btn-reset { display: flex; align-items: center; gap: 6px; padding: 8px 14px; background: white; border: 1px solid #e2e8f0; border-radius: 4px; color: #64748b; font-size: 12px; cursor: pointer; }
     .btn-reset:hover { background: #f1f5f9; }
@@ -485,8 +486,13 @@ export class CarburantComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
   activeTab = 'manual';
   
-  // Manual entry
-  manualEntry = { vehiclePlate: '', fuelTypeId: null as number | null, volume: 0, pricePerLiter: 0, invoiceDate: new Date().toISOString().split('T')[0] };
+  // Manual entry — totalAmount is editable so operators with only the
+  // gross amount on a ticket can save without inventing a volume/prix.
+  // totalAmountTouched stays false until the operator types in the total
+  // field directly; before then any volume/price change keeps the total
+  // auto-synced as volume × pricePerLiter.
+  manualEntry = { vehiclePlate: '', fuelTypeId: null as number | null, volume: 0, pricePerLiter: 0, totalAmount: 0, invoiceDate: new Date().toISOString().split('T')[0] };
+  totalAmountTouched = false;
   
   // Upload
   isDragOver = false;
@@ -548,10 +554,13 @@ export class CarburantComponent implements OnInit, OnDestroy {
   onFuelTypeChange(fuelTypeId: number | null) {
     if (!fuelTypeId) {
       this.manualEntry.pricePerLiter = 0;
-      return;
+    } else {
+      const price = this.fuelPrices.find(p => p.fuelTypeId === fuelTypeId);
+      this.manualEntry.pricePerLiter = price ? price.pricePerLiter : 0;
     }
-    const price = this.fuelPrices.find(p => p.fuelTypeId === fuelTypeId);
-    this.manualEntry.pricePerLiter = price ? price.pricePerLiter : 0;
+    // Pricing just changed under the hood — keep the total in sync so
+    // long as the operator hasn't pinned a custom total themselves.
+    this.onVolumeOrPriceChange();
   }
 
   loadVehicles() {
@@ -581,27 +590,56 @@ export class CarburantComponent implements OnInit, OnDestroy {
   getTotalVolume(): number { return this.fuelHistory.reduce((s, e) => s + (e.volume || 0), 0); }
   getTotalAmount(): number { return this.fuelHistory.reduce((s, e) => s + (e.totalAmount || 0), 0); }
 
-  // Manual entry
+  // Re-sync the total whenever volume or price moves, UNLESS the
+  // operator has already typed a custom total — they're in "free total"
+  // mode and we must not overwrite what they entered.
+  onVolumeOrPriceChange() {
+    if (this.totalAmountTouched) return;
+    const v = Number(this.manualEntry.volume) || 0;
+    const p = Number(this.manualEntry.pricePerLiter) || 0;
+    this.manualEntry.totalAmount = +(v * p).toFixed(2);
+  }
+
+  // Mark the total as user-edited so volume/price changes stop
+  // overriding it. Resetting to 0 puts us back in "auto" mode.
+  onTotalAmountEdit() {
+    const t = Number(this.manualEntry.totalAmount) || 0;
+    this.totalAmountTouched = t > 0;
+  }
+
+  // Manual entry — accept either (volume + price) OR a free total.
+  // Both modes still need a vehicle, a fuel type and a date.
   isManualEntryValid(): boolean {
-    return !!this.manualEntry.vehiclePlate && this.manualEntry.fuelTypeId !== null && 
-           this.manualEntry.volume > 0 && this.manualEntry.pricePerLiter > 0 && !!this.manualEntry.invoiceDate;
+    if (!this.manualEntry.vehiclePlate || this.manualEntry.fuelTypeId === null || !this.manualEntry.invoiceDate) {
+      return false;
+    }
+    const hasVolumeAndPrice = this.manualEntry.volume > 0 && this.manualEntry.pricePerLiter > 0;
+    const hasTotal = this.manualEntry.totalAmount > 0;
+    return hasVolumeAndPrice || hasTotal;
   }
 
   resetManualEntry() {
-    this.manualEntry = { vehiclePlate: '', fuelTypeId: null, volume: 0, pricePerLiter: 0, invoiceDate: new Date().toISOString().split('T')[0] };
+    this.manualEntry = { vehiclePlate: '', fuelTypeId: null, volume: 0, pricePerLiter: 0, totalAmount: 0, invoiceDate: new Date().toISOString().split('T')[0] };
+    this.totalAmountTouched = false;
   }
 
   saveManualEntry() {
     if (!this.isManualEntryValid()) {
-      alert('Veuillez remplir tous les champs obligatoires (matricule, type, volume, prix, date)');
+      alert('Renseignez matricule, type, date et soit (volume + prix) soit le montant total.');
       return;
     }
     this.isSaving = true;
+    // Use the user-entered total when they typed one directly; otherwise
+    // fall back to volume × price (already kept in sync by onVolumeOrPriceChange).
+    const total = this.totalAmountTouched && this.manualEntry.totalAmount > 0
+      ? this.manualEntry.totalAmount
+      : this.manualEntry.volume * this.manualEntry.pricePerLiter;
     this.apiService.createFuelEntry({
       vehiclePlate: this.manualEntry.vehiclePlate,
       fuelTypeId: this.manualEntry.fuelTypeId!,
       volume: this.manualEntry.volume,
       pricePerLiter: this.manualEntry.pricePerLiter,
+      totalAmount: total,
       invoiceDate: this.manualEntry.invoiceDate
     }).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {

@@ -3697,6 +3697,11 @@ export interface CreateFuelEntryRequest {
   fuelTypeId: number;
   volume: number;
   pricePerLiter: number;
+  // Optional override — when the operator only has the total on the
+  // ticket (and not a volume × price breakdown) they can send the total
+  // directly. The backend uses it when > 0 and falls back to
+  // volume × pricePerLiter otherwise.
+  totalAmount?: number;
   invoiceDate: string;
   stationName?: string;
   invoiceNumber?: string;
