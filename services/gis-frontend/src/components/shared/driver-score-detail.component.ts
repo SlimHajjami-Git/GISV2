@@ -2,12 +2,11 @@ import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChange
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Employee, DriverScore, Vehicle, VehicleConsumptionData } from '../../models/types';
-import { DateFilterBarComponent } from './ui/date-filter-bar.component';
 
 @Component({
   selector: 'app-driver-score-detail',
   standalone: true,
-  imports: [CommonModule, FormsModule, DateFilterBarComponent],
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="overlay" *ngIf="isOpen" (click)="close()">
       <div class="detail-panel" (click)="$event.stopPropagation()">
@@ -54,17 +53,6 @@ import { DateFilterBarComponent } from './ui/date-filter-bar.component';
             <span class="qs-value">{{ driverScore?.averageSpeed || 0 }}</span>
             <span class="qs-label">Km/h moy.</span>
           </div>
-        </div>
-
-        <!-- Date Filter -->
-        <div class="date-filter-wrapper">
-          <ui-date-filter-bar
-            [selectedPeriod]="selectedPeriod"
-            [fromDate]="fromDate"
-            [toDate]="toDate"
-            (periodChange)="onPeriodChange($event)"
-            (dateRangeChange)="onDateRangeChange($event)">
-          </ui-date-filter-bar>
         </div>
 
         <!-- Content -->
@@ -279,9 +267,6 @@ import { DateFilterBarComponent } from './ui/date-filter-bar.component';
     .qs-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 1px; }
     .qs-divider { width: 1px; height: 28px; background: #e2e8f0; }
 
-    .date-filter-wrapper { border-bottom: 1px solid #e2e8f0; }
-    .date-filter-wrapper :deep(.btn-apply) { display: none; }
-
     /* Content */
     .panel-content { padding: 20px 24px; overflow-y: auto; flex: 1; }
 
@@ -403,44 +388,13 @@ export class DriverScoreDetailComponent implements OnInit, OnChanges {
   @Input() driverScore: DriverScore | null = null;
   @Input() assignedVehicle: Vehicle | null = null;
   @Output() closed = new EventEmitter<void>();
-  @Output() dateFilterChanged = new EventEmitter<{ from: string; to: string }>();
 
-  selectedPeriod = 'week';
-  fromDate = '';
-  toDate = '';
+  ngOnInit() {}
 
-  ngOnInit() {
-    this.initializeDates();
-  }
-
-  ngOnChanges(changes: SimpleChanges) {
-    if (changes['isOpen'] && this.isOpen) {
-      this.initializeDates();
-    }
-  }
-
-  initializeDates() {
-    const today = new Date();
-    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-    this.fromDate = weekAgo.toISOString().split('T')[0];
-    this.toDate = today.toISOString().split('T')[0];
-  }
+  ngOnChanges(changes: SimpleChanges) {}
 
   close() {
     this.closed.emit();
-  }
-
-  onPeriodChange(period: string) {
-    this.selectedPeriod = period;
-  }
-
-  onDateRangeChange(range: { from: string; to: string }) {
-    this.fromDate = range.from;
-    this.toDate = range.to;
-  }
-
-  applyFilter() {
-    this.dateFilterChanged.emit({ from: this.fromDate, to: this.toDate });
   }
 
   getRoleLabel(role?: string): string {

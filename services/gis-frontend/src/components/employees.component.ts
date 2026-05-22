@@ -175,10 +175,6 @@ export class EmployeesComponent implements OnInit, OnDestroy {
     this.detailAssignedVehicle = null;
   }
 
-  onDateFilterChanged(range: { from: string; to: string }) {
-    console.log('Date filter changed:', range);
-  }
-
   // Permit deadline methods
   getDaysUntilPermitExpiry(driver: any): number {
     if (!driver.permitExpiry) return 999;
