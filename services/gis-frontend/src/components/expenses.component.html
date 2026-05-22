@@ -18,12 +18,18 @@
         <option value="">Toutes catégories</option>
         <option value="carburant">⛽ Carburant</option>
         <option value="entretien">🔧 Entretien</option>
-        <option value="reparation">🛠️ Réparation</option>
+        <option value="maintenance">🛠️ Maintenance</option>
+        <option value="reparation">🔩 Réparation</option>
         <option value="insurance">🛡️ Assurance</option>
+        <option value="technical_inspection">📋 Visite technique</option>
+        <option value="tax">💰 Vignette</option>
+        <option value="registration">📄 Carte grise</option>
+        <option value="transport_permit">🚚 Autorisation transport</option>
         <option value="peage">🛣️ Péage</option>
         <option value="stationnement">🅿️ Stationnement</option>
         <option value="amende">⚠️ Amende</option>
-        <option value="maintenance">🔧 Maintenance</option>
+        <option value="repair">🚧 Réparation accident</option>
+        <option value="insurance_refund">💸 Remboursement assurance</option>
       </select>
       <input type="month" class="filter-month" [(ngModel)]="filterMonth" (change)="filterExpenses()">
       <button class="btn-export" (click)="exportPdf()">
@@ -86,12 +92,16 @@
                 <option value="">Sélectionner...</option>
                 <option value="carburant">⛽ Carburant</option>
                 <option value="entretien">🔧 Entretien</option>
-                <option value="reparation">🛠️ Réparation</option>
+                <option value="maintenance">🛠️ Maintenance</option>
+                <option value="reparation">🔩 Réparation</option>
                 <option value="insurance">🛡️ Assurance</option>
+                <option value="technical_inspection">📋 Visite technique</option>
+                <option value="tax">💰 Vignette</option>
+                <option value="registration">📄 Carte grise</option>
+                <option value="transport_permit">🚚 Autorisation transport</option>
                 <option value="peage">🛣️ Péage</option>
                 <option value="stationnement">🅿️ Stationnement</option>
                 <option value="amende">⚠️ Amende</option>
-                <option value="maintenance">🔧 Maintenance</option>
                 <option value="autre">📦 Autre</option>
               </select>
             </div>

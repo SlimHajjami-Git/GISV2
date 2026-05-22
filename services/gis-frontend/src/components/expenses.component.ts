@@ -581,17 +581,23 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   }
 
   getCategoryLabel(category: string): string {
+    // Labels are aligned with RenewDocumentCommandHandler.GetDocumentTypeLabel
+    // on the backend so the chip / filter / detail panel always show the
+    // same wording as the rest of the app (notif bell, document renewal
+    // popup, etc.).
     const labels: Record<string, string> = {
       'carburant': 'Carburant', 'fuel': 'Carburant',
       'entretien': 'Entretien', 'maintenance': 'Maintenance',
       'reparation': 'Réparation',
       'insurance': 'Assurance', 'assurance': 'Assurance',
-      'tax': 'Vignette/Taxe',
+      'technical_inspection': 'Visite technique',
+      'tax': 'Vignette',
+      'registration': 'Carte grise',
+      'transport_permit': 'Autorisation transport',
       'peage': 'Péage', 'toll': 'Péage',
       'stationnement': 'Stationnement', 'parking': 'Parking',
       'amende': 'Amende',
       'autre': 'Autre',
-      'technical_inspection': 'Visite technique',
       // Calypso 7 — accident-driven categories.
       'repair': 'Réparation accident',
       'insurance_refund': 'Remb. assurance',
