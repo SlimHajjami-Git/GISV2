@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { trigger, transition, style, animate } from '@angular/animations';
 import { ApiService } from '../../services/api.service';
+import { UserPreferencesService } from '../../services/user-preferences.service';
+import { USER_PREF_PIPES } from '../../pipes/user-preference-pipes';
 
 export interface VehicleDocument {
   id?: number;
@@ -35,7 +37,7 @@ export interface RenewalFormData {
 @Component({
   selector: 'app-document-renewal-popup',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ...USER_PREF_PIPES],
   animations: [
     trigger('fadeIn', [
       transition(':enter', [
@@ -118,7 +120,7 @@ export interface RenewalFormData {
                 <div class="input-with-suffix">
                   <input type="number" id="amount" name="amount" [(ngModel)]="formData.amount" required
                          placeholder="0.00" class="form-control" min="0" step="0.01">
-                  <span class="suffix">DT</span>
+                  <span class="suffix">{{ currencyCode }}</span>
                 </div>
               </div>
               <div class="form-group">
@@ -291,7 +293,7 @@ export interface RenewalFormData {
             </div>
             <div class="summary-row">
               <span>Montant</span>
-              <span class="summary-value amount">{{ formData.amount | number:'1.2-2' }} DT</span>
+              <span class="summary-value amount">{{ formData.amount | appCurrency }}</span>
             </div>
             <div class="summary-row" *ngIf="formData.newExpiryDate">
               <span>Valide jusqu'au</span>
@@ -878,7 +880,10 @@ export class DocumentRenewalPopupComponent implements OnChanges {
     email: ''
   };
 
-  constructor(private apiService: ApiService) {}
+  constructor(private apiService: ApiService, private userPrefs: UserPreferencesService) {}
+
+  /** Active currency code for the amount input adornment. */
+  get currencyCode(): string { return this.userPrefs.current.currency; }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['document'] || changes['isOpen']) {

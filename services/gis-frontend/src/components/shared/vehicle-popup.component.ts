@@ -4,6 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { Vehicle } from '../../models/types';
 import { ApiService } from '../../services/api.service';
+import { UserPreferencesService } from '../../services/user-preferences.service';
+import { USER_PREF_PIPES } from '../../pipes/user-preference-pipes';
 import { trigger, transition, style, animate } from '@angular/animations';
 
 interface Brand {
@@ -27,7 +29,7 @@ export interface CompanyOption {
 @Component({
   selector: 'app-vehicle-popup',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ...USER_PREF_PIPES],
   animations: [
     trigger('fadeIn', [
       transition(':enter', [
@@ -391,7 +393,7 @@ export interface CompanyOption {
                   <label for="purchasePrice">{{ formData.acquisitionType === 'leasing' ? 'Montant Auto-financement' : "Prix d'achat" }}</label>
                   <div class="input-with-suffix">
                     <input type="number" id="purchasePrice" name="purchasePrice" [(ngModel)]="formData.purchasePrice" min="0" placeholder="0.00" />
-                    <span class="input-suffix">TND</span>
+                    <span class="input-suffix">{{ currencyCode }}</span>
                   </div>
                 </div>
               </div>
@@ -402,7 +404,7 @@ export interface CompanyOption {
                     <label for="leasingMonthlyPayment">Traite mensuelle</label>
                     <div class="input-with-suffix">
                       <input type="number" id="leasingMonthlyPayment" name="leasingMonthlyPayment" [(ngModel)]="formData.leasingMonthlyPayment" min="0" placeholder="0.00" />
-                      <span class="input-suffix">TND/mois</span>
+                      <span class="input-suffix">{{ currencyCode }}/mois</span>
                     </div>
                   </div>
                   <div class="form-group">
@@ -432,8 +434,8 @@ export interface CompanyOption {
                      *ngIf="formData.leasingStartDate && formData.leasingDurationMonths && formData.leasingMonthlyPayment">
                   <label class="schedule-title">Échéancier des paiements</label>
                   <div class="schedule-summary">
-                    <span>{{ formData.leasingDurationMonths }} mois × {{ formData.leasingMonthlyPayment | number:'1.2-2' }} TND
-                      = <strong>{{ (formData.leasingDurationMonths * formData.leasingMonthlyPayment) | number:'1.2-2' }} TND</strong>
+                    <span>{{ formData.leasingDurationMonths }} mois × {{ formData.leasingMonthlyPayment | appCurrency }}
+                      = <strong>{{ (formData.leasingDurationMonths * formData.leasingMonthlyPayment) | appCurrency }}</strong>
                     </span>
                   </div>
                   <div class="schedule-table-wrapper">
@@ -445,7 +447,7 @@ export interface CompanyOption {
                         <tr *ngFor="let payment of getPaymentSchedule()" [class.paid]="payment.isPast" [class.current]="payment.isCurrent">
                           <td>{{ payment.index }}</td>
                           <td>{{ payment.date }}</td>
-                          <td>{{ formData.leasingMonthlyPayment | number:'1.2-2' }} TND</td>
+                          <td>{{ formData.leasingMonthlyPayment | appCurrency }}</td>
                           <td>
                             <span class="payment-badge paid" *ngIf="payment.isPast">Payé</span>
                             <span class="payment-badge current" *ngIf="payment.isCurrent">En cours</span>
@@ -979,7 +981,10 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     registrationDate: ''
   };
 
-  constructor(private apiService: ApiService, private http: HttpClient, private cdr: ChangeDetectorRef) {}
+  constructor(private apiService: ApiService, private http: HttpClient, private cdr: ChangeDetectorRef, private userPrefs: UserPreferencesService) {}
+
+  /** Active currency code for input adornments (e.g. "TND", "EUR"). */
+  get currencyCode(): string { return this.userPrefs.current.currency; }
 
   ngOnInit() {
     this.loadBrands();

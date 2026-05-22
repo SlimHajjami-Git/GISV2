@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil, interval } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ApiService } from '../services/api.service';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 
 interface VehicleStatus {
   id: number;
@@ -45,7 +46,7 @@ interface CompanyUser {
 @Component({
   selector: 'app-vehicle-loans',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ...USER_PREF_PIPES],
   template: `
     <app-layout pageTitle="Emprunts Véhicules">
       <div class="loans-page">
@@ -191,7 +192,7 @@ interface CompanyUser {
                 </td>
                 <td><span class="plate-tag" *ngIf="v.plate">{{ v.plate }}</span><span *ngIf="!v.plate" class="text-muted">-</span></td>
                 <!-- Calypso 6 (P11): no thousand separator -->
-                <td class="text-mono">{{ v.mileage }} km</td>
+                <td class="text-mono">{{ v.mileage | appDistance:0 }}</td>
                 <td>
                   <span class="status-dot" [class.active]="v.hasGps" [class.inactive]="!v.hasGps"></span>
                   {{ v.hasGps ? 'Actif' : 'Non' }}
@@ -305,7 +306,7 @@ interface CompanyUser {
                 <td class="text-mono-sm">{{ r.startMileage != null ? r.startMileage : '-' }}</td>
                 <td class="text-mono-sm">{{ r.endMileage != null ? r.endMileage : '-' }}</td>
                 <td>
-                  <span class="km-value" *ngIf="r.actualKm != null">{{ r.actualKm }} km</span>
+                  <span class="km-value" *ngIf="r.actualKm != null">{{ r.actualKm | appDistance:0 }}</span>
                   <span class="text-muted" *ngIf="r.actualKm == null">-</span>
                 </td>
                 <td>

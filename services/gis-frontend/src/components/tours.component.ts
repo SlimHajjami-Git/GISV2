@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { ApiService } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { forkJoin, Subject, of, Subscription } from 'rxjs';
 import { debounceTime, switchMap, catchError } from 'rxjs/operators';
 
@@ -12,7 +13,7 @@ declare let L: any;
 @Component({
   selector: 'app-tours',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ...USER_PREF_PIPES],
   template: `
     <app-layout>
 
@@ -112,7 +113,7 @@ declare let L: any;
               <td><span class="cell-sub">{{t.vehicleName}}</span></td>
               <td><span class="cell-sub">{{t.driverName || '-'}}</span></td>
               <td><span class="cell-sub">{{formatDateShort(t.scheduledStartTime)}}</span></td>
-              <td><strong class="cell-km">{{t.estimatedDistanceKm | number:'1.0-0'}} km</strong></td>
+              <td><strong class="cell-km">{{t.estimatedDistanceKm | appDistance:0}}</strong></td>
               <td><span class="cell-dur">{{formatDuration(t.estimatedDurationMinutes)}}</span></td>
               <td class="col-actions action-group">
                 <button class="row-action" (click)="$event.stopPropagation();quickEdit(t)" title="Modifier" *ngIf="t.status==='planned'">
@@ -302,7 +303,7 @@ declare let L: any;
             <div class="est-grid" *ngIf="estimation">
               <div class="est-card">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-                <div><span class="est-v">{{estimation.distanceKm | number:'1.1-1'}} km</span><span class="est-l">Distance</span></div>
+                <div><span class="est-v">{{estimation.distanceKm | appDistance:1}}</span><span class="est-l">Distance</span></div>
               </div>
               <div class="est-card">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -353,7 +354,7 @@ declare let L: any;
             <div class="track-header">
               <span class="track-live-dot"></span>
               <strong>Suivi en direct</strong>
-              <span class="track-speed" *ngIf="trackingData.vehicle">{{trackingData.vehicle.speedKph | number:'1.0-0'}} km/h</span>
+              <span class="track-speed" *ngIf="trackingData.vehicle">{{trackingData.vehicle.speedKph | appSpeed:0}}</span>
             </div>
             <div class="track-progress">
               <div class="track-progress-bar" [style.width.%]="trackingData.progress?.percentComplete || 0"></div>
@@ -379,7 +380,7 @@ declare let L: any;
               <div class="info-item" *ngIf="selectedTour.driverName"><span class="info-lbl">Chauffeur</span><span class="info-val">{{selectedTour.driverName}}</span></div>
               <div class="info-item"><span class="info-lbl">Depart prevu</span><span class="info-val">{{formatDate(selectedTour.scheduledStartTime)}}</span></div>
               <div class="info-item" *ngIf="selectedTour.actualStartTime"><span class="info-lbl">Depart reel</span><span class="info-val">{{formatDate(selectedTour.actualStartTime)}}</span></div>
-              <div class="info-item"><span class="info-lbl">Distance</span><span class="info-val">{{selectedTour.estimatedDistanceKm | number:'1.1-1'}} km</span></div>
+              <div class="info-item"><span class="info-lbl">Distance</span><span class="info-val">{{selectedTour.estimatedDistanceKm | appDistance:1}}</span></div>
               <div class="info-item"><span class="info-lbl">Duree</span><span class="info-val">{{formatDuration(selectedTour.estimatedDurationMinutes)}}</span></div>
               <div class="info-item"><span class="info-lbl">Carburant</span><span class="info-val">~{{selectedTour.estimatedFuelLiters | number:'1.1-1'}} L</span></div>
               <div class="info-item"><span class="info-lbl">Pauses</span><span class="info-val">{{selectedTour.totalPauseMinutes}} min</span></div>
@@ -394,10 +395,10 @@ declare let L: any;
               <tbody>
                 <tr>
                   <td>Distance</td>
-                  <td>{{selectedTour.estimatedDistanceKm | number:'1.1-1'}} km</td>
-                  <td>{{selectedTour.actualDistanceKm ? (selectedTour.actualDistanceKm | number:'1.1-1') + ' km' : '-'}}</td>
+                  <td>{{selectedTour.estimatedDistanceKm | appDistance:1}}</td>
+                  <td>{{selectedTour.actualDistanceKm ? (selectedTour.actualDistanceKm | appDistance:1) : '-'}}</td>
                   <td [class.c-red]="selectedTour.distanceDiffKm > 0" [class.c-green]="selectedTour.distanceDiffKm < 0">
-                    {{selectedTour.distanceDiffKm != null ? ((selectedTour.distanceDiffKm > 0 ? '+' : '') + (selectedTour.distanceDiffKm | number:'1.1-1') + ' km') : '-'}}
+                    {{selectedTour.distanceDiffKm != null ? ((selectedTour.distanceDiffKm > 0 ? '+' : '') + (selectedTour.distanceDiffKm | appDistance:1)) : '-'}}
                   </td>
                 </tr>
                 <tr>

@@ -5,11 +5,12 @@ import { Router } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
 import { ApiService, DailyActivityReport, ActivitySegment } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 
 @Component({
   selector: 'app-daily-report',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ...USER_PREF_PIPES],
   template: `
     <app-layout>
       <div class="daily-report-page">
@@ -104,14 +105,14 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                     <div class="summary-card distance">
                       <div class="summary-icon">📏</div>
                       <div class="summary-content">
-                        <span class="summary-value">{{ report.summary.totalDistanceKm }} km</span>
+                        <span class="summary-value">{{ report.summary.totalDistanceKm | appDistance:0 }}</span>
                         <span class="summary-label">Distance</span>
                       </div>
                     </div>
                     <div class="summary-card speed">
                       <div class="summary-icon">⚡</div>
                       <div class="summary-content">
-                        <span class="summary-value">{{ report.summary.maxSpeedKph }} km/h</span>
+                        <span class="summary-value">{{ report.summary.maxSpeedKph | appSpeed:0 }}</span>
                         <span class="summary-label">Vitesse max</span>
                       </div>
                     </div>
@@ -222,8 +223,8 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                             </div>
                             @if (activity.type === 'drive') {
                               <div class="drive-stats">
-                                <span class="stat">📏 {{ activity.distanceKm }} km</span>
-                                <span class="stat">⚡ max {{ activity.maxSpeedKph }} km/h</span>
+                                <span class="stat">📏 {{ activity.distanceKm | appDistance:0 }}</span>
+                                <span class="stat">⚡ max {{ activity.maxSpeedKph | appSpeed:0 }}</span>
                               </div>
                             } @else {
                               <div class="stop-location">

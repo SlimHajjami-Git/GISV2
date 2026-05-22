@@ -3,11 +3,12 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { VehicleCost, Vehicle } from '../../models/types';
 import { MockDataService } from '../../services/mock-data.service';
+import { USER_PREF_PIPES } from '../../pipes/user-preference-pipes';
 
 @Component({
   selector: 'app-vehicle-costs-popup',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ...USER_PREF_PIPES],
   template: `
     <div class="popup-overlay" *ngIf="isOpen" (click)="onOverlayClick($event)">
       <div class="popup-container">
@@ -53,19 +54,19 @@ import { MockDataService } from '../../services/mock-data.service';
             <div class="summary-bar">
               <div class="summary-item">
                 <span class="summary-label">Total</span>
-                <span class="summary-value">{{ getTotalCost() | number:'1.0-0' }} DT</span>
+                <span class="summary-value">{{ getTotalCost() | appCurrency:0 }}</span>
               </div>
               <div class="summary-item fuel">
                 <span class="summary-label">Carburant</span>
-                <span class="summary-value">{{ getFuelCost() | number:'1.0-0' }} DT</span>
+                <span class="summary-value">{{ getFuelCost() | appCurrency:0 }}</span>
               </div>
               <div class="summary-item maintenance">
                 <span class="summary-label">Maintenance</span>
-                <span class="summary-value">{{ getMaintenanceCost() | number:'1.0-0' }} DT</span>
+                <span class="summary-value">{{ getMaintenanceCost() | appCurrency:0 }}</span>
               </div>
               <div class="summary-item other">
                 <span class="summary-label">Autres</span>
-                <span class="summary-value">{{ getOtherCost() | number:'1.0-0' }} DT</span>
+                <span class="summary-value">{{ getOtherCost() | appCurrency:0 }}</span>
               </div>
             </div>
 
@@ -91,12 +92,12 @@ import { MockDataService } from '../../services/mock-data.service';
                     <span class="cost-desc">{{ cost.description }}</span>
                     <span class="cost-meta">
                       {{ getTypeLabel(cost.type) }}
-                      <span *ngIf="cost.mileage"> • {{ cost.mileage }} km</span>
+                      <span *ngIf="cost.mileage"> • {{ cost.mileage | appDistance:0 }}</span>
                       <span *ngIf="cost.liters"> • {{ cost.liters }}L</span>
                     </span>
                   </div>
                   <div class="cost-right">
-                    <span class="cost-amount">{{ cost.amount | number:'1.0-0' }} DT</span>
+                    <span class="cost-amount">{{ cost.amount | appCurrency:0 }}</span>
                     <span class="cost-date">{{ formatDate(cost.date) }}</span>
                   </div>
                   <div class="cost-actions">
