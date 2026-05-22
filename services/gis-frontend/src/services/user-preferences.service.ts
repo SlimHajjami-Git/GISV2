@@ -24,6 +24,14 @@ export type SpeedUnit = 'kmh' | 'mph';
 export type VolumeUnit = 'L' | 'gal';
 export type TemperatureUnit = 'C' | 'F';
 export type MapStyle = 'streets' | 'satellite' | 'hybrid' | 'terrain';
+/**
+ * Map label language is INDEPENDENT of the UI `language` field — the
+ * OSM default provider serves labels in the local language of the tile
+ * (Arabic in Tunisia), which is unrelated to whether the operator
+ * prefers a French or English interface. 'auto' picks a Latin-label
+ * provider (Carto Voyager) that works well across North Africa.
+ */
+export type MapLanguage = 'auto' | 'fr' | 'en' | 'ar';
 export type Theme = 'light' | 'dark' | 'auto';
 
 export interface UserPreferences {
@@ -39,6 +47,7 @@ export interface UserPreferences {
   temperatureUnit: TemperatureUnit;
   // Map
   mapStyle: MapStyle;
+  mapLanguage: MapLanguage;
   showVehicleLabels: boolean;
   clustering: boolean;
   // Dashboard
@@ -63,6 +72,10 @@ const DEFAULTS: UserPreferences = {
   volumeUnit: 'L',
   temperatureUnit: 'C',
   mapStyle: 'streets',
+  // Default to Latin-label tiles (Carto Voyager). Tunisia's default OSM
+  // tiles render city/road names in Arabic which is unreadable for most
+  // operators of this fleet platform.
+  mapLanguage: 'auto',
   showVehicleLabels: true,
   clustering: false,
   refreshInterval: 30,
@@ -185,6 +198,50 @@ export class UserPreferencesService {
       case 'yyyy-MM-dd': return `${yyyy}-${mm}-${dd}`;
       default: return `${dd}/${mm}/${yyyy}`;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  //  Map tile URL resolution — combines style + language into a single URL
+  //  pattern that Leaflet's L.tileLayer can consume.
+  //
+  //  Provider rationale:
+  //    - Carto Voyager: Latin-label OSM derivative with permissive ToS
+  //      and (a..d) subdomains. Reads "France-ish" in Tunisia which is
+  //      what operators expect.
+  //    - OSMFR: explicit French where available, falls back to local.
+  //      Tighter rate limit, only use when the operator opts in.
+  //    - OSM default: local language (Arabic in Tunisia). Kept as an
+  //      opt-in option for Arabic-reading operators.
+  //    - ArcGIS World_Imagery / OpenTopoMap: labels baked in, language
+  //      switching has no effect (satellite/terrain layers).
+  // ---------------------------------------------------------------------------
+
+  getTileUrl(style: MapStyle = this.current.mapStyle,
+             language: MapLanguage = this.current.mapLanguage): string {
+    if (style === 'satellite' || style === 'hybrid') {
+      return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    }
+    if (style === 'terrain') {
+      return 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
+    }
+    // streets — pick a provider based on the requested label language
+    switch (language) {
+      case 'fr':
+        return 'https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png';
+      case 'ar':
+        return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+      case 'en':
+      case 'auto':
+      default:
+        return 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+    }
+  }
+
+  /** Subdomain list for the active provider — Leaflet needs this matched to the URL. */
+  getTileSubdomains(style: MapStyle = this.current.mapStyle,
+                    language: MapLanguage = this.current.mapLanguage): string {
+    if (style !== 'streets') return 'abc';
+    return language === 'auto' || language === 'en' ? 'abcd' : 'abc';
   }
 
   // ---------------------------------------------------------------------------

@@ -197,6 +197,18 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                 </div>
                 <div class="setting-item">
                   <div class="setting-info">
+                    <span class="setting-label">Langue de la carte</span>
+                    <span class="setting-desc">Langue des libellés (villes, routes) sur les tuiles</span>
+                  </div>
+                  <select [(ngModel)]="settings.display.mapLanguage">
+                    <option value="auto">🌍 Auto (latin)</option>
+                    <option value="fr">🇫🇷 Français</option>
+                    <option value="en">🇬🇧 Anglais</option>
+                    <option value="ar">🇸🇦 Arabe</option>
+                  </select>
+                </div>
+                <div class="setting-item">
+                  <div class="setting-info">
                     <span class="setting-label">Afficher les noms des véhicules</span>
                     <span class="setting-desc">Labels sur les marqueurs de la carte</span>
                   </div>
@@ -821,6 +833,7 @@ export class SettingsComponent implements OnInit {
     display: {
       theme: 'light',
       mapStyle: 'streets',
+      mapLanguage: 'auto',
       showVehicleLabels: true,
       clustering: true,
       refreshInterval: '30',
@@ -867,6 +880,7 @@ export class SettingsComponent implements OnInit {
     this.settings.display = {
       theme: p.theme,
       mapStyle: p.mapStyle,
+      mapLanguage: p.mapLanguage,
       showVehicleLabels: p.showVehicleLabels,
       clustering: p.clustering,
       refreshInterval: String(p.refreshInterval),
@@ -881,6 +895,7 @@ export class SettingsComponent implements OnInit {
     this.userPrefs.update({
       theme: this.settings.display.theme as any,
       mapStyle: this.settings.display.mapStyle as any,
+      mapLanguage: this.settings.display.mapLanguage as any,
       showVehicleLabels: !!this.settings.display.showVehicleLabels,
       clustering: !!this.settings.display.clustering,
       refreshInterval: Number(this.settings.display.refreshInterval) || 30,

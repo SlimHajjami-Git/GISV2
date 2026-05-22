@@ -219,12 +219,22 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         : (initialPrefs.mapStyle === 'hybrid' ? 'satellite' : 'streets');
       this.mapStyle = ms;
     }
+    // Track the last applied mapLanguage so a pure language change (style
+    // identical) still re-applies the tile layer — otherwise the operator
+    // would have to also toggle the style to see the new labels appear.
+    let lastLang = this.userPrefs.current.mapLanguage;
     this.prefsSub = this.userPrefs.prefs$.subscribe(p => {
       const supported = ['streets', 'satellite', 'terrain'] as const;
       const ms = (supported as readonly string[]).includes(p.mapStyle)
         ? p.mapStyle as 'streets' | 'satellite' | 'terrain'
         : (p.mapStyle === 'hybrid' ? 'satellite' : 'streets');
-      if (this.map && ms !== this.mapStyle) {
+      const styleChanged = ms !== this.mapStyle;
+      const langChanged = p.mapLanguage !== lastLang;
+      lastLang = p.mapLanguage;
+      if (this.map && (styleChanged || langChanged)) {
+        // changeMapStyle re-runs applyTileLayer, which now reads the
+        // current language from the service — so we route both kinds of
+        // change through the same hot-swap path.
         this.changeMapStyle(ms);
       }
     });
@@ -648,14 +658,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       if (!this.map) {
         this.map = L.map('tracking-map').setView([36.8065, 10.1815], 8);
 
-        const mapUrls: Record<string, string> = {
-          streets: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-          terrain: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'
-        };
-
-        L.tileLayer(mapUrls[this.mapStyle], {
-          attribution: '© OpenStreetMap contributors',
+        // Calypso 9 — tile URL is now resolved through UserPreferencesService
+        // so a single switch in /settings (style + language) reaches every
+        // map in this component (live, playback overlay, playback setup).
+        L.tileLayer(this.userPrefs.getTileUrl(this.mapStyle), {
+          attribution: '© OpenStreetMap contributors, © CARTO',
+          subdomains: this.userPrefs.getTileSubdomains(this.mapStyle) as any,
           maxZoom: 19
         }).addTo(this.map);
 
@@ -1210,12 +1218,6 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     this.mapStyle = style;
     this.showLayersMenu = false;
 
-    const mapUrls: Record<string, string> = {
-      streets: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      terrain: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'
-    };
-
     // During playback overlay: just swap tiles, don't destroy map
     if (this.playbackOverlayMap && this.map === this.playbackOverlayMap) {
       this.applyTileLayer(this.playbackOverlayMap);
@@ -1227,7 +1229,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       if (this.setupMapTileLayer) {
         this.playbackSetupMap.removeLayer(this.setupMapTileLayer);
       }
-      this.setupMapTileLayer = L.tileLayer(mapUrls[style], { maxZoom: 19 }).addTo(this.playbackSetupMap);
+      this.setupMapTileLayer = L.tileLayer(this.userPrefs.getTileUrl(style), {
+        subdomains: this.userPrefs.getTileSubdomains(style) as any,
+        maxZoom: 19
+      }).addTo(this.playbackSetupMap);
       return;
     }
 
@@ -1415,12 +1420,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         zoomControl: false,
         attributionControl: false
       });
-      const mapUrls: Record<string, string> = {
-        streets: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        terrain: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'
-      };
-      this.setupMapTileLayer = L.tileLayer(mapUrls[this.mapStyle], { maxZoom: 19 }).addTo(this.playbackSetupMap);
+      this.setupMapTileLayer = L.tileLayer(this.userPrefs.getTileUrl(this.mapStyle), {
+        subdomains: this.userPrefs.getTileSubdomains(this.mapStyle) as any,
+        maxZoom: 19
+      }).addTo(this.playbackSetupMap);
 
       // Show vehicle positions on the setup map if available
       this.vehicles.forEach(v => {
@@ -3767,13 +3770,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       if (layer instanceof L.TileLayer) { targetMap.removeLayer(layer); }
     });
 
-    let tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    if (this.mapStyle === 'satellite') {
-      tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-    } else if (this.mapStyle === 'terrain') {
-      tileUrl = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
-    }
-    L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(targetMap);
+    L.tileLayer(this.userPrefs.getTileUrl(this.mapStyle), {
+      subdomains: this.userPrefs.getTileSubdomains(this.mapStyle) as any,
+      maxZoom: 19
+    }).addTo(targetMap);
   }
 
   // ═══════ PLAYBACK LIVE INFO HELPERS ═══════
@@ -4361,8 +4361,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.gfMapResizeObserver) { this.gfMapResizeObserver.disconnect(); }
 
     this.geofenceModalMap = L.map(container, { zoomControl: true }).setView([lat, lng], 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OSM',
+    L.tileLayer(this.userPrefs.getTileUrl(this.mapStyle), {
+      attribution: '© OSM / © CARTO',
+      subdomains: this.userPrefs.getTileSubdomains(this.mapStyle) as any,
       maxZoom: 19
     }).addTo(this.geofenceModalMap);
 
