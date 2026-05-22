@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,18 +8,26 @@ namespace GisAPI.Application.Features.VehicleMaintenance.Queries;
 public class GetMaintenanceAlertsQueryHandler : IRequestHandler<GetMaintenanceAlertsQuery, List<MaintenanceItemDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetMaintenanceAlertsQueryHandler(IGisDbContext context)
+    public GetMaintenanceAlertsQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<List<MaintenanceItemDto>> Handle(GetMaintenanceAlertsQuery request, CancellationToken cancellationToken)
     {
+        // Operational page — scope by caller's company (system admins
+        // bypass the global EF filter, which would otherwise leak
+        // other companies' overdue alerts into the operator's view).
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var schedules = await _context.VehicleMaintenanceSchedules
             .Include(s => s.Template)
             .Include(s => s.Vehicle)
-            .Where(s => s.Status == "overdue" || s.Status == "due")
+            .Where(s => s.CompanyId == companyId
+                     && (s.Status == "overdue" || s.Status == "due"))
             .ToListAsync(cancellationToken);
 
         var today = DateTime.UtcNow.Date;
@@ -63,16 +72,22 @@ public class GetMaintenanceAlertsQueryHandler : IRequestHandler<GetMaintenanceAl
 public class GetMaintenanceStatsQueryHandler : IRequestHandler<GetMaintenanceStatsQuery, MaintenanceStatsDto>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetMaintenanceStatsQueryHandler(IGisDbContext context)
+    public GetMaintenanceStatsQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<MaintenanceStatsDto> Handle(GetMaintenanceStatsQuery request, CancellationToken cancellationToken)
     {
+        // Operational stats — scope by caller's company. The aggregate
+        // shown on /maintenance must not include other companies' counts.
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var schedules = await _context.VehicleMaintenanceSchedules
-            .Where(s => !s.IsPaused)
+            .Where(s => s.CompanyId == companyId && !s.IsPaused)
             .ToListAsync(cancellationToken);
 
         return new MaintenanceStatsDto(
@@ -133,17 +148,23 @@ public class GetVehicleMaintenanceSchedulesQueryHandler : IRequestHandler<GetVeh
 public class GetMaintenanceNotificationsQueryHandler : IRequestHandler<GetMaintenanceNotificationsQuery, List<MaintenanceNotificationDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetMaintenanceNotificationsQueryHandler(IGisDbContext context)
+    public GetMaintenanceNotificationsQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<List<MaintenanceNotificationDto>> Handle(GetMaintenanceNotificationsQuery request, CancellationToken cancellationToken)
     {
+        // Scope to caller's company — see top of file for context.
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var query = _context.MaintenanceNotifications
             .Include(n => n.Vehicle)
             .Include(n => n.Template)
+            .Where(n => n.CompanyId == companyId)
             .AsQueryable();
 
         if (request.UnacknowledgedOnly)
@@ -245,18 +266,25 @@ public class GetMaintenanceLogsQueryHandler : IRequestHandler<GetMaintenanceLogs
 public class GetAllMaintenanceLogsQueryHandler : IRequestHandler<GetAllMaintenanceLogsQuery, List<MaintenanceLogReportDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetAllMaintenanceLogsQueryHandler(IGisDbContext context)
+    public GetAllMaintenanceLogsQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<List<MaintenanceLogReportDto>> Handle(GetAllMaintenanceLogsQuery request, CancellationToken ct)
     {
+        // Scope to caller's company so the maintenance history report
+        // never crosses tenants (system admins must use /admin/* for that).
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var query = _context.MaintenanceLogs
             .Include(l => l.Vehicle)
             .Include(l => l.Template)
             .Include(l => l.Supplier)
+            .Where(l => l.CompanyId == companyId)
             .AsNoTracking()
             .AsQueryable();
 

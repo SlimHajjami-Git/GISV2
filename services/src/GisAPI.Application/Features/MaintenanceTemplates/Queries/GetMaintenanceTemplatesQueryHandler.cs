@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Models;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,15 +9,25 @@ namespace GisAPI.Application.Features.MaintenanceTemplates.Queries;
 public class GetMaintenanceTemplatesQueryHandler : IRequestHandler<GetMaintenanceTemplatesQuery, PaginatedList<MaintenanceTemplateDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetMaintenanceTemplatesQueryHandler(IGisDbContext context)
+    public GetMaintenanceTemplatesQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<PaginatedList<MaintenanceTemplateDto>> Handle(GetMaintenanceTemplatesQuery request, CancellationToken cancellationToken)
     {
-        var query = _context.MaintenanceTemplates.AsQueryable();
+        // Operational page — always scope by caller's company, even for
+        // system admins (see GetVehicleMaintenanceQueryHandler for the
+        // same justification). Without this filter, admin@belive.tn was
+        // seeing HERTZ maintenance templates in /maintenance.
+        var companyId = _tenantService.CompanyId ?? 0;
+
+        var query = _context.MaintenanceTemplates
+            .Where(t => t.CompanyId == companyId)
+            .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(request.Category))
             query = query.Where(t => t.Category == request.Category);

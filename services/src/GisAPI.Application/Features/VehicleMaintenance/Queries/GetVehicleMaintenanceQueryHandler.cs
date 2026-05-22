@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Models;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,15 +9,29 @@ namespace GisAPI.Application.Features.VehicleMaintenance.Queries;
 public class GetVehicleMaintenanceQueryHandler : IRequestHandler<GetVehicleMaintenanceQuery, PaginatedList<VehicleMaintenanceStatusDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetVehicleMaintenanceQueryHandler(IGisDbContext context)
+    public GetVehicleMaintenanceQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<PaginatedList<VehicleMaintenanceStatusDto>> Handle(GetVehicleMaintenanceQuery request, CancellationToken cancellationToken)
     {
-        var vehiclesQuery = _context.Vehicles.AsQueryable();
+        // Operational pages must always scope to the caller's company,
+        // even when the caller is a system admin. The global EF query
+        // filter on Vehicle bypasses tenancy for IsSystemAdmin, which is
+        // correct for the /admin/* panel where platform admins need
+        // cross-company access — but this handler powers /maintenance,
+        // a per-company operational view. Calypso 9 p3: admin@belive.tn
+        // (system admin AND company admin of BELIVE) was seeing HERTZ
+        // maintenance schedules in /maintenance because of that bypass.
+        var companyId = _tenantService.CompanyId ?? 0;
+
+        var vehiclesQuery = _context.Vehicles
+            .Where(v => v.CompanyId == companyId)
+            .AsQueryable();
 
         if (request.VehicleId.HasValue)
             vehiclesQuery = vehiclesQuery.Where(v => v.Id == request.VehicleId.Value);
@@ -26,7 +41,8 @@ public class GetVehicleMaintenanceQueryHandler : IRequestHandler<GetVehicleMaint
 
         var schedules = await _context.VehicleMaintenanceSchedules
             .Include(s => s.Template)
-            .Where(s => vehicles.Select(v => v.Id).Contains(s.VehicleId))
+            .Where(s => s.CompanyId == companyId
+                     && vehicles.Select(v => v.Id).Contains(s.VehicleId))
             .ToListAsync(cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(request.Status))
