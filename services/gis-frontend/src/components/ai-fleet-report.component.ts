@@ -6,11 +6,12 @@ import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { marked } from 'marked';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 
 @Component({
   selector: 'app-ai-fleet-report',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ...USER_PREF_PIPES],
   template: `
     <div class="report-page">
       <!-- Header -->
@@ -76,7 +77,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
           <div class="kpi-card">
             <div class="kpi-icon" style="background:#f59e0b">&#x1F4B0;</div>
             <div class="kpi-info">
-              <span class="kpi-value">{{ reportData.fleetSummary.totalCosts | number:'1.0-0' }} DT</span>
+              <span class="kpi-value">{{ reportData.fleetSummary.totalCosts | appCurrency:0 }}</span>
               <span class="kpi-label">Couts totaux</span>
             </div>
           </div>
@@ -126,7 +127,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
               <div class="cost-item" *ngFor="let c of costItems">
                 <div class="cost-dot" [style.background]="c.color"></div>
                 <span class="cost-label">{{ c.label }}</span>
-                <span class="cost-val">{{ c.value | number:'1.0-0' }} DT</span>
+                <span class="cost-val">{{ c.value | appCurrency:0 }}</span>
                 <span class="cost-pct">{{ c.pct | number:'1.0-0' }}%</span>
               </div>
             </div>
@@ -215,7 +216,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
                     <span class="badge" [style.background]="getScoreColor(v.drivingScore)">{{ v.drivingScore }}</span>
                   </td>
                   <td>{{ v.fuelConsumption > 0 ? (v.fuelConsumption + ' L') : '-' }}</td>
-                  <td>{{ v.totalCosts | number:'1.0-0' }} DT</td>
+                  <td>{{ v.totalCosts | appCurrency:0 }}</td>
                   <td>{{ v.alertCount }}</td>
                   <td>
                     <span class="status-dot" [class.active]="v.status === 'available' || v.status === 'in_use'" [class.maint]="v.status === 'maintenance'"></span>

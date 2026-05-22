@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { DocumentRenewalPopupComponent, VehicleDocument as RenewableVehicleDocument } from './shared/document-renewal-popup.component';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { ApiService } from '../services/api.service';
 import { trigger, transition, style, animate } from '@angular/animations';
 
@@ -26,7 +27,7 @@ export interface VehicleDocument {
 @Component({
   selector: 'app-documents',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, DocumentRenewalPopupComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, DocumentRenewalPopupComponent, ...USER_PREF_PIPES],
   animations: [
     trigger('fadeIn', [
       transition(':enter', [
@@ -167,7 +168,7 @@ export interface VehicleDocument {
                 </td>
                 <td class="doc-number">{{ doc.documentNumber || '-' }}</td>
                 <td class="cost-cell">
-                  <span *ngIf="doc.lastRenewalCost">{{ doc.lastRenewalCost | number:'1.0-0' }} DT</span>
+                  <span *ngIf="doc.lastRenewalCost">{{ doc.lastRenewalCost | appCurrency:0 }}</span>
                   <span *ngIf="!doc.lastRenewalCost" class="no-data">-</span>
                 </td>
                 <td class="actions-cell">

@@ -6,6 +6,8 @@ import { Subject, takeUntil } from 'rxjs';
 import { ApiService, MonthlyFleetReport, MonthlyCostReport, DepartmentCostGroup, ChartData, MultiSeriesChartData, Kpi, FleetAlert } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ButtonComponent, CardComponent } from './shared/ui';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
+import { UserPreferencesService } from '../services/user-preferences.service';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 
 Chart.register(...registerables);
@@ -13,7 +15,7 @@ Chart.register(...registerables);
 @Component({
   selector: 'app-monthly-report',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, ButtonComponent, CardComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ButtonComponent, CardComponent, ...USER_PREF_PIPES],
   templateUrl: './monthly-report.component.html',
   styleUrls: ['./monthly-report.component.css']
 })
@@ -73,7 +75,8 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
 
   constructor(
     private router: Router,
-    private apiService: ApiService
+    private apiService: ApiService,
+    private userPrefs: UserPreferencesService
   ) {
     const now = new Date();
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -310,7 +313,7 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
   }
 
   formatCurrency(value: number): string {
-    return value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' TND';
+    return this.userPrefs.formatCurrency(value);
   }
 
   formatPercent(value: number): string {

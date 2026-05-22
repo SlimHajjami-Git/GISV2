@@ -5,6 +5,7 @@ import { HttpClient } from '@angular/common/http';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ApiService } from '../services/api.service';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 
 interface Department {
   id: number;
@@ -71,7 +72,7 @@ interface PartPricing {
 @Component({
   selector: 'app-fleet-management',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ...USER_PREF_PIPES],
   template: `
     <app-layout>
       <div class="settings-page">
@@ -173,7 +174,7 @@ interface PartPricing {
                       <span class="item-desc">Code: {{ fuel.code }}</span>
                     </div>
                     <div class="item-meta">
-                      <span class="price-tag" *ngIf="fuel.currentPrice">{{ fuel.currentPrice | number:'1.3-3' }} DT/L</span>
+                      <span class="price-tag" *ngIf="fuel.currentPrice">{{ fuel.currentPrice | appCurrency:3 }}/L</span>
                       <span class="badge system" *ngIf="fuel.isSystem">Système</span>
                     </div>
                     <div class="item-actions">
@@ -312,7 +313,7 @@ interface PartPricing {
                       </div>
                       <div class="part-card-price">
                         <span class="price-value" *ngIf="getPartPrice(part.id)">
-                          {{ getPartPrice(part.id)!.price | number:'1.2-2' }} DT
+                          {{ getPartPrice(part.id)!.price | appCurrency }}
                         </span>
                         <span class="no-price" *ngIf="!getPartPrice(part.id)">Non défini</span>
                       </div>
@@ -348,7 +349,7 @@ interface PartPricing {
                       <span class="item-desc">{{ pricing.categoryName }}</span>
                     </div>
                     <div class="item-meta">
-                      <span class="price-tag">{{ pricing.price | number:'1.2-2' }} DT</span>
+                      <span class="price-tag">{{ pricing.price | appCurrency }}</span>
                       <span class="supplier-tag" *ngIf="pricing.supplier">{{ pricing.supplier }}</span>
                     </div>
                     <div class="item-actions">
@@ -431,7 +432,7 @@ interface PartPricing {
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
                         </div>
                         <span class="remote-stat-label">Vitesse</span>
-                        <span class="remote-stat-value">{{ v.speed | number:'1.0-0' }} km/h</span>
+                        <span class="remote-stat-value">{{ v.speed | appSpeed:0 }}</span>
                       </div>
                     </div>
 

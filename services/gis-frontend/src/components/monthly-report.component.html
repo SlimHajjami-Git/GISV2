@@ -214,8 +214,8 @@
                 <td>{{ type.type }}</td>
                 <td>{{ type.count }}</td>
                 <td>{{ formatPercent(type.percentage) }}</td>
-                <td>{{ formatNumber(type.totalDistanceKm) }} km</td>
-                <td>{{ formatNumber(type.avgDistanceKm) }} km</td>
+                <td>{{ type.totalDistanceKm | appDistance:0 }}</td>
+                <td>{{ type.avgDistanceKm | appDistance:0 }}</td>
               </tr>
             </tbody>
           </table>
@@ -234,7 +234,7 @@
             <span class="stat-label">Taux d'utilisation global</span>
           </div>
           <div class="stat-box">
-            <span class="stat-value">{{ formatNumber(report.utilization.averageDailyDistanceKm, 1) }} km</span>
+            <span class="stat-value">{{ report.utilization.averageDailyDistanceKm | appDistance:1 }}</span>
             <span class="stat-label">Distance journalière moyenne</span>
           </div>
           <div class="stat-box success">
@@ -289,10 +289,10 @@
                     <span>{{ formatPercent(v.utilizationRate) }}</span>
                   </div>
                 </td>
-                <td>{{ formatNumber(v.totalDistanceKm) }} km</td>
+                <td>{{ v.totalDistanceKm | appDistance:0 }}</td>
                 <td>{{ v.totalTrips }}</td>
                 <td>{{ v.operatingDays }}</td>
-                <td>{{ formatNumber(v.avgDailyKm, 1) }} km</td>
+                <td>{{ v.avgDailyKm | appDistance:1 }}</td>
               </tr>
             </tbody>
           </table>
@@ -367,8 +367,8 @@
             <tbody>
               <tr *ngFor="let v of report.fuelAnalytics.byVehicle">
                 <td>{{ v.vehicleName }}</td>
-                <td>{{ formatNumber(v.totalDistanceKm) }} km</td>
-                <td>{{ formatNumber(v.totalConsumedLiters) }} L</td>
+                <td>{{ v.totalDistanceKm | appDistance:0 }}</td>
+                <td>{{ v.totalConsumedLiters | appVolume:0 }}</td>
                 <td>{{ formatNumber(v.consumptionPer100Km, 1) }}</td>
                 <td>{{ formatNumber(v.efficiencyKmPerLiter, 1) }}</td>
                 <td>
@@ -511,9 +511,9 @@
             <tbody>
               <tr *ngFor="let d of report.driverPerformance.driverMetrics">
                 <td>{{ d.driverName }}</td>
-                <td>{{ formatNumber(d.totalDistanceKm) }} km</td>
+                <td>{{ d.totalDistanceKm | appDistance:0 }}</td>
                 <td>{{ d.totalTrips }}</td>
-                <td>{{ formatNumber(d.avgSpeedKph, 1) }} km/h</td>
+                <td>{{ d.avgSpeedKph | appSpeed:1 }}</td>
                 <td>{{ d.speedingEvents }}</td>
                 <td>{{ formatNumber(d.performanceScore, 1) }}</td>
                 <td>
@@ -629,7 +629,7 @@
             <tbody>
               <tr *ngFor="let dept of costReport!.departments">
                 <td><strong>{{ dept.departmentName || 'Non assigne' }}</strong></td>
-                <td>{{ formatNumber(dept.totalKm, 0) }} km</td>
+                <td>{{ dept.totalKm | appDistance:0 }}</td>
                 <td>{{ formatCurrency(dept.totalFuelCostDzd) }}</td>
                 <td>{{ formatCurrency(dept.totalMaintenanceCostDzd) }}</td>
                 <td>{{ formatCurrency(dept.totalRepairCostDzd) }}</td>
@@ -639,7 +639,7 @@
             <tfoot>
               <tr style="font-weight: 700; border-top: 2px solid #1e293b;">
                 <td>TOTAL</td>
-                <td>{{ formatNumber(costReport!.totalKm, 0) }} km</td>
+                <td>{{ costReport!.totalKm | appDistance:0 }}</td>
                 <td>{{ formatCurrency(costReport!.totalFuelCostDzd) }}</td>
                 <td>{{ formatCurrency(costReport!.totalMaintenanceCostDzd) }}</td>
                 <td>{{ formatCurrency(costReport!.totalRepairCostDzd) }}</td>
