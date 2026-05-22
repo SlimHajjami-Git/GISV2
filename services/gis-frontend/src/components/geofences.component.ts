@@ -7,12 +7,13 @@ import { ApiService } from '../services/api.service';
 import { SignalRService } from '../services/signalr.service';
 import { Geofence, GeofenceEvent, GeofencePoint, Vehicle, Company, GeofenceGroup } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import * as L from 'leaflet';
 
 @Component({
   selector: 'app-geofences',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ...USER_PREF_PIPES],
   template: `
     <app-layout>
       <div class="geofences-page">
@@ -180,7 +181,7 @@ import * as L from 'leaflet';
                         <circle cx="12" cy="12" r="10"/>
                         <polyline points="12 6 12 12 16 14"/>
                       </svg>
-                      {{ geofence.alertSpeedLimit }} km/h
+                      {{ geofence.alertSpeedLimit | appSpeed:0 }}
                     </span>
                   </div>
 

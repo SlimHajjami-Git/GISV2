@@ -5,12 +5,13 @@ import { ApiService } from '../services/api.service';
 import { GPSLocation, GPSAlert, Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { CardComponent } from './shared/ui';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { interval, Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-gps',
   standalone: true,
-  imports: [CommonModule, AppLayoutComponent, CardComponent],
+  imports: [CommonModule, AppLayoutComponent, CardComponent, ...USER_PREF_PIPES],
   template: `
     <app-layout>
       <div class="gps-page">
@@ -25,7 +26,7 @@ import { interval, Subscription } from 'rxjs';
                     <div class="marker-icon">📍</div>
                     <div class="marker-info">
                       <div class="marker-name">{{ getVehicleName(location.vehicleId) }}</div>
-                      <div class="marker-speed">{{ location.speed }} km/h</div>
+                      <div class="marker-speed">{{ location.speed | appSpeed:0 }}</div>
                     </div>
                   </div>
                 </div>

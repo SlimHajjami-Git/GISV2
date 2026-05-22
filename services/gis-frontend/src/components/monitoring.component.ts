@@ -10,7 +10,7 @@ import { Vehicle } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { AdminService } from '../admin/services/admin.service';
 import { UserPreferencesService } from '../services/user-preferences.service';
-import { AppSpeedPipe, AppDistancePipe } from '../pipes/user-preference-pipes';
+import { AppSpeedPipe, AppDistancePipe, AppTempPipe } from '../pipes/user-preference-pipes';
 import { getVehicleIcon } from './shared/vehicle-icons';
 import { PlaybackStateService, PlaybackTimelineEntry } from '../services/playback-state.service';
 import * as L from 'leaflet';
@@ -20,7 +20,7 @@ import 'leaflet.markercluster';
 @Component({
   selector: 'app-monitoring',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, AppSpeedPipe, AppDistancePipe],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, AppSpeedPipe, AppDistancePipe, AppTempPipe],
   templateUrl: './monitoring.component.html',
   styleUrls: ['./monitoring.component.css']
 })

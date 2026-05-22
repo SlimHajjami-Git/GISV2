@@ -182,7 +182,7 @@
                       </div>
                       <div class="sensor-item">
                         <span class="sensor-label">🌡️ Temp. moteur</span>
-                        <span class="sensor-value">{{ getVehicleStats(vehicle)?.temperature != null ? (getVehicleStats(vehicle)?.temperature + '°C') : 'N/A' }}</span>
+                        <span class="sensor-value">{{ getVehicleStats(vehicle)?.temperature != null ? (getVehicleStats(vehicle)?.temperature | appTemp:0) : 'N/A' }}</span>
                       </div>
                       <div class="sensor-item">
                         <span class="sensor-label">🔋 Batterie</span>
