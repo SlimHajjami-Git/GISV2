@@ -43,9 +43,20 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
     private static readonly TimeSpan _cacheTtl = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan _dedupWindow = TimeSpan.FromSeconds(2);
 
-    // Speed alert cooldown: don't spam notifications for the same vehicle
-    private static readonly ConcurrentDictionary<int, DateTime> _speedAlertCooldown = new();
-    private static readonly TimeSpan _speedAlertCooldownPeriod = TimeSpan.FromMinutes(5);
+    // Speed alert state — tracks the highest speed already notified for
+    // the CURRENT "speeding session" of each vehicle. A session starts
+    // when speed crosses (limit + 20) and ends when it drops back under.
+    //
+    // Why track the peak instead of a time-based cooldown:
+    //   The previous 5-min cooldown swallowed the actual peak. Real
+    //   scenario reported by operator: vehicle hit 145 km/h → alert.
+    //   3 min later it hit 167 km/h → no alert (cooldown still active),
+    //   so the operator only ever saw the lower 145 reading. With this
+    //   pattern, every new peak ≥ 5 km/h higher than the last notified
+    //   fires an updated alert — the operator always sees the actual
+    //   max speed reached, never just the first lukewarm trigger.
+    private static readonly ConcurrentDictionary<int, double> _speedingSessionPeak = new();
+    private const double SpeedAlertEscalationKph = 5.0;
 
     // Driving behavior cooldown per vehicle
     private static readonly ConcurrentDictionary<string, DateTime> _behaviorCooldown = new();
@@ -236,19 +247,28 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
                 await _gpsHubService.SendAlertAsync(cached.CompanyId, alertDto);
             }
 
-            // Publish speed alert notification (with cooldown per vehicle)
+            // Publish speed alert notification when the Rust ingest
+            // explicitly flagged this frame as overspeed. Uses the same
+            // peak-escalation rule as the inline threshold check below —
+            // every new peak ≥ 5 km/h above the last notified value
+            // fires an updated alert so the operator sees the actual
+            // maximum speed reached.
             if (request.AlertType == "overspeed" && cached.VehicleId.HasValue && speed > 0)
             {
                 var vehicleId = cached.VehicleId.Value;
-                var shouldNotify = true;
-                if (_speedAlertCooldown.TryGetValue(vehicleId, out var lastAlert))
+                var fire = false;
+                if (!_speedingSessionPeak.TryGetValue(vehicleId, out var lastNotifiedPeak))
                 {
-                    shouldNotify = (now - lastAlert) > _speedAlertCooldownPeriod;
+                    fire = true;
+                }
+                else if (speed >= lastNotifiedPeak + SpeedAlertEscalationKph)
+                {
+                    fire = true;
                 }
 
-                if (shouldNotify)
+                if (fire)
                 {
-                    _speedAlertCooldown[vehicleId] = now;
+                    _speedingSessionPeak[vehicleId] = speed;
                     await _publisher.Publish(new SpeedAlertNotificationEvent(
                         cached.CompanyId, cached.VehicleId, cached.VehicleName, cached.Plate,
                         speed, request.Latitude, request.Longitude, request.RecordedAt
@@ -278,27 +298,37 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             }
         }
 
-        // Speed limit check: notify if speed > (vehicle speed limit + 20 km/h).
-        // Skipped entirely when the vehicle is immobilised — on a tow truck or
-        // being moved around a garage yard, the speed sensor produces fake
-        // "200 km/h" bursts that would spam the operator.
+        // Speed limit check — peak-based escalation (see comment on
+        // _speedingSessionPeak above). Skipped entirely when the vehicle
+        // is immobilised, since the speed sensor on a tow truck / garage
+        // dolly produces fake "200 km/h" bursts.
         if (cached.VehicleId.HasValue && cached.SpeedLimit.HasValue
             && speed > 0 && ignitionOn && !cached.IsImmobilized)
         {
             var vehicleSpeedLimit = cached.SpeedLimit.Value;
             var threshold = vehicleSpeedLimit + 20;
+            var vehicleId = cached.VehicleId.Value;
+
             if (speed > threshold)
             {
-                var vehicleId = cached.VehicleId.Value;
-                var shouldNotifySpeedLimit = true;
-                if (_speedAlertCooldown.TryGetValue(vehicleId, out var lastSpeedAlert))
+                // Currently above threshold. Fire on the FIRST crossing
+                // of this session, then again every time speed climbs
+                // ≥ 5 km/h above the last notified peak — operator must
+                // see the actual maximum reached, not just the moment
+                // we crossed the line.
+                bool fire = false;
+                if (!_speedingSessionPeak.TryGetValue(vehicleId, out var lastNotifiedPeak))
                 {
-                    shouldNotifySpeedLimit = (now - lastSpeedAlert) > _speedAlertCooldownPeriod;
+                    fire = true;                       // session start
+                }
+                else if (speed >= lastNotifiedPeak + SpeedAlertEscalationKph)
+                {
+                    fire = true;                       // new peak
                 }
 
-                if (shouldNotifySpeedLimit)
+                if (fire)
                 {
-                    _speedAlertCooldown[vehicleId] = now;
+                    _speedingSessionPeak[vehicleId] = speed;
                     _logger.LogInformation(
                         "🚨 Speed limit exceeded: Vehicle {Vehicle} at {Speed:F0} km/h (limit: {Limit} km/h, threshold: {Threshold} km/h)",
                         cached.VehicleName ?? cached.Plate, speed, vehicleSpeedLimit, threshold);
@@ -309,6 +339,14 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
                         vehicleSpeedLimit
                     ), ct);
                 }
+            }
+            else
+            {
+                // Back below threshold — session over. Forget the peak
+                // so the next crossing fires a fresh "first" alert
+                // instead of being suppressed because the previous peak
+                // is still recorded.
+                _speedingSessionPeak.TryRemove(vehicleId, out _);
             }
         }
 
