@@ -78,6 +78,12 @@ builder.Services.AddHostedService<GisAPI.Services.AccidentDetectionService>();
 // the moment 3 consecutive frames exceed 5 km/h (the tow truck starts moving).
 builder.Services.AddHostedService<GisAPI.Services.AccidentTowMonitoringService>();
 
+// Tow Detection Service — standalone (no accident required). Flags any vehicle
+// moving engine-off (ignition_on=false) above 15 km/h with real displacement
+// over a cluster of consecutive frames; excludes immobilised vehicles. Persists
+// a TowEvent + notifies admins; surfaced on the /remorquages page.
+builder.Services.AddHostedService<GisAPI.Services.TowDetectionService>();
+
 // Battery Monitoring Service — scans NEMS L (gps_type_1) devices every 5 min
 // for a sustained drop in power_voltage (≥4/5 recent frames under raw 35 with
 // ignition on) and fans out a low-voltage alert to company admins. 24h cooldown

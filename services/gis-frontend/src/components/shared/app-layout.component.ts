@@ -191,6 +191,10 @@ type NotifBucket = Notification | NotifThreadGroup;
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                 Rapports d'accident
               </a>
+              <a *ngIf="hasModule('monitoring')" [routerLink]="['/remorquages']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 3h13v10H1z"/><path d="M14 8h4l3 3v2h-7z"/><circle cx="6" cy="17" r="2"/><circle cx="18" cy="17" r="2"/></svg>
+                Remorquages
+              </a>
             </div>
           </div>
 

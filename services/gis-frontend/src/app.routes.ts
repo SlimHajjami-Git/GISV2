@@ -39,6 +39,7 @@ import { SecuriteGuard } from './guards/securite.guard';
 import { LocationCompanyGuard } from './guards/location-company.guard';
 import { VehicleLoansComponent } from './components/vehicle-loans.component';
 import { PrivacyPolicyComponent } from './components/privacy-policy.component';
+import { TowingComponent } from './components/towing.component';
 
 
 export const routes: Routes = [
@@ -90,6 +91,9 @@ export const routes: Routes = [
   
   // Security (device events)
   { path: 'securite', component: SecuriteComponent, canActivate: [AuthGuard, SecuriteGuard] },
+
+  // Remorquages (standalone tow detection — engine-off + speed + displacement)
+  { path: 'remorquages', component: TowingComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'monitoring' } },
 
   // Notifications (always accessible when logged in)
   { path: 'notifications', component: NotificationsComponent, canActivate: [AuthGuard] },

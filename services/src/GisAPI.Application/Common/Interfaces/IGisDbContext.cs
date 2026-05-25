@@ -33,6 +33,7 @@ public interface IGisDbContext
     DbSet<AccidentEvent> AccidentEvents { get; }
     DbSet<AccidentEventDocument> AccidentEventDocuments { get; }
     DbSet<AccidentEventThirdParty> AccidentEventThirdParties { get; }
+    DbSet<TowEvent> TowEvents { get; }
     DbSet<MaintenanceTemplate> MaintenanceTemplates { get; }
     DbSet<VehicleMaintenanceSchedule> VehicleMaintenanceSchedules { get; }
     DbSet<MaintenanceLog> MaintenanceLogs { get; }

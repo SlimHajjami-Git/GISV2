@@ -1579,6 +1579,35 @@ export class ApiService {
     return this.http.get<ListAccidentEventsResult>(`${this.API_URL}/accident-reports`, { headers: this.getHeaders(), params });
   }
 
+  // ── Standalone tow detection (/remorquages) ──────────────────────────────
+
+  /** Paged list of detected tows (engine-off + speed + displacement). */
+  getTowEvents(options?: {
+    page?: number;
+    pageSize?: number;
+    status?: 'active' | 'ended';
+    vehicleId?: number;
+    acknowledged?: boolean;
+  }): Observable<TowEventsResult> {
+    let params = new HttpParams();
+    if (options?.page) params = params.set('page', options.page.toString());
+    if (options?.pageSize) params = params.set('pageSize', options.pageSize.toString());
+    if (options?.status) params = params.set('status', options.status);
+    if (options?.vehicleId) params = params.set('vehicleId', options.vehicleId.toString());
+    if (options?.acknowledged !== undefined) params = params.set('acknowledged', String(options.acknowledged));
+    return this.http.get<TowEventsResult>(`${this.API_URL}/towing`, { headers: this.getHeaders(), params });
+  }
+
+  /** Number of unacknowledged tows (nav badge). */
+  getTowUnacknowledgedCount(): Observable<{ count: number }> {
+    return this.http.get<{ count: number }>(`${this.API_URL}/towing/unacknowledged-count`, { headers: this.getHeaders() });
+  }
+
+  /** Mark a tow event as reviewed. */
+  acknowledgeTowEvent(id: number): Observable<void> {
+    return this.http.post<void>(`${this.API_URL}/towing/${id}/acknowledge`, null, { headers: this.getHeaders() });
+  }
+
   // ── Calypso 7 — phase commands ────────────────────────────────────────
   //
   // Each phase is editable independently and over multiple days. The
@@ -3264,6 +3293,38 @@ export interface ListAccidentEventsResult {
   totalCount: number;
   page: number;
   pageSize: number;
+}
+
+// ── Standalone tow detection (/remorquages) ──────────────────────────────
+
+export interface TowEventDto {
+  id: number;
+  vehicleId: number;
+  vehicleName: string | null;
+  vehiclePlate: string | null;
+  deviceUid: string | null;
+  startedAt: string;
+  lastSeenAt: string;
+  endedAt: string | null;
+  startLat: number;
+  startLon: number;
+  lastLat: number | null;
+  lastLon: number | null;
+  startAddress: string | null;
+  maxSpeedKph: number;
+  distanceMeters: number;
+  frameCount: number;
+  status: 'active' | 'ended';
+  acknowledged: boolean;
+  acknowledgedAt: string | null;
+}
+
+export interface TowEventsResult {
+  items: TowEventDto[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
 // ── Phase request payloads ───────────────────────────────────────────────
