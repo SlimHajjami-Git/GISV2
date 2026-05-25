@@ -63,6 +63,17 @@ public class SetVehicleSpeedLimitCommandHandler : IRequestHandler<SetVehicleSpee
             return;
         }
 
+        // AJ+CONFN is a NEMS-only command. Noron (and any non-AJ+ device)
+        // must not receive it — the km/h limit is still stored for the
+        // in-app alert, only the hardware programming is skipped.
+        if (!SpeedLimitCommandBuilder.IsNemsDevice(device))
+        {
+            _logger.LogInformation(
+                "Speed limit {Limit} km/h saved for vehicle {VehicleId} but device {DeviceId} is not NEMS ({Brand}/{Model}/{Protocol}) — AJ+CONFN skipped.",
+                request.SpeedLimit, vehicle.Id, device.Id, device.Brand, device.Model, device.ProtocolType);
+            return;
+        }
+
         var speedTenthsMph = SpeedLimitCommandBuilder.ToDeviceTenthsMph(request.SpeedLimit);
         var commandText = SpeedLimitCommandBuilder.Build(request.SpeedLimit, device.CommandGo);
 

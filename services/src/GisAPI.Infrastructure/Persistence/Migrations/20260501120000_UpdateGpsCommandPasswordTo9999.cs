@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -34,6 +35,8 @@ namespace GisAPI.Infrastructure.Persistence.Migrations;
 /// migrées par cette opération. Acceptable pour un secours, à
 /// utiliser en connaissance de cause.</para>
 /// </summary>
+[Migration("20260501120000_UpdateGpsCommandPasswordTo9999")]
+[DbContext(typeof(GisDbContext))]
 public partial class UpdateGpsCommandPasswordTo9999 : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

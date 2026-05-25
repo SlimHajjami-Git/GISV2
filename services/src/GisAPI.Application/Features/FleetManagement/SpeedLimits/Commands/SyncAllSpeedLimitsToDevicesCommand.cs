@@ -22,7 +22,8 @@ public record SyncSpeedLimitsResult(
     int Queued,
     int PushedLive,
     int Offline,
-    int Failed
+    int Failed,
+    int SkippedNonNems
 );
 
 public class SyncAllSpeedLimitsToDevicesCommandHandler
@@ -64,14 +65,23 @@ public class SyncAllSpeedLimitsToDevicesCommandHandler
         if (total == 0)
         {
             _logger.LogInformation("Speed-limit device sync: no vehicles with a limit + boitier found.");
-            return new SyncSpeedLimitsResult(0, 0, 0, 0, 0);
+            return new SyncSpeedLimitsResult(0, 0, 0, 0, 0, 0);
         }
 
         // 1) Build + persist all pending DeviceCommand rows in one batch.
+        //    NEMS-only: Noron / non-AJ+ devices are skipped (AJ+CONFN would
+        //    be mis-handled). Their km/h limit is already in the DB for the
+        //    in-app alert; only hardware programming is skipped.
+        var skippedNonNems = 0;
         var commands = new List<(GpsDevice Device, DeviceCommand Cmd)>(total);
         foreach (var v in vehicles)
         {
             var device = v.GpsDevice!;
+            if (!SpeedLimitCommandBuilder.IsNemsDevice(device))
+            {
+                skippedNonNems++;
+                continue;
+            }
             var commandText = SpeedLimitCommandBuilder.Build(v.SpeedLimit!.Value, device.CommandGo);
             var cmd = new DeviceCommand
             {
@@ -117,9 +127,9 @@ public class SyncAllSpeedLimitsToDevicesCommandHandler
         }
 
         _logger.LogInformation(
-            "🚦 Speed-limit device sync complete: total={Total}, queued={Queued}, live={Live}, offline={Offline}, failed={Failed}",
-            total, queued, pushedLive, offline, failed);
+            "🚦 Speed-limit device sync complete: total={Total}, queued={Queued}, live={Live}, offline={Offline}, failed={Failed}, skippedNonNems={Skipped}",
+            total, queued, pushedLive, offline, failed, skippedNonNems);
 
-        return new SyncSpeedLimitsResult(total, queued, pushedLive, offline, failed);
+        return new SyncSpeedLimitsResult(total, queued, pushedLive, offline, failed, skippedNonNems);
     }
 }

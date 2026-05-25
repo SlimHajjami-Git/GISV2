@@ -1,3 +1,5 @@
+using GisAPI.Domain.Entities;
+
 namespace GisAPI.Application.Features.FleetManagement.SpeedLimits;
 
 /// <summary>
@@ -18,6 +20,31 @@ public static class SpeedLimitCommandBuilder
     /// <summary>km/h → device value (tenths of MPH), rounded half-up.</summary>
     public static int ToDeviceTenthsMph(int speedLimitKmh) =>
         (int)Math.Round(speedLimitKmh * KmhToMph * 10.0, MidpointRounding.AwayFromZero);
+
+    /// <summary>
+    /// True only for NEMS-family boitiers, which speak the AJ+ protocol
+    /// (AJ+GO / AJ+STOP / AJ+CONFN). Operator constraint (Calypso 9 p6):
+    /// the AJ+CONFN speed command must NEVER be sent to a Noron device —
+    /// Noron uses a different protocol and would mis-handle it.
+    ///
+    /// Detection (matches the fleet's data shapes):
+    ///   - protocol_type 'gps_type_1' → AJ+ family (NEMS), OR
+    ///   - brand/model contains "NEMS" (covers the units whose
+    ///     protocol_type column is blank but are branded NEMS).
+    /// Noron (protocol_type 'noron', brand NORON) fails both → excluded.
+    /// </summary>
+    public static bool IsNemsDevice(GpsDevice? device)
+    {
+        if (device == null) return false;
+        if (string.Equals(device.ProtocolType, "noron", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (string.Equals(device.ProtocolType, "gps_type_1", StringComparison.OrdinalIgnoreCase))
+            return true;
+        var brand = device.Brand ?? string.Empty;
+        var model = device.Model ?? string.Empty;
+        return brand.Contains("NEMS", StringComparison.OrdinalIgnoreCase)
+            || model.Contains("NEMS", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// Full command text (newline included) ready to hand to
