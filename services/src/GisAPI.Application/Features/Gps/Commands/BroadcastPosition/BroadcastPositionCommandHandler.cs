@@ -311,20 +311,23 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
         // _speedingSessionPeak above). Skipped entirely when the vehicle
         // is immobilised, since the speed sensor on a tow truck / garage
         // dolly produces fake "200 km/h" bursts.
+        //
+        // Calypso 9 — NO tolerance margin: the alert fires as soon as the
+        // vehicle exceeds the configured limit (limit 110 → alert at 110,
+        // not 130). This matches the hardware boitier, which is programmed
+        // with the exact same limit via AJ+CONFN.
         if (cached.VehicleId.HasValue && cached.SpeedLimit.HasValue
             && speed > 0 && ignitionOn && !cached.IsImmobilized)
         {
             var vehicleSpeedLimit = cached.SpeedLimit.Value;
-            var threshold = vehicleSpeedLimit + 20;
             var vehicleId = cached.VehicleId.Value;
 
-            if (speed > threshold)
+            if (speed > vehicleSpeedLimit)
             {
-                // Currently above threshold. Fire on the FIRST crossing
-                // of this session, then again every time speed climbs
-                // ≥ 5 km/h above the last notified peak — operator must
-                // see the actual maximum reached, not just the moment
-                // we crossed the line.
+                // Above the limit. Fire on the FIRST crossing of this
+                // session, then again every time speed climbs ≥ 5 km/h
+                // above the last notified peak — operator must see the
+                // actual maximum reached, not just the moment we crossed.
                 bool fire = false;
                 if (!_speedingSessionPeak.TryGetValue(vehicleId, out var lastNotifiedPeak))
                 {
@@ -339,8 +342,8 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
                 {
                     _speedingSessionPeak[vehicleId] = speed;
                     _logger.LogInformation(
-                        "🚨 Speed limit exceeded: Vehicle {Vehicle} at {Speed:F0} km/h (limit: {Limit} km/h, threshold: {Threshold} km/h)",
-                        cached.VehicleName ?? cached.Plate, speed, vehicleSpeedLimit, threshold);
+                        "🚨 Speed limit exceeded: Vehicle {Vehicle} at {Speed:F0} km/h (limit: {Limit} km/h)",
+                        cached.VehicleName ?? cached.Plate, speed, vehicleSpeedLimit);
 
                     await _publisher.Publish(new SpeedAlertNotificationEvent(
                         cached.CompanyId, cached.VehicleId, cached.VehicleName, cached.Plate,
