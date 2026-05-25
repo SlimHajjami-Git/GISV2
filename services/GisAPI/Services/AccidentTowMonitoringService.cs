@@ -1,3 +1,6 @@
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -120,6 +123,10 @@ public class AccidentTowMonitoringService : BackgroundService
                 if (towAt == null) continue;
 
                 ev.TowDetectedAt = towAt;
+                // Append the tow to the report timeline — ONLY now that it is
+                // really detected, using the REAL timestamp. Never hardcoded:
+                // no detection ⇒ no story line (better no info than wrong info).
+                ev.StoryJson = AppendTowEventToStory(ev.StoryJson, towAt.Value, ev.IncidentAt);
                 ev.UpdatedAt = DateTime.UtcNow;
                 await context.SaveChangesAsync(ct);
                 stamped++;
@@ -193,6 +200,63 @@ LIMIT 1;
             .ToListAsync(ct);
 
         return moments.Count > 0 ? moments[0].Value : null;
+    }
+
+    /// <summary>
+    /// Appends a single, factual tow event to the report timeline JSON using
+    /// the REAL detection timestamp. Safety-first:
+    /// <list type="bullet">
+    ///   <item>Called only when a tow has actually been detected — there is
+    ///   no hardcoded / fallback tow line anywhere.</item>
+    ///   <item>If the stored story isn't a JSON array (corrupt / unexpected),
+    ///   we return it unchanged rather than risk replacing the real
+    ///   chronology with a lone tow line.</item>
+    ///   <item>If the date differs from the impact day, the label carries the
+    ///   date so a multi-day gap is never shown as if it were same-day.</item>
+    /// </list>
+    /// </summary>
+    private static string AppendTowEventToStory(string? storyJson, DateTime towAt, DateTime incidentAt)
+    {
+        try
+        {
+            JsonArray arr;
+            if (string.IsNullOrWhiteSpace(storyJson))
+            {
+                arr = new JsonArray();
+            }
+            else
+            {
+                // Unexpected shape → leave the real story untouched.
+                if (JsonNode.Parse(storyJson) is not JsonArray parsed) return storyJson;
+                arr = parsed;
+            }
+
+            var sameDay = towAt.Date == incidentAt.Date;
+            var timeLabel = sameDay
+                ? towAt.ToString("HH'h' mm")
+                : towAt.ToString("dd/MM HH'h' mm");
+
+            arr.Add(new JsonObject
+            {
+                ["time"] = timeLabel,
+                ["title"] = "Reprise de mouvement (remorquage probable)",
+                ["body"] =
+                    "Le véhicule s'est remis à se déplacer (plus de 5 km/h sur plusieurs relevés "
+                  + "consécutifs) après une période d'immobilisation. Ce mouvement est compatible avec "
+                  + "un chargement sur dépanneuse ou un déplacement du véhicule par un tiers.",
+                ["severity"] = "neutral",
+            });
+
+            return arr.ToJsonString(new JsonSerializerOptions
+            {
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            });
+        }
+        catch
+        {
+            // Never block / corrupt on an append failure — keep the original.
+            return storyJson ?? "";
+        }
     }
 
     private static async Task NotifyTowDetectedAsync(

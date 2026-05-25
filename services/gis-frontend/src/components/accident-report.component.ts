@@ -11,6 +11,7 @@ import {
   AccidentReportDto,
 } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
+import { AccidentPdfService } from '../services/accident-pdf.service';
 
 interface NarrativeEvent {
   time: string;
@@ -139,7 +140,14 @@ interface ChartAxisLabel {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 Télécharger le rapport PDF
               </a>
+              <button *ngIf="isAdmin && status && status !== 'pending'" type="button"
+                      class="status-pdf status-pdf-btn" (click)="regeneratePdf()" [disabled]="pdfBusy"
+                      title="Reconstruit le PDF à partir de l'état actuel (remorquage, phases…)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                {{ pdfBusy ? 'Génération…' : 'Régénérer le PDF' }}
+              </button>
             </div>
+            <p class="status-error" *ngIf="pdfError">{{ pdfError }}</p>
             <div class="status-actions" *ngIf="status === 'pending' && isAdmin">
               <p class="status-hint">
                 Décision requise. Vous pouvez confirmer ou signaler une fausse alerte :
@@ -881,6 +889,8 @@ interface ChartAxisLabel {
       margin-left: auto;
     }
     .status-pdf:hover { background: #fecaca; }
+    .status-pdf-btn { border: none; cursor: pointer; margin-left: 8px; font-family: inherit; }
+    .status-pdf-btn:disabled { opacity: 0.6; cursor: default; }
     /* Damages capture (Calypso 6 P9) */
     .damages-card {
       margin-bottom: 28px;
@@ -1705,6 +1715,10 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   decisionBusy: 'confirm' | 'dismiss' | null = null;
   decisionError: string | null = null;
 
+  /** Busy + error state for the "Régénérer le PDF" action. */
+  pdfBusy = false;
+  pdfError: string | null = null;
+
   // Calypso 7 — timeline state. One form object per phase, edited
   // independently. The frontend keeps everything in memory and only POSTs
   // when the admin clicks the per-phase "Enregistrer" button.
@@ -1734,6 +1748,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     private route: ActivatedRoute,
     private cdr: ChangeDetectorRef,
     private authService: AuthService,
+    private accidentPdf: AccidentPdfService,
   ) {}
 
   get statusLabel(): string {
@@ -2409,6 +2424,54 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       error: () => {
         this.decisionBusy = null;
         this.decisionError = "Impossible d'enregistrer la fausse alerte. Veuillez réessayer.";
+        this.cdr.markForCheck();
+      },
+    });
+    this.subs.push(sub);
+  }
+
+  /**
+   * Regenerates the attached PDF from the CURRENT server state. The auto-PDF
+   * is built once at confirm time — before any tow is detected and before
+   * the admin fills the damages/expert/repair phases — so it's a stale
+   * snapshot. This re-fetches the latest report (which now includes a real
+   * tow line in the timeline if one was detected, plus filled phases) and
+   * re-uploads a fresh PDF. Nothing is fabricated: it only renders what the
+   * server returns.
+   */
+  regeneratePdf(): void {
+    if (!this.accidentEventId || this.pdfBusy) return;
+    this.pdfBusy = true;
+    this.pdfError = null;
+    const id = this.accidentEventId;
+    const sub = this.apiService.getAccidentReport(id).subscribe({
+      next: (dto) => {
+        try {
+          const blob = this.accidentPdf.generate(dto);
+          const up = this.apiService
+            .uploadAccidentReportPdf(id, blob, `rapport-accident-${id}.pdf`)
+            .subscribe({
+              next: (res) => {
+                this.pdfReportUrl = res?.pdfReportUrl ?? this.pdfReportUrl;
+                this.pdfBusy = false;
+                this.cdr.markForCheck();
+              },
+              error: () => {
+                this.pdfBusy = false;
+                this.pdfError = 'Échec de la mise à jour du PDF. Veuillez réessayer.';
+                this.cdr.markForCheck();
+              },
+            });
+          this.subs.push(up);
+        } catch {
+          this.pdfBusy = false;
+          this.pdfError = 'Échec de la génération du PDF.';
+          this.cdr.markForCheck();
+        }
+      },
+      error: () => {
+        this.pdfBusy = false;
+        this.pdfError = 'Impossible de charger le rapport pour régénérer le PDF.';
         this.cdr.markForCheck();
       },
     });
