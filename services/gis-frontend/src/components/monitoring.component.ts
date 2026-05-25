@@ -14,6 +14,7 @@ import { AppSpeedPipe, AppDistancePipe, AppTempPipe } from '../pipes/user-prefer
 import { getVehicleIcon } from './shared/vehicle-icons';
 import { PlaybackStateService, PlaybackTimelineEntry } from '../services/playback-state.service';
 import * as L from 'leaflet';
+import qrcode from 'qrcode-generator';
 import 'leaflet-routing-machine';
 import 'leaflet.markercluster';
 
@@ -1071,7 +1072,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       const d = new Date(lastComm);
       lastCommStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
-    
+
+    // "Guider un remorqueur" — partage de la position actuelle vers Google Maps.
+    // Cas d'usage : véhicule en panne loin → on envoie le lien (WhatsApp/SMS)
+    // ou on fait scanner le QR au remorqueur, qui n'a pas accès à l'application.
+    const towSection = this.buildLocationShareSection(vehicle, plate);
+
     return `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; width: 270px; margin: -14px -20px;">
         <div style="background: linear-gradient(135deg, ${statusColor} 0%, ${statusColor}cc 100%); padding: 12px 16px; border-radius: 8px 8px 0 0; display: flex; align-items: center; gap: 12px;">
@@ -1115,12 +1121,53 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" style="flex-shrink: 0;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           <span style="font-size: 11px; color: #64748b;">Dernière comm: ${lastCommStr}</span>
         </div>` : ''}
+        ${towSection}
         <div style="padding: 7px 14px; background: #f8fafc; border-radius: 0 0 8px 8px; display: flex; justify-content: space-between; align-items: center;">
           <span style="font-size: 10px; color: #94a3b8; display: flex; align-items: center; gap: 3px;">${odometer ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="12" y1="8" x2="12" y2="8.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><path d="M9 2h6v4H9z"/></svg> ' + Math.round(Number(odometer)) + ' km' : ''}</span>
           <span style="font-size: 10px; color: #94a3b8; font-family: 'SF Mono', Monaco, monospace;">${vehicle.currentLocation ? vehicle.currentLocation.lat.toFixed(5) + ', ' + vehicle.currentLocation.lng.toFixed(5) : ''}</span>
         </div>
       </div>
     `;
+  }
+
+  /**
+   * Builds the "Guider un remorqueur" block for the map popup: a Google Maps
+   * link, WhatsApp share, copy-link button and a QR code, all pointing at the
+   * vehicle's CURRENT position. Intended for a broken-down (stationary)
+   * vehicle whose position must be handed to a tow truck driver that has no
+   * access to the app. Returns '' when no position is known.
+   *
+   * The Maps URL uses the single-param form (`?q=lat,lon`, no '&') so it
+   * embeds safely in the copy button's inline onclick.
+   */
+  private buildLocationShareSection(vehicle: any, plate: string): string {
+    const loc = vehicle?.currentLocation;
+    if (!loc || loc.lat == null || loc.lng == null) return '';
+
+    const mapsUrl = `https://www.google.com/maps?q=${Number(loc.lat).toFixed(6)},${Number(loc.lng).toFixed(6)}`;
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(`Position du véhicule ${plate} : ${mapsUrl}`)}`;
+
+    let qrImg = '';
+    try {
+      const qr = qrcode(0, 'M');
+      qr.addData(mapsUrl);
+      qr.make();
+      qrImg = qr.createDataURL(4, 8);
+    } catch { /* QR is best-effort; the links still work */ }
+
+    return `
+      <div style="padding: 10px 14px; background: #fff; border-top: 1px solid #f1f5f9;">
+        <div style="font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 8px;">Guider un remorqueur</div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          ${qrImg ? `<img src="${qrImg}" width="84" height="84" alt="QR position" style="flex-shrink: 0; border: 1px solid #e2e8f0; border-radius: 6px;"/>` : ''}
+          <div style="display: flex; flex-direction: column; gap: 6px; flex: 1;">
+            <a href="${mapsUrl}" target="_blank" rel="noopener" style="display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 10px; background: #1a73e8; color: #fff; border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 600;">Ouvrir dans Maps</a>
+            <a href="${waUrl}" target="_blank" rel="noopener" style="display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 10px; background: #25d366; color: #fff; border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 600;">Envoyer via WhatsApp</a>
+            <button type="button" onclick="if(navigator.clipboard){navigator.clipboard.writeText('${mapsUrl}');this.textContent='Lien copié ✓';}" style="padding: 7px 10px; background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">Copier le lien</button>
+          </div>
+        </div>
+        <div style="font-size: 10px; color: #94a3b8; margin-top: 6px; text-align: center; line-height: 1.4;">Le remorqueur scanne le QR ou ouvre le lien — sans accès à l'application.</div>
+      </div>`;
   }
 
   selectVehicle(vehicle: any) {
