@@ -77,6 +77,9 @@ public interface IGisDbContext
     // Device Events
     DbSet<DeviceEvent> DeviceEvents { get; }
 
+    // Device Commands (GO / STOP / CONFN config sent over TCP via Rust)
+    DbSet<DeviceCommand> DeviceCommands { get; }
+
     // Auth
     DbSet<RefreshToken> RefreshTokens { get; }
 

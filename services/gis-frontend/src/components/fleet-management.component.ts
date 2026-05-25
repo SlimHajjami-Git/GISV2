@@ -6,6 +6,7 @@ import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ApiService } from '../services/api.service';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
+import { UserPreferencesService } from '../services/user-preferences.service';
 
 interface Department {
   id: number;
@@ -233,10 +234,12 @@ interface PartPricing {
                     </div>
                     <div class="speed-input">
                       <!-- Calypso 6 (P10): auto-save on blur/change so users
-                           don't need to discover the explicit save button. -->
-                      <input type="number" [(ngModel)]="vehicle.speedLimit" min="0" max="200" placeholder="km/h"
+                           don't need to discover the explicit save button.
+                           Calypso 9 p6: value shown/entered in the operator's
+                           preferred unit (profile → vitesse). -->
+                      <input type="number" [(ngModel)]="speedLimitInput[vehicle.id]" min="0" max="300" [placeholder]="speedUnitLabel"
                              (change)="saveSpeedLimit(vehicle)">
-                      <span class="unit">km/h</span>
+                      <span class="unit">{{ speedUnitLabel }}</span>
                     </div>
                     <div class="item-actions">
                       <button class="action-btn save" (click)="saveSpeedLimit(vehicle)" title="Enregistrer">
@@ -261,8 +264,8 @@ interface PartPricing {
                     <span class="setting-desc">Appliquée aux nouveaux véhicules</span>
                   </div>
                   <div class="speed-input">
-                    <input type="number" [(ngModel)]="defaultSpeedLimit" min="0" max="200">
-                    <span class="unit">km/h</span>
+                    <input type="number" [(ngModel)]="defaultSpeedLimit" min="0" max="300">
+                    <span class="unit">{{ speedUnitLabel }}</span>
                   </div>
                 </div>
                 <button class="btn-primary" (click)="applyDefaultSpeed()">
@@ -1745,6 +1748,13 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
   vehicles: Vehicle[] = [];
   defaultSpeedLimit = 90;
   savedSpeedIds = new Set<number>();
+
+  // Calypso 9 p6 — the speed-limit input is shown/entered in the operator's
+  // preferred unit (profile → vitesse). vehicle.speedLimit always stays in
+  // km/h (canonical), so speedLimitInput[id] holds the display-unit value
+  // that the input is bound to, converted back to km/h on save.
+  speedLimitInput: Record<number, number> = {};
+  private readonly KMH_TO_MPH = 0.621371;
   
   showDepartmentModal = false;
   editingDepartment: Department | null = null;
@@ -1815,7 +1825,22 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
     });
   }
 
-  constructor(private http: HttpClient, private cdr: ChangeDetectorRef, private apiService: ApiService) {}
+  constructor(private http: HttpClient, private cdr: ChangeDetectorRef, private apiService: ApiService, private userPrefs: UserPreferencesService) {}
+
+  /** 'mph' when the operator's profile speed unit is mph, else 'km/h'. */
+  get speedUnitLabel(): string {
+    return this.userPrefs.current.speedUnit === 'mph' ? 'mph' : 'km/h';
+  }
+  private get isMph(): boolean { return this.userPrefs.current.speedUnit === 'mph'; }
+
+  /** km/h (stored) → value shown in the input, in the operator's unit. */
+  private toDisplaySpeed(kmh: number): number {
+    return this.isMph ? Math.round(kmh * this.KMH_TO_MPH) : kmh;
+  }
+  /** input value (operator's unit) → km/h for storage + backend. */
+  private fromDisplaySpeed(v: number): number {
+    return this.isMph ? Math.round(v / this.KMH_TO_MPH) : Math.round(v);
+  }
 
   ngOnInit() {
     this.loadTabData();
@@ -1892,6 +1917,11 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
           plate: v.plateNumber || v.plate,
           speedLimit: v.speedLimit || 90
         }));
+        // Seed the display inputs in the operator's preferred unit.
+        this.speedLimitInput = {};
+        for (const v of this.vehicles) {
+          this.speedLimitInput[v.id] = this.toDisplaySpeed(v.speedLimit ?? 90);
+        }
         this.loading = false;
         this.cdr.detectChanges();
       },
@@ -1996,11 +2026,19 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
   }
 
   saveSpeedLimit(vehicle: Vehicle) {
-    const limit = Number(vehicle.speedLimit);
-    if (!Number.isFinite(limit) || limit <= 0 || limit > 200) {
-      alert('Veuillez saisir une limite de vitesse valide (1-200 km/h)');
+    const display = Number(this.speedLimitInput[vehicle.id]);
+    if (!Number.isFinite(display) || display <= 0) {
+      alert(`Veuillez saisir une limite de vitesse valide (en ${this.speedUnitLabel})`);
       return;
     }
+    // Convert the operator's unit back to km/h (canonical) for storage +
+    // backend. The backend re-derives the boitier value (tenths of MPH).
+    const limit = this.fromDisplaySpeed(display);
+    if (limit <= 0 || limit > 300) {
+      alert('Limite de vitesse hors plage.');
+      return;
+    }
+    vehicle.speedLimit = limit;
     this.http.put(`/api/fleet/vehicles/${vehicle.id}/speed-limit`, {
       speedLimit: limit
     }).subscribe({
@@ -2020,12 +2058,17 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
   }
 
   applyDefaultSpeed() {
-    const limit = Number(this.defaultSpeedLimit);
-    if (!Number.isFinite(limit) || limit <= 0 || limit > 200) {
-      alert('Veuillez saisir une limite de vitesse valide (1-200 km/h)');
+    const display = Number(this.defaultSpeedLimit);
+    if (!Number.isFinite(display) || display <= 0) {
+      alert(`Veuillez saisir une limite de vitesse valide (en ${this.speedUnitLabel})`);
       return;
     }
-    if (!confirm(`Appliquer la limite de ${limit} km/h à tous les véhicules ?`)) return;
+    const limit = this.fromDisplaySpeed(display);
+    if (limit <= 0 || limit > 300) {
+      alert('Limite de vitesse hors plage.');
+      return;
+    }
+    if (!confirm(`Appliquer la limite de ${display} ${this.speedUnitLabel} à tous les véhicules ?`)) return;
 
     // Fire requests for every vehicle, update local on each success.
     let successCount = 0;
@@ -2037,6 +2080,7 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
       this.http.put(`/api/fleet/vehicles/${v.id}/speed-limit`, { speedLimit: limit }).subscribe({
         next: () => {
           v.speedLimit = limit;
+          this.speedLimitInput[v.id] = display;
           successCount++;
           if (successCount + errorCount === total) {
             alert(`Limite appliquée: ${successCount} succès, ${errorCount} erreurs`);
