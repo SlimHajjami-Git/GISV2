@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Models;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,17 +9,26 @@ namespace GisAPI.Application.Features.Documents.Queries;
 public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, PaginatedList<VehicleExpiryDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
     private static readonly string[] DocumentTypes = { "insurance", "technical_inspection", "tax", "registration", "transport_permit", "driver_permit" };
 
-    public GetExpiriesQueryHandler(IGisDbContext context)
+    public GetExpiriesQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<PaginatedList<VehicleExpiryDto>> Handle(GetExpiriesQuery request, CancellationToken cancellationToken)
     {
+        // Operational page — always scope by the caller's company, even for
+        // system admins (admin@belive.tn). The global query filter is bypassed
+        // for system roles, so without this explicit filter the échéances page
+        // leaked every company's vehicles + drivers.
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var vehicles = await _context.Vehicles
             .AsNoTracking()
+            .Where(v => v.CompanyId == companyId)
             .ToListAsync(cancellationToken);
 
         if (request.VehicleId.HasValue)
@@ -40,7 +50,7 @@ public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, Paginat
         {
             var drivers = await _context.Drivers
                 .AsNoTracking()
-                .Where(d => d.PermitExpiry != null)
+                .Where(d => d.CompanyId == companyId && d.PermitExpiry != null)
                 .ToListAsync(cancellationToken);
 
             foreach (var driver in drivers)

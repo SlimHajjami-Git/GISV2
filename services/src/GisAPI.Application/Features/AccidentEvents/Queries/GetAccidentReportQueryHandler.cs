@@ -1,5 +1,6 @@
 using System.Text.Json;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,19 +15,27 @@ public class GetAccidentReportQueryHandler
     };
 
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetAccidentReportQueryHandler(IGisDbContext context)
+    public GetAccidentReportQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<AccidentReportDto?> Handle(GetAccidentReportQuery request, CancellationToken ct)
     {
+        // Scope by the caller's company even for system admins (admin@belive.tn):
+        // the global query filter is bypassed for system roles, so without this
+        // explicit check a system admin could open another company's accident
+        // report by guessing its id.
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var ev = await _context.AccidentEvents
             .AsNoTracking()
             .Include(e => e.Documents)
             .Include(e => e.ThirdParties)
-            .FirstOrDefaultAsync(e => e.Id == request.AccidentId, ct);
+            .FirstOrDefaultAsync(e => e.Id == request.AccidentId && e.CompanyId == companyId, ct);
 
         if (ev == null) return null;
 

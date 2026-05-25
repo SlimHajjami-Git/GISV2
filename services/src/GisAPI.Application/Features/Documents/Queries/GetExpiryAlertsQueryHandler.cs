@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,16 +8,22 @@ namespace GisAPI.Application.Features.Documents.Queries;
 public class GetExpiryAlertsQueryHandler : IRequestHandler<GetExpiryAlertsQuery, List<VehicleExpiryDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetExpiryAlertsQueryHandler(IGisDbContext context)
+    public GetExpiryAlertsQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<List<VehicleExpiryDto>> Handle(GetExpiryAlertsQuery request, CancellationToken cancellationToken)
     {
+        // Scope by caller's company even for system admins.
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var vehicles = await _context.Vehicles
             .AsNoTracking()
+            .Where(v => v.CompanyId == companyId)
             .ToListAsync(cancellationToken);
 
         var today = DateTime.UtcNow.Date;

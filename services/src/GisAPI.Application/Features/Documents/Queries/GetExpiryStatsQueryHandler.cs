@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,16 +8,22 @@ namespace GisAPI.Application.Features.Documents.Queries;
 public class GetExpiryStatsQueryHandler : IRequestHandler<GetExpiryStatsQuery, ExpiryStatsDto>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetExpiryStatsQueryHandler(IGisDbContext context)
+    public GetExpiryStatsQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<ExpiryStatsDto> Handle(GetExpiryStatsQuery request, CancellationToken cancellationToken)
     {
+        // Scope by caller's company even for system admins (see GetExpiriesQueryHandler).
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var vehicles = await _context.Vehicles
             .AsNoTracking()
+            .Where(v => v.CompanyId == companyId)
             .ToListAsync(cancellationToken);
 
         var today = DateTime.UtcNow.Date;
@@ -37,7 +44,7 @@ public class GetExpiryStatsQueryHandler : IRequestHandler<GetExpiryStatsQuery, E
         // Include driver permit expiries in stats (from the standalone drivers table)
         var driverPermitExpiries = await _context.Drivers
             .AsNoTracking()
-            .Where(d => d.PermitExpiry != null)
+            .Where(d => d.CompanyId == companyId && d.PermitExpiry != null)
             .Select(d => d.PermitExpiry)
             .ToListAsync(cancellationToken);
 

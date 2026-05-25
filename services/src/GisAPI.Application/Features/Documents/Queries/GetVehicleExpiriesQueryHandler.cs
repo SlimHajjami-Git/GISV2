@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,17 +8,22 @@ namespace GisAPI.Application.Features.Documents.Queries;
 public class GetVehicleExpiriesQueryHandler : IRequestHandler<GetVehicleExpiriesQuery, List<VehicleExpiryDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetVehicleExpiriesQueryHandler(IGisDbContext context)
+    public GetVehicleExpiriesQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<List<VehicleExpiryDto>> Handle(GetVehicleExpiriesQuery request, CancellationToken cancellationToken)
     {
+        // Scope by caller's company even for system admins.
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var vehicle = await _context.Vehicles
             .AsNoTracking()
-            .FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken);
+            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId, cancellationToken);
 
         if (vehicle == null)
             return new List<VehicleExpiryDto>();

@@ -9,6 +9,8 @@ import {
   ApiService,
   PositionDto,
   AccidentReportDto,
+  AccidentReportThirdPartyDto,
+  AddThirdPartyRequest,
 } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
 import { AccidentPdfService } from '../services/accident-pdf.service';
@@ -395,6 +397,56 @@ interface ChartAxisLabel {
                 <div class="phase-actions">
                   <button class="phase-btn save" (click)="savePhase6()" [disabled]="phaseBusy === 'phase6'">
                     {{ phaseBusy === 'phase6' ? 'Enregistrement…' : 'Enregistrer le suivi' }}
+                  </button>
+                </div>
+              </div>
+            </details>
+
+            <!-- Tiers impliqués — coordonnées + assurance des autres parties -->
+            <details class="phase" [open]="thirdPartiesOpen" (toggle)="thirdPartiesOpen = $any($event.target).open">
+              <summary class="phase-head">
+                <span class="phase-num">T</span>
+                <span class="phase-title">Tiers impliqués</span>
+                <span class="phase-status" [class.done]="thirdParties.length > 0">
+                  {{ thirdParties.length > 0 ? (thirdParties.length + (thirdParties.length > 1 ? ' tiers' : ' tiers')) : 'Aucun' }}
+                </span>
+              </summary>
+              <div class="phase-body">
+                <p class="phase-hint">💡 Coordonnées et assurance des autres véhicules / personnes impliqués — indispensables pour le constat et le dossier d'assurance.</p>
+
+                <div class="tp-list" *ngIf="thirdParties.length > 0">
+                  <div class="tp-item" *ngFor="let tp of thirdParties">
+                    <div class="tp-info">
+                      <strong>{{ tp.name || 'Tiers' }}</strong>
+                      <span *ngIf="tp.phone"> · {{ tp.phone }}</span>
+                      <span *ngIf="tp.vehiclePlate"> · {{ tp.vehiclePlate }}</span>
+                      <span *ngIf="tp.vehicleModel"> ({{ tp.vehicleModel }})</span>
+                      <div class="tp-ins" *ngIf="tp.insuranceCompany || tp.insuranceNumber || tp.insuranceExpiry">
+                        <span *ngIf="tp.insuranceCompany">Assurance : {{ tp.insuranceCompany }}</span>
+                        <span *ngIf="tp.insuranceNumber"> · N° {{ tp.insuranceNumber }}</span>
+                        <span *ngIf="tp.insuranceExpiry"> · exp. {{ tp.insuranceExpiry | date:'dd/MM/yyyy' }}</span>
+                      </div>
+                    </div>
+                    <button class="tp-del" (click)="removeThirdParty(tp)" [disabled]="thirdPartyBusy" title="Supprimer ce tiers">×</button>
+                  </div>
+                </div>
+
+                <div class="phase-row">
+                  <label class="phase-field"><span>Nom du tiers</span><input type="text" [(ngModel)]="newThirdParty.name" placeholder="Prénom Nom"></label>
+                  <label class="phase-field"><span>Téléphone</span><input type="text" [(ngModel)]="newThirdParty.phone" placeholder="+216 ..."></label>
+                  <label class="phase-field"><span>Immatriculation</span><input type="text" [(ngModel)]="newThirdParty.vehiclePlate" placeholder="123 TU 4567"></label>
+                </div>
+                <div class="phase-row">
+                  <label class="phase-field"><span>Modèle véhicule</span><input type="text" [(ngModel)]="newThirdParty.vehicleModel" placeholder="Renault Clio"></label>
+                  <label class="phase-field"><span>Compagnie d'assurance</span><input type="text" [(ngModel)]="newThirdParty.insuranceCompany" placeholder="STAR, COMAR, AMI..."></label>
+                  <label class="phase-field"><span>N° police assurance tiers</span><input type="text" [(ngModel)]="newThirdParty.insuranceNumber" placeholder="..."></label>
+                </div>
+                <div class="phase-row">
+                  <label class="phase-field"><span>Expiration assurance tiers</span><input type="date" [(ngModel)]="newThirdParty.insuranceExpiry"></label>
+                </div>
+                <div class="phase-actions">
+                  <button class="phase-btn save" (click)="addThirdParty()" [disabled]="thirdPartyBusy || !canAddThirdParty()">
+                    {{ thirdPartyBusy ? 'Ajout…' : 'Ajouter le tiers' }}
                   </button>
                 </div>
               </div>
@@ -882,6 +934,15 @@ interface ChartAxisLabel {
     .phase-btn:disabled { opacity: 0.6; cursor: not-allowed; }
     .phase-feedback { margin: 12px 0 0; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; background: #dcfce7; color: #166534; }
     .phase-feedback.is-error { background: #fee2e2; color: #991b1b; }
+    /* Third parties */
+    .tp-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+    .tp-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+      padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+    .tp-info { font-size: 13px; color: #0f172a; line-height: 1.5; }
+    .tp-ins { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .tp-del { flex: none; width: 26px; height: 26px; border: none; border-radius: 6px;
+      background: #fee2e2; color: #dc2626; font-size: 16px; line-height: 1; cursor: pointer; }
+    .tp-del:disabled { opacity: .5; cursor: default; }
     .status-pdf {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 6px 12px; background: #fee2e2; color: #dc2626;
@@ -1737,6 +1798,12 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   phaseBusy: 'phase2' | 'phase3' | 'phase4' | 'phase5' | 'phase6' | null = null;
   phaseMessage: { type: 'success' | 'error'; text: string } | null = null;
 
+  /** Third parties involved (insurance counterparts) + inline add form. */
+  thirdParties: AccidentReportThirdPartyDto[] = [];
+  thirdPartiesOpen = false;
+  thirdPartyBusy = false;
+  newThirdParty: AddThirdPartyRequest = this.emptyThirdParty();
+
   private map?: L.Map;
   private impactMarker?: L.Marker;
   private trajectoryLayer?: L.Polyline;
@@ -1918,6 +1985,8 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       this.impactMarker.setPopupContent(this.buildImpactPopup());
       this.map.setView([this.impactLat, this.impactLon], 14);
     }
+
+    this.thirdParties = dto.thirdParties ?? [];
 
     this.narrativeFromBackend = true;
     this.reportLoaded = true;
@@ -2472,6 +2541,74 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       error: () => {
         this.pdfBusy = false;
         this.pdfError = 'Impossible de charger le rapport pour régénérer le PDF.';
+        this.cdr.markForCheck();
+      },
+    });
+    this.subs.push(sub);
+  }
+
+  // ── Third parties (insurance counterparts) ──────────────────────────────
+
+  private emptyThirdParty(): AddThirdPartyRequest {
+    return {
+      name: '', phone: '', vehiclePlate: '', vehicleModel: '',
+      insuranceCompany: '', insuranceNumber: '', insuranceExpiry: null,
+    };
+  }
+
+  /** Require at least one identifying field before allowing an add. */
+  canAddThirdParty(): boolean {
+    const t = this.newThirdParty;
+    return !!(t.name?.trim() || t.vehiclePlate?.trim()
+           || t.insuranceCompany?.trim() || t.insuranceNumber?.trim());
+  }
+
+  addThirdParty(): void {
+    if (!this.accidentEventId || this.thirdPartyBusy || !this.canAddThirdParty()) return;
+    this.thirdPartyBusy = true;
+    const id = this.accidentEventId;
+    const payload: AddThirdPartyRequest = {
+      name: this.newThirdParty.name?.trim() || null,
+      phone: this.newThirdParty.phone?.trim() || null,
+      vehiclePlate: this.newThirdParty.vehiclePlate?.trim() || null,
+      vehicleModel: this.newThirdParty.vehicleModel?.trim() || null,
+      insuranceCompany: this.newThirdParty.insuranceCompany?.trim() || null,
+      insuranceNumber: this.newThirdParty.insuranceNumber?.trim() || null,
+      insuranceExpiry: this.newThirdParty.insuranceExpiry
+        ? new Date(this.newThirdParty.insuranceExpiry).toISOString()
+        : null,
+    };
+    const sub = this.apiService.addAccidentThirdParty(id, payload).subscribe({
+      next: ({ thirdPartyId }) => {
+        this.thirdParties = [
+          ...this.thirdParties,
+          { id: thirdPartyId, ...payload } as AccidentReportThirdPartyDto,
+        ];
+        this.newThirdParty = this.emptyThirdParty();
+        this.thirdPartyBusy = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.thirdPartyBusy = false;
+        this.phaseMessage = { type: 'error', text: "Échec de l'ajout du tiers. Veuillez réessayer." };
+        this.cdr.markForCheck();
+      },
+    });
+    this.subs.push(sub);
+  }
+
+  removeThirdParty(tp: AccidentReportThirdPartyDto): void {
+    if (!this.accidentEventId || this.thirdPartyBusy) return;
+    this.thirdPartyBusy = true;
+    const id = this.accidentEventId;
+    const sub = this.apiService.deleteAccidentThirdParty(id, tp.id).subscribe({
+      next: () => {
+        this.thirdParties = this.thirdParties.filter((x) => x.id !== tp.id);
+        this.thirdPartyBusy = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.thirdPartyBusy = false;
         this.cdr.markForCheck();
       },
     });
