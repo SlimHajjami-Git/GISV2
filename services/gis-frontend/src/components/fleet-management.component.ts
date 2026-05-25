@@ -1746,7 +1746,7 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
   departments: Department[] = [];
   fuelTypes: FuelType[] = [];
   vehicles: Vehicle[] = [];
-  defaultSpeedLimit = 90;
+  defaultSpeedLimit = 110;
   savedSpeedIds = new Set<number>();
 
   // Calypso 9 p6 — the speed-limit input is shown/entered in the operator's
@@ -1915,7 +1915,7 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
           id: v.id,
           name: v.name,
           plate: v.plateNumber || v.plate,
-          speedLimit: v.speedLimit || 90
+          speedLimit: v.speedLimit || 110
         }));
         // Seed the display inputs in the operator's preferred unit.
         this.speedLimitInput = {};
