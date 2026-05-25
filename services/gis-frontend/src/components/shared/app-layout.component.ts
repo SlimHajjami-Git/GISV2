@@ -187,13 +187,9 @@ type NotifBucket = Notification | NotifThreadGroup;
               <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="nav-group-dropdown" *ngIf="openNavGroup === 'incidents'" (click)="$event.stopPropagation()">
-              <a *ngIf="hasModule('accidents')" [routerLink]="['/sinistres']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
+              <a *ngIf="hasModule('accidents')" [routerLink]="['/accident-reports']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                Sinistres
-              </a>
-              <a *ngIf="hasModule('accidents')" [routerLink]="['/rapport-accident']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                Rapport d'accident
+                Rapports d'accident
               </a>
             </div>
           </div>

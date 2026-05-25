@@ -123,7 +123,12 @@ export const routes: Routes = [
   { path: 'sinistres',         redirectTo: '/accident-reports', pathMatch: 'full' },
   { path: 'accident-reports',  component: AccidentReportsListComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
   { path: 'rapports-accident', component: AccidentReportsListComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
-  { path: 'rapport-accident', component: AccidentReportComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
+  // Calypso 9 — the id-less /rapport-accident used to render a hardcoded
+  // demo scenario (the 2026-04-14 Jemmal rollover), which the navbar linked
+  // to → every "report" looked identical. Redirect it to the real list so
+  // the static demo page is unreachable. A report is ALWAYS opened with an
+  // id (from the list row or a notification deep-link).
+  { path: 'rapport-accident', redirectTo: '/accident-reports', pathMatch: 'full' },
   { path: 'rapport-accident/:accidentId', component: AccidentReportComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'accidents' } },
   
   // Fleet management module
