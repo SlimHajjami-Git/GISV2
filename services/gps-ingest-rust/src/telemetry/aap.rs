@@ -259,10 +259,15 @@ impl AapDecoder {
         let latitude = Self::decode_coordinate(lat_raw, is_north)?;
         let longitude = Self::decode_coordinate(lon_raw, is_east)?;
 
-        // Decode speed (stored as mph * 10, convert to kph)
-        // GISV1 formula: (int)(raw / 10 * 1.609) - truncates to integer
+        // Decode speed. The device reports speed as (mph × 10), e.g. 435 = 43.5 mph.
+        // Convert to km/h with the exact factor 1.609344.
+        //
+        // BUGFIX: the previous formula `(speed_raw_val / 10) as f64 * 1.609`
+        // did INTEGER division first, discarding the tenths-of-mph and ALWAYS
+        // rounding DOWN before converting — a systematic under-read of up to
+        // ~1.5 km/h. Dividing in floating point keeps the fractional mph.
         let speed_raw_val = u32::from_str_radix(speed_raw, 16)?;
-        let speed_kph = ((speed_raw_val / 10) as f64) * 1.609;
+        let speed_kph = (speed_raw_val as f64 / 10.0) * 1.609344;
 
         // Decode heading (ACI spec: raw value × 8 = degrees, clamped to 0-360)
         let heading_deg = ((u32::from_str_radix(heading_raw, 16)? as f64) * 8.0) % 360.0;
