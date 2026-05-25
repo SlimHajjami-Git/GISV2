@@ -14,10 +14,6 @@ public class SetVehicleSpeedLimitCommandHandler : IRequestHandler<SetVehicleSpee
     private readonly IRustCommandPusher _commandPusher;
     private readonly ILogger<SetVehicleSpeedLimitCommandHandler> _logger;
 
-    // km/h → MPH. The NEMS boitier expects the over-speed threshold in
-    // TENTHS of a mile per hour (operator-confirmed: command field 377 = 37.7 MPH).
-    private const double KmhToMph = 0.621371;
-
     public SetVehicleSpeedLimitCommandHandler(
         IGisDbContext context,
         ICurrentTenantService tenantService,
@@ -67,9 +63,8 @@ public class SetVehicleSpeedLimitCommandHandler : IRequestHandler<SetVehicleSpee
             return;
         }
 
-        var speedTenthsMph = (int)Math.Round(request.SpeedLimit * KmhToMph * 10.0, MidpointRounding.AwayFromZero);
-        var password = ExtractPassword(device.CommandGo);
-        var commandText = $"AJ+CONFN=101,3,2,{speedTenthsMph},0,0,{password}\n";
+        var speedTenthsMph = SpeedLimitCommandBuilder.ToDeviceTenthsMph(request.SpeedLimit);
+        var commandText = SpeedLimitCommandBuilder.Build(request.SpeedLimit, device.CommandGo);
 
         var cmd = new DeviceCommand
         {
@@ -101,18 +96,5 @@ public class SetVehicleSpeedLimitCommandHandler : IRequestHandler<SetVehicleSpee
                 "Speed limit command queued for device {DeviceId} but immediate push failed — will deliver on next frame.",
                 device.Id);
         }
-    }
-
-    /// <summary>
-    /// Pull the protection code (e.g. "#9999") out of the device's stored
-    /// CommandGo ("AJ+GO#9999\n"). Falls back to the platform default so a
-    /// freshly-seeded device without a custom code still gets a valid command.
-    /// </summary>
-    private static string ExtractPassword(string? commandGo)
-    {
-        if (string.IsNullOrWhiteSpace(commandGo)) return "#9999";
-        var hash = commandGo.IndexOf('#');
-        if (hash < 0) return "#9999";
-        return commandGo.Substring(hash).Trim();
     }
 }

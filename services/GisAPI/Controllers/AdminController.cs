@@ -25,6 +25,7 @@ using GisAPI.Application.Features.Admin.Subscriptions.Commands.CreateSubscriptio
 using GisAPI.Application.Features.Admin.Subscriptions.Commands.UpdateSubscription;
 using GisAPI.Application.Features.Admin.Subscriptions.Commands.DeleteSubscription;
 using GisAPI.Application.Features.Admin.Dashboard;
+using GisAPI.Application.Features.FleetManagement.SpeedLimits.Commands;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Interfaces;
 
@@ -280,6 +281,19 @@ public class AdminController : ControllerBase
     {
         var vehicles = await _mediator.Send(new GetAdminVehiclesQuery(null, companyId, null));
         return Ok(vehicles);
+    }
+
+    /// <summary>
+    /// Calypso 9 p6 — one-shot backfill: re-push every vehicle's already-stored
+    /// km/h speed limit to its boitier (AJ+CONFN). Platform-wide (all companies).
+    /// Limits set before the device-programming wiring existed only touched the
+    /// DB; this brings the hardware in line. Safe to re-run.
+    /// </summary>
+    [HttpPost("speed-limits/sync-devices")]
+    public async Task<ActionResult<SyncSpeedLimitsResult>> SyncAllSpeedLimitsToDevices()
+    {
+        var result = await _mediator.Send(new SyncAllSpeedLimitsToDevicesCommand());
+        return Ok(result);
     }
 
     // ==================== ADMIN VEHICLES WITH POSITIONS (ALL COMPANIES) ====================
