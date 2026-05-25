@@ -32,7 +32,10 @@ public class Vehicle : TenantEntity
     public int? DepartmentId { get; set; }
     public Department? Department { get; set; }
     
-    public int? SpeedLimit { get; set; } = 120;
+    // Calypso 9 — default harmonised to 90 km/h (was 120). The in-app
+    // over-speed alert fires at SpeedLimit + 20, so 90 → alert at 110 km/h
+    // (Tunisia highway max) instead of an illogical 140.
+    public int? SpeedLimit { get; set; } = 90;
     public string? FuelType { get; set; } = "diesel";
     [Column("fuel_tank_capacity")]
     public int? FuelTankCapacity { get; set; } // Capacité réservoir en litres
