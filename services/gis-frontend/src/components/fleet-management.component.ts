@@ -1753,7 +1753,9 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
   // preferred unit (profile → vitesse). vehicle.speedLimit always stays in
   // km/h (canonical), so speedLimitInput[id] holds the display-unit value
   // that the input is bound to, converted back to km/h on save.
-  speedLimitInput: Record<number, number> = {};
+  // null = the limit was never delivered to the boitier (command not sent),
+  // so the field is shown EMPTY as a "not programmed" signal.
+  speedLimitInput: Record<number, number | null> = {};
   private readonly KMH_TO_MPH = 0.621371;
   
   showDepartmentModal = false;
@@ -1909,18 +1911,24 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
   }
 
   loadVehicles() {
-    this.http.get<any>('/api/vehicles').subscribe({
+    // /fleet/speed-limits returns each vehicle's km/h limit + a `sent` flag
+    // (whether the AJ+CONFN command actually reached the boitier).
+    this.http.get<any[]>('/api/fleet/speed-limits').subscribe({
       next: (data) => {
-        this.vehicles = (data || []).map((v: any) => ({
-          id: v.id,
+        const rows = data || [];
+        this.vehicles = rows.map((v: any) => ({
+          id: v.vehicleId,
           name: v.name,
-          plate: v.plateNumber || v.plate,
-          speedLimit: v.speedLimit || 110
+          plate: v.plate,
+          speedLimit: v.speedLimitKmh
         }));
         // Seed the display inputs in the operator's preferred unit.
+        // Limit not yet programmed on the device → leave the field EMPTY.
         this.speedLimitInput = {};
-        for (const v of this.vehicles) {
-          this.speedLimitInput[v.id] = this.toDisplaySpeed(v.speedLimit ?? 90);
+        for (const v of rows) {
+          this.speedLimitInput[v.vehicleId] = v.sent && v.speedLimitKmh != null
+            ? this.toDisplaySpeed(v.speedLimitKmh)
+            : null;
         }
         this.loading = false;
         this.cdr.detectChanges();

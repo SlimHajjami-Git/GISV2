@@ -93,9 +93,22 @@ public class SetVehicleSpeedLimitCommandHandler : IRequestHandler<SetVehicleSpee
 
         // Push for ~ms delivery. Failure is non-fatal — Rust's per-frame DB
         // poll re-delivers the pending row on the device's next reconnect.
+        //
+        // The Rust push path writes to the socket but does NOT update the
+        // command status, so we mark it 'sent' here when the push is
+        // accepted. This is the signal the /fleet speed-limits page uses to
+        // decide whether the limit is actually programmed on the boitier
+        // (a still-'pending' command → the page shows an empty field).
         try
         {
             var push = await _commandPusher.PushAsync(device.Id, commandText, cancellationToken);
+            if (push.Outcome == RustPushOutcome.Pushed)
+            {
+                cmd.Status = "sent";
+                cmd.SentAt = DateTime.UtcNow;
+                cmd.Attempts += 1;
+                await _context.SaveChangesAsync(cancellationToken);
+            }
             _logger.LogInformation(
                 "🚦 Speed limit programmed: vehicle {VehicleId}, device {DeviceId}, {Limit} km/h → {Tenths} (0.1 MPH), push={Outcome}",
                 vehicle.Id, device.Id, request.SpeedLimit, speedTenthsMph, push.Outcome);

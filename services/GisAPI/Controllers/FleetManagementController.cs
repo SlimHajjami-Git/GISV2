@@ -189,6 +189,17 @@ public class FleetManagementController : ControllerBase
     #region Speed Limits & Alerts
 
     /// <summary>
+    /// List vehicles with their km/h limit + whether it was actually pushed
+    /// to the boitier. The UI shows an empty field when Sent == false.
+    /// </summary>
+    [HttpGet("speed-limits")]
+    public async Task<ActionResult<List<VehicleSpeedLimitDto>>> GetVehicleSpeedLimits()
+    {
+        var result = await _mediator.Send(new GetVehicleSpeedLimitsQuery());
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Set speed limit for a vehicle
     /// </summary>
     [HttpPut("vehicles/{vehicleId}/speed-limit")]

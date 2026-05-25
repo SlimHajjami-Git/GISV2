@@ -114,7 +114,14 @@ public class SyncAllSpeedLimitsToDevicesCommandHandler
                 var push = await _commandPusher.PushAsync(device.Id, cmd.CommandText, ct);
                 switch (push.Outcome)
                 {
-                    case RustPushOutcome.Pushed: pushedLive++; break;
+                    case RustPushOutcome.Pushed:
+                        pushedLive++;
+                        // Mark delivered so the /fleet speed-limits page shows
+                        // the value (Rust's push path doesn't touch status).
+                        cmd.Status = "sent";
+                        cmd.SentAt = DateTime.UtcNow;
+                        cmd.Attempts += 1;
+                        break;
                     case RustPushOutcome.DeviceNotConnected: offline++; break;
                     default: failed++; break;
                 }
@@ -125,6 +132,8 @@ public class SyncAllSpeedLimitsToDevicesCommandHandler
                 _logger.LogWarning(ex, "Speed-limit sync: push failed for device {DeviceId} (stays pending).", device.Id);
             }
         }
+        // Persist the status flips for the live-delivered commands.
+        await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation(
             "🚦 Speed-limit device sync complete: total={Total}, queued={Queued}, live={Live}, offline={Offline}, failed={Failed}, skippedNonNems={Skipped}",
