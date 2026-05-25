@@ -32,6 +32,10 @@ builder.Services.AddScoped<GisAPI.Services.IFcmService, GisAPI.Services.FcmServi
 builder.Services.AddScoped<INotificationService, GisAPI.Services.NotificationService>();
 builder.Services.AddSingleton<IEmailService, GisAPI.Services.EmailService>();
 builder.Services.AddSingleton<ILlmService, GisAPI.Services.GroqLlmService>();
+// LLM-assisted accident analysis — upgrades the synthesis/reasons prose from
+// the real telemetry frames; falls back silently to the deterministic
+// narrative when Groq is unavailable. Singleton (depends only on ILlmService).
+builder.Services.AddSingleton<GisAPI.Services.IAccidentNarrativeService, GisAPI.Services.AccidentNarrativeService>();
 builder.Services.AddSingleton<GisAPI.Services.IVehicleHealthScoreService, GisAPI.Services.VehicleHealthScoreService>();
 
 // GPS Telemetry Consumer (RabbitMQ -> SignalR)

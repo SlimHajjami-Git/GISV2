@@ -71,6 +71,7 @@ public class AccidentDetectionService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly IGeocodingService _geocoding;
+    private readonly IAccidentNarrativeService _narrativeService;
     private readonly ILogger<AccidentDetectionService> _logger;
 
     /// <summary>
@@ -119,10 +120,12 @@ public class AccidentDetectionService : BackgroundService
     public AccidentDetectionService(
         IServiceProvider serviceProvider,
         IGeocodingService geocoding,
+        IAccidentNarrativeService narrativeService,
         ILogger<AccidentDetectionService> logger)
     {
         _serviceProvider = serviceProvider;
         _geocoding = geocoding;
+        _narrativeService = narrativeService;
         _logger = logger;
     }
 
@@ -408,9 +411,68 @@ ORDER BY device_id, recorded_at;
         var accidentEventId = await CreateAccidentEventAsync(
             context, vehicle, device, candidate, vehicleLabel, ct);
 
+        // Notify FIRST (the deterministic narrative is already persisted), so
+        // the alert is never delayed by the LLM call.
         await NotifyCompanyAsync(
             context, notifService, alertDispatcher,
             vehicle.CompanyId, vehicle.Id, vehicleLabel, accidentEventId, candidate, ct);
+
+        // Then best-effort: upgrade the synthesis/reasons prose from the real
+        // telemetry frames via Groq. Any failure leaves the deterministic
+        // narrative untouched.
+        await TryEnrichNarrativeAsync(context, accidentEventId, candidate, vehicleLabel, ct);
+    }
+
+    /// <summary>
+    /// Best-effort LLM enrichment of an already-persisted accident. Reads the
+    /// real telemetry frames, asks Groq for a faithful synthesis + reasons,
+    /// and overwrites only those two prose fields when the output passes the
+    /// guardrail. Story + indicators + every number stay deterministic.
+    /// Swallows all errors — the report is already valid without this.
+    /// </summary>
+    private async Task TryEnrichNarrativeAsync(
+        GisDbContext context,
+        int accidentEventId,
+        AccidentCandidate candidate,
+        string vehicleLabel,
+        CancellationToken ct)
+    {
+        try
+        {
+            var ev = await context.AccidentEvents
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(e => e.Id == accidentEventId, ct);
+            if (ev == null) return;
+
+            var location = new GeocodedLocation(
+                ev.LocationCommune, ev.LocationGovernorate, ev.LocationRoadType);
+
+            var narrative = await _narrativeService.TryGenerateAsync(
+                context, candidate, vehicleLabel, location, ct);
+            if (narrative == null) return;
+
+            var jsonOpts = new JsonSerializerOptions
+            {
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            };
+
+            ev.SynthesisText = narrative.SynthesisText;
+            ev.ReasonsJson = JsonSerializer.Serialize(
+                narrative.Reasons.Select(r => new { title = r.Title, text = r.Text }), jsonOpts);
+            ev.UpdatedAt = DateTime.UtcNow;
+
+            await context.SaveChangesAsync(ct);
+
+            _logger.LogInformation(
+                "AccidentDetectionService: narrative enriched via LLM for accident {AccidentId}",
+                accidentEventId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "AccidentDetectionService: LLM narrative enrichment failed for accident {AccidentId} (non-blocking)",
+                accidentEventId);
+        }
     }
 
     private async Task<int> CreateAccidentEventAsync(

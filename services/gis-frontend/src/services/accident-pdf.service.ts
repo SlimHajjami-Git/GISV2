@@ -146,6 +146,28 @@ export class AccidentPdfService {
       cursorY = (doc as any).lastAutoTable.finalY + 6;
     }
 
+    // Reasons / diagnostic justification ---------------------------------
+    // The concordant observations that justify the "accident" verdict —
+    // data-driven (or LLM-refined, but always faithful to the numbers).
+    if (report.reasons && report.reasons.length > 0) {
+      if (cursorY > 235) { doc.addPage(); cursorY = 20; }
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Motifs du diagnostic', margin, cursorY);
+      cursorY += 5;
+      autoTable(doc, {
+        startY: cursorY,
+        head: [['#', 'Observation']],
+        body: report.reasons.map((r, i) => [`${i + 1}`, `${r.title}\n${r.text}`]),
+        theme: 'striped',
+        styles: { font: 'helvetica', fontSize: 9, cellPadding: 2 },
+        headStyles: { fillColor: [71, 85, 105], textColor: [255, 255, 255] },
+        columnStyles: { 0: { cellWidth: 10, fontStyle: 'bold' } },
+        margin: { left: margin, right: margin },
+      });
+      cursorY = (doc as any).lastAutoTable.finalY + 6;
+    }
+
     // Damages placeholder ------------------------------------------------
     // The PDF is generated at confirm time, BEFORE the admin fills the
     // damages form. We render an empty section the admin can print and
