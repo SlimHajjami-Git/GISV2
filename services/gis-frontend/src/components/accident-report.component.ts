@@ -50,10 +50,12 @@ interface ChartAxisLabel {
  *      the DTO's real `deviceUid`, and `computeFromPositions()` builds
  *      the speed chart + map trajectory from the live GPS series.
  *
- * The hardcoded class fields below are fallbacks: if the route has no
- * id, or the API call fails, the page still renders with the polished
- * static 2026-04-14 Jemmal scenario so the client always sees a valid
- * document.
+ * There is NO hardcoded demo scenario any more. The class fields below
+ * all start empty/neutral and are filled exclusively from the real report
+ * DTO + live GPS. The page is only ever reached with an `:accidentId`
+ * (the id-less route redirects to the list), so a real report is always
+ * loaded; if the load fails the document degrades to "—" and explicit
+ * "données indisponibles" placeholders rather than inventing an incident.
  */
 @Component({
   selector: 'app-accident-report',
@@ -409,9 +411,9 @@ interface ChartAxisLabel {
               <p class="lead">
                 Un <strong class="hl">choc violent</strong> a été détecté sur votre véhicule
                 <strong>{{ vehicleLabel }}</strong> le
-                <strong>{{ synthesisDateTimeLong }}</strong>, sur la commune de
-                <strong>{{ locationCommune }}</strong>, dans le gouvernorat de
-                <strong>{{ locationGovernorate }}</strong>.
+                <strong>{{ synthesisDateTimeLong }}</strong><ng-container *ngIf="locationCommune">, sur la commune de
+                <strong>{{ locationCommune }}</strong></ng-container><ng-container *ngIf="locationGovernorate">, dans le gouvernorat de
+                <strong>{{ locationGovernorate }}</strong></ng-container>.
               </p>
               <p>
                 Cet événement a été marqué comme <strong>fausse alerte</strong> par
@@ -426,14 +428,14 @@ interface ChartAxisLabel {
               <p class="lead">
                 Votre véhicule <strong>{{ vehicleLabel }}</strong> a été impliqué dans un
                 <strong class="hl">accident grave</strong> le
-                <strong>{{ synthesisDateTimeLong }}</strong>, sur la commune de
-                <strong>{{ locationCommune }}</strong>, dans le gouvernorat de
-                <strong>{{ locationGovernorate }}</strong>.
+                <strong>{{ synthesisDateTimeLong }}</strong><ng-container *ngIf="locationCommune">, sur la commune de
+                <strong>{{ locationCommune }}</strong></ng-container><ng-container *ngIf="locationGovernorate">, dans le gouvernorat de
+                <strong>{{ locationGovernorate }}</strong></ng-container>.
               </p>
               <p>
                 L'analyse des données enregistrées par le boîtier GPS installé sur ce véhicule
                 permet d'établir, avec un niveau de certitude très élevé, qu'il s'agit d'un
-                <strong>{{ synthesisText }}</strong>. Les éléments qui conduisent à ce
+                <strong>{{ synthesisText || 'impact violent détecté' }}</strong>. Les éléments qui conduisent à ce
                 diagnostic sont détaillés dans les pages suivantes.
               </p>
             </ng-template>
@@ -449,19 +451,19 @@ interface ChartAxisLabel {
               <div class="loc-info">
                 <div class="loc-row">
                   <div class="loc-k">Commune</div>
-                  <div class="loc-v">{{ locationCommune }}</div>
+                  <div class="loc-v">{{ locationCommune || '—' }}</div>
                 </div>
                 <div class="loc-row">
                   <div class="loc-k">Gouvernorat</div>
-                  <div class="loc-v">{{ locationGovernorate }}</div>
+                  <div class="loc-v">{{ locationGovernorate || '—' }}</div>
                 </div>
                 <div class="loc-row">
                   <div class="loc-k">Type de voie</div>
-                  <div class="loc-v">{{ locationRoadType }}</div>
+                  <div class="loc-v">{{ locationRoadType || '—' }}</div>
                 </div>
                 <div class="loc-row">
                   <div class="loc-k">Coordonnées GPS</div>
-                  <div class="loc-v loc-coords">{{ impactLat.toFixed(5) }} °N&nbsp;·&nbsp;{{ impactLon.toFixed(5) }} °E</div>
+                  <div class="loc-v loc-coords">{{ coordsKnown ? (impactLat.toFixed(5) + ' °N · ' + impactLon.toFixed(5) + ' °E') : '—' }}</div>
                 </div>
                 <div class="loc-note">
                   Le point rouge sur la carte ci-contre indique l'emplacement exact où l'impact
@@ -487,7 +489,7 @@ interface ChartAxisLabel {
               de Tunis.
             </p>
 
-            <ol class="story">
+            <ol class="story" *ngIf="story.length; else noStory">
               <li *ngFor="let e of story" class="story-item" [attr.data-sev]="e.severity">
                 <div class="story-time">{{ e.time }}</div>
                 <div class="story-body">
@@ -496,6 +498,9 @@ interface ChartAxisLabel {
                 </div>
               </li>
             </ol>
+            <ng-template #noStory>
+              <p class="sec-empty">La chronologie détaillée n'est pas disponible pour cet incident.</p>
+            </ng-template>
           </section>
 
           <hr class="rule"/>
@@ -504,9 +509,11 @@ interface ChartAxisLabel {
           <section class="sec sec-chart">
             <div class="sec-num">04</div>
             <h2 class="sec-h">Évolution de la vitesse autour de l'impact</h2>
+
+            <ng-container *ngIf="chartHasData; else noChart">
             <p class="sec-intro">
               Le graphique ci-dessous représente la vitesse du véhicule {{ chartIntroRange }}.
-              On observe une conduite stable {{ chartIntroCruiseSpeed }}, suivie d'une
+              On observe une conduite stable<ng-container *ngIf="chartIntroCruiseSpeed"> {{ chartIntroCruiseSpeed }}</ng-container>, suivie d'une
               <strong>chute brutale</strong> à {{ chartIntroImpactTime }} qui ne correspond pas à un freinage
               normal.
             </p>
@@ -559,6 +566,13 @@ interface ChartAxisLabel {
                 l'impact ({{ chartCaptionImpactTime }}).
               </figcaption>
             </figure>
+            </ng-container>
+            <ng-template #noChart>
+              <p class="sec-empty">
+                Les données GPS disponibles sont insuffisantes pour reconstituer le profil
+                de vitesse autour de l'impact.
+              </p>
+            </ng-template>
           </section>
 
           <hr class="rule"/>
@@ -573,13 +587,16 @@ interface ChartAxisLabel {
               par le véhicule.
             </p>
 
-            <div class="ind-table">
+            <div class="ind-table" *ngIf="indicators.length; else noInd">
               <div class="ind-row" *ngFor="let ind of indicators">
                 <div class="ind-label">{{ ind.label }}</div>
                 <div class="ind-value">{{ ind.value }}</div>
                 <div class="ind-hint" *ngIf="ind.hint">{{ ind.hint }}</div>
               </div>
             </div>
+            <ng-template #noInd>
+              <p class="sec-empty">Les indicateurs détaillés ne sont pas disponibles pour cet incident.</p>
+            </ng-template>
           </section>
 
           <hr class="rule"/>
@@ -602,7 +619,7 @@ interface ChartAxisLabel {
               </p>
             </ng-template>
 
-            <ol class="reasons">
+            <ol class="reasons" *ngIf="reasons.length">
               <li *ngFor="let r of reasons; let i = index" class="reason">
                 <span class="reason-num">{{ i + 1 }}</span>
                 <div class="reason-body">
@@ -1137,6 +1154,14 @@ interface ChartAxisLabel {
       color: var(--ink-soft);
       margin-bottom: 24px;
     }
+    .sec-empty {
+      font-family: 'Newsreader', serif;
+      font-style: italic;
+      font-size: 16px;
+      color: var(--ink-soft);
+      padding: 18px 0;
+      margin: 0;
+    }
     .sec p strong { color: var(--ink); font-weight: 600; }
     .sec p .hl { color: var(--alert); font-weight: 700; }
     .sec .lead {
@@ -1577,46 +1602,53 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
    * fallback scenario when the API call fails / no :accidentId is in
    * the URL).
    */
-  reference = '2026-04-14-259-TU-4972';
-  issueDate = '15 avril 2026';
-  vehicleLabel = '259 TU 4972';
-  impactLat = 35.61365;
-  impactLon = 10.74298;
-  confidence = 97;
+  // ───────────────────────────────────────────────────────────────────
+  // Display fields. ALL start empty/neutral — there is NO hardcoded demo
+  // scenario any more. Every value below is filled from the real backend
+  // report (applyReport) and the real GPS history (computeFromPositions).
+  // The page is only ever reached with an `:accidentId`, so a real report
+  // is always loaded; if the load fails the report degrades to "—" rather
+  // than inventing a fake incident.
+  // ───────────────────────────────────────────────────────────────────
+  reference = '';
+  issueDate = '';
+  vehicleLabel = '';
+  impactLat = 0;
+  impactLon = 0;
+  /** True once real impact coordinates are known (from the DTO or GPS). */
+  coordsKnown = false;
+  confidence = 0;
 
-  /** Location strings shown in section 03 (Localisation). */
-  locationCommune = 'Jemmal';
-  locationGovernorate = 'Monastir';
-  locationRoadType = 'Route secondaire interurbaine';
+  /** Location strings shown in section 02 (Lieu de l'incident). */
+  locationCommune = '';
+  locationGovernorate = '';
+  locationRoadType = '';
 
   /** Long-form synthesis sentence shown in section 01. */
-  synthesisText =
-    'choc violent ayant vraisemblablement entraîné un retournement du véhicule';
+  synthesisText = '';
 
   /**
-   * Narrative fragments used in the Synthèse and chart intro. Defaults match
-   * the polished hardcoded scenario; overwritten by `computeFromPositions`
-   * when real GPS data confirms the impact.
+   * Narrative fragments used in the Synthèse and chart intro. Filled from
+   * the real incident time / GPS by applyReport + computeFromPositions.
    */
-  synthesisDateTimeLong = 'mercredi 14 avril 2026 à 16 heures 02';
-  chartIntroRange = 'entre 15h 55 et 16h 10';
-  chartIntroCruiseSpeed = 'autour de 80 à 88 km/h';
-  chartIntroImpactTime = '16h 02';
-  chartCaptionImpactTime = '16h 02 min 52 s';
+  synthesisDateTimeLong = '';
+  chartIntroRange = '';
+  chartIntroCruiseSpeed = '';
+  chartIntroImpactTime = '';
+  chartCaptionImpactTime = '';
 
   /**
    * GPS device_uid used to pull position history from the API. Populated
    * from the backend DTO (`dto.deviceUid`) once the accident report is
-   * loaded. Defaults to the known value for the 2026-04-14 incident so
-   * the page still works when rendered without an `:accidentId`.
+   * loaded.
    */
-  private realDeviceUid = '860141076674283';
+  private realDeviceUid = '';
 
   /**
    * Anchor timestamp used when searching real GPS positions for the
    * impact moment. Populated from the backend DTO (`dto.incidentAt`).
    */
-  private impactAtIso = '2026-04-14T16:02:52';
+  private impactAtIso = '';
 
   /**
    * True once the backend report has been loaded successfully. When set,
@@ -1626,91 +1658,28 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
    */
   private narrativeFromBackend = false;
 
-  /** Dynamic chart state — initialized with a polished fallback, recomputed when real GPS arrives. */
+  /** True once the persisted report DTO has been applied. */
+  reportLoaded = false;
+
+  /** True once a real speed profile has been computed from GPS positions. */
+  chartHasData = false;
+
+  /** Dynamic chart state — empty until real GPS positions arrive. */
   chartPath = '';
   chartDots: ChartDot[] = [];
   xAxisLabels: ChartAxisLabel[] = [];
   impactX = 465;
-  impactLabelText = 'Impact · 16h 02';
+  impactLabelText = '';
 
-  story: NarrativeEvent[] = [
-    {
-      time: '15h 58',
-      title: 'Conduite normale',
-      body: 'Le véhicule circule à 88 km/h sur une route secondaire de la région de Jemmal. Aucun comportement inhabituel n\'est détecté dans les minutes précédentes. La conduite est régulière et stable.',
-      severity: 'normal',
-    },
-    {
-      time: '16h 01',
-      title: 'Légère décélération',
-      body: 'Le véhicule ralentit progressivement de 85 à 77 km/h en l\'espace d\'environ une minute. Rien d\'anormal à ce stade.',
-      severity: 'normal',
-    },
-    {
-      time: '16h 02',
-      title: 'Chute brutale de la vitesse et choc violent',
-      body: 'La vitesse passe brutalement de 77 à 16 km/h en quelques secondes. Ce profil de ralentissement ne correspond pas à un freinage normal. Au même instant, les capteurs de mouvement du véhicule enregistrent un choc d\'une violence exceptionnelle, dans toutes les directions simultanément. L\'intensité mesurée est plus de deux fois supérieure à tout ce qui avait été observé auparavant sur ce véhicule.',
-      severity: 'critical',
-    },
-    {
-      time: '16h 03',
-      title: 'Second choc d\'intensité équivalente',
-      body: 'Un second impact est enregistré, de même intensité que le premier. Le véhicule roule désormais à seulement 2 km/h.',
-      severity: 'critical',
-    },
-    {
-      time: '16h 04',
-      title: 'Arrêt complet du véhicule',
-      body: 'Le véhicule est totalement immobilisé. Plus aucun déplacement n\'est détecté à partir de ce moment.',
-      severity: 'warning',
-    },
-    {
-      time: '16h 04 → 16h 07',
-      title: 'Position anormalement inclinée',
-      body: 'Pendant quatre minutes consécutives, les capteurs indiquent que le véhicule se trouve dans une position fortement inclinée. Une inclinaison de cette ampleur, maintenue à l\'arrêt, est caractéristique d\'un véhicule qui s\'est retrouvé sur le flanc ou retourné.',
-      severity: 'warning',
-    },
-    {
-      time: '16h 08',
-      title: 'Coupure du contact',
-      body: 'Le contact du véhicule est coupé. Il est très probable qu\'à ce moment, le conducteur, la protection civile ou un tiers soit déjà intervenu sur place.',
-      severity: 'neutral',
-    },
-    {
-      time: '17h 13',
-      title: 'Mouvement compatible avec un chargement sur dépanneuse',
-      body: 'Un mouvement spécifique est détecté sur le véhicule, compatible avec son chargement sur un plateau de dépanneuse. Après cet épisode, le véhicule reste immobile.',
-      severity: 'neutral',
-    },
-  ];
+  // Narrative sections — empty until the real report DTO is applied. The
+  // backend always provides a data-driven story / indicators / reasons
+  // (built from the actual MEMS + speed signal), so these are populated on
+  // every successfully loaded report.
+  story: NarrativeEvent[] = [];
 
-  indicators: Indicator[] = [
-    { label: 'Heure de l\'impact', value: '16h 02 min 52 s', hint: 'Heure locale de Tunis' },
-    { label: 'Vitesse avant l\'impact', value: '88 km/h', hint: 'Mesurée 4 minutes avant' },
-    { label: 'Vitesse au moment de l\'impact', value: '16 km/h', hint: 'Chute brutale et non-maîtrisée' },
-    { label: 'Temps jusqu\'à l\'arrêt complet', value: '5 min 6 s', hint: 'Entre 15h58 et 16h04' },
-    { label: 'Durée d\'inclinaison anormale', value: '4 minutes', hint: 'Forte suspicion de retournement' },
-    { label: 'Coupure du contact', value: '16h 08', hint: 'Soit 6 minutes après l\'impact' },
-  ];
+  indicators: Indicator[] = [];
 
-  reasons: Array<{ title: string; text: string }> = [
-    {
-      title: 'Une chute brutale et incontrôlée de la vitesse',
-      text: 'Le véhicule est passé de 88 à 0 km/h sur une durée très courte. Le profil de décélération ne correspond pas à un freinage volontaire mais à un arrêt subi.',
-    },
-    {
-      title: 'Un choc d\'une violence exceptionnelle',
-      text: 'Les capteurs de mouvement ont enregistré une intensité plus de deux fois supérieure à tout ce qui avait été observé auparavant sur ce véhicule, toutes situations confondues.',
-    },
-    {
-      title: 'Une immobilisation totale immédiatement après',
-      text: 'À partir de 16h04, le véhicule est resté strictement à l\'arrêt pendant plus de cinq minutes, sans reprise de mouvement, ce qui exclut un simple ralentissement ou un ralentissement normal.',
-    },
-    {
-      title: 'Une position fortement inclinée pendant quatre minutes',
-      text: 'Un véhicule qui repose normalement sur ses roues ne présente pas d\'inclinaison soutenue. La valeur mesurée ici ne peut s\'expliquer que par un véhicule qui s\'est retrouvé couché sur le flanc ou retourné.',
-    },
-  ];
+  reasons: Array<{ title: string; text: string }> = [];
 
   shown = false;
 
@@ -1850,6 +1819,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     this.vehicleLabel = dto.vehicleLabel || this.vehicleLabel;
     this.impactLat = dto.latitude;
     this.impactLon = dto.longitude;
+    this.coordsKnown = !!(dto.latitude || dto.longitude);
     this.confidence = dto.confidence;
     this.realDeviceUid = dto.deviceUid;
     this.impactAtIso = dto.incidentAt;
@@ -1935,6 +1905,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     }
 
     this.narrativeFromBackend = true;
+    this.reportLoaded = true;
   }
 
   /** Accepts any backend severity string and maps to the NarrativeEvent union. */
@@ -2032,44 +2003,35 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   private buildImpactPopup(): string {
+    const when = this.synthesisDateTimeLong
+      ? `<div>${this.synthesisDateTimeLong}</div>`
+      : '';
+    const coords = this.coordsKnown
+      ? `${this.impactLat.toFixed(5)} °N · ${this.impactLon.toFixed(5)} °E`
+      : '';
     return `
       <div style="font-family: 'Manrope', sans-serif; font-size: 12px; color: #18181b; line-height: 1.5;">
         <div style="font-weight: 600; color: #991b1b; margin-bottom: 4px;">Lieu de l'incident</div>
-        <div>14 avril 2026 · 16h 02</div>
+        ${when}
         <div style="font-size: 11px; color: #52525b; margin-top: 4px;">
-          ${this.impactLat.toFixed(5)} °N · ${this.impactLon.toFixed(5)} °E
+          ${coords}
         </div>
       </div>
     `;
   }
 
   /**
-   * Seeds the chart with a polished fallback profile so the page renders
-   * immediately without waiting for the API. Values match the narrative.
+   * Resets the chart to an empty state. The real speed profile is drawn by
+   * computeFromPositions once GPS history arrives; if it never does (sparse
+   * data / API error) the template shows a "données GPS insuffisantes"
+   * placeholder rather than a fabricated curve.
    */
   private buildDefaultChart(): void {
-    this.chartPath =
-      'M 60,52 L 160,56 L 260,63 L 360,68 L 440,72 L 460,74 L 465,180 L 475,212 L 500,218 L 600,220 L 720,220 L 780,220';
-    this.chartDots = [
-      { x: 60,  y: 52  },
-      { x: 160, y: 56  },
-      { x: 260, y: 63  },
-      { x: 360, y: 68  },
-      { x: 440, y: 72  },
-      { x: 465, y: 180, isImpact: true },
-      { x: 475, y: 212 },
-      { x: 600, y: 220 },
-      { x: 780, y: 220 },
-    ];
-    this.xAxisLabels = [
-      { x: 60,  label: '15h 55' },
-      { x: 260, label: '16h 00' },
-      { x: 465, label: '16h 03' },
-      { x: 660, label: '16h 07' },
-      { x: 780, label: '16h 10' },
-    ];
-    this.impactX = 465;
-    this.impactLabelText = 'Impact · 16h 02';
+    this.chartPath = '';
+    this.chartDots = [];
+    this.xAxisLabels = [];
+    this.impactLabelText = '';
+    this.chartHasData = false;
   }
 
   /**
@@ -2116,6 +2078,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
 
     this.impactLat = impactPos.latitude;
     this.impactLon = impactPos.longitude;
+    this.coordsKnown = true;
 
     // Speed at impact: minimum in a ±30 s window centered on the impact position
     const atImpact = sorted.filter((p) => {
@@ -2315,6 +2278,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       });
     }
     this.xAxisLabels = labels;
+    this.chartHasData = true;
   }
 
   private drawTrajectory(positions: PositionDto[]): void {
@@ -2577,12 +2541,15 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     const normalTarget = impactT - 6 * 60 * 1000;
     const normalPos = this.closestPositionTo(positions, normalTarget, 0, impactIdx);
     if (normalPos && (normalPos.speedKph ?? 0) > 20) {
+      const regionPart = this.locationCommune
+        ? ` dans la région de ${this.locationCommune}`
+        : '';
       story.push({
         time: this.formatHourMinute(new Date(normalPos.recordedAt)),
         title: 'Conduite normale',
         body:
-          `Le véhicule circule à ${Math.round(normalPos.speedKph ?? 0)} km/h sur une route ` +
-          `de la région de Jemmal. Aucun comportement inhabituel n'est détecté dans les ` +
+          `Le véhicule circule à ${Math.round(normalPos.speedKph ?? 0)} km/h sur une route` +
+          `${regionPart}. Aucun comportement inhabituel n'est détecté dans les ` +
           `minutes précédentes. La conduite est régulière et stable.`,
         severity: 'normal',
       });

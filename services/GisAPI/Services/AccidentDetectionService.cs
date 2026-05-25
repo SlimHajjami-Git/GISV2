@@ -1,6 +1,7 @@
 using System.Text.Json;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Interfaces;
 using GisAPI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -69,6 +70,7 @@ namespace GisAPI.Services;
 public class AccidentDetectionService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
+    private readonly IGeocodingService _geocoding;
     private readonly ILogger<AccidentDetectionService> _logger;
 
     /// <summary>
@@ -116,9 +118,11 @@ public class AccidentDetectionService : BackgroundService
 
     public AccidentDetectionService(
         IServiceProvider serviceProvider,
+        IGeocodingService geocoding,
         ILogger<AccidentDetectionService> logger)
     {
         _serviceProvider = serviceProvider;
+        _geocoding = geocoding;
         _logger = logger;
     }
 
@@ -433,6 +437,23 @@ ORDER BY device_id, recorded_at;
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         };
 
+        // Reverse-geocode the impact point so the report shows a REAL location
+        // (commune / governorate / road) instead of falling back to a generic
+        // placeholder. Best-effort: a null result (Nominatim down / no usable
+        // address) leaves the fields null and the report renders "—".
+        GeocodedLocation? geo = null;
+        try
+        {
+            geo = await _geocoding.ReverseGeocodeStructuredAsync(
+                candidate.Latitude, candidate.Longitude);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "AccidentDetectionService: reverse geocoding failed for ({Lat}, {Lon}) — location left empty",
+                candidate.Latitude, candidate.Longitude);
+        }
+
         var ev = new AccidentEvent
         {
             CompanyId = vehicle.CompanyId,
@@ -444,13 +465,12 @@ ORDER BY device_id, recorded_at;
             Longitude = candidate.Longitude,
             ReferenceCode = BuildReferenceCode(incidentAt, vehicleLabel),
             VehicleLabel = vehicleLabel,
-            // Location fields deliberately left null — a reverse geocoding
-            // pass can fill them later from (latitude, longitude). The
-            // frontend falls back to the GPS coordinates alone in the
-            // meantime.
-            LocationCommune = null,
-            LocationGovernorate = null,
-            LocationRoadType = null,
+            // Populated from the impact coordinates via reverse geocoding.
+            // Null when the lookup yields nothing — the frontend then shows
+            // "—" and still renders the exact GPS coordinates + map marker.
+            LocationCommune = geo?.Commune,
+            LocationGovernorate = geo?.Governorate,
+            LocationRoadType = geo?.Road,
             SynthesisText = BuildSynthesisText(candidate),
             Confidence = confidence,
             StoryJson = JsonSerializer.Serialize(BuildStory(candidate), jsonOpts),
