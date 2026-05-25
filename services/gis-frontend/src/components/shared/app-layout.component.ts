@@ -43,12 +43,24 @@ type NotifBucket = Notification | NotifThreadGroup;
     <div class="app-container">
       <!-- WIALON-STYLE TOP NAVIGATION BAR -->
       <nav class="top-nav">
-        <!-- Logo -->
+        <!-- Logo Calypso (pin tourbillon + œil) -->
         <div class="nav-brand" (click)="navigate('/dashboard')">
           <div class="brand-logo">
-            <svg width="26" height="26" viewBox="0 0 32 32" fill="none">
-              <rect width="32" height="32" rx="6" fill="#6366f1"/>
-              <path d="M8 16L14 22L24 10" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            <svg width="24" height="32" viewBox="0 0 48 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Calypso">
+              <defs>
+                <linearGradient id="calypsoPin" x1="6" y1="4" x2="40" y2="60" gradientUnits="userSpaceOnUse">
+                  <stop offset="0" stop-color="#5fe3bd"/>
+                  <stop offset="0.45" stop-color="#23a6c9"/>
+                  <stop offset="1" stop-color="#1b3f9e"/>
+                </linearGradient>
+              </defs>
+              <!-- goutte / pin -->
+              <path d="M24 1.5C11.6 1.5 1.7 11.2 1.7 23.4 1.7 39 24 62.5 24 62.5S46.3 39 46.3 23.4C46.3 11.2 36.4 1.5 24 1.5Z" fill="url(#calypsoPin)"/>
+              <!-- vague / tourbillon -->
+              <path d="M11.5 28.5C11 17.8 19.4 9.9 30.2 11.6" stroke="#fff" stroke-width="2.7" stroke-linecap="round" fill="none"/>
+              <path d="M17.5 32.2C16.4 24.2 22.6 18.4 30 19.6" stroke="#fff" stroke-width="2.3" stroke-linecap="round" fill="none" opacity="0.85"/>
+              <!-- œil -->
+              <circle cx="31.2" cy="14.4" r="3.1" fill="#fff"/>
             </svg>
           </div>
           <span class="brand-text">Calypso</span>
@@ -581,9 +593,10 @@ type NotifBucket = Notification | NotifThreadGroup;
     }
 
     .brand-text {
-      font-size: 16px;
+      font-size: 18px;
       font-weight: 700;
-      color: var(--text-primary, #333);
+      /* Slate-blue of the Calypso wordmark */
+      color: #2b5876;
       letter-spacing: -0.3px;
     }
 
@@ -593,6 +606,11 @@ type NotifBucket = Notification | NotifThreadGroup;
 
     :host-context([data-theme="dark"]) .nav-brand:hover {
       background: rgba(255, 255, 255, 0.05);
+    }
+
+    /* Keep the wordmark legible on the dark theme. */
+    :host-context([data-theme="dark"]) .brand-text {
+      color: #cfe3f2;
     }
 
     /* ===== NAVIGATION LINKS ===== */
