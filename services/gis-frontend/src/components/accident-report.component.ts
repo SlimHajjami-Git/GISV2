@@ -1988,7 +1988,14 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
 
     this.thirdParties = dto.thirdParties ?? [];
 
-    this.narrativeFromBackend = true;
+    // The backend narrative is authoritative ONLY when it actually contains a
+    // story — i.e. an auto-detected accident (StoryJson populated). A manually
+    // declared accident has no story/indicators, so we DON'T mark the
+    // narrative as backend-owned: that lets computeFromPositions() rebuild the
+    // timeline, indicators, speed chart and impact point from the REAL GPS
+    // history around incidentAt. Otherwise a declared accident's report would
+    // stay empty.
+    this.narrativeFromBackend = !!(dto.story && dto.story.length);
     this.reportLoaded = true;
   }
 
