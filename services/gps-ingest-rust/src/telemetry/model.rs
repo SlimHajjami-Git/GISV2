@@ -89,6 +89,19 @@ impl ProtocolMetadata {
                 model_name: Some("TELTONIKA"),
                 firmware_flavor: Some("Codec8"),
             },
+            // gt06 => Concox GT06 binary protocol — used by GT06N, TR06,
+            // JT701, JM-VL01, JI09, JI10 and the Coban-branded GT06 clones.
+            // Operators can refine the exact model in gps_devices later.
+            "gt06" => Self {
+                model_name: Some("GT06"),
+                firmware_flavor: Some("Concox"),
+            },
+            // coban => Coban TK103 / TK303 family (and TK104, TK06, GT02 —
+            // all share the same ASCII *HQ / imei: framing).
+            "coban" => Self {
+                model_name: Some("COBAN"),
+                firmware_flavor: Some("TK103"),
+            },
             // Future types can be added here as soon as new GPS models are supported
             _ => Self::default(),
         }

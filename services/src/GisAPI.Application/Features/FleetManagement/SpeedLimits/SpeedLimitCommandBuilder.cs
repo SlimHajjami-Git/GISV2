@@ -42,15 +42,26 @@ public static class SpeedLimitCommandBuilder
     public static bool IsNemsDevice(GpsDevice? device)
     {
         if (device == null) return false;
+        // Explicit non-NEMS protocols — each speaks a different config wire
+        // format and would either ignore AJ+CONFN silently or, worse, mis-
+        // parse it as a position frame.
         if (string.Equals(device.ProtocolType, "noron", StringComparison.OrdinalIgnoreCase))
             return false;
         if (string.Equals(device.ProtocolType, "teltonika", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (string.Equals(device.ProtocolType, "gt06", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (string.Equals(device.ProtocolType, "coban", StringComparison.OrdinalIgnoreCase))
             return false;
         if (string.Equals(device.ProtocolType, "gps_type_1", StringComparison.OrdinalIgnoreCase))
             return true;
         var brand = device.Brand ?? string.Empty;
         var model = device.Model ?? string.Empty;
-        if (brand.Contains("TELTONIKA", StringComparison.OrdinalIgnoreCase))
+        // Brand-based exclusions catch units whose protocol_type column is
+        // blank but whose brand was filled at registration.
+        if (brand.Contains("TELTONIKA", StringComparison.OrdinalIgnoreCase)
+            || brand.Contains("CONCOX", StringComparison.OrdinalIgnoreCase)
+            || brand.Contains("COBAN", StringComparison.OrdinalIgnoreCase))
             return false;
         return brand.Contains("NEMS", StringComparison.OrdinalIgnoreCase)
             || model.Contains("NEMS", StringComparison.OrdinalIgnoreCase);

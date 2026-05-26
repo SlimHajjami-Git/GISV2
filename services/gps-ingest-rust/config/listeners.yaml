@@ -21,3 +21,13 @@ listeners:
   - port: 6400
     protocol: teltonika
     transport: tcp
+  # gt06 => Concox binary TCP (GT06, GT06N, TR06, JT701, JM-VL01, Coban "GT06" clones).
+  # Magic 0x7878/0x7979, BCD IMEI login, CRC-ITU. See src/telemetry/gt06.rs.
+  - port: 6500
+    protocol: gt06
+    transport: tcp
+  # coban => TK103/TK303 ASCII TCP. *HQ,IMEI,V1,... and imei:...,tracker,...
+  # sentences. See src/telemetry/coban.rs.
+  - port: 6600
+    protocol: coban
+    transport: tcp

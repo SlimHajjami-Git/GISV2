@@ -300,6 +300,8 @@ export interface CompanyOption {
                   <option value="NEMS">NEMS</option>
                   <option value="NORON">Noron</option>
                   <option value="Teltonika">Teltonika</option>
+                  <option value="Concox">Concox / GT06</option>
+                  <option value="Coban">Coban / TK103</option>
                   <option value="Other">Autre</option>
                 </select>
               </div>
@@ -319,6 +321,17 @@ export interface CompanyOption {
                     <option value="FMB130">FMB130</option>
                     <option value="FMB150">FMB150</option>
                   </ng-container>
+                  <ng-container *ngIf="formData.gpsBrand === 'Concox'">
+                    <option value="GT06">GT06</option>
+                    <option value="GT06N">GT06N</option>
+                    <option value="TR06">TR06</option>
+                    <option value="JM-VL01">JM-VL01</option>
+                  </ng-container>
+                  <ng-container *ngIf="formData.gpsBrand === 'Coban'">
+                    <option value="TK103">TK103</option>
+                    <option value="TK303">TK303</option>
+                    <option value="TK104">TK104</option>
+                  </ng-container>
                 </select>
                 <input *ngIf="formData.gpsBrand === 'Other'" type="text" id="gpsModel" name="gpsModel" [(ngModel)]="formData.gpsModel" placeholder="Ex: GT06N" />
               </div>
@@ -333,6 +346,18 @@ export interface CompanyOption {
               <div class="gps-info-note" *ngIf="formData.gpsBrand === 'Teltonika'">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
                 <span>Configurer le boîtier (Configurator ou SMS) vers le port TCP 6400, protocole Codec 8 ou 8 Extended. L'IMEI saisi ci-dessus doit correspondre à l'IMEI affiché sur l'étiquette du boîtier.</span>
+              </div>
+
+              <!-- Concox / GT06 info note -->
+              <div class="gps-info-note" *ngIf="formData.gpsBrand === 'Concox'">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                <span>Configurer le boîtier par SMS vers le port TCP 6500 (protocole binaire GT06). Fournit position, vitesse et alarmes basiques — pas de capteurs MEMS ni carburant.</span>
+              </div>
+
+              <!-- Coban / TK103 info note -->
+              <div class="gps-info-note" *ngIf="formData.gpsBrand === 'Coban'">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                <span>Configurer le boîtier par SMS vers le port TCP 6600 (protocole texte TK103). Fournit position et vitesse uniquement — pas de capteurs MEMS, carburant ou kilométrage.</span>
               </div>
 
               <div class="form-group">
@@ -356,7 +381,7 @@ export interface CompanyOption {
                 />
               </div>
 
-              <div class="form-group" *ngIf="formData.gpsBrand !== 'NORON' && formData.gpsBrand !== 'Teltonika'">
+              <div class="form-group" *ngIf="formData.gpsBrand !== 'NORON' && formData.gpsBrand !== 'Teltonika' && formData.gpsBrand !== 'Concox' && formData.gpsBrand !== 'Coban'">
                 <label for="gpsFuelSensorMode">Mode capteur carburant</label>
                 <select id="gpsFuelSensorMode" name="gpsFuelSensorMode" [(ngModel)]="formData.gpsFuelSensorMode">
                   <option value="raw_255">Brut 0-255 (défaut)</option>
@@ -1232,6 +1257,16 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       // dropdown below. Fuel sensor mode is irrelevant: FMB does not expose
       // a canonical fuel-level IO, so we hide the field entirely.
       this.formData.gpsModel = 'FMB130';
+      this.formData.gpsFuelSensorMode = 'raw_255';
+    } else if (brand === 'Concox') {
+      // GT06 is the entry-level Concox tracker — what most cheap fleet
+      // installs ship with. GT06N is the LTE-capable refresh.
+      this.formData.gpsModel = 'GT06';
+      this.formData.gpsFuelSensorMode = 'raw_255';
+    } else if (brand === 'Coban') {
+      // TK103 is the original Coban; TK303 / TK104 are minor variants
+      // speaking the same wire protocol.
+      this.formData.gpsModel = 'TK103';
       this.formData.gpsFuelSensorMode = 'raw_255';
     }
   }

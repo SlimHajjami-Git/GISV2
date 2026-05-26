@@ -165,18 +165,22 @@ async fn run_tcp_listener(
         let redis_clone = redis_cache.clone();
         let cmd_senders_clone = Arc::clone(&command_senders);
         tokio::spawn(async move {
-            // Teltonika devices speak a stateful binary protocol with an IMEI
-            // handshake — we dispatch them to a dedicated handler rather than
-            // squeeze the logic into the multi-protocol generic one.
-            let result = if cfg_clone.protocol == "teltonika" {
-                handle_teltonika_connection(
+            // Stateful binary / ASCII protocols dispatch to dedicated handlers
+            // rather than squeezing their logic into the generic NEMS handler.
+            let result = match cfg_clone.protocol.as_str() {
+                "teltonika" => handle_teltonika_connection(
                     stream, cfg_clone, db, publisher_clone, services_clone, redis_clone,
-                ).await
-            } else {
-                handle_tcp_connection(
+                ).await,
+                "gt06" => handle_gt06_connection(
+                    stream, cfg_clone, db, publisher_clone, services_clone, redis_clone,
+                ).await,
+                "coban" => handle_coban_connection(
+                    stream, cfg_clone, db, publisher_clone, services_clone, redis_clone,
+                ).await,
+                _ => handle_tcp_connection(
                     stream, cfg_clone, db, map_clone, publisher_clone, services_clone,
                     redis_clone, cmd_senders_clone,
-                ).await
+                ).await,
             };
             if let Err(err) = result {
                 error!(?err, "TCP connection handler exited with error");
@@ -1666,6 +1670,414 @@ async fn handle_teltonika_connection(
             }
         }
     }
+}
+
+/// Dedicated handler for Concox / GT06 family devices (GT06, GT06N, TR06,
+/// JT701, JM-VL01 and OEM rebrands including some Coban units).
+///
+/// Flow:
+///   1. Device sends a 0x01 login packet with its BCD-encoded IMEI.
+///   2. We ACK with the canonical CRC-stamped reply (mandatory — device
+///      retries until ACK).
+///   3. Loop: read 0x78 0x78 / 0x79 0x79 packets. For GPS payloads
+///      (0x10/0x12/0x16/0x1A/0x22) we persist through the canonical
+///      pipeline. For heartbeats (0x13) we ACK and optionally surface
+///      ignition/alarm changes.
+async fn handle_gt06_connection(
+    stream: TcpStream,
+    cfg: Arc<ListenerConfig>,
+    database: Arc<dyn TelemetryStore>,
+    publisher: Option<Arc<dyn TelemetryEventPublisher>>,
+    services: Arc<TelemetryServices>,
+    redis_cache: Option<Arc<RedisCache>>,
+) -> Result<()> {
+    let peer = stream.peer_addr().ok().map(|a| a.to_string());
+    let peer_str = peer.as_deref().unwrap_or("unknown").to_string();
+
+    let (mut reader, mut writer) = tokio::io::split(stream);
+    let mut imei: Option<String> = None;
+
+    let mut accumulator: Vec<u8> = Vec::with_capacity(4096);
+    let mut read_buf = vec![0u8; 4096];
+
+    loop {
+        let read = match reader.read(&mut read_buf).await {
+            Ok(0) => {
+                info!(peer = %peer_str, imei = ?imei, "GT06: device disconnected");
+                return Ok(());
+            }
+            Ok(n) => n,
+            Err(e) => {
+                warn!(?e, peer = %peer_str, "GT06: read failed");
+                return Err(e.into());
+            }
+        };
+        accumulator.extend_from_slice(&read_buf[..read]);
+
+        // Consume as many complete packets as we have buffered.
+        loop {
+            match telemetry::gt06::decode_one(&accumulator) {
+                Ok(Some(decoded)) => {
+                    match decoded.result {
+                        telemetry::gt06::Gt06DecodeResult::Login { imei: new_imei, serial } => {
+                            info!(peer = %peer_str, imei = %new_imei, "GT06 login received");
+                            // ACK is mandatory — without it the device retries every few seconds.
+                            let ack = telemetry::gt06::build_ack(telemetry::gt06::PROTO_LOGIN, serial);
+                            if let Err(e) = writer.write_all(&ack).await {
+                                warn!(?e, peer = %peer_str, "GT06: failed to write login ACK");
+                                return Ok(());
+                            }
+                            // Lookup is best-effort: unknown IMEIs are accepted but their frames
+                            // get dropped at insert time. Matches the Teltonika handler's behaviour.
+                            if let Err(e) = database.get_device_id(&new_imei).await {
+                                warn!(?e, imei = %new_imei, "GT06: DB lookup failed (continuing)");
+                            } else {
+                                debug!(imei = %new_imei, "GT06 IMEI resolved against gps_devices");
+                            }
+                            imei = Some(new_imei);
+                        }
+                        telemetry::gt06::Gt06DecodeResult::Position { frame, serial: _, protocol } => {
+                            if let Some(ref id) = imei {
+                                if let Err(err) = route_gt06_frame(
+                                    id, frame,
+                                    Arc::clone(&database),
+                                    publisher.clone(),
+                                    Arc::clone(&services),
+                                    redis_cache.clone(),
+                                ).await {
+                                    warn!(?err, imei = %id, protocol = format!("0x{:02X}", protocol), "GT06: failed to ingest position");
+                                }
+                            } else {
+                                warn!(peer = %peer_str, "GT06: GPS packet received before login — dropped");
+                            }
+                        }
+                        telemetry::gt06::Gt06DecodeResult::Status { frame, serial } => {
+                            let ack = telemetry::gt06::build_ack(telemetry::gt06::PROTO_STATUS, serial);
+                            if let Err(e) = writer.write_all(&ack).await {
+                                warn!(?e, peer = %peer_str, "GT06: failed to write status ACK");
+                            }
+                            if let (Some(frame), Some(id)) = (frame, imei.as_ref()) {
+                                if let Err(err) = route_gt06_frame(
+                                    id, frame,
+                                    Arc::clone(&database),
+                                    publisher.clone(),
+                                    Arc::clone(&services),
+                                    redis_cache.clone(),
+                                ).await {
+                                    warn!(?err, imei = %id, "GT06: failed to ingest status payload");
+                                }
+                            }
+                        }
+                        telemetry::gt06::Gt06DecodeResult::Unknown { protocol, .. } => {
+                            // Keep the connection open — operators will see the warn log
+                            // emitted inside decode_one and decide whether to extend.
+                            debug!(peer = %peer_str, protocol = format!("0x{:02X}", protocol), "GT06: ignored unknown protocol");
+                        }
+                    }
+                    accumulator.drain(..decoded.consumed);
+                }
+                Ok(None) => {
+                    // Need more bytes — exit inner loop, wait for next read.
+                    if accumulator.len() > 64 * 1024 {
+                        warn!(peer = %peer_str, size = accumulator.len(), "GT06: dropping oversized buffer");
+                        accumulator.clear();
+                    }
+                    break;
+                }
+                Err(e) => {
+                    warn!(?e, peer = %peer_str, "GT06: decode error — resetting buffer");
+                    accumulator.clear();
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/// Handler for Coban TK103 / TK303 family ASCII trackers.
+///
+/// Wire format is line-based. The first packet on a connection is usually
+/// either an `imei:<IMEI>` login line or a `*HQ,<IMEI>,V1,...#` position
+/// sentence (the latter implicitly registers the IMEI). We ACK the login
+/// with `LOAD\r\n` to silence the device's retry timer.
+async fn handle_coban_connection(
+    stream: TcpStream,
+    cfg: Arc<ListenerConfig>,
+    database: Arc<dyn TelemetryStore>,
+    publisher: Option<Arc<dyn TelemetryEventPublisher>>,
+    services: Arc<TelemetryServices>,
+    redis_cache: Option<Arc<RedisCache>>,
+) -> Result<()> {
+    let peer = stream.peer_addr().ok().map(|a| a.to_string());
+    let peer_str = peer.as_deref().unwrap_or("unknown").to_string();
+
+    let (mut reader, mut writer) = tokio::io::split(stream);
+    let mut imei: Option<String> = None;
+    let mut buf = vec![0u8; 4096];
+    let mut pending = String::new();
+
+    loop {
+        let read = match reader.read(&mut buf).await {
+            Ok(0) => {
+                info!(peer = %peer_str, imei = ?imei, port = cfg.port, "Coban: device disconnected");
+                return Ok(());
+            }
+            Ok(n) => n,
+            Err(e) => {
+                warn!(?e, peer = %peer_str, "Coban: read failed");
+                return Err(e.into());
+            }
+        };
+        match std::str::from_utf8(&buf[..read]) {
+            Ok(s) => pending.push_str(s),
+            Err(_) => {
+                warn!(peer = %peer_str, "Coban: non-UTF8 bytes received — dropping");
+                continue;
+            }
+        }
+
+        let sentences = telemetry::coban::extract_sentences(&pending);
+        // Keep the trailing fragment (if any) for the next read. Easiest:
+        // if `pending` ended on a terminator (`#`, `;`, `\n`), clear it; else
+        // re-stash the chunk after the last terminator.
+        pending = match pending.rfind(|c: char| c == '#' || c == ';' || c == '\n') {
+            Some(idx) if idx + 1 == pending.len() => String::new(),
+            Some(idx) => pending[idx + 1..].to_string(),
+            None => pending.clone(),
+        };
+
+        for sentence in sentences {
+            match telemetry::coban::parse_sentence(&sentence) {
+                Ok(telemetry::coban::TkDecodeResult::Login { imei: new_imei }) => {
+                    info!(peer = %peer_str, imei = %new_imei, "Coban login received");
+                    if let Err(e) = writer.write_all(telemetry::coban::LOGIN_ACK).await {
+                        warn!(?e, peer = %peer_str, "Coban: failed to write LOAD ack");
+                        return Ok(());
+                    }
+                    imei = Some(new_imei);
+                }
+                Ok(telemetry::coban::TkDecodeResult::Position { frame, imei: sentence_imei }) => {
+                    // First-position implicit registration: if we didn't see an
+                    // explicit `imei:` login but the *HQ sentence carries the
+                    // IMEI inline, use that.
+                    if imei.is_none() {
+                        imei = Some(sentence_imei.clone());
+                    }
+                    let id = imei.clone().unwrap_or(sentence_imei);
+                    if let Err(err) = route_coban_frame(
+                        &id, frame,
+                        Arc::clone(&database),
+                        publisher.clone(),
+                        Arc::clone(&services),
+                        redis_cache.clone(),
+                    ).await {
+                        warn!(?err, imei = %id, "Coban: failed to ingest position");
+                    }
+                }
+                Ok(telemetry::coban::TkDecodeResult::Heartbeat { .. }) => {
+                    let _ = writer.write_all(telemetry::coban::KEEPALIVE_ACK).await;
+                }
+                Ok(telemetry::coban::TkDecodeResult::Unknown { head }) => {
+                    debug!(peer = %peer_str, head = %head, "Coban: unknown sentence ignored");
+                }
+                Err(e) => {
+                    warn!(?e, peer = %peer_str, sentence = %sentence, "Coban: failed to parse sentence");
+                }
+            }
+        }
+    }
+}
+
+/// GT06 routing — same downstream pipeline as the other binary handlers, just
+/// tagged with `protocol = "gt06"` for log filtering.
+async fn route_gt06_frame(
+    device_uid: &str,
+    mut frame: telemetry::model::HhFrame,
+    database: Arc<dyn TelemetryStore>,
+    publisher: Option<Arc<dyn TelemetryEventPublisher>>,
+    services: Arc<TelemetryServices>,
+    redis_cache: Option<Arc<RedisCache>>,
+) -> Result<()> {
+    route_generic_frame("gt06", device_uid, &mut frame, database, publisher, services, redis_cache).await
+}
+
+/// Coban routing.
+async fn route_coban_frame(
+    device_uid: &str,
+    mut frame: telemetry::model::HhFrame,
+    database: Arc<dyn TelemetryStore>,
+    publisher: Option<Arc<dyn TelemetryEventPublisher>>,
+    services: Arc<TelemetryServices>,
+    redis_cache: Option<Arc<RedisCache>>,
+) -> Result<()> {
+    route_generic_frame("coban", device_uid, &mut frame, database, publisher, services, redis_cache).await
+}
+
+/// Shared downstream pipeline used by every per-protocol router. Centralises
+/// the per-frame work that NEMS / Noron / Teltonika / GT06 / Coban all need:
+/// GPS validation, anti-drift, geocoding, speed-spike filter, parallel
+/// DB+Redis+RabbitMQ write, stop / trip / driving-events / geofence detection.
+async fn route_generic_frame(
+    protocol: &'static str,
+    device_uid: &str,
+    frame: &mut telemetry::model::HhFrame,
+    database: Arc<dyn TelemetryStore>,
+    publisher: Option<Arc<dyn TelemetryEventPublisher>>,
+    services: Arc<TelemetryServices>,
+    redis_cache: Option<Arc<RedisCache>>,
+) -> Result<()> {
+    let device_id_opt = database.get_device_id(device_uid).await?;
+
+    if frame.latitude.abs() < 1.0 && frame.longitude.abs() < 2.0 {
+        if let Some(device_id) = device_id_opt {
+            if let Some(last_pos) = database.get_last_position(device_id).await? {
+                frame.latitude = last_pos.latitude;
+                frame.longitude = last_pos.longitude;
+                frame.is_valid = false;
+                debug!(device_uid, protocol, "no-fix: using last known position");
+            } else {
+                debug!(device_uid, protocol, "frame skipped: no GPS fix and no previous position");
+                return Ok(());
+            }
+        } else {
+            return Ok(());
+        }
+    }
+
+    if !(-180.0..=180.0).contains(&frame.longitude) || !(-90.0..=90.0).contains(&frame.latitude) {
+        warn!(device_uid, protocol, lat = frame.latitude, lon = frame.longitude, "frame skipped: coords out of range");
+        return Ok(());
+    }
+
+    let tomorrow = chrono::Utc::now().date_naive() + Duration::days(1);
+    if frame.recorded_at.date() >= tomorrow {
+        warn!(device_uid, protocol, date = %frame.recorded_at, "frame skipped: date in future");
+        return Ok(());
+    }
+
+    if let Some(device_id) = device_id_opt {
+        let validation = services.gps_validator.validate(device_id, frame).await;
+        if !validation.should_store() {
+            if let crate::services::gps_validator::ValidationResult::Invalid { reason } = &validation {
+                debug!(device_uid, protocol, reason = %reason, "frame REJECTED by GPS validator");
+            }
+            return Ok(());
+        }
+
+        let stabilized = services.gps_stabilizer.stabilize(device_id, frame).await;
+        if stabilized.was_stabilized {
+            frame.latitude = stabilized.latitude;
+            frame.longitude = stabilized.longitude;
+        }
+
+        if frame.ignition_on && frame.speed_kph > 0.0 {
+            let result = services.speed_filter.filter(device_id, frame.speed_kph, frame.recorded_at).await;
+            if result.was_filtered {
+                frame.speed_kph = result.corrected_speed;
+            }
+        } else {
+            let _ = services.speed_filter.filter(device_id, 0.0, frame.recorded_at).await;
+        }
+    }
+
+    if frame.is_valid {
+        frame.address = services.geocoding.reverse_geocode(frame.latitude, frame.longitude).await;
+    }
+
+    let event_key = format!(
+        "{}:{}:{:.6}:{:.6}:{:.1}:{}",
+        device_uid, frame.recorded_at, frame.latitude, frame.longitude, frame.speed_kph, frame.send_flag
+    );
+
+    let (vehicle_id, company_id, _firmware_version) = if let Some(device_id) = device_id_opt {
+        database.get_device_vehicle_info(device_id).await?
+    } else {
+        (None, 1, None)
+    };
+
+    let db_future = database.ingest_hh_frame(device_uid, protocol, frame, &event_key);
+    let redis_future = async {
+        if let Some(ref redis) = redis_cache {
+            if let Err(err) = redis.cache_position(device_uid, vehicle_id, company_id, frame).await {
+                warn!(?err, protocol, "Failed to cache position in Redis");
+            }
+        }
+    };
+    let rabbitmq_future = async {
+        if let Some(ref pub_ref) = publisher {
+            if let Err(err) = pub_ref.publish_hh_frame(device_uid, protocol, frame).await {
+                warn!(?err, protocol, "Failed to publish telemetry event");
+            }
+        }
+    };
+    let (db_result, _, _) = tokio::join!(db_future, redis_future, rabbitmq_future);
+    db_result?;
+
+    info!(
+        device_uid,
+        protocol,
+        speed_kph = frame.speed_kph,
+        lat = frame.latitude,
+        lon = frame.longitude,
+        ignition = frame.ignition_on,
+        is_valid = frame.is_valid,
+        "position ingested"
+    );
+
+    if let Some(device_id) = device_id_opt {
+        if let Some(completed_stop) = services.stop_detector.process_frame(device_id, frame).await {
+            if let Err(err) = database.insert_vehicle_stop(&completed_stop, vehicle_id, company_id).await {
+                warn!(?err, device_id, protocol, "Failed to insert vehicle stop");
+            }
+        }
+
+        if let Some(completed_trip) = services.trip_detector.process_frame(
+            device_id, vehicle_id, company_id, frame,
+        ).await {
+            if let Err(err) = database.insert_trip(&completed_trip).await {
+                warn!(?err, device_id, protocol, "Failed to insert trip");
+            }
+        }
+
+        let driving_events = services.driving_events_detector.process_frame(
+            device_id, vehicle_id, company_id, frame,
+        ).await;
+        for event in driving_events {
+            if let Err(err) = database.insert_driving_event(&event).await {
+                warn!(?err, device_id, protocol, "Failed to insert driving event");
+            }
+        }
+
+        if frame.is_valid {
+            if services.geofence_detector.needs_refresh().await {
+                if let Ok(geofences) = database.load_geofences().await {
+                    services.geofence_detector.load_geofences(geofences).await;
+                }
+            }
+            if let Some(vid) = vehicle_id {
+                let timestamp = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                    frame.recorded_at, chrono::Utc,
+                );
+                let geofence_events = services.geofence_detector.process_frame(
+                    device_id, vid, company_id, frame.latitude, frame.longitude,
+                    Some(frame.speed_kph), timestamp,
+                ).await;
+                for gf_event in geofence_events {
+                    let duration = if gf_event.event_type == crate::services::geofence_detector::GeofenceEventType::Exit {
+                        services.geofence_detector.get_duration_inside(device_id, gf_event.geofence_id).await
+                            .map(|d| d as i32)
+                    } else {
+                        None
+                    };
+                    if let Err(err) = database.insert_geofence_event(&gf_event, duration).await {
+                        warn!(?err, device_id, protocol, "Failed to insert geofence event");
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Identical purpose to `route_noron_frame`, but tagged with `protocol = "teltonika"`
