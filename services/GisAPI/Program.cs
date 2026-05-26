@@ -36,6 +36,11 @@ builder.Services.AddSingleton<ILlmService, GisAPI.Services.GroqLlmService>();
 // the real telemetry frames; falls back silently to the deterministic
 // narrative when Groq is unavailable. Singleton (depends only on ILlmService).
 builder.Services.AddSingleton<GisAPI.Services.IAccidentNarrativeService, GisAPI.Services.AccidentNarrativeService>();
+// Post-creation enricher for manually declared accidents. The controller
+// fires this fire-and-forget after CreateManualAccidentCommand returns so
+// the user gets an immediate redirect and the report is rebuilt from real
+// frames (deterministic + optional LLM polish) in the background.
+builder.Services.AddSingleton<GisAPI.Services.IManualAccidentEnricher, GisAPI.Services.ManualAccidentEnrichmentService>();
 builder.Services.AddSingleton<GisAPI.Services.IVehicleHealthScoreService, GisAPI.Services.VehicleHealthScoreService>();
 
 // GPS Telemetry Consumer (RabbitMQ -> SignalR)

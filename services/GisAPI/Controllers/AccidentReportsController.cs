@@ -5,6 +5,7 @@ using GisAPI.Domain.Entities;
 using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using GisAPI.Infrastructure.Persistence;
+using GisAPI.Services;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -48,6 +49,7 @@ public class AccidentReportsController : ControllerBase
     private readonly INotificationService _notifService;
     private readonly ICurrentTenantService _tenantService;
     private readonly IWebHostEnvironment _env;
+    private readonly IManualAccidentEnricher _manualEnricher;
     private readonly ILogger<AccidentReportsController> _logger;
 
     public AccidentReportsController(
@@ -56,6 +58,7 @@ public class AccidentReportsController : ControllerBase
         INotificationService notifService,
         ICurrentTenantService tenantService,
         IWebHostEnvironment env,
+        IManualAccidentEnricher manualEnricher,
         ILogger<AccidentReportsController> logger)
     {
         _mediator = mediator;
@@ -63,6 +66,7 @@ public class AccidentReportsController : ControllerBase
         _notifService = notifService;
         _tenantService = tenantService;
         _env = env;
+        _manualEnricher = manualEnricher;
         _logger = logger;
     }
 
@@ -126,6 +130,14 @@ public class AccidentReportsController : ControllerBase
                 ClaimNumber: request.ClaimNumber,
                 InternalNotes: request.InternalNotes
             ), ct);
+
+            // Fire-and-forget background enrichment: rebuilds story /
+            // indicators / reasons / synthesis from the real GPS+MEMS frames
+            // around the user-entered IncidentAt, then optionally upgrades
+            // the prose via the LLM. The user gets an immediate redirect to
+            // /rapport-accident/:id while this runs in the background.
+            _ = _manualEnricher.EnrichInBackgroundAsync(id);
+
             return Ok(new { accidentEventId = id });
         }
         catch (NotFoundException) { return NotFound(); }
