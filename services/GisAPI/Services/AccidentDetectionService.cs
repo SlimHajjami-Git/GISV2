@@ -754,4 +754,27 @@ public class AccidentCandidate
     public int NMovBef { get; set; }
     public double KphAft { get; set; }
     public int NAft { get; set; }
+
+    // ── Extras consumed by AccidentNarrativeBuilder to diversify the
+    //    output per accident profile. Populated by the manual enrichment
+    //    pipeline (frames in-memory); left at default for the V7 SQL
+    //    detection path until the SQL is extended to compute them.
+
+    /// <summary>
+    /// Minutes of sustained abnormal tilt (|Z| ≥ 90) observed after the
+    /// vehicle stopped. ≥ 2 min is a strong rollover indicator.
+    /// </summary>
+    public int TiltDurationMin { get; set; }
+
+    /// <summary>
+    /// Peak magnitude of a second shock distinct from the primary impact
+    /// (≥ 5 s separation, within ±90 s). 0 if no second shock detected.
+    /// </summary>
+    public double SecondShockMag { get; set; }
+
+    /// <summary>
+    /// True when a <c>TowEvent</c> has already been recorded after this
+    /// accident — used by the narrative to mention the tow-truck pickup.
+    /// </summary>
+    public bool HasTow { get; set; }
 }

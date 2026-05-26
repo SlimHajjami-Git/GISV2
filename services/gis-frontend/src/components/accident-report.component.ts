@@ -62,6 +62,25 @@ interface MemsStats {
 }
 
 /**
+ * Profile of a detected impact in client-facing vocabulary. Internal axis
+ * triplets and magnitude indices NEVER leak through this type — by the
+ * time the narrative builder consumes the profile, everything is already
+ * translated into "frontal / latéral / violent / retournement".
+ */
+interface ImpactProfile {
+  direction: 'unknown' | 'frontal' | 'lateral' | 'frontalLateral' | 'vertical' | 'multiDirection';
+  intensity: 'negligible' | 'faible' | 'modere' | 'violent' | 'tresViolent';
+  /** Short tag for the indicators table; null when no direction can be inferred. */
+  directionLabel: string | null;
+  /** Sub-line below the direction value (e.g. "Choc subi à l'avant du véhicule"). */
+  directionHint: string;
+  /** Short tag for the indicators table (e.g. "Très violent"). */
+  intensityLabel: string;
+  /** Sub-line below the intensity value. */
+  intensityHint: string;
+}
+
+/**
  * Formal accident report page — written as a corporate document for a
  * non-technical fleet owner. No jargon, no dramatic UI. Think: an
  * insurance adjuster's written report, a medical summary, a notary's
@@ -2266,32 +2285,46 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     const stopTSafe = stopIdx > impactIdx ? new Date(sorted[stopIdx].recordedAt).getTime() : undefined;
     const memsStats = this.computeMemsStats(sorted, impactT, stopTSafe);
 
-    // Indicators — fully data-driven, including MEMS so the report exposes
-    // the magnitudes / axes the operator can hand to an insurance expert.
+    // Indicators — fully data-driven, expressed in client vocabulary
+    // (intensité / direction) rather than internal accelerometer indices.
+    // The qualitative labels are derived from a profile detector that
+    // mirrors AccidentNarrativeBuilder on the backend.
     if (!this.narrativeFromBackend) {
+      const profile = this.detectImpactProfile(memsStats);
       this.indicators = [
         { label: 'Heure de l\'impact', value: this.formatHourMinuteSeconds(new Date(impactT)), hint: 'Heure locale du navigateur' },
+      ];
+      if (memsStats.peakMag >= 1) {
+        this.indicators.push({
+          label: 'Intensité du choc',
+          value: profile.intensityLabel,
+          hint: profile.intensityHint,
+        });
+      }
+      if (profile.directionLabel) {
+        this.indicators.push({
+          label: 'Direction du choc',
+          value: profile.directionLabel,
+          hint: profile.directionHint,
+        });
+      }
+      this.indicators.push(
         { label: 'Vitesse avant l\'impact', value: `${speedBeforeImpact} km/h`, hint: 'Maximum mesuré 5 min avant' },
         { label: 'Vitesse au moment de l\'impact', value: `${speedAtImpact} km/h`, hint: 'Chute brutale et non-maîtrisée' },
         { label: 'Temps jusqu\'à l\'arrêt complet', value: timeToStopStr, hint: 'Après le choc' },
-      ];
-      if (memsStats.peakMag > 0) {
-        this.indicators.push({
-          label: 'Magnitude du choc',
-          value: Math.round(memsStats.peakMag).toString(),
-          hint: 'Somme vectorielle MEMS (saturation théorique ≈ 222)',
-        });
-        this.indicators.push({
-          label: 'Axes saturés',
-          value: `X=${memsStats.peakAx} · Y=${memsStats.peakAy} · Z=${memsStats.peakAz}`,
-          hint: '|X|/|Y| ≥ 100 = impact horizontal marqué',
-        });
-      }
+      );
       if (memsStats.tiltDurationMin >= 2) {
         this.indicators.push({
-          label: "Durée d'inclinaison anormale",
+          label: 'Position anormale maintenue',
           value: `${memsStats.tiltDurationMin} min`,
-          hint: 'Forte suspicion de retournement',
+          hint: 'Le véhicule est resté fortement incliné après l\'arrêt — retournement probable',
+        });
+      }
+      if (memsStats.secondShockMag >= 100) {
+        this.indicators.push({
+          label: 'Second choc',
+          value: 'Détecté',
+          hint: 'Un second impact distinct dans les secondes suivant le choc principal',
         });
       }
       this.indicators.push({
@@ -2354,14 +2387,26 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
         memsStats,
       );
 
-      // Synthesis verdict — derived from the MEMS pattern when available.
-      // Falls back to a sober, factual statement when MEMS is silent.
-      if (memsStats.peakMag >= 180 && memsStats.tiltDurationMin >= 2) {
-        this.synthesisText = 'choc violent ayant vraisemblablement entraîné un retournement du véhicule';
-      } else if (memsStats.peakMag >= 150) {
-        this.synthesisText = 'choc violent multi-axes — impact transversal marqué';
-      } else if (memsStats.peakMag >= 100) {
-        this.synthesisText = 'impact violent détecté sur les axes longitudinal et latéral';
+      // Synthesis verdict — written in client vocabulary, varies with the
+      // detected profile (rollover / frontal / lateral / frontal+lateral
+      // / multi-direction / unknown) and intensity tier.
+      const verdictProfile = this.detectImpactProfile(memsStats);
+      if (memsStats.tiltDurationMin >= 2) {
+        this.synthesisText = 'choc violent ayant entraîné un retournement probable du véhicule';
+      } else if (verdictProfile.direction === 'frontalLateral' && verdictProfile.intensity === 'tresViolent') {
+        this.synthesisText = 'choc frontal et latéral d\'une intensité exceptionnelle — collision en angle';
+      } else if (verdictProfile.direction === 'frontalLateral') {
+        this.synthesisText = 'choc frontal et latéral simultané';
+      } else if (verdictProfile.direction === 'frontal' && verdictProfile.intensity === 'tresViolent') {
+        this.synthesisText = 'collision frontale d\'une intensité exceptionnelle';
+      } else if (verdictProfile.direction === 'frontal') {
+        this.synthesisText = 'collision frontale violente';
+      } else if (verdictProfile.direction === 'lateral') {
+        this.synthesisText = 'impact latéral violent reçu sur le flanc du véhicule';
+      } else if (verdictProfile.direction === 'vertical') {
+        this.synthesisText = 'choc à composante verticale dominante — chute ou début de retournement';
+      } else if (verdictProfile.direction === 'multiDirection') {
+        this.synthesisText = 'choc mesuré dans plusieurs directions simultanément';
       } else {
         this.synthesisText = 'impact significatif détecté avec immobilisation immédiate du véhicule';
       }
@@ -2883,31 +2928,32 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       });
     }
 
-    // 3. The impact itself — enriched with the actual MEMS magnitude / axes.
-    const memsImpactPart = memsStats.peakMag > 0
-      ? ` Les capteurs de mouvement enregistrent simultanément un choc d'intensité ` +
-        `exceptionnelle (magnitude ${Math.round(memsStats.peakMag)}/222 ; axes |X|=${memsStats.peakAx}, ` +
-        `|Y|=${memsStats.peakAy}, |Z|=${memsStats.peakAz}).`
-      : '';
+    // 3. The impact itself — title and body adapt to the detected profile
+    //    (direction + intensity) so the narrative actually describes WHAT
+    //    happened, not just "un choc". No accelerometer indices reach the
+    //    client text.
+    const impactProfile = this.detectImpactProfile(memsStats);
+    const impactTitle = this.impactPhaseTitle(impactProfile);
+    const impactDescription = this.impactPhaseDescription(impactProfile, memsStats);
     story.push({
       time: this.formatHourMinute(new Date(impactT)),
-      title: 'Chute brutale de la vitesse et choc',
+      title: impactTitle,
       body:
         `La vitesse passe brutalement de ${speedBeforeImpact} à ${speedAtImpact} km/h en ` +
         `quelques secondes. Ce profil de ralentissement ne correspond pas à un freinage ` +
-        `normal et constitue la signature caractéristique d'un choc violent.${memsImpactPart}`,
+        `normal.${impactDescription}`,
       severity: 'critical',
     });
 
     // 3b. Second shock — detected via a second MEMS peak within ~60 s.
-    if (memsStats.secondShockT !== undefined && memsStats.secondShockMag > 0) {
+    if (memsStats.secondShockT !== undefined && memsStats.secondShockMag >= 100) {
       story.push({
         time: this.formatHourMinute(new Date(memsStats.secondShockT)),
-        title: "Second choc d'intensité équivalente",
+        title: 'Second choc',
         body:
-          `Un second impact est enregistré (magnitude ${Math.round(memsStats.secondShockMag)}/222), ` +
-          `de même ordre de grandeur que le premier. Ce double signal est caractéristique ` +
-          `d'une collision avec rebond ou tonneau.`,
+          `Un second impact distinct est enregistré dans les secondes qui suivent ` +
+          `le choc principal. Ce double signal est caractéristique d'un rebond ` +
+          `contre un obstacle ou d'un mouvement de tonneau.`,
         severity: 'critical',
       });
     }
@@ -2931,10 +2977,10 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
         title: 'Position anormalement inclinée',
         body:
           `Pendant ${memsStats.tiltDurationMin} minute${memsStats.tiltDurationMin > 1 ? 's' : ''} ` +
-          `consécutive${memsStats.tiltDurationMin > 1 ? 's' : ''}, les capteurs indiquent que ` +
-          `le véhicule se trouve dans une position fortement inclinée (|Z|≈${memsStats.peakAz}). ` +
-          `Une inclinaison de cette ampleur, maintenue à l'arrêt, est caractéristique d'un ` +
-          `véhicule qui s'est retrouvé sur le flanc ou retourné.`,
+          `consécutive${memsStats.tiltDurationMin > 1 ? 's' : ''}, le véhicule est resté ` +
+          `fortement incliné sans bouger. Une inclinaison de cette ampleur, maintenue à ` +
+          `l'arrêt, est caractéristique d'un véhicule qui s'est retrouvé sur le flanc ou ` +
+          `complètement retourné.`,
         severity: 'warning',
       });
     }
@@ -3002,18 +3048,44 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
         `mais à un arrêt subi.`,
     });
 
-    // Reason 2: MEMS-based "exceptional violence" observation (when peakMag
-    // is high). This is the analogue of the old hardcoded "choc d'une
-    // violence exceptionnelle" — but driven by REAL accelerometer data.
+    // Reason 2: violence observation — phrased in client vocabulary using
+    // the detected profile (frontal / latéral / frontal+latéral / multi-
+    // direction). No accelerometer indices in the text.
+    const reasonProfile = this.detectImpactProfile(memsStats);
     if (memsStats.peakMag >= 120) {
-      reasons.push({
-        title: "Un choc d'une violence exceptionnelle",
-        text:
-          `Les capteurs de mouvement ont enregistré une intensité ` +
-          `(magnitude ${Math.round(memsStats.peakMag)}/222, axes |X|=${memsStats.peakAx}, ` +
-          `|Y|=${memsStats.peakAy}, |Z|=${memsStats.peakAz}) qui n'est atteignable qu'en cas ` +
-          `d'impact violent multi-axes. Cette signature exclut un freinage d'urgence ordinaire.`,
-      });
+      if (reasonProfile.direction === 'frontalLateral' || reasonProfile.direction === 'multiDirection') {
+        reasons.push({
+          title: 'Un choc violent dans plusieurs directions',
+          text:
+            `Les capteurs embarqués ont enregistré un impact d'intensité exceptionnelle ` +
+            `subi simultanément à l'avant et sur le côté du véhicule. Cette signature n'est ` +
+            `atteignable qu'en cas de collision violente — un freinage d'urgence ne la ` +
+            `produit jamais.`,
+        });
+      } else if (reasonProfile.direction === 'frontal') {
+        reasons.push({
+          title: 'Un choc frontal violent',
+          text:
+            `Les capteurs embarqués ont enregistré un impact d'intensité exceptionnelle reçu ` +
+            `à l'avant du véhicule. Cette signature est caractéristique d'une collision ` +
+            `frontale ou d'un heurt contre un obstacle fixe.`,
+        });
+      } else if (reasonProfile.direction === 'lateral') {
+        reasons.push({
+          title: 'Un choc latéral violent',
+          text:
+            `Les capteurs embarqués ont enregistré un impact d'intensité exceptionnelle reçu ` +
+            `sur le flanc du véhicule. Cette signature est caractéristique d'une collision ` +
+            `en angle ou d'un véhicule percuté par le côté.`,
+        });
+      } else {
+        reasons.push({
+          title: "Un choc d'une violence exceptionnelle",
+          text:
+            `Les capteurs embarqués ont enregistré un impact d'intensité exceptionnelle. ` +
+            `Cette signature exclut un freinage d'urgence ordinaire.`,
+        });
+      }
     }
 
     // Reason 3: stop + time-to-stop.
@@ -3033,9 +3105,10 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
         title: 'Une position fortement inclinée maintenue à l\'arrêt',
         text:
           `Un véhicule reposant normalement sur ses roues ne présente pas d'inclinaison ` +
-          `soutenue. La valeur |Z|≈${memsStats.peakAz} maintenue pendant ` +
+          `soutenue. Le véhicule est ici resté fortement incliné pendant ` +
           `${memsStats.tiltDurationMin} minute${memsStats.tiltDurationMin > 1 ? 's' : ''} ` +
-          `ne peut s'expliquer que par un véhicule qui s'est retrouvé couché sur le flanc ou retourné.`,
+          `consécutive${memsStats.tiltDurationMin > 1 ? 's' : ''}, posture qui ne peut ` +
+          `s'expliquer que par un véhicule couché sur le flanc ou complètement retourné.`,
       });
     }
 
@@ -3118,6 +3191,121 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     if (hasIgnitionOff) score += 3;
 
     return Math.min(97, Math.max(0, score));
+  }
+
+  /**
+   * Translates the raw accelerometer signal into the client-facing profile
+   * (direction + intensity) used everywhere on the report. Mirrors the
+   * server-side AccidentNarrativeBuilder so the manual and auto-detect
+   * pipelines produce consistent vocabulary. NO MEMS / axis / magnitude
+   * jargon ever escapes this layer.
+   */
+  private detectImpactProfile(memsStats: MemsStats): ImpactProfile {
+    // Intensity tier.
+    let intensity: ImpactProfile['intensity'];
+    if (memsStats.peakMag >= 180) intensity = 'tresViolent';
+    else if (memsStats.peakMag >= 130) intensity = 'violent';
+    else if (memsStats.peakMag >= 80) intensity = 'modere';
+    else if (memsStats.peakMag >= 40) intensity = 'faible';
+    else intensity = 'negligible';
+
+    // Direction profile.
+    let direction: ImpactProfile['direction'] = 'unknown';
+    const noSignal = memsStats.peakAx === 0 && memsStats.peakAy === 0 && memsStats.peakAz === 0 && memsStats.peakMag < 1;
+    if (!noSignal) {
+      const xHigh = memsStats.peakAx >= 100;
+      const yHigh = memsStats.peakAy >= 100;
+      const zHigh = memsStats.peakAz >= 100;
+      if (memsStats.tiltDurationMin >= 2) direction = 'multiDirection';
+      else if (xHigh && yHigh) direction = 'frontalLateral';
+      else if (xHigh) direction = 'frontal';
+      else if (yHigh) direction = 'lateral';
+      else if (zHigh) direction = 'vertical';
+      else if (memsStats.peakMag >= 80) direction = 'multiDirection';
+    }
+
+    return {
+      direction,
+      intensity,
+      directionLabel: this.directionLabel(direction),
+      directionHint: this.directionHint(direction, memsStats.tiltDurationMin),
+      intensityLabel: this.intensityLabel(intensity),
+      intensityHint: this.intensityHint(intensity),
+    };
+  }
+
+  private directionLabel(d: ImpactProfile['direction']): string | null {
+    switch (d) {
+      case 'frontal': return 'Frontal';
+      case 'lateral': return 'Latéral';
+      case 'frontalLateral': return 'Frontal et latéral';
+      case 'vertical': return 'Vertical';
+      case 'multiDirection': return 'Multi-direction';
+      default: return null;
+    }
+  }
+
+  private directionHint(d: ImpactProfile['direction'], tiltMin: number): string {
+    switch (d) {
+      case 'frontal': return 'Choc subi à l\'avant du véhicule';
+      case 'lateral': return 'Choc subi sur le côté du véhicule';
+      case 'frontalLateral': return 'Choc subi simultanément à l\'avant et sur le côté';
+      case 'vertical': return 'Choc à composante verticale dominante';
+      case 'multiDirection':
+        return tiltMin >= 2
+          ? 'Choc dans plusieurs directions, retournement probable'
+          : 'Choc dans plusieurs directions simultanément';
+      default: return 'Direction du choc non déterminée';
+    }
+  }
+
+  private intensityLabel(i: ImpactProfile['intensity']): string {
+    switch (i) {
+      case 'tresViolent': return 'Très violent';
+      case 'violent': return 'Violent';
+      case 'modere': return 'Modéré';
+      case 'faible': return 'Faible';
+      default: return 'Négligeable';
+    }
+  }
+
+  private intensityHint(i: ImpactProfile['intensity']): string {
+    switch (i) {
+      case 'tresViolent': return 'Intensité exceptionnelle — au-delà de toute conduite normale';
+      case 'violent': return 'Intensité incompatible avec un freinage volontaire';
+      case 'modere': return 'Intensité supérieure à un nid-de-poule ou un dos d\'âne';
+      case 'faible': return 'Intensité faible mais détectable par les capteurs';
+      default: return 'Pas d\'intensité significative mesurée';
+    }
+  }
+
+  private impactPhaseTitle(p: ImpactProfile): string {
+    if (p.direction === 'multiDirection' && p.intensity === 'tresViolent') return 'Choc d\'une violence exceptionnelle';
+    if (p.direction === 'frontalLateral') return 'Choc frontal et latéral';
+    if (p.direction === 'frontal') return 'Collision frontale';
+    if (p.direction === 'lateral') return 'Impact latéral';
+    if (p.direction === 'vertical') return 'Impact vertical';
+    if (p.direction === 'multiDirection') return 'Choc dans plusieurs directions';
+    return 'Chute brutale de la vitesse et choc';
+  }
+
+  private impactPhaseDescription(p: ImpactProfile, memsStats: MemsStats): string {
+    switch (p.direction) {
+      case 'frontal':
+        return ' Le choc est dirigé vers l\'avant du véhicule, profil typique d\'une collision frontale ou d\'un heurt contre un obstacle fixe.';
+      case 'lateral':
+        return ' Le choc est dirigé sur le côté du véhicule, profil typique d\'une collision en angle ou d\'un impact reçu par le flanc.';
+      case 'frontalLateral':
+        return ' Le choc est subi simultanément à l\'avant et sur le côté du véhicule, profil compatible avec une collision en angle violente.';
+      case 'vertical':
+        return ' Le choc présente une forte composante verticale, profil compatible avec une chute, un saut prononcé ou le début d\'un retournement.';
+      case 'multiDirection':
+        return memsStats.tiltDurationMin >= 2
+          ? ' Le choc est suivi d\'une position fortement inclinée maintenue — profil compatible avec un retournement du véhicule.'
+          : ' Le choc est mesuré dans plusieurs directions simultanément, profil incompatible avec un freinage ou une manœuvre ordinaire.';
+      default:
+        return ' Cette signature est caractéristique d\'un choc violent.';
+    }
   }
 
   /**

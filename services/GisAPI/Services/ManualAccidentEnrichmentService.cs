@@ -151,24 +151,13 @@ public class ManualAccidentEnrichmentService : IManualAccidentEnricher
             return;
         }
 
-        var candidate = BuildCandidate(frames, deviceId, incidentAt);
+        var candidate = await BuildCandidateAsync(context, frames, deviceId, incidentAt, ev.Id, ct);
 
-        // Honesty guard: AccidentNarrativeBuilder.BuildStory / BuildReasons
-        // assert a multi-axis MEMS impact ("réparti sur les axes X et Y
-        // simultanément") — claims that only hold up when MEMS evidence is
-        // actually present. If the user filed an accident for a device that
-        // was offline at impact (peakMag = 0) we MUST NOT fabricate that
-        // narrative. We leave story/reasons null in that case so the
-        // frontend's A-enrichment path rebuilds an honest frames-only
-        // report (including the explicit "Coupure du contact: Non détectée"
-        // line).
-        if (candidate.Mag < 80)
-        {
-            _logger.LogInformation(
-                "ManualAccidentEnrichmentService: weak MEMS evidence (mag {Mag:F0}) for accident {Id} — leaving narrative null, frontend will rebuild from frames",
-                candidate.Mag, accidentEventId);
-            return;
-        }
+        // No honesty guard needed: AccidentNarrativeBuilder now adapts to
+        // a "no MEMS evidence" candidate (returns Direction.Unknown +
+        // Intensity.Negligible) and emits an honest "Événement déclaré,
+        // pas de signal de choc exploitable" narrative instead of
+        // fabricating a multi-direction impact.
 
         // Persist the deterministic narrative first so the report has
         // structured story / indicators / reasons even if the LLM call
@@ -237,9 +226,19 @@ public class ManualAccidentEnrichmentService : IManualAccidentEnricher
     /// promoted to <c>RecordedAt</c> — matches the frontend A enrichment
     /// behaviour so the report on screen and the persisted narrative agree
     /// on the impact frame even when the user typed an approximate time.</para>
+    ///
+    /// <para>Also computes the diversifying signals the narrative builder
+    /// consumes: sustained abnormal tilt after stop (rollover indicator),
+    /// second-shock magnitude (rebound / tonneau indicator), and tow-event
+    /// presence (vehicle picked up by a flatbed afterwards).</para>
     /// </summary>
-    private static AccidentCandidate BuildCandidate(
-        List<RawFrame> frames, int deviceId, DateTime userAnchor)
+    private static async Task<AccidentCandidate> BuildCandidateAsync(
+        GisDbContext context,
+        List<RawFrame> frames,
+        int deviceId,
+        DateTime userAnchor,
+        int accidentEventId,
+        CancellationToken ct)
     {
         // 1. MEMS peak within ±2 min of the user-entered time. We fall back
         //    to the closest-in-time frame if no MEMS data is present.
@@ -296,6 +295,79 @@ public class ManualAccidentEnrichmentService : IManualAccidentEnricher
         var kphAft = aftFrames.Count > 0 ? aftFrames.Max(f => f.SpeedKph) : 0;
         var nAft = aftFrames.Count;
 
+        // 5. Second shock: any other peak ≥ 100 magnitude separated by ≥ 5 s
+        //    from the primary peak, within ±90 s.
+        double secondShockMag = 0;
+        if (peak != null)
+        {
+            var secondStart = anchor.AddSeconds(-90);
+            var secondEnd = anchor.AddSeconds(+90);
+            foreach (var f in frames)
+            {
+                if (f.RecordedAt < secondStart || f.RecordedAt > secondEnd) continue;
+                if (Math.Abs((f.RecordedAt - anchor).TotalSeconds) < 5) continue;
+                if (f.MemsX == null || f.MemsY == null || f.MemsZ == null) continue;
+                var x = Clamp(f.MemsX.Value);
+                var y = Clamp(f.MemsY.Value);
+                var z = Clamp(f.MemsZ.Value);
+                var m = Math.Sqrt((double)x * x + (double)y * y + (double)z * z);
+                if (m >= 100 && m > secondShockMag) secondShockMag = m;
+            }
+        }
+
+        // 6. Sustained abnormal tilt after stop: longest contiguous run of
+        //    frames where |Z| ≥ 90, starting AFTER the vehicle reached ≤ 5
+        //    km/h. Returned in MINUTES (1 = one frame, since frames are
+        //    typically 30-60 s apart on a parked vehicle).
+        int tiltDurationMin = 0;
+        if (peak != null)
+        {
+            DateTime? stopT = null;
+            foreach (var f in frames.Where(f => f.RecordedAt >= anchor).OrderBy(f => f.RecordedAt))
+            {
+                if (f.SpeedKph <= 5) { stopT = f.RecordedAt; break; }
+            }
+            if (stopT != null)
+            {
+                DateTime? runStart = null;
+                DateTime? runEnd = null;
+                int bestMin = 0;
+                foreach (var f in frames.Where(f => f.RecordedAt >= stopT).OrderBy(f => f.RecordedAt))
+                {
+                    if (f.MemsZ == null) continue;
+                    var zAbs = Math.Abs(Clamp(f.MemsZ.Value));
+                    if (zAbs >= 90)
+                    {
+                        runStart ??= f.RecordedAt;
+                        runEnd = f.RecordedAt;
+                    }
+                    else if (runStart != null && runEnd != null)
+                    {
+                        var mins = (int)Math.Round((runEnd.Value - runStart.Value).TotalMinutes);
+                        if (mins > bestMin) bestMin = mins;
+                        runStart = null;
+                        runEnd = null;
+                    }
+                }
+                if (runStart != null && runEnd != null)
+                {
+                    var mins = (int)Math.Round((runEnd.Value - runStart.Value).TotalMinutes);
+                    if (mins > bestMin) bestMin = mins;
+                }
+                tiltDurationMin = bestMin;
+            }
+        }
+
+        // 7. Tow event linked to this accident — AccidentTowMonitoringService
+        //    stamps TowDetectedAt on the accident itself once a flatbed
+        //    pickup is detected (may still be null on freshly created
+        //    manual accidents; will be true when the user re-opens an old
+        //    accident or when the row is re-enriched later).
+        var hasTow = await context.AccidentEvents
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .AnyAsync(e => e.Id == accidentEventId && e.TowDetectedAt != null, ct);
+
         return new AccidentCandidate
         {
             DeviceId = deviceId,
@@ -312,6 +384,9 @@ public class ManualAccidentEnrichmentService : IManualAccidentEnricher
             NMovBef = nMovBef,
             KphAft = kphAft,
             NAft = nAft,
+            TiltDurationMin = tiltDurationMin,
+            SecondShockMag = secondShockMag,
+            HasTow = hasTow,
         };
     }
 

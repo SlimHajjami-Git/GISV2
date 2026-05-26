@@ -58,23 +58,32 @@ public class AccidentNarrativeService : IAccidentNarrativeService
     private static readonly TimeSpan LlmTimeout = TimeSpan.FromSeconds(25);
 
     private const string SystemPrompt =
-        "Tu es un expert en analyse d'accidents de véhicules à partir de données télématiques " +
-        "(GPS + accéléromètre MEMS). On te fournit les trames brutes enregistrées par le boîtier " +
-        "AVANT, PENDANT et APRÈS un choc détecté, plus des chiffres de référence déjà calculés.\n\n" +
+        "Tu es un expert d'assurance qui rédige le rapport d'un accident de véhicule à partir des données du boîtier embarqué. " +
+        "On te fournit des éléments déjà analysés (intensité, direction du choc, vitesses, durées) plus la liste des relevés " +
+        "enregistrés avant, pendant et après l'événement.\n\n" +
         "Ta mission : rédiger une SYNTHÈSE factuelle et des MOTIFS qui justifient le diagnostic, " +
         "en t'appuyant UNIQUEMENT sur les données fournies.\n\n" +
+        "VOCABULAIRE OBLIGATOIRE — Le rapport est destiné à un client (gestionnaire de flotte ou expert d'assurance), " +
+        "PAS à un ingénieur. Tu DOIS utiliser exclusivement le vocabulaire métier suivant :\n" +
+        "- Direction du choc : « frontal », « latéral », « frontal et latéral », « vertical », « multi-direction », « retournement ».\n" +
+        "- Intensité du choc : « très violent », « violent », « modéré », « faible ».\n" +
+        "- Position : « inclinée », « retournée », « basculée sur le flanc ».\n" +
+        "- Mouvement : « immobilisé », « chute brutale de la vitesse », « dépanneuse ».\n\n" +
+        "VOCABULAIRE INTERDIT — Tu ne dois JAMAIS écrire :\n" +
+        "- « MEMS », « accéléromètre », « capteur d'accélération » → remplacer par « capteurs embarqués » ou ne pas mentionner du tout.\n" +
+        "- « axe X », « axe Y », « axe Z », « |X|=... », « |Y|=... », « |Z|=... » → traduire en direction métier (frontal / latéral / vertical).\n" +
+        "- « magnitude N », « somme vectorielle », « /222 », « saturé à 127 », « ±127 » → traduire en intensité qualitative.\n" +
+        "- Toute référence à des unités, échelles ou index techniques internes.\n\n" +
         "RÈGLES ABSOLUES :\n" +
         "- N'invente JAMAIS un fait absent des données : aucune cause non démontrée " +
         "(ex. « le conducteur s'est endormi »), aucune météo, aucun tiers, aucun lieu autre que celui fourni.\n" +
-        "- Utilise uniquement les vitesses, heures et magnitudes fournies. Ne fabrique AUCUN chiffre.\n" +
+        "- Utilise uniquement les vitesses, heures et durées fournies. Ne fabrique AUCUN chiffre.\n" +
         "- Si une information n'est pas dans les données, ne la mentionne pas.\n" +
-        "- Reste sobre, professionnel et factuel : ce document peut être lu par un expert d'assurance.\n" +
-        "- Repères MEMS : valeurs bornées à ±127 (saturation d'un axe). |X| et |Y| élevés simultanément = " +
-        "choc horizontal violent ; |Z| élevé et soutenu après l'arrêt = possible retournement.\n" +
+        "- Reste sobre, professionnel et factuel.\n" +
         "- Réponds STRICTEMENT en JSON valide, sans aucun texte hors du JSON, au format exact :\n" +
         "{\"synthesisText\": \"...\", \"reasons\": [{\"title\": \"...\", \"text\": \"...\"}]}\n" +
-        "- synthesisText : 1 à 3 phrases décrivant ce qui s'est passé. " +
-        "reasons : 3 à 4 observations concordantes, chacune avec un titre court et une explication chiffrée.";
+        "- synthesisText : 1 à 3 phrases décrivant ce qui s'est passé en langage client. " +
+        "reasons : 3 à 4 observations concordantes, chacune avec un titre court et une explication chiffrée en km/h ou minutes.";
 
     public AccidentNarrativeService(ILlmService llm, ILogger<AccidentNarrativeService> logger)
     {
@@ -201,21 +210,28 @@ ORDER BY recorded_at;
     private static string BuildUserPrompt(
         AccidentCandidate c, string vehicleLabel, GeocodedLocation? loc, List<AccidentFrame> frames)
     {
+        // Pre-translate the raw signal into the client vocabulary so the
+        // LLM never sees axis triplets or magnitude indices in its input,
+        // only the qualitative labels it is required to reuse in output.
+        var direction = AccidentNarrativeBuilder.DetectDirection(c);
+        var intensity = AccidentNarrativeBuilder.DetectIntensity(c);
+        var directionLabel = AccidentNarrativeBuilder.DirectionLabel(direction) ?? "non déterminée";
+        var intensityLabel = AccidentNarrativeBuilder.IntensityLabel(intensity);
+
+        // Frames are reduced to the things the client cares about: time
+        // relative to impact, speed, ignition. No axis triplets — the
+        // direction is already decided above and the LLM should not be
+        // tempted to mention raw axes.
         var sb = new StringBuilder();
         foreach (var f in frames)
         {
             var rel = (int)Math.Round((f.RecordedAt - c.RecordedAt).TotalSeconds);
-            sb.Append('t').Append(rel >= 0 ? "+" : "").Append(rel).Append("s ");
-            sb.Append("v=").Append(Math.Round(f.SpeedKph)).Append("kph ");
-            if (f.MemsX.HasValue || f.MemsY.HasValue || f.MemsZ.HasValue)
+            sb.Append('t').Append(rel >= 0 ? "+" : "").Append(rel).Append("s : ");
+            sb.Append("vitesse = ").Append(Math.Round(f.SpeedKph)).Append(" km/h");
+            if (f.IgnitionOn.HasValue)
             {
-                sb.Append("mems=")
-                  .Append(Clamp(f.MemsX)).Append('/')
-                  .Append(Clamp(f.MemsY)).Append('/')
-                  .Append(Clamp(f.MemsZ)).Append(' ');
+                sb.Append(", contact ").Append(f.IgnitionOn.Value ? "allumé" : "coupé");
             }
-            if (f.CourseDeg.HasValue) sb.Append("cap=").Append(Math.Round(f.CourseDeg.Value)).Append("° ");
-            if (f.IgnitionOn.HasValue) sb.Append("ign=").Append(f.IgnitionOn.Value ? "on" : "off");
             sb.AppendLine();
         }
 
@@ -225,24 +241,39 @@ ORDER BY recorded_at;
                 .Where(x => !string.IsNullOrWhiteSpace(x)));
         if (string.IsNullOrWhiteSpace(locStr)) locStr = "inconnu";
 
+        var tiltLine = c.TiltDurationMin >= 2
+            ? $"- Position anormalement inclinée maintenue {c.TiltDurationMin} min après l'arrêt (retournement probable)\n"
+            : "";
+        var secondShockLine = c.SecondShockMag >= 100
+            ? "- Un second choc distinct a été enregistré dans les secondes suivant l'impact principal\n"
+            : "";
+        var towLine = c.HasTow
+            ? "- Le véhicule a ensuite été déplacé par un mouvement compatible avec une dépanneuse\n"
+            : "";
+        var priorLine = c.NPrior7d == 0
+            ? "- Aucun événement comparable n'a été enregistré sur ce véhicule au cours des 7 derniers jours\n"
+            : $"- {c.NPrior7d} événement(s) d'intensité comparable enregistré(s) au cours des 7 derniers jours\n";
+
         return
-            "Voici les données télématiques d'un choc détecté.\n\n" +
+            "Tu rédiges le rapport d'un accident de véhicule.\n\n" +
             $"Véhicule : {vehicleLabel}\n" +
             $"Heure de l'impact (UTC) : {c.RecordedAt:yyyy-MM-dd HH:mm:ss}\n" +
             $"Lieu : {locStr}\n\n" +
-            "Chiffres de référence (NE PAS modifier) :\n" +
-            $"- Vitesse de croisière avant impact : {Math.Round(c.KphBef)} km/h\n" +
-            $"- Vitesse maximale après impact : {Math.Round(c.KphAft)} km/h\n" +
-            $"- Magnitude du choc (somme vectorielle MEMS, saturation ~222) : {Math.Round(c.Mag)}\n" +
-            $"- Axes au pic : |X|={c.Ax} |Y|={c.Ay} |Z|={c.Az}\n" +
-            $"- Événements haute-G comparables sur 7 jours : {c.NPrior7d}\n\n" +
-            "Trames (t = secondes relatives à l'impact ; v = vitesse ; " +
-            "mems = X/Y/Z accéléromètre borné ±127 ; cap = cap/heading ; ign = contact) :\n" +
+            "Éléments d'analyse à reprendre tels quels (vocabulaire client obligatoire) :\n" +
+            $"- Direction du choc : {directionLabel}\n" +
+            $"- Intensité du choc : {intensityLabel}\n" +
+            $"- Vitesse de croisière avant l'impact : {Math.Round(c.KphBef)} km/h\n" +
+            $"- Vitesse maximale après l'impact : {Math.Round(c.KphAft)} km/h\n" +
+            tiltLine +
+            secondShockLine +
+            towLine +
+            priorLine +
+            "\nRelevés du véhicule autour de l'événement :\n" +
             sb +
-            "\nRédige la synthèse et les motifs en respectant strictement les règles et le format JSON.";
+            "\nRédige la synthèse et les motifs en respectant le vocabulaire client obligatoire (frontal / latéral / violent / retournement / etc.) " +
+            "et le format JSON. Tu DOIS reprendre la direction et l'intensité telles qu'elles te sont données — ne pas en inventer d'autres, " +
+            "ne JAMAIS citer d'axe X/Y/Z, de magnitude numérique, de capteur MEMS ou d'index technique.";
     }
-
-    private static int Clamp(int? v) => v is null ? 0 : Math.Max(-128, Math.Min(127, v.Value));
 
     // ── Parsing + guardrail ────────────────────────────────────────────────
 
