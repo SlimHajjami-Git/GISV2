@@ -732,9 +732,14 @@ export class ApiService {
   }
 
   getDeviceHistory(deviceUid: string, from?: Date, to?: Date, maxPoints = 3000): Observable<PositionDto[]> {
+    // BUGFIX: toLocalIso() emits the browser-local time WITHOUT a timezone
+    // marker. The backend parses that string as UTC, so for any user not on
+    // UTC the requested window was shifted by their TZ offset (e.g. Europe
+    // browsers in summer asked for [+02h] off the real interval, silently
+    // missing the data they wanted). Send ISO with explicit "Z" instead.
     let params = new HttpParams();
-    if (from) params = params.set('from', this.toLocalIso(from));
-    if (to) params = params.set('to', this.toLocalIso(to));
+    if (from) params = params.set('from', from.toISOString());
+    if (to) params = params.set('to', to.toISOString());
     params = params.set('maxPoints', maxPoints.toString());
     return this.http.get<any>(`${this.getMonitoringApiUrl()}/gps/devices/${deviceUid}/history`, { headers: this.getHeaders(), params }).pipe(
       map(resp => Array.isArray(resp) ? resp : resp?.positions ?? [])
