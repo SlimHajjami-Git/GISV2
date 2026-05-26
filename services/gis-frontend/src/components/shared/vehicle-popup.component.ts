@@ -299,6 +299,7 @@ export interface CompanyOption {
                   <option value="">Sélectionner</option>
                   <option value="NEMS">NEMS</option>
                   <option value="NORON">Noron</option>
+                  <option value="Teltonika">Teltonika</option>
                   <option value="Other">Autre</option>
                 </select>
               </div>
@@ -314,6 +315,10 @@ export interface CompanyOption {
                   <ng-container *ngIf="formData.gpsBrand === 'NORON'">
                     <option value="NR024">NR024</option>
                   </ng-container>
+                  <ng-container *ngIf="formData.gpsBrand === 'Teltonika'">
+                    <option value="FMB130">FMB130</option>
+                    <option value="FMB150">FMB150</option>
+                  </ng-container>
                 </select>
                 <input *ngIf="formData.gpsBrand === 'Other'" type="text" id="gpsModel" name="gpsModel" [(ngModel)]="formData.gpsModel" placeholder="Ex: GT06N" />
               </div>
@@ -322,6 +327,12 @@ export interface CompanyOption {
               <div class="gps-info-note" *ngIf="formData.gpsBrand === 'NORON'">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
                 <span>Ce tracker fournit uniquement la position GPS et la vitesse. Pas de données carburant, odomètre ou température.</span>
+              </div>
+
+              <!-- Teltonika info note -->
+              <div class="gps-info-note" *ngIf="formData.gpsBrand === 'Teltonika'">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                <span>Configurer le boîtier (Configurator ou SMS) vers le port TCP 6400, protocole Codec 8 ou 8 Extended. L'IMEI saisi ci-dessus doit correspondre à l'IMEI affiché sur l'étiquette du boîtier.</span>
               </div>
 
               <div class="form-group">
@@ -345,7 +356,7 @@ export interface CompanyOption {
                 />
               </div>
 
-              <div class="form-group" *ngIf="formData.gpsBrand !== 'NORON'">
+              <div class="form-group" *ngIf="formData.gpsBrand !== 'NORON' && formData.gpsBrand !== 'Teltonika'">
                 <label for="gpsFuelSensorMode">Mode capteur carburant</label>
                 <select id="gpsFuelSensorMode" name="gpsFuelSensorMode" [(ngModel)]="formData.gpsFuelSensorMode">
                   <option value="raw_255">Brut 0-255 (défaut)</option>
@@ -1214,6 +1225,13 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     this.formData.gpsModel = '';
     if (brand === 'NORON') {
       this.formData.gpsModel = 'NR024';
+      this.formData.gpsFuelSensorMode = 'raw_255';
+    } else if (brand === 'Teltonika') {
+      // Default to FMB130 — the most common Teltonika tracker in the fleet.
+      // Operators can switch to FMB150 (industrial variant) in the version
+      // dropdown below. Fuel sensor mode is irrelevant: FMB does not expose
+      // a canonical fuel-level IO, so we hide the field entirely.
+      this.formData.gpsModel = 'FMB130';
       this.formData.gpsFuelSensorMode = 'raw_255';
     }
   }
