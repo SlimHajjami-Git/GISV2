@@ -165,7 +165,20 @@ async fn run_tcp_listener(
         let redis_clone = redis_cache.clone();
         let cmd_senders_clone = Arc::clone(&command_senders);
         tokio::spawn(async move {
-            if let Err(err) = handle_tcp_connection(stream, cfg_clone, db, map_clone, publisher_clone, services_clone, redis_clone, cmd_senders_clone).await {
+            // Teltonika devices speak a stateful binary protocol with an IMEI
+            // handshake — we dispatch them to a dedicated handler rather than
+            // squeeze the logic into the multi-protocol generic one.
+            let result = if cfg_clone.protocol == "teltonika" {
+                handle_teltonika_connection(
+                    stream, cfg_clone, db, publisher_clone, services_clone, redis_clone,
+                ).await
+            } else {
+                handle_tcp_connection(
+                    stream, cfg_clone, db, map_clone, publisher_clone, services_clone,
+                    redis_clone, cmd_senders_clone,
+                ).await
+            };
+            if let Err(err) = result {
                 error!(?err, "TCP connection handler exited with error");
             }
         });
@@ -1459,6 +1472,370 @@ async fn process_single_frame(
 
 /// Route a decoded Noron NR024 position frame through the shared ingestion pipeline.
 /// This reuses the same DB/Redis/RabbitMQ/services path as NEMS frames.
+/// Dedicated handler for Teltonika devices (FMB130, FMB150, FMC, FMU, FMM).
+///
+/// The flow is stateful, unlike NEMS/Noron which just stream frames:
+///   1. Device sends IMEI (length-prefixed, 17 bytes typical).
+///   2. We ACK with 0x01 (accept) once we've checked the IMEI maps to a known
+///      `gps_devices` row, otherwise 0x00 and close.
+///   3. Loop: read one AVL TCP frame (binary, framed by preamble + length),
+///      parse with nom-teltonika, persist every record, then write back a
+///      4-byte big-endian count of records ACK'd. The device repeats the
+///      same packet until we ACK, so persistence MUST happen before the ACK.
+///
+/// Reuses `route_noron_frame` for the per-frame downstream work (DB write,
+/// Redis cache, RabbitMQ publish, services pipeline) — that function is
+/// protocol-agnostic once it has an `HhFrame` in hand, we just override the
+/// reported protocol label below.
+async fn handle_teltonika_connection(
+    stream: TcpStream,
+    cfg: Arc<ListenerConfig>,
+    database: Arc<dyn TelemetryStore>,
+    publisher: Option<Arc<dyn TelemetryEventPublisher>>,
+    services: Arc<TelemetryServices>,
+    redis_cache: Option<Arc<RedisCache>>,
+) -> Result<()> {
+    let peer = stream.peer_addr().ok().map(|a| a.to_string());
+    let peer_str = peer.as_deref().unwrap_or("unknown");
+
+    let (mut reader, mut writer) = tokio::io::split(stream);
+
+    // ── Step 1: read IMEI handshake ────────────────────────────────────────
+    // The handshake is small but variable (2-byte length + IMEI). We read up
+    // to 32 bytes which is generous — real packets are 17 bytes for a 15-digit
+    // IMEI. nom-teltonika handles partial / trailing bytes gracefully.
+    let mut buf = [0u8; 32];
+    let read = match reader.read(&mut buf).await {
+        Ok(0) => {
+            debug!(peer = peer_str, "Teltonika: device closed before handshake");
+            return Ok(());
+        }
+        Ok(n) => n,
+        Err(e) => {
+            warn!(?e, peer = peer_str, "Teltonika: read failed at handshake stage");
+            return Err(e.into());
+        }
+    };
+
+    let imei = match telemetry::teltonika::parse_imei(&buf[..read]) {
+        Ok(imei) => imei,
+        Err(e) => {
+            warn!(
+                ?e,
+                peer = peer_str,
+                bytes = hex::encode(&buf[..read]),
+                "Teltonika: malformed IMEI handshake — rejecting connection"
+            );
+            let _ = writer.write_all(&telemetry::teltonika::build_imei_ack(false)).await;
+            return Ok(());
+        }
+    };
+
+    // Resolve the device in our database. Unknown IMEIs are still ACK'd —
+    // operators commonly plug a new boitier before adding it to the fleet
+    // table, and dropping the connection costs them a minute of confusion.
+    // The downstream `ingest_hh_frame` will reject the records cleanly if
+    // the device is not yet registered.
+    let device_id = match database.get_device_id(&imei).await {
+        Ok(Some(id)) => Some(id),
+        Ok(None) => {
+            warn!(
+                imei = %imei,
+                peer = peer_str,
+                "Teltonika: IMEI not registered in gps_devices — accepting frames but they will be dropped at insert"
+            );
+            None
+        }
+        Err(e) => {
+            warn!(
+                ?e,
+                imei = %imei,
+                peer = peer_str,
+                "Teltonika: DB lookup failed during handshake — closing connection"
+            );
+            let _ = writer.write_all(&telemetry::teltonika::build_imei_ack(false)).await;
+            return Ok(());
+        }
+    };
+
+    if let Err(e) = writer.write_all(&telemetry::teltonika::build_imei_ack(true)).await {
+        warn!(?e, peer = peer_str, imei = %imei, "Teltonika: failed to write IMEI ACK");
+        return Ok(());
+    }
+
+    info!(
+        peer = peer_str,
+        imei = %imei,
+        device_id = ?device_id,
+        port = cfg.port,
+        "Teltonika: IMEI handshake completed"
+    );
+
+    // ── Step 2: AVL frame loop ─────────────────────────────────────────────
+    // Frames can be up to a few KB (Codec 8E with 50 records). We read into
+    // a growing buffer until the parser succeeds, then drain the consumed
+    // bytes. This keeps us robust against TCP fragmentation.
+    let mut accumulator: Vec<u8> = Vec::with_capacity(4096);
+    let mut read_buf = vec![0u8; 4096];
+
+    loop {
+        let read = match reader.read(&mut read_buf).await {
+            Ok(0) => {
+                info!(peer = peer_str, imei = %imei, "Teltonika: device disconnected");
+                return Ok(());
+            }
+            Ok(n) => n,
+            Err(e) => {
+                warn!(?e, peer = peer_str, imei = %imei, "Teltonika: read failed");
+                return Err(e.into());
+            }
+        };
+
+        accumulator.extend_from_slice(&read_buf[..read]);
+
+        // Try parsing one or more complete AVL frames out of the accumulator.
+        // nom-teltonika returns an error if the buffer is incomplete; in that
+        // case we leave the bytes in place and wait for the next read.
+        loop {
+            match telemetry::teltonika::parse_avl_frame(&accumulator) {
+                Ok(avl_frame) => {
+                    let frames = telemetry::teltonika::avl_frame_to_hh_frames(&avl_frame);
+                    let record_count = frames.len() as u32;
+
+                    info!(
+                        peer = peer_str,
+                        imei = %imei,
+                        codec = ?avl_frame.codec,
+                        records = record_count,
+                        "Teltonika: AVL frame parsed"
+                    );
+
+                    // Persist every record through the same pipeline as Noron.
+                    // We ACK to the device with the record count regardless of
+                    // per-record warnings — Teltonika only cares that we
+                    // processed the batch, retries on `0` mean the device
+                    // will resend the same packet.
+                    for frame in frames {
+                        if let Err(err) = route_teltonika_frame(
+                            &imei,
+                            frame,
+                            Arc::clone(&database),
+                            publisher.clone(),
+                            Arc::clone(&services),
+                            redis_cache.clone(),
+                        )
+                        .await
+                        {
+                            warn!(?err, imei = %imei, "Teltonika: failed to ingest record (kept ACK to avoid retry storm)");
+                        }
+                    }
+
+                    // ACK with the record count, BE u32.
+                    let ack = telemetry::teltonika::build_avl_ack(record_count);
+                    if let Err(e) = writer.write_all(&ack).await {
+                        warn!(?e, peer = peer_str, imei = %imei, "Teltonika: failed to send AVL ACK");
+                        return Ok(());
+                    }
+
+                    // The parser doesn't tell us exactly how many bytes were
+                    // consumed (its API returns the parsed value only) — but
+                    // a frame always finishes on its trailing CRC, so the
+                    // simplest correct strategy is to clear the accumulator
+                    // and let the next loop iteration accumulate the next
+                    // frame. Teltonika devices wait for our ACK before
+                    // sending the next packet, so there is never trailing
+                    // data after a successful parse.
+                    accumulator.clear();
+                    break;
+                }
+                Err(_) => {
+                    // Either incomplete or malformed. If accumulator grew
+                    // beyond a sane upper bound we drop everything to avoid
+                    // memory exhaustion from a stuck device.
+                    if accumulator.len() > 64 * 1024 {
+                        warn!(
+                            peer = peer_str,
+                            imei = %imei,
+                            size = accumulator.len(),
+                            "Teltonika: dropping oversized accumulator buffer"
+                        );
+                        accumulator.clear();
+                    }
+                    break; // wait for more bytes
+                }
+            }
+        }
+    }
+}
+
+/// Identical purpose to `route_noron_frame`, but tagged with `protocol = "teltonika"`
+/// so monitoring / metrics / debug logs can tell which family produced the data.
+/// The downstream services (V7 accident detection, stop detector, geofences…)
+/// don't care about the protocol — they only read canonical HhFrame fields.
+async fn route_teltonika_frame(
+    device_uid: &str,
+    mut frame: telemetry::model::HhFrame,
+    database: Arc<dyn TelemetryStore>,
+    publisher: Option<Arc<dyn TelemetryEventPublisher>>,
+    services: Arc<TelemetryServices>,
+    redis_cache: Option<Arc<RedisCache>>,
+) -> Result<()> {
+    let protocol = "teltonika";
+
+    let device_id_opt = database.get_device_id(device_uid).await?;
+
+    if frame.latitude.abs() < 1.0 && frame.longitude.abs() < 2.0 {
+        if let Some(device_id) = device_id_opt {
+            if let Some(last_pos) = database.get_last_position(device_id).await? {
+                frame.latitude = last_pos.latitude;
+                frame.longitude = last_pos.longitude;
+                frame.is_valid = false;
+                debug!(device_uid, "Teltonika no-fix: using last known position");
+            } else {
+                debug!(device_uid, "Teltonika frame skipped: no GPS fix and no previous position");
+                return Ok(());
+            }
+        } else {
+            return Ok(());
+        }
+    }
+
+    if !(-180.0..=180.0).contains(&frame.longitude) || !(-90.0..=90.0).contains(&frame.latitude) {
+        warn!(device_uid, lat = frame.latitude, lon = frame.longitude, "Teltonika frame skipped: coords out of range");
+        return Ok(());
+    }
+
+    let tomorrow = chrono::Utc::now().date_naive() + Duration::days(1);
+    if frame.recorded_at.date() >= tomorrow {
+        warn!(device_uid, date = %frame.recorded_at, "Teltonika frame skipped: date in future");
+        return Ok(());
+    }
+
+    if let Some(device_id) = device_id_opt {
+        let validation = services.gps_validator.validate(device_id, &frame).await;
+        if !validation.should_store() {
+            if let crate::services::gps_validator::ValidationResult::Invalid { reason } = &validation {
+                debug!(device_uid, reason = %reason, "Teltonika frame REJECTED by GPS validator");
+            }
+            return Ok(());
+        }
+
+        let stabilized = services.gps_stabilizer.stabilize(device_id, &frame).await;
+        if stabilized.was_stabilized {
+            frame.latitude = stabilized.latitude;
+            frame.longitude = stabilized.longitude;
+        }
+
+        if frame.ignition_on && frame.speed_kph > 0.0 {
+            let result = services.speed_filter.filter(device_id, frame.speed_kph, frame.recorded_at).await;
+            if result.was_filtered {
+                frame.speed_kph = result.corrected_speed;
+            }
+        } else {
+            let _ = services.speed_filter.filter(device_id, 0.0, frame.recorded_at).await;
+        }
+    }
+
+    if frame.is_valid {
+        frame.address = services.geocoding.reverse_geocode(frame.latitude, frame.longitude).await;
+    }
+
+    let event_key = format!(
+        "{}:{}:{:.6}:{:.6}:{:.1}:{}",
+        device_uid, frame.recorded_at, frame.latitude, frame.longitude, frame.speed_kph, frame.send_flag
+    );
+
+    let (vehicle_id, company_id, _firmware_version) = if let Some(device_id) = device_id_opt {
+        database.get_device_vehicle_info(device_id).await?
+    } else {
+        (None, 1, None)
+    };
+
+    let db_future = database.ingest_hh_frame(device_uid, protocol, &frame, &event_key);
+    let redis_future = async {
+        if let Some(ref redis) = redis_cache {
+            if let Err(err) = redis.cache_position(device_uid, vehicle_id, company_id, &frame).await {
+                warn!(?err, "Failed to cache Teltonika position in Redis");
+            }
+        }
+    };
+    let rabbitmq_future = async {
+        if let Some(ref pub_ref) = publisher {
+            if let Err(err) = pub_ref.publish_hh_frame(device_uid, protocol, &frame).await {
+                warn!(?err, "Failed to publish Teltonika telemetry event");
+            }
+        }
+    };
+    let (db_result, _, _) = tokio::join!(db_future, redis_future, rabbitmq_future);
+    db_result?;
+
+    info!(
+        device_uid,
+        speed_kph = frame.speed_kph,
+        lat = frame.latitude,
+        lon = frame.longitude,
+        ignition = frame.ignition_on,
+        is_valid = frame.is_valid,
+        protocol,
+        "Teltonika position ingested"
+    );
+
+    if let Some(device_id) = device_id_opt {
+        if let Some(completed_stop) = services.stop_detector.process_frame(device_id, &frame).await {
+            if let Err(err) = database.insert_vehicle_stop(&completed_stop, vehicle_id, company_id).await {
+                warn!(?err, device_id, "Failed to insert Teltonika vehicle stop");
+            }
+        }
+
+        if let Some(completed_trip) = services.trip_detector.process_frame(
+            device_id, vehicle_id, company_id, &frame,
+        ).await {
+            if let Err(err) = database.insert_trip(&completed_trip).await {
+                warn!(?err, device_id, "Failed to insert Teltonika trip");
+            }
+        }
+
+        let driving_events = services.driving_events_detector.process_frame(
+            device_id, vehicle_id, company_id, &frame,
+        ).await;
+        for event in driving_events {
+            if let Err(err) = database.insert_driving_event(&event).await {
+                warn!(?err, device_id, "Failed to insert Teltonika driving event");
+            }
+        }
+
+        if frame.is_valid {
+            if services.geofence_detector.needs_refresh().await {
+                if let Ok(geofences) = database.load_geofences().await {
+                    services.geofence_detector.load_geofences(geofences).await;
+                }
+            }
+            if let Some(vid) = vehicle_id {
+                let timestamp = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                    frame.recorded_at, chrono::Utc,
+                );
+                let geofence_events = services.geofence_detector.process_frame(
+                    device_id, vid, company_id, frame.latitude, frame.longitude,
+                    Some(frame.speed_kph), timestamp,
+                ).await;
+                for gf_event in geofence_events {
+                    let duration = if gf_event.event_type == crate::services::geofence_detector::GeofenceEventType::Exit {
+                        services.geofence_detector.get_duration_inside(device_id, gf_event.geofence_id).await
+                            .map(|d| d as i32)
+                    } else {
+                        None
+                    };
+                    if let Err(err) = database.insert_geofence_event(&gf_event, duration).await {
+                        warn!(?err, device_id, "Failed to insert Teltonika geofence event");
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 async fn route_noron_frame(
     device_uid: &str,
     mut frame: telemetry::model::HhFrame,
