@@ -545,7 +545,10 @@ public class GpsController : ControllerBase
                     IsRealTime = p.IsRealTime,
                     TemperatureC = p.TemperatureC,
                     CreatedAt = p.CreatedAt,
-                    FuelRateLPer100Km = p.FuelRateLPer100Km
+                    FuelRateLPer100Km = p.FuelRateLPer100Km,
+                    MemsX = p.MemsX,
+                    MemsY = p.MemsY,
+                    MemsZ = p.MemsZ
                 })
                 .ToListAsync();
         }
@@ -597,7 +600,10 @@ public class GpsController : ControllerBase
                     IsRealTime = p.IsRealTime,
                     TemperatureC = p.TemperatureC,
                     CreatedAt = p.CreatedAt,
-                    FuelRateLPer100Km = p.FuelRateLPer100Km
+                    FuelRateLPer100Km = p.FuelRateLPer100Km,
+                    MemsX = p.MemsX,
+                    MemsY = p.MemsY,
+                    MemsZ = p.MemsZ
                 })
                 .ToListAsync();
         }
@@ -1486,6 +1492,12 @@ public class PositionDto
     public DateTime CreatedAt { get; set; }
     public short? Rpm { get; set; }
     public decimal? FuelRateLPer100Km { get; set; }
+    // MEMS (accelerometer) — exposed so the accident report can detect a
+    // second shock, sustained tilt (rollover), tow-loading… directly from
+    // the same history call. Raw values clamped to [-128 ; 127] device-side.
+    public short? MemsX { get; set; }
+    public short? MemsY { get; set; }
+    public short? MemsZ { get; set; }
 }
 
 public class GeocodeResultDto

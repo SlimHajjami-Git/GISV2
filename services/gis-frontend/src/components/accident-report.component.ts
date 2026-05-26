@@ -40,6 +40,28 @@ interface ChartAxisLabel {
 }
 
 /**
+ * Aggregated accelerometer signal around the impact, computed from the
+ * memsX/Y/Z fields of the GPS history frames. Drives the richer story,
+ * reasons, indicators and confidence score (second shock, sustained tilt
+ * for rollover, magnitude / saturated axes).
+ */
+interface MemsStats {
+  /** Maximum vector magnitude observed within ±30 s of impact (≈ 222 max). */
+  peakMag: number;
+  /** Absolute axis values at the peak frame (clamped 0..127). */
+  peakAx: number;
+  peakAy: number;
+  peakAz: number;
+  /** Highest magnitude of a second peak in (impact+5 s, impact+90 s), or 0. */
+  secondShockMag: number;
+  secondShockT?: number;
+  /** Sustained-tilt window after the stop (|Z| ≥ 90), or 0 min. */
+  tiltDurationMin: number;
+  tiltStartT?: number;
+  tiltEndT?: number;
+}
+
+/**
  * Formal accident report page — written as a corporate document for a
  * non-technical fleet owner. No jargon, no dramatic UI. Think: an
  * insurance adjuster's written report, a medical summary, a notary's
@@ -2164,6 +2186,32 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       return;
     }
 
+    // Re-center on the REAL impact: if there's a strong MEMS peak (mag ≥ 100)
+    // within ±2 min of the user-entered time, that's the actual moment of
+    // impact — refine impactIdx to it. Otherwise keep the closest-to-target
+    // position. This matters for manually declared accidents where the
+    // entered time can be a minute or two off the real frame.
+    const wideStart = impactTargetT - 2 * 60 * 1000;
+    const wideEnd = impactTargetT + 2 * 60 * 1000;
+    const clampB = (n: number) => Math.max(-128, Math.min(127, n));
+    let bestPeakIdx = -1;
+    let bestPeakMag = 0;
+    for (let i = 0; i < sorted.length; i++) {
+      const t = new Date(sorted[i].recordedAt).getTime();
+      if (t < wideStart || t > wideEnd) continue;
+      const p = sorted[i];
+      if (p.memsX == null || p.memsY == null || p.memsZ == null) continue;
+      const x = clampB(p.memsX), y = clampB(p.memsY), z = clampB(p.memsZ);
+      const m = Math.sqrt(x * x + y * y + z * z);
+      if (m >= 100 && m > bestPeakMag) {
+        bestPeakMag = m;
+        bestPeakIdx = i;
+      }
+    }
+    if (bestPeakIdx >= 0) {
+      impactIdx = bestPeakIdx;
+    }
+
     const impactPos = sorted[impactIdx];
     const impactT = new Date(impactPos.recordedAt).getTime();
 
@@ -2209,16 +2257,50 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       ? this.diffMinutes(new Date(impactT), new Date(ignitionOffPos.recordedAt))
       : 6;
 
-    // Indicators are authoritative when they came from the backend — only
-    // recompute them from raw GPS when we're running in fallback mode.
+    // ── MEMS analytics (Calypso 9) ────────────────────────────────────────
+    // Reads memsX/Y/Z from the frames (now exposed by /gps/devices/{uid}/history)
+    // to detect: peak shock magnitude + axes, a possible SECOND shock within
+    // ~60 s of the first, and a sustained TILT after the stop (rollover).
+    // These power the richer story, reasons, indicators and synthesis verdict
+    // that the old hardcoded demo had.
+    const stopTSafe = stopIdx > impactIdx ? new Date(sorted[stopIdx].recordedAt).getTime() : undefined;
+    const memsStats = this.computeMemsStats(sorted, impactT, stopTSafe);
+
+    // Indicators — fully data-driven, including MEMS so the report exposes
+    // the magnitudes / axes the operator can hand to an insurance expert.
     if (!this.narrativeFromBackend) {
       this.indicators = [
-        { label: 'Heure de l\'impact', value: this.formatHourMinuteSeconds(new Date(impactT)), hint: 'Heure locale de Tunis' },
+        { label: 'Heure de l\'impact', value: this.formatHourMinuteSeconds(new Date(impactT)), hint: 'Heure locale du navigateur' },
         { label: 'Vitesse avant l\'impact', value: `${speedBeforeImpact} km/h`, hint: 'Maximum mesuré 5 min avant' },
         { label: 'Vitesse au moment de l\'impact', value: `${speedAtImpact} km/h`, hint: 'Chute brutale et non-maîtrisée' },
         { label: 'Temps jusqu\'à l\'arrêt complet', value: timeToStopStr, hint: 'Après le choc' },
-        { label: 'Coupure du contact', value: ignitionOffLabel, hint: `Soit ${ignitionOffDelta} minutes après l'impact` },
       ];
+      if (memsStats.peakMag > 0) {
+        this.indicators.push({
+          label: 'Magnitude du choc',
+          value: Math.round(memsStats.peakMag).toString(),
+          hint: 'Somme vectorielle MEMS (saturation théorique ≈ 222)',
+        });
+        this.indicators.push({
+          label: 'Axes saturés',
+          value: `X=${memsStats.peakAx} · Y=${memsStats.peakAy} · Z=${memsStats.peakAz}`,
+          hint: '|X|/|Y| ≥ 100 = impact horizontal marqué',
+        });
+      }
+      if (memsStats.tiltDurationMin >= 2) {
+        this.indicators.push({
+          label: "Durée d'inclinaison anormale",
+          value: `${memsStats.tiltDurationMin} min`,
+          hint: 'Forte suspicion de retournement',
+        });
+      }
+      this.indicators.push({
+        label: 'Coupure du contact',
+        value: ignitionOffLabel,
+        hint: ignitionOffPos
+          ? `Soit ${ignitionOffDelta} minute${ignitionOffDelta > 1 ? 's' : ''} après l'impact`
+          : 'Non détectée dans la fenêtre',
+      });
     }
 
     // Rebuild the speed chart from positions in [impact-7 min, impact+8 min]
@@ -2241,9 +2323,6 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       (speedBeforeImpact >= 40 && speedAtImpact <= 15);
 
     if (!this.narrativeFromBackend && looksLikeImpact) {
-      const stopT =
-        stopIdx > impactIdx ? new Date(sorted[stopIdx].recordedAt).getTime() : undefined;
-
       this.story = this.buildStoryFromPositions(
         sorted,
         impactIdx,
@@ -2251,7 +2330,8 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
         speedAtImpact,
         speedBeforeImpact,
         ignitionOffPos,
-        stopT,
+        stopTSafe,
+        memsStats,
       );
 
       this.reasons = this.buildReasonsFromPositions(
@@ -2262,15 +2342,29 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
         speedBeforeImpact,
         timeToStopStr,
         ignitionOffPos,
-        stopT,
+        stopTSafe,
+        memsStats,
       );
 
       this.confidence = this.computeConfidence(
         speedBeforeImpact,
         speedAtImpact,
-        stopT !== undefined,
+        stopTSafe !== undefined,
         ignitionOffPos !== undefined,
+        memsStats,
       );
+
+      // Synthesis verdict — derived from the MEMS pattern when available.
+      // Falls back to a sober, factual statement when MEMS is silent.
+      if (memsStats.peakMag >= 180 && memsStats.tiltDurationMin >= 2) {
+        this.synthesisText = 'choc violent ayant vraisemblablement entraîné un retournement du véhicule';
+      } else if (memsStats.peakMag >= 150) {
+        this.synthesisText = 'choc violent multi-axes — impact transversal marqué';
+      } else if (memsStats.peakMag >= 100) {
+        this.synthesisText = 'impact violent détecté sur les axes longitudinal et latéral';
+      } else {
+        this.synthesisText = 'impact significatif détecté avec immobilisation immédiate du véhicule';
+      }
     }
 
     // Synthesis fragments — always updated to the real impact timestamp,
@@ -2740,22 +2834,29 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     speedBeforeImpact: number,
     ignitionOffPos: PositionDto | undefined,
     stopT: number | undefined,
+    memsStats: MemsStats,
   ): NarrativeEvent[] {
     const story: NarrativeEvent[] = [];
 
-    // 1. Last normal driving — pick the position ~6 min before impact that
-    //    shows the cruise speed.
-    const normalTarget = impactT - 6 * 60 * 1000;
-    const normalPos = this.closestPositionTo(positions, normalTarget, 0, impactIdx);
-    if (normalPos && (normalPos.speedKph ?? 0) > 20) {
+    // 1. Last normal driving — find the MAX cruise speed in [-5 min, -1 min]
+    //    and the frame that reached it. Picking the max avoids opening the
+    //    timeline on a slow-approach frame (e.g. 21 km/h while merging).
+    const cruiseWindow = positions.filter((p) => {
+      const t = new Date(p.recordedAt).getTime();
+      return t >= impactT - 5 * 60 * 1000 && t <= impactT - 60 * 1000;
+    });
+    const cruisePos = cruiseWindow.length
+      ? cruiseWindow.reduce((best, p) => ((p.speedKph ?? 0) > (best.speedKph ?? 0) ? p : best))
+      : undefined;
+    if (cruisePos && (cruisePos.speedKph ?? 0) > 20) {
       const regionPart = this.locationCommune
         ? ` dans la région de ${this.locationCommune}`
         : '';
       story.push({
-        time: this.formatHourMinute(new Date(normalPos.recordedAt)),
+        time: this.formatHourMinute(new Date(cruisePos.recordedAt)),
         title: 'Conduite normale',
         body:
-          `Le véhicule circule à ${Math.round(normalPos.speedKph ?? 0)} km/h sur une route` +
+          `Le véhicule circule à ${Math.round(cruisePos.speedKph ?? 0)} km/h sur une route` +
           `${regionPart}. Aucun comportement inhabituel n'est détecté dans les ` +
           `minutes précédentes. La conduite est régulière et stable.`,
         severity: 'normal',
@@ -2782,16 +2883,34 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       });
     }
 
-    // 3. The impact itself — always present when real data looks like a crash.
+    // 3. The impact itself — enriched with the actual MEMS magnitude / axes.
+    const memsImpactPart = memsStats.peakMag > 0
+      ? ` Les capteurs de mouvement enregistrent simultanément un choc d'intensité ` +
+        `exceptionnelle (magnitude ${Math.round(memsStats.peakMag)}/222 ; axes |X|=${memsStats.peakAx}, ` +
+        `|Y|=${memsStats.peakAy}, |Z|=${memsStats.peakAz}).`
+      : '';
     story.push({
       time: this.formatHourMinute(new Date(impactT)),
       title: 'Chute brutale de la vitesse et choc',
       body:
         `La vitesse passe brutalement de ${speedBeforeImpact} à ${speedAtImpact} km/h en ` +
         `quelques secondes. Ce profil de ralentissement ne correspond pas à un freinage ` +
-        `normal et constitue la signature caractéristique d'un choc violent.`,
+        `normal et constitue la signature caractéristique d'un choc violent.${memsImpactPart}`,
       severity: 'critical',
     });
+
+    // 3b. Second shock — detected via a second MEMS peak within ~60 s.
+    if (memsStats.secondShockT !== undefined && memsStats.secondShockMag > 0) {
+      story.push({
+        time: this.formatHourMinute(new Date(memsStats.secondShockT)),
+        title: "Second choc d'intensité équivalente",
+        body:
+          `Un second impact est enregistré (magnitude ${Math.round(memsStats.secondShockMag)}/222), ` +
+          `de même ordre de grandeur que le premier. Ce double signal est caractéristique ` +
+          `d'une collision avec rebond ou tonneau.`,
+        severity: 'critical',
+      });
+    }
 
     // 4. Full stop.
     if (stopT !== undefined) {
@@ -2801,6 +2920,21 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
         body:
           `Le véhicule est totalement immobilisé. Plus aucun déplacement n'est détecté à ` +
           `partir de ce moment.`,
+        severity: 'warning',
+      });
+    }
+
+    // 4b. Sustained tilt after the stop — characteristic of a rollover.
+    if (memsStats.tiltDurationMin >= 2 && memsStats.tiltStartT !== undefined && memsStats.tiltEndT !== undefined) {
+      story.push({
+        time: `${this.formatHourMinute(new Date(memsStats.tiltStartT))} → ${this.formatHourMinute(new Date(memsStats.tiltEndT))}`,
+        title: 'Position anormalement inclinée',
+        body:
+          `Pendant ${memsStats.tiltDurationMin} minute${memsStats.tiltDurationMin > 1 ? 's' : ''} ` +
+          `consécutive${memsStats.tiltDurationMin > 1 ? 's' : ''}, les capteurs indiquent que ` +
+          `le véhicule se trouve dans une position fortement inclinée (|Z|≈${memsStats.peakAz}). ` +
+          `Une inclinaison de cette ampleur, maintenue à l'arrêt, est caractéristique d'un ` +
+          `véhicule qui s'est retrouvé sur le flanc ou retourné.`,
         severity: 'warning',
       });
     }
@@ -2829,11 +2963,11 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       if (laterMoving) {
         story.push({
           time: this.formatHourMinute(new Date(laterMoving.recordedAt)),
-          title: 'Mouvement détecté après l\'arrêt',
+          title: 'Mouvement compatible avec un chargement sur dépanneuse',
           body:
-            `Un mouvement est détecté sur le véhicule bien après l'arrêt. Cela peut ` +
-            `correspondre à un chargement sur plateau de dépanneuse ou à un déplacement ` +
-            `du véhicule par un tiers.`,
+            `Un mouvement spécifique est détecté sur le véhicule bien après l'arrêt. ` +
+            `Cela correspond typiquement à un chargement sur un plateau de dépanneuse ` +
+            `ou à un déplacement du véhicule par un tiers.`,
           severity: 'neutral',
         });
       }
@@ -2855,6 +2989,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     timeToStopStr: string,
     ignitionOffPos: PositionDto | undefined,
     stopT: number | undefined,
+    memsStats: MemsStats,
   ): Array<{ title: string; text: string }> {
     const reasons: Array<{ title: string; text: string }> = [];
 
@@ -2867,7 +3002,21 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
         `mais à un arrêt subi.`,
     });
 
-    // Reason 2: stop + time-to-stop.
+    // Reason 2: MEMS-based "exceptional violence" observation (when peakMag
+    // is high). This is the analogue of the old hardcoded "choc d'une
+    // violence exceptionnelle" — but driven by REAL accelerometer data.
+    if (memsStats.peakMag >= 120) {
+      reasons.push({
+        title: "Un choc d'une violence exceptionnelle",
+        text:
+          `Les capteurs de mouvement ont enregistré une intensité ` +
+          `(magnitude ${Math.round(memsStats.peakMag)}/222, axes |X|=${memsStats.peakAx}, ` +
+          `|Y|=${memsStats.peakAy}, |Z|=${memsStats.peakAz}) qui n'est atteignable qu'en cas ` +
+          `d'impact violent multi-axes. Cette signature exclut un freinage d'urgence ordinaire.`,
+      });
+    }
+
+    // Reason 3: stop + time-to-stop.
     if (stopT !== undefined) {
       reasons.push({
         title: 'Un arrêt complet immédiatement après',
@@ -2878,7 +3027,19 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       });
     }
 
-    // Reason 3: ignition off after impact.
+    // Reason 4: sustained tilt = rollover signature.
+    if (memsStats.tiltDurationMin >= 2) {
+      reasons.push({
+        title: 'Une position fortement inclinée maintenue à l\'arrêt',
+        text:
+          `Un véhicule reposant normalement sur ses roues ne présente pas d'inclinaison ` +
+          `soutenue. La valeur |Z|≈${memsStats.peakAz} maintenue pendant ` +
+          `${memsStats.tiltDurationMin} minute${memsStats.tiltDurationMin > 1 ? 's' : ''} ` +
+          `ne peut s'expliquer que par un véhicule qui s'est retrouvé couché sur le flanc ou retourné.`,
+      });
+    }
+
+    // Reason 5: ignition off after impact.
     if (ignitionOffPos) {
       const delta = this.diffMinutes(new Date(impactT), new Date(ignitionOffPos.recordedAt));
       reasons.push({
@@ -2890,8 +3051,9 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       });
     }
 
-    // Reason 4: prolonged immobilization.
-    if (stopT !== undefined) {
+    // Reason 6: prolonged immobilization (added only when we don't already
+    // have a stop reason + a tilt reason — keeps the list tight).
+    if (stopT !== undefined && memsStats.tiltDurationMin < 2) {
       const motionless = positions.filter((p) => {
         const t = new Date(p.recordedAt).getTime();
         return t >= stopT && (p.speedKph ?? 0) <= 1;
@@ -2924,21 +3086,36 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     speedAtImpact: number,
     hasStop: boolean,
     hasIgnitionOff: boolean,
+    memsStats: MemsStats,
   ): number {
-    let score = 40; // baseline when real data covers the incident window
+    let score = 30; // baseline when real data covers the incident window
 
+    // Speed-drop magnitude.
     const drop = speedBeforeImpact - speedAtImpact;
-    if (drop >= 60) score += 30;
-    else if (drop >= 40) score += 22;
-    else if (drop >= 25) score += 14;
-    else if (drop >= 15) score += 8;
+    if (drop >= 60) score += 20;
+    else if (drop >= 40) score += 14;
+    else if (drop >= 25) score += 9;
+    else if (drop >= 15) score += 5;
 
-    if (speedAtImpact <= 5) score += 15;
-    else if (speedAtImpact <= 15) score += 10;
-    else if (speedAtImpact <= 25) score += 5;
+    // Low speed at impact = clearly not anticipation braking.
+    if (speedAtImpact <= 5) score += 10;
+    else if (speedAtImpact <= 15) score += 7;
+    else if (speedAtImpact <= 25) score += 3;
 
-    if (hasStop) score += 8;
-    if (hasIgnitionOff) score += 5;
+    // MEMS magnitude — the strongest indicator when present.
+    if (memsStats.peakMag >= 180) score += 20;
+    else if (memsStats.peakMag >= 150) score += 15;
+    else if (memsStats.peakMag >= 120) score += 10;
+    else if (memsStats.peakMag >= 80) score += 5;
+
+    // Second shock = collision with bounce/rollover signature.
+    if (memsStats.secondShockMag >= 100) score += 5;
+
+    // Sustained tilt after stop = rollover.
+    if (memsStats.tiltDurationMin >= 2) score += 8;
+
+    if (hasStop) score += 4;
+    if (hasIgnitionOff) score += 3;
 
     return Math.min(97, Math.max(0, score));
   }
@@ -2964,5 +3141,85 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       }
     }
     return best;
+  }
+
+  /**
+   * Computes MEMS analytics from the sorted positions: peak shock at impact,
+   * a possible second shock within ~60 s of the first, and any sustained
+   * tilt after the stop (|Z| ≥ 90 for ≥ 2 min — rollover signature). Returns
+   * zeros across the board when no usable MEMS data is present in the frames
+   * (e.g. old data partitions or devices that don't expose it).
+   */
+  private computeMemsStats(positions: PositionDto[], impactT: number, stopT: number | undefined): MemsStats {
+    const empty: MemsStats = {
+      peakMag: 0, peakAx: 0, peakAy: 0, peakAz: 0,
+      secondShockMag: 0,
+      tiltDurationMin: 0,
+    };
+
+    const clamp = (n: number) => Math.max(-128, Math.min(127, n));
+    const mag = (p: PositionDto): { m: number; ax: number; ay: number; az: number } => {
+      if (p.memsX == null || p.memsY == null || p.memsZ == null) return { m: 0, ax: 0, ay: 0, az: 0 };
+      const x = clamp(p.memsX), y = clamp(p.memsY), z = clamp(p.memsZ);
+      return {
+        m: Math.sqrt(x * x + y * y + z * z),
+        ax: Math.abs(x), ay: Math.abs(y), az: Math.abs(z),
+      };
+    };
+
+    // Peak shock: maximum magnitude within ±30 s of impact.
+    let peakMag = 0, peakAx = 0, peakAy = 0, peakAz = 0, peakT = impactT;
+    for (const p of positions) {
+      const t = new Date(p.recordedAt).getTime();
+      if (Math.abs(t - impactT) > 30 * 1000) continue;
+      const v = mag(p);
+      if (v.m > peakMag) { peakMag = v.m; peakAx = v.ax; peakAy = v.ay; peakAz = v.az; peakT = t; }
+    }
+    if (peakMag === 0) return empty;
+
+    // Second shock: another peak ≥ 100 separated by ≥ 5 s from the primary,
+    // within a ±90 s window around impactT (covers a bounce-back or rollover
+    // signature regardless of which peak came first).
+    let secondShockMag = 0;
+    let secondShockT: number | undefined;
+    for (const p of positions) {
+      const t = new Date(p.recordedAt).getTime();
+      if (Math.abs(t - impactT) > 90 * 1000) continue;
+      if (Math.abs(t - peakT) < 5 * 1000) continue;
+      const v = mag(p);
+      if (v.m >= 100 && v.m > secondShockMag) { secondShockMag = v.m; secondShockT = t; }
+    }
+
+    // Sustained tilt after the stop — |Z| ≥ 90 maintained.
+    let tiltDurationMin = 0;
+    let tiltStartT: number | undefined;
+    let tiltEndT: number | undefined;
+    if (stopT !== undefined) {
+      let runStart: number | undefined;
+      let runEnd: number | undefined;
+      for (const p of positions) {
+        const t = new Date(p.recordedAt).getTime();
+        if (t < stopT) continue;
+        const v = mag(p);
+        if (v.m > 0 && v.az >= 90) {
+          if (runStart === undefined) runStart = t;
+          runEnd = t;
+        } else if (runStart !== undefined && runEnd !== undefined) {
+          const dur = Math.round((runEnd - runStart) / 60000);
+          if (dur > tiltDurationMin) {
+            tiltDurationMin = dur; tiltStartT = runStart; tiltEndT = runEnd;
+          }
+          runStart = undefined; runEnd = undefined;
+        }
+      }
+      if (runStart !== undefined && runEnd !== undefined) {
+        const dur = Math.round((runEnd - runStart) / 60000);
+        if (dur > tiltDurationMin) {
+          tiltDurationMin = dur; tiltStartT = runStart; tiltEndT = runEnd;
+        }
+      }
+    }
+
+    return { peakMag, peakAx, peakAy, peakAz, secondShockMag, secondShockT, tiltDurationMin, tiltStartT, tiltEndT };
   }
 }

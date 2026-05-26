@@ -57,6 +57,12 @@ export interface PositionDto {
   batteryLevel?: number;
   /** Decoded volts (PowerVoltage byte * 0.3) — preferred on monitoring. */
   batteryVoltage?: number;
+  /** Accelerometer (MEMS) raw values clamped to [-128 ; 127]. Used by the
+   * accident report to reconstruct second-shock, sustained tilt (rollover)
+   * and tow-loading from the same history call. */
+  memsX?: number;
+  memsY?: number;
+  memsZ?: number;
 }
 
 export interface VehicleStatsDto {
