@@ -4856,6 +4856,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
             y: { beginAtZero: true, max: 100, title: { display: true, text: 'Niveau (%)' }, grid: { color: 'rgba(255,255,255,0.1)' } },
             x: {
               type: 'linear',
+              // Épingle l'axe sur la plage réelle des données : sans ça,
+              // l'axe linéaire arrondit son max bien au-delà du dernier point
+              // (gros timestamps), laissant un vide à droite — la courbe
+              // paraissait alors décalée par rapport à l'axe X.
+              bounds: 'data',
+              min: this.chartData[0].ts,
+              max: this.chartData[this.chartData.length - 1].ts,
               grid: { display: false },
               ticks: {
                 maxTicksLimit: 12,
