@@ -41,6 +41,21 @@ public partial class UpdateGpsCommandPasswordTo9999 : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {
+        // 0. Garantir l'existence des colonnes AVANT tout ALTER/UPDATE.
+        //    Historique : command_go / command_stop ont été ajoutées à la
+        //    main en SQL sur la prod Tunisie, sans migration AddColumn et
+        //    sans mise à jour du ModelSnapshot. Résultat : sur une base
+        //    VIERGE (nouveau pays, dev local, CI), ces colonnes n'existent
+        //    pas et le ALTER COLUMN ci-dessous échouait (42703).
+        //    ADD COLUMN IF NOT EXISTS rend la migration correcte des deux
+        //    côtés : crée les colonnes sur une base neuve, no-op sur la TN.
+        //    Type/longueur/NOT NULL/défaut alignés sur GpsDeviceConfiguration.
+        migrationBuilder.Sql(@"
+            ALTER TABLE gps_devices
+                ADD COLUMN IF NOT EXISTS command_go   character varying(100) NOT NULL DEFAULT E'AJ+GO#9999\n',
+                ADD COLUMN IF NOT EXISTS command_stop character varying(100) NOT NULL DEFAULT E'AJ+STOP#9999\n';
+        ");
+
         // 1. Bascule des DEFAULT au niveau du schéma
         migrationBuilder.Sql(@"
             ALTER TABLE gps_devices
