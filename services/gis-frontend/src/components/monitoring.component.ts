@@ -10,6 +10,7 @@ import { Vehicle } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { AdminService } from '../admin/services/admin.service';
 import { UserPreferencesService } from '../services/user-preferences.service';
+import { environment } from '../environments/environment';
 import { AppSpeedPipe, AppDistancePipe, AppTempPipe } from '../pipes/user-preference-pipes';
 import { getVehicleIcon } from './shared/vehicle-icons';
 import { PlaybackStateService, PlaybackTimelineEntry } from '../services/playback-state.service';
@@ -814,7 +815,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // Use setTimeout to ensure DOM is ready
     setTimeout(() => {
       if (!this.map) {
-        this.map = L.map('tracking-map').setView([36.8065, 10.1815], 8);
+        // Default map view — per-deployment (Tunisie/Calypso by default,
+        // Algérie/Bougeo override via environment). Overridden immediately
+        // below if navigated with lat/lng query params or pending center.
+        this.map = L.map('tracking-map').setView(
+          [environment.mapCenter.lat, environment.mapCenter.lng],
+          environment.mapCenter.zoom);
 
         // Calypso 9 — tile URL is now resolved through UserPreferencesService
         // so a single switch in /settings (style + language) reaches every

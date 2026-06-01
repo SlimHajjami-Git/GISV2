@@ -1,5 +1,6 @@
 import { Component, OnInit, OnDestroy, HostListener, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { environment } from '../../environments/environment';
 import { Router, RouterModule } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api.service';
@@ -63,7 +64,7 @@ type NotifBucket = Notification | NotifThreadGroup;
               <circle cx="31.2" cy="14.4" r="3.1" fill="#fff"/>
             </svg>
           </div>
-          <span class="brand-text">Calypso</span>
+          <span class="brand-text">{{ brandName }}</span>
         </div>
 
         <!-- Navigation Links -->
@@ -1445,6 +1446,8 @@ type NotifBucket = Notification | NotifThreadGroup;
   `]
 })
 export class AppLayoutComponent implements OnInit, OnDestroy {
+  /** Brand name shown in the navbar — per-deployment (Calypso / Bougeo / …). */
+  readonly brandName = environment.brandName;
   notifications: Notification[] = [];
   showNotifications = false;
   showUserMenu = false;
