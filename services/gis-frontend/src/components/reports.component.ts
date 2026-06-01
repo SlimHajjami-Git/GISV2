@@ -4861,8 +4861,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
               // (gros timestamps), laissant un vide à droite — la courbe
               // paraissait alors décalée par rapport à l'axe X.
               bounds: 'data',
-              min: this.chartData[0].ts,
-              max: this.chartData[this.chartData.length - 1].ts,
+              // Accès optionnel : si chartData est vide (rapport ouvert avant
+              // chargement, ou véhicule sans données), undefined => Chart.js
+              // auto-scale, pas de crash.
+              min: this.chartData[0]?.ts,
+              max: this.chartData[this.chartData.length - 1]?.ts,
               grid: { display: false },
               ticks: {
                 maxTicksLimit: 12,
