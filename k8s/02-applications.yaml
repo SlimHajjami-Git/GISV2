@@ -309,6 +309,18 @@ spec:
             - containerPort: 6300
               hostPort: 6300
               protocol: UDP
+            # Teltonika (Codec 8/8E), Concox GT06, Coban TK103 — added with
+            # the multi-protocol ingest support. hostPort so external trackers
+            # reach them directly on the node IP.
+            - containerPort: 6400
+              hostPort: 6400
+              protocol: TCP
+            - containerPort: 6500
+              hostPort: 6500
+              protocol: TCP
+            - containerPort: 6600
+              hostPort: 6600
+              protocol: TCP
           env:
             - name: POSTGRES_PASSWORD
               valueFrom:
