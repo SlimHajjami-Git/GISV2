@@ -3752,6 +3752,31 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // === CONSTANT-VALUE DETECTION (boîtier SANS sonde carburant) ===
+    // Un vrai capteur VARIE (consommation + pleins). Un boîtier sans sonde
+    // (NEMS-S, GT06…) émet un octet fixe que le parser lit comme un niveau
+    // figé (ex. 24 %). La détection d'oscillation ci-dessus ne l'attrape pas
+    // (c'est constant, pas oscillant). On flague la quasi-constance comme
+    // « pas de capteur réel » pour ne pas tracer une fausse ligne plate.
+    let fuelMin = fuelPositions[0].fuelRaw;
+    let fuelMax = fuelPositions[0].fuelRaw;
+    const distinctFuelSet = new Set<number>();
+    for (const p of fuelPositions) {
+      if (p.fuelRaw < fuelMin) fuelMin = p.fuelRaw;
+      if (p.fuelRaw > fuelMax) fuelMax = p.fuelRaw;
+      distinctFuelSet.add(p.fuelRaw);
+    }
+    if (fuelPositions.length >= 20 && (distinctFuelSet.size <= 2 || (fuelMax - fuelMin) < 5)) {
+      this.tableData = [];
+      this.chartData = [];
+      this.statisticsData = {
+        'Capteur carburant': 'Aucun capteur réel détecté',
+        'Diagnostic': `Valeur ${fuelMin === fuelMax ? 'figée à ' + fuelMin + '%' : 'quasi-constante (' + fuelMin + '–' + fuelMax + '%)'} sur ${fuelPositions.length} relevés — signature d'un boîtier sans sonde carburant`,
+        'Suivi carburant': 'Utilisez le rapport « Carburant réel » (pleins saisis) pour le suivi financier de ce véhicule'
+      };
+      return;
+    }
+
     // === SPIKE FILTER: Remove isolated bad fuel readings ===
     // Runs on fuel-only positions (no null gaps to break triplet detection)
     const spikeIndices = new Set<number>();
