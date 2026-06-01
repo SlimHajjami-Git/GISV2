@@ -676,7 +676,10 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   flex-direction: column;
   background: white;
   border-bottom: 1px solid #e2e8f0;
-  height: 280px;
+  /* height:auto — la section épouse le graphe. Avant, height:280px était
+     dimensionnée pour la barre de zoom (retirée) : il restait ~80px de vide
+     sous le graphe. La hauteur du graphe reste fixée par .chart-area (200px). */
+  height: auto;
   flex-shrink: 0;
   overflow: hidden; /* Prevent chart from expanding beyond section */
 }
