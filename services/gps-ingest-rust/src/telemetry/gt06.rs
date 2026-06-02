@@ -1,5 +1,5 @@
 use anyhow::{anyhow, bail, Result};
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime};
 use tracing::{debug, info, warn};
 
 use super::model::{FrameKind, FrameVersion, HhFrame};
@@ -197,7 +197,18 @@ fn decode_position(payload: &[u8], serial: u16, protocol: u8) -> Result<Gt06Deco
         );
     }
 
-    let recorded_at = decode_datetime(&payload[0..6])?;
+    // GT06 clones frequently ship an unsynced RTC that reports ~2006 even with
+    // a valid GPS fix. A wildly wrong timestamp makes the vehicle look "last
+    // seen 2006" (offline) and gets every frame deduped/rejected as stale, so
+    // fall back to the server receive time when the device clock is implausible.
+    let recorded_at = match decode_datetime(&payload[0..6]) {
+        Ok(dt) if dt.year() >= 2020 => dt,
+        Ok(bad) => {
+            debug!(device_clock = %bad, "GT06: implausible device timestamp — using server time");
+            chrono::Utc::now().naive_utc()
+        }
+        Err(_) => chrono::Utc::now().naive_utc(),
+    };
 
     // gps_info byte: high nibble = quantity of valid GPS info (always 0xC = 12 bytes typically),
     // low nibble = number of satellites used.
