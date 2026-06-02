@@ -61,7 +61,12 @@ pub enum TkDecodeResult {
 /// or `;` boundaries (or newlines, depending on the device) — see
 /// `extract_sentences` below.
 pub fn parse_sentence(line: &str) -> Result<TkDecodeResult> {
-    let trimmed = line.trim_matches(|c: char| c.is_whitespace() || c == '#' || c == ';');
+    // Strip framing. GPS103 logins arrive as `##,imei:<IMEI>,A;` — trimming the
+    // leading `##`/`;` leaves a `,imei:...` we normalise by dropping the comma.
+    let trimmed = line
+        .trim_matches(|c: char| c.is_whitespace() || c == '#' || c == ';')
+        .trim_start_matches(',')
+        .trim();
     if trimmed.is_empty() {
         return Ok(TkDecodeResult::Heartbeat { imei: None });
     }
@@ -72,6 +77,14 @@ pub fn parse_sentence(line: &str) -> Result<TkDecodeResult> {
 
     if let Some(rest) = trimmed.strip_prefix("imei:") {
         return parse_imei_form(rest);
+    }
+
+    // Bare `<IMEI>;` keepalive — many TK103/TK303/GPS103 clones announce and
+    // ping with just the 15-digit IMEI. Treat it as a heartbeat that carries
+    // the IMEI so the handler keeps the device online and attributes later
+    // position sentences to it.
+    if (14..=17).contains(&trimmed.len()) && trimmed.bytes().all(|b| b.is_ascii_digit()) {
+        return Ok(TkDecodeResult::Heartbeat { imei: Some(trimmed.to_string()) });
     }
 
     debug!(head = %&trimmed[..trimmed.len().min(32)], "TK103 unknown sentence");
@@ -424,5 +437,23 @@ mod tests {
         // 121° 36.3267' W = -121.60544…
         let v = parse_nmea_degrees("12136.3267", true).unwrap();
         assert!((v + 121.60545).abs() < 0.0001);
+    }
+
+    #[test]
+    fn bare_imei_is_heartbeat_with_imei() {
+        // GPS103 keepalive: just the IMEI + ';'
+        match parse_sentence("863844051418157;").unwrap() {
+            TkDecodeResult::Heartbeat { imei } => assert_eq!(imei.as_deref(), Some("863844051418157")),
+            other => panic!("expected Heartbeat with imei, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn gps103_login_with_hashes_is_login() {
+        // '##,imei:<IMEI>,A;' — leading ## must not break IMEI extraction
+        match parse_sentence("##,imei:863844051418157,A;").unwrap() {
+            TkDecodeResult::Login { imei } => assert_eq!(imei, "863844051418157"),
+            other => panic!("expected Login, got {:?}", other),
+        }
     }
 }

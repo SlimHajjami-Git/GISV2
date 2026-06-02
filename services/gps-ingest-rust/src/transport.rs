@@ -1756,6 +1756,11 @@ async fn handle_gt06_connection(
                             if let Err(e) = writer.write_all(&ack).await {
                                 warn!(?e, peer = %peer_str, "GT06: failed to write status ACK");
                             }
+                            // A status/heartbeat proves the device is connected even
+                            // without a GPS fix — keep it "online" while parked.
+                            if let Some(id) = imei.as_ref() {
+                                touch_device_online(&database, id, "gt06").await;
+                            }
                             if let (Some(frame), Some(id)) = (frame, imei.as_ref()) {
                                 if let Err(err) = route_gt06_frame(
                                     id, frame,
@@ -1791,6 +1796,24 @@ async fn handle_gt06_connection(
                 }
             }
         }
+    }
+}
+
+/// Refresh `last_communication` for a device identified by IMEI so the
+/// monitoring view keeps it "online". Used for heartbeat / keepalive packets
+/// that prove connectivity without carrying a GPS fix (GT06 status, Coban
+/// `<IMEI>;` keepalive). No-op (logged at debug) if the IMEI isn't registered.
+async fn touch_device_online(database: &Arc<dyn TelemetryStore>, imei: &str, proto: &str) {
+    match database.get_device_id(imei).await {
+        Ok(Some(device_id)) => {
+            if let Err(err) = database.update_device_last_communication(device_id).await {
+                warn!(?err, imei = %imei, proto, "failed to refresh last_communication on heartbeat");
+            }
+        }
+        Ok(None) => {
+            debug!(imei = %imei, proto, "heartbeat from unregistered device — not marking online");
+        }
+        Err(err) => warn!(?err, imei = %imei, proto, "device lookup failed on heartbeat"),
     }
 }
 
@@ -1855,6 +1878,9 @@ async fn handle_coban_connection(
                         return Ok(());
                     }
                     imei = Some(new_imei);
+                    if let Some(ref id) = imei {
+                        touch_device_online(&database, id, "coban").await;
+                    }
                 }
                 Ok(telemetry::coban::TkDecodeResult::Position { frame, imei: sentence_imei }) => {
                     // First-position implicit registration: if we didn't see an
@@ -1874,8 +1900,18 @@ async fn handle_coban_connection(
                         warn!(?err, imei = %id, "Coban: failed to ingest position");
                     }
                 }
-                Ok(telemetry::coban::TkDecodeResult::Heartbeat { .. }) => {
+                Ok(telemetry::coban::TkDecodeResult::Heartbeat { imei: hb_imei }) => {
+                    // Reply ON\r\n so the device keeps the link open.
                     let _ = writer.write_all(telemetry::coban::KEEPALIVE_ACK).await;
+                    // A bare `<IMEI>;` keepalive carries the IMEI — adopt it if
+                    // we haven't seen an explicit login on this connection yet.
+                    if imei.is_none() {
+                        imei = hb_imei;
+                    }
+                    // Heartbeat = connected but no GPS. Keep the vehicle "online".
+                    if let Some(ref id) = imei {
+                        touch_device_online(&database, id, "coban").await;
+                    }
                 }
                 Ok(telemetry::coban::TkDecodeResult::Unknown { head }) => {
                     debug!(peer = %peer_str, head = %head, "Coban: unknown sentence ignored");
