@@ -1,5 +1,5 @@
 use anyhow::{anyhow, bail, Result};
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime};
 use tracing::{debug, info};
 
 use super::model::{FrameKind, FrameVersion, HhFrame};
@@ -101,6 +101,17 @@ pub const LOGIN_ACK: &[u8] = b"LOAD\r\n";
 /// by some firmwares as a heartbeat probe.
 pub const KEEPALIVE_ACK: &[u8] = b"ON\r\n";
 
+/// Mirror GISV1's TK103 date handling (getDateTimeTK103_2 / getDateTimeTK102):
+/// keep the device's reported time only when it is plausible, otherwise fall
+/// back to the server-receive time (GISV1 defaulted to `DateTime.Now` when the
+/// device date was missing or garbled). Same approach as the GT06 RTC guard.
+fn plausible_or_server_time(parsed: Result<NaiveDateTime>) -> NaiveDateTime {
+    match parsed {
+        Ok(dt) if dt.year() >= 2020 => dt,
+        _ => chrono::Utc::now().naive_utc(),
+    }
+}
+
 // ─── *HQ family parser ──────────────────────────────────────────────────────
 //
 // Example:
@@ -128,7 +139,7 @@ fn parse_hq(s: &str) -> Result<TkDecodeResult> {
     let course = parts[9].parse::<f64>().unwrap_or(0.0);
     let ddmmyy = parts[10];
 
-    let recorded_at = parse_hq_datetime(ddmmyy, hhmmss)?;
+    let recorded_at = plausible_or_server_time(parse_hq_datetime(ddmmyy, hhmmss));
     let latitude = parse_nmea_degrees(lat_str, ns == "S")?;
     let longitude = parse_nmea_degrees(lon_str, ew == "W")?;
     let is_valid = valid_flag.eq_ignore_ascii_case("A")
@@ -253,7 +264,7 @@ fn parse_imei_form(s: &str) -> Result<TkDecodeResult> {
     let speed = parts[11].parse::<f64>().unwrap_or(0.0);
     let course = parts.get(12).and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
 
-    let recorded_at = parse_imei_datetime(datetime_str, hhmmss)?;
+    let recorded_at = plausible_or_server_time(parse_imei_datetime(datetime_str, hhmmss));
     let latitude = parse_nmea_degrees(lat_str, ns == "S")?;
     let longitude = parse_nmea_degrees(lon_str, ew == "W")?;
     let is_valid = valid.eq_ignore_ascii_case("A")
