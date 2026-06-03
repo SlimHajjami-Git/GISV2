@@ -104,16 +104,54 @@ impl ValidationResult {
     }
 }
 
+/// Operational-area bounding box, configurable per deployment via environment
+/// variables so the same binary serves Tunisia (default) and Algeria (Bougeo)
+/// without rejecting out-of-Tunisia positions. GISV1 had no such geo-filter;
+/// this keeps the noise-rejection benefit while staying multi-country.
+#[derive(Debug, Clone, Copy)]
+struct GeoBounds {
+    lat_min: f64,
+    lat_max: f64,
+    lon_min: f64,
+    lon_max: f64,
+}
+
+impl GeoBounds {
+    fn from_env() -> Self {
+        fn env_f64(key: &str, default: f64) -> f64 {
+            std::env::var(key)
+                .ok()
+                .and_then(|v| v.trim().parse::<f64>().ok())
+                .unwrap_or(default)
+        }
+        Self {
+            lat_min: env_f64("GEO_BOUNDS_LAT_MIN", GEO_BOUNDS_LAT_MIN),
+            lat_max: env_f64("GEO_BOUNDS_LAT_MAX", GEO_BOUNDS_LAT_MAX),
+            lon_min: env_f64("GEO_BOUNDS_LON_MIN", GEO_BOUNDS_LON_MIN),
+            lon_max: env_f64("GEO_BOUNDS_LON_MAX", GEO_BOUNDS_LON_MAX),
+        }
+    }
+}
+
 /// GPS Position Validator
 pub struct GpsValidator {
     /// Last valid positions by device_id
     last_positions: Arc<RwLock<HashMap<i32, LastValidPosition>>>,
+    /// Operational-area bounds (env-configurable per deployment).
+    geo: GeoBounds,
 }
 
 impl GpsValidator {
     pub fn new() -> Self {
+        let geo = GeoBounds::from_env();
+        info!(
+            lat_min = geo.lat_min, lat_max = geo.lat_max,
+            lon_min = geo.lon_min, lon_max = geo.lon_max,
+            "GPS validator operational-area bounds loaded"
+        );
         Self {
             last_positions: Arc::new(RwLock::new(HashMap::new())),
+            geo,
         }
     }
 
@@ -193,15 +231,15 @@ impl GpsValidator {
 
         // Geographic bounding box: reject positions outside operational area
         // Catches null-island (0,0), GPS noise in wrong hemisphere, and hardware glitches
-        if frame.latitude < GEO_BOUNDS_LAT_MIN || frame.latitude > GEO_BOUNDS_LAT_MAX
-            || frame.longitude < GEO_BOUNDS_LON_MIN || frame.longitude > GEO_BOUNDS_LON_MAX
+        if frame.latitude < self.geo.lat_min || frame.latitude > self.geo.lat_max
+            || frame.longitude < self.geo.lon_min || frame.longitude > self.geo.lon_max
         {
             return Some(ValidationResult::Invalid {
                 reason: format!(
                     "Position ({:.6}, {:.6}) outside operational area [lat {}-{}, lon {}-{}]",
                     frame.latitude, frame.longitude,
-                    GEO_BOUNDS_LAT_MIN, GEO_BOUNDS_LAT_MAX,
-                    GEO_BOUNDS_LON_MIN, GEO_BOUNDS_LON_MAX
+                    self.geo.lat_min, self.geo.lat_max,
+                    self.geo.lon_min, self.geo.lon_max
                 ),
             });
         }
