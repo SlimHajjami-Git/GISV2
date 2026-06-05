@@ -69,7 +69,7 @@ import { DateFilterBarComponent } from './shared/ui';
         <div class="kpi-ic">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="13" rx="2.5"/><path d="M2 10h20"/></svg>
         </div>
-        <div class="kpi-meta"><span class="kpi-label">Coût total</span><span class="kpi-num">{{ dCost | number:'1.0-0' }}<i>DT</i></span></div>
+        <div class="kpi-meta"><span class="kpi-label">Coût total</span><span class="kpi-num">{{ dCost | number:'1.0-0' }}<i>DT</i></span><span class="kpi-sub" *ngIf="costTrend!==null && costTrend!==0" [class.bad]="costTrend>0" [class.good]="costTrend<0">{{ costTrend>0?'▲':'▼' }} {{ absPct(costTrend) }}% <small>vs préc.</small></span></div>
       </div>
       <div class="kpi" style="--c:#ef4444" [class.kpi-alert]="dAlerts>0">
         <div class="kpi-ic">
@@ -192,7 +192,7 @@ import { DateFilterBarComponent } from './shared/ui';
 
       <!-- Kilométrage -->
       <section class="card c6 reveal" style="--d:7">
-        <div class="card-h"><h3>Kilométrage par véhicule</h3></div>
+        <div class="card-h"><h3>Kilométrage par véhicule</h3><span class="badge badge-primary" *ngIf="periodDistance>0">{{ periodDistance | number:'1.0-0' }} km</span><span class="kpi-sub inline" *ngIf="distanceTrend!==null && distanceTrend!==0">{{ distanceTrend>0?'▲':'▼' }} {{ absPct(distanceTrend) }}%</span></div>
         <div class="rows" *ngIf="topUnits.length">
           <div *ngFor="let u of pUnits" class="row">
             <span class="row-name">{{ u.name }}</span>
@@ -371,6 +371,11 @@ import { DateFilterBarComponent } from './shared/ui';
     .kpi-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .4px; }
     .kpi-num { font-size: 27px; font-weight: 800; line-height: 1; color: var(--text-primary); letter-spacing: -1px; font-variant-numeric: tabular-nums; }
     .kpi-num i { font-size: 13px; font-weight: 600; font-style: normal; color: var(--text-muted); margin-left: 3px; }
+    .kpi-sub { font-size: 11px; font-weight: 700; color: var(--text-muted); font-variant-numeric: tabular-nums; margin-top: 2px; display: flex; align-items: center; gap: 4px; }
+    .kpi-sub small { font-weight: 500; opacity: .75; }
+    .kpi-sub.good { color: var(--success); }
+    .kpi-sub.bad { color: var(--danger); }
+    .kpi-sub.inline { margin: 0; }
     .kpi-alert::before { animation: alertbar 1.6s ease-in-out infinite; }
     @keyframes alertbar { 0%,100% { opacity: .9; } 50% { opacity: .35; } }
 
@@ -551,6 +556,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   maxMileage = 1;
   totalFuelConsumed = 0;
   fuelEstimated = false;
+  costTrend: number|null = null;
+  distanceTrend: number|null = null;
+  periodDistance = 0;
   cPts=''; cLabels:string[]=[]; cVals:number[]=[]; cPoints:{x:number;y:number}[]=[]; cIdx=-1;
   hSeg=-1;
   fuelCost=0; maintenanceCost=0; repairCost=0; otherCost=0; totalCost=0;
@@ -688,6 +696,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
             if(fc.chartDays?.length){const step=Math.max(1,Math.floor(fc.chartDays.length/7));this.cLabels=(fc.chartDays as string[]).filter((_:string,i:number)=>i%step===0||i===fc.chartDays.length-1).map((dd:string)=>{const p=dd.split('-');return p.length>=3?`${p[2]}/${p[1]}`:dd;});}
           }
         }
+        if(d.trends){this.costTrend=d.trends.cost??null;this.distanceTrend=d.trends.distance??null;}
+        if(d.periodDistance!=null)this.periodDistance=d.periodDistance;
         this.rebuild();this.cdr.detectChanges();
       },
       error:(err:any)=>console.error('Dashboard error:',err)
@@ -703,6 +713,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   donutIdx(name:string):number{return this.donutSegs.findIndex(s=>s.name===name);}
+
+  absPct(v:number):string{return Math.abs(v).toFixed(1);}
 
   scoreC(s:number):string{return s>=80?'#10b981':s>=60?'#f59e0b':'#ef4444';}
   scoreE(s:number):string{return s>=80?'#34d399':s>=60?'#fbbf24':'#f87171';}

@@ -821,6 +821,36 @@ public class DashboardController : ControllerBase
             .ToList();
         var chartValues = chartDays.Select(d => Math.Round(dailyFleetFuel.GetValueOrDefault(d), 2)).ToList();
 
+        // ── 12. Trends vs previous period (cheap comparisons for the KPI ▲▼ deltas) ──
+        decimal prevTotalCost = 0;
+        try
+        {
+            prevTotalCost += await _context.FuelEntries.AsNoTracking()
+                .Where(f => f.CompanyId == companyId && f.InvoiceDate >= prevStart && f.InvoiceDate <= prevEnd)
+                .Select(f => (decimal?)f.TotalAmount).SumAsync() ?? 0m;
+            prevTotalCost += await _context.MaintenanceLogs.AsNoTracking()
+                .Where(m => m.Vehicle!.CompanyId == companyId && m.DoneDate >= prevStart && m.DoneDate <= prevEnd && m.ActualCost > 0)
+                .Select(m => (decimal?)m.ActualCost).SumAsync() ?? 0m;
+            prevTotalCost += await _context.Repairs.AsNoTracking()
+                .Where(r => r.SocieteId == companyId && r.RepairDate >= prevStart && r.RepairDate <= prevEnd)
+                .Select(r => (decimal?)r.TotalCost).SumAsync() ?? 0m;
+            prevTotalCost += await _context.VehicleCosts.AsNoTracking()
+                .Where(c => c.CompanyId == companyId && c.Date >= prevStart && c.Date <= prevEnd)
+                .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
+        }
+        catch { /* trend is best-effort */ }
+        var currentTotalCost = fuelCost + maintenanceCost + repairCost + otherCost;
+
+        var currentDistance = tripKmByVehicle.Sum(x => x.Km);
+        var prevDistance = await _context.Trips.AsNoTracking()
+            .Where(t => t.CompanyId == companyId && t.Status == "completed" &&
+                        t.StartTime >= prevStart && t.StartTime <= prevEnd)
+            .Select(t => (decimal?)t.DistanceKm).SumAsync() ?? 0m;
+
+        static double Pct(decimal cur, decimal prev) => prev > 0 ? Math.Round((double)(cur - prev) / (double)prev * 100, 1) : 0.0;
+        var costTrend = Pct(currentTotalCost, prevTotalCost);
+        var distanceTrend = Pct(currentDistance, prevDistance);
+
         // ── Build response ──
         var result = new
         {
@@ -855,7 +885,9 @@ public class DashboardController : ControllerBase
             geofences = geofencesList,
             alerts = mergedAlerts,
             recentTrips = tripsList,
-            drivers = driversList
+            drivers = driversList,
+            trends = new { cost = costTrend, distance = distanceTrend },
+            periodDistance = Math.Round((double)currentDistance)
         };
 
         _cache.Set(cacheKey, result, TimeSpan.FromMinutes(10));
