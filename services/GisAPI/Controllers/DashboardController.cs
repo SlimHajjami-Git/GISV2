@@ -569,9 +569,13 @@ public class DashboardController : ControllerBase
                 .Where(p => latestPosIds.Contains(p.Id))
                 .ToDictionaryAsync(p => p.DeviceId);
 
+            // A vehicle only counts as "moving"/"ignition on" if its LAST fix is RECENT.
+            // Without this freshness gate, a vehicle whose last-ever frame had speed>3 but
+            // stopped reporting hours/days ago kept showing as "en circulation" (phantom movement).
+            var freshSince = now.AddMinutes(-30);
             foreach (var v in gpsVehicles)
             {
-                if (latestPositions.TryGetValue(v.GpsDeviceId!.Value, out var pos))
+                if (latestPositions.TryGetValue(v.GpsDeviceId!.Value, out var pos) && pos.RecordedAt >= freshSince)
                 {
                     var speed = pos.SpeedKph ?? 0;
                     var ignition = pos.IgnitionOn ?? false;
@@ -579,7 +583,7 @@ public class DashboardController : ControllerBase
                     else if (ignition) ignitionOnCount++;
                     else stoppedCount++;
                 }
-                else stoppedCount++;
+                else stoppedCount++; // no fix OR stale fix → not actively moving
             }
         }
 
@@ -623,7 +627,22 @@ public class DashboardController : ControllerBase
             .Select(g => new { VehicleId = g.Key, AlertCount = g.Count() })
             .ToListAsync();
 
+        // Distance actually driven per vehicle IN THE PERIOD (completed trips).
+        // Reused below for the km ranking AND to know which vehicles were active.
+        var tripKmByVehicle = await _context.Trips.AsNoTracking()
+            .Where(t => t.CompanyId == companyId && t.Status == "completed" &&
+                        t.StartTime >= periodStart && t.StartTime <= periodEnd)
+            .GroupBy(t => t.VehicleId)
+            .Select(g => new { VehicleId = g.Key, Km = g.Sum(t => t.DistanceKm) })
+            .ToListAsync();
+
+        // Only score vehicles that were ACTUALLY ACTIVE in the period (drove or raised alerts).
+        // Otherwise parked / GPS-less vehicles get a perfect 100 (0 alerts) and dominate the top.
+        var activeVehicleIds = new HashSet<int>(tripKmByVehicle.Where(x => x.Km > 0).Select(x => x.VehicleId));
+        activeVehicleIds.UnionWith(alertsByVehicle.Select(a => a.VehicleId));
+
         var drivingScores = vehicles
+            .Where(v => activeVehicleIds.Contains(v.Id))
             .Select(v =>
             {
                 var alerts = alertsByVehicle.FirstOrDefault(a => a.VehicleId == v.Id)?.AlertCount ?? 0;
@@ -639,38 +658,38 @@ public class DashboardController : ControllerBase
         var attention = healthResults.Count(h => h.Score >= 40 && h.Score < 80);
         var unhealthy = healthResults.Count(h => h.Score < 40);
 
-        // ── 6. Top km units (OdometerKm from GPS if firmware starts with L, else Vehicle.Mileage) ──
+        // ── 6. Top km units — distance ACTUALLY DRIVEN in the selected period (completed trips),
+        //       not the lifetime odometer (which never changed when you switched day/week/month). ──
         var topUnitsColors = new[] { "#3b82f6", "#22c55e", "#f97316", "#8b5cf6", "#06b6d4", "#ec4899", "#eab308", "#14b8a6" };
-        var vehicleMileages = vehicles.Select(v =>
-        {
-            double km = v.Mileage;
-            if (v.GpsDeviceId.HasValue && v.GpsDevice != null)
-            {
-                var fw = v.GpsDevice.FirmwareVersion ?? "";
-                if (fw.StartsWith("L", StringComparison.OrdinalIgnoreCase)
-                    && latestPositions.TryGetValue(v.GpsDeviceId.Value, out var pos)
-                    && pos.OdometerKm.HasValue && pos.OdometerKm.Value > 0)
-                {
-                    km = (double)pos.OdometerKm.Value;
-                }
-            }
-            return new { v, km };
-        }).ToList();
-
-        var topUnits = vehicleMileages
-            .Where(x => x.km > 0)
-            .OrderByDescending(x => x.km)
+        var vehicleById = vehicles.ToDictionary(v => v.Id);
+        var topUnits = tripKmByVehicle
+            .Where(x => x.Km > 0 && vehicleById.ContainsKey(x.VehicleId))
+            .OrderByDescending(x => x.Km)
             .Take(20)
-            .Select((x, i) => new { name = x.v.Plate ?? x.v.Name, color = topUnitsColors[i % topUnitsColors.Length], mileage = Math.Round(x.km) })
+            .Select((x, i) => new
+            {
+                name = vehicleById[x.VehicleId].Plate ?? vehicleById[x.VehicleId].Name,
+                color = topUnitsColors[i % topUnitsColors.Length],
+                mileage = Math.Round((double)x.Km)
+            })
             .ToList();
 
-        // ── 7. Geofences ──
+        // ── 7. Geofences — number of PASSAGES (entry/exit events) in the period,
+        //       not the static count of assigned vehicles (which never reflected activity). ──
         var geoColors = new[] { "#22c55e", "#3b82f6", "#f97316", "#06b6d4", "#8b5cf6", "#ec4899", "#eab308", "#14b8a6" };
-        var geofences = await _context.Geofences.AsNoTracking()
+        var geofencesRaw = await _context.Geofences.AsNoTracking()
             .Where(g => g.CompanyId == companyId && g.IsActive)
-            .Select(g => new { g.Name, Count = g.AssignedVehicles.Count })
+            .Select(g => new { g.Id, g.Name })
             .ToListAsync();
-        var geofencesList = geofences.Select((g, i) => new { name = g.Name, color = geoColors[i % geoColors.Length], count = g.Count }).ToList();
+        var geoEventCounts = await _context.GeofenceEvents.AsNoTracking()
+            .Where(e => e.CompanyId == companyId && e.Timestamp >= periodStart && e.Timestamp <= periodEnd)
+            .GroupBy(e => e.GeofenceId)
+            .Select(g => new { GeofenceId = g.Key, Count = g.Count() })
+            .ToListAsync();
+        var geoCountMap = geoEventCounts.ToDictionary(x => x.GeofenceId, x => x.Count);
+        var geofencesList = geofencesRaw
+            .Select((g, i) => new { name = g.Name, color = geoColors[i % geoColors.Length], count = geoCountMap.GetValueOrDefault(g.Id, 0) })
+            .ToList();
 
         // ── 8. Alerts (GpsAlerts + Notifications merged) ──
         var gpsAlerts = await _context.GpsAlerts.AsNoTracking()
@@ -827,7 +846,8 @@ public class DashboardController : ControllerBase
                 fleetTotalLiters = Math.Round(fleetTotalLiters, 2),
                 fleetTotalKm,
                 chartDays,
-                chartValues
+                chartValues,
+                estimated = true // GPS-sensor-derived estimate — flagged so the UI can label it (fuel-reliability work = tasks 31-33)
             },
             drivingScores,
             healthData = new { healthy, attention, unhealthy },

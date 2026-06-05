@@ -113,6 +113,7 @@ import { DateFilterBarComponent } from './shared/ui';
       <section class="card c8 reveal" style="--d:3">
         <div class="card-h">
           <h3>Consommation carburant</h3>
+          <span class="badge badge-muted" *ngIf="fuelEstimated" title="Estimation issue des capteurs GPS — chiffre indicatif">estimé</span>
           <span class="badge badge-primary">{{ totalFuelConsumed | number:'1.0-0' }} L</span>
         </div>
         <div class="chart" (mousemove)="onChartHover($event)" (mouseleave)="cIdx=-1">
@@ -549,6 +550,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   topUnits:{name:string;color:string;mileage:number}[] = [];
   maxMileage = 1;
   totalFuelConsumed = 0;
+  fuelEstimated = false;
   cPts=''; cLabels:string[]=[]; cVals:number[]=[]; cPoints:{x:number;y:number}[]=[]; cIdx=-1;
   hSeg=-1;
   fuelCost=0; maintenanceCost=0; repairCost=0; otherCost=0; totalCost=0;
@@ -675,6 +677,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         if(d.drivers)this.drivers=d.drivers.map((dr:any)=>({name:dr.name,initials:dr.initials,vehicle:dr.vehicle,active:dr.active}));
         if(d.fuelConsumption){
           const fc=d.fuelConsumption;
+          this.fuelEstimated=fc.estimated===true;
           if(fc.vehicleStats?.length){this.vehicleFuelStats=fc.vehicleStats.map((v:any)=>({plate:v.plate||'Inconnu',consumption:Number(v.consumption)||0,totalLiters:Math.round(Number(v.totalLiters)||0),totalKm:Math.round(Number(v.totalKm)||0)}));this.maxFuelConsumption=Math.max(...this.vehicleFuelStats.map(v=>v.consumption),1);}
           if(fc.fleetTotalLiters>0)this.totalFuelConsumed=Math.round(fc.fleetTotalLiters);
           if(fc.chartValues?.length){
