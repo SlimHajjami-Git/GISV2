@@ -851,6 +851,21 @@ public class DashboardController : ControllerBase
         var costTrend = Pct(currentTotalCost, prevTotalCost);
         var distanceTrend = Pct(currentDistance, prevDistance);
 
+        // ── 13. Fleet breakdown by vehicle type (count + km driven in the period) ──
+        var typeColors = new[] { "#6366f1", "#10b981", "#f59e0b", "#0ea5e9", "#ec4899", "#8b5cf6", "#14b8a6", "#ef4444" };
+        var typeBreakdown = vehicles
+            .GroupBy(v => string.IsNullOrWhiteSpace(v.Type) ? "Autre" : v.Type!)
+            .Select(g => new
+            {
+                type = g.Key,
+                count = g.Count(),
+                km = Math.Round(g.Sum(v => (double)(tripKmByVehicle.FirstOrDefault(t => t.VehicleId == v.Id)?.Km ?? 0m)))
+            })
+            .OrderByDescending(x => x.count)
+            .Take(8)
+            .Select((x, i) => new { x.type, x.count, x.km, color = typeColors[i % typeColors.Length] })
+            .ToList();
+
         // ── Build response ──
         var result = new
         {
@@ -887,7 +902,8 @@ public class DashboardController : ControllerBase
             recentTrips = tripsList,
             drivers = driversList,
             trends = new { cost = costTrend, distance = distanceTrend },
-            periodDistance = Math.Round((double)currentDistance)
+            periodDistance = Math.Round((double)currentDistance),
+            typeBreakdown
         };
 
         _cache.Set(cacheKey, result, TimeSpan.FromMinutes(10));

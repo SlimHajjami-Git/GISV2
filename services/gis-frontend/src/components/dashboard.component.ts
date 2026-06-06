@@ -189,6 +189,20 @@ import { DateFilterBarComponent } from './shared/ui';
         </div>
       </section>
 
+      <!-- Répartition par type -->
+      <section class="card c4 reveal" style="--d:6">
+        <div class="card-h"><h3>Répartition par type</h3></div>
+        <div class="rows" *ngIf="typeBreakdown.length">
+          <div *ngFor="let t of typeBreakdown" class="row">
+            <span class="leg-dot" [style.background]="t.color"></span>
+            <div class="row-stack"><span class="row-name">{{ t.type }}</span><span class="row-sub">{{ t.km | number:'1.0-0' }} km</span></div>
+            <div class="track"><div class="fill" [style.width.%]="(t.count/maxTypeCount)*100" [style.background]="t.color"></div></div>
+            <b class="row-val">{{ t.count }}</b>
+          </div>
+        </div>
+        <div class="empty" *ngIf="!typeBreakdown.length"><span>Aucune donnée</span></div>
+      </section>
+
       <!-- Alertes -->
       <section class="card c4 reveal" style="--d:6">
         <div class="card-h"><h3>Alertes</h3><span class="badge badge-red" *ngIf="alerts.length">{{ alerts.length }}</span></div>
@@ -586,6 +600,8 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   costTrend: number|null = null;
   distanceTrend: number|null = null;
   periodDistance = 0;
+  typeBreakdown:{type:string;count:number;km:number;color:string}[]=[];
+  maxTypeCount=1;
   cPts=''; cLabels:string[]=[]; cVals:number[]=[]; cPoints:{x:number;y:number}[]=[]; cIdx=-1;
   hSeg=-1;
   fuelCost=0; maintenanceCost=0; repairCost=0; otherCost=0; totalCost=0;
@@ -766,6 +782,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
         }
         if(d.trends){this.costTrend=d.trends.cost??null;this.distanceTrend=d.trends.distance??null;}
         if(d.periodDistance!=null)this.periodDistance=d.periodDistance;
+        if(d.typeBreakdown){this.typeBreakdown=d.typeBreakdown;this.maxTypeCount=Math.max(...this.typeBreakdown.map(t=>t.count),1);}
         this.rebuild();this.cdr.detectChanges();
       },
       error:(err:any)=>console.error('Dashboard error:',err)
