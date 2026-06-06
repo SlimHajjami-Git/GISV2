@@ -1,4 +1,5 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, AfterViewInit, ViewChild, ElementRef, ChangeDetectorRef } from '@angular/core';
+import * as L from 'leaflet';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -81,6 +82,20 @@ import { DateFilterBarComponent } from './shared/ui';
 
     <!-- ════ MAIN GRID ════ -->
     <div class="grid">
+
+      <!-- Flotte en direct (mini-carte) -->
+      <section class="card c8 gc-map">
+        <div class="card-h">
+          <h3>Flotte en direct</h3>
+          <div class="map-legend">
+            <span><i style="background:#10b981"></i>En circulation</span>
+            <span><i style="background:#f59e0b"></i>Moteur allumé</span>
+            <span><i style="background:#64748b"></i>À l'arrêt</span>
+            <span><i style="background:#cbd5e1"></i>Hors ligne</span>
+          </div>
+        </div>
+        <div #fleetMap class="fleet-map"></div>
+      </section>
 
       <!-- État flotte -->
       <section class="card c4 reveal" style="--d:2">
@@ -392,6 +407,15 @@ import { DateFilterBarComponent } from './shared/ui';
     .card-h { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
     .card-h h3 { margin: 0; flex: 1; font-size: 13.5px; font-weight: 700; color: var(--text-primary); letter-spacing: -.1px; }
 
+    /* ── Fleet mini-map ── */
+    .gc-map .card-h { flex-wrap: wrap; }
+    .fleet-map { height: 340px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--bg-secondary); }
+    :host-context([data-theme="dark"]) .fleet-map { background: #0b1220; }
+    :host-context([data-theme="dark"]) .fleet-map ::ng-deep .leaflet-tile { filter: invert(1) hue-rotate(180deg) brightness(.95) contrast(.9); }
+    .map-legend { display: flex; gap: 12px; flex-wrap: wrap; }
+    .map-legend span { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 500; color: var(--text-muted); }
+    .map-legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
     .badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .badge-primary { color: var(--primary); background: var(--tint); }
     .badge-amber { color: #b45309; background: color-mix(in srgb, var(--warning) 16%, transparent); }
@@ -534,7 +558,10 @@ import { DateFilterBarComponent } from './shared/ui';
     }
   `]
 })
-export class DashboardComponent implements OnInit, OnDestroy {
+export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
+  @ViewChild('fleetMap') mapRef?: ElementRef<HTMLDivElement>;
+  private fleetMap?: L.Map;
+  private fleetMarkers?: L.LayerGroup;
   private destroy$ = new Subject<void>();
   company: Company | null = null;
   selectedPeriod = 'week'; fromDate = ''; toDate = '';
@@ -605,8 +632,49 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.wire();
   }
 
+  ngAfterViewInit(){ this.initFleetMap(); }
+
   ngOnDestroy(){
     this.destroy$.next();this.destroy$.complete();
+    this.fleetMap?.remove();
+  }
+
+  private initFleetMap(){
+    const el=this.mapRef?.nativeElement;
+    if(!el||this.fleetMap)return;
+    this.fleetMap=L.map(el,{zoomControl:true,attributionControl:false}).setView([34.0,9.0],5);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd'}).addTo(this.fleetMap);
+    this.fleetMarkers=L.layerGroup().addTo(this.fleetMap);
+    setTimeout(()=>this.fleetMap?.invalidateSize(),400);
+    this.loadMapPositions();
+  }
+
+  private loadMapPositions(){
+    if(!this.fleetMap||!this.fleetMarkers)return;
+    this.apiService.getVehiclesWithPositions().pipe(takeUntil(this.destroy$)).subscribe({
+      next:(vehicles:any[])=>{
+        if(!this.fleetMarkers||!this.fleetMap)return;
+        this.fleetMarkers.clearLayers();
+        const pts:L.LatLngTuple[]=[];
+        for(const v of vehicles||[]){
+          const p=v?.lastPosition; if(!p)continue;
+          const lat=Number(p.latitude),lon=Number(p.longitude);
+          if((!lat&&!lon)||Math.abs(lat)>90||Math.abs(lon)>180)continue;
+          const online=v.isOnline!==false;
+          const moving=v.stats?.isMoving===true;
+          const ign=p.ignitionOn===true;
+          const color=!online?'#cbd5e1':moving?'#10b981':ign?'#f59e0b':'#64748b';
+          const label=!online?'Hors ligne':moving?'En circulation':ign?'Moteur allumé':'À l\'arrêt';
+          const mk=L.circleMarker([lat,lon],{radius:6,weight:2,color:'#ffffff',fillColor:color,fillOpacity:1});
+          mk.bindPopup(`<b>${v.plate||v.name||'Véhicule'}</b><br>${label}`);
+          this.fleetMarkers.addLayer(mk);
+          pts.push([lat,lon]);
+        }
+        if(pts.length){try{this.fleetMap.fitBounds(L.latLngBounds(pts).pad(0.2),{maxZoom:13});}catch{}}
+        this.cdr.detectChanges();
+      },
+      error:()=>{}
+    });
   }
 
   private anim(from:number,to:number,cb:(v:number)=>void){
@@ -666,7 +734,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.signalrService.positionUpdate$.pipe(takeUntil(this.destroy$)).subscribe(()=>{
       if(!this.refreshPending){
         this.refreshPending=true;
-        setTimeout(()=>{this.refreshPending=false;this.loadAll();},30000);
+        setTimeout(()=>{this.refreshPending=false;this.loadAll();this.loadMapPositions();},30000);
       }
     });
   }
