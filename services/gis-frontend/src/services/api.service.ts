@@ -1874,6 +1874,15 @@ export class ApiService {
     return this.http.get<FuelPriceDto[]>(`${this.API_URL}/fuelexpenses/prices`, { headers: this.getHeaders() });
   }
 
+  // Anti-fraud: real fuel (card-billed) vs GPS-consumed comparison
+  getFuelComparisonReport(startDate?: string, endDate?: string, vehicleId?: number): Observable<FuelComparisonReport> {
+    let params = new HttpParams();
+    if (startDate) params = params.set('startDate', startDate);
+    if (endDate) params = params.set('endDate', endDate);
+    if (vehicleId) params = params.set('vehicleId', vehicleId.toString());
+    return this.http.get<FuelComparisonReport>(`${this.API_URL}/fuelexpenses/comparison`, { headers: this.getHeaders(), params });
+  }
+
   // ==================== FUEL PRICES MANAGEMENT ====================
 
   getFuelPrices(options: { fuelTypeId?: number; isActive?: boolean; page?: number; pageSize?: number } = {}): Observable<PaginatedFuelPricesResult> {
@@ -3630,6 +3639,30 @@ export interface FleetFuelStatisticsDto {
   fuelTypeDistribution: FuelTypeDistributionDto[];
   monthlyTrends: MonthlyFuelTrendDto[];
   vehicleExpenses: VehicleFuelExpenseDto[];
+}
+
+export interface FuelComparisonRow {
+  vehicleId: number;
+  vehicleName: string;
+  plate: string | null;
+  realLiters: number;   // billed via fuel card (/carburant)
+  realCost: number;
+  gpsLiters: number;    // consumed per the GPS device
+  gpsSource: 'capteur' | 'estime' | 'aucun';  // capteur = real sensor (NEMS L); estime = distance estimate; aucun = no GPS
+  distanceKm: number;
+  diffLiters: number;   // realLiters - gpsLiters (positive = billed more than consumed)
+  diffPercent: number;
+}
+
+export interface FuelComparisonReport {
+  startDate: string;
+  endDate: string;
+  totalRealLiters: number;
+  totalRealCost: number;
+  totalGpsLiters: number;
+  vehicleCount: number;
+  sensorCount: number;
+  rows: FuelComparisonRow[];
 }
 
 export interface VehicleFuelExpenseDto {

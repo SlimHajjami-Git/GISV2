@@ -839,6 +839,14 @@
               </div>
             </div>
 
+            <!-- Anti-fraud: adjustable "Suspect" thresholds (fuel-comparison only) -->
+            <div *ngIf="selectedTemplate?.type === 'fuel-comparison' && reportGenerated" class="fc-threshold-bar" style="display:flex;gap:16px;align-items:center;padding:10px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;margin-bottom:12px;flex-wrap:wrap;">
+              <span style="font-weight:600;">Seuil « Suspect » :</span>
+              <label style="display:flex;align-items:center;gap:6px;">écart &gt; <input type="number" min="0" [(ngModel)]="fcThresholdPercent" (ngModelChange)="computeFuelComparisonTable()" style="width:70px;padding:4px 8px;border:1px solid var(--border-color,#cbd5e1);border-radius:6px;"> %</label>
+              <label style="display:flex;align-items:center;gap:6px;">ET &gt; <input type="number" min="0" [(ngModel)]="fcThresholdLiters" (ngModelChange)="computeFuelComparisonTable()" style="width:70px;padding:4px 8px;border:1px solid var(--border-color,#cbd5e1);border-radius:6px;"> L</label>
+              <span style="color:var(--text-secondary,#64748b);font-size:12px;">🔴 facturé &gt;&gt; consommé = carte probablement utilisée pour un autre véhicule</span>
+            </div>
+
             <!-- Table Section for non-monthly reports -->
             <div class="table-section">
               <div class="section-toolbar">
@@ -969,6 +977,16 @@
                         <th class="sortable" (click)="sortBy('status')">Statut <span class="sort-icon">{{ getSortIcon('status') }}</span></th>
                         <th class="sortable" (click)="sortBy('cost')">Coût <span class="sort-icon">{{ getSortIcon('cost') }}</span></th>
                         <th class="sortable" (click)="sortBy('mileageValue')">Kilométrage <span class="sort-icon">{{ getSortIcon('mileageValue') }}</span></th>
+                      } @else if (selectedTemplate?.type === 'fuel-comparison') {
+                        <th class="sortable" (click)="sortBy('Véhicule')">Véhicule <span class="sort-icon">{{ getSortIcon('Véhicule') }}</span></th>
+                        <th class="sortable" (click)="sortBy('Réel (L)')">Réel (L) <span class="sort-icon">{{ getSortIcon('Réel (L)') }}</span></th>
+                        <th class="sortable" (click)="sortBy('Réel (DT)')">Réel (DT) <span class="sort-icon">{{ getSortIcon('Réel (DT)') }}</span></th>
+                        <th class="sortable" (click)="sortBy('Boitier (L)')">Boitier (L) <span class="sort-icon">{{ getSortIcon('Boitier (L)') }}</span></th>
+                        <th class="sortable" (click)="sortBy('Source')">Source <span class="sort-icon">{{ getSortIcon('Source') }}</span></th>
+                        <th class="sortable" (click)="sortBy('Distance (km)')">Distance (km) <span class="sort-icon">{{ getSortIcon('Distance (km)') }}</span></th>
+                        <th class="sortable" (click)="sortBy('Écart (L)')">Écart (L) <span class="sort-icon">{{ getSortIcon('Écart (L)') }}</span></th>
+                        <th class="sortable" (click)="sortBy('Écart %')">Écart % <span class="sort-icon">{{ getSortIcon('Écart %') }}</span></th>
+                        <th class="sortable" (click)="sortBy('Verdict')">Verdict <span class="sort-icon">{{ getSortIcon('Verdict') }}</span></th>
                       } @else {
                         <th class="sortable" (click)="sortBy('time')">Date/Heure <span class="sort-icon">{{ getSortIcon('time') }}</span></th>
                         <th class="sortable" (click)="sortBy('value')">Valeur <span class="sort-icon">{{ getSortIcon('value') }}</span></th>
@@ -1111,6 +1129,16 @@
                           <td class="status-cell">{{ row.status }}</td>
                           <td class="amount-cell">{{ row.costFormatted }}</td>
                           <td class="mileage-cell">{{ row.mileage }}</td>
+                        } @else if (selectedTemplate?.type === 'fuel-comparison') {
+                          <td class="vehicle-cell">{{ row['Véhicule'] }}</td>
+                          <td class="value-cell">{{ row['Réel (L)'] }}</td>
+                          <td class="amount-cell">{{ row['Réel (DT)'] }}</td>
+                          <td class="value-cell">{{ row['Boitier (L)'] }}</td>
+                          <td>{{ row['Source'] }}</td>
+                          <td class="value-cell">{{ row['Distance (km)'] }}</td>
+                          <td class="value-cell">{{ row['Écart (L)'] }}</td>
+                          <td class="value-cell">{{ row['Écart %'] }}</td>
+                          <td class="status-cell">{{ row['Verdict'] }}</td>
                         } @else {
                           <td class="time-cell">{{ row.time || row.date }}</td>
                           <td class="value-cell">{{ row.level || row.speed || row.distance }}</td>

@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, ViewChild, ElementRef, NgZone, ChangeDete
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup } from '../services/api.service';
+import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelComparisonReport, FuelComparisonRow } from '../services/api.service';
 import { Subject, takeUntil } from 'rxjs';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -153,6 +153,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
       type: 'fuel-estimation',
       icon: '💰',
       description: 'Estimation basée sur GPS et prix',
+      category: 'costs'
+    },
+    {
+      id: '17',
+      name: 'Carburant réel vs GPS',
+      type: 'fuel-comparison',
+      icon: '🔍',
+      description: 'Anti-fraude : carburant facturé (carte) vs consommé (GPS)',
       category: 'costs'
     },
     {
@@ -327,6 +335,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
   // Monthly cost report data
   monthlyCostReport: MonthlyCostReport | null = null;
   monthlyCostReportType: 'costs' | 'fuel' = 'costs';
+
+  // Fuel comparison (anti-fraud) report data
+  fuelComparisonReport: FuelComparisonReport | null = null;
+  fuelComparisonRows: any[] = [];
+  fcThresholdPercent = 25;
+  fcThresholdLiters = 20;
 
   // Fuel estimation report data
   fuelEstimationReport: FleetFuelStatisticsDto | null = null;
@@ -881,6 +895,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.monthlyReport = null;
     this.mileagePeriodReport = null;
     this.fuelEstimationReport = null;
+    this.fuelComparisonReport = null;
 
     // Re-compute dates from the selected period to ensure fresh timestamps
     if (this.selectedStandardPeriod !== 'custom') {
@@ -978,6 +993,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Handle AI fleet report
     if (this.selectedTemplate.type === 'ai-fleet') {
       this.executeAiFleetReport();
+      return;
+    }
+
+    // Handle fuel comparison (anti-fraud) report
+    if (this.selectedTemplate.type === 'fuel-comparison') {
+      this.executeFuelComparisonReport(vehicleId, startDate, endDate);
       return;
     }
 
@@ -5536,6 +5557,89 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   // ==================== FUEL ESTIMATION REPORT ====================
   
+  executeFuelComparisonReport(vehicleId?: number, startDate?: Date, endDate?: Date) {
+    this.loading = true;
+    this.fuelComparisonReport = null;
+    this.fuelComparisonRows = [];
+
+    const startDateStr = startDate ? this.toDateTime(startDate) : undefined;
+    const endDateStr = endDate ? this.toDateTime(endDate) : undefined;
+
+    this.apiService.getFuelComparisonReport(startDateStr, endDateStr, vehicleId).subscribe({
+      next: (report) => {
+        this.ngZone.run(() => {
+          this.fuelComparisonReport = report;
+          this.fuelComparisonRows = report.rows || [];
+          this.computeFuelComparisonTable();
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+        });
+      },
+      error: (err) => {
+        console.error('Error loading fuel comparison report:', err);
+        this.ngZone.run(() => {
+          this.loading = false;
+          this.reportGenerated = true;
+          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport carburant réel vs GPS' };
+          this.cdr.detectChanges();
+        });
+      }
+    });
+  }
+
+  /** Verdict for a single fuel-comparison row, based on the adjustable thresholds. */
+  private fuelComparisonVerdict(row: FuelComparisonRow): string {
+    if (row.diffLiters > this.fcThresholdLiters && row.diffPercent > this.fcThresholdPercent) return '🔴 Suspect';
+    if (row.diffLiters > 0 && row.diffPercent > 10) return '🟡 À vérifier';
+    return '🟢 OK';
+  }
+
+  /** Build the displayed table + summary stats from fuelComparisonRows.
+   *  Re-run whenever the operator changes a fraud threshold. */
+  computeFuelComparisonTable() {
+    const round = (n: number, d: number) => {
+      const f = Math.pow(10, d);
+      return Math.round((Number(n) || 0) * f) / f;
+    };
+    const sourceLabel = (s: string): string => {
+      if (s === 'capteur') return '📡 Capteur';
+      if (s === 'estime') return '≈ Estimé';
+      return '— Aucun GPS';
+    };
+
+    // Keep backend order (already sorted by diff desc)
+    this.tableData = this.fuelComparisonRows.map((row: FuelComparisonRow) => ({
+      'Véhicule': row.vehicleName || row.plate,
+      'Réel (L)': round(row.realLiters, 1),
+      'Réel (DT)': round(row.realCost, 2),
+      'Boitier (L)': round(row.gpsLiters, 1),
+      'Source': sourceLabel(row.gpsSource),
+      'Distance (km)': row.distanceKm,
+      'Écart (L)': round(row.diffLiters, 1),
+      'Écart %': round(row.diffPercent, 1) + '%',
+      'Verdict': this.fuelComparisonVerdict(row)
+    }));
+
+    const report = this.fuelComparisonReport;
+    const totalReal = report?.totalRealLiters || 0;
+    const totalGps = report?.totalGpsLiters || 0;
+    const suspectCount = this.fuelComparisonRows.filter(
+      (r: FuelComparisonRow) => this.fuelComparisonVerdict(r) === '🔴 Suspect'
+    ).length;
+
+    this.statisticsData = {
+      'Carburant facturé (réel)': round(totalReal, 1) + ' L',
+      'Coût total': round(report?.totalRealCost || 0, 2) + ' DT',
+      'Carburant boitier (GPS)': round(totalGps, 1) + ' L',
+      'Écart total': round(totalReal - totalGps, 1) + ' L',
+      'Véhicules suspects': suspectCount,
+      'Véhicules avec capteur': report?.sensorCount || 0
+    };
+
+    this.cdr.detectChanges();
+  }
+
   executeFuelEstimationReport(vehicleId?: number, startDate?: Date, endDate?: Date) {
     this.loading = true;
     this.fuelEstimationReport = null;

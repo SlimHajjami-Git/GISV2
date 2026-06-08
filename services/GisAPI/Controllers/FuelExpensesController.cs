@@ -52,6 +52,20 @@ public class FuelExpensesController : ControllerBase
     }
 
     /// <summary>
+    /// Anti-fraud report: real (billed) fuel vs GPS/boitier-consumed fuel, per vehicle.
+    /// </summary>
+    [HttpGet("comparison")]
+    public async Task<ActionResult<FuelComparisonReportDto>> GetComparison(
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate,
+        [FromQuery] int? vehicleId)
+    {
+        var query = new GetFuelComparisonReportQuery(startDate, endDate, vehicleId);
+        var result = await _mediator.Send(query);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Get current fuel prices for the company
     /// </summary>
     [HttpGet("prices")]
