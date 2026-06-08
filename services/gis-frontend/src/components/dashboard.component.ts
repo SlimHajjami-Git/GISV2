@@ -578,7 +578,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   private fleetMarkers?: L.LayerGroup;
   private destroy$ = new Subject<void>();
   company: Company | null = null;
-  selectedPeriod = 'week'; fromDate = ''; toDate = '';
+  selectedPeriod = 'month'; fromDate = ''; toDate = '';
   isConnected = false;
   todayLabel = '';
   Math = Math;
@@ -588,6 +588,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     { value: 'yesterday', label: 'Hier' },
     { value: 'week', label: 'Semaine' },
     { value: 'month', label: 'Mois' },
+    { value: 'year', label: 'Année' },
   ];
 
   motionData = {stationary:0,ignitionOn:0,moving:0,movingIgnition:0,lbs:0,wifi:0,noState:0,noCoords:0};

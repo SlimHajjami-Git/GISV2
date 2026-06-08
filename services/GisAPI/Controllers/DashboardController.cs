@@ -399,6 +399,12 @@ public class DashboardController : ControllerBase
                 prevStart = DateTime.SpecifyKind(start.AddMonths(-3), DateTimeKind.Utc);
                 prevEnd = DateTime.SpecifyKind(start.AddSeconds(-1), DateTimeKind.Utc);
                 break;
+            case "year":
+                start = DateTime.SpecifyKind(new DateTime(now.Year, 1, 1), DateTimeKind.Utc);
+                end = DateTime.SpecifyKind(start.AddYears(1).AddSeconds(-1), DateTimeKind.Utc);
+                prevStart = DateTime.SpecifyKind(start.AddYears(-1), DateTimeKind.Utc);
+                prevEnd = DateTime.SpecifyKind(start.AddSeconds(-1), DateTimeKind.Utc);
+                break;
             default: // month
                 start = DateTime.SpecifyKind(new DateTime(now.Year, now.Month, 1), DateTimeKind.Utc);
                 end = DateTime.SpecifyKind(start.AddMonths(1).AddSeconds(-1), DateTimeKind.Utc);

@@ -153,6 +153,10 @@ export class DateFilterBarComponent {
         this.fromDate = monthAgo.toISOString().split('T')[0];
         this.toDate = today.toISOString().split('T')[0];
         break;
+      case 'year':
+        this.fromDate = new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
+        this.toDate = today.toISOString().split('T')[0];
+        break;
     }
     
     this.periodChange.emit(period);
