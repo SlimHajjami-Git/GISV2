@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, ViewChild, ElementRef, NgZone, ChangeDete
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelComparisonReport, FuelComparisonRow } from '../services/api.service';
+import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelComparisonReport, FuelComparisonRow, FuelAuditReport } from '../services/api.service';
 import { Subject, takeUntil } from 'rxjs';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -38,6 +38,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   @ViewChild('maintenanceAreaChart') maintenanceAreaChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('mileagePeriodChart') mileagePeriodChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('fuelComparisonCanvas') fuelComparisonCanvasRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('fuelAuditCanvas') fuelAuditCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('mapPopupContainer') mapPopupContainer?: ElementRef<HTMLDivElement>;
   
   // Map popup state
@@ -343,6 +344,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
   fcThresholdPercent = 25;
   fcThresholdLiters = 20;
 
+  // Per-vehicle fuel audit (level curve + per-fill verification); only populated when a single vehicle is selected
+  fuelAuditReport: FuelAuditReport | null = null;
+
   // Fuel estimation report data
   fuelEstimationReport: FleetFuelStatisticsDto | null = null;
   fuelEstimationActiveSection = 'summary';
@@ -390,6 +394,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private chart?: Chart;
   private secondaryChart?: Chart;
   private fuelComparisonChart?: Chart;
+  private fuelAuditChart?: Chart;
 
   constructor(
     private router: Router,
@@ -731,6 +736,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (this.fuelPieChart) { this.fuelPieChart.destroy(); this.fuelPieChart = undefined; }
     if (this.maintenanceAreaChart) { this.maintenanceAreaChart.destroy(); this.maintenanceAreaChart = undefined; }
     if (this.fuelComparisonChart) { this.fuelComparisonChart.destroy(); this.fuelComparisonChart = undefined; }
+    if (this.fuelAuditChart) { this.fuelAuditChart.destroy(); this.fuelAuditChart = undefined; }
   }
 
   // Pagination getters
@@ -899,6 +905,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.mileagePeriodReport = null;
     this.fuelEstimationReport = null;
     this.fuelComparisonReport = null;
+    this.fuelAuditReport = null;
+    if (this.fuelAuditChart) { this.fuelAuditChart.destroy(); this.fuelAuditChart = undefined; }
 
     // Re-compute dates from the selected period to ensure fresh timestamps
     if (this.selectedStandardPeriod !== 'custom') {
@@ -5564,7 +5572,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.fuelComparisonReport = null;
     this.fuelComparisonRows = [];
+    this.fuelAuditReport = null;
     if (this.fuelComparisonChart) { this.fuelComparisonChart.destroy(); this.fuelComparisonChart = undefined; }
+    if (this.fuelAuditChart) { this.fuelAuditChart.destroy(); this.fuelAuditChart = undefined; }
 
     const startDateStr = startDate ? this.toDateTime(startDate) : undefined;
     const endDateStr = endDate ? this.toDateTime(endDate) : undefined;
@@ -5581,6 +5591,24 @@ export class ReportsComponent implements OnInit, OnDestroy {
           // Canvas is *ngIf-gated on reportGenerated — defer draw until it's in the DOM
           setTimeout(() => this.drawFuelComparisonChart(), 100);
         });
+
+        // For a single vehicle, also load the per-vehicle fuel AUDIT (level curve + per-fill verification)
+        if (vehicleId) {
+          this.apiService.getFuelAuditReport(vehicleId, startDateStr, endDateStr).subscribe({
+            next: (audit) => {
+              this.ngZone.run(() => {
+                this.fuelAuditReport = audit;
+                this.cdr.detectChanges();
+                // Audit canvas is *ngIf-gated on fuelAuditReport + hasSensor — defer draw until it's in the DOM
+                setTimeout(() => this.drawFuelAuditChart(), 120);
+              });
+            },
+            error: (err) => {
+              console.error('Error loading fuel audit report:', err);
+              this.ngZone.run(() => { this.fuelAuditReport = null; this.cdr.detectChanges(); });
+            }
+          });
+        }
       },
       error: (err) => {
         console.error('Error loading fuel comparison report:', err);
@@ -5711,6 +5739,75 @@ export class ReportsComponent implements OnInit, OnDestroy {
         },
         scales: {
           x: { title: { display: true, text: 'Véhicule' } },
+          y: { beginAtZero: true, title: { display: true, text: 'Litres' } }
+        }
+      }
+    });
+  }
+
+  /** Fuel-level curve over time (saw-tooth: consumption + refill jumps) for the audited vehicle.
+   *  Litres in tank from levelSeries; only drawn when the vehicle has an exploitable sensor. */
+  drawFuelAuditChart() {
+    if (this.fuelAuditChart) {
+      this.fuelAuditChart.destroy();
+      this.fuelAuditChart = undefined;
+    }
+
+    const canvas = this.fuelAuditCanvasRef?.nativeElement;
+    if (!canvas) return;
+
+    const report = this.fuelAuditReport;
+    if (!report?.hasSensor) return;
+
+    const series = report.levelSeries || [];
+    if (!series.length) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const labels = series.map(p => this.formatDateTime(p.t));
+
+    this.fuelAuditChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Niveau réservoir (L)',
+            data: series.map(p => p.liters),
+            borderColor: '#6366f1',
+            backgroundColor: 'rgba(99,102,241,0.12)',
+            borderWidth: 2,
+            pointRadius: 2,
+            pointHoverRadius: 4,
+            tension: 0,
+            fill: true
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            labels: { usePointStyle: true }
+          },
+          title: {
+            display: true,
+            text: 'Niveau carburant dans le temps'
+          },
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            callbacks: {
+              label: (c) => `${c.dataset.label}: ${(c.parsed.y ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} L`
+            }
+          }
+        },
+        scales: {
+          x: { title: { display: true, text: 'Date/Heure' }, ticks: { maxRotation: 60, autoSkip: true } },
           y: { beginAtZero: true, title: { display: true, text: 'Litres' } }
         }
       }

@@ -856,6 +856,72 @@
               <span style="color:var(--text-secondary,#64748b);font-size:12px;">🔴 facturé &gt;&gt; consommé = carte probablement utilisée pour un autre véhicule</span>
             </div>
 
+            <!-- Per-vehicle fuel AUDIT: level curve + per-fill verification (single vehicle only) -->
+            <div *ngIf="selectedTemplate?.type === 'fuel-comparison' && fuelAuditReport" class="fuel-audit-section" style="margin-bottom:16px;">
+              <ng-container *ngIf="fuelAuditReport.hasSensor; else noSensorTpl">
+                <!-- Fuel-level curve -->
+                <div class="chart-section" style="margin-bottom:12px;">
+                  <div class="charts-container">
+                    <div class="chart-area" style="min-height:320px;">
+                      <canvas #fuelAuditCanvas></canvas>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- One-line audit summary -->
+                <div style="padding:8px 14px;margin-bottom:10px;font-weight:600;color:var(--text-primary,#1e293b);">
+                  ✅ {{ fuelAuditReport.confirmedCount }} confirmés · ❌ {{ fuelAuditReport.notDetectedCount }} non détectés (suspects)
+                </div>
+
+                <!-- Per-fill verification table -->
+                <div class="table-wrapper" style="margin-bottom:12px;">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Date plein</th>
+                        <th>Facturé (L)</th>
+                        <th>Remplissage GPS</th>
+                        <th>Détecté (L)</th>
+                        <th>Écart (h)</th>
+                        <th>Verdict</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr *ngFor="let check of fuelAuditReport.fillChecks">
+                        <td>{{ formatDateTime(check.fillDate) }}</td>
+                        <td>{{ check.billedLiters | number:'1.1-1' }}</td>
+                        <td>{{ check.matchedRefillDate ? formatDateTime(check.matchedRefillDate) : '—' }}</td>
+                        <td>{{ check.detectedLiters != null ? (check.detectedLiters | number:'1.1-1') : '—' }}</td>
+                        <td>{{ check.gapHours != null ? (check.gapHours | number:'1.0-0') : '—' }}</td>
+                        <td>
+                          @switch (check.verdict) {
+                            @case ('confirme') {
+                              <span style="color:#16a34a;font-weight:600;">✅ Confirmé</span>
+                            }
+                            @case ('ecart') {
+                              <span style="color:#d97706;font-weight:600;">⚠️ Écart</span>
+                            }
+                            @default {
+                              <span style="color:#dc2626;font-weight:600;">❌ Non détecté</span>
+                            }
+                          }
+                        </td>
+                      </tr>
+                      <tr *ngIf="!fuelAuditReport.fillChecks.length">
+                        <td colspan="6" style="text-align:center;color:var(--text-secondary,#64748b);padding:14px;">Aucun plein facturé sur la période.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </ng-container>
+
+              <ng-template #noSensorTpl>
+                <div style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#fcd34d);border-left:4px solid #f59e0b;border-radius:8px;color:var(--text-primary,#1e293b);">
+                  ⚠️ Pas de capteur carburant exploitable sur ce véhicule — vérification par plein indisponible (seul le NEMS L remonte le niveau)
+                </div>
+              </ng-template>
+            </div>
+
             <!-- Table Section for non-monthly reports -->
             <div class="table-section">
               <div class="section-toolbar">

@@ -1883,6 +1883,15 @@ export class ApiService {
     return this.http.get<FuelComparisonReport>(`${this.API_URL}/fuelexpenses/comparison`, { headers: this.getHeaders(), params });
   }
 
+  // Per-vehicle fuel audit: level curve + per-fill verification (card fills vs GPS-detected refills)
+  getFuelAuditReport(vehicleId: number, startDate?: string, endDate?: string): Observable<FuelAuditReport> {
+    let params = new HttpParams();
+    params = params.set('vehicleId', vehicleId.toString());
+    if (startDate) params = params.set('startDate', startDate);
+    if (endDate) params = params.set('endDate', endDate);
+    return this.http.get<FuelAuditReport>(`${this.API_URL}/fuelexpenses/vehicle-audit`, { headers: this.getHeaders(), params });
+  }
+
   // ==================== FUEL PRICES MANAGEMENT ====================
 
   getFuelPrices(options: { fuelTypeId?: number; isActive?: boolean; page?: number; pageSize?: number } = {}): Observable<PaginatedFuelPricesResult> {
@@ -3663,6 +3672,50 @@ export interface FuelComparisonReport {
   vehicleCount: number;
   sensorCount: number;
   rows: FuelComparisonRow[];
+}
+
+// ---- Per-vehicle fuel audit (level curve + per-fill verification) ----
+export interface FuelLevelPoint {
+  t: string;        // ISO timestamp
+  percent: number;  // tank fill %
+  liters: number;   // litres in tank
+}
+
+export interface FuelCardFill {
+  date: string;             // ISO
+  liters: number;
+  cost: number;
+  station: string | null;
+}
+
+export interface FuelDetectedRefill {
+  t: string;      // ISO
+  liters: number;
+}
+
+export interface FuelFillCheck {
+  fillDate: string;                 // ISO — billed card fill date
+  billedLiters: number;
+  matchedRefillDate: string | null; // ISO of matched GPS refill, or null
+  detectedLiters: number | null;    // litres detected at the matched refill, or null
+  gapHours: number | null;          // hours between billed fill and detected refill
+  verdict: 'confirme' | 'ecart' | 'non_detecte';
+}
+
+export interface FuelAuditReport {
+  vehicleId: number;
+  vehicleName: string;
+  plate: string | null;
+  hasSensor: boolean;
+  tankCapacity: number;
+  startDate: string;
+  endDate: string;
+  levelSeries: FuelLevelPoint[];
+  cardFills: FuelCardFill[];
+  detectedRefills: FuelDetectedRefill[];
+  fillChecks: FuelFillCheck[];
+  confirmedCount: number;
+  notDetectedCount: number;
 }
 
 export interface VehicleFuelExpenseDto {
