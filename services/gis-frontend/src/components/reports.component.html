@@ -839,6 +839,15 @@
               </div>
             </div>
 
+            <!-- Carburant réel vs GPS: grouped bar chart (fuel-comparison only) -->
+            <div *ngIf="selectedTemplate?.type === 'fuel-comparison' && reportGenerated" class="chart-section" style="margin-bottom:12px;">
+              <div class="charts-container">
+                <div class="chart-area" style="min-height:320px;">
+                  <canvas #fuelComparisonCanvas></canvas>
+                </div>
+              </div>
+            </div>
+
             <!-- Anti-fraud: adjustable "Suspect" thresholds (fuel-comparison only) -->
             <div *ngIf="selectedTemplate?.type === 'fuel-comparison' && reportGenerated" class="fc-threshold-bar" style="display:flex;gap:16px;align-items:center;padding:10px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;margin-bottom:12px;flex-wrap:wrap;">
               <span style="font-weight:600;">Seuil « Suspect » :</span>

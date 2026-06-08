@@ -37,6 +37,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   @ViewChild('fuelPieChart') fuelPieChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('maintenanceAreaChart') maintenanceAreaChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('mileagePeriodChart') mileagePeriodChartRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('fuelComparisonCanvas') fuelComparisonCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('mapPopupContainer') mapPopupContainer?: ElementRef<HTMLDivElement>;
   
   // Map popup state
@@ -388,6 +389,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   private chart?: Chart;
   private secondaryChart?: Chart;
+  private fuelComparisonChart?: Chart;
 
   constructor(
     private router: Router,
@@ -728,6 +730,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (this.kmBarChart) { this.kmBarChart.destroy(); this.kmBarChart = undefined; }
     if (this.fuelPieChart) { this.fuelPieChart.destroy(); this.fuelPieChart = undefined; }
     if (this.maintenanceAreaChart) { this.maintenanceAreaChart.destroy(); this.maintenanceAreaChart = undefined; }
+    if (this.fuelComparisonChart) { this.fuelComparisonChart.destroy(); this.fuelComparisonChart = undefined; }
   }
 
   // Pagination getters
@@ -5561,6 +5564,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.fuelComparisonReport = null;
     this.fuelComparisonRows = [];
+    if (this.fuelComparisonChart) { this.fuelComparisonChart.destroy(); this.fuelComparisonChart = undefined; }
 
     const startDateStr = startDate ? this.toDateTime(startDate) : undefined;
     const endDateStr = endDate ? this.toDateTime(endDate) : undefined;
@@ -5574,6 +5578,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
+          // Canvas is *ngIf-gated on reportGenerated — defer draw until it's in the DOM
+          setTimeout(() => this.drawFuelComparisonChart(), 100);
         });
       },
       error: (err) => {
@@ -5638,6 +5644,77 @@ export class ReportsComponent implements OnInit, OnDestroy {
     };
 
     this.cdr.detectChanges();
+  }
+
+  /** Grouped vertical bar chart: per vehicle, "Réel (facturé)" vs "Boitier (GPS)" litres.
+   *  Does not depend on the fraud thresholds, so it is only redrawn when data changes. */
+  drawFuelComparisonChart() {
+    if (this.fuelComparisonChart) {
+      this.fuelComparisonChart.destroy();
+      this.fuelComparisonChart = undefined;
+    }
+
+    const canvas = this.fuelComparisonCanvasRef?.nativeElement;
+    if (!canvas) return;
+
+    const rows = this.fuelComparisonRows || [];
+    if (!rows.length) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const labels = rows.map((r: FuelComparisonRow) => r.plate || r.vehicleName);
+
+    this.fuelComparisonChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Réel (facturé) L',
+            data: rows.map((r: FuelComparisonRow) => r.realLiters),
+            backgroundColor: '#6366f1',
+            borderColor: '#6366f1',
+            borderWidth: 1,
+            borderRadius: 4
+          },
+          {
+            label: 'Boitier (GPS) L',
+            data: rows.map((r: FuelComparisonRow) => r.gpsLiters),
+            backgroundColor: '#10b981',
+            borderColor: '#10b981',
+            borderWidth: 1,
+            borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            labels: { usePointStyle: true }
+          },
+          title: {
+            display: true,
+            text: 'Carburant facturé vs consommé (litres) par véhicule'
+          },
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            callbacks: {
+              label: (c) => `${c.dataset.label}: ${(c.parsed.y ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} L`
+            }
+          }
+        },
+        scales: {
+          x: { title: { display: true, text: 'Véhicule' } },
+          y: { beginAtZero: true, title: { display: true, text: 'Litres' } }
+        }
+      }
+    });
   }
 
   executeFuelEstimationReport(vehicleId?: number, startDate?: Date, endDate?: Date) {
