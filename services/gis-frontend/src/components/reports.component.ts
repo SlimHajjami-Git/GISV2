@@ -658,6 +658,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
   onTemplateChange() {
     this.destroyAllCharts();
     this.selectedTemplate = this.templates.find(t => t.id === this.selectedTemplateId) || null;
+    // Fuel comparison is meaningless on "today" (fuel accrues over time) -> default to month.
+    if (this.selectedTemplate?.type === 'fuel-comparison') this.selectStandardPeriod('month');
     this.reportGenerated = false;
     this.tableData = [];
     this.chartData = [];
@@ -676,6 +678,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.selectedTemplate = template;
     this.selectedTemplateId = template.id;
     this.showTemplateDropdown = false;
+    if (template?.type === 'fuel-comparison') this.selectStandardPeriod('month');
     this.reportGenerated = false;
     this.tableData = [];
     this.chartData = [];

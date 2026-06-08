@@ -776,8 +776,8 @@
         } @else {
           <!-- ========== OTHER REPORTS SECTION ========== -->
           <div class="workspace-content">
-            <!-- Chart Section -->
-            <div class="chart-section">
+            <!-- Chart Section (hidden for fuel-comparison: it renders its own charts below) -->
+            <div class="chart-section" *ngIf="selectedTemplate?.type !== 'fuel-comparison'">
               <div class="charts-container">
                 @if (selectedTemplate?.type === 'driving-behavior') {
                   <div class="behavior-cards-row">
