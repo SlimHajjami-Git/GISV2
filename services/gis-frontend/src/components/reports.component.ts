@@ -6461,6 +6461,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Process table data — uses MaintenanceLogReportDto fields from backend
     this.tableData = records.map(record => {
       const cost = record.actualCost || record.totalCost || 0;
+      // Only DONE maintenances carry a real cost; planned ones must not show one.
+      const isDone = record.status === 'completed' || record.status === 'done';
       return {
         vehicleName: record.vehicleName || record.plate || `Véhicule ${record.vehicleId}`,
         vehicleId: record.vehicleId,
@@ -6469,8 +6471,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
         description: record.notes || record.description || '-',
         status: this.getMaintenanceStatusLabel(record.status),
         statusKey: record.status,
-        cost: cost,
-        costFormatted: this.formatCurrency(cost),
+        cost: isDone ? cost : 0,
+        costFormatted: isDone ? this.formatCurrency(cost) : '—',
         mileage: record.doneKm ? `${record.doneKm.toLocaleString('fr-FR')} km` : '-',
         mileageValue: record.doneKm || 0,
         supplierName: record.supplierName || '-'
@@ -6525,7 +6527,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
       'scheduled': '📅 Planifiée',
       'pending': '⏳ En attente',
       'in_progress': '🔄 En cours',
-      'overdue': '⚠️ En retard',
+      'overdue': '🔴 En retard',
+      'due': '🟡 À prévoir',
+      'upcoming': '🟡 À prévoir',
+      'critical': '🟠 Critique',
+      'ok': '🟢 OK',
       'cancelled': '❌ Annulée'
     };
     return statuses[status] || status || '⏳ En attente';

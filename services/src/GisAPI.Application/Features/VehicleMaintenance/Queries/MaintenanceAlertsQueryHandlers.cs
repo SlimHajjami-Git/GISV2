@@ -338,7 +338,7 @@ public class GetAllMaintenanceLogsQueryHandler : IRequestHandler<GetAllMaintenan
             s.Template?.Category,
             s.NextDueDate ?? s.LastDoneDate ?? DateTime.UtcNow,
             s.NextDueKm ?? 0,
-            s.Template?.EstimatedCost ?? 0m,
+            0m, // pas de cout sur un entretien non effectue (l'estime ne doit pas compter comme une depense)
             null,
             null,
             null,
