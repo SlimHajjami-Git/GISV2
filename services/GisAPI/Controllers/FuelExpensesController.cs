@@ -66,6 +66,21 @@ public class FuelExpensesController : ControllerBase
     }
 
     /// <summary>
+    /// Per-vehicle fuel audit: fuel-level curve + detected refills + per-fill verification
+    /// (each billed card fill matched against an actual tank refill).
+    /// </summary>
+    [HttpGet("vehicle-audit")]
+    public async Task<ActionResult<FuelAuditReportDto>> GetVehicleAudit(
+        [FromQuery] int vehicleId,
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate)
+    {
+        var query = new GetFuelAuditReportQuery(vehicleId, startDate, endDate);
+        var result = await _mediator.Send(query);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Get current fuel prices for the company
     /// </summary>
     [HttpGet("prices")]

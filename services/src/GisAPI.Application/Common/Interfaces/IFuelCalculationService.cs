@@ -39,4 +39,16 @@ public interface IFuelCalculationService
         DateTime startDate,
         DateTime endDate,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Per-vehicle fuel-level audit from the boitier sensor: the fuel-level curve over time
+    /// (litres) plus the detected refills (level jumps >= 10%). Used to verify each billed
+    /// card fill against an actual tank refill. Returns HasSensor=false when the vehicle has
+    /// no usable fuel sensor (no/garbage fuel_raw data).
+    /// </summary>
+    Task<FuelLevelAuditDto> GetFuelLevelAuditAsync(
+        Vehicle vehicle,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default);
 }

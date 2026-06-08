@@ -720,6 +720,110 @@ public class FuelCalculationService : IFuelCalculationService
     }
 
     /// <summary>
+    /// Per-vehicle fuel-level audit from the boitier sensor: builds the fuel-level curve over
+    /// time (litres) and the detected refills (>= 10% level jumps), reusing the same conversion
+    /// and spike filtering as the consumption calc. Returns HasSensor=false when there is no
+    /// usable fuel sensor data.
+    /// </summary>
+    public async Task<FuelLevelAuditDto> GetFuelLevelAuditAsync(
+        Vehicle vehicle,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default)
+    {
+        var tankCapacity = vehicle.FuelTankCapacity ?? 60;
+        var empty = new FuelLevelAuditDto(false, tankCapacity, new List<FuelLevelPointDto>(), new List<DetectedRefillDto>());
+
+        if (!vehicle.GpsDeviceId.HasValue || vehicle.GpsDevice == null)
+            return empty;
+
+        var sensorMode = vehicle.GpsDevice.FuelSensorMode?.ToLower() ?? "percent";
+        var startUtc = startDate.Kind == DateTimeKind.Utc ? startDate : startDate.ToUniversalTime();
+        var endUtc = endDate.Kind == DateTimeKind.Utc ? endDate : endDate.ToUniversalTime();
+
+        int maxRawValue = sensorMode switch
+        {
+            "raw_255" => 255,
+            "liters" => (int)(tankCapacity * 1.2m),
+            _ => 100
+        };
+
+        var rawPositions = await _context.GpsPositions
+            .Where(p => p.DeviceId == vehicle.GpsDeviceId.Value &&
+                        p.RecordedAt >= startUtc && p.RecordedAt <= endUtc &&
+                        p.FuelRaw != null && p.FuelRaw >= 0 && p.FuelRaw <= maxRawValue)
+            .OrderBy(p => p.RecordedAt)
+            .Select(p => new FuelPositionSlim
+            {
+                RecordedAt = p.RecordedAt,
+                FuelPercent = p.FuelRaw!.Value,
+                OdometerKm = p.OdometerKm,
+                Latitude = p.Latitude,
+                Longitude = p.Longitude,
+                SpeedKph = p.SpeedKph ?? 0
+            })
+            .ToListAsync(cancellationToken);
+
+        if (rawPositions.Count < 3)
+            return empty;
+
+        // Raw → percent (0-100)
+        if (sensorMode == "raw_255")
+            foreach (var pos in rawPositions) pos.FuelPercent = (int)Math.Round(pos.FuelPercent / 255.0 * 100.0);
+        else if (sensorMode == "liters")
+            foreach (var pos in rawPositions) pos.FuelPercent = (int)Math.Round((double)pos.FuelPercent / (double)tankCapacity * 100.0);
+
+        // Garbage sensor (0<->100 oscillation) → no usable curve
+        if (rawPositions.Count >= 4)
+        {
+            var extremeCount = rawPositions.Count(p => p.FuelPercent <= 2 || p.FuelPercent >= 98);
+            var extremeRatio = (double)extremeCount / rawPositions.Count;
+            var largeSwings = 0;
+            for (int i = 1; i < rawPositions.Count; i++)
+                if (Math.Abs(rawPositions[i].FuelPercent - rawPositions[i - 1].FuelPercent) > 50) largeSwings++;
+            var swingRatio = (double)largeSwings / (rawPositions.Count - 1);
+            if (extremeRatio > 0.6 && swingRatio > 0.1)
+                return empty;
+        }
+
+        var positions = FilterFuelSpikes(rawPositions);
+        if (positions.Count < 3)
+            return empty;
+
+        var tankCap = (decimal)tankCapacity;
+
+        // Curve: keep only level changes (collapse consecutive identical readings).
+        var collapsed = CollapseFuelReadings(positions);
+        var series = collapsed.Select(p => new FuelLevelPointDto(
+            p.RecordedAt,
+            p.FuelPercent,
+            Math.Round((decimal)p.FuelPercent / 100m * tankCap, 1)
+        )).ToList();
+
+        // Detected refills: level jumps >= 10% (same ratchet rule as consumption).
+        var refills = new List<DetectedRefillDto>();
+        int lastFuel = positions[0].FuelPercent;
+        for (int i = 1; i < positions.Count; i++)
+        {
+            var delta = positions[i].FuelPercent - lastFuel;
+            if (delta >= 10)
+            {
+                refills.Add(new DetectedRefillDto(
+                    positions[i].RecordedAt,
+                    Math.Round((decimal)delta / 100m * tankCap, 1)));
+                lastFuel = positions[i].FuelPercent;
+            }
+            else if (delta < 0)
+            {
+                lastFuel = positions[i].FuelPercent;
+            }
+            // small positive change = sensor noise → keep lastFuel
+        }
+
+        return new FuelLevelAuditDto(true, tankCapacity, series, refills);
+    }
+
+    /// <summary>
     /// Detect fuel refill events from fuel_records table
     /// </summary>
     public async Task<List<FuelRefillEventDto>> DetectFuelRefillsAsync(

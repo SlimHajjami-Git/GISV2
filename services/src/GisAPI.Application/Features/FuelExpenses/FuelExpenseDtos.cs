@@ -90,3 +90,24 @@ public record FuelRefillEventDto(
     double? Latitude,
     double? Longitude
 );
+
+/// <summary>One sampled point of the fuel-level curve (from the boitier sensor).</summary>
+public record FuelLevelPointDto(
+    DateTime T,
+    int Percent,
+    decimal Liters
+);
+
+/// <summary>A refill detected from the fuel sensor (a level jump >= 10%).</summary>
+public record DetectedRefillDto(
+    DateTime T,
+    decimal Liters
+);
+
+/// <summary>GPS-side fuel audit for one vehicle: the level curve + the detected refills.</summary>
+public record FuelLevelAuditDto(
+    bool HasSensor,
+    int TankCapacity,
+    List<FuelLevelPointDto> LevelSeries,
+    List<DetectedRefillDto> DetectedRefills
+);
