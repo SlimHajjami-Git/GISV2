@@ -1,5 +1,4 @@
 using GisAPI.Application.Common.Interfaces;
-using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,41 +7,53 @@ namespace GisAPI.Application.Features.VehicleMaintenance.Queries;
 public class GetMaintenanceAlertsQueryHandler : IRequestHandler<GetMaintenanceAlertsQuery, List<MaintenanceItemDto>>
 {
     private readonly IGisDbContext _context;
-    private readonly ICurrentTenantService _tenantService;
 
-    public GetMaintenanceAlertsQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
+    public GetMaintenanceAlertsQueryHandler(IGisDbContext context)
     {
         _context = context;
-        _tenantService = tenantService;
     }
 
     public async Task<List<MaintenanceItemDto>> Handle(GetMaintenanceAlertsQuery request, CancellationToken cancellationToken)
     {
-        // Operational page — scope by caller's company (system admins
-        // bypass the global EF filter, which would otherwise leak
-        // other companies' overdue alerts into the operator's view).
-        var companyId = _tenantService.CompanyId ?? 0;
-
         var schedules = await _context.VehicleMaintenanceSchedules
             .Include(s => s.Template)
             .Include(s => s.Vehicle)
-            .Where(s => s.CompanyId == companyId
-                     && (s.Status == "overdue" || s.Status == "due"))
+                .ThenInclude(v => v!.GpsDevice)
+            .Where(s => s.Status == "overdue" || s.Status == "due")
             .ToListAsync(cancellationToken);
 
         var today = DateTime.UtcNow.Date;
 
+        // Firmware "L": batch fetch latest odometer_km
+        var firmwareLDeviceIds = schedules
+            .Where(s => s.Vehicle?.GpsDevice != null
+                     && !string.IsNullOrEmpty(s.Vehicle.GpsDevice.FirmwareVersion)
+                     && s.Vehicle.GpsDevice.FirmwareVersion.StartsWith("L", StringComparison.OrdinalIgnoreCase))
+            .Select(s => s.Vehicle!.GpsDevice!.Id)
+            .Distinct()
+            .ToList();
+
+        var odometerMap = new Dictionary<int, long>();
+        if (firmwareLDeviceIds.Any())
+        {
+            var latestOdometers = await _context.GpsPositions
+                .Where(p => firmwareLDeviceIds.Contains(p.DeviceId)
+                         && p.OdometerKm.HasValue && p.OdometerKm > 0
+                         && p.OdometerKm != 1048574)
+                .GroupBy(p => p.DeviceId)
+                .Select(g => new { DeviceId = g.Key, OdometerKm = g.OrderByDescending(p => p.RecordedAt).First().OdometerKm })
+                .ToListAsync(cancellationToken);
+            odometerMap = latestOdometers.ToDictionary(x => x.DeviceId, x => x.OdometerKm ?? 0);
+        }
+
         return schedules.Select(s =>
         {
-            // Calypso 7 — vehicles.mileage est l'unique source. Cf.
-            // MaintenanceSchedulerService.GetCurrentMileageAsync pour la
-            // justification (Rust ingest tient mileage à jour pour tous
-            // les types de tracker, y compris NEMS L à CAN bus muet via
-            // Haversine fallback). Plus de cascade ici.
-            int vehicleMileage = s.Vehicle?.Mileage ?? 0;
+            var vehicleMileage = s.Vehicle?.Mileage ?? 0;
+            if (s.Vehicle?.GpsDevice != null && odometerMap.TryGetValue(s.Vehicle.GpsDevice.Id, out var odo) && odo > 0)
+                vehicleMileage = (int)odo;
 
-            var kmUntilDue = s.NextDueKm.HasValue && s.Vehicle != null
-                ? s.NextDueKm.Value - vehicleMileage
+            var kmUntilDue = s.NextDueKm.HasValue && s.Vehicle != null 
+                ? s.NextDueKm.Value - vehicleMileage 
                 : (int?)null;
             var daysUntilDue = s.NextDueDate.HasValue 
                 ? (int)(s.NextDueDate.Value - today).TotalDays 
@@ -72,22 +83,16 @@ public class GetMaintenanceAlertsQueryHandler : IRequestHandler<GetMaintenanceAl
 public class GetMaintenanceStatsQueryHandler : IRequestHandler<GetMaintenanceStatsQuery, MaintenanceStatsDto>
 {
     private readonly IGisDbContext _context;
-    private readonly ICurrentTenantService _tenantService;
 
-    public GetMaintenanceStatsQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
+    public GetMaintenanceStatsQueryHandler(IGisDbContext context)
     {
         _context = context;
-        _tenantService = tenantService;
     }
 
     public async Task<MaintenanceStatsDto> Handle(GetMaintenanceStatsQuery request, CancellationToken cancellationToken)
     {
-        // Operational stats — scope by caller's company. The aggregate
-        // shown on /maintenance must not include other companies' counts.
-        var companyId = _tenantService.CompanyId ?? 0;
-
         var schedules = await _context.VehicleMaintenanceSchedules
-            .Where(s => s.CompanyId == companyId && !s.IsPaused)
+            .Where(s => !s.IsPaused)
             .ToListAsync(cancellationToken);
 
         return new MaintenanceStatsDto(
@@ -148,23 +153,17 @@ public class GetVehicleMaintenanceSchedulesQueryHandler : IRequestHandler<GetVeh
 public class GetMaintenanceNotificationsQueryHandler : IRequestHandler<GetMaintenanceNotificationsQuery, List<MaintenanceNotificationDto>>
 {
     private readonly IGisDbContext _context;
-    private readonly ICurrentTenantService _tenantService;
 
-    public GetMaintenanceNotificationsQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
+    public GetMaintenanceNotificationsQueryHandler(IGisDbContext context)
     {
         _context = context;
-        _tenantService = tenantService;
     }
 
     public async Task<List<MaintenanceNotificationDto>> Handle(GetMaintenanceNotificationsQuery request, CancellationToken cancellationToken)
     {
-        // Scope to caller's company — see top of file for context.
-        var companyId = _tenantService.CompanyId ?? 0;
-
         var query = _context.MaintenanceNotifications
             .Include(n => n.Vehicle)
             .Include(n => n.Template)
-            .Where(n => n.CompanyId == companyId)
             .AsQueryable();
 
         if (request.UnacknowledgedOnly)
@@ -266,25 +265,18 @@ public class GetMaintenanceLogsQueryHandler : IRequestHandler<GetMaintenanceLogs
 public class GetAllMaintenanceLogsQueryHandler : IRequestHandler<GetAllMaintenanceLogsQuery, List<MaintenanceLogReportDto>>
 {
     private readonly IGisDbContext _context;
-    private readonly ICurrentTenantService _tenantService;
 
-    public GetAllMaintenanceLogsQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
+    public GetAllMaintenanceLogsQueryHandler(IGisDbContext context)
     {
         _context = context;
-        _tenantService = tenantService;
     }
 
     public async Task<List<MaintenanceLogReportDto>> Handle(GetAllMaintenanceLogsQuery request, CancellationToken ct)
     {
-        // Scope to caller's company so the maintenance history report
-        // never crosses tenants (system admins must use /admin/* for that).
-        var companyId = _tenantService.CompanyId ?? 0;
-
         var query = _context.MaintenanceLogs
             .Include(l => l.Vehicle)
             .Include(l => l.Template)
             .Include(l => l.Supplier)
-            .Where(l => l.CompanyId == companyId)
             .AsNoTracking()
             .AsQueryable();
 
@@ -301,7 +293,7 @@ public class GetAllMaintenanceLogsQueryHandler : IRequestHandler<GetAllMaintenan
             .OrderByDescending(l => l.DoneDate)
             .ToListAsync(ct);
 
-        return logs.Select(l => new MaintenanceLogReportDto(
+        var result = logs.Select(l => new MaintenanceLogReportDto(
             l.Id,
             l.VehicleId,
             l.Vehicle?.Name ?? $"Véhicule {l.VehicleId}",
@@ -318,6 +310,43 @@ public class GetAllMaintenanceLogsQueryHandler : IRequestHandler<GetAllMaintenan
             l.Notes,
             "completed"
         )).ToList();
+
+        // Also surface PLANNED/scheduled maintenances (entretiens créés/assignés mais pas encore
+        // "marqués faits"). They live in VehicleMaintenanceSchedule (tenant auto-filtré) et étaient
+        // invisibles car le rapport ne lisait que les MaintenanceLogs terminés — d'où le rapport
+        // vide pour les utilisateurs qui n'avaient fait que créer/assigner des entretiens.
+        var schedQuery = _context.VehicleMaintenanceSchedules
+            .Include(s => s.Vehicle)
+            .Include(s => s.Template)
+            .AsNoTracking()
+            .Where(s => !s.IsPaused);
+
+        if (request.VehicleId.HasValue)
+            schedQuery = schedQuery.Where(s => s.VehicleId == request.VehicleId.Value);
+
+        var schedules = await schedQuery
+            .OrderBy(s => s.NextDueDate)
+            .ToListAsync(ct);
+
+        result.AddRange(schedules.Select(s => new MaintenanceLogReportDto(
+            -s.Id, // id négatif : une ligne "planifiée" ne collisionne jamais avec un log terminé
+            s.VehicleId,
+            s.Vehicle?.Name ?? $"Véhicule {s.VehicleId}",
+            s.Vehicle?.Plate,
+            s.TemplateId,
+            s.Template?.Name ?? "Général",
+            s.Template?.Category,
+            s.NextDueDate ?? s.LastDoneDate ?? DateTime.UtcNow,
+            s.NextDueKm ?? 0,
+            s.Template?.EstimatedCost ?? 0m,
+            null,
+            null,
+            null,
+            s.Notes,
+            s.Status // statut réel : upcoming / due / overdue / critical / ok
+        )));
+
+        return result;
     }
 }
 
