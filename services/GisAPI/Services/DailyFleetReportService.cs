@@ -194,7 +194,7 @@ public class DailyFleetReportService : BackgroundService
             companiesProcessed, emailsSent, emailsFailed, reportDateTn);
     }
 
-    private static string BuildHtmlBody(Societe societe, DateTime reportDate, List<DailyActivityReportDto> reports)
+    public static string BuildHtmlBody(Societe societe, DateTime reportDate, List<DailyActivityReportDto> reports)
     {
         var active = reports.Where(r => r.HasActivity).ToList();
         var totalDistanceKm = active.Sum(r => r.Summary.TotalDistanceKm);
@@ -305,7 +305,7 @@ public class DailyFleetReportService : BackgroundService
 </html>";
     }
 
-    private static byte[] BuildExcel(Societe societe, DateTime reportDate, List<DailyActivityReportDto> reports)
+    public static byte[] BuildExcel(Societe societe, DateTime reportDate, List<DailyActivityReportDto> reports)
     {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Synthèse");
@@ -392,7 +392,7 @@ public class DailyFleetReportService : BackgroundService
     }
 
     /// <summary>Formats a duration in seconds as e.g. "2h 15min" / "45min" / "30s".</summary>
-    private static string FormatDuration(int seconds)
+    public static string FormatDuration(int seconds)
     {
         if (seconds <= 0) return "0min";
         if (seconds < 60) return $"{seconds}s";

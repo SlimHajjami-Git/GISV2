@@ -1892,6 +1892,11 @@ export class ApiService {
     return this.http.get<FuelAuditReport>(`${this.API_URL}/fuelexpenses/vehicle-audit`, { headers: this.getHeaders(), params });
   }
 
+  /** Send a one-off preview of the daily fleet report to the current user (test, no 06:00 wait). */
+  sendDailyReportTest(): Observable<any> {
+    return this.http.post<any>(`${this.API_URL}/reports/daily-fleet-report/test`, {}, { headers: this.getHeaders() });
+  }
+
   // ==================== FUEL PRICES MANAGEMENT ====================
 
   getFuelPrices(options: { fuelTypeId?: number; isActive?: boolean; page?: number; pageSize?: number } = {}): Observable<PaginatedFuelPricesResult> {

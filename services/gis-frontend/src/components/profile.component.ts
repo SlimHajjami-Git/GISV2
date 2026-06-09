@@ -344,6 +344,13 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
                   <span class="alert-desc">Recevoir par email le rapport d'activité de toute la flotte chaque jour à 06:00 (heure TN)</span>
                 </div>
               </label>
+              <div style="margin-top:6px;padding:2px 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <button type="button" (click)="sendDailyReportPreview()" [disabled]="dailyReportTestSending"
+                        style="padding:6px 12px;border:1px solid var(--primary,#6366f1);background:var(--primary,#6366f1);color:#fff;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">
+                  {{ dailyReportTestSending ? 'Envoi…' : '📧 Recevoir un aperçu maintenant' }}
+                </button>
+                <span *ngIf="dailyReportTestMsg" style="font-size:12px;color:var(--text-secondary,#64748b);">{{ dailyReportTestMsg }}</span>
+              </div>
             </div>
           </div>
         </article>
@@ -1088,6 +1095,24 @@ export class ProfileComponent implements OnInit {
     temperatureUnit: 'C',
     dailyReportEmailEnabled: false
   };
+
+  dailyReportTestSending = false;
+  dailyReportTestMsg = '';
+
+  sendDailyReportPreview() {
+    this.dailyReportTestSending = true;
+    this.dailyReportTestMsg = '';
+    this.apiService.sendDailyReportTest().subscribe({
+      next: (res: any) => {
+        this.dailyReportTestSending = false;
+        this.dailyReportTestMsg = '✅ Aperçu envoyé à ' + (res?.sentTo || 'votre email');
+      },
+      error: (err: any) => {
+        this.dailyReportTestSending = false;
+        this.dailyReportTestMsg = '❌ Échec : ' + (err?.error?.error || err?.message || 'erreur');
+      }
+    });
+  }
 
   constructor(
     private router: Router,

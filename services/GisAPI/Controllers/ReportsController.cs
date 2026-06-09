@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using MediatR;
+using GisAPI.Application.Common.Interfaces;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using GisAPI.Application.Features.Reports.Queries.GetDailyActivityReport;
@@ -22,18 +23,66 @@ public class ReportsController : ControllerBase
 {
     private readonly GisDbContext _context;
     private readonly IMediator _mediator;
-    
+    private readonly IEmailService _emailService;
+
     private const double DefaultStopSpeedThresholdKph = 3.0;
     private const int DefaultMinStopDurationSeconds = 120;
 
-    public ReportsController(GisDbContext context, IMediator mediator)
+    public ReportsController(GisDbContext context, IMediator mediator, IEmailService emailService)
     {
         _context = context;
         _mediator = mediator;
+        _emailService = emailService;
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
     private int GetUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+
+    /// <summary>
+    /// Test : genere le rapport journalier de la flotte (hier) et l'envoie immediatement
+    /// par email a l'utilisateur courant (valide le rendu HTML + Excel + le SMTP, sans
+    /// attendre le job de 06:00). N'envoie qu'a l'appelant.
+    /// </summary>
+    [HttpPost("daily-fleet-report/test")]
+    public async Task<ActionResult> SendDailyFleetReportTest(CancellationToken ct)
+    {
+        var companyId = GetCompanyId();
+        var userId = GetUserId();
+
+        var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user == null || string.IsNullOrWhiteSpace(user.Email))
+            return BadRequest(new { error = "Votre compte n'a pas d'adresse email." });
+
+        var societe = await _context.Societes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == companyId, ct);
+        if (societe == null)
+            return BadRequest(new { error = "Societe introuvable." });
+
+        var reportDate = DateTime.UtcNow.AddHours(1).Date.AddDays(-1);
+
+        var vehicleIds = await _context.Vehicles.AsNoTracking()
+            .Where(v => v.CompanyId == companyId)
+            .Select(v => v.Id)
+            .ToArrayAsync(ct);
+
+        var reports = await _mediator.Send(new GetDailyActivityReportsQuery(reportDate, vehicleIds), ct);
+
+        try
+        {
+            var html = GisAPI.Services.DailyFleetReportService.BuildHtmlBody(societe, reportDate, reports);
+            var excel = GisAPI.Services.DailyFleetReportService.BuildExcel(societe, reportDate, reports);
+            var subject = $"[APERCU] Rapport journalier flotte {societe.Name} - {reportDate:dd/MM/yyyy}";
+            await _emailService.SendEmailWithAttachmentAsync(
+                user.Email, user.FullName, subject, html, excel,
+                $"rapport-flotte-{reportDate:yyyy-MM-dd}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ct);
+
+            return Ok(new { sentTo = user.Email, vehicleCount = vehicleIds.Length, reportDate });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
 
     [HttpGet]
     public async Task<ActionResult<List<Report>>> GetReports([FromQuery] int limit = 50)
