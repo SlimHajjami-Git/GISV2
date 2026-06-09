@@ -1254,7 +1254,7 @@ export class ApiService {
     return this.http.get<any>(`${this.API_URL}/users/me`, { headers: this.getHeaders() });
   }
 
-  updateMyProfile(payload: { firstName: string; lastName: string; email: string; phone?: string | null; dailyReportEmailEnabled?: boolean }): Observable<any> {
+  updateMyProfile(payload: { firstName: string; lastName: string; email: string; phone?: string | null }): Observable<any> {
     return this.http.put<any>(`${this.API_URL}/users/me`, payload, { headers: this.getHeaders() });
   }
 

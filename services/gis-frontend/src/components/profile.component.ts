@@ -25,7 +25,6 @@ interface ProfileModel {
   speedUnit: string;
   volumeUnit: string;
   temperatureUnit: string;
-  dailyReportEmailEnabled: boolean;
 }
 
 const PREFERENCES_KEY = 'userProfilePreferences';
@@ -337,20 +336,6 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
                   <span class="alert-desc">Rappels d'entretien</span>
                 </div>
               </label>
-              <label class="alert-check">
-                <input type="checkbox" [(ngModel)]="profile.dailyReportEmailEnabled">
-                <div class="alert-info">
-                  <span class="alert-title">📧 Rapport journalier de la flotte</span>
-                  <span class="alert-desc">Recevoir par email le rapport d'activité de toute la flotte chaque jour à 06:00 (heure TN)</span>
-                </div>
-              </label>
-              <div style="margin-top:6px;padding:2px 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                <button type="button" (click)="sendDailyReportPreview()" [disabled]="dailyReportTestSending"
-                        style="padding:6px 12px;border:1px solid var(--primary,#6366f1);background:var(--primary,#6366f1);color:#fff;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">
-                  {{ dailyReportTestSending ? 'Envoi…' : '📧 Recevoir un aperçu maintenant' }}
-                </button>
-                <span *ngIf="dailyReportTestMsg" style="font-size:12px;color:var(--text-secondary,#64748b);">{{ dailyReportTestMsg }}</span>
-              </div>
             </div>
           </div>
         </article>
@@ -1092,27 +1077,8 @@ export class ProfileComponent implements OnInit {
     distanceUnit: 'km',
     speedUnit: 'kmh',
     volumeUnit: 'L',
-    temperatureUnit: 'C',
-    dailyReportEmailEnabled: false
+    temperatureUnit: 'C'
   };
-
-  dailyReportTestSending = false;
-  dailyReportTestMsg = '';
-
-  sendDailyReportPreview() {
-    this.dailyReportTestSending = true;
-    this.dailyReportTestMsg = '';
-    this.apiService.sendDailyReportTest().subscribe({
-      next: (res: any) => {
-        this.dailyReportTestSending = false;
-        this.dailyReportTestMsg = '✅ Aperçu envoyé à ' + (res?.sentTo || 'votre email');
-      },
-      error: (err: any) => {
-        this.dailyReportTestSending = false;
-        this.dailyReportTestMsg = '❌ Échec : ' + (err?.error?.error || err?.message || 'erreur');
-      }
-    });
-  }
 
   constructor(
     private router: Router,
@@ -1140,18 +1106,6 @@ export class ProfileComponent implements OnInit {
     this.profile.email = user.email || '';
     this.profile.phone = user.phone || '';
     this.profile.role = (user.roles && user.roles[0]) || 'Utilisateur';
-    this.profile.dailyReportEmailEnabled = (user as any).dailyReportEmailEnabled ?? false;
-
-    // Pull the authoritative daily-report-email flag from the backend profile,
-    // since the cached AuthUser may not carry it.
-    this.apiService.getCurrentUserProfile().subscribe({
-      next: (p: any) => {
-        if (p && typeof p.dailyReportEmailEnabled === 'boolean') {
-          this.profile.dailyReportEmailEnabled = p.dailyReportEmailEnabled;
-        }
-      },
-      error: () => { /* keep current value */ }
-    });
 
     // Calypso 9 p5 — regional + units now flow through UserPreferencesService
     // so the values on screen match what the rest of the app actually uses
@@ -1262,8 +1216,7 @@ export class ProfileComponent implements OnInit {
       firstName,
       lastName,
       email,
-      phone: this.profile.phone?.trim() || null,
-      dailyReportEmailEnabled: this.profile.dailyReportEmailEnabled
+      phone: this.profile.phone?.trim() || null
     }).subscribe({
       next: (updated: any) => {
         // Local-only fields not owned by the central service stay in

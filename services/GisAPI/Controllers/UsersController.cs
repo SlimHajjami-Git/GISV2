@@ -163,8 +163,7 @@ public class UsersController : ControllerBase
             request.FirstName,
             request.LastName,
             request.Email,
-            request.Phone,
-            request.DailyReportEmailEnabled
+            request.Phone
         );
         var user = await _mediator.Send(command);
         return Ok(user);
@@ -184,8 +183,7 @@ public record UpdateProfileRequest(
     string FirstName,
     string LastName,
     string Email,
-    string? Phone,
-    bool DailyReportEmailEnabled = false
+    string? Phone
 );
 
 public record ChangeMyPasswordRequest(

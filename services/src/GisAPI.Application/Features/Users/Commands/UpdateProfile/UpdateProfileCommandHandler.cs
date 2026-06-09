@@ -51,7 +51,6 @@ public class UpdateProfileCommandHandler : IRequestHandler<UpdateProfileCommand,
         user.LastName = request.LastName.Trim();
         user.Email = normalizedEmail;
         user.Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
-        user.DailyReportEmailEnabled = request.DailyReportEmailEnabled;
         user.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(ct);
