@@ -23,12 +23,12 @@ public record CardFillDto(
 
 /// <summary>Result of matching one card fill against the GPS-detected refills.</summary>
 public record FillCheckDto(
-    DateTime FillDate,
+    DateTime? FillDate,         // null = aucun plein declare (remplissage detecte mais non saisi)
     decimal BilledLiters,
     DateTime? MatchedRefillDate,
     decimal? DetectedLiters,
     double? GapHours,
-    string Verdict   // "confirme" | "ecart" | "non_detecte"
+    string Verdict   // "confirme" | "ecart" | "non_detecte" | "non_declare"
 );
 
 public record FuelAuditReportDto(
@@ -44,5 +44,6 @@ public record FuelAuditReportDto(
     List<DetectedRefillDto> DetectedRefills,
     List<FillCheckDto> FillChecks,
     int ConfirmedCount,
-    int NotDetectedCount
+    int NotDetectedCount,
+    int UndeclaredCount
 );

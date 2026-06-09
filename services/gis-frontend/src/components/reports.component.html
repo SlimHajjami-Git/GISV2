@@ -870,7 +870,7 @@
 
                 <!-- One-line audit summary -->
                 <div style="padding:8px 14px;margin-bottom:10px;font-weight:600;color:var(--text-primary,#1e293b);">
-                  ✅ {{ fuelAuditReport.confirmedCount }} confirmés · ❌ {{ fuelAuditReport.notDetectedCount }} non détectés (suspects)
+                  ✅ {{ fuelAuditReport.confirmedCount }} confirmés · ❌ {{ fuelAuditReport.notDetectedCount }} non détectés (suspects) · ⚪ {{ fuelAuditReport.undeclaredCount }} non déclarés
                 </div>
 
                 <!-- Per-fill verification table -->
@@ -888,8 +888,8 @@
                     </thead>
                     <tbody>
                       <tr *ngFor="let check of fuelAuditReport.fillChecks">
-                        <td>{{ formatDateTime(check.fillDate) }}</td>
-                        <td>{{ check.billedLiters | number:'1.1-1' }}</td>
+                        <td>{{ check.fillDate ? formatDateTime(check.fillDate) : '—' }}</td>
+                        <td>{{ check.billedLiters > 0 ? (check.billedLiters | number:'1.1-1') : '—' }}</td>
                         <td>{{ check.matchedRefillDate ? formatDateTime(check.matchedRefillDate) : '—' }}</td>
                         <td>{{ check.detectedLiters != null ? (check.detectedLiters | number:'1.1-1') : '—' }}</td>
                         <td>{{ check.gapHours != null ? (check.gapHours | number:'1.0-0') : '—' }}</td>
@@ -900,6 +900,9 @@
                             }
                             @case ('ecart') {
                               <span style="color:#d97706;font-weight:600;">⚠️ Écart</span>
+                            }
+                            @case ('non_declare') {
+                              <span style="color:#2563eb;font-weight:600;">⚪ Non déclaré</span>
                             }
                             @default {
                               <span style="color:#dc2626;font-weight:600;">❌ Non détecté</span>

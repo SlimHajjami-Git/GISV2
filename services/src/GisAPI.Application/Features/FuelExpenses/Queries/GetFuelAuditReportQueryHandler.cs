@@ -39,7 +39,7 @@ public class GetFuelAuditReportQueryHandler
                 request.VehicleId, $"Vehicule {request.VehicleId}", null, false, 0,
                 startDate, endDate,
                 new List<FuelLevelPointDto>(), new List<CardFillDto>(),
-                new List<DetectedRefillDto>(), new List<FillCheckDto>(), 0, 0);
+                new List<DetectedRefillDto>(), new List<FillCheckDto>(), 0, 0, 0);
         }
 
         // GPS side: fuel-level curve + detected refills.
@@ -60,29 +60,32 @@ public class GetFuelAuditReportQueryHandler
         // Match each fill to the nearest detected refill within +/- 48h.
         const double windowHours = 48.0;
         var checks = new List<FillCheckDto>();
+        var matchedRefuel = new bool[audit.DetectedRefills.Count];
         int confirmed = 0, notDetected = 0;
 
         foreach (var fill in fills)
         {
-            DetectedRefillDto? best = null;
+            int bestIdx = -1;
             double bestGap = double.MaxValue;
-            foreach (var r in audit.DetectedRefills)
+            for (int i = 0; i < audit.DetectedRefills.Count; i++)
             {
-                var gap = Math.Abs((r.T - fill.Date).TotalHours);
+                var gap = Math.Abs((audit.DetectedRefills[i].T - fill.Date).TotalHours);
                 if (gap <= windowHours && gap < bestGap)
                 {
-                    best = r;
+                    bestIdx = i;
                     bestGap = gap;
                 }
             }
 
-            if (best == null)
+            if (bestIdx < 0)
             {
                 notDetected++;
                 checks.Add(new FillCheckDto(fill.Date, fill.Liters, null, null, null, "non_detecte"));
             }
             else
             {
+                matchedRefuel[bestIdx] = true;
+                var best = audit.DetectedRefills[bestIdx];
                 var tolerance = Math.Max(10m, fill.Liters * 0.4m);
                 var verdict = Math.Abs(best.Liters - fill.Liters) <= tolerance ? "confirme" : "ecart";
                 if (verdict == "confirme") confirmed++;
@@ -90,6 +93,22 @@ public class GetFuelAuditReportQueryHandler
                     fill.Date, fill.Liters, best.T, best.Liters, Math.Round(bestGap, 1), verdict));
             }
         }
+
+        // Detected tank refills with NO declared card fill nearby = "rempli mais non
+        // declare" (carburant entre dans le reservoir sans saisie dans la fiche reelle).
+        int undeclared = 0;
+        for (int i = 0; i < audit.DetectedRefills.Count; i++)
+        {
+            if (matchedRefuel[i]) continue;
+            undeclared++;
+            var r = audit.DetectedRefills[i];
+            checks.Add(new FillCheckDto(null, 0m, r.T, r.Liters, null, "non_declare"));
+        }
+
+        // Chronological order (by the declared fill date, else the detected refill moment).
+        checks = checks
+            .OrderBy(c => c.FillDate ?? c.MatchedRefillDate ?? DateTime.MaxValue)
+            .ToList();
 
         return new FuelAuditReportDto(
             vehicle.Id,
@@ -104,7 +123,8 @@ public class GetFuelAuditReportQueryHandler
             audit.DetectedRefills,
             checks,
             confirmed,
-            notDetected
+            notDetected,
+            undeclared
         );
     }
 }
