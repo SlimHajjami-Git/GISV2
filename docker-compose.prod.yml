@@ -81,6 +81,15 @@ services:
       Groq__ApiKey: ${GROQ_API_KEY}
       Groq__ApiUrl: https://api.groq.com/openai/v1/chat/completions
       Groq__Model: llama-3.3-70b-versatile
+      # SMTP / email — valeurs prises dans .env.prod, donc chaque serveur (TN vs DZ)
+      # envoie depuis sa propre adresse. Les defauts gardent le comportement actuel.
+      Emailer__SmtpHost: ${SMTP_HOST:-mailing.topnet.tn}
+      Emailer__SmtpPort: ${SMTP_PORT:-25}
+      Emailer__Ssl: ${SMTP_SSL:-0}
+      Emailer__SmtpUser: ${SMTP_USER:-}
+      Emailer__SmtpPassword: ${SMTP_PASSWORD:-}
+      Emailer__FromEmail: ${SMTP_FROM_EMAIL:-contact@belive.tn}
+      Emailer__FromName: ${SMTP_FROM_NAME:-GPA Belive}
     volumes:
       - gis_uploads:/app/uploads
     restart: unless-stopped
