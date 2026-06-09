@@ -11,5 +11,6 @@ public record UpdateProfileCommand(
     string FirstName,
     string LastName,
     string Email,
-    string? Phone
+    string? Phone,
+    bool DailyReportEmailEnabled = false
 ) : ICommand<UserListDto>;

@@ -86,6 +86,10 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasColumnName("updated_at")
             .HasDefaultValueSql("NOW()");
 
+        builder.Property(e => e.DailyReportEmailEnabled)
+            .HasColumnName("daily_report_email_enabled")
+            .HasDefaultValue(false);
+
         // Ignore computed and legacy compatibility properties (not stored in DB)
         builder.Ignore(e => e.FullName);
         builder.Ignore(e => e.IsCompanyAdmin);

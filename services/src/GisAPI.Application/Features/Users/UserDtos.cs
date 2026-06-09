@@ -18,5 +18,6 @@ public record UserListDto(
     bool AlertAssurance = false,
     bool AlertTaxeCirculation = false,
     bool AlertVisiteTechnique = false,
-    bool AlertEntretien = false
+    bool AlertEntretien = false,
+    bool DailyReportEmailEnabled = false
 );

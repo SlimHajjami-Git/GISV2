@@ -55,6 +55,48 @@ public class EmailService : IEmailService
         }
     }
 
+    public async Task SendEmailWithAttachmentAsync(string toEmail, string toName, string subject, string htmlBody, byte[] attachmentBytes, string attachmentFileName, string attachmentMediaType, CancellationToken ct = default)
+    {
+        try
+        {
+            var smtpHost = _configuration["Emailer:SmtpHost"] ?? "mailing.topnet.tn";
+            var smtpPort = int.Parse(_configuration["Emailer:SmtpPort"] ?? "25");
+            var smtpUser = _configuration["Emailer:SmtpUser"] ?? "";
+            var smtpPassword = _configuration["Emailer:SmtpPassword"] ?? "";
+            var fromEmail = _configuration["Emailer:FromEmail"] ?? "contact@belive.tn";
+            var fromName = _configuration["Emailer:FromName"] ?? "GPA Belive";
+            var useSsl = (_configuration["Emailer:Ssl"] ?? "0") == "1";
+
+            using var client = new SmtpClient(smtpHost, smtpPort)
+            {
+                Credentials = new NetworkCredential(smtpUser, smtpPassword),
+                EnableSsl = useSsl,
+                DeliveryMethod = SmtpDeliveryMethod.Network,
+                Timeout = 30000
+            };
+
+            using var message = new MailMessage
+            {
+                From = new MailAddress(fromEmail, fromName),
+                Subject = subject,
+                Body = htmlBody,
+                IsBodyHtml = true
+            };
+            message.To.Add(new MailAddress(toEmail, toName));
+
+            using var attachmentStream = new MemoryStream(attachmentBytes);
+            message.Attachments.Add(new Attachment(attachmentStream, attachmentFileName, attachmentMediaType));
+
+            await client.SendMailAsync(message, ct);
+            _logger.LogInformation("Email with attachment sent to {Email}: {Subject}", toEmail, subject);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send email with attachment to {Email}: {Subject}", toEmail, subject);
+            throw;
+        }
+    }
+
     public async Task SendNotificationEmailAsync(string toEmail, string toName, string notificationType, string title, string message, string? actionUrl = null, CancellationToken ct = default)
     {
         var typeColor = notificationType switch

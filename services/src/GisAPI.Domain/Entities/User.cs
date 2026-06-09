@@ -77,6 +77,8 @@ public class User : TenantEntity
     public bool AlertVisiteTechnique { get; set; } = false;
     [Column("alert_entretien")]
     public bool AlertEntretien { get; set; } = false;
+    [Column("daily_report_email_enabled")]
+    public bool DailyReportEmailEnabled { get; set; } = false;
 
     // Navigation
     public Role Role { get; set; } = null!;

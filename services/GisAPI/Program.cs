@@ -61,6 +61,11 @@ builder.Services.AddHostedService<GisAPI.Services.PredictiveAlertService>();
 // crosses between two MarkDone events.
 builder.Services.AddHostedService<GisAPI.Services.MaintenanceStatusRefreshService>();
 
+// Daily fleet activity report mailer: once per day at/after 06:00 TN, emails
+// each opted-in user (User.DailyReportEmailEnabled) their company's fleet
+// activity summary for the previous day with an .xlsx attachment.
+builder.Services.AddHostedService<GisAPI.Services.DailyFleetReportService>();
+
 // Calypso 7 (P-maint-couche4): DESACTIVÉ. La notif "tracker odomètre muet"
 // était trop technique pour les clients (mention CAN bus / FMS) et ne leur
 // apportait aucune action utile — le fallback trips couvre déjà le cas.

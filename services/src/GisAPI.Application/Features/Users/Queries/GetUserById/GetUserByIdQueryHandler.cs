@@ -73,7 +73,8 @@ public class GetUserByIdQueryHandler : IRequestHandler<GetUserByIdQuery, UserLis
                 u.AlertAssurance,
                 u.AlertTaxeCirculation,
                 u.AlertVisiteTechnique,
-                u.AlertEntretien
+                u.AlertEntretien,
+                u.DailyReportEmailEnabled
             ))
             .FirstOrDefaultAsync(ct);
 

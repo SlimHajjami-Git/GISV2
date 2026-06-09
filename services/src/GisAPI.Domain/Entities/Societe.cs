@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using GisAPI.Domain.Common;
 
 namespace GisAPI.Domain.Entities;
@@ -31,6 +32,12 @@ public class Societe : AuditableEntity
     // Subscription relation (direct link to subscription type/plan)
     public int? SubscriptionTypeId { get; set; }
     public SubscriptionType? SubscriptionType { get; set; }
+
+    // Anti-doublon persistant pour l'envoi du rapport journalier : date du dernier
+    // rapport deja envoye a cette societe. Survit aux redemarrages de l'API (evite
+    // de renvoyer le rapport a tout le monde lors d'un deploiement apres 06:00).
+    [Column("last_daily_report_sent_date")]
+    public DateOnly? LastDailyReportSentDate { get; set; }
 
     // Navigation collections
     public ICollection<User> Users { get; set; } = new List<User>();

@@ -73,7 +73,8 @@ public class GetUsersQueryHandler : IRequestHandler<GetUsersQuery, List<UserList
                 u.AlertAssurance,
                 u.AlertTaxeCirculation,
                 u.AlertVisiteTechnique,
-                u.AlertEntretien
+                u.AlertEntretien,
+                u.DailyReportEmailEnabled
             ))
             .ToListAsync(ct);
 

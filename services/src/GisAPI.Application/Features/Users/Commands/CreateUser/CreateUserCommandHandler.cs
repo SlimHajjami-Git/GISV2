@@ -223,7 +223,8 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
             user.AlertAssurance,
             user.AlertTaxeCirculation,
             user.AlertVisiteTechnique,
-            user.AlertEntretien
+            user.AlertEntretien,
+            user.DailyReportEmailEnabled
         );
     }
 }

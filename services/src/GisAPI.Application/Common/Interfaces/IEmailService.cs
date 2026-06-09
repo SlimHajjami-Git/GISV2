@@ -11,4 +11,9 @@ public interface IEmailService
     /// Send a notification email using a standard template.
     /// </summary>
     Task SendNotificationEmailAsync(string toEmail, string toName, string notificationType, string title, string message, string? actionUrl = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Send an email with a single binary attachment (e.g. an .xlsx report).
+    /// </summary>
+    Task SendEmailWithAttachmentAsync(string toEmail, string toName, string subject, string htmlBody, byte[] attachmentBytes, string attachmentFileName, string attachmentMediaType, CancellationToken ct = default);
 }

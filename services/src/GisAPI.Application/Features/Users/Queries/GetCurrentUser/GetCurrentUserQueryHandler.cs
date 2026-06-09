@@ -67,7 +67,8 @@ public class GetCurrentUserQueryHandler : IRequestHandler<GetCurrentUserQuery, U
                 u.AlertAssurance,
                 u.AlertTaxeCirculation,
                 u.AlertVisiteTechnique,
-                u.AlertEntretien
+                u.AlertEntretien,
+                u.DailyReportEmailEnabled
             ))
             .FirstOrDefaultAsync(ct);
 
