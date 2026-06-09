@@ -3699,7 +3699,7 @@ export interface FuelFillCheck {
   matchedRefillDate: string | null; // ISO of matched GPS refill, or null
   detectedLiters: number | null;    // litres detected at the matched refill, or null
   gapHours: number | null;          // hours between billed fill and detected refill
-  verdict: 'confirme' | 'ecart' | 'non_detecte' | 'non_declare';
+  verdict: 'confirme' | 'ecart' | 'non_detecte' | 'non_declare' | 'volume_non_saisi';
 }
 
 export interface FuelAuditReport {

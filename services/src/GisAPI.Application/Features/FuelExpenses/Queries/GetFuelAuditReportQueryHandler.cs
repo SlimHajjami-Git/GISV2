@@ -86,8 +86,18 @@ public class GetFuelAuditReportQueryHandler
             {
                 matchedRefuel[bestIdx] = true;
                 var best = audit.DetectedRefills[bestIdx];
-                var tolerance = Math.Max(10m, fill.Liters * 0.4m);
-                var verdict = Math.Abs(best.Liters - fill.Liters) <= tolerance ? "confirme" : "ecart";
+                string verdict;
+                if (fill.Liters <= 0m)
+                {
+                    // Fill declared (amount only) but no volume entered; the GPS confirms a
+                    // real refill, so it's a data-entry gap, not a volume mismatch/fraud.
+                    verdict = "volume_non_saisi";
+                }
+                else
+                {
+                    var tolerance = Math.Max(10m, fill.Liters * 0.4m);
+                    verdict = Math.Abs(best.Liters - fill.Liters) <= tolerance ? "confirme" : "ecart";
+                }
                 if (verdict == "confirme") confirmed++;
                 checks.Add(new FillCheckDto(
                     fill.Date, fill.Liters, best.T, best.Liters, Math.Round(bestGap, 1), verdict));
