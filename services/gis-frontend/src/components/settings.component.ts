@@ -113,6 +113,25 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                     <span class="slider"></span>
                   </label>
                 </div>
+                <div class="setting-item">
+                  <div class="setting-info">
+                    <span class="setting-label">📧 Rapport journalier de la flotte</span>
+                    <span class="setting-desc">Recevoir par email le rapport d'activité de toute la flotte chaque jour à 06:00 (heure TN)</span>
+                  </div>
+                  <label class="toggle">
+                    <input type="checkbox" [(ngModel)]="settings.notifications.dailyFleetReport">
+                    <span class="slider"></span>
+                  </label>
+                </div>
+                <div class="setting-item" *ngIf="settings.notifications.dailyFleetReport">
+                  <div class="setting-info">
+                    <span class="setting-label">Aperçu immédiat</span>
+                    <span class="setting-desc">{{ dailyReportTestMsg || 'Recevez tout de suite un aperçu par email, sans attendre 06:00 (valide aussi le SMTP)' }}</span>
+                  </div>
+                  <button type="button" class="btn-primary" (click)="sendDailyReportPreview()" [disabled]="dailyReportTestSending" style="padding:8px 14px;font-size:13px;white-space:nowrap;">
+                    {{ dailyReportTestSending ? 'Envoi…' : 'Recevoir un aperçu' }}
+                  </button>
+                </div>
               </div>
 
               <div class="settings-group">
@@ -826,6 +845,7 @@ export class SettingsComponent implements OnInit {
       push: true,
       email: true,
       sms: false,
+      dailyFleetReport: false,
       quietHours: false,
       quietStart: '22:00',
       quietEnd: '07:00'
@@ -854,6 +874,24 @@ export class SettingsComponent implements OnInit {
     new: '',
     confirm: ''
   };
+
+  dailyReportTestSending = false;
+  dailyReportTestMsg = '';
+
+  sendDailyReportPreview() {
+    this.dailyReportTestSending = true;
+    this.dailyReportTestMsg = '';
+    this.api.sendDailyReportTest().subscribe({
+      next: (res: any) => {
+        this.dailyReportTestSending = false;
+        this.dailyReportTestMsg = '✅ Aperçu envoyé à ' + (res?.sentTo || 'votre email');
+      },
+      error: (err: any) => {
+        this.dailyReportTestSending = false;
+        this.dailyReportTestMsg = '❌ Échec : ' + (err?.error?.error || err?.message || 'erreur');
+      }
+    });
+  }
 
   constructor(
     private router: Router,
@@ -886,6 +924,17 @@ export class SettingsComponent implements OnInit {
       refreshInterval: String(p.refreshInterval),
       animations: p.animations
     };
+
+    // The daily fleet report flag is persisted server-side (User entity), not in
+    // localStorage — the 06:00 background job reads it. Pull the authoritative value.
+    this.api.getCurrentUserProfile().subscribe({
+      next: (u: any) => {
+        if (u && typeof u.dailyReportEmailEnabled === 'boolean') {
+          this.settings.notifications.dailyFleetReport = u.dailyReportEmailEnabled;
+        }
+      },
+      error: () => { /* keep default */ }
+    });
   }
 
   saveSettings() {
@@ -903,6 +952,12 @@ export class SettingsComponent implements OnInit {
     });
     const { display, ...rest } = this.settings;
     localStorage.setItem('appSettings', JSON.stringify(rest));
+
+    // The daily fleet report flag must persist server-side (read by the 06:00 job).
+    this.api.setDailyReportEmailPref(!!this.settings.notifications.dailyFleetReport).subscribe({
+      error: () => { /* non-blocking; localStorage already saved */ }
+    });
+
     alert('Paramètres enregistrés avec succès!');
   }
 

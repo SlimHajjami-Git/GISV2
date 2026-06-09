@@ -1897,6 +1897,11 @@ export class ApiService {
     return this.http.post<any>(`${this.API_URL}/reports/daily-fleet-report/test`, {}, { headers: this.getHeaders() });
   }
 
+  /** Enable/disable the daily fleet report email for the current user (persisted server-side). */
+  setDailyReportEmailPref(enabled: boolean): Observable<any> {
+    return this.http.put<any>(`${this.API_URL}/reports/daily-fleet-report/preference`, { enabled }, { headers: this.getHeaders() });
+  }
+
   // ==================== FUEL PRICES MANAGEMENT ====================
 
   getFuelPrices(options: { fuelTypeId?: number; isActive?: boolean; page?: number; pageSize?: number } = {}): Observable<PaginatedFuelPricesResult> {

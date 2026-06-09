@@ -38,6 +38,21 @@ public class ReportsController : ControllerBase
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
     private int GetUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
 
+    /// <summary>Active/desactive l'envoi du rapport journalier par email pour l'utilisateur courant.</summary>
+    [HttpPut("daily-fleet-report/preference")]
+    public async Task<ActionResult> SetDailyFleetReportPreference([FromBody] DailyReportPreferenceRequest request, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user == null)
+            return NotFound();
+        user.DailyReportEmailEnabled = request.Enabled;
+        await _context.SaveChangesAsync(ct);
+        return Ok(new { enabled = user.DailyReportEmailEnabled });
+    }
+
+    public record DailyReportPreferenceRequest(bool Enabled);
+
     /// <summary>
     /// Test : genere le rapport journalier de la flotte (hier) et l'envoie immediatement
     /// par email a l'utilisateur courant (valide le rendu HTML + Excel + le SMTP, sans
