@@ -64,7 +64,7 @@ public class AuthController : ControllerBase
     {
         try
         {
-            var result = await _mediator.Send(new RefreshTokenCommand(request.Token, request.RefreshToken));
+            var result = await _mediator.Send(new RefreshTokenCommand(request.Token, request.RefreshToken, GetClientIp(), GetUserAgent()));
             return Ok(result);
         }
         catch (GisAPI.Domain.Exceptions.DomainException ex)

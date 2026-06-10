@@ -3,4 +3,4 @@ using MediatR;
 
 namespace GisAPI.Application.Features.Auth.Commands.RefreshToken;
 
-public record RefreshTokenCommand(string Token, string RefreshToken) : IRequest<LoginResponse>;
+public record RefreshTokenCommand(string Token, string RefreshToken, string? IpAddress = null, string? UserAgent = null) : IRequest<LoginResponse>;

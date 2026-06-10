@@ -83,6 +83,40 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, L
         _context.RefreshTokens.Add(newRefreshToken);
         await _context.SaveChangesAsync(ct);
 
+        // Best-effort: record a "session resumed" event so users who return with a still-valid
+        // session (auto-login / silent token refresh) appear in the activity log without having
+        // to re-login. Deduplicated to once per user per day so the trail isn't flooded with
+        // refreshes. Never break the refresh if this fails.
+        try
+        {
+            var todayUtc = DateTime.UtcNow.Date;
+            var alreadyLoggedToday = await _context.AuditLogs.AnyAsync(
+                a => a.UserId == user.Id
+                     && (a.Action == "login" || a.Action == "session")
+                     && a.Timestamp >= todayUtc, ct);
+            if (!alreadyLoggedToday)
+            {
+                _context.AuditLogs.Add(new GisAPI.Domain.Entities.AuditLog
+                {
+                    UserId = user.Id,
+                    CompanyId = user.CompanyId,
+                    Action = "session",
+                    EntityType = "User",
+                    EntityId = user.Id,
+                    EntityName = user.Email,
+                    Description = "Reprise de session",
+                    IpAddress = request.IpAddress,
+                    UserAgent = request.UserAgent,
+                    Timestamp = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync(ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to write session audit log for {Email}", user.Email);
+        }
+
         // 6. Build subscription features
         SubscriptionFeaturesDto? subscriptionFeatures = null;
         if (user.Societe?.SubscriptionType is { } subType)

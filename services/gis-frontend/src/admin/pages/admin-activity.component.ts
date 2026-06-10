@@ -651,6 +651,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   getActionClass(action: string): string {
     if (action === 'login') return 'login';
     if (action === 'logout') return 'logout';
+    if (action === 'session') return 'view';
     if (action.startsWith('view')) return 'view';
     if (action.startsWith('create')) return 'create';
     if (action.startsWith('update')) return 'update';
@@ -659,6 +660,12 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   }
 
   formatAction(action: string): string {
+    const labels: { [k: string]: string } = {
+      login: 'Connexion',
+      logout: 'Déconnexion',
+      session: 'Reprise de session'
+    };
+    if (labels[action]) return labels[action];
     return action.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   }
 
