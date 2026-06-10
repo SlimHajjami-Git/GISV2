@@ -27,44 +27,34 @@ public class GetActivityLogsQueryHandler : IRequestHandler<GetActivityLogsQuery,
 
     public async Task<List<ActivityLogDto>> Handle(GetActivityLogsQuery request, CancellationToken ct)
     {
-        var recentLogins = await _context.Users
-            .Where(u => u.LastLoginAt != null)
-            .OrderByDescending(u => u.LastLoginAt)
+        // Read the real audit trail (login / logout / recorded actions), most recent first.
+        // Tenant-scoped via the AuditLog global query filter (company-admin sees own company,
+        // system-admin sees all).
+        var rows = await _context.AuditLogs
+            .Include(a => a.User)
+            .OrderByDescending(a => a.Timestamp)
             .Take(request.Limit)
-            .Select(u => new ActivityLogDto
-            {
-                Id = $"login-{u.Id}",
-                UserId = u.Id,
-                UserName = u.Name,
-                CompanyId = u.CompanyId,
-                CompanyName = u.Societe != null ? u.Societe.Name : "Unknown",
-                Action = "login",
-                Details = "Connexion utilisateur",
-                IpAddress = "N/A",
-                Timestamp = u.LastLoginAt ?? DateTime.UtcNow
-            })
             .ToListAsync(ct);
 
-        var recentVehicles = await _context.Vehicles
-            .OrderByDescending(v => v.UpdatedAt)
-            .Take(20)
-            .Select(v => new ActivityLogDto
-            {
-                Id = $"vehicle-{v.Id}",
-                UserId = 0,
-                UserName = "System",
-                CompanyId = v.CompanyId,
-                CompanyName = v.Societe != null ? v.Societe.Name : "Unknown",
-                Action = "update_vehicle",
-                Details = $"Mise à jour véhicule: {v.Plate}",
-                IpAddress = "N/A",
-                Timestamp = v.UpdatedAt
-            })
-            .ToListAsync(ct);
-
-        return recentLogins.Concat(recentVehicles)
-            .OrderByDescending(l => l.Timestamp)
-            .Take(request.Limit)
+        var companyIds = rows.Where(a => a.CompanyId != null)
+            .Select(a => a.CompanyId!.Value)
+            .Distinct()
             .ToList();
+        var companyNames = await _context.Societes
+            .Where(s => companyIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+
+        return rows.Select(a => new ActivityLogDto
+        {
+            Id = a.Id.ToString(),
+            UserId = a.UserId ?? 0,
+            UserName = a.User != null ? a.User.Name : (a.EntityName ?? "Système"),
+            CompanyId = a.CompanyId ?? 0,
+            CompanyName = a.CompanyId != null && companyNames.TryGetValue(a.CompanyId.Value, out var cn) ? cn : "Unknown",
+            Action = a.Action,
+            Details = string.IsNullOrEmpty(a.Description) ? a.Action : a.Description,
+            IpAddress = string.IsNullOrEmpty(a.IpAddress) ? "N/A" : a.IpAddress,
+            Timestamp = a.Timestamp
+        }).ToList();
     }
 }

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using MediatR;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Application.Features.Auth.Commands.Login;
+using GisAPI.Application.Features.Auth.Commands.Logout;
 using GisAPI.Application.Features.Auth.Commands.RefreshToken;
 using GisAPI.Application.Features.Users.Commands.ChangeMyPassword;
 using GisAPI.Application.Common.Interfaces;
@@ -30,8 +31,32 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest request)
     {
-        var result = await _mediator.Send(new LoginCommand(request.Email, request.Password));
+        var result = await _mediator.Send(new LoginCommand(request.Email, request.Password, GetClientIp(), GetUserAgent()));
         return Ok(result);
+    }
+
+    [Authorize]
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout()
+    {
+        var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
+        var companyId = int.Parse(User.FindFirst("companyId")?.Value ?? "0");
+        await _mediator.Send(new LogoutCommand(userId, companyId, GetClientIp(), GetUserAgent()));
+        return NoContent();
+    }
+
+    private string? GetClientIp()
+    {
+        var forwarded = Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(forwarded))
+            return forwarded.Split(',')[0].Trim();
+        return HttpContext.Connection.RemoteIpAddress?.ToString();
+    }
+
+    private string? GetUserAgent()
+    {
+        var ua = Request.Headers.UserAgent.ToString();
+        return string.IsNullOrWhiteSpace(ua) ? null : ua;
     }
 
     [HttpPost("refresh")]

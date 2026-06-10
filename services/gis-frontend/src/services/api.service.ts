@@ -225,6 +225,13 @@ export class ApiService {
   }
 
   logout() {
+    // Best-effort: notify the backend so it records the logout in the audit trail and
+    // revokes refresh tokens. Fire-and-forget — never block or fail the client-side logout.
+    const token = localStorage.getItem('auth_token');
+    if (token && token !== 'mock-jwt-token-for-testing') {
+      this.http.post(`${this.API_URL}/auth/logout`, {}, { headers: this.getHeaders() })
+        .subscribe({ next: () => {}, error: () => {} });
+    }
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
     this.currentUser$.next(null);

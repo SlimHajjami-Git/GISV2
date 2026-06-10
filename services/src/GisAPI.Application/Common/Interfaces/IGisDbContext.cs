@@ -91,6 +91,9 @@ public interface IGisDbContext
     // Alert Emails
     DbSet<AlertEmail> AlertEmails { get; }
 
+    // Audit log (login / logout / activity history)
+    DbSet<AuditLog> AuditLogs { get; }
+
     /// <summary>
     /// Underlying database facade — exposed so MediatR handlers can run
     /// raw SQL (<c>Database.SqlQueryRaw&lt;T&gt;</c>) for queries the

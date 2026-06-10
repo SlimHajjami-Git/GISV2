@@ -70,6 +70,29 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
         _context.RefreshTokens.Add(refreshTokenEntity);
         await _context.SaveChangesAsync(ct);
 
+        // Best-effort: record the login in the audit trail. Never break auth if this fails.
+        try
+        {
+            _context.AuditLogs.Add(new GisAPI.Domain.Entities.AuditLog
+            {
+                UserId = user.Id,
+                CompanyId = user.CompanyId,
+                Action = "login",
+                EntityType = "User",
+                EntityId = user.Id,
+                EntityName = user.Email,
+                Description = "Connexion utilisateur",
+                IpAddress = request.IpAddress,
+                UserAgent = request.UserAgent,
+                Timestamp = DateTime.UtcNow
+            });
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to write login audit log for {Email}", user.Email);
+        }
+
         // Build subscription features
         var subscriptionFeatures = BuildSubscriptionFeatures(user.Societe?.SubscriptionType);
 

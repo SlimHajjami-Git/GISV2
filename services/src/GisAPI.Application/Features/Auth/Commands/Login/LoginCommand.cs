@@ -2,7 +2,7 @@ using GisAPI.Application.Common.Interfaces;
 
 namespace GisAPI.Application.Features.Auth.Commands.Login;
 
-public record LoginCommand(string Email, string Password) : ICommand<LoginResponse>;
+public record LoginCommand(string Email, string Password, string? IpAddress = null, string? UserAgent = null) : ICommand<LoginResponse>;
 
 public record LoginResponse(
     string Token,
