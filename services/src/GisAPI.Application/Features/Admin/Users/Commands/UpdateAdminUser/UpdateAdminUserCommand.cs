@@ -7,5 +7,6 @@ public record UpdateAdminUserCommand(
     string? Name,
     string? Email,
     string? Phone,
-    string? Password
+    string? Password,
+    int[]? AssignedVehicleIds = null
 ) : ICommand<AdminUserDto>;

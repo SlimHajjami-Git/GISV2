@@ -62,7 +62,7 @@ public class AdminUserController : ControllerBase
     [HttpPut("{id}")]
     public async Task<ActionResult<AdminUserDto>> UpdateUser(int id, [FromBody] UpdateAdminUserRequest request)
     {
-        var command = new UpdateAdminUserCommand(id, request.Name, request.Email, request.Phone, request.Password);
+        var command = new UpdateAdminUserCommand(id, request.Name, request.Email, request.Phone, request.Password, request.AssignedVehicleIds);
         var user = await _mediator.Send(command);
         return Ok(user);
     }
@@ -169,6 +169,7 @@ public class UpdateAdminUserRequest
     public string? Email { get; set; }
     public string? Phone { get; set; }
     public string? Password { get; set; }
+    public int[]? AssignedVehicleIds { get; set; }
     public string[]? Roles { get; set; }
     public string[]? Permissions { get; set; }
 }

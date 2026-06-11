@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Entities;
 using GisAPI.Domain.Exceptions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -37,6 +38,34 @@ public class UpdateAdminUserCommandHandler : IRequestHandler<UpdateAdminUserComm
         if (!string.IsNullOrEmpty(request.Password))
         {
             user.PasswordHash = _passwordHasher.HashPassword(request.Password);
+        }
+
+        // Reconcile vehicle assignments (delete-all-then-insert) so REVOKING works, not just
+        // assigning. null = field not provided (leave untouched); empty array = revoke all.
+        if (request.AssignedVehicleIds != null)
+        {
+            if (request.AssignedVehicleIds.Length > 0)
+            {
+                var validCount = await _context.Vehicles.IgnoreQueryFilters()
+                    .CountAsync(v => request.AssignedVehicleIds.Contains(v.Id) && v.CompanyId == user.CompanyId, ct);
+                if (validCount != request.AssignedVehicleIds.Length)
+                    throw new DomainException("Un ou plusieurs véhicules sont invalides ou n'appartiennent pas à cette société");
+            }
+
+            var oldAssignments = await _context.UserVehicles
+                .Where(uv => uv.UserId == request.Id)
+                .ToListAsync(ct);
+            _context.UserVehicles.RemoveRange(oldAssignments);
+
+            foreach (var vehicleId in request.AssignedVehicleIds)
+            {
+                _context.UserVehicles.Add(new UserVehicle
+                {
+                    UserId = request.Id,
+                    VehicleId = vehicleId,
+                    AssignedAt = DateTime.UtcNow
+                });
+            }
         }
 
         user.UpdatedAt = DateTime.UtcNow;
