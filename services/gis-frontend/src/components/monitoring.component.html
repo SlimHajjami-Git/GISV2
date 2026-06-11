@@ -62,6 +62,11 @@
                 <circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 0 0-8 8c0 5 8 12 8 12s8-7 8-12a8 8 0 0 0-8-8z"/>
               </svg>
             </button>
+            <button class="tool-btn" [class.active]="showLayersPanel" (click)="toggleLayersPanel()" title="Grouper par société (afficher/cacher)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -73,7 +78,43 @@
           <span class="legend-item"><span class="status-dot offline"></span> Hors ligne</span>
         </div>
 
-        <div class="vehicles-list" *ngIf="!isPanelCollapsed">
+        <!-- Company-grouped layers tree (toggle via the "groupes" button) -->
+        <div class="layers-tree" *ngIf="!isPanelCollapsed && showLayersPanel">
+          <div class="layer-company" *ngFor="let group of vehicleGroups; trackBy: trackByGroupKey">
+            <div class="layer-company-header">
+              <input type="checkbox" class="layer-check"
+                     [checked]="isCompanyVisible(group)"
+                     [indeterminate]="isCompanyPartiallyVisible(group)"
+                     (change)="toggleCompanyVisibility(group)"
+                     (click)="$event.stopPropagation()" />
+              <button class="layer-collapse-btn" (click)="toggleCompanyCollapsed(group.key)">
+                <svg class="chev" [class.rotated]="!collapsedCompanies.has(group.key)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+              <span class="layer-company-name">{{ group.name }}</span>
+              <span class="layer-company-count">{{ group.vehicles.length }}</span>
+            </div>
+            <div class="layer-company-vehicles" *ngIf="!collapsedCompanies.has(group.key)">
+              <div class="layer-vehicle-row" *ngFor="let vehicle of group.vehicles; trackBy: trackByVehicleId"
+                   [class.selected]="selectedVehicle?.id === vehicle.id">
+                <input type="checkbox" class="layer-check"
+                       [checked]="isVehicleVisible(vehicle)"
+                       (change)="toggleVehicleVisibility(vehicle)"
+                       (click)="$event.stopPropagation()" />
+                <span class="status-dot"
+                      [class.moving]="vehicle.isOnline && vehicle.ignitionOn && (vehicle.currentSpeed || 0) > 5"
+                      [class.stopped]="vehicle.isOnline && vehicle.ignitionOn && (vehicle.currentSpeed || 0) <= 5"
+                      [class.parked]="vehicle.isOnline && !vehicle.ignitionOn"
+                      [class.offline]="!vehicle.isOnline"></span>
+                <span class="layer-vehicle-name" (click)="selectVehicle(vehicle)">{{ vehicle.plate || vehicle.name }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="layers-empty" *ngIf="vehicleGroups.length === 0">Aucun véhicule</div>
+        </div>
+
+        <div class="vehicles-list" *ngIf="!isPanelCollapsed && !showLayersPanel">
           <div class="vehicle-item" *ngFor="let vehicle of filteredVehicles; trackBy: trackByVehicleId">
             <div
               class="vehicle-row"

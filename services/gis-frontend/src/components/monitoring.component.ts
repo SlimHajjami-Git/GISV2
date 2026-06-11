@@ -33,6 +33,12 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   initialFitDone = false;
   vehicleMarkers = new Map<string, L.Marker>();
 
+  // Company-grouped "layers" panel — show/hide vehicles by société or individually.
+  hiddenVehicleIds = new Set<string>();
+  collapsedCompanies = new Set<string>();
+  showLayersPanel = false;
+  vehicleGroups: { key: string; name: string; vehicles: any[] }[] = [];
+
   // Calypso 9 p5 — clustering / labels container.
   // markerClusterLayer is null when the operator has clustering OFF; in
   // that mode markers are added directly to the map. When clustering
@@ -654,17 +660,17 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   private addVehicleMarker(marker: L.Marker, vehicle: any): void {
     this.applyVehicleLabel(marker, vehicle);
     if (this.markerClusterLayer) {
-      this.markerClusterLayer.addLayer(marker);
+      if (!this.markerClusterLayer.hasLayer(marker)) this.markerClusterLayer.addLayer(marker);
     } else if (this.map) {
-      marker.addTo(this.map);
+      if (!this.map.hasLayer(marker)) marker.addTo(this.map);
     }
   }
 
-  /** Remove a marker from whichever container is currently active. */
+  /** Remove a marker from whichever container is currently active. Idempotent. */
   private removeVehicleMarker(marker: L.Marker): void {
     if (this.markerClusterLayer) {
-      this.markerClusterLayer.removeLayer(marker);
-    } else {
+      if (this.markerClusterLayer.hasLayer(marker)) this.markerClusterLayer.removeLayer(marker);
+    } else if (this.map && this.map.hasLayer(marker)) {
       marker.remove();
     }
   }
@@ -804,13 +810,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.vehicleMarkers.set(markerId, marker);
     }
 
-    // Respect selected-vehicle filter: hide markers for non-selected vehicles
-    if (this.selectedVehicle && this.selectedVehicle.id !== vehicle.id) {
-      const m = this.vehicleMarkers.get(markerId);
-      if (m) {
-        m.setOpacity(0);
-        if ((m as any)._icon) (m as any)._icon.style.pointerEvents = 'none';
-      }
+    // Keep manually-hidden and non-focused markers OUT of the (cluster) container
+    // so they don't re-surface on a live update and cluster counts stay correct.
+    const m = this.vehicleMarkers.get(markerId);
+    if (m && (this.hiddenVehicleIds.has(markerId) || (this.selectedVehicle && this.selectedVehicle.id !== vehicle.id))) {
+      this.removeVehicleMarker(m);
     }
   }
 
@@ -978,6 +982,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
           this.addVehicleMarker(marker, vehicle);
           this.vehicleMarkers.set(markerId, marker);
+          // A hidden or non-focused vehicle must not pop onto the map on refresh.
+          if (this.hiddenVehicleIds.has(markerId) || (this.selectedVehicle && this.selectedVehicle.id !== vehicle.id)) {
+            this.removeVehicleMarker(marker);
+          }
         }
       }
     });
@@ -1223,22 +1231,84 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Marker visibility helpers — show only the selected vehicle's marker
   filterMarkersForSelectedVehicle(vehicleId: number): void {
+    // Cluster-safe focus: pull every non-selected marker OUT of the (cluster)
+    // container so the selected vehicle shows as a standalone icon — never buried
+    // in a cluster bubble (and the bubble count stays correct).
     this.vehicleMarkers.forEach((marker, key) => {
-      const id = parseInt(key, 10);
-      if (id === vehicleId) {
-        marker.setOpacity(1);
-        if ((marker as any)._icon) (marker as any)._icon.style.pointerEvents = 'auto';
+      if (parseInt(key, 10) === vehicleId) {
+        const v = (this.vehicles as any[]).find(x => x.id === vehicleId);
+        this.addVehicleMarker(marker, v);
       } else {
-        marker.setOpacity(0);
-        if ((marker as any)._icon) (marker as any)._icon.style.pointerEvents = 'none';
+        this.removeVehicleMarker(marker);
       }
     });
   }
 
   showAllMarkers(): void {
-    this.vehicleMarkers.forEach((marker) => {
-      marker.setOpacity(1);
-      if ((marker as any)._icon) (marker as any)._icon.style.pointerEvents = 'auto';
+    // Re-show every marker EXCEPT those the operator has manually hidden.
+    this.vehicleMarkers.forEach((marker, key) => {
+      if (this.hiddenVehicleIds.has(key)) {
+        this.removeVehicleMarker(marker);
+      } else {
+        const v = (this.vehicles as any[]).find(x => x.id?.toString() === key);
+        this.addVehicleMarker(marker, v);
+      }
+    });
+  }
+
+  // ── Company-grouped "layers" panel: show/hide by société or per vehicle ──
+  private buildVehicleGroups(): void {
+    const groups = new Map<string, { key: string; name: string; vehicles: any[] }>();
+    for (const v of this.filteredVehicles as any[]) {
+      const key = v.companyId != null ? v.companyId.toString() : '__self__';
+      const name = v.companyName || 'Ma flotte';
+      let g = groups.get(key);
+      if (!g) { g = { key, name, vehicles: [] }; groups.set(key, g); }
+      g.vehicles.push(v);
+    }
+    this.vehicleGroups = Array.from(groups.values())
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }));
+  }
+
+  toggleLayersPanel(): void { this.showLayersPanel = !this.showLayersPanel; }
+  trackByGroupKey(_i: number, g: { key: string }): string { return g.key; }
+  toggleCompanyCollapsed(key: string): void {
+    if (this.collapsedCompanies.has(key)) this.collapsedCompanies.delete(key);
+    else this.collapsedCompanies.add(key);
+  }
+
+  isVehicleVisible(v: any): boolean { return !this.hiddenVehicleIds.has(v.id?.toString()); }
+  toggleVehicleVisibility(v: any): void {
+    const id = v.id?.toString();
+    if (this.hiddenVehicleIds.has(id)) this.hiddenVehicleIds.delete(id);
+    else this.hiddenVehicleIds.add(id);
+    this.applyMarkerVisibility();
+  }
+  isCompanyVisible(g: { vehicles: any[] }): boolean {
+    return g.vehicles.every(v => !this.hiddenVehicleIds.has(v.id?.toString()));
+  }
+  isCompanyPartiallyVisible(g: { vehicles: any[] }): boolean {
+    const hidden = g.vehicles.filter(v => this.hiddenVehicleIds.has(v.id?.toString())).length;
+    return hidden > 0 && hidden < g.vehicles.length;
+  }
+  toggleCompanyVisibility(g: { vehicles: any[] }): void {
+    const allVisible = this.isCompanyVisible(g);
+    for (const v of g.vehicles) {
+      const id = v.id?.toString();
+      if (allVisible) this.hiddenVehicleIds.add(id); else this.hiddenVehicleIds.delete(id);
+    }
+    this.applyMarkerVisibility();
+  }
+
+  /** Re-apply manual show/hide to existing markers (cluster-aware). Respects focus mode. */
+  private applyMarkerVisibility(): void {
+    this.vehicleMarkers.forEach((marker, key) => {
+      if (this.hiddenVehicleIds.has(key)) {
+        this.removeVehicleMarker(marker);
+      } else if (!this.selectedVehicle || this.selectedVehicle.id?.toString() === key) {
+        const v = (this.vehicles as any[]).find(x => x.id?.toString() === key);
+        this.addVehicleMarker(marker, v);
+      }
     });
   }
 
@@ -1416,7 +1486,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
     // Create new array reference to trigger change detection
     this.filteredVehicles = [...filtered];
-    console.log('Filtered vehicles:', this.filteredVehicles.length);
+    this.buildVehicleGroups();
   }
 
   onSearchChange(query: string) {

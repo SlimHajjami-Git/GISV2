@@ -1069,6 +1069,72 @@
   overflow-x: hidden;
 }
 
+/* Company-grouped "layers" tree (toggle in the toolbar) */
+.layers-tree {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  font-size: 13px;
+}
+.layer-company-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: #f6f7f9;
+  border-bottom: 1px solid #eceef1;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.layer-company-name {
+  font-weight: 600;
+  color: #1f2937;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.layer-company-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: #6b7280;
+  background: #e5e7eb;
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+.layer-collapse-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+}
+.layer-collapse-btn .chev { transition: transform .15s ease; }
+.layer-collapse-btn .chev.rotated { transform: rotate(180deg); }
+.layer-company-vehicles { padding-left: 14px; }
+.layer-vehicle-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px;
+  min-height: 28px;
+  border-bottom: 1px solid #f3f4f6;
+}
+.layer-vehicle-row.selected { background: #eef2ff; }
+.layer-vehicle-name {
+  cursor: pointer;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #374151;
+}
+.layer-vehicle-row.selected .layer-vehicle-name { color: #4338ca; font-weight: 600; }
+.layer-check { cursor: pointer; accent-color: #6366f1; width: 15px; height: 15px; flex: none; }
+.layers-empty { padding: 16px; text-align: center; color: #9ca3af; font-size: 12px; }
+
 .vehicle-row {
   display: flex;
   align-items: center;
