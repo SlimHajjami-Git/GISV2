@@ -2199,18 +2199,29 @@ async fn route_teltonika_frame(
         (None, 1, None)
     };
 
+    // Only push to the live map (Redis pub-sub + RabbitMQ) if the frame is recent.
+    // Buffered backlog (old recorded_at, flushed on reconnect) is still persisted to
+    // history via db_future, but must NOT animate the real-time map — otherwise the
+    // vehicle "teleports" through hours/days of past positions. Mirrors the NEMS handler.
+    let frame_age_secs = (chrono::Utc::now().naive_utc() - frame.recorded_at).num_seconds();
+    let is_recent_frame = frame_age_secs < 300; // 5 minutes
+
     let db_future = database.ingest_hh_frame(device_uid, protocol, &frame, &event_key);
     let redis_future = async {
-        if let Some(ref redis) = redis_cache {
-            if let Err(err) = redis.cache_position(device_uid, vehicle_id, company_id, &frame).await {
-                warn!(?err, "Failed to cache Teltonika position in Redis");
+        if is_recent_frame {
+            if let Some(ref redis) = redis_cache {
+                if let Err(err) = redis.cache_position(device_uid, vehicle_id, company_id, &frame).await {
+                    warn!(?err, "Failed to cache Teltonika position in Redis");
+                }
             }
         }
     };
     let rabbitmq_future = async {
-        if let Some(ref pub_ref) = publisher {
-            if let Err(err) = pub_ref.publish_hh_frame(device_uid, protocol, &frame).await {
-                warn!(?err, "Failed to publish Teltonika telemetry event");
+        if is_recent_frame {
+            if let Some(ref pub_ref) = publisher {
+                if let Err(err) = pub_ref.publish_hh_frame(device_uid, protocol, &frame).await {
+                    warn!(?err, "Failed to publish Teltonika telemetry event");
+                }
             }
         }
     };
@@ -2387,19 +2398,26 @@ async fn route_noron_frame(
         (None, 1, None)
     };
 
-    // ── PARALLEL: DB + Redis + RabbitMQ ──
+    // ── PARALLEL: DB (always) + Redis/RabbitMQ (live, only if recent) ──
+    // Backlog (old recorded_at) is persisted to history but must not animate the live map.
+    let frame_age_secs = (chrono::Utc::now().naive_utc() - frame.recorded_at).num_seconds();
+    let is_recent_frame = frame_age_secs < 300; // 5 minutes
     let db_future = database.ingest_hh_frame(device_uid, protocol, &frame, &event_key);
     let redis_future = async {
-        if let Some(ref redis) = redis_cache {
-            if let Err(err) = redis.cache_position(device_uid, vehicle_id, company_id, &frame).await {
-                warn!(?err, "Failed to cache Noron position in Redis");
+        if is_recent_frame {
+            if let Some(ref redis) = redis_cache {
+                if let Err(err) = redis.cache_position(device_uid, vehicle_id, company_id, &frame).await {
+                    warn!(?err, "Failed to cache Noron position in Redis");
+                }
             }
         }
     };
     let rabbitmq_future = async {
-        if let Some(ref pub_ref) = publisher {
-            if let Err(err) = pub_ref.publish_hh_frame(device_uid, protocol, &frame).await {
-                warn!(?err, "Failed to publish Noron telemetry event");
+        if is_recent_frame {
+            if let Some(ref pub_ref) = publisher {
+                if let Err(err) = pub_ref.publish_hh_frame(device_uid, protocol, &frame).await {
+                    warn!(?err, "Failed to publish Noron telemetry event");
+                }
             }
         }
     };

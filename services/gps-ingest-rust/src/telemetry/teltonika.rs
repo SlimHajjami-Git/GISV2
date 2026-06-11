@@ -248,7 +248,9 @@ fn avl_record_to_hh_frame(record: &AVLRecord, codec_label: &'static str) -> HhFr
         fuel_rate_l_per_100km: None,
         fms_temperature_c,
         is_valid,
-        is_real_time: true,
+        // Honest real-time flag: a frame is "live" only if its fix is recent. Buffered
+        // backlog (flushed on reconnect) is tagged false so it never animates the live map.
+        is_real_time: (chrono::Utc::now().naive_utc() - recorded_at).num_seconds() < 300,
         // Pack ignition + digital inputs into a single byte so the .NET side
         // can show GPIO state without an extra column. Bit 0 = ignition,
         // bit 1 = digital input 1, bit 2 = digital input 2.

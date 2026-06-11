@@ -528,7 +528,8 @@ fn noron_position_to_hh_frame(pos: &NoronPosition, flag: NoronFlag) -> HhFrame {
         fuel_rate_l_per_100km: None,
         fms_temperature_c: pos.temperature,
         is_valid: pos.gps_valid,
-        is_real_time: true,
+        // Honest real-time flag (see teltonika.rs): buffered backlog tagged false.
+        is_real_time: (chrono::Utc::now().naive_utc() - pos.recorded_at).num_seconds() < 300,
         flags_raw: pos.io_value,
         raw_payload,
         remaining_payload: None,

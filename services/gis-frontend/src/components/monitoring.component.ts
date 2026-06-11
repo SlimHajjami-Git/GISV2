@@ -488,8 +488,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // (Redis + RabbitMQ consumers both broadcast the same GPS frame)
     const dedupKey = `${update.vehicleId}`;
     const lastRecorded = this.lastProcessedPosition.get(dedupKey);
-    if (lastRecorded === update.recordedAt) {
-      return; // Exact duplicate, skip
+    // Monotonic guard: only move the marker FORWARD in time. Skips exact duplicates AND
+    // any out-of-order / older (backlog) frame that slipped through, so the live marker
+    // always reflects the most recent recorded_at — never the last-arrived.
+    if (lastRecorded && new Date(update.recordedAt).getTime() <= new Date(lastRecorded).getTime()) {
+      return;
     }
     this.lastProcessedPosition.set(dedupKey, update.recordedAt);
 
