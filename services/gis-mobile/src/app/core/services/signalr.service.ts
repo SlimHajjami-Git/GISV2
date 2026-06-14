@@ -18,6 +18,10 @@ export interface PositionUpdate {
   isMoving: boolean;
   recordedAt: string;
   timestamp: string;
+  // Returned by the REST /gps/positions/latest payload; absent on the live
+  // SignalR broadcast (hence optional) — used to enrich the detail sheet.
+  address?: string;
+  driverName?: string;
 }
 
 export interface GpsAlert {

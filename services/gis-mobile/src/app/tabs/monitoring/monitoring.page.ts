@@ -42,18 +42,22 @@ import * as L from 'leaflet';
         <span *ngIf="lastUpdateAt" class="last-update">· {{ lastUpdateLabel }}</span>
       </div>
 
+      <!-- Backdrop: tap outside to close -->
+      <div class="sheet-backdrop" *ngIf="selectedVehicle" (click)="closeSheet()"></div>
+
       <!-- Bottom sheet: selected vehicle info -->
-      <div class="vehicle-sheet" *ngIf="selectedVehicle" (click)="closeSheet()">
-        <div class="sheet-handle"></div>
+      <div class="vehicle-sheet" *ngIf="selectedVehicle">
+        <div class="sheet-handle" (click)="closeSheet()"></div>
         <div class="sheet-content">
           <div class="sheet-header">
-            <div class="sheet-avatar" [class.moving]="selectedVehicle.isMoving" [class.stopped]="!selectedVehicle.isMoving">
-              <ion-icon [name]="selectedVehicle.isMoving ? 'navigate' : 'stop-circle'"></ion-icon>
+            <div class="sheet-avatar" [ngClass]="vehicleState(selectedVehicle)">
+              <ion-icon [name]="vehicleStateIcon(selectedVehicle)"></ion-icon>
             </div>
-            <div>
+            <div class="sheet-title">
               <h3>{{ selectedVehicle.vehicleName }}</h3>
-              <p>{{ selectedVehicle.plate }}</p>
+              <p>{{ selectedVehicle.plate || '—' }}</p>
             </div>
+            <span class="status-pill" [ngClass]="vehicleState(selectedVehicle)">{{ stateLabel(selectedVehicle) }}</span>
           </div>
           <div class="sheet-stats">
             <div class="sheet-stat">
@@ -69,6 +73,24 @@ import * as L from 'leaflet';
               <span>{{ selectedVehicle.courseDeg | number:'1.0-0' }}°</span>
             </div>
           </div>
+          <div class="sheet-rows">
+            <div class="sheet-row" *ngIf="selectedVehicle.driverName">
+              <ion-icon name="person-outline"></ion-icon>
+              <span>{{ selectedVehicle.driverName }}</span>
+            </div>
+            <div class="sheet-row">
+              <ion-icon name="location-outline"></ion-icon>
+              <span>{{ selectedVehicle.address || 'Position en cours…' }}</span>
+            </div>
+            <div class="sheet-row">
+              <ion-icon name="time-outline"></ion-icon>
+              <span>Dernière comm. : {{ selectedLastComm() || '—' }}</span>
+            </div>
+          </div>
+          <ion-button expand="block" fill="outline" size="small" class="locate-btn" (click)="recenterSelected($event)">
+            <ion-icon name="locate-outline" slot="start"></ion-icon>
+            Localiser sur la carte
+          </ion-button>
         </div>
       </div>
     </ion-content>
@@ -145,6 +167,34 @@ import * as L from 'leaflet';
       display: flex; align-items: center; gap: 6px;
       font-size: 13px; font-weight: 500;
     }
+    .sheet-backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 999;
+      background: rgba(0,0,0,0.25);
+    }
+    .sheet-handle { cursor: pointer; }
+    .sheet-title { flex: 1; min-width: 0; }
+    .sheet-title h3 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sheet-avatar.idling { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .sheet-avatar.parked { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .sheet-avatar.offline { background: rgba(156,163,175,0.15); color: #9ca3af; }
+    .status-pill {
+      font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 12px;
+      white-space: nowrap; color: #fff;
+    }
+    .status-pill.moving { background: #10b981; }
+    .status-pill.idling { background: #f59e0b; }
+    .status-pill.parked { background: #ef4444; }
+    .status-pill.offline { background: #9ca3af; }
+    .sheet-rows { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .sheet-row {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; color: var(--ion-color-medium-shade, #555);
+    }
+    .sheet-row ion-icon { font-size: 16px; color: var(--ion-color-medium); flex: none; }
+    .sheet-row span { line-height: 1.35; }
+    .locate-btn { margin-top: 14px; }
   `]
 })
 export class MonitoringPage implements OnInit, OnDestroy {
@@ -451,7 +501,9 @@ export class MonitoringPage implements OnInit, OnDestroy {
             // (pickIcon will further classify idling vs parked).
             isMoving: (p.lastPosition.ignitionOn ?? false) && (p.lastPosition.speedKph || 0) > 3,
             recordedAt: p.lastPosition.recordedAt || '',
-            timestamp: p.lastPosition.recordedAt || ''
+            timestamp: p.lastPosition.recordedAt || '',
+            address: p.lastPosition.address || p.lastAddress || '',
+            driverName: p.driverName || ''
           };
           this.updateMarker(pos);
         });
@@ -477,13 +529,23 @@ export class MonitoringPage implements OnInit, OnDestroy {
       marker.setLatLng(latlng);
       marker.setIcon(icon);
       (marker as any)._posData = pos;
+      // Keep the open detail sheet live if it's showing this vehicle.
+      if (this.selectedVehicle && this.selectedVehicle.vehicleId === pos.vehicleId) {
+        this.selectedVehicle = pos;
+      }
     } else {
       const marker = L.marker(latlng, { icon })
         .addTo(this.map)
         .bindTooltip(pos.vehicleName, { direction: 'top', offset: [0, -16] });
 
       marker.on('click', () => {
-        this.selectedVehicle = (marker as any)._posData || pos;
+        // Run inside Angular's zone + force a tick: the Capacitor Android
+        // WebView otherwise doesn't re-render the detail sheet, so the user
+        // only saw the marker tooltip (the name) and no details.
+        this.zone.run(() => {
+          this.selectedVehicle = (marker as any)._posData || pos;
+          this.tickUI();
+        });
       });
 
       (marker as any)._posData = pos;
@@ -501,5 +563,55 @@ export class MonitoringPage implements OnInit, OnDestroy {
 
   closeSheet() {
     this.selectedVehicle = null;
+  }
+
+  /** Classify a position into a display state — mirrors pickIcon's logic. */
+  vehicleState(pos: PositionUpdate | null): 'moving' | 'idling' | 'parked' | 'offline' {
+    if (!pos) return 'offline';
+    const speed = pos.speedKph ?? 0;
+    if (pos.isMoving || speed > 3) return 'moving';
+    const recordedMs = pos.recordedAt ? Date.parse(pos.recordedAt) : NaN;
+    const online = !isNaN(recordedMs) && (Date.now() - recordedMs) < 30 * 60 * 1000;
+    if (pos.ignitionOn) return 'idling';
+    return online ? 'parked' : 'offline';
+  }
+
+  stateLabel(pos: PositionUpdate | null): string {
+    switch (this.vehicleState(pos)) {
+      case 'moving': return 'En mouvement';
+      case 'idling': return 'Au ralenti';
+      case 'parked': return 'Stationné';
+      default: return 'Hors ligne';
+    }
+  }
+
+  vehicleStateIcon(pos: PositionUpdate | null): string {
+    switch (this.vehicleState(pos)) {
+      case 'moving': return 'navigate';
+      case 'idling': return 'time';
+      case 'parked': return 'stop-circle';
+      default: return 'cloud-offline';
+    }
+  }
+
+  /** Relative "last communication" label for the selected vehicle. */
+  selectedLastComm(): string {
+    const r = this.selectedVehicle?.recordedAt;
+    if (!r) return '';
+    const ms = Date.parse(r);
+    if (isNaN(ms)) return '';
+    const delta = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+    if (delta < 60) return `il y a ${delta}s`;
+    if (delta < 3600) return `il y a ${Math.floor(delta / 60)} min`;
+    if (delta < 86400) return `il y a ${Math.floor(delta / 3600)} h`;
+    return `il y a ${Math.floor(delta / 86400)} j`;
+  }
+
+  /** Recenter the map on the selected vehicle (Localiser button). */
+  recenterSelected(ev?: Event) {
+    ev?.stopPropagation();
+    if (this.map && this.selectedVehicle) {
+      this.map.setView([this.selectedVehicle.latitude, this.selectedVehicle.longitude], 15, { animate: true });
+    }
   }
 }
