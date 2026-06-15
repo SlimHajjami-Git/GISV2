@@ -42,6 +42,10 @@ public class DailyFleetReportService : BackgroundService
     // re-sending within the same day (in-memory only — see class remarks).
     private DateOnly _lastRunTnDate = DateOnly.MinValue;
 
+    // Last TN day we attempted the WEEKLY recap (in-memory). The per-société DB
+    // guard (Societe.LastWeeklyReportSentDate) prevents any resend across restarts.
+    private DateOnly _lastWeeklyAttemptTnDate = DateOnly.MinValue;
+
     public DailyFleetReportService(
         IServiceProvider serviceProvider,
         ILogger<DailyFleetReportService> logger)
@@ -66,13 +70,24 @@ public class DailyFleetReportService : BackgroundService
                 var tnNow = DateTime.UtcNow.AddHours(1);
                 var tnToday = DateOnly.FromDateTime(tnNow);
 
-                if (tnNow.Hour >= SendHourTn && _lastRunTnDate < tnToday)
+                if (tnNow.Hour >= SendHourTn)
                 {
-                    // Mark before sending so a long/failing run never double-fires this day.
-                    _lastRunTnDate = tnToday;
+                    // Daily report — every day, covers the previous day.
+                    if (_lastRunTnDate < tnToday)
+                    {
+                        // Mark before sending so a long/failing run never double-fires this day.
+                        _lastRunTnDate = tnToday;
+                        using var scope = _serviceProvider.CreateScope();
+                        await SendAllAsync(scope, ct);
+                    }
 
-                    using var scope = _serviceProvider.CreateScope();
-                    await SendAllAsync(scope, ct);
+                    // Weekly recap — Mondays only, covers the previous Mon→Sun week.
+                    if (tnNow.DayOfWeek == DayOfWeek.Monday && _lastWeeklyAttemptTnDate < tnToday)
+                    {
+                        _lastWeeklyAttemptTnDate = tnToday;
+                        using var scope = _serviceProvider.CreateScope();
+                        await SendWeeklyAsync(scope, ct);
+                    }
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -194,8 +209,155 @@ public class DailyFleetReportService : BackgroundService
             companiesProcessed, emailsSent, emailsFailed, reportDateTn);
     }
 
-    public static string BuildHtmlBody(Societe societe, DateTime reportDate, List<DailyActivityReportDto> reports)
+    /// <summary>
+    /// Weekly recap: on Monday (≥06:00 TN), aggregates the previous Monday→Sunday
+    /// week per vehicle and emails it to the opted-in users (same opt-in flag as the
+    /// daily report). The per-vehicle daily query is summed over the 7 days.
+    /// </summary>
+    private async Task SendWeeklyAsync(IServiceScope scope, CancellationToken ct)
     {
+        var tnNow = DateTime.UtcNow.AddHours(1);
+        var weekEndTn = tnNow.Date.AddDays(-1);            // dimanche (la veille)
+        var weekStartTn = weekEndTn.AddDays(-6);           // lundi
+        var weekTag = DateOnly.FromDateTime(weekStartTn);  // clé anti-doublon (lundi de la semaine)
+
+        var context = scope.ServiceProvider.GetRequiredService<IGisDbContext>();
+        var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+        var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+
+        var societes = await context.Societes.IgnoreQueryFilters().ToListAsync(ct);
+        int companiesProcessed = 0, emailsSent = 0, emailsFailed = 0;
+
+        foreach (var societe in societes)
+        {
+            try
+            {
+                if (societe.LastWeeklyReportSentDate.HasValue && societe.LastWeeklyReportSentDate.Value >= weekTag)
+                    continue;
+
+                var users = await context.Users
+                    .IgnoreQueryFilters()
+                    .AsNoTracking()
+                    .Where(u => u.CompanyId == societe.Id
+                             && u.DailyReportEmailEnabled
+                             && u.Status == "active"
+                             && u.Email != null
+                             && u.Email != "")
+                    .ToListAsync(ct);
+                if (users.Count == 0)
+                    continue;
+
+                var vehicleIds = await context.Vehicles
+                    .IgnoreQueryFilters()
+                    .AsNoTracking()
+                    .Where(v => v.CompanyId == societe.Id)
+                    .Select(v => v.Id)
+                    .ToArrayAsync(ct);
+                if (vehicleIds.Length == 0)
+                    continue;
+
+                companiesProcessed++;
+
+                // The daily report query is per-day; aggregate the 7 days per vehicle.
+                var agg = new Dictionary<int, DailyActivityReportDto>();
+                for (var day = weekStartTn; day <= weekEndTn; day = day.AddDays(1))
+                {
+                    var dayReports = await mediator.Send(
+                        new GetDailyActivityReportsQuery(day, vehicleIds), ct);
+                    foreach (var dr in dayReports)
+                    {
+                        if (!agg.TryGetValue(dr.VehicleId, out var acc))
+                        {
+                            acc = new DailyActivityReportDto
+                            {
+                                VehicleId = dr.VehicleId,
+                                VehicleName = dr.VehicleName,
+                                Plate = dr.Plate,
+                                DriverName = dr.DriverName,
+                                ReportDate = weekEndTn,
+                                HasActivity = false,
+                                Summary = new DailySummaryDto()
+                            };
+                            agg[dr.VehicleId] = acc;
+                        }
+                        if (string.IsNullOrEmpty(acc.Plate) && !string.IsNullOrEmpty(dr.Plate)) acc.Plate = dr.Plate;
+                        if (string.IsNullOrEmpty(acc.DriverName) && !string.IsNullOrEmpty(dr.DriverName)) acc.DriverName = dr.DriverName;
+                        if (dr.HasActivity)
+                        {
+                            acc.HasActivity = true;
+                            acc.Summary.TotalDistanceKm += dr.Summary.TotalDistanceKm;
+                            acc.Summary.TotalDrivingSeconds += dr.Summary.TotalDrivingSeconds;
+                            acc.Summary.TotalStoppedSeconds += dr.Summary.TotalStoppedSeconds;
+                            acc.Summary.TotalActiveSeconds += dr.Summary.TotalActiveSeconds;
+                            acc.Summary.StopCount += dr.Summary.StopCount;
+                            acc.Summary.DriveCount += dr.Summary.DriveCount;
+                            acc.Summary.FuelRefillCount += dr.Summary.FuelRefillCount;
+                            if (dr.Summary.MaxSpeedKph > acc.Summary.MaxSpeedKph)
+                                acc.Summary.MaxSpeedKph = dr.Summary.MaxSpeedKph;
+                        }
+                    }
+                }
+
+                // Weekly average speed = total distance / total driving time.
+                foreach (var acc in agg.Values)
+                {
+                    var hrs = acc.Summary.TotalDrivingSeconds / 3600.0;
+                    acc.Summary.AvgSpeedKph = hrs > 0 ? Math.Round(acc.Summary.TotalDistanceKm / hrs, 1) : 0;
+                }
+
+                var reports = agg.Values.ToList();
+                var periodLabel = $"Semaine du {weekStartTn:dd/MM/yyyy} au {weekEndTn:dd/MM/yyyy}";
+                var htmlBody = BuildHtmlBody(societe, weekEndTn, reports, "Rapport hebdomadaire", periodLabel);
+                var excelBytes = BuildExcel(societe, weekEndTn, reports, "Rapport hebdomadaire flotte", periodLabel);
+                var subject = $"Rapport hebdomadaire flotte {societe.Name} — {weekStartTn:dd/MM} au {weekEndTn:dd/MM/yyyy}";
+                var fileName = $"rapport-hebdo-{weekStartTn:yyyy-MM-dd}_{weekEndTn:yyyy-MM-dd}.xlsx";
+
+                foreach (var user in users)
+                {
+                    try
+                    {
+                        await emailService.SendEmailWithAttachmentAsync(
+                            user.Email,
+                            user.FullName,
+                            subject,
+                            htmlBody,
+                            excelBytes,
+                            fileName,
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            ct);
+                        emailsSent++;
+                        _logger.LogInformation(
+                            "Weekly fleet report sent to {Email} (société {Company})",
+                            user.Email, societe.Name);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        emailsFailed++;
+                        _logger.LogError(ex,
+                            "Failed to send weekly fleet report to {Email} (société {Company})",
+                            user.Email, societe.Name);
+                    }
+                }
+
+                societe.LastWeeklyReportSentDate = weekTag;
+                await context.SaveChangesAsync(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex,
+                    "Failed to process weekly fleet report for société {Company}",
+                    societe.Name);
+            }
+        }
+
+        _logger.LogInformation(
+            "WeeklyFleetReport: {Companies} compan(y/ies), {Sent} sent, {Failed} failed for week {Start:dd/MM}-{End:dd/MM/yyyy}",
+            companiesProcessed, emailsSent, emailsFailed, weekStartTn, weekEndTn);
+    }
+
+    public static string BuildHtmlBody(Societe societe, DateTime reportDate, List<DailyActivityReportDto> reports, string badgeLabel = "Rapport journalier", string? periodLabel = null)
+    {
+        var period = periodLabel ?? $"Journée du {reportDate:dd/MM/yyyy}";
         var active = reports.Where(r => r.HasActivity).ToList();
         var totalDistanceKm = active.Sum(r => r.Summary.TotalDistanceKm);
         var totalDrivingSeconds = active.Sum(r => r.Summary.TotalDrivingSeconds);
@@ -235,14 +397,14 @@ public class DailyFleetReportService : BackgroundService
         <tr><td style=""background:linear-gradient(135deg,#1e3a5f 0%,#2d5a87 100%);padding:24px 30px;"">
           <table width=""100%""><tr>
             <td style=""color:#fff;font-size:20px;font-weight:700;"">GPA Belive</td>
-            <td align=""right""><span style=""background:rgba(255,255,255,0.2);color:#fff;padding:4px 12px;border-radius:12px;font-size:11px;font-weight:500;"">Rapport journalier</span></td>
+            <td align=""right""><span style=""background:rgba(255,255,255,0.2);color:#fff;padding:4px 12px;border-radius:12px;font-size:11px;font-weight:500;"">{badgeLabel}</span></td>
           </tr></table>
         </td></tr>
         <tr><td style=""height:4px;background:#2d5a87;""></td></tr>
         <!-- Title -->
         <tr><td style=""padding:28px 30px 8px;"">
           <h2 style=""margin:0;font-size:18px;color:#1e293b;font-weight:600;"">Activité de la flotte — {HtmlEncode(societe.Name)}</h2>
-          <p style=""margin:6px 0 0;font-size:13px;color:#64748b;"">Journée du {reportDate:dd/MM/yyyy}</p>
+          <p style=""margin:6px 0 0;font-size:13px;color:#64748b;"">{period}</p>
         </td></tr>
         <!-- Summary cards -->
         <tr><td style=""padding:16px 30px 8px;"">
@@ -305,16 +467,16 @@ public class DailyFleetReportService : BackgroundService
 </html>";
     }
 
-    public static byte[] BuildExcel(Societe societe, DateTime reportDate, List<DailyActivityReportDto> reports)
+    public static byte[] BuildExcel(Societe societe, DateTime reportDate, List<DailyActivityReportDto> reports, string titlePrefix = "Rapport journalier flotte", string? periodLabel = null)
     {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Synthèse");
 
         // Title rows.
-        sheet.Cell(1, 1).Value = $"Rapport journalier flotte — {societe.Name}";
+        sheet.Cell(1, 1).Value = $"{titlePrefix} — {societe.Name}";
         sheet.Cell(1, 1).Style.Font.Bold = true;
         sheet.Cell(1, 1).Style.Font.FontSize = 14;
-        sheet.Cell(2, 1).Value = $"Journée du {reportDate:dd/MM/yyyy}";
+        sheet.Cell(2, 1).Value = periodLabel ?? $"Journée du {reportDate:dd/MM/yyyy}";
         sheet.Cell(2, 1).Style.Font.Italic = true;
 
         // Header row.

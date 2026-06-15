@@ -39,6 +39,11 @@ public class Societe : AuditableEntity
     [Column("last_daily_report_sent_date")]
     public DateOnly? LastDailyReportSentDate { get; set; }
 
+    // Anti-doublon persistant pour le récapitulatif HEBDOMADAIRE (envoyé le lundi).
+    // Stocke le lundi (date) de la dernière semaine déjà envoyée à cette société.
+    [Column("last_weekly_report_sent_date")]
+    public DateOnly? LastWeeklyReportSentDate { get; set; }
+
     // Navigation collections
     public ICollection<User> Users { get; set; } = new List<User>();
     public ICollection<Role> Roles { get; set; } = new List<Role>();
