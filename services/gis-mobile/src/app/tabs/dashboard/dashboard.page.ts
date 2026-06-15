@@ -231,14 +231,17 @@ export class DashboardPage implements OnInit, OnDestroy {
     );
 
     this.subs.push(
-      this.signalr.positionUpdate$.subscribe(pos => {
-        const idx = this.recentPositions.findIndex(p => p.vehicleId === pos.vehicleId);
-        if (idx >= 0) {
-          this.recentPositions[idx] = pos;
-        } else {
-          this.recentPositions.unshift(pos);
-          if (this.recentPositions.length > 10) this.recentPositions.pop();
+      this.signalr.positionBatch$.subscribe(batch => {
+        for (const pos of batch) {
+          const idx = this.recentPositions.findIndex(p => p.vehicleId === pos.vehicleId);
+          if (idx >= 0) {
+            this.recentPositions[idx] = pos;
+          } else {
+            this.recentPositions.unshift(pos);
+            if (this.recentPositions.length > 10) this.recentPositions.pop();
+          }
         }
+        // Recompute counts once per batch, not once per device frame.
         this.activeVehicles = this.recentPositions.filter(p => p.isMoving).length;
         this.stoppedVehicles = this.recentPositions.filter(p => !p.isMoving).length;
       })
@@ -251,7 +254,8 @@ export class DashboardPage implements OnInit, OnDestroy {
     );
 
     this.loadData();
-    this.signalr.startConnection();
+    // SignalR is already started by AppComponent on the authenticated user —
+    // no need to reconnect here (removes redundant startup work).
   }
 
   ngOnDestroy() {

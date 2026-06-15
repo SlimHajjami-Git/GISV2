@@ -308,16 +308,22 @@ export class VehiclesPage implements OnInit, OnDestroy {
     // actually a number at runtime despite the annotation. Compare
     // both sides as strings to be safe against either shape.
     this.subs.push(
-      this.signalr.positionUpdate$.subscribe(pos => {
-        this.positionMap.set(pos.vehicleId, pos);
-        const v = this.vehicles.find(x => String(x.id) === String(pos.vehicleId));
-        if (v) {
-          v.currentSpeed = pos.speedKph;
-          v.currentLocation = { lat: pos.latitude, lng: pos.longitude };
-          v.ignitionOn = pos.ignitionOn;
-          v.isOnline = true;
-          this.updateCounts();
+      this.signalr.positionBatch$.subscribe(batch => {
+        let touched = false;
+        for (const pos of batch) {
+          this.positionMap.set(pos.vehicleId, pos);
+          const v = this.vehicles.find(x => String(x.id) === String(pos.vehicleId));
+          if (v) {
+            v.currentSpeed = pos.speedKph;
+            v.currentLocation = { lat: pos.latitude, lng: pos.longitude };
+            v.ignitionOn = pos.ignitionOn;
+            v.isOnline = true;
+            touched = true;
+          }
         }
+        // updateCounts() does several full-fleet filter passes — run it once
+        // per batch instead of once per device frame.
+        if (touched) this.updateCounts();
       })
     );
   }

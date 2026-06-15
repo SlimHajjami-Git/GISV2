@@ -1,6 +1,7 @@
 import { Injectable, OnDestroy } from '@angular/core';
 import * as signalR from '@microsoft/signalr';
 import { Subject, BehaviorSubject, Subscription, timer } from 'rxjs';
+import { bufferTime, filter, map, share } from 'rxjs/operators';
 import { AuthService } from './auth.service';
 import { environment } from '../../../environments/environment';
 
@@ -72,6 +73,23 @@ export class SignalRService implements OnDestroy {
   private subscribedVehicles = new Set<number>();
 
   public positionUpdate$ = new Subject<PositionUpdate>();
+  /**
+   * Coalesced position stream: buffers raw positionUpdate$ over a short window
+   * and emits the latest position PER VEHICLE in that window, so the UI
+   * refreshes a few times/sec instead of once per device frame. This kills the
+   * change-detection storm that made the whole app janky when many vehicles
+   * stream at once. share() so all pages reuse a single buffer.
+   */
+  public positionBatch$ = this.positionUpdate$.pipe(
+    bufferTime(300),
+    filter(batch => batch.length > 0),
+    map(batch => {
+      const latest = new Map<number, PositionUpdate>();
+      for (const p of batch) latest.set(p.vehicleId, p);
+      return Array.from(latest.values());
+    }),
+    share()
+  );
   public alert$ = new Subject<GpsAlert>();
   public geofenceEvent$ = new Subject<GeofenceEvent>();
   public notification$ = new Subject<SignalRNotification>();

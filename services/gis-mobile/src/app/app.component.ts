@@ -17,7 +17,10 @@ export class AppComponent {
     private signalr: SignalRService,
     private authService: AuthService
   ) {
-    this.immoApproval.init();
+    // Defer off the first-paint critical path: the immobilisation-approval
+    // service preloads an Audio element + opens a SignalR subscription, which
+    // doesn't need to block the initial render.
+    setTimeout(() => this.immoApproval.init(), 0);
 
     // Start SignalR + FCM push whenever there's an authenticated user.
     //
@@ -36,8 +39,12 @@ export class AppComponent {
     // re-emits of the same user are harmless.
     this.authService.getCurrentUser().subscribe(user => {
       if (user) {
-        this.signalr.startConnection();
-        this.pushService.init();
+        // Defer off first paint: the WebSocket handshake + FCM registration
+        // (permission prompt, channel creation) were blocking startup.
+        setTimeout(() => {
+          this.signalr.startConnection();
+          this.pushService.init();
+        }, 0);
       }
     });
   }

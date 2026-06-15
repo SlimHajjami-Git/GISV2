@@ -335,9 +335,11 @@ export class MonitoringPage implements OnInit, OnDestroy {
     // Angular bindings (connState badge, vehicleCount, selectedVehicle)
     // never re-render even though the Leaflet markers move.
     this.subs.push(
-      this.signalr.positionUpdate$.subscribe(pos => {
+      this.signalr.positionBatch$.subscribe(batch => {
         this.zone.run(() => {
-          this.updateMarker(pos);
+          // Leaflet marker moves are outside Angular CD (cheap); we run ONE
+          // change-detection pass per ~300ms batch instead of one per frame.
+          for (const pos of batch) this.updateMarker(pos);
           this.lastUpdateAt = new Date();
           this.refreshLastUpdateLabel();
           this.tickUI();
