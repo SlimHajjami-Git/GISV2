@@ -99,6 +99,56 @@ public class ReportsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Test réservé à admin@belive.tn : envoie le rapport journalier de la flotte (hier)
+    /// vers une adresse de test fixe (hajjami.selim@gmail.com) — pour valider le rendu
+    /// + la délivrabilité vers Gmail. Autorisé uniquement pour admin@belive.tn.
+    /// </summary>
+    [HttpPost("daily-fleet-report/test-to-owner")]
+    public async Task<ActionResult> SendDailyFleetReportTestToOwner(CancellationToken ct)
+    {
+        const string testRecipient = "hajjami.selim@gmail.com";
+
+        var companyId = GetCompanyId();
+        var userId = GetUserId();
+
+        var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user == null)
+            return NotFound();
+        if (!string.Equals(user.Email, "admin@belive.tn", StringComparison.OrdinalIgnoreCase))
+            return StatusCode(403, new { error = "Réservé à admin@belive.tn." });
+
+        var societe = await _context.Societes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == companyId, ct);
+        if (societe == null)
+            return BadRequest(new { error = "Societe introuvable." });
+
+        var reportDate = DateTime.UtcNow.AddHours(1).Date.AddDays(-1);
+
+        var vehicleIds = await _context.Vehicles.AsNoTracking()
+            .Where(v => v.CompanyId == companyId)
+            .Select(v => v.Id)
+            .ToArrayAsync(ct);
+
+        var reports = await _mediator.Send(new GetDailyActivityReportsQuery(reportDate, vehicleIds), ct);
+
+        try
+        {
+            var html = GisAPI.Services.DailyFleetReportService.BuildHtmlBody(societe, reportDate, reports);
+            var excel = GisAPI.Services.DailyFleetReportService.BuildExcel(societe, reportDate, reports);
+            var subject = $"[TEST] Rapport journalier flotte {societe.Name} - {reportDate:dd/MM/yyyy}";
+            await _emailService.SendEmailWithAttachmentAsync(
+                testRecipient, "Selim Hajjami", subject, html, excel,
+                $"rapport-flotte-{reportDate:yyyy-MM-dd}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ct);
+
+            return Ok(new { sentTo = testRecipient, vehicleCount = vehicleIds.Length, reportDate });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
     [HttpGet]
     public async Task<ActionResult<List<Report>>> GetReports([FromQuery] int limit = 50)
     {

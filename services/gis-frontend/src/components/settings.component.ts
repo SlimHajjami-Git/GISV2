@@ -132,6 +132,15 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                     {{ dailyReportTestSending ? 'Envoi…' : 'Recevoir un aperçu' }}
                   </button>
                 </div>
+                <div class="setting-item" *ngIf="currentUserEmail === 'admin@belive.tn'">
+                  <div class="setting-info">
+                    <span class="setting-label">🧪 Test → hajjami.selim@gmail.com</span>
+                    <span class="setting-desc">{{ ownerTestMsg || 'Envoie le rapport journalier de la flotte à hajjami.selim@gmail.com (réservé admin@belive.tn)' }}</span>
+                  </div>
+                  <button type="button" class="btn-primary" (click)="sendDailyReportToOwner()" [disabled]="ownerTestSending" style="padding:8px 14px;font-size:13px;white-space:nowrap;">
+                    {{ ownerTestSending ? 'Envoi…' : 'Envoyer le test' }}
+                  </button>
+                </div>
               </div>
 
               <div class="settings-group">
@@ -877,6 +886,9 @@ export class SettingsComponent implements OnInit {
 
   dailyReportTestSending = false;
   dailyReportTestMsg = '';
+  ownerTestSending = false;
+  ownerTestMsg = '';
+  currentUserEmail = '';
 
   sendDailyReportPreview() {
     this.dailyReportTestSending = true;
@@ -889,6 +901,22 @@ export class SettingsComponent implements OnInit {
       error: (err: any) => {
         this.dailyReportTestSending = false;
         this.dailyReportTestMsg = '❌ Échec : ' + (err?.error?.error || err?.message || 'erreur');
+      }
+    });
+  }
+
+  sendDailyReportToOwner() {
+    this.ownerTestSending = true;
+    this.ownerTestMsg = '';
+    this.api.sendDailyReportToOwner().subscribe({
+      next: (res: any) => {
+        this.ownerTestSending = false;
+        this.ownerTestMsg = '✅ Rapport envoyé à ' + (res?.sentTo || 'hajjami.selim@gmail.com')
+          + ' (' + (res?.vehicleCount ?? 0) + ' véhicules)';
+      },
+      error: (err: any) => {
+        this.ownerTestSending = false;
+        this.ownerTestMsg = '❌ Échec : ' + (err?.error?.error || err?.message || 'erreur');
       }
     });
   }
@@ -932,6 +960,7 @@ export class SettingsComponent implements OnInit {
         if (u && typeof u.dailyReportEmailEnabled === 'boolean') {
           this.settings.notifications.dailyFleetReport = u.dailyReportEmailEnabled;
         }
+        this.currentUserEmail = (u?.email || '').toString();
       },
       error: () => { /* keep default */ }
     });
