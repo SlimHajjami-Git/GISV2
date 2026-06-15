@@ -81,22 +81,13 @@ public class ReportsController : ControllerBase
 
         var reports = await _mediator.Send(new GetDailyActivityReportsQuery(reportDate, vehicleIds), ct);
 
-        try
-        {
-            var html = GisAPI.Services.DailyFleetReportService.BuildHtmlBody(societe, reportDate, reports);
-            var excel = GisAPI.Services.DailyFleetReportService.BuildExcel(societe, reportDate, reports);
-            var subject = $"[APERCU] Rapport journalier flotte {societe.Name} - {reportDate:dd/MM/yyyy}";
-            await _emailService.SendEmailWithAttachmentAsync(
-                user.Email, user.FullName, subject, html, excel,
-                $"rapport-flotte-{reportDate:yyyy-MM-dd}.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ct);
+        var html = GisAPI.Services.DailyFleetReportService.BuildHtmlBody(societe, reportDate, reports);
+        var excel = GisAPI.Services.DailyFleetReportService.BuildExcel(societe, reportDate, reports);
+        var subject = $"[APERCU] Rapport journalier flotte {societe.Name} - {reportDate:dd/MM/yyyy}";
+        QueueEmailSend(user.Email, user.FullName, subject, html, excel,
+            $"rapport-flotte-{reportDate:yyyy-MM-dd}.xlsx");
 
-            return Ok(new { sentTo = user.Email, vehicleCount = vehicleIds.Length, reportDate });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { error = ex.Message });
-        }
+        return Ok(new { status = "queued", sentTo = user.Email, vehicleCount = vehicleIds.Length, reportDate });
     }
 
     /// <summary>
@@ -131,22 +122,35 @@ public class ReportsController : ControllerBase
 
         var reports = await _mediator.Send(new GetDailyActivityReportsQuery(reportDate, vehicleIds), ct);
 
-        try
-        {
-            var html = GisAPI.Services.DailyFleetReportService.BuildHtmlBody(societe, reportDate, reports);
-            var excel = GisAPI.Services.DailyFleetReportService.BuildExcel(societe, reportDate, reports);
-            var subject = $"[TEST] Rapport journalier flotte {societe.Name} - {reportDate:dd/MM/yyyy}";
-            await _emailService.SendEmailWithAttachmentAsync(
-                testRecipient, "Selim Hajjami", subject, html, excel,
-                $"rapport-flotte-{reportDate:yyyy-MM-dd}.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ct);
+        var html = GisAPI.Services.DailyFleetReportService.BuildHtmlBody(societe, reportDate, reports);
+        var excel = GisAPI.Services.DailyFleetReportService.BuildExcel(societe, reportDate, reports);
+        var subject = $"[TEST] Rapport journalier flotte {societe.Name} - {reportDate:dd/MM/yyyy}";
+        QueueEmailSend(testRecipient, "Selim Hajjami", subject, html, excel,
+            $"rapport-flotte-{reportDate:yyyy-MM-dd}.xlsx");
 
-            return Ok(new { sentTo = testRecipient, vehicleCount = vehicleIds.Length, reportDate });
-        }
-        catch (Exception ex)
+        return Ok(new { status = "queued", sentTo = testRecipient, vehicleCount = vehicleIds.Length, reportDate });
+    }
+
+    /// <summary>
+    /// Envoi email en arriere-plan (fire-and-forget). Le SMTP (port 25 + STARTTLS) peut
+    /// depasser la duree de vie de la requete HTTP, qui annulait l'envoi
+    /// (TaskCanceledException). On le detache du token de la requete et on le borne a 60s ;
+    /// le resultat (succes/echec) est journalise par EmailService.
+    /// </summary>
+    private void QueueEmailSend(string toEmail, string toName, string subject, string html, byte[] excel, string fileName)
+    {
+        var emailService = _emailService;
+        _ = Task.Run(async () =>
         {
-            return StatusCode(500, new { error = ex.Message });
-        }
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            try
+            {
+                await emailService.SendEmailWithAttachmentAsync(
+                    toEmail, toName, subject, html, excel, fileName,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", cts.Token);
+            }
+            catch { /* deja journalise dans EmailService */ }
+        });
     }
 
     [HttpGet]
