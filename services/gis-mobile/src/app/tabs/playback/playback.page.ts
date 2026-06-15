@@ -63,6 +63,7 @@ interface PlaybackPoint {
       <ion-datetime
         *ngIf="activePickerField === 'start'"
         presentation="date-time"
+        hourCycle="h23"
         [(ngModel)]="startDateValue"
         (ionChange)="onStartDatePicked()"
         [max]="todayStr"
@@ -71,6 +72,7 @@ interface PlaybackPoint {
       <ion-datetime
         *ngIf="activePickerField === 'end'"
         presentation="date-time"
+        hourCycle="h23"
         [(ngModel)]="endDateValue"
         (ionChange)="onEndDatePicked()"
         [max]="todayStr"

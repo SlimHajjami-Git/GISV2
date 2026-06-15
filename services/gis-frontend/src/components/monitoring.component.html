@@ -423,9 +423,9 @@
           </select>
           <!-- Date range inline -->
           <div class="pb-date-row">
-            <input type="datetime-local" [(ngModel)]="playbackFromDate" [max]="playbackToDate || toLocalDateTimeString(today)" class="pb-date-input">
+            <input type="datetime-local" lang="fr-FR" [(ngModel)]="playbackFromDate" [max]="playbackToDate || toLocalDateTimeString(today)" class="pb-date-input">
             <span class="pb-date-sep">—</span>
-            <input type="datetime-local" [(ngModel)]="playbackToDate" [min]="playbackFromDate" [max]="toLocalDateTimeString(today)" class="pb-date-input">
+            <input type="datetime-local" lang="fr-FR" [(ngModel)]="playbackToDate" [min]="playbackFromDate" [max]="toLocalDateTimeString(today)" class="pb-date-input">
           </div>
           <!-- Launch button -->
           <button class="pb-launch" (click)="launchPlaybackFromTab()" [disabled]="playbackLoading || !playbackVehicleSelect">
