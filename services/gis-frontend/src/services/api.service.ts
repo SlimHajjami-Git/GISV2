@@ -1915,7 +1915,7 @@ export class ApiService {
     return this.http.post<any>(`${this.API_URL}/reports/daily-fleet-report/test`, {}, { headers: this.getHeaders() });
   }
 
-  /** Admin-only (admin@belive.tn): send the daily fleet report to the fixed test address hajjami.selim@gmail.com. */
+  /** Admin-only (admin@belive.tn): send the daily fleet report to the fixed test address karim.hajjami@gmail.com. */
   sendDailyReportToOwner(): Observable<any> {
     return this.http.post<any>(`${this.API_URL}/reports/daily-fleet-report/test-to-owner`, {}, { headers: this.getHeaders() });
   }

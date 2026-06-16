@@ -134,8 +134,8 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                 </div>
                 <div class="setting-item" *ngIf="currentUserEmail === 'admin@belive.tn'">
                   <div class="setting-info">
-                    <span class="setting-label">🧪 Test → hajjami.selim@gmail.com</span>
-                    <span class="setting-desc">{{ ownerTestMsg || 'Envoie le rapport journalier de la flotte à hajjami.selim@gmail.com (réservé admin@belive.tn)' }}</span>
+                    <span class="setting-label">🧪 Test → karim.hajjami@gmail.com</span>
+                    <span class="setting-desc">{{ ownerTestMsg || 'Envoie le rapport journalier de la flotte à karim.hajjami@gmail.com (réservé admin@belive.tn)' }}</span>
                   </div>
                   <button type="button" class="btn-primary" (click)="sendDailyReportToOwner()" [disabled]="ownerTestSending" style="padding:8px 14px;font-size:13px;white-space:nowrap;">
                     {{ ownerTestSending ? 'Envoi…' : 'Envoyer le test' }}
@@ -911,7 +911,7 @@ export class SettingsComponent implements OnInit {
     this.api.sendDailyReportToOwner().subscribe({
       next: (res: any) => {
         this.ownerTestSending = false;
-        this.ownerTestMsg = '✅ Rapport envoyé à ' + (res?.sentTo || 'hajjami.selim@gmail.com')
+        this.ownerTestMsg = '✅ Rapport envoyé à ' + (res?.sentTo || 'karim.hajjami@gmail.com')
           + ' (' + (res?.vehicleCount ?? 0) + ' véhicules)';
       },
       error: (err: any) => {

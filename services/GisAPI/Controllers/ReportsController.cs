@@ -92,13 +92,13 @@ public class ReportsController : ControllerBase
 
     /// <summary>
     /// Test réservé à admin@belive.tn : envoie le rapport journalier de la flotte (hier)
-    /// vers une adresse de test fixe (hajjami.selim@gmail.com) — pour valider le rendu
+    /// vers une adresse de test fixe (karim.hajjami@gmail.com) — pour valider le rendu
     /// + la délivrabilité vers Gmail. Autorisé uniquement pour admin@belive.tn.
     /// </summary>
     [HttpPost("daily-fleet-report/test-to-owner")]
     public async Task<ActionResult> SendDailyFleetReportTestToOwner(CancellationToken ct)
     {
-        const string testRecipient = "hajjami.selim@gmail.com";
+        const string testRecipient = "karim.hajjami@gmail.com";
 
         var companyId = GetCompanyId();
         var userId = GetUserId();
@@ -125,7 +125,7 @@ public class ReportsController : ControllerBase
         var html = GisAPI.Services.DailyFleetReportService.BuildHtmlBody(societe, reportDate, reports);
         var pdf = GisAPI.Services.DailyFleetReportPdf.Build(societe, reportDate, reports);
         var subject = $"Rapport journalier flotte {societe.Name} - {reportDate:dd/MM/yyyy}";
-        QueueEmailSend(testRecipient, "Selim Hajjami", subject, html, pdf,
+        QueueEmailSend(testRecipient, "Karim Hajjami", subject, html, pdf,
             $"rapport-journalier-{reportDate:yyyy-MM-dd}.pdf", "application/pdf");
 
         return Ok(new { status = "queued", sentTo = testRecipient, vehicleCount = vehicleIds.Length, reportDate });
