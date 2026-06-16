@@ -82,10 +82,10 @@ public class ReportsController : ControllerBase
         var reports = await _mediator.Send(new GetDailyActivityReportsQuery(reportDate, vehicleIds), ct);
 
         var html = GisAPI.Services.DailyFleetReportService.BuildHtmlBody(societe, reportDate, reports);
-        var excel = GisAPI.Services.DailyFleetReportService.BuildExcel(societe, reportDate, reports);
+        var pdf = GisAPI.Services.DailyFleetReportPdf.Build(societe, reportDate, reports);
         var subject = $"[APERCU] Rapport journalier flotte {societe.Name} - {reportDate:dd/MM/yyyy}";
-        QueueEmailSend(user.Email, user.FullName, subject, html, excel,
-            $"rapport-flotte-{reportDate:yyyy-MM-dd}.xlsx");
+        QueueEmailSend(user.Email, user.FullName, subject, html, pdf,
+            $"rapport-journalier-{reportDate:yyyy-MM-dd}.pdf", "application/pdf");
 
         return Ok(new { status = "queued", sentTo = user.Email, vehicleCount = vehicleIds.Length, reportDate });
     }
@@ -123,10 +123,10 @@ public class ReportsController : ControllerBase
         var reports = await _mediator.Send(new GetDailyActivityReportsQuery(reportDate, vehicleIds), ct);
 
         var html = GisAPI.Services.DailyFleetReportService.BuildHtmlBody(societe, reportDate, reports);
-        var excel = GisAPI.Services.DailyFleetReportService.BuildExcel(societe, reportDate, reports);
+        var pdf = GisAPI.Services.DailyFleetReportPdf.Build(societe, reportDate, reports);
         var subject = $"[TEST] Rapport journalier flotte {societe.Name} - {reportDate:dd/MM/yyyy}";
-        QueueEmailSend(testRecipient, "Selim Hajjami", subject, html, excel,
-            $"rapport-flotte-{reportDate:yyyy-MM-dd}.xlsx");
+        QueueEmailSend(testRecipient, "Selim Hajjami", subject, html, pdf,
+            $"rapport-journalier-{reportDate:yyyy-MM-dd}.pdf", "application/pdf");
 
         return Ok(new { status = "queued", sentTo = testRecipient, vehicleCount = vehicleIds.Length, reportDate });
     }
@@ -137,7 +137,7 @@ public class ReportsController : ControllerBase
     /// (TaskCanceledException). On le detache du token de la requete et on le borne a 60s ;
     /// le resultat (succes/echec) est journalise par EmailService.
     /// </summary>
-    private void QueueEmailSend(string toEmail, string toName, string subject, string html, byte[] excel, string fileName)
+    private void QueueEmailSend(string toEmail, string toName, string subject, string html, byte[] attachment, string fileName, string mediaType)
     {
         var emailService = _emailService;
         _ = Task.Run(async () =>
@@ -146,8 +146,7 @@ public class ReportsController : ControllerBase
             try
             {
                 await emailService.SendEmailWithAttachmentAsync(
-                    toEmail, toName, subject, html, excel, fileName,
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", cts.Token);
+                    toEmail, toName, subject, html, attachment, fileName, mediaType, cts.Token);
             }
             catch { /* deja journalise dans EmailService */ }
         });

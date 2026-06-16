@@ -12,6 +12,10 @@ using GisAPI.Domain.Constants;
 // Force Npgsql to return DateTime with Kind=Utc (fixes timezone serialization)
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
+// QuestPDF — licence Community (gratuite pour les structures < 1M$ de CA annuel).
+// Requise avant toute generation PDF (rapport journalier flotte).
+QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add Application & Infrastructure layers (CQRS, MediatR, EF Core, Multi-tenant, RabbitMQ)

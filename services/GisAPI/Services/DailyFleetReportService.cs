@@ -160,9 +160,9 @@ public class DailyFleetReportService : BackgroundService
                     new GetDailyActivityReportsQuery(reportDateTn, vehicleIds), ct);
 
                 var htmlBody = BuildHtmlBody(societe, reportDateTn, reports);
-                var excelBytes = BuildExcel(societe, reportDateTn, reports);
+                var pdfBytes = DailyFleetReportPdf.Build(societe, reportDateTn, reports);
                 var subject = $"Rapport journalier flotte {societe.Name} — {reportDateTn:dd/MM/yyyy}";
-                var fileName = $"rapport-flotte-{reportDateTn:yyyy-MM-dd}.xlsx";
+                var fileName = $"rapport-journalier-{reportDateTn:yyyy-MM-dd}.pdf";
 
                 foreach (var user in users)
                 {
@@ -173,9 +173,9 @@ public class DailyFleetReportService : BackgroundService
                             user.FullName,
                             subject,
                             htmlBody,
-                            excelBytes,
+                            pdfBytes,
                             fileName,
-                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            "application/pdf",
                             ct);
                         emailsSent++;
                         _logger.LogInformation(
@@ -451,7 +451,7 @@ public class DailyFleetReportService : BackgroundService
         </td></tr>
         <!-- Note -->
         <tr><td style=""padding:8px 30px 0;"">
-          <p style=""margin:0;font-size:12px;color:#64748b;line-height:1.5;"">Le détail complet de chaque véhicule est disponible dans le fichier Excel joint à cet email.</p>
+          <p style=""margin:0;font-size:12px;color:#64748b;line-height:1.5;"">Le détail complet de chaque véhicule (chronologie, arrêts, carburant) est disponible dans le fichier joint à cet email.</p>
         </td></tr>
         <!-- Footer -->
         <tr><td style=""padding:28px 30px;border-top:1px solid #e2e8f0;margin-top:16px;"">

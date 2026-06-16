@@ -26,8 +26,9 @@ RUN dotnet publish -c Release -o /app/publish
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
 
-# Install cultures for localization
-RUN apt-get update && apt-get install -y locales curl && rm -rf /var/lib/apt/lists/*
+# Install cultures for localization + libfontconfig1 (required by SkiaSharp/QuestPDF
+# for server-side PDF generation of the daily fleet report).
+RUN apt-get update && apt-get install -y locales curl libfontconfig1 && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/publish .
 
