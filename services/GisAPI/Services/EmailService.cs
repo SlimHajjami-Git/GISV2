@@ -66,7 +66,7 @@ public class EmailService : IEmailService
         }
     }
 
-    public async Task SendEmailWithAttachmentAsync(string toEmail, string toName, string subject, string htmlBody, byte[] attachmentBytes, string attachmentFileName, string attachmentMediaType, CancellationToken ct = default)
+    public async Task SendEmailWithAttachmentAsync(string toEmail, string toName, string subject, string htmlBody, byte[] attachmentBytes, string attachmentFileName, string attachmentMediaType, CancellationToken ct = default, string? ccEmail = null)
     {
         try
         {
@@ -98,6 +98,8 @@ public class EmailService : IEmailService
                 SubjectEncoding = System.Text.Encoding.UTF8
             };
             message.To.Add(new MailAddress(toEmail, toName));
+            if (!string.IsNullOrWhiteSpace(ccEmail))
+                message.CC.Add(new MailAddress(ccEmail));
 
             // Mail HTML + partie texte : un message HTML SANS alternative texte est
             // fortement pénalisé par les filtres anti-spam (Gmail). On fournit les deux.

@@ -126,7 +126,8 @@ public class ReportsController : ControllerBase
         var pdf = GisAPI.Services.DailyFleetReportPdf.Build(societe, reportDate, reports);
         var subject = $"Rapport journalier flotte {societe.Name} - {reportDate:dd/MM/yyyy}";
         QueueEmailSend(testRecipient, "Karim Hajjami", subject, html, pdf,
-            $"rapport-journalier-{reportDate:yyyy-MM-dd}.pdf", "application/pdf");
+            $"rapport-journalier-{reportDate:yyyy-MM-dd}.pdf", "application/pdf",
+            ccEmail: "hajjami.selim@gmail.com");
 
         return Ok(new { status = "queued", sentTo = testRecipient, vehicleCount = vehicleIds.Length, reportDate });
     }
@@ -170,7 +171,7 @@ public class ReportsController : ControllerBase
     /// (TaskCanceledException). On le detache du token de la requete et on le borne a 60s ;
     /// le resultat (succes/echec) est journalise par EmailService.
     /// </summary>
-    private void QueueEmailSend(string toEmail, string toName, string subject, string html, byte[] attachment, string fileName, string mediaType)
+    private void QueueEmailSend(string toEmail, string toName, string subject, string html, byte[] attachment, string fileName, string mediaType, string? ccEmail = null)
     {
         var emailService = _emailService;
         _ = Task.Run(async () =>
@@ -179,7 +180,7 @@ public class ReportsController : ControllerBase
             try
             {
                 await emailService.SendEmailWithAttachmentAsync(
-                    toEmail, toName, subject, html, attachment, fileName, mediaType, cts.Token);
+                    toEmail, toName, subject, html, attachment, fileName, mediaType, cts.Token, ccEmail);
             }
             catch { /* deja journalise dans EmailService */ }
         });

@@ -13,7 +13,8 @@ public interface IEmailService
     Task SendNotificationEmailAsync(string toEmail, string toName, string notificationType, string title, string message, string? actionUrl = null, CancellationToken ct = default);
 
     /// <summary>
-    /// Send an email with a single binary attachment (e.g. an .xlsx report).
+    /// Send an email with a single binary attachment (e.g. a PDF/.xlsx report).
+    /// Optionally copies a second address in CC.
     /// </summary>
-    Task SendEmailWithAttachmentAsync(string toEmail, string toName, string subject, string htmlBody, byte[] attachmentBytes, string attachmentFileName, string attachmentMediaType, CancellationToken ct = default);
+    Task SendEmailWithAttachmentAsync(string toEmail, string toName, string subject, string htmlBody, byte[] attachmentBytes, string attachmentFileName, string attachmentMediaType, CancellationToken ct = default, string? ccEmail = null);
 }
