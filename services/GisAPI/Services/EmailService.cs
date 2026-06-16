@@ -31,11 +31,16 @@ public class EmailService : IEmailService
 
             using var client = new SmtpClient(smtpHost, smtpPort)
             {
-                Credentials = new NetworkCredential(smtpUser, smtpPassword),
                 EnableSsl = useSsl,
                 DeliveryMethod = SmtpDeliveryMethod.Network,
+                UseDefaultCredentials = false,
                 Timeout = 15000
             };
+            // Le relais Topnet (port 25) fonctionne SANS authentification : il relaie
+            // selon l'IP du serveur. On n'attache des identifiants que si un utilisateur
+            // est configure (ex. relais authentifie sur 587). Sinon -> envoi anonyme.
+            if (!string.IsNullOrWhiteSpace(smtpUser))
+                client.Credentials = new NetworkCredential(smtpUser, smtpPassword);
 
             var message = new MailMessage
             {
@@ -69,11 +74,16 @@ public class EmailService : IEmailService
 
             using var client = new SmtpClient(smtpHost, smtpPort)
             {
-                Credentials = new NetworkCredential(smtpUser, smtpPassword),
                 EnableSsl = useSsl,
                 DeliveryMethod = SmtpDeliveryMethod.Network,
+                UseDefaultCredentials = false,
                 Timeout = 30000
             };
+            // Le relais Topnet (port 25) fonctionne SANS authentification : il relaie
+            // selon l'IP du serveur. On n'attache des identifiants que si un utilisateur
+            // est configure (ex. relais authentifie sur 587). Sinon -> envoi anonyme.
+            if (!string.IsNullOrWhiteSpace(smtpUser))
+                client.Credentials = new NetworkCredential(smtpUser, smtpPassword);
 
             using var message = new MailMessage
             {
