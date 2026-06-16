@@ -132,6 +132,39 @@ public class ReportsController : ControllerBase
     }
 
     /// <summary>
+    /// Télécharge le rapport journalier de la flotte en PDF (même rendu que l'email
+    /// et que l'écran /rapports), directement dans le navigateur — sans email, donc
+    /// sans dépendre de la délivrabilité Gmail. Scopé à la société de l'appelant.
+    /// </summary>
+    [HttpGet("daily-fleet-report/pdf")]
+    public async Task<IActionResult> DownloadDailyFleetReportPdf(
+        [FromQuery] DateTime? date,
+        [FromQuery] int[]? vehicleIds,
+        [FromQuery] int minStopDurationSeconds = DefaultMinStopDurationSeconds,
+        CancellationToken ct = default)
+    {
+        var companyId = GetCompanyId();
+        var societe = await _context.Societes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == companyId, ct);
+        if (societe == null)
+            return BadRequest(new { error = "Societe introuvable." });
+
+        // Date demandée (TN) ou hier par défaut.
+        var reportDate = (date ?? DateTime.UtcNow.AddHours(1).Date.AddDays(-1)).Date;
+
+        // Toujours restreindre aux véhicules de la société (anti-fuite tenant).
+        var query = _context.Vehicles.AsNoTracking().Where(v => v.CompanyId == companyId);
+        if (vehicleIds != null && vehicleIds.Length > 0)
+            query = query.Where(v => vehicleIds.Contains(v.Id));
+        var ids = await query.Select(v => v.Id).ToArrayAsync(ct);
+
+        var reports = await _mediator.Send(
+            new GetDailyActivityReportsQuery(reportDate, ids, minStopDurationSeconds), ct);
+
+        var pdf = GisAPI.Services.DailyFleetReportPdf.Build(societe, reportDate, reports);
+        return File(pdf, "application/pdf", $"rapport-journalier-{reportDate:yyyy-MM-dd}.pdf");
+    }
+
+    /// <summary>
     /// Envoi email en arriere-plan (fire-and-forget). Le SMTP (port 25 + STARTTLS) peut
     /// depasser la duree de vie de la requete HTTP, qui annulait l'envoi
     /// (TaskCanceledException). On le detache du token de la requete et on le borne a 60s ;

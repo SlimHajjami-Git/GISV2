@@ -53,6 +53,14 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
             </svg>
             Actualiser
           </button>
+          <button class="btn-download" (click)="downloadPdf()" [disabled]="downloading">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <path d="M7 10l5 5 5-5"/>
+              <path d="M12 15V3"/>
+            </svg>
+            {{ downloading ? 'Génération…' : 'Télécharger PDF' }}
+          </button>
         </div>
 
         <!-- Loading State -->
@@ -371,6 +379,23 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
     .btn-refresh:hover {
       background: #2563eb;
     }
+
+    .btn-download {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: #16a34a;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-download:hover { background: #15803d; }
+    .btn-download:disabled { background: #94a3b8; cursor: not-allowed; }
 
     .loading-container {
       display: flex;
@@ -828,6 +853,7 @@ export class DailyReportComponent implements OnInit, OnDestroy {
   reports: DailyActivityReport[] = [];
   vehicles: any[] = [];
   loading = false;
+  downloading = false;
 
   selectedDate = '';
   selectedVehicleId = '';
@@ -890,6 +916,30 @@ export class DailyReportComponent implements OnInit, OnDestroy {
         }
       });
     }
+  }
+
+  downloadPdf() {
+    this.downloading = true;
+    const date = this.selectedDate ? new Date(this.selectedDate) : undefined;
+    const vehicleIds = this.selectedVehicleId ? [parseInt(this.selectedVehicleId)] : undefined;
+    this.apiService.downloadDailyReportPdf(date, vehicleIds, this.minStopDuration)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (blob) => {
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          const d = this.selectedDate || new Date().toISOString().split('T')[0];
+          a.download = `rapport-journalier-${d}.pdf`;
+          a.click();
+          window.URL.revokeObjectURL(url);
+          this.downloading = false;
+        },
+        error: (err) => {
+          console.error('Erreur téléchargement PDF:', err);
+          this.downloading = false;
+        }
+      });
   }
 
   getFuelConsumption(report: any): string {

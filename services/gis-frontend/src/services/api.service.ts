@@ -1351,6 +1351,17 @@ export class ApiService {
     return this.http.get<DailyActivityReport[]>(`${this.API_URL}/reports/daily`, { headers: this.getHeaders(), params });
   }
 
+  /** Télécharge le rapport journalier de la flotte en PDF (même rendu que l'email), sans passer par l'email. */
+  downloadDailyReportPdf(date?: Date, vehicleIds?: number[], minStopDurationSeconds?: number): Observable<Blob> {
+    let params = new HttpParams();
+    if (date) params = params.set('date', this.toLocalIso(date).split('T')[0]);
+    if (vehicleIds?.length) {
+      vehicleIds.forEach(id => params = params.append('vehicleIds', id.toString()));
+    }
+    if (minStopDurationSeconds) params = params.set('minStopDurationSeconds', minStopDurationSeconds.toString());
+    return this.http.get(`${this.API_URL}/reports/daily-fleet-report/pdf`, { headers: this.getHeaders(), params, responseType: 'blob' });
+  }
+
   // ==================== STOPS REPORTS ====================
 
   getStopsReport(vehicleId: number, startDate?: Date, endDate?: Date): Observable<any> {
