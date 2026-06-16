@@ -83,7 +83,7 @@ public class ReportsController : ControllerBase
 
         var html = GisAPI.Services.DailyFleetReportService.BuildHtmlBody(societe, reportDate, reports);
         var pdf = GisAPI.Services.DailyFleetReportPdf.Build(societe, reportDate, reports);
-        var subject = $"[APERCU] Rapport journalier flotte {societe.Name} - {reportDate:dd/MM/yyyy}";
+        var subject = $"Rapport journalier flotte {societe.Name} - {reportDate:dd/MM/yyyy}";
         QueueEmailSend(user.Email, user.FullName, subject, html, pdf,
             $"rapport-journalier-{reportDate:yyyy-MM-dd}.pdf", "application/pdf");
 
@@ -124,7 +124,7 @@ public class ReportsController : ControllerBase
 
         var html = GisAPI.Services.DailyFleetReportService.BuildHtmlBody(societe, reportDate, reports);
         var pdf = GisAPI.Services.DailyFleetReportPdf.Build(societe, reportDate, reports);
-        var subject = $"[TEST] Rapport journalier flotte {societe.Name} - {reportDate:dd/MM/yyyy}";
+        var subject = $"Rapport journalier flotte {societe.Name} - {reportDate:dd/MM/yyyy}";
         QueueEmailSend(testRecipient, "Selim Hajjami", subject, html, pdf,
             $"rapport-journalier-{reportDate:yyyy-MM-dd}.pdf", "application/pdf");
 

@@ -42,14 +42,20 @@ public class EmailService : IEmailService
             if (!string.IsNullOrWhiteSpace(smtpUser))
                 client.Credentials = new NetworkCredential(smtpUser, smtpPassword);
 
-            var message = new MailMessage
+            using var message = new MailMessage
             {
                 From = new MailAddress(fromEmail, fromName),
                 Subject = subject,
-                Body = htmlBody,
-                IsBodyHtml = true
+                SubjectEncoding = System.Text.Encoding.UTF8
             };
             message.To.Add(new MailAddress(toEmail, toName));
+
+            var plainText = HtmlToPlainText(htmlBody);
+            message.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(plainText, System.Text.Encoding.UTF8, "text/plain"));
+            message.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(htmlBody, System.Text.Encoding.UTF8, "text/html"));
+
+            var fromDomain = fromEmail.Contains('@') ? fromEmail.Split('@')[1] : "belive.tn";
+            message.Headers.Add("Message-Id", $"<{Guid.NewGuid():N}@{fromDomain}>");
 
             await client.SendMailAsync(message, ct);
             _logger.LogInformation("Email sent to {Email}: {Subject}", toEmail, subject);
@@ -89,10 +95,19 @@ public class EmailService : IEmailService
             {
                 From = new MailAddress(fromEmail, fromName),
                 Subject = subject,
-                Body = htmlBody,
-                IsBodyHtml = true
+                SubjectEncoding = System.Text.Encoding.UTF8
             };
             message.To.Add(new MailAddress(toEmail, toName));
+
+            // Mail HTML + partie texte : un message HTML SANS alternative texte est
+            // fortement pénalisé par les filtres anti-spam (Gmail). On fournit les deux.
+            var plainText = HtmlToPlainText(htmlBody);
+            message.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(plainText, System.Text.Encoding.UTF8, "text/plain"));
+            message.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(htmlBody, System.Text.Encoding.UTF8, "text/html"));
+
+            // Message-Id ancré sur le domaine expéditeur (améliore la confiance côté Gmail).
+            var fromDomain = fromEmail.Contains('@') ? fromEmail.Split('@')[1] : "belive.tn";
+            message.Headers.Add("Message-Id", $"<{Guid.NewGuid():N}@{fromDomain}>");
 
             using var attachmentStream = new MemoryStream(attachmentBytes);
             message.Attachments.Add(new Attachment(attachmentStream, attachmentFileName, attachmentMediaType));
@@ -105,6 +120,30 @@ public class EmailService : IEmailService
             _logger.LogError(ex, "Failed to send email with attachment to {Email}: {Subject}", toEmail, subject);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Construit une version texte simple à partir du corps HTML, pour la partie
+    /// text/plain du mail (un HTML sans alternative texte est pénalisé par les filtres
+    /// anti-spam comme Gmail).
+    /// </summary>
+    private static string HtmlToPlainText(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+            return "Veuillez consulter la version HTML de ce message.";
+
+        var text = System.Text.RegularExpressions.Regex.Replace(html, "(?is)<(script|style).*?</\\1>", " ");
+        text = System.Text.RegularExpressions.Regex.Replace(text, "(?i)<br\\s*/?>", "\n");
+        text = System.Text.RegularExpressions.Regex.Replace(text, "(?i)</(p|tr|div|h[1-6]|li)>", "\n");
+        text = System.Text.RegularExpressions.Regex.Replace(text, "<[^>]+>", " ");
+        text = System.Net.WebUtility.HtmlDecode(text);
+        text = System.Text.RegularExpressions.Regex.Replace(text, "[ \\t]+", " ");
+        text = System.Text.RegularExpressions.Regex.Replace(text, "\\n\\s*\\n\\s*\\n+", "\n\n");
+        text = text.Trim();
+
+        return string.IsNullOrWhiteSpace(text)
+            ? "Veuillez consulter la version HTML de ce message."
+            : text;
     }
 
     public async Task SendNotificationEmailAsync(string toEmail, string toName, string notificationType, string title, string message, string? actionUrl = null, CancellationToken ct = default)
