@@ -90,6 +90,13 @@ type NotifBucket = Notification | NotifThreadGroup;
             </svg>
             <span>Tracer Playback</span>
           </a>
+          <a *ngIf="hasModule('playback')" [routerLink]="['/multi-playback']" routerLinkActive="active" class="nav-link" title="Playback multi-véhicules">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 14 9 5 15 5 3"/>
+              <polygon points="11 3 20 9 11 15 11 3"/>
+            </svg>
+            <span>Playback multi</span>
+          </a>
 
           <!--
             Exploitation dropdown.

@@ -7,6 +7,7 @@ import { EmployeesComponent } from './components/employees.component';
 import { GpsComponent } from './components/gps.component';
 import { SubscriptionComponent } from './components/subscription.component';
 import { MonitoringComponent } from './components/monitoring.component';
+import { MultiPlaybackComponent } from './components/multi-playback.component';
 import { ReportsComponent } from './components/reports.component';
 import { MonthlyReportComponent } from './components/monthly-report.component';
 import { GeofencesComponent } from './components/geofences.component';
@@ -81,6 +82,7 @@ export const routes: Routes = [
   // Monitoring module
   { path: 'monitoring', component: MonitoringComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'monitoring' } },
   { path: 'playback', component: MonitoringComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'playback', view: 'playback' } },
+  { path: 'multi-playback', component: MultiPlaybackComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'playback' } },
   
   // Reports module
   { path: 'reports', component: ReportsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'reports' } },
