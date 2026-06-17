@@ -15,8 +15,10 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     return next(req);
   }
 
-  // Use admin_token for admin routes, auth_token for everything else
-  const isAdminRoute = req.url.includes('/api/admin');
+  // Use admin_token for admin routes, auth_token for everything else.
+  // /auth/impersonate est déclenché depuis l'espace /admin (super-admin) -> doit
+  // utiliser le admin_token, sinon le backend reçoit un token non-system_admin (400).
+  const isAdminRoute = req.url.includes('/api/admin') || req.url.includes('/auth/impersonate');
   const token = isAdminRoute
     ? (localStorage.getItem('admin_token') || localStorage.getItem('auth_token'))
     : (localStorage.getItem('auth_token') || localStorage.getItem('admin_token'));
