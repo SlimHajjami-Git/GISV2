@@ -396,7 +396,7 @@ public class DailyFleetReportService : BackgroundService
         <!-- Header -->
         <tr><td style=""background:linear-gradient(135deg,#1e3a5f 0%,#2d5a87 100%);padding:24px 30px;"">
           <table width=""100%""><tr>
-            <td style=""color:#fff;font-size:20px;font-weight:700;"">GPA Belive</td>
+            <td style=""color:#fff;font-size:20px;font-weight:700;"">Calypso Belive</td>
             <td align=""right""><span style=""background:rgba(255,255,255,0.2);color:#fff;padding:4px 12px;border-radius:12px;font-size:11px;font-weight:500;"">{badgeLabel}</span></td>
           </tr></table>
         </td></tr>
@@ -456,7 +456,7 @@ public class DailyFleetReportService : BackgroundService
         <!-- Footer -->
         <tr><td style=""padding:28px 30px;border-top:1px solid #e2e8f0;margin-top:16px;"">
           <p style=""margin:0;font-size:11px;color:#94a3b8;line-height:1.5;"">
-            Cet email a été envoyé automatiquement par la plateforme GPA Belive.<br>
+            Cet email a été envoyé automatiquement par la plateforme Calypso Belive.<br>
             &copy; {DateTime.UtcNow.Year} Belive Technologies — Système de gestion de flotte
           </p>
         </td></tr>

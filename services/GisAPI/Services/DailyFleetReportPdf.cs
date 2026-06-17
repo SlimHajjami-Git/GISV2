@@ -58,7 +58,7 @@ public static class DailyFleetReportPdf
                     {
                         row.RelativeItem().Column(c =>
                         {
-                            c.Item().Text("GPA Belive").FontColor("#ffffff").FontSize(16).Bold();
+                            c.Item().Text("Calypso Belive").FontColor("#ffffff").FontSize(16).Bold();
                             c.Item().Text(societe.Name).FontColor("#cbd5e1").FontSize(10);
                         });
                         row.ConstantItem(210).Column(c =>
@@ -95,7 +95,7 @@ public static class DailyFleetReportPdf
                 page.Footer().AlignCenter().Text(t =>
                 {
                     t.DefaultTextStyle(s => s.FontSize(8).FontColor(Muted));
-                    t.Span($"GPA Belive — généré le {DateTime.UtcNow.AddHours(1):dd/MM/yyyy HH:mm}  •  Page ");
+                    t.Span($"Calypso Belive — généré le {DateTime.UtcNow.AddHours(1):dd/MM/yyyy HH:mm}  •  Page ");
                     t.CurrentPageNumber();
                     t.Span(" / ");
                     t.TotalPages();
@@ -221,9 +221,8 @@ public static class DailyFleetReportPdf
                 {
                     var isDrive = a.Type == "drive";
                     var times = a.EndTime.HasValue ? $"{Hm(a.StartTime)}–{Hm(a.EndTime.Value)}" : Hm(a.StartTime);
-                    var detail = isDrive
-                        ? $"{(a.DistanceKm ?? 0):N0} km · max {(a.MaxSpeedKph ?? 0):N0} km/h"
-                        : (a.StartLocation?.Address ?? "adresse inconnue");
+                    // Trajets : pas de détail (km/vitesse) — seuls les arrêts affichent l'adresse.
+                    var detail = isDrive ? "" : (a.StartLocation?.Address ?? "adresse inconnue");
 
                     table.Cell().Element(Cell).Text(isDrive ? "Trajet" : "Arrêt")
                         .FontSize(8.5f).Bold().FontColor(isDrive ? Green : Amber);
