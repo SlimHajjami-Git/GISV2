@@ -47,21 +47,19 @@ public class GetFleetStatisticsQueryHandler : IRequestHandler<GetFleetStatistics
 
         var deviceIds = deviceVehicleMap.Keys.ToList();
 
-        // Agrégations POUSSÉES EN BASE : un agrégat par device (≤ nb véhicules) et un
-        // agrégat par device-et-par-jour (≤ nb véhicules × jours du mois). On ne charge
-        // plus toutes les positions du mois en mémoire.
-        List<DevicePeriodAgg> perDevice = new();
+        // UN SEUL parcours : agrégat par (device, jour) avec toutes les métriques
+        // (≤ nb véhicules × jours du mois lignes). On en déduit les totaux par véhicule
+        // (cumul des jours) ET les distances journalières — sans second scan de la table.
         List<DeviceDayAgg> perDeviceDay = new();
         if (deviceIds.Count > 0)
         {
-            var inPeriod = _context.GpsPositions.AsNoTracking()
-                .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= periodStart && p.RecordedAt <= periodEnd);
-
-            perDevice = await inPeriod
-                .GroupBy(p => p.DeviceId)
-                .Select(g => new DevicePeriodAgg
+            perDeviceDay = await _context.GpsPositions.AsNoTracking()
+                .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= periodStart && p.RecordedAt <= periodEnd)
+                .GroupBy(p => new { p.DeviceId, Day = p.RecordedAt.Date })
+                .Select(g => new DeviceDayAgg
                 {
-                    DeviceId = g.Key,
+                    DeviceId = g.Key.DeviceId,
+                    Day = g.Key.Day,
                     Count = g.Count(),
                     SpeedSum = g.Sum(p => (double?)p.SpeedKph) ?? 0.0,
                     MovingCount = g.Sum(p => (p.SpeedKph ?? 0) > 5 ? 1 : 0),
@@ -70,19 +68,8 @@ public class GetFleetStatisticsQueryHandler : IRequestHandler<GetFleetStatistics
                     MovingPoints = g.Sum(p => (p.SpeedKph ?? 0) > 0 ? 1 : 0)
                 })
                 .ToListAsync(cancellationToken);
-
-            perDeviceDay = await inPeriod
-                .GroupBy(p => new { p.DeviceId, Day = p.RecordedAt.Date })
-                .Select(g => new DeviceDayAgg
-                {
-                    DeviceId = g.Key.DeviceId,
-                    Day = g.Key.Day,
-                    SpeedSum = g.Sum(p => (double?)p.SpeedKph) ?? 0.0
-                })
-                .ToListAsync(cancellationToken);
         }
 
-        var aggByDevice = perDevice.ToDictionary(x => x.DeviceId);
         var daysByDevice = perDeviceDay.GroupBy(x => x.DeviceId).ToDictionary(g => g.Key, g => g.ToList());
 
         // Calculate per-vehicle statistics
@@ -98,29 +85,24 @@ public class GetFleetStatisticsQueryHandler : IRequestHandler<GetFleetStatistics
                 .Select(kvp => kvp.Key)
                 .ToList();
 
-            // Cumul des agrégats du/des device(s) du véhicule (en général un seul).
+            // Cumul des métriques du/des device(s) du véhicule à partir des lignes par jour
+            // (un seul jeu de données, pas de second scan).
             int positionCount = 0, movingCount = 0, movingPoints = 0;
             double speedSum = 0.0, movingSpeedSum = 0.0, maxSpeed = 0.0;
-            foreach (var did in vehicleDeviceIds)
-            {
-                if (aggByDevice.TryGetValue(did, out var a))
-                {
-                    positionCount += a.Count;
-                    movingCount += a.MovingCount;
-                    movingPoints += a.MovingPoints;
-                    speedSum += a.SpeedSum;
-                    movingSpeedSum += a.MovingSpeedSum;
-                    if (a.MaxSpeed > maxSpeed) maxSpeed = a.MaxSpeed;
-                }
-            }
-
-            // Distances journalières (fusion des jours de tous les device(s) du véhicule).
             var dayDistances = new Dictionary<DateTime, double>();
             foreach (var did in vehicleDeviceIds)
             {
-                if (daysByDevice.TryGetValue(did, out var days))
-                    foreach (var dd in days)
-                        dayDistances[dd.Day] = (dayDistances.TryGetValue(dd.Day, out var cur) ? cur : 0.0) + dd.SpeedSum;
+                if (!daysByDevice.TryGetValue(did, out var days)) continue;
+                foreach (var d in days)
+                {
+                    positionCount += d.Count;
+                    movingCount += d.MovingCount;
+                    movingPoints += d.MovingPoints;
+                    speedSum += d.SpeedSum;
+                    movingSpeedSum += d.MovingSpeedSum;
+                    if (d.MaxSpeed > maxSpeed) maxSpeed = d.MaxSpeed;
+                    dayDistances[d.Day] = (dayDistances.TryGetValue(d.Day, out var cur) ? cur : 0.0) + d.SpeedSum;
+                }
             }
 
             // Calculate metrics (mêmes formules qu'avant, mais à partir des agrégats SQL)
@@ -318,23 +300,18 @@ public class GetFleetStatisticsQueryHandler : IRequestHandler<GetFleetStatistics
         return Math.Sqrt(sumOfSquares / (values.Count - 1));
     }
 
-    // Agrégats projetés par EF Core (aucune position n'est matérialisée côté API).
-    private sealed class DevicePeriodAgg
+    // Agrégat par (device, jour) projeté par EF Core (aucune position n'est matérialisée
+    // côté API). Sert à la fois aux totaux par véhicule et aux distances journalières.
+    private sealed class DeviceDayAgg
     {
         public int DeviceId { get; set; }
+        public DateTime Day { get; set; }
         public int Count { get; set; }
         public double SpeedSum { get; set; }
         public int MovingCount { get; set; }
         public double MaxSpeed { get; set; }
         public double MovingSpeedSum { get; set; }
         public int MovingPoints { get; set; }
-    }
-
-    private sealed class DeviceDayAgg
-    {
-        public int DeviceId { get; set; }
-        public DateTime Day { get; set; }
-        public double SpeedSum { get; set; }
     }
 }
 

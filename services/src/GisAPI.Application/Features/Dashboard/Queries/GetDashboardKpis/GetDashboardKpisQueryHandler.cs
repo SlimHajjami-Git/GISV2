@@ -46,23 +46,34 @@ public class GetDashboardKpisQueryHandler : IRequestHandler<GetDashboardKpisQuer
             .Select(v => v.GpsDeviceId!.Value)
             .ToList();
 
-        // Agrégations POUSSÉES EN BASE (au lieu de charger des millions de positions en
-        // mémoire via ToListAsync). Chaque agrégat est un COUNT/SUM scalaire côté serveur.
-        var currentQ = _context.GpsPositions.AsNoTracking()
-            .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= periodStart && p.RecordedAt <= periodEnd);
-        var prevQ = _context.GpsPositions.AsNoTracking()
-            .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= prevPeriodStart && p.RecordedAt <= prevPeriodEnd);
-
+        // UN SEUL parcours par période : agrégat groupé par device (≤ nb véhicules lignes
+        // renvoyées), puis cumul en mémoire. Évite les multiples scans de l'index (cause
+        // de la lenteur de la version précédente).
         int positionCount = 0, movingCount = 0, idleCount = 0, activeVehicleIds = 0;
         double speedSum = 0.0, prevSpeedSum = 0.0;
         if (deviceIds.Count > 0)
         {
-            positionCount    = await currentQ.CountAsync(cancellationToken);
-            speedSum         = await currentQ.SumAsync(p => (double?)p.SpeedKph ?? 0.0, cancellationToken);
-            activeVehicleIds = await currentQ.Select(p => p.DeviceId).Distinct().CountAsync(cancellationToken);
-            movingCount      = await currentQ.CountAsync(p => (p.SpeedKph ?? 0) > 5, cancellationToken);
-            idleCount        = await currentQ.CountAsync(p => (p.SpeedKph ?? 0) < 3, cancellationToken);
-            prevSpeedSum     = await prevQ.SumAsync(p => (double?)p.SpeedKph ?? 0.0, cancellationToken);
+            var cur = await _context.GpsPositions.AsNoTracking()
+                .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= periodStart && p.RecordedAt <= periodEnd)
+                .GroupBy(p => p.DeviceId)
+                .Select(g => new
+                {
+                    Count = g.Count(),
+                    SpeedSum = g.Sum(p => (double?)p.SpeedKph) ?? 0.0,
+                    Moving = g.Sum(p => (p.SpeedKph ?? 0) > 5 ? 1 : 0),
+                    Idle = g.Sum(p => (p.SpeedKph ?? 0) < 3 ? 1 : 0)
+                })
+                .ToListAsync(cancellationToken);
+
+            activeVehicleIds = cur.Count;                 // un groupe = un device ayant circulé
+            positionCount = cur.Sum(x => x.Count);
+            speedSum = cur.Sum(x => x.SpeedSum);
+            movingCount = cur.Sum(x => x.Moving);
+            idleCount = cur.Sum(x => x.Idle);
+
+            prevSpeedSum = await _context.GpsPositions.AsNoTracking()
+                .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= prevPeriodStart && p.RecordedAt <= prevPeriodEnd)
+                .SumAsync(p => (double?)p.SpeedKph ?? 0.0, cancellationToken);
         }
 
         // Distance approximée (somme des vitesses / 60) — formule inchangée.
