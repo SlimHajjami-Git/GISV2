@@ -42,6 +42,11 @@ type NotifBucket = Notification | NotifThreadGroup;
   imports: [CommonModule, RouterModule, ChatComponent, AccidentDecisionModalComponent, OfflineVehiclesBellComponent],
   template: `
     <div class="app-container">
+      <!-- Bandeau impersonation ("voir en tant que") -->
+      <div *ngIf="isImpersonating()" style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;background:linear-gradient(90deg,#f59e0b,#f97316);color:#fff;padding:8px 16px;font-size:13px;font-weight:600;position:sticky;top:0;z-index:3000;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
+        <span>👁️ Vous voyez l'application <b>en tant que {{ impersonatedName }}</b><span *ngIf="impersonatedCompany"> — société <b>{{ impersonatedCompany }}</b></span></span>
+        <button type="button" (click)="stopImpersonation()" style="background:rgba(255,255,255,0.25);border:1px solid rgba(255,255,255,0.6);color:#fff;padding:4px 12px;border-radius:6px;font-weight:600;cursor:pointer;white-space:nowrap;">↩ Revenir à mon compte</button>
+      </div>
       <!-- WIALON-STYLE TOP NAVIGATION BAR -->
       <nav class="top-nav">
         <!-- Logo Calypso (pin tourbillon + œil) -->
@@ -1444,6 +1449,12 @@ type NotifBucket = Notification | NotifThreadGroup;
 export class AppLayoutComponent implements OnInit, OnDestroy {
   /** Brand name shown in the navbar — per-deployment (Calypso / Bougeo / …). */
   readonly brandName = environment.brandName;
+
+  /** Impersonation ("voir en tant que") — bandeau + retour super-admin. */
+  isImpersonating(): boolean { return this.authService.isImpersonating(); }
+  get impersonatedName(): string { return this.authService.getCurrentUserSync()?.name || ''; }
+  get impersonatedCompany(): string { return this.authService.getCurrentUserSync()?.companyName || ''; }
+  stopImpersonation(): void { this.authService.stopImpersonation(); window.location.href = '/dashboard'; }
   notifications: Notification[] = [];
   showNotifications = false;
   showUserMenu = false;

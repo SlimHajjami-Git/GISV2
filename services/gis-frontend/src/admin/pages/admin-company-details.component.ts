@@ -6,6 +6,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, Client, AdminVehicle, Role, SystemUser } from '../services/admin.service';
+import { AuthService } from '../../services/auth.service';
 import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.component';
 import { PermissionEditorComponent } from '../components/permission-editor.component';
 
@@ -375,6 +376,12 @@ type CompanyRole = Role & { userCount?: number };
                   </td>
                   <td>
                     <div class="table-actions">
+                      <button class="action-btn" title="Voir en tant que cet utilisateur (POV)" (click)="impersonate(user)" style="color:#f97316;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/>
+                          <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                      </button>
                       <button class="action-btn" title="Modifier" (click)="editUser(user)">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -2169,8 +2176,22 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
     private router: Router,
     private route: ActivatedRoute,
     private adminService: AdminService,
+    private authService: AuthService,
     private cdr: ChangeDetectorRef
   ) {}
+
+  /** Super-admin : prend le POV de cet utilisateur (voir l'app exactement comme lui). */
+  impersonate(user: SystemUser) {
+    if (!confirm(`Voir l'application en tant que ${user.name} (société ${this.company?.name || ''}) ?`)) return;
+    this.authService.impersonateUser(user.id).pipe(takeUntil(this.destroy$)).subscribe(result => {
+      if (result) {
+        // Recharge complète pour appliquer le contexte du POV dans toute l'app.
+        window.location.href = '/dashboard';
+      } else {
+        alert("Impossible de prendre le POV de cet utilisateur.");
+      }
+    });
+  }
 
   ngOnInit() {
     this.route.params.pipe(takeUntil(this.destroy$)).subscribe(params => {

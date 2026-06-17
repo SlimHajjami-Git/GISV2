@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using MediatR;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Application.Features.Auth.Commands.Login;
+using GisAPI.Application.Features.Auth.Commands.Impersonate;
 using GisAPI.Application.Features.Auth.Commands.Logout;
 using GisAPI.Application.Features.Auth.Commands.RefreshToken;
 using GisAPI.Application.Features.Users.Commands.ChangeMyPassword;
@@ -34,6 +35,21 @@ public class AuthController : ControllerBase
         var result = await _mediator.Send(new LoginCommand(request.Email, request.Password, GetClientIp(), GetUserAgent()));
         return Ok(result);
     }
+
+    /// <summary>
+    /// "Voir en tant que" : réservé au super-administrateur (system_admin). Renvoie un
+    /// jeton au périmètre de l'utilisateur cible pour visualiser l'app comme lui. La
+    /// vérification du rôle system_admin est faite dans le handler (ICurrentTenantService).
+    /// </summary>
+    [Authorize]
+    [HttpPost("impersonate")]
+    public async Task<ActionResult<LoginResponse>> Impersonate([FromBody] ImpersonateRequest request)
+    {
+        var result = await _mediator.Send(new ImpersonateCommand(request.UserId));
+        return Ok(result);
+    }
+
+    public record ImpersonateRequest(int UserId);
 
     [Authorize]
     [HttpPost("logout")]

@@ -18,7 +18,7 @@ public class JwtService : IJwtService
         _configuration = configuration;
     }
 
-    public string GenerateToken(User user)
+    public string GenerateToken(User user, string? impersonatedBy = null)
     {
         var key = _configuration["Jwt:Key"] ?? "DefaultSecretKeyForDevelopment123!";
         var issuer = _configuration["Jwt:Issuer"] ?? "GisAPI";
@@ -37,6 +37,14 @@ public class JwtService : IJwtService
             new("roleId", user.RoleId.ToString()),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
+
+        // Impersonation : trace l'admin à l'origine de la session "voir en tant que".
+        // Le jeton reste au périmètre de l'utilisateur cible (companyId/rôle), seul ce
+        // claim d'audit s'ajoute pour savoir qui impersonate.
+        if (!string.IsNullOrWhiteSpace(impersonatedBy))
+        {
+            claims.Add(new Claim("impersonated_by", impersonatedBy));
+        }
 
         // Add role name as claim
         if (user.Role != null)

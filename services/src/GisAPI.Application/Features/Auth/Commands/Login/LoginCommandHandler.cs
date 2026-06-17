@@ -108,7 +108,48 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
 
         _logger.LogInformation("User {Email} logged in (CompanyId: {CompanyId})", user.Email, user.CompanyId);
 
-        var userPermissions = new UserPermissionsDto(
+        var userPermissions = BuildUserPermissions(user);
+
+        return new LoginResponse(
+            token,
+            refreshTokenStr,
+            BuildUserDto(user, subscriptionFeatures, assignedVehicleIds, userPermissions)
+        );
+    }
+
+    /// <summary>Construit le UserDto renvoyé par le login (réutilisé par l'impersonation).</summary>
+    public static UserDto BuildUserDto(
+        GisAPI.Domain.Entities.User user,
+        SubscriptionFeaturesDto? subscriptionFeatures,
+        int[]? assignedVehicleIds,
+        UserPermissionsDto userPermissions)
+    {
+        return new UserDto(
+            user.Id,
+            user.FirstName,
+            user.LastName,
+            user.Email,
+            user.Phone,
+            user.PermitNumber,
+            user.RoleId,
+            user.Role?.Name ?? "",
+            user.Role?.IsCompanyAdmin ?? false,
+            user.Role?.IsSystemAdmin ?? false,
+            user.CompanyId,
+            user.Societe?.Name ?? "",
+            user.Societe?.Type,
+            user.Role?.Permissions,
+            subscriptionFeatures,
+            assignedVehicleIds,
+            userPermissions,
+            Currency: user.Societe?.Settings?.Currency ?? "TND"
+        );
+    }
+
+    /// <summary>Map les permissions utilisateur (réutilisé par l'impersonation).</summary>
+    public static UserPermissionsDto BuildUserPermissions(GisAPI.Domain.Entities.User user)
+    {
+        return new UserPermissionsDto(
             AccessLevel: user.AccessLevel,
             CanMonitoring: user.CanMonitoring,
             CanVehicles: user.CanVehicles,
@@ -140,34 +181,9 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
             CanReportDrivingBehavior: user.CanReportDrivingBehavior,
             CanReportMonthlyCosts: user.CanReportMonthlyCosts
         );
-
-        return new LoginResponse(
-            token,
-            refreshTokenStr,
-            new UserDto(
-                user.Id,
-                user.FirstName,
-                user.LastName,
-                user.Email,
-                user.Phone,
-                user.PermitNumber,
-                user.RoleId,
-                user.Role?.Name ?? "",
-                user.Role?.IsCompanyAdmin ?? false,
-                user.Role?.IsSystemAdmin ?? false,
-                user.CompanyId,
-                user.Societe?.Name ?? "",
-                user.Societe?.Type,
-                user.Role?.Permissions,
-                subscriptionFeatures,
-                assignedVehicleIds,
-                userPermissions,
-                Currency: user.Societe?.Settings?.Currency ?? "TND"
-            )
-        );
     }
 
-    private static SubscriptionFeaturesDto? BuildSubscriptionFeatures(
+    public static SubscriptionFeaturesDto? BuildSubscriptionFeatures(
         GisAPI.Domain.Entities.SubscriptionType? subType)
     {
         if (subType == null) return null;

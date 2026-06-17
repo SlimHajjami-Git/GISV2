@@ -256,6 +256,7 @@ export class AuthService {
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('auth_user');
     localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_refresh');
     localStorage.removeItem('admin_user');
     this.currentUser$.next(null);
   }
@@ -309,6 +310,81 @@ export class AuthService {
     const merged: AuthUser = { ...current, ...updates };
     localStorage.setItem('auth_user', JSON.stringify(merged));
     this.currentUser$.next(merged);
+  }
+
+  // ─────────── Impersonation ("voir en tant que", super-admin) ───────────
+
+  /** True si une session d'impersonation est active (le contexte admin est mis de côté). */
+  isImpersonating(): boolean {
+    return !!localStorage.getItem('admin_token');
+  }
+
+  /**
+   * Super-admin : prend le POV d'un utilisateur (sa société, ses permissions/features).
+   * Le contexte admin (token + refresh + user) est sauvegardé pour pouvoir revenir.
+   */
+  impersonateUser(userId: number): Observable<AuthUser | null> {
+    const alreadyImpersonating = this.isImpersonating();
+    const adminToken = localStorage.getItem('auth_token');
+    const adminRefresh = localStorage.getItem('refresh_token');
+    const adminUser = localStorage.getItem('auth_user');
+
+    return this.http.post<AuthResponse>(`${this.API_URL}/auth/impersonate`, { userId }).pipe(
+      map(response => {
+        const user = this.mapAuthResponse(response);
+        // Sauvegarde du contexte admin une seule fois (pour revenir au vrai admin,
+        // même en cas d'impersonations enchaînées).
+        if (!alreadyImpersonating && adminToken && adminUser) {
+          localStorage.setItem('admin_token', adminToken);
+          if (adminRefresh) localStorage.setItem('admin_refresh', adminRefresh);
+          localStorage.setItem('admin_user', adminUser);
+        }
+        localStorage.setItem('auth_token', response.token);
+        localStorage.setItem('refresh_token', response.refreshToken);
+        localStorage.setItem('auth_user', JSON.stringify(user));
+        this.currentUser$.next(user);
+        return user;
+      }),
+      catchError(err => {
+        console.error('AuthService.impersonateUser - Error:', err);
+        return of(null);
+      })
+    );
+  }
+
+  /** Revient au compte super-admin d'origine. */
+  stopImpersonation(): void {
+    const t = localStorage.getItem('admin_token');
+    const r = localStorage.getItem('admin_refresh');
+    const u = localStorage.getItem('admin_user');
+    if (!t || !u) return;
+    localStorage.setItem('auth_token', t);
+    if (r) localStorage.setItem('refresh_token', r); else localStorage.removeItem('refresh_token');
+    localStorage.setItem('auth_user', u);
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_refresh');
+    localStorage.removeItem('admin_user');
+    this.loadStoredAuth();
+  }
+
+  /** Mappe la réponse d'auth (login/impersonate) vers AuthUser. */
+  private mapAuthResponse(response: AuthResponse): AuthUser {
+    return {
+      id: response.user.id?.toString() || '',
+      name: `${response.user.firstName} ${response.user.lastName}`.trim(),
+      email: response.user.email,
+      phone: response.user.phone,
+      roles: [response.user.roleName],
+      permissions: response.user.permissions || {},
+      companyId: response.user.companyId.toString(),
+      companyName: response.user.companyName,
+      companyType: response.user.companyType || '',
+      isCompanyAdmin: response.user.isCompanyAdmin,
+      isSystemAdmin: response.user.isSystemAdmin,
+      subscriptionFeatures: response.user.subscriptionFeatures,
+      assignedVehicleIds: response.user.assignedVehicleIds ?? null,
+      userPermissions: response.user.userPermissions ?? null
+    };
   }
 
   getToken(): string | null {
