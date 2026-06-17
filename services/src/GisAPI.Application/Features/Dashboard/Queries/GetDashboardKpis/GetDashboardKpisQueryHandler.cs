@@ -46,26 +46,28 @@ public class GetDashboardKpisQueryHandler : IRequestHandler<GetDashboardKpisQuer
             .Select(v => v.GpsDeviceId!.Value)
             .ToList();
 
-        // Current period positions
-        var currentPositions = await _context.GpsPositions
-            .Where(p => deviceIds.Contains(p.DeviceId) && 
-                       p.RecordedAt >= periodStart && 
-                       p.RecordedAt <= periodEnd)
-            .ToListAsync(cancellationToken);
+        // Agrégations POUSSÉES EN BASE (au lieu de charger des millions de positions en
+        // mémoire via ToListAsync). Chaque agrégat est un COUNT/SUM scalaire côté serveur.
+        var currentQ = _context.GpsPositions.AsNoTracking()
+            .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= periodStart && p.RecordedAt <= periodEnd);
+        var prevQ = _context.GpsPositions.AsNoTracking()
+            .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= prevPeriodStart && p.RecordedAt <= prevPeriodEnd);
 
-        // Previous period positions
-        var prevPositions = await _context.GpsPositions
-            .Where(p => deviceIds.Contains(p.DeviceId) && 
-                       p.RecordedAt >= prevPeriodStart && 
-                       p.RecordedAt <= prevPeriodEnd)
-            .ToListAsync(cancellationToken);
+        int positionCount = 0, movingCount = 0, idleCount = 0, activeVehicleIds = 0;
+        double speedSum = 0.0, prevSpeedSum = 0.0;
+        if (deviceIds.Count > 0)
+        {
+            positionCount    = await currentQ.CountAsync(cancellationToken);
+            speedSum         = await currentQ.SumAsync(p => (double?)p.SpeedKph ?? 0.0, cancellationToken);
+            activeVehicleIds = await currentQ.Select(p => p.DeviceId).Distinct().CountAsync(cancellationToken);
+            movingCount      = await currentQ.CountAsync(p => (p.SpeedKph ?? 0) > 5, cancellationToken);
+            idleCount        = await currentQ.CountAsync(p => (p.SpeedKph ?? 0) < 3, cancellationToken);
+            prevSpeedSum     = await prevQ.SumAsync(p => (double?)p.SpeedKph ?? 0.0, cancellationToken);
+        }
 
-        // Calculate current period metrics
-        var totalDistance = currentPositions.Sum(p => (p.SpeedKph ?? 0) * (1.0 / 60.0)); // Approximate
-        var activeVehicleIds = currentPositions.Select(p => p.DeviceId).Distinct().Count();
-        
-        // Calculate previous period metrics for trends
-        var prevTotalDistance = prevPositions.Sum(p => (p.SpeedKph ?? 0) * (1.0 / 60.0));
+        // Distance approximée (somme des vitesses / 60) — formule inchangée.
+        var totalDistance = speedSum / 60.0;
+        var prevTotalDistance = prevSpeedSum / 60.0;
 
         // Fleet KPIs
         var fleetKpis = new FleetKpisDto
@@ -87,11 +89,11 @@ public class GetDashboardKpisQueryHandler : IRequestHandler<GetDashboardKpisQuer
         var operationalKpis = new OperationalKpisDto
         {
             TotalDistanceKm = Math.Round(totalDistance, 2),
-            TotalTrips = currentPositions.Count(p => (p.SpeedKph ?? 0) > 5) / 10, // Approximate trips
-            TotalDrivingHours = Math.Round(currentPositions.Count / 60.0, 1),
+            TotalTrips = movingCount / 10, // Approximate trips
+            TotalDrivingHours = Math.Round(positionCount / 60.0, 1),
             AvgDailyDistanceKm = Math.Round(totalDistance / Math.Max(daysInPeriod, 1), 2),
-            AvgTripsPerVehicle = vehicles.Count > 0 
-                ? Math.Round((double)(currentPositions.Count(p => (p.SpeedKph ?? 0) > 5) / 10) / vehicles.Count, 1) 
+            AvgTripsPerVehicle = vehicles.Count > 0
+                ? Math.Round((double)(movingCount / 10) / vehicles.Count, 1)
                 : 0,
             ActiveDrivers = vehicles.Count(v => v.AssignedDriverId != null)
         };
@@ -119,10 +121,6 @@ public class GetDashboardKpisQueryHandler : IRequestHandler<GetDashboardKpisQuer
         };
 
         // Performance KPIs
-        var avgSpeed = currentPositions.Any() 
-            ? currentPositions.Where(p => (p.SpeedKph ?? 0) > 0).Average(p => p.SpeedKph ?? 0) 
-            : 0;
-        
         var performanceKpis = new PerformanceKpisDto
         {
             FuelEfficiencyKmPerLiter = 12.5, // Estimated
@@ -130,8 +128,8 @@ public class GetDashboardKpisQueryHandler : IRequestHandler<GetDashboardKpisQuer
             DriverPerformanceScore = 85.0, // Placeholder
             SafetyIncidents = 0,
             OnTimeDeliveryRate = 95.0, // Placeholder
-            IdleTimePercentage = currentPositions.Any() 
-                ? Math.Round((double)currentPositions.Count(p => (p.SpeedKph ?? 0) < 3) / currentPositions.Count * 100, 1) 
+            IdleTimePercentage = positionCount > 0
+                ? Math.Round((double)idleCount / positionCount * 100, 1)
                 : 0
         };
 

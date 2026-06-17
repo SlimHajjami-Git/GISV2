@@ -30,6 +30,7 @@ public class GetFleetStatisticsQueryHandler : IRequestHandler<GetFleetStatistics
 
         // Get vehicles with drivers
         var vehiclesQuery = _context.Vehicles
+            .AsNoTracking()
             .Include(v => v.AssignedDriver)
             .Where(v => v.CompanyId == companyId);
             
@@ -46,12 +47,43 @@ public class GetFleetStatisticsQueryHandler : IRequestHandler<GetFleetStatistics
 
         var deviceIds = deviceVehicleMap.Keys.ToList();
 
-        // Get positions
-        var positions = await _context.GpsPositions
-            .Where(p => deviceIds.Contains(p.DeviceId) && 
-                       p.RecordedAt >= periodStart && 
-                       p.RecordedAt <= periodEnd)
-            .ToListAsync(cancellationToken);
+        // Agrégations POUSSÉES EN BASE : un agrégat par device (≤ nb véhicules) et un
+        // agrégat par device-et-par-jour (≤ nb véhicules × jours du mois). On ne charge
+        // plus toutes les positions du mois en mémoire.
+        List<DevicePeriodAgg> perDevice = new();
+        List<DeviceDayAgg> perDeviceDay = new();
+        if (deviceIds.Count > 0)
+        {
+            var inPeriod = _context.GpsPositions.AsNoTracking()
+                .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= periodStart && p.RecordedAt <= periodEnd);
+
+            perDevice = await inPeriod
+                .GroupBy(p => p.DeviceId)
+                .Select(g => new DevicePeriodAgg
+                {
+                    DeviceId = g.Key,
+                    Count = g.Count(),
+                    SpeedSum = g.Sum(p => (double?)p.SpeedKph) ?? 0.0,
+                    MovingCount = g.Sum(p => (p.SpeedKph ?? 0) > 5 ? 1 : 0),
+                    MaxSpeed = g.Max(p => (double?)p.SpeedKph) ?? 0.0,
+                    MovingSpeedSum = g.Sum(p => (p.SpeedKph ?? 0) > 0 ? (double?)p.SpeedKph : null) ?? 0.0,
+                    MovingPoints = g.Sum(p => (p.SpeedKph ?? 0) > 0 ? 1 : 0)
+                })
+                .ToListAsync(cancellationToken);
+
+            perDeviceDay = await inPeriod
+                .GroupBy(p => new { p.DeviceId, Day = p.RecordedAt.Date })
+                .Select(g => new DeviceDayAgg
+                {
+                    DeviceId = g.Key.DeviceId,
+                    Day = g.Key.Day,
+                    SpeedSum = g.Sum(p => (double?)p.SpeedKph) ?? 0.0
+                })
+                .ToListAsync(cancellationToken);
+        }
+
+        var aggByDevice = perDevice.ToDictionary(x => x.DeviceId);
+        var daysByDevice = perDeviceDay.GroupBy(x => x.DeviceId).ToDictionary(g => g.Key, g => g.ToList());
 
         // Calculate per-vehicle statistics
         var vehicleStats = new List<VehicleStatisticsDto>();
@@ -66,34 +98,43 @@ public class GetFleetStatisticsQueryHandler : IRequestHandler<GetFleetStatistics
                 .Select(kvp => kvp.Key)
                 .ToList();
 
-            var vehiclePositions = positions
-                .Where(p => vehicleDeviceIds.Contains(p.DeviceId))
-                .ToList();
+            // Cumul des agrégats du/des device(s) du véhicule (en général un seul).
+            int positionCount = 0, movingCount = 0, movingPoints = 0;
+            double speedSum = 0.0, movingSpeedSum = 0.0, maxSpeed = 0.0;
+            foreach (var did in vehicleDeviceIds)
+            {
+                if (aggByDevice.TryGetValue(did, out var a))
+                {
+                    positionCount += a.Count;
+                    movingCount += a.MovingCount;
+                    movingPoints += a.MovingPoints;
+                    speedSum += a.SpeedSum;
+                    movingSpeedSum += a.MovingSpeedSum;
+                    if (a.MaxSpeed > maxSpeed) maxSpeed = a.MaxSpeed;
+                }
+            }
 
-            // Calculate metrics
-            var totalDistance = vehiclePositions.Sum(p => (p.SpeedKph ?? 0) * (1.0 / 60.0));
-            var operatingDays = vehiclePositions
-                .Select(p => p.RecordedAt.Date)
-                .Distinct()
-                .Count();
+            // Distances journalières (fusion des jours de tous les device(s) du véhicule).
+            var dayDistances = new Dictionary<DateTime, double>();
+            foreach (var did in vehicleDeviceIds)
+            {
+                if (daysByDevice.TryGetValue(did, out var days))
+                    foreach (var dd in days)
+                        dayDistances[dd.Day] = (dayDistances.TryGetValue(dd.Day, out var cur) ? cur : 0.0) + dd.SpeedSum;
+            }
+
+            // Calculate metrics (mêmes formules qu'avant, mais à partir des agrégats SQL)
+            var totalDistance = speedSum / 60.0;
+            var operatingDays = dayDistances.Count;
             var avgDailyDistance = operatingDays > 0 ? totalDistance / operatingDays : 0;
-            
-            // Group by day for max daily distance
-            var dailyDistances = vehiclePositions
-                .GroupBy(p => p.RecordedAt.Date)
-                .Select(g => g.Sum(p => (p.SpeedKph ?? 0) * (1.0 / 60.0)))
-                .ToList();
-            var maxDailyDistance = dailyDistances.Any() ? dailyDistances.Max() : 0;
+            var maxDailyDistance = dayDistances.Count > 0 ? dayDistances.Values.Max() / 60.0 : 0;
 
             var totalFuel = totalDistance * 0.08; // 8L/100km estimate
             var fuelCost = (decimal)(totalDistance * 0.15);
             var maintenanceCost = (decimal)(totalDistance * 0.05);
             var totalCost = fuelCost + maintenanceCost;
 
-            var avgSpeed = vehiclePositions.Any() 
-                ? vehiclePositions.Where(p => (p.SpeedKph ?? 0) > 0).Average(p => p.SpeedKph ?? 0) 
-                : 0;
-            var maxSpeed = vehiclePositions.Any() ? vehiclePositions.Max(p => p.SpeedKph ?? 0) : 0;
+            var avgSpeed = movingPoints > 0 ? movingSpeedSum / movingPoints : 0;
 
             var stat = new VehicleStatisticsDto
             {
@@ -110,7 +151,7 @@ public class GetFleetStatisticsQueryHandler : IRequestHandler<GetFleetStatistics
                 UtilizationRate = Math.Round((double)operatingDays / daysInPeriod * 100, 1),
                 OperatingDays = operatingDays,
                 IdleDays = daysInPeriod - operatingDays,
-                TotalDrivingHours = Math.Round(vehiclePositions.Count / 60.0, 1),
+                TotalDrivingHours = Math.Round(positionCount / 60.0, 1),
                 
                 TotalFuelLiters = Math.Round(totalFuel, 2),
                 AvgConsumptionPer100Km = 8.0,
@@ -121,7 +162,7 @@ public class GetFleetStatisticsQueryHandler : IRequestHandler<GetFleetStatistics
                 MaintenanceCost = Math.Round(maintenanceCost, 2),
                 CostPerKm = totalDistance > 0 ? Math.Round(totalCost / (decimal)totalDistance, 3) : 0,
                 
-                TotalTrips = vehiclePositions.Count(p => p.SpeedKph > 5) / 10,
+                TotalTrips = movingCount / 10,
                 AvgSpeedKph = Math.Round(avgSpeed, 1),
                 MaxSpeedKph = Math.Round(maxSpeed, 1),
                 SafetyIncidents = 0
@@ -275,6 +316,25 @@ public class GetFleetStatisticsQueryHandler : IRequestHandler<GetFleetStatistics
         var avg = values.Average();
         var sumOfSquares = values.Sum(v => Math.Pow(v - avg, 2));
         return Math.Sqrt(sumOfSquares / (values.Count - 1));
+    }
+
+    // Agrégats projetés par EF Core (aucune position n'est matérialisée côté API).
+    private sealed class DevicePeriodAgg
+    {
+        public int DeviceId { get; set; }
+        public int Count { get; set; }
+        public double SpeedSum { get; set; }
+        public int MovingCount { get; set; }
+        public double MaxSpeed { get; set; }
+        public double MovingSpeedSum { get; set; }
+        public int MovingPoints { get; set; }
+    }
+
+    private sealed class DeviceDayAgg
+    {
+        public int DeviceId { get; set; }
+        public DateTime Day { get; set; }
+        public double SpeedSum { get; set; }
     }
 }
 

@@ -8,6 +8,13 @@ namespace GisAPI.Application.Features.Dashboard.Queries.GetDashboardCharts;
 
 internal record VehicleDistanceData(int VehicleId, double Distance);
 
+internal sealed class ChartDayAgg
+{
+    public int DeviceId { get; set; }
+    public DateTime Day { get; set; }
+    public double SpeedSum { get; set; }
+}
+
 public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardChartsQuery, DashboardChartsDto>
 {
     private readonly IGisDbContext _context;
@@ -51,21 +58,39 @@ public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardCharts
 
         var deviceIds = deviceVehicleMap.Keys.ToList();
 
-        // Get positions for the period
-        var positions = await _context.GpsPositions
-            .Where(p => deviceIds.Contains(p.DeviceId) && 
-                       p.RecordedAt >= periodStart && 
-                       p.RecordedAt <= periodEnd)
-            .ToListAsync(cancellationToken);
+        // Agrégation POUSSÉE EN BASE : une ligne par (device, jour) au lieu de toutes les
+        // positions du mois. Suffit pour la distance/véhicule et les tendances journalières.
+        var perDeviceDay = new List<ChartDayAgg>();
+        if (deviceIds.Count > 0)
+        {
+            perDeviceDay = await _context.GpsPositions.AsNoTracking()
+                .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= periodStart && p.RecordedAt <= periodEnd)
+                .GroupBy(p => new { p.DeviceId, Day = p.RecordedAt.Date })
+                .Select(g => new ChartDayAgg
+                {
+                    DeviceId = g.Key.DeviceId,
+                    Day = g.Key.Day,
+                    SpeedSum = g.Sum(p => (double?)p.SpeedKph) ?? 0.0
+                })
+                .ToListAsync(cancellationToken);
+        }
 
-        // Calculate distance per vehicle (simplified calculation)
-        var distanceByVehicle = positions
-            .GroupBy(p => deviceVehicleMap.GetValueOrDefault(p.DeviceId))
+        // Distance par véhicule (somme des vitesses / 60) — formule inchangée.
+        var distanceByVehicle = perDeviceDay
+            .GroupBy(x => deviceVehicleMap.GetValueOrDefault(x.DeviceId))
             .Where(g => g.Key > 0)
-            .Select(g => new VehicleDistanceData(g.Key, g.Sum(p => (p.SpeedKph ?? 0) * (1.0 / 60.0))))
+            .Select(g => new VehicleDistanceData(g.Key, g.Sum(x => x.SpeedSum) / 60.0))
             .ToList();
-        
+
         var totalDistance = distanceByVehicle.Sum(d => d.Distance);
+
+        // Pré-agrégats journaliers (tous véhicules confondus) pour les tendances.
+        var distanceByDay = perDeviceDay
+            .GroupBy(x => x.Day)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.SpeedSum) / 60.0);
+        var activeDevicesByDay = perDeviceDay
+            .GroupBy(x => x.Day)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.DeviceId).Distinct().Count());
 
         // Build charts
         var result = new DashboardChartsDto
@@ -75,8 +100,8 @@ public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardCharts
             DistanceByVehicle = BuildDistanceByVehicleChart(vehicles, distanceByVehicle),
             FuelDistribution = BuildFuelDistributionChart(vehicles, distanceByVehicle),
             MaintenanceTrend = BuildMaintenanceTrendChart(vehicles, periodStart),
-            DailyDistanceTrend = BuildDailyDistanceTrend(positions, deviceVehicleMap, periodStart, periodEnd),
-            UtilizationTrend = BuildUtilizationTrend(positions, vehicles.Count, periodStart, periodEnd),
+            DailyDistanceTrend = BuildDailyDistanceTrend(distanceByDay, periodStart, periodEnd),
+            UtilizationTrend = BuildUtilizationTrend(activeDevicesByDay, vehicles.Count, periodStart, periodEnd),
             CostBreakdown = BuildCostBreakdownChart(totalDistance),
             VehicleStatusChart = BuildVehicleStatusChart(vehicles),
             TopVehicles = BuildTopVehiclesChart(vehicles, distanceByVehicle)
@@ -173,8 +198,7 @@ public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardCharts
     }
 
     private LineChartDataDto BuildDailyDistanceTrend(
-        List<GpsPosition> positions,
-        Dictionary<int, int> deviceVehicleMap,
+        Dictionary<DateTime, double> distanceByDay,
         DateTime periodStart,
         DateTime periodEnd)
     {
@@ -184,15 +208,7 @@ public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardCharts
             .ToList();
 
         var dailyDistance = Enumerable.Range(0, Math.Min(daysInMonth, 31))
-            .Select(d =>
-            {
-                var dayStart = periodStart.AddDays(d);
-                var dayEnd = dayStart.AddDays(1);
-                return positions
-                    .Where(p => p.RecordedAt >= dayStart && p.RecordedAt < dayEnd)
-                    .Sum(p => (p.SpeedKph ?? 0) * (1.0 / 60.0));
-            })
-            .Select(v => Math.Round(v, 1))
+            .Select(d => Math.Round(distanceByDay.GetValueOrDefault(periodStart.AddDays(d).Date), 1))
             .ToList();
 
         return new LineChartDataDto
@@ -215,7 +231,7 @@ public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardCharts
     }
 
     private LineChartDataDto BuildUtilizationTrend(
-        List<GpsPosition> positions,
+        Dictionary<DateTime, int> activeDevicesByDay,
         int totalVehicles,
         DateTime periodStart,
         DateTime periodEnd)
@@ -228,13 +244,7 @@ public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardCharts
         var dailyUtilization = Enumerable.Range(0, Math.Min(daysInMonth, 31))
             .Select(d =>
             {
-                var dayStart = periodStart.AddDays(d);
-                var dayEnd = dayStart.AddDays(1);
-                var activeDevices = positions
-                    .Where(p => p.RecordedAt >= dayStart && p.RecordedAt < dayEnd)
-                    .Select(p => p.DeviceId)
-                    .Distinct()
-                    .Count();
+                var activeDevices = activeDevicesByDay.GetValueOrDefault(periodStart.AddDays(d).Date);
                 return totalVehicles > 0 ? (double)activeDevices / totalVehicles * 100 : 0;
             })
             .Select(v => Math.Round(v, 1))
