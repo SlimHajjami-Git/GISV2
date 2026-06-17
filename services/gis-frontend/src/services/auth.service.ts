@@ -256,8 +256,8 @@ export class AuthService {
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('auth_user');
     localStorage.removeItem('admin_token');
-    localStorage.removeItem('admin_refresh');
     localStorage.removeItem('admin_user');
+    localStorage.removeItem('impersonating_active');
     this.currentUser$.next(null);
   }
 
@@ -313,58 +313,36 @@ export class AuthService {
   }
 
   // ─────────── Impersonation ("voir en tant que", super-admin) ───────────
+  // NB : l'espace /admin utilise admin_token/admin_user pour SA propre session. On n'y
+  // touche donc PAS ici ; la session "voir en tant que" vit dans les clés client
+  // (auth_token/auth_user) + un simple flag pour l'identifier.
 
-  /** True si une session d'impersonation est active (le contexte admin est mis de côté). */
+  /** True si une session "voir en tant que" est active dans l'app client. */
   isImpersonating(): boolean {
-    return !!localStorage.getItem('admin_token');
+    return localStorage.getItem('impersonating_active') === '1';
   }
 
   /**
-   * Super-admin : prend le POV d'un utilisateur (sa société, ses permissions/features).
-   * Le contexte admin (token + refresh + user) est sauvegardé pour pouvoir revenir.
+   * Démarre une session client au périmètre de l'utilisateur cible, à partir de la
+   * réponse de POST /auth/impersonate (appelée par l'espace admin avec son token admin).
    */
-  impersonateUser(userId: number): Observable<AuthUser | null> {
-    const alreadyImpersonating = this.isImpersonating();
-    const adminToken = localStorage.getItem('auth_token');
-    const adminRefresh = localStorage.getItem('refresh_token');
-    const adminUser = localStorage.getItem('auth_user');
-
-    return this.http.post<AuthResponse>(`${this.API_URL}/auth/impersonate`, { userId }).pipe(
-      map(response => {
-        const user = this.mapAuthResponse(response);
-        // Sauvegarde du contexte admin une seule fois (pour revenir au vrai admin,
-        // même en cas d'impersonations enchaînées).
-        if (!alreadyImpersonating && adminToken && adminUser) {
-          localStorage.setItem('admin_token', adminToken);
-          if (adminRefresh) localStorage.setItem('admin_refresh', adminRefresh);
-          localStorage.setItem('admin_user', adminUser);
-        }
-        localStorage.setItem('auth_token', response.token);
-        localStorage.setItem('refresh_token', response.refreshToken);
-        localStorage.setItem('auth_user', JSON.stringify(user));
-        this.currentUser$.next(user);
-        return user;
-      }),
-      catchError(err => {
-        console.error('AuthService.impersonateUser - Error:', err);
-        return of(null);
-      })
-    );
+  beginImpersonation(response: AuthResponse): AuthUser {
+    const user = this.mapAuthResponse(response);
+    localStorage.setItem('auth_token', response.token);
+    localStorage.setItem('refresh_token', response.refreshToken);
+    localStorage.setItem('auth_user', JSON.stringify(user));
+    localStorage.setItem('impersonating_active', '1');
+    this.currentUser$.next(user);
+    return user;
   }
 
-  /** Revient au compte super-admin d'origine. */
+  /** Termine le "voir en tant que" : efface la session client impersonée (le retour se fait vers /admin). */
   stopImpersonation(): void {
-    const t = localStorage.getItem('admin_token');
-    const r = localStorage.getItem('admin_refresh');
-    const u = localStorage.getItem('admin_user');
-    if (!t || !u) return;
-    localStorage.setItem('auth_token', t);
-    if (r) localStorage.setItem('refresh_token', r); else localStorage.removeItem('refresh_token');
-    localStorage.setItem('auth_user', u);
-    localStorage.removeItem('admin_token');
-    localStorage.removeItem('admin_refresh');
-    localStorage.removeItem('admin_user');
-    this.loadStoredAuth();
+    localStorage.removeItem('impersonating_active');
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('auth_user');
+    this.currentUser$.next(null);
   }
 
   /** Mappe la réponse d'auth (login/impersonate) vers AuthUser. */

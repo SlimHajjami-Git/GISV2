@@ -343,6 +343,14 @@ export class AdminService {
     return this.adminUserSubject.value;
   }
 
+  /**
+   * Super-admin : génère un jeton "voir en tant que" pour l'utilisateur cible.
+   * Authentifié avec le token admin (le backend exige le rôle system_admin).
+   */
+  impersonate(userId: number): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/auth/impersonate`, { userId }, { headers: this.getHeaders() });
+  }
+
   private getHeaders(): HttpHeaders {
     const token = localStorage.getItem('admin_token');
     return new HttpHeaders({

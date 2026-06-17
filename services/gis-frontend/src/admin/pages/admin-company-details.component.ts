@@ -2183,11 +2183,15 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
   /** Super-admin : prend le POV de cet utilisateur (voir l'app exactement comme lui). */
   impersonate(user: SystemUser) {
     if (!confirm(`Voir l'application en tant que ${user.name} (société ${this.company?.name || ''}) ?`)) return;
-    this.authService.impersonateUser(user.id).pipe(takeUntil(this.destroy$)).subscribe(result => {
-      if (result) {
-        // Recharge complète pour appliquer le contexte du POV dans toute l'app.
+    // L'appel est authentifié avec le token admin (espace /admin). On démarre ensuite
+    // la session client au périmètre de la cible, puis on bascule vers l'app client.
+    this.adminService.impersonate(user.id).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (response) => {
+        this.authService.beginImpersonation(response);
         window.location.href = '/dashboard';
-      } else {
+      },
+      error: (err) => {
+        console.error('Impersonation error:', err);
         alert("Impossible de prendre le POV de cet utilisateur.");
       }
     });

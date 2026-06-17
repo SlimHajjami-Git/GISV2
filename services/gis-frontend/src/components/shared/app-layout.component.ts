@@ -1454,7 +1454,7 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   isImpersonating(): boolean { return this.authService.isImpersonating(); }
   get impersonatedName(): string { return this.authService.getCurrentUserSync()?.name || ''; }
   get impersonatedCompany(): string { return this.authService.getCurrentUserSync()?.companyName || ''; }
-  stopImpersonation(): void { this.authService.stopImpersonation(); window.location.href = '/dashboard'; }
+  stopImpersonation(): void { this.authService.stopImpersonation(); window.location.href = '/admin/clients'; }
   notifications: Notification[] = [];
   showNotifications = false;
   showUserMenu = false;
