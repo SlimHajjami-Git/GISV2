@@ -240,7 +240,7 @@ export class MultiPlaybackComponent implements OnInit, OnDestroy {
       },
       error: (e) => {
         this.loading = false;
-        this.loadError = 'Erreur de chargement de l\\'historique.';
+        this.loadError = "Erreur de chargement de l'historique.";
         console.error(e);
       }
     });
