@@ -1,9 +1,11 @@
 export const environment = {
   production: false,
   apiUrl: '/api',
-  // Branding + default map view + default currency — overridable per deployment
-  // (Tunisie/Calypso/TND by default; the Algeria/Bougeo build overrides these in
-  // environment.prod.ts, e.g. defaultCurrency: 'DZD').
+  // Branding + default map view + default currency. THIS is the file every build
+  // bundles — angular.json has no fileReplacements, so environment.prod.ts is NOT
+  // used. Each deployment edits these values locally before building its image
+  // (Tunisie/Calypso/TND here by default; the Algeria/Bougeo build sets
+  // brandName: 'Bougeo' and defaultCurrency: 'DZD' in its own copy of this file).
   brandName: 'Calypso',
   mapCenter: { lat: 36.8065, lng: 10.1815, zoom: 8 },
   // ISO code used as the fallback display currency for operators who have not
