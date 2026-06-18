@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
+import { environment } from '../environments/environment';
 
 /**
  * Centralised store for every operator-facing display preference.
@@ -65,7 +66,10 @@ const LEGACY_SETTINGS_KEY = 'appSettings';
 const DEFAULTS: UserPreferences = {
   language: 'fr',
   timezone: 'Africa/Tunis',
-  currency: 'TND',
+  // Per-deployment default (environment.defaultCurrency): TND for Calypso/Tunisie,
+  // DZD for the Algeria/Bougeo build. Falls back to TND if the field is absent.
+  // Operators who explicitly pick a currency in /settings override this.
+  currency: ((environment as { defaultCurrency?: Currency }).defaultCurrency) || 'TND',
   dateFormat: 'dd/MM/yyyy',
   distanceUnit: 'km',
   speedUnit: 'kmh',

@@ -3583,7 +3583,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             mode: 'index',
             intersect: false,
             callbacks: {
-              label: (ctx) => `${ctx.dataset.label}: ${(ctx.parsed.y ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} TND`
+              label: (ctx) => `${ctx.dataset.label}: ${(ctx.parsed.y ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} ${this.getCurrencyCode()}`
             }
           }
         },
@@ -3592,8 +3592,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
           y: { 
             beginAtZero: true, 
             stacked: true,
-            title: { display: true, text: 'Coût maintenance (TND)' },
-            ticks: { callback: (value) => `${value.toLocaleString('fr-FR')} TND` }
+            title: { display: true, text: `Coût maintenance (${this.getCurrencyCode()})` },
+            ticks: { callback: (value) => `${value.toLocaleString('fr-FR')} ${this.getCurrencyCode()}` }
           }
         },
         interaction: {
@@ -5249,7 +5249,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         data: {
           labels: this.secondaryChartData.map(d => d.label),
           datasets: [{
-            label: 'Coût (TND)',
+            label: `Coût (${this.getCurrencyCode()})`,
             data: this.secondaryChartData.map(d => d.value),
             backgroundColor: this.secondaryChartData.map((_, i) => this.chartColors[i % this.chartColors.length] + 'CC'),
             borderColor: this.secondaryChartData.map((_, i) => this.chartColors[i % this.chartColors.length]),
@@ -5266,7 +5266,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             title: { display: true, text: '💰 Coûts par véhicule', font: { size: 12, weight: 'bold' } }
           },
           scales: {
-            x: { beginAtZero: true, title: { display: true, text: 'Coût (TND)' } }
+            x: { beginAtZero: true, title: { display: true, text: `Coût (${this.getCurrencyCode()})` } }
           }
         }
       });
@@ -5277,7 +5277,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         data: {
           labels: this.secondaryChartData.map(d => d.label),
           datasets: [{
-            label: 'Coût (TND)',
+            label: `Coût (${this.getCurrencyCode()})`,
             data: this.secondaryChartData.map(d => d.value),
             backgroundColor: this.secondaryChartData.map((_, i) => this.chartColors[i % this.chartColors.length] + 'CC'),
             borderColor: this.secondaryChartData.map((_, i) => this.chartColors[i % this.chartColors.length]),
@@ -5294,7 +5294,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             title: { display: true, text: '🔧 Coûts maintenance par véhicule', font: { size: 12, weight: 'bold' } }
           },
           scales: {
-            x: { beginAtZero: true, title: { display: true, text: 'Coût (TND)' } }
+            x: { beginAtZero: true, title: { display: true, text: `Coût (${this.getCurrencyCode()})` } }
           }
         }
       });
@@ -5850,7 +5850,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             'Véhicules analysés': report.vehicleCount.toString(),
             'Distance totale': `${Math.round(report.totalFleetDistanceKm)} km`,
             'Carburant consommé': `${report.totalFleetFuelConsumedLiters.toFixed(1)} L`,
-            'Coût total estimé': `${Math.round(report.totalFleetFuelCost)} TND`,
+            'Coût total estimé': `${Math.round(report.totalFleetFuelCost)} ${this.getCurrencyCode()}`,
             'Consommation moyenne': `${report.fleetAverageConsumptionPer100Km.toFixed(2)} L/100km`,
             'Écart-type': `${report.fleetStandardDeviation.toFixed(2)} L/100km`
           };
@@ -5907,7 +5907,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             labels,
             datasets: [
               {
-                label: 'Coût (TND)',
+                label: `Coût (${this.getCurrencyCode()})`,
                 data: sorted.map(v => v.totalFuelCost),
                 backgroundColor: 'rgba(22, 163, 74, 0.75)',
                 borderColor: '#16a34a',
@@ -5971,7 +5971,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
               y: {
                 type: 'linear',
                 position: 'left',
-                title: { display: true, text: 'Litres / TND' },
+                title: { display: true, text: `Litres / ${this.getCurrencyCode()}` },
                 beginAtZero: true
               },
               y1: {
@@ -6019,7 +6019,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
                     const value = context.raw as number;
                     const total = this.fuelEstimationReport!.totalFleetFuelCost;
                     const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
-                    return `${context.label}: ${value.toFixed(2)} TND (${pct}%)`;
+                    return `${context.label}: ${value.toFixed(2)} ${this.getCurrencyCode()} (${pct}%)`;
                   }
                 }
               }
@@ -6051,7 +6051,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         labels: trends.map(t => t.monthName),
         datasets: [
           {
-            label: 'Coût (TND)',
+            label: `Coût (${this.getCurrencyCode()})`,
             data: trends.map(t => t.totalCost),
             backgroundColor: '#3B82F6',
             borderRadius: 4,
@@ -6081,7 +6081,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           y: {
             type: 'linear',
             position: 'left',
-            title: { display: true, text: 'Coût (TND)' }
+            title: { display: true, text: `Coût (${this.getCurrencyCode()})` }
           },
           y1: {
             type: 'linear',
@@ -6160,7 +6160,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       .map(g => {
         const dateStr = g.date.toLocaleDateString('fr-FR') + ' ' +
           g.date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-        return `${dateStr}: +${g.liters.toFixed(1)} L (~${g.cost.toFixed(2)} TND)`;
+        return `${dateStr}: +${g.liters.toFixed(1)} L (~${g.cost.toFixed(2)} ${this.getCurrencyCode()})`;
       })
       .join('\n');
   }

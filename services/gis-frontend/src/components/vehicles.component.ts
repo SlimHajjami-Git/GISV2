@@ -11,6 +11,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
 import { VehiclePopupComponent } from './shared/vehicle-popup.component';
 import { VehicleCostsPopupComponent } from './shared/vehicle-costs-popup.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
+import { UserPreferencesService } from '../services/user-preferences.service';
 // Calypso 7: VehicleInfoComponent has been folded into VehiclePopupComponent.
 // The unified popup handles identification + GPS (admin-only) + acquisition
 // in a single surface, so the legacy slide-panel is no longer needed here.
@@ -2519,7 +2520,8 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     private geocodingService: GeocodingService,
     private ngZone: NgZone,
     private cdr: ChangeDetectorRef,
-    private appRef: ApplicationRef
+    private appRef: ApplicationRef,
+    private userPrefs: UserPreferencesService
   ) {}
 
   ngOnInit() {
@@ -2628,7 +2630,10 @@ export class VehiclesComponent implements OnInit, OnDestroy {
   }
 
   formatCurrency(amount: number): string {
-    return new Intl.NumberFormat('fr-TN', { style: 'currency', currency: 'TND' }).format(amount);
+    // Delegate to the shared prefs service so the currency follows the
+    // per-deployment default (TND on Calypso, DZD on the Algeria/Bougeo build)
+    // and any operator override picked in /settings.
+    return this.userPrefs.formatCurrency(amount);
   }
 
   formatDate(date: Date | string): string {
