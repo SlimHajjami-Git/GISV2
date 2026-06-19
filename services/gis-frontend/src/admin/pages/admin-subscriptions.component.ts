@@ -6,6 +6,7 @@ import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, SubscriptionType } from '../services/admin.service';
+import { environment } from '../../environments/environment';
 
 @Component({
   selector: 'admin-subscriptions',
@@ -39,7 +40,7 @@ import { AdminService, SubscriptionType } from '../services/admin.service';
               </div>
               <div class="type-info">
                 <h3>{{ type.name }}</h3>
-                <span class="type-price">{{ type.yearlyPrice | number:'1.0-0' }} DT/an</span>
+                <span class="type-price">{{ type.yearlyPrice | number:'1.0-0' }} {{ currencyCode }}/an</span>
               </div>
               <div class="type-badges">
                 <span *ngIf="!type.isActive" class="badge inactive">Inactif</span>
@@ -145,7 +146,7 @@ import { AdminService, SubscriptionType } from '../services/admin.service';
                 </div>
                 <div class="form-row">
                   <div class="form-group">
-                    <label>Prix annuel (DT) *</label>
+                    <label>Prix annuel ({{ currencyCode }}) *</label>
                     <input type="number" [(ngModel)]="formData.yearlyPrice" min="0" step="0.01">
                   </div>
                   <div class="form-group">
@@ -680,7 +681,9 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
   editingType: SubscriptionType | null = null;
   typeToDelete: SubscriptionType | null = null;
   activeTab: 'general' | 'limits' | 'modules' | 'reports' | 'features' = 'general';
-  
+
+  get currencyCode(): string { return (environment as { defaultCurrency?: string }).defaultCurrency || 'TND'; }
+
   formData = this.getEmptyForm();
 
   availableModules = [

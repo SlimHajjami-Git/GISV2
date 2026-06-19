@@ -203,7 +203,7 @@ interface PartPricing {
                     </select>
                   </div>
                   <div class="form-group">
-                    <label>Prix par litre (DT)</label>
+                    <label>Prix par litre ({{ currencyCode }})</label>
                     <input type="number" [(ngModel)]="newPrice.price" step="0.001" placeholder="0.000">
                   </div>
                   <button class="btn-primary" (click)="saveFuelPrice()" [disabled]="!newPrice.fuelTypeId || !newPrice.price">
@@ -587,7 +587,7 @@ interface PartPricing {
           </div>
           <div class="modal-body">
             <div class="form-group">
-              <label>Prix (DT) *</label>
+              <label>Prix ({{ currencyCode }}) *</label>
               <input type="number" [(ngModel)]="partPricingForm.price" placeholder="0.00" min="0" step="0.01">
             </div>
             <div class="form-group">
@@ -1833,6 +1833,11 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
   get speedUnitLabel(): string {
     return this.userPrefs.current.speedUnit === 'mph' ? 'mph' : 'km/h';
   }
+
+  /** Active ISO currency code (e.g. "DZD") for label adornments. */
+  get currencyCode(): string {
+    return this.userPrefs.current.currency;
+  }
   private get isMph(): boolean { return this.userPrefs.current.speedUnit === 'mph'; }
 
   /** km/h (stored) → value shown in the input, in the operator's unit. */
@@ -2023,7 +2028,7 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
         this.newPrice = { fuelTypeId: null, price: null };
         this.loadFuelTypes();
         this.cdr.detectChanges();
-        alert(`Prix enregistré pour ${fuelName} : ${price.toFixed(3)} DT/L`);
+        alert(`Prix enregistré pour ${fuelName} : ${this.userPrefs.formatCurrency(price, 3)}/L`);
       },
       error: (err) => {
         console.error('Error saving fuel price:', err);

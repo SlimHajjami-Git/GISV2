@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
+import { UserPreferencesService } from '../services/user-preferences.service';
 import { ApiService } from '../services/api.service';
 import { trigger, transition, style, animate } from '@angular/animations';
 
@@ -297,7 +298,7 @@ interface FlatRow {
               <div class="field"><label>Intervalle (mois)</label><input type="number" [(ngModel)]="form.intervalMonths" placeholder="12"></div>
             </div>
             <div class="field-row">
-              <div class="field"><label>Cout estime (DT)</label><input type="number" [(ngModel)]="form.estimatedCost" placeholder="0" min="0" step="0.01"></div>
+              <div class="field"><label>Cout estime ({{ currencyCode }})</label><input type="number" [(ngModel)]="form.estimatedCost" placeholder="0" min="0" step="0.01"></div>
               <div class="field"></div>
             </div>
             <div class="field toggle"><label><input type="checkbox" [(ngModel)]="form.isActive"><span class="switch"></span> Actif</label></div>
@@ -349,7 +350,7 @@ interface FlatRow {
                 <div class="free-banner-sub">
                   <span *ngIf="markData.freeSource">Source : <strong>{{ markData.freeSource }}</strong>. </span>
                   <span *ngIf="markData.freeExpiryDate">Valable jusqu'au <strong>{{ markData.freeExpiryDate | date:'dd/MM/yyyy' }}</strong>. </span>
-                  En cochant ci-dessous, le coût sera automatiquement mis à 0 DT et le compteur sera décrémenté.
+                  En cochant ci-dessous, le coût sera automatiquement mis à 0 {{ currencyCode }} et le compteur sera décrémenté.
                 </div>
                 <label class="free-banner-check">
                   <input type="checkbox" [(ngModel)]="markData.applyFreeBenefit" name="applyFreeBenefit"
@@ -403,7 +404,7 @@ interface FlatRow {
                       <input type="number" [(ngModel)]="line.price" placeholder="0"
                              [readonly]="isLineFree(line)"
                              [class.is-free]="isLineFree(line)">
-                      <span>DT</span>
+                      <span>{{ currencyCode }}</span>
                     </div>
                   </div>
                   <div class="inv-hint" *ngIf="line.templateId && lastPaidPrices.get(line.templateId)">Dernier prix: {{ lastPaidPrices.get(line.templateId) | appCurrency:0 }}</div>
@@ -970,7 +971,9 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   soonItems: any[] = [];
   okItems: any[] = [];
 
-  constructor(private apiService: ApiService, private ngZone: NgZone, private cdr: ChangeDetectorRef) {}
+  constructor(private apiService: ApiService, private ngZone: NgZone, private cdr: ChangeDetectorRef, private userPrefs: UserPreferencesService) {}
+
+  get currencyCode(): string { return this.userPrefs.current.currency; }
 
   ngOnInit() { this.loadTemplates(); this.loadVehicles(); this.loadAllVehicles(); }
 
@@ -1420,9 +1423,9 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
         <tr>
           <td>${date}</td>
           <td>${(l.doneKm || 0).toLocaleString('fr-FR')} km</td>
-          <td>${estimated.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</td>
-          <td>${real.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</td>
-          <td style="${diffClass}; font-weight:600">${(diff >= 0 ? '+' : '')}${diff.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</td>
+          <td>${this.userPrefs.formatCurrency(estimated)}</td>
+          <td>${this.userPrefs.formatCurrency(real)}</td>
+          <td style="${diffClass}; font-weight:600">${diff >= 0 ? '+' : ''}${this.userPrefs.formatCurrency(diff)}</td>
           <td>${l.supplierName || '—'}</td>
           <td>${l.notes || ''}</td>
         </tr>
@@ -1451,7 +1454,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
         <h1>Historique d'entretien</h1>
         <div class="meta">
           <strong>${this.historyVehicleName}</strong> (${this.historyVehiclePlate}) — ${this.historyTemplateName}<br>
-          Coût estimé: <strong>${estimated.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</strong>
+          Coût estimé: <strong>${this.userPrefs.formatCurrency(estimated)}</strong>
         </div>
         <table>
           <thead>
@@ -1471,9 +1474,9 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
               <td colspan="2">TOTAL</td>
               <!-- Calypso 6 (P7.2): show total estimated AND total real side by
                    side in the footer so the comparison is immediate. -->
-              <td>${(estimated * this.historyLogs.length).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</td>
-              <td>${totalReal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</td>
-              <td>${(totalReal - estimated * this.historyLogs.length).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</td>
+              <td>${this.userPrefs.formatCurrency(estimated * this.historyLogs.length)}</td>
+              <td>${this.userPrefs.formatCurrency(totalReal)}</td>
+              <td>${this.userPrefs.formatCurrency(totalReal - estimated * this.historyLogs.length)}</td>
               <td colspan="2">${this.historyLogs.length} entrée(s)</td>
             </tr>
           </tfoot>

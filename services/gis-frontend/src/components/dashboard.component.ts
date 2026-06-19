@@ -7,13 +7,15 @@ import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { SignalRService } from '../services/signalr.service';
 import { Company } from '../models/types';
+import { UserPreferencesService } from '../services/user-preferences.service';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { DateFilterBarComponent } from './shared/ui';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, DateFilterBarComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, DateFilterBarComponent, ...USER_PREF_PIPES],
   template: `
 <app-layout>
 <div class="dash">
@@ -70,7 +72,7 @@ import { DateFilterBarComponent } from './shared/ui';
         <div class="kpi-ic">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="13" rx="2.5"/><path d="M2 10h20"/></svg>
         </div>
-        <div class="kpi-meta"><span class="kpi-label">Coût total</span><span class="kpi-num">{{ dCost | number:'1.0-0' }}<i>DT</i></span><span class="kpi-sub" *ngIf="costTrend!==null && costTrend!==0" [class.bad]="costTrend>0" [class.good]="costTrend<0">{{ costTrend>0?'▲':'▼' }} {{ absPct(costTrend) }}% <small>vs préc.</small></span></div>
+        <div class="kpi-meta"><span class="kpi-label">Coût total</span><span class="kpi-num">{{ dCost | number:'1.0-0' }}<i>{{ currencyCode }}</i></span><span class="kpi-sub" *ngIf="costTrend!==null && costTrend!==0" [class.bad]="costTrend>0" [class.good]="costTrend<0">{{ costTrend>0?'▲':'▼' }} {{ absPct(costTrend) }}% <small>vs préc.</small></span></div>
       </div>
       <div class="kpi" style="--c:#ef4444" [class.kpi-alert]="dAlerts>0">
         <div class="kpi-ic">
@@ -180,10 +182,10 @@ import { DateFilterBarComponent } from './shared/ui';
 
       <!-- Dépenses -->
       <section class="card c4 reveal" style="--d:5">
-        <div class="card-h"><h3>Dépenses</h3><span class="badge badge-amber">{{ totalCost|number:'1.0-0' }} DT</span></div>
+        <div class="card-h"><h3>Dépenses</h3><span class="badge badge-amber">{{ totalCost | appCurrency:0 }}</span></div>
         <div class="rows">
           <div *ngFor="let e of expItems" class="exp">
-            <div class="exp-top"><span class="leg-dot sm" [style.background]="e.color"></span><span class="exp-name">{{ e.name }}</span><b>{{ e.value|number:'1.0-0' }} DT</b></div>
+            <div class="exp-top"><span class="leg-dot sm" [style.background]="e.color"></span><span class="exp-name">{{ e.name }}</span><b>{{ e.value | appCurrency:0 }}</b></div>
             <div class="track"><div class="fill" [style.width.%]="totalCost?(e.value/totalCost)*100:0" [style.background]="e.color"></div></div>
           </div>
         </div>
@@ -634,7 +636,9 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   get pTrips(){return this.recentTrips.slice(this.trP*5,this.trP*5+5);}
   get pDrv(){return this.drivers.slice(this.drP*8,this.drP*8+8);}
 
-  constructor(private router:Router,private apiService:ApiService,private signalrService:SignalRService,private cdr:ChangeDetectorRef){}
+  constructor(private router:Router,private apiService:ApiService,private signalrService:SignalRService,private cdr:ChangeDetectorRef,private userPrefs:UserPreferencesService){}
+
+  get currencyCode():string{return this.userPrefs.current.currency;}
 
   ngOnInit(){
     if(!this.apiService.isAuthenticated()){this.router.navigate(['/login']);return;}

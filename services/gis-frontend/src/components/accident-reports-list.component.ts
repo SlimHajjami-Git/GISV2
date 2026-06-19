@@ -10,6 +10,8 @@ import {
 } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { Vehicle } from '../models/types';
+import { UserPreferencesService } from '../services/user-preferences.service';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 
 /**
  * Calypso 6 (P9) — admin list of every `accident_events` row for the
@@ -28,7 +30,7 @@ import { Vehicle } from '../models/types';
 @Component({
   selector: 'app-accident-reports-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, DatePipe],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, DatePipe, ...USER_PREF_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-layout>
@@ -172,7 +174,7 @@ import { Vehicle } from '../models/types';
 
             <div class="field-row">
               <div class="field">
-                <label>Coût estimé (DT)</label>
+                <label>Coût estimé ({{ currencyCode }})</label>
                 <input type="number" [(ngModel)]="manualForm.estimatedCost" step="0.01" placeholder="0.00">
               </div>
               <div class="field">
@@ -320,8 +322,12 @@ export class AccidentReportsListComponent implements OnInit, OnDestroy {
   constructor(
     private api: ApiService,
     private router: Router,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private userPrefs: UserPreferencesService
   ) {}
+
+  /** Active/default ISO currency code (e.g. "DZD") for label adornments. */
+  get currencyCode(): string { return this.userPrefs.current.currency; }
 
   ngOnInit(): void {
     this.reload();
@@ -422,7 +428,7 @@ export class AccidentReportsListComponent implements OnInit, OnDestroy {
   formatBestCost(row: AccidentEventListItemDto): string {
     const value = row.actualRepairCost ?? row.mechanicQuotedAmount ?? row.expertEstimatedAmount ?? null;
     if (value == null) return '—';
-    return `${value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT`;
+    return this.userPrefs.formatCurrency(value);
   }
 
   // Manual creation form ---------------------------------------------------

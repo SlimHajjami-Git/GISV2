@@ -5539,7 +5539,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       { header: 'Plaque', dataKey: 'plate' },
       { header: 'Distance (km)', dataKey: 'distance' },
       { header: 'Conso. est. (L)', dataKey: 'fuel' },
-      { header: 'Coût est. (DA)', dataKey: 'cost' },
+      { header: `Coût est. (${this.getCurrencyCode()})`, dataKey: 'cost' },
       { header: 'L/100km', dataKey: 'consumption' }
     ];
     const data = (report as any).vehicles?.map((v: any) => ({
@@ -5649,7 +5649,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.tableData = this.fuelComparisonRows.map((row: FuelComparisonRow) => ({
       'Véhicule': row.vehicleName || row.plate,
       'Réel (L)': round(row.realLiters, 1),
-      'Réel (DT)': round(row.realCost, 2),
+      'Réel': round(row.realCost, 2),
       'Boitier (L)': round(row.gpsLiters, 1),
       'Source': sourceLabel(row.gpsSource),
       'Distance (km)': row.distanceKm,
@@ -5667,7 +5667,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     this.statisticsData = {
       'Carburant facturé (réel)': round(totalReal, 1) + ' L',
-      'Coût total': round(report?.totalRealCost || 0, 2) + ' DT',
+      'Coût total': round(report?.totalRealCost || 0, 2) + ' ' + this.getCurrencyCode(),
       'Carburant boitier (GPS)': round(totalGps, 1) + ' L',
       'Écart total': round(totalReal - totalGps, 1) + ' L',
       'Véhicules suspects': suspectCount,
@@ -5896,7 +5896,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const sorted = [...expenses].sort((a, b) => b.totalFuelCost - a.totalFuelCost);
     const labels = sorted.map(v => v.vehicleName.length > 12 ? v.vehicleName.substring(0, 12) + '…' : v.vehicleName);
 
-    // ===== CHART 1: Per-vehicle Consumption (L) vs Cost (TND) with L/100km line =====
+    // ===== CHART 1: Per-vehicle Consumption (L) vs Cost (active currency) with L/100km line =====
     const canvas = this.chartCanvas?.nativeElement;
     if (canvas) {
       const ctx = canvas.getContext('2d');

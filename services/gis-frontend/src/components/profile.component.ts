@@ -38,7 +38,6 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
   country: 'TN',
   language: 'fr',
   timezone: 'Africa/Tunis',
-  currency: 'TND',
   dateFormat: 'dd/MM/yyyy',
   distanceUnit: 'km',
   speedUnit: 'kmh',
@@ -1072,7 +1071,7 @@ export class ProfileComponent implements OnInit {
     country: 'TN',
     language: 'fr',
     timezone: 'Africa/Tunis',
-    currency: 'TND',
+    currency: '',
     dateFormat: 'dd/MM/yyyy',
     distanceUnit: 'km',
     speedUnit: 'kmh',
@@ -1085,7 +1084,11 @@ export class ProfileComponent implements OnInit {
     private authService: AuthService,
     private apiService: ApiService,
     private userPrefs: UserPreferencesService
-  ) {}
+  ) {
+    // Seed the currency selector with the active currency so the form never
+    // shows a hardcoded default; loadProfile() re-syncs from the service.
+    this.profile.currency = this.userPrefs.current.currency;
+  }
 
   ngOnInit() {
     if (!this.authService.isAuthenticated()) {

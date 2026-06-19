@@ -1061,7 +1061,7 @@
                       } @else if (selectedTemplate?.type === 'fuel-comparison') {
                         <th class="sortable" (click)="sortBy('Véhicule')">Véhicule <span class="sort-icon">{{ getSortIcon('Véhicule') }}</span></th>
                         <th class="sortable" (click)="sortBy('Réel (L)')">Réel (L) <span class="sort-icon">{{ getSortIcon('Réel (L)') }}</span></th>
-                        <th class="sortable" (click)="sortBy('Réel (DT)')">Réel (DT) <span class="sort-icon">{{ getSortIcon('Réel (DT)') }}</span></th>
+                        <th class="sortable" (click)="sortBy('Réel')">Réel ({{ getCurrencyCode() }}) <span class="sort-icon">{{ getSortIcon('Réel') }}</span></th>
                         <th class="sortable" (click)="sortBy('Boitier (L)')">Boitier (L) <span class="sort-icon">{{ getSortIcon('Boitier (L)') }}</span></th>
                         <th class="sortable" (click)="sortBy('Source')">Source <span class="sort-icon">{{ getSortIcon('Source') }}</span></th>
                         <th class="sortable" (click)="sortBy('Distance (km)')">Distance (km) <span class="sort-icon">{{ getSortIcon('Distance (km)') }}</span></th>
@@ -1213,7 +1213,7 @@
                         } @else if (selectedTemplate?.type === 'fuel-comparison') {
                           <td class="vehicle-cell">{{ row['Véhicule'] }}</td>
                           <td class="value-cell">{{ row['Réel (L)'] }}</td>
-                          <td class="amount-cell">{{ row['Réel (DT)'] }}</td>
+                          <td class="amount-cell">{{ row['Réel'] }}</td>
                           <td class="value-cell">{{ row['Boitier (L)'] }}</td>
                           <td>{{ row['Source'] }}</td>
                           <td class="value-cell">{{ row['Distance (km)'] }}</td>

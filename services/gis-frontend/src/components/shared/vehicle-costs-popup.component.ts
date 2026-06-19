@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { VehicleCost, Vehicle } from '../../models/types';
 import { MockDataService } from '../../services/mock-data.service';
 import { USER_PREF_PIPES } from '../../pipes/user-preference-pipes';
+import { UserPreferencesService } from '../../services/user-preferences.service';
 
 @Component({
   selector: 'app-vehicle-costs-popup',
@@ -155,7 +156,7 @@ import { USER_PREF_PIPES } from '../../pipes/user-preference-pipes';
                 </div>
 
                 <div class="form-group">
-                  <label for="amount">Montant (DT) *</label>
+                  <label for="amount">Montant ({{ currencyCode }}) *</label>
                   <input type="number" id="amount" name="amount" [(ngModel)]="costForm.amount" required min="0" step="0.01">
                 </div>
 
@@ -571,7 +572,14 @@ export class VehicleCostsPopupComponent implements OnInit, OnChanges {
     liters: null
   };
 
-  constructor(private dataService: MockDataService) {}
+  constructor(
+    private dataService: MockDataService,
+    private userPrefs: UserPreferencesService
+  ) {}
+
+  get currencyCode(): string {
+    return this.userPrefs.current.currency;
+  }
 
   ngOnInit() {
     this.loadCosts();

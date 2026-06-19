@@ -172,10 +172,12 @@ export class UserPreferencesService {
   // ---------------------------------------------------------------------------
 
   /**
-   * `1234.5 -> "1 234,50 TND"` (with the user's currency code).
+   * `1234.5 -> "1 234,50 <CUR>"` where `<CUR>` is the operator's ACTIVE
+   * currency code (e.g. "DZD"), never a hardcoded one.
    * The currency code is appended as a suffix rather than the locale's
-   * native symbol because most clients ship Tunisian-only screens and
-   * the abbreviation reads clearer than a glyph.
+   * native symbol because the abbreviation reads clearer than a glyph,
+   * and the numeric part uses 'fr-FR' (NOT 'fr-TN', which would render
+   * the dinar symbol) so it is currency-agnostic.
    */
   formatCurrency(amount: number | null | undefined, digits: number = 2): string {
     const n = amount ?? 0;

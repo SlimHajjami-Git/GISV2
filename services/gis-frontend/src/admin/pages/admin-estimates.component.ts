@@ -6,6 +6,7 @@ import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, Estimate, EstimateItem, Client } from '../services/admin.service';
+import { environment } from '../../environments/environment';
 
 @Component({
   selector: 'admin-estimates',
@@ -774,8 +775,12 @@ export class AdminEstimatesComponent implements OnInit, OnDestroy {
     return daysUntilExpiry < 7;
   }
 
+  get currencyCode(): string {
+    return (environment as { defaultCurrency?: string }).defaultCurrency || 'TND';
+  }
+
   formatCurrency(amount: number): string {
-    return amount.toLocaleString('fr-TN', { style: 'currency', currency: 'TND' });
+    return amount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + this.currencyCode;
   }
 
   formatDate(date: Date): string {

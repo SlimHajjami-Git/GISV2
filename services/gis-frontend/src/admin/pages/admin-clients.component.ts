@@ -6,6 +6,7 @@ import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, Client, SubscriptionType } from '../services/admin.service';
+import { environment } from '../../environments/environment';
 
 @Component({
   selector: 'admin-clients',
@@ -160,7 +161,7 @@ import { AdminService, Client, SubscriptionType } from '../services/admin.servic
                     <label>Abonnement <span class="required">*</span></label>
                     <select [(ngModel)]="clientForm.subscriptionId">
                       <option [value]="null">Sélectionner un abonnement</option>
-                      <option *ngFor="let sub of subscriptionTypes" [value]="sub.id">{{ sub.name }} - {{ sub.yearlyPrice }} DT/an</option>
+                      <option *ngFor="let sub of subscriptionTypes" [value]="sub.id">{{ sub.name }} - {{ sub.yearlyPrice }} {{ currencyCode }}/an</option>
                     </select>
                   </div>
                 </div>
@@ -300,7 +301,7 @@ import { AdminService, Client, SubscriptionType } from '../services/admin.servic
                             [class.error]="wizardErrors['subscriptionTypeId']">
                       <option [ngValue]="null">-- Sélectionner --</option>
                       <option *ngFor="let sub of subscriptionTypes" [ngValue]="sub.id">
-                        {{ sub.name }} - {{ sub.yearlyPrice }} DT/an
+                        {{ sub.name }} - {{ sub.yearlyPrice }} {{ currencyCode }}/an
                       </option>
                     </select>
                     <span class="error-text" *ngIf="wizardErrors['subscriptionTypeId']">{{ wizardErrors['subscriptionTypeId'] }}</span>
@@ -416,7 +417,7 @@ import { AdminService, Client, SubscriptionType } from '../services/admin.servic
                 <div class="price-summary">
                   <div class="price-row">
                     <span>Tarif annuel</span>
-                    <span class="price-value">{{ selectedSubscription?.yearlyPrice }} DT/an</span>
+                    <span class="price-value">{{ selectedSubscription?.yearlyPrice }} {{ currencyCode }}/an</span>
                   </div>
                   <div class="price-row">
                     <span>Rétention historique</span>
@@ -1696,6 +1697,10 @@ export class AdminClientsComponent implements OnInit, OnDestroy {
 
   wizardErrors: Record<string, string> = {};
   selectedSubscription: SubscriptionType | null = null;
+
+  get currencyCode(): string {
+    return (environment as { defaultCurrency?: string }).defaultCurrency || 'TND';
+  }
 
   constructor(
     private router: Router,

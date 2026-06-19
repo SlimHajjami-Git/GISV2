@@ -5,6 +5,7 @@ import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { ApiService } from '../services/api.service';
+import { UserPreferencesService } from '../services/user-preferences.service';
 import { PdfExportService, PdfGroup } from '../services/pdf-export.service';
 import { trigger, transition, style, animate } from '@angular/animations';
 
@@ -172,15 +173,15 @@ interface Vehicle {
                 <th class="col-description">Description</th>
                 <th class="col-parts-count">Pièces</th>
                 <th class="col-parts-cost sortable" [class.active]="sortColumn === 'partsCost'" (click)="toggleSort('partsCost')">
-                  Pièces (DT)
+                  Pièces ({{ currencyCode }})
                   <span class="sort-indicator">{{ getSortIndicator('partsCost') }}</span>
                 </th>
                 <th class="col-labor-cost sortable" [class.active]="sortColumn === 'laborCost'" (click)="toggleSort('laborCost')">
-                  M. œuvre (DT)
+                  M. œuvre ({{ currencyCode }})
                   <span class="sort-indicator">{{ getSortIndicator('laborCost') }}</span>
                 </th>
                 <th class="col-total-cost sortable" [class.active]="sortColumn === 'totalCost'" (click)="toggleSort('totalCost')">
-                  Total (DT)
+                  Total ({{ currencyCode }})
                   <span class="sort-indicator">{{ getSortIndicator('totalCost') }}</span>
                 </th>
                 <th class="col-status sortable" [class.active]="sortColumn === 'status'" (click)="toggleSort('status')">
@@ -377,7 +378,7 @@ interface Vehicle {
             <div class="form-section">
               <h4>Main d'oeuvre</h4>
               <div class="form-group">
-                <label>Cout main d'oeuvre (DT)</label>
+                <label>Cout main d'oeuvre ({{ currencyCode }})</label>
                 <input type="number" class="form-control" [(ngModel)]="form.laborCost" min="0" step="0.01" placeholder="0.00">
               </div>
             </div>
@@ -780,8 +781,11 @@ export class RepairsComponent implements OnInit, OnDestroy {
   constructor(
     private apiService: ApiService,
     private pdfService: PdfExportService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private userPrefs: UserPreferencesService
   ) {}
+
+  get currencyCode(): string { return this.userPrefs.current.currency; }
 
   ngOnInit() {
     this.loadVehicles();
@@ -1019,7 +1023,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
           totalCost: (r.totalCost || 0).toFixed(2),
           status: this.getStatusLabel(r.status)
         })),
-        subtotal: `${rs.length} réparation(s) — Pièces: ${subParts.toFixed(2)} DT | M. œuvre: ${subLabor.toFixed(2)} DT | Total: ${subTotal.toFixed(2)} DT`
+        subtotal: `${rs.length} réparation(s) — Pièces: ${this.userPrefs.formatCurrency(subParts)} | M. œuvre: ${this.userPrefs.formatCurrency(subLabor)} | Total: ${this.userPrefs.formatCurrency(subTotal)}`
       });
     }
 
@@ -1031,13 +1035,13 @@ export class RepairsComponent implements OnInit, OnDestroy {
         { header: 'Date', dataKey: 'date' },
         { header: 'Description', dataKey: 'description' },
         { header: 'Pièces', dataKey: 'parts' },
-        { header: 'Pièces (DT)', dataKey: 'partsCost' },
-        { header: 'M. œuvre (DT)', dataKey: 'laborCost' },
-        { header: 'Total (DT)', dataKey: 'totalCost' },
+        { header: `Pièces (${this.currencyCode})`, dataKey: 'partsCost' },
+        { header: `M. œuvre (${this.currencyCode})`, dataKey: 'laborCost' },
+        { header: `Total (${this.currencyCode})`, dataKey: 'totalCost' },
         { header: 'Statut', dataKey: 'status' }
       ],
       groups,
-      grandTotal: `TOTAL GÉNÉRAL — ${grandCount} réparation(s) | Pièces: ${grandTotalParts.toFixed(2)} DT | M. œuvre: ${grandTotalLabor.toFixed(2)} DT | Total: ${grandTotal.toFixed(2)} DT`
+      grandTotal: `TOTAL GÉNÉRAL — ${grandCount} réparation(s) | Pièces: ${this.userPrefs.formatCurrency(grandTotalParts)} | M. œuvre: ${this.userPrefs.formatCurrency(grandTotalLabor)} | Total: ${this.userPrefs.formatCurrency(grandTotal)}`
     });
   }
 

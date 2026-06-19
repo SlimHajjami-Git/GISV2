@@ -7,6 +7,7 @@ import { ApiService, FuelTypeDto, FuelPriceFullDto, MaintenanceTemplateDto, Vehi
 import { PdfExportService, PdfGroup, GroupedPdfReportConfig } from '../services/pdf-export.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { AppCurrencyPipe } from '../pipes/user-preference-pipes';
+import { UserPreferencesService } from '../services/user-preferences.service';
 
 export interface Expense {
   id: string;
@@ -118,7 +119,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
 
   loading = false;
 
-  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef, private route: ActivatedRoute, private pdfService: PdfExportService) {}
+  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef, private route: ActivatedRoute, private pdfService: PdfExportService, private userPrefs: UserPreferencesService) {}
 
   ngOnInit(): void {
     // Check for expenseId query param (from notification click)
@@ -639,9 +640,9 @@ export class ExpensesComponent implements OnInit, OnDestroy {
           date: e.date ? new Date(e.date).toLocaleDateString('fr-FR') : '-',
           vehicleName: `${e.vehicleName} (${e.vehiclePlate})`,
           label: e.label || e.description || '-',
-          amount: e.totalAmount.toFixed(2) + ' DT'
+          amount: this.userPrefs.formatCurrency(e.totalAmount)
         })),
-        subtotal: `${expenses.length} entrees - ${total.toFixed(2)} DT`
+        subtotal: `${expenses.length} entrees - ${this.userPrefs.formatCurrency(total)}`
       });
     });
 
@@ -650,7 +651,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       subtitle: 'Rapport de depenses',
       dateRange: this.filterMonth ? `Mois: ${this.filterMonth}` : 'Toutes periodes',
       statistics: {
-        'Total': this.getTotalAmount().toFixed(2) + ' DT',
+        'Total': this.userPrefs.formatCurrency(this.getTotalAmount()),
         'Entrees': '' + this.filteredExpenses.length,
         'Vehicules': '' + this.getUniqueVehiclesCount()
       },
@@ -661,7 +662,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
         { header: 'Montant', dataKey: 'amount' }
       ],
       groups,
-      grandTotal: `Total general: ${this.getTotalAmount().toFixed(2)} DT`
+      grandTotal: `Total general: ${this.userPrefs.formatCurrency(this.getTotalAmount())}`
     };
 
     this.pdfService.exportGroupedReport(config);

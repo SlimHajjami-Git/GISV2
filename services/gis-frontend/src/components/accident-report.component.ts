@@ -14,6 +14,7 @@ import {
 } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
 import { AccidentPdfService } from '../services/accident-pdf.service';
+import { UserPreferencesService } from '../services/user-preferences.service';
 
 interface NarrativeEvent {
   time: string;
@@ -316,7 +317,7 @@ interface ImpactProfile {
                     <textarea rows="2" [(ngModel)]="phase3.assessment" placeholder="Description des dégâts par l'expert..."></textarea>
                   </label>
                   <label class="phase-field">
-                    <span>Montant estimé (DT)</span>
+                    <span>Montant estimé ({{ currencyCode }})</span>
                     <input type="number" step="0.01" [(ngModel)]="phase3.estimatedAmount" placeholder="0.00">
                   </label>
                 </div>
@@ -348,7 +349,7 @@ interface ImpactProfile {
                     <input type="text" [(ngModel)]="phase4.mechanicName" placeholder="Garage XYZ">
                   </label>
                   <label class="phase-field">
-                    <span>Montant devis (DT)</span>
+                    <span>Montant devis ({{ currencyCode }})</span>
                     <input type="number" step="0.01" [(ngModel)]="phase4.quotedAmount" placeholder="0.00">
                   </label>
                 </div>
@@ -381,7 +382,7 @@ interface ImpactProfile {
                     <input type="date" [(ngModel)]="phase5.completedAt">
                   </label>
                   <label class="phase-field">
-                    <span>Coût réel facture (DT)</span>
+                    <span>Coût réel facture ({{ currencyCode }})</span>
                     <input type="number" step="0.01" [(ngModel)]="phase5.actualCost" placeholder="0.00">
                   </label>
                 </div>
@@ -427,7 +428,7 @@ interface ImpactProfile {
                 </div>
                 <div class="phase-row">
                   <label class="phase-field">
-                    <span>Montant approuvé (DT)</span>
+                    <span>Montant approuvé ({{ currencyCode }})</span>
                     <input type="number" step="0.01" [(ngModel)]="phase6.approvedAmount" placeholder="0.00">
                   </label>
                   <label class="phase-field" style="display:flex; align-items:center; gap:8px;">
@@ -1857,7 +1858,11 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     private cdr: ChangeDetectorRef,
     private authService: AuthService,
     private accidentPdf: AccidentPdfService,
+    private userPrefs: UserPreferencesService,
   ) {}
+
+  /** Active currency ISO code (e.g. "DZD"), used for amount-field labels. */
+  get currencyCode(): string { return this.userPrefs.current.currency; }
 
   get statusLabel(): string {
     switch (this.status) {
