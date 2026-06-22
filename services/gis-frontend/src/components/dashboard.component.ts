@@ -580,7 +580,10 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   private fleetMarkers?: L.LayerGroup;
   private destroy$ = new Subject<void>();
   company: Company | null = null;
-  selectedPeriod = 'month'; fromDate = ''; toDate = '';
+  // Dashboard opens on the full year by default (repairs/fuel/other + all widgets
+  // scoped to the current year). Operators can switch to Mois/Semaine/etc. via the
+  // period bar; the backend re-scopes everything via GetPeriodRange(period).
+  selectedPeriod = 'year'; fromDate = ''; toDate = '';
   isConnected = false;
   todayLabel = '';
   Math = Math;
