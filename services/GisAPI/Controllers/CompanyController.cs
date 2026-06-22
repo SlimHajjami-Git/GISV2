@@ -142,7 +142,7 @@ public class CompanyController : ControllerBase
             SubscriptionExpiresAt = DateTime.UtcNow.AddYears(1),
             Settings = new SocieteSettings
             {
-                Currency = "DT",
+                Currency = GisAPI.Domain.Common.AppCurrency.Default,
                 Timezone = "Africa/Tunis",
                 Language = "fr"
             }

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Common;
 using GisAPI.Domain.Entities;
 using GisAPI.Services;
 
@@ -252,9 +253,9 @@ public class AiChatController : ControllerBase
             sb.AppendLine($"Score santé: {healthScore.Score}/100 ({healthScore.Level})");
 
             if (ctx.RecentMaintenance.Count > 0)
-                sb.AppendLine($"Entretiens récents: {ctx.RecentMaintenance.Count} | Coût total: {ctx.RecentMaintenance.Sum(m => m.TotalCost):N0} TND");
+                sb.AppendLine($"Entretiens récents: {ctx.RecentMaintenance.Count} | Coût total: {ctx.RecentMaintenance.Sum(m => m.TotalCost):N0} {AppCurrency.Default}");
             if (ctx.RecentRepairs.Count > 0)
-                sb.AppendLine($"Réparations récentes: {ctx.RecentRepairs.Count} | Coût total: {ctx.RecentRepairs.Sum(r => r.TotalCost):N0} TND");
+                sb.AppendLine($"Réparations récentes: {ctx.RecentRepairs.Count} | Coût total: {ctx.RecentRepairs.Sum(r => r.TotalCost):N0} {AppCurrency.Default}");
             if (ctx.FuelEntries.Count > 0)
                 sb.AppendLine($"Consommation moyenne: {ctx.FuelEntries.Average(f => f.Liters):F1} L/plein");
             sb.AppendLine();
@@ -577,20 +578,20 @@ public class AiChatController : ControllerBase
             var totalCost = ctx.FuelEntries.Sum(f => f.TotalCost);
             sb.AppendLine($"Nombre de pleins saisis: {ctx.FuelEntries.Count}");
             sb.AppendLine($"Total litres ravitaillés: {totalLiters:N1} L");
-            sb.AppendLine($"Coût total carburant: {totalCost:N2} TND");
+            sb.AppendLine($"Coût total carburant: {totalCost:N2} {AppCurrency.Default}");
             if (totalLiters > 0)
-                sb.AppendLine($"Prix moyen par litre: {(totalCost / totalLiters):N3} TND/L");
+                sb.AppendLine($"Prix moyen par litre: {(totalCost / totalLiters):N3} {AppCurrency.Default}/L");
             if (ctx.DrivingStats != null && ctx.DrivingStats.TotalDistanceKm > 0 && totalLiters > 0)
             {
                 var consumptionPer100 = (double)totalLiters / (double)ctx.DrivingStats.TotalDistanceKm * 100;
                 var costPerKm = (double)totalCost / (double)ctx.DrivingStats.TotalDistanceKm;
                 sb.AppendLine($"Consommation calculée: {consumptionPer100:F1} L/100km (basé sur {ctx.DrivingStats.TotalDistanceKm:N0} km parcourus)");
-                sb.AppendLine($"Coût au kilomètre: {costPerKm:F3} TND/km");
+                sb.AppendLine($"Coût au kilomètre: {costPerKm:F3} {AppCurrency.Default}/km");
             }
             sb.AppendLine("Détail des pleins:");
             foreach (var f in ctx.FuelEntries)
             {
-                sb.AppendLine($"  - {f.Date:dd/MM/yyyy} | {f.Liters:N1}L | {f.CostPerLiter:N3} TND/L | {f.TotalCost:N2} TND | Odom: {f.Mileage} km");
+                sb.AppendLine($"  - {f.Date:dd/MM/yyyy} | {f.Liters:N1}L | {f.CostPerLiter:N3} {AppCurrency.Default}/L | {f.TotalCost:N2} {AppCurrency.Default} | Odom: {f.Mileage} km");
             }
         }
         else
@@ -664,7 +665,7 @@ public class AiChatController : ControllerBase
             sb.AppendLine();
             sb.AppendLine("═══ ENTRETIENS RÉCENTS ═══");
             foreach (var m in ctx.RecentMaintenance)
-                sb.AppendLine($"- {m.Date:dd/MM/yyyy} | {m.Type} | {m.Description ?? "N/A"} | {m.MileageAtService} km | {m.TotalCost:N0} TND | Statut: {m.Status}");
+                sb.AppendLine($"- {m.Date:dd/MM/yyyy} | {m.Type} | {m.Description ?? "N/A"} | {m.MileageAtService} km | {m.TotalCost:N0} {AppCurrency.Default} | Statut: {m.Status}");
         }
 
         if (ctx.RecentRepairs.Count > 0)
@@ -672,7 +673,7 @@ public class AiChatController : ControllerBase
             sb.AppendLine();
             sb.AppendLine("═══ RÉPARATIONS RÉCENTES ═══");
             foreach (var r in ctx.RecentRepairs)
-                sb.AppendLine($"- {r.Date:dd/MM/yyyy} | {r.Description ?? "N/A"} | {r.MileageAtRepair} km | {r.TotalCost:N0} TND | Statut: {r.Status}");
+                sb.AppendLine($"- {r.Date:dd/MM/yyyy} | {r.Description ?? "N/A"} | {r.MileageAtRepair} km | {r.TotalCost:N0} {AppCurrency.Default} | Statut: {r.Status}");
         }
 
         if (ctx.ScheduledMaintenance.Count > 0)
@@ -693,9 +694,9 @@ public class AiChatController : ControllerBase
             sb.AppendLine();
             sb.AppendLine("═══ COÛTS RÉCENTS ═══");
             var totalCosts = ctx.RecentCosts.Sum(c => c.Amount);
-            sb.AppendLine($"Total des coûts listés: {totalCosts:N0} TND");
+            sb.AppendLine($"Total des coûts listés: {totalCosts:N0} {AppCurrency.Default}");
             foreach (var c in ctx.RecentCosts)
-                sb.AppendLine($"- {c.Date:dd/MM/yyyy} | {c.Type} | {c.Description ?? "N/A"} | {c.Amount:N0} TND");
+                sb.AppendLine($"- {c.Date:dd/MM/yyyy} | {c.Type} | {c.Description ?? "N/A"} | {c.Amount:N0} {AppCurrency.Default}");
         }
 
         // ═══ ALERTS ═══
@@ -879,7 +880,7 @@ public class AiChatController : ControllerBase
         sb.AppendLine("═══ ENTREPRISE ═══");
         sb.AppendLine($"Nom: {company?.Name ?? "N/A"}");
         sb.AppendLine($"Type d'activité: {company?.Type ?? "transport"} | Pays: {company?.Country ?? "TN"}");
-        sb.AppendLine($"Devise: {company?.Settings?.Currency ?? "DT"}");
+        sb.AppendLine($"Devise: {company?.Settings?.Currency ?? AppCurrency.Default}");
         sb.AppendLine($"Nombre de véhicules: {vehicles.Count}");
         sb.AppendLine();
 
@@ -891,7 +892,7 @@ public class AiChatController : ControllerBase
         sb.AppendLine($"Véhicules actifs (avec trajets): {tripsByVehicle.Count}");
         sb.AppendLine($"Score santé moyen: {(healthScores.Any() ? healthScores.Average(h => h.Score) : 0):F0}/100");
         sb.AppendLine($"Distribution santé: Excellent={exc}, Bon={goo}, Moyen={fai}, Faible={poo}, Critique={cri}");
-        sb.AppendLine($"Coûts totaux: {costs.Sum(c => c.Amount):N0} DT (Carburant: {totalFuelCost:N0}, Maintenance: {totalMaintCost:N0}, Réparations: {totalRepairCost:N0}, Autres: {totalOtherCost:N0})");
+        sb.AppendLine($"Coûts totaux: {costs.Sum(c => c.Amount):N0} {AppCurrency.Default} (Carburant: {totalFuelCost:N0}, Maintenance: {totalMaintCost:N0}, Réparations: {totalRepairCost:N0}, Autres: {totalOtherCost:N0})");
         sb.AppendLine($"Alertes totales: {totalAlerts}");
         sb.AppendLine($"Entretiens réalisés: {maintenance.Count} | Réparations: {repairs.Count}");
         sb.AppendLine($"Entretiens en retard/critique: {schedules.Count(s => s.Status == "overdue" || s.Status == "critical")}");
@@ -904,13 +905,13 @@ public class AiChatController : ControllerBase
             sb.AppendLine($"▸ {v.name} ({v.plate}) | {v.brand} {v.model} {v.year} | {v.type} | {v.fuelType} | {v.mileage:N0} km | Statut: {v.status}");
             sb.AppendLine($"  Santé: {v.healthScore}/100 ({v.healthLevel}) | Score conduite: {v.drivingScore}/100 | Alertes: {v.alertCount}");
             sb.AppendLine($"  Distance période: {v.distance:N0} km | Trajets: {v.tripCount} | Conso: {(v.fuelConsumption > 0 ? $"{v.fuelConsumption:F1} L/100km" : "N/A")}");
-            sb.AppendLine($"  Coûts: {v.totalCosts:N0} DT | Entretiens: {v.maintCount} ({v.maintCost:N0} DT) | Réparations: {v.repairCount} ({v.repairCost:N0} DT)");
+            sb.AppendLine($"  Coûts: {v.totalCosts:N0} {AppCurrency.Default} | Entretiens: {v.maintCount} ({v.maintCost:N0} {AppCurrency.Default}) | Réparations: {v.repairCount} ({v.repairCost:N0} {AppCurrency.Default})");
             if (v.overdueSchedules > 0)
                 sb.AppendLine($"  ⚠️ {v.overdueSchedules} entretien(s) en retard/critique");
             if (v.warnings.Count > 0)
                 sb.AppendLine($"  Avertissements: {string.Join("; ", v.warnings.Take(3))}");
             if (v.topRepairs.Count > 0)
-                sb.AppendLine($"  Dernières réparations: {string.Join(", ", v.topRepairs.Select(r => $"{r.description} ({r.cost} DT, {r.date})"))}");
+                sb.AppendLine($"  Dernières réparations: {string.Join(", ", v.topRepairs.Select(r => $"{r.description} ({r.cost} {AppCurrency.Default}, {r.date})"))}");
         }
 
         var userMessage = request.Question ?? @"Génère un rapport d'analyse de flotte complet et structuré. Inclus:

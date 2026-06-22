@@ -18,6 +18,13 @@ QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Per-deployment default currency (ISO code) — mirrors the frontend's
+// environment.defaultCurrency. "TND" by default; the Algeria/Bougeo deployment
+// sets App__DefaultCurrency=DZD via its K8s configmap. Read once here so display
+// strings (AI assistant, chart/report units) and new-company seeds match the UI.
+GisAPI.Domain.Common.AppCurrency.Default =
+    builder.Configuration["App:DefaultCurrency"] ?? "TND";
+
 // Add Application & Infrastructure layers (CQRS, MediatR, EF Core, Multi-tenant, RabbitMQ)
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -991,7 +998,7 @@ static async Task SeedSubscriptionPlansAndTestCompany(GisAPI.Infrastructure.Pers
                 NextPaymentAmount = planStandard.YearlyPrice,
                 Settings = new GisAPI.Domain.Entities.SocieteSettings
                 {
-                    Currency = "DT",
+                    Currency = GisAPI.Domain.Common.AppCurrency.Default,
                     Timezone = "Africa/Tunis",
                     Language = "fr"
                 }

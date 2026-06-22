@@ -58,7 +58,9 @@ public class Societe : AuditableEntity
 
 public class SocieteSettings
 {
-    public string Currency { get; set; } = "DT";
+    // Deployment default (TND / DZD) rather than a hardcoded "DT". Set at startup
+    // from App:DefaultCurrency; EF overwrites this with the stored value on load.
+    public string Currency { get; set; } = AppCurrency.Default;
     public string Timezone { get; set; } = "Africa/Tunis";
     public string Language { get; set; } = "fr";
     public string DateFormat { get; set; } = "dd/MM/yyyy";

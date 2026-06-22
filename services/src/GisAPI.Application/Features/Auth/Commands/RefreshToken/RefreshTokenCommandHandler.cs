@@ -233,7 +233,7 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, L
                 subscriptionFeatures,
                 assignedVehicleIds,
                 userPermissions,
-                Currency: user.Societe?.Settings?.Currency ?? "TND"
+                Currency: user.Societe?.Settings?.Currency ?? GisAPI.Domain.Common.AppCurrency.Default
             )
         );
     }

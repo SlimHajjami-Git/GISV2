@@ -142,7 +142,7 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
             subscriptionFeatures,
             assignedVehicleIds,
             userPermissions,
-            Currency: user.Societe?.Settings?.Currency ?? "TND"
+            Currency: user.Societe?.Settings?.Currency ?? GisAPI.Domain.Common.AppCurrency.Default
         );
     }
 

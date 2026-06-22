@@ -190,8 +190,8 @@ public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardCharts
         {
             Title = "Coûts de maintenance par période",
             XAxisLabel = "Période",
-            YAxisLabel = "Coût (TND)",
-            Unit = "TND",
+            YAxisLabel = $"Coût ({GisAPI.Domain.Common.AppCurrency.Default})",
+            Unit = GisAPI.Domain.Common.AppCurrency.Default,
             Labels = weekLabels,
             Series = series
         };
@@ -280,7 +280,7 @@ public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardCharts
         return new PieChartDataDto
         {
             Title = "Répartition des coûts",
-            Unit = "TND",
+            Unit = GisAPI.Domain.Common.AppCurrency.Default,
             Total = Math.Round(totalCost, 2),
             Slices = new List<PieChartSliceDto>
             {

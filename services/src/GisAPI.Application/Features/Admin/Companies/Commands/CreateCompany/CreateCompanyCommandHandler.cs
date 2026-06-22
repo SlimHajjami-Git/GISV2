@@ -60,7 +60,7 @@ public class CreateCompanyCommandHandler : IRequestHandler<CreateCompanyCommand,
             NextPaymentAmount = price,
             Settings = new SocieteSettings
             {
-                Currency = "DT",
+                Currency = GisAPI.Domain.Common.AppCurrency.Default,
                 Timezone = "Africa/Tunis",
                 Language = "fr"
             }

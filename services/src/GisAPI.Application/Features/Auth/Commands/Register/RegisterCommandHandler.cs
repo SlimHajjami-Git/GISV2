@@ -180,7 +180,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResp
                 societe.Type,
                 adminRole.Permissions,
                 subscriptionFeatures,
-                Currency: societe.Settings?.Currency ?? "TND"
+                Currency: societe.Settings?.Currency ?? GisAPI.Domain.Common.AppCurrency.Default
             )
         );
     }

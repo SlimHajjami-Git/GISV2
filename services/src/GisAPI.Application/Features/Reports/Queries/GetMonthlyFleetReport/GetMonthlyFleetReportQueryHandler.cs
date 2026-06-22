@@ -577,7 +577,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
             FuelConsumption = BuildComparisonMetric("Carburant", 
                 CalculateFuelFromPositions(current), CalculateFuelFromPositions(previous), "L", false),
             Cost = BuildComparisonMetric("Coût", 
-                CalculateFuelFromPositions(current) * 2.1, CalculateFuelFromPositions(previous) * 2.1, "TND", false),
+                CalculateFuelFromPositions(current) * 2.1, CalculateFuelFromPositions(previous) * 2.1, GisAPI.Domain.Common.AppCurrency.Default, false),
             Utilization = BuildComparisonMetric("Utilisation", 
                 current.Select(p => p.DeviceId).Distinct().Count(),
                 previous.Select(p => p.DeviceId).Distinct().Count(), "%", true),
@@ -739,7 +739,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
                 Target = 0.25,
                 Variance = (double)report.CostAnalysis.CostPerKm - 0.25,
                 VariancePercent = (((double)report.CostAnalysis.CostPerKm - 0.25) / 0.25) * 100,
-                Unit = "TND/km",
+                Unit = $"{GisAPI.Domain.Common.AppCurrency.Default}/km",
                 Status = (double)report.CostAnalysis.CostPerKm <= 0.25 ? "OnTarget" : "Above",
                 Trend = "stable"
             },
@@ -790,7 +790,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
             Type = "column",
             Labels = report.Maintenance.ByType.Select(t => t.Type).ToList(),
             Values = report.Maintenance.ByType.Select(t => (double)t.TotalCost).ToList(),
-            Unit = "TND"
+            Unit = GisAPI.Domain.Common.AppCurrency.Default
         };
 
         // Line: Daily distance trend
