@@ -880,7 +880,7 @@ public class AiChatController : ControllerBase
         sb.AppendLine("═══ ENTREPRISE ═══");
         sb.AppendLine($"Nom: {company?.Name ?? "N/A"}");
         sb.AppendLine($"Type d'activité: {company?.Type ?? "transport"} | Pays: {company?.Country ?? "TN"}");
-        sb.AppendLine($"Devise: {company?.Settings?.Currency ?? AppCurrency.Default}");
+        sb.AppendLine($"Devise: {AppCurrency.Default}");
         sb.AppendLine($"Nombre de véhicules: {vehicles.Count}");
         sb.AppendLine();
 
