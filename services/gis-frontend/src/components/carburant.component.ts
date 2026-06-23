@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ApiService, FuelTypeDto, VehicleWithPositionDto, FuelEntryDto, FuelPriceFullDto } from '../services/api.service';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 declare const XLSX: any;
 
 interface FuelEntry {
@@ -30,7 +31,7 @@ interface ColumnMapping {
 @Component({
   selector: 'app-carburant',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ...USER_PREF_PIPES],
   template: `
     <app-layout>
       <div class="carburant-page">
@@ -62,6 +63,12 @@ interface ColumnMapping {
                 <circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/>
               </svg>
               Historique
+            </button>
+            <button class="tab-btn" [class.active]="activeTab === 'consommation'" (click)="activeTab='consommation'; loadConsumption()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 3v18h18"/><path d="M7 13l3-3 4 4 5-6"/>
+              </svg>
+              Consommation
             </button>
           </div>
         </div>
@@ -373,6 +380,76 @@ interface ColumnMapping {
               <button class="btn-add" (click)="activeTab = 'manual'">Ajouter une entrée</button>
             </div>
           </div>
+
+          <!-- Consommation réelle (sans GPS) — calcul plein-à-plein depuis les pleins saisis -->
+          <div class="tab-panel" *ngIf="activeTab === 'consommation'">
+            <div class="panel-header">
+              <h2>Consommation réelle (sans GPS)</h2>
+              <div class="filters">
+                <input type="date" [(ngModel)]="consoStartDate" (change)="loadConsumption()" class="filter-input">
+                <input type="date" [(ngModel)]="consoEndDate" (change)="loadConsumption()" class="filter-input">
+                <button class="btn-add" (click)="loadConsumption()">Actualiser</button>
+              </div>
+            </div>
+
+            <div *ngIf="consumption">
+              <div style="display:flex;flex-wrap:wrap;gap:12px;padding:12px 16px;">
+                <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;">
+                  <div style="font-size:11px;color:#64748b;">Coût total</div>
+                  <div style="font-size:18px;font-weight:700;color:#1e293b;">{{ consumption.totalFuelCost | appCurrency:0 }}</div>
+                </div>
+                <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;">
+                  <div style="font-size:11px;color:#64748b;">Litres</div>
+                  <div style="font-size:18px;font-weight:700;color:#1e293b;">{{ consumption.totalLiters | number:'1.0-0' }} L</div>
+                </div>
+                <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;">
+                  <div style="font-size:11px;color:#64748b;">Distance</div>
+                  <div style="font-size:18px;font-weight:700;color:#1e293b;">{{ consumption.totalDistanceKm | number:'1.0-0' }} km</div>
+                </div>
+                <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;">
+                  <div style="font-size:11px;color:#64748b;">Conso. moyenne</div>
+                  <div style="font-size:18px;font-weight:700;color:#1e293b;">{{ consumption.fleetConsumptionPer100Km != null ? (consumption.fleetConsumptionPer100Km | number:'1.1-1') + ' L/100km' : '—' }}</div>
+                </div>
+                <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;">
+                  <div style="font-size:11px;color:#64748b;">Coût / km</div>
+                  <div style="font-size:18px;font-weight:700;color:#1e293b;">{{ consumption.fleetCostPerKm != null ? (consumption.fleetCostPerKm | appCurrency:3) : '—' }}</div>
+                </div>
+              </div>
+
+              <div *ngIf="consumption.entriesWithoutOdometer > 0" style="margin:0 16px 8px;padding:8px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;color:#9a3412;font-size:12px;">
+                ⚠ {{ consumption.entriesWithoutOdometer }} plein(s) sans relevé compteur — saisis le kilométrage au plein pour calculer la consommation.
+              </div>
+
+              <div class="table-container" *ngIf="consumption.vehicles?.length">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Véhicule</th><th>Type</th><th>Pleins</th><th>Distance</th><th>Litres</th><th>L/100km</th><th>Coût/km</th><th>Coût total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let v of consumption.vehicles">
+                      <td><span class="plate-badge">{{ v.plate || v.vehicleName }}</span></td>
+                      <td><span class="fuel-badge">{{ v.fuelType || '-' }}</span></td>
+                      <td>{{ v.entryCount }}</td>
+                      <td>{{ v.distanceKm != null ? (v.distanceKm | number:'1.0-0') + ' km' : '—' }}</td>
+                      <td>{{ v.totalLiters | number:'1.0-0' }} L</td>
+                      <td>
+                        {{ v.consumptionPer100Km != null ? (v.consumptionPer100Km | number:'1.1-1') : '—' }}
+                        <span *ngIf="v.consumptionPer100Km != null && !v.reliableOdometer" title="Relevés compteur incomplets — fiabilité réduite" style="color:#f59e0b;">⚠</span>
+                      </td>
+                      <td>{{ v.costPerKm != null ? (v.costPerKm | appCurrency:3) : '—' }}</td>
+                      <td class="total-cell">{{ v.totalCost | appCurrency:0 }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="empty-state" *ngIf="!consumption.vehicles?.length">
+                <p>Aucune donnée carburant sur la période.</p>
+              </div>
+            </div>
+            <div class="empty-state" *ngIf="loadingConso && !consumption"><p>Chargement…</p></div>
+          </div>
         </div>
       </div>
     </app-layout>
@@ -528,6 +605,12 @@ export class CarburantComponent implements OnInit, OnDestroy {
   filterStartDate = '';
   filterEndDate = '';
 
+  // Consommation réelle (sans GPS) — onglet "consommation"
+  consoStartDate = new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
+  consoEndDate = new Date().toISOString().split('T')[0];
+  consumption: any = null;
+  loadingConso = false;
+
   constructor(private apiService: ApiService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit() {
@@ -535,6 +618,17 @@ export class CarburantComponent implements OnInit, OnDestroy {
     this.loadVehicles();
     this.loadHistory();
     this.loadCurrentPrices();
+  }
+
+  /** GPS-independent fuel consumption (full-to-full from manual fill-ups). */
+  loadConsumption() {
+    this.loadingConso = true;
+    this.apiService.getRealFuelConsumption(this.consoStartDate, this.consoEndDate)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (r) => { this.consumption = r; this.loadingConso = false; this.cdr.detectChanges(); },
+        error: (err) => { console.error('Conso error:', err); this.loadingConso = false; this.cdr.detectChanges(); }
+      });
   }
 
   loadFuelTypes() {

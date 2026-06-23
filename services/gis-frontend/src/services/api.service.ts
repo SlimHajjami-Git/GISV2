@@ -1892,6 +1892,19 @@ export class ApiService {
     return this.http.get<FuelPriceDto[]>(`${this.API_URL}/fuelexpenses/prices`, { headers: this.getHeaders() });
   }
 
+  /**
+   * GPS-independent fuel consumption ("Carburant réel"): L/100km, coût/km and
+   * distance from manually entered fill-ups (full-to-full). Works for vehicles
+   * WITHOUT a GPS box — for the "Gestion sans GPS" clients.
+   */
+  getRealFuelConsumption(startDate?: string, endDate?: string, vehicleId?: number): Observable<any> {
+    let params = new HttpParams();
+    if (startDate) params = params.set('startDate', startDate);
+    if (endDate) params = params.set('endDate', endDate);
+    if (vehicleId) params = params.set('vehicleId', vehicleId.toString());
+    return this.http.get<any>(`${this.API_URL}/fuelexpenses/real-consumption`, { headers: this.getHeaders(), params });
+  }
+
   // Anti-fraud: real fuel (card-billed) vs GPS-consumed comparison
   getFuelComparisonReport(startDate?: string, endDate?: string, vehicleId?: number): Observable<FuelComparisonReport> {
     let params = new HttpParams();
