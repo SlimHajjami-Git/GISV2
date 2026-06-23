@@ -5,7 +5,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
-import { ApiService } from '../services/api.service';
+import { ApiService, VehicleExpiryDto } from '../services/api.service';
 import { SignalRService } from '../services/signalr.service';
 import { Company } from '../models/types';
 import { UserPreferencesService } from '../services/user-preferences.service';
@@ -197,6 +197,20 @@ import { DateFilterBarComponent } from './shared/ui';
             <div class="track"><div class="fill" [style.width.%]="totalCost?(e.value/totalCost)*100:0" [style.background]="e.color"></div></div>
           </div>
         </div>
+      </section>
+
+      <!-- Échéances à venir — visible pour tous (essentiel pour la gestion sans GPS) -->
+      <section class="card c6 reveal" style="--d:5">
+        <div class="card-h"><h3>Échéances à venir</h3><span class="badge badge-red" *ngIf="deadlinesOverdue>0">{{ deadlinesOverdue }} en retard</span></div>
+        <div class="rows" *ngIf="deadlines.length">
+          <div *ngFor="let d of deadlines" class="row" style="display:flex;align-items:center;gap:10px;">
+            <span class="leg-dot" [style.background]="deadlineColor(d)"></span>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ d.vehiclePlate || d.vehicleName }} · {{ docLabel(d.documentType) }}</span>
+            <span style="font-size:12px;opacity:.65;white-space:nowrap;">{{ d.expiryDate | date:'dd/MM/yyyy' }}</span>
+            <b [style.color]="deadlineColor(d)" style="white-space:nowrap;">{{ daysLabel(d) }}</b>
+          </div>
+        </div>
+        <div class="empty" *ngIf="!deadlines.length"><span>Aucune échéance sous 60 jours</span></div>
       </section>
 
       <ng-container *ngIf="hasGps">
@@ -655,6 +669,19 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   /** GPS modules available? false for the "Gestion sans GPS" tier (moduleMonitoring off) → hide GPS-only widgets. */
   get hasGps():boolean{return this.permissionService.hasModuleAccess('monitoring');}
 
+  // Échéances à venir (assurance / vignette / visite technique) — réutilise /documents/alerts.
+  deadlines: VehicleExpiryDto[] = [];
+  get deadlinesOverdue():number{ return this.deadlines.filter(d=>(d.daysUntilExpiry??0)<0).length; }
+  docLabel(t:string):string{ return ({insurance:'Assurance',tax:'Vignette',technical_inspection:'Visite technique'} as Record<string,string>)[t] || t; }
+  deadlineColor(d:VehicleExpiryDto):string{ const n=d.daysUntilExpiry??0; return n<0?'#ef4444':n<=30?'#f59e0b':'#10b981'; }
+  daysLabel(d:VehicleExpiryDto):string{ const n=d.daysUntilExpiry??0; return n<0?((-n)+'j retard'):(n+'j'); }
+  loadDeadlines(){
+    this.apiService.getExpiryAlerts(60).pipe(takeUntil(this.destroy$)).subscribe({
+      next:(list)=>{ this.deadlines=(list||[]).sort((a,b)=>(a.daysUntilExpiry??0)-(b.daysUntilExpiry??0)).slice(0,8); this.cdr.detectChanges(); },
+      error:()=>{}
+    });
+  }
+
   ngOnInit(){
     if(!this.apiService.isAuthenticated()){this.router.navigate(['/login']);return;}
     const u=this.apiService.getCurrentUserSync();
@@ -665,6 +692,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     this.fromDate=new Date(today.getTime()-7*86400000).toISOString().split('T')[0];
     this.cLabels=Array.from({length:7},(_,i)=>new Date(today.getTime()-(6-i)*86400000).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}));
     this.loadAll();
+    this.loadDeadlines();
     this.wire();
   }
 
