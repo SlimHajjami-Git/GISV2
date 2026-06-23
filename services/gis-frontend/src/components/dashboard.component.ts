@@ -1,5 +1,6 @@
 import { Component, OnInit, OnDestroy, AfterViewInit, ViewChild, ElementRef, ChangeDetectorRef } from '@angular/core';
 import * as L from 'leaflet';
+import { PermissionService } from '../services/permission.service';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -50,6 +51,7 @@ import { DateFilterBarComponent } from './shared/ui';
         </div>
         <div class="kpi-meta"><span class="kpi-label">Véhicules</span><span class="kpi-num">{{ dVehicles }}</span></div>
       </div>
+      <ng-container *ngIf="hasGps">
       <div class="kpi" style="--c:#10b981">
         <div class="kpi-ic">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M5 12a7 7 0 0 1 7-7"/><path d="M19 12a7 7 0 0 1-7 7"/></svg>
@@ -68,23 +70,28 @@ import { DateFilterBarComponent } from './shared/ui';
         </div>
         <div class="kpi-meta"><span class="kpi-label">Carburant</span><span class="kpi-num">{{ dFuel }}<i>L</i></span></div>
       </div>
+      </ng-container>
       <div class="kpi" style="--c:#f59e0b">
         <div class="kpi-ic">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="13" rx="2.5"/><path d="M2 10h20"/></svg>
         </div>
         <div class="kpi-meta"><span class="kpi-label">Coût total</span><span class="kpi-num">{{ dCost | number:'1.0-0' }}<i>{{ currencyCode }}</i></span><span class="kpi-sub" *ngIf="costTrend!==null && costTrend!==0" [class.bad]="costTrend>0" [class.good]="costTrend<0">{{ costTrend>0?'▲':'▼' }} {{ absPct(costTrend) }}% <small>vs préc.</small></span></div>
       </div>
+      <ng-container *ngIf="hasGps">
       <div class="kpi" style="--c:#ef4444" [class.kpi-alert]="dAlerts>0">
         <div class="kpi-ic">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
         </div>
         <div class="kpi-meta"><span class="kpi-label">Alertes</span><span class="kpi-num">{{ dAlerts }}</span></div>
       </div>
+      </ng-container>
     </div>
 
     <!-- ════ MAIN GRID ════ -->
     <div class="grid">
 
+      <!-- GPS-only widgets — hidden for "Gestion sans GPS" clients (moduleMonitoring off) -->
+      <ng-container *ngIf="hasGps">
       <!-- Flotte en direct (mini-carte) -->
       <section class="card c8 gc-map">
         <div class="card-h">
@@ -179,6 +186,7 @@ import { DateFilterBarComponent } from './shared/ui';
           </div>
         </div>
       </section>
+      </ng-container>
 
       <!-- Dépenses -->
       <section class="card c4 reveal" style="--d:5">
@@ -191,6 +199,7 @@ import { DateFilterBarComponent } from './shared/ui';
         </div>
       </section>
 
+      <ng-container *ngIf="hasGps">
       <!-- Répartition par type -->
       <section class="card c4 reveal" style="--d:6">
         <div class="card-h"><h3>Répartition par type</h3></div>
@@ -290,6 +299,7 @@ import { DateFilterBarComponent } from './shared/ui';
         </div>
         <div class="empty" *ngIf="!geofences.length"><span>Aucune géozone</span></div>
       </section>
+      </ng-container>
 
       <!-- Conducteurs -->
       <section class="card c8 reveal" style="--d:12">
@@ -639,9 +649,11 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   get pTrips(){return this.recentTrips.slice(this.trP*5,this.trP*5+5);}
   get pDrv(){return this.drivers.slice(this.drP*8,this.drP*8+8);}
 
-  constructor(private router:Router,private apiService:ApiService,private signalrService:SignalRService,private cdr:ChangeDetectorRef,private userPrefs:UserPreferencesService){}
+  constructor(private router:Router,private apiService:ApiService,private signalrService:SignalRService,private cdr:ChangeDetectorRef,private userPrefs:UserPreferencesService,private permissionService:PermissionService){}
 
   get currencyCode():string{return this.userPrefs.current.currency;}
+  /** GPS modules available? false for the "Gestion sans GPS" tier (moduleMonitoring off) → hide GPS-only widgets. */
+  get hasGps():boolean{return this.permissionService.hasModuleAccess('monitoring');}
 
   ngOnInit(){
     if(!this.apiService.isAuthenticated()){this.router.navigate(['/login']);return;}
