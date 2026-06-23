@@ -43,26 +43,63 @@ public static class GpsDistanceCalculator
         double total = 0;
         for (int i = 1; i < positions.Count; i++)
         {
-            var prev = positions[i - 1];
-            var curr = positions[i];
-
-            // Ne compte que si le vehicule bouge sur au moins un des deux points.
-            // Evite de compter le bruit GPS quand le vehicule est completement arrete.
-            if ((curr.SpeedKph ?? 0) <= 0 && (prev.SpeedKph ?? 0) <= 0) continue;
-
-            var segmentKm = HaversineKm(prev.Latitude, prev.Longitude, curr.Latitude, curr.Longitude);
-            if (segmentKm < MinSegmentKm || segmentKm > MaxSegmentKm) continue;
-
-            var elapsedHours = (curr.RecordedAt - prev.RecordedAt).TotalHours;
-            if (elapsedHours > 0)
-            {
-                var impliedKph = segmentKm / elapsedHours;
-                if (impliedKph > MaxImpliedKph) continue;
-            }
-
-            total += segmentKm;
+            if (TryGetSegmentKm(positions[i - 1], positions[i], out var segmentKm))
+                total += segmentKm;
         }
         return total;
+    }
+
+    /// <summary>
+    /// Calypso 10 — distance cumulee REPARTIE par bucket (heure/jour/mois...).
+    /// Chaque segment valide est attribue au bucket de son point de DEPART (prev),
+    /// avec EXACTEMENT les memes filtres que CalculateTotalDistanceKm. La somme des
+    /// buckets egale donc la distance continue totale.
+    ///
+    /// Indispensable pour le rapport "kilometrage par periode" : l ancienne approche
+    /// recalculait la distance INDEPENDAMMENT par groupe (heure/jour/mois), ce qui
+    /// PERDAIT chaque segment traversant une frontiere de bucket. Resultat : le total
+    /// changeait selon la granularite choisie (heure &lt; jour &lt; mois) pour la MEME
+    /// fenetre temporelle — d ou des valeurs "contradictoires" vues par l operateur.
+    /// </summary>
+    public static Dictionary<TKey, double> CalculateBucketedDistanceKm<TKey>(
+        IReadOnlyList<GpsPosition> positions,
+        Func<GpsPosition, TKey> bucketSelector) where TKey : notnull
+    {
+        var result = new Dictionary<TKey, double>();
+        if (positions == null || positions.Count < 2) return result;
+
+        for (int i = 1; i < positions.Count; i++)
+        {
+            var prev = positions[i - 1];
+            if (TryGetSegmentKm(prev, positions[i], out var segmentKm))
+            {
+                var key = bucketSelector(prev);
+                result[key] = result.GetValueOrDefault(key) + segmentKm;
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Valide + mesure un segment entre deux positions consecutives. Filtres communs
+    /// (bruit GPS au point mort, saut GPS, vitesse implicite irrealiste) pour que le
+    /// total et la repartition par bucket restent rigoureusement coherents.
+    /// </summary>
+    private static bool TryGetSegmentKm(GpsPosition prev, GpsPosition curr, out double segmentKm)
+    {
+        segmentKm = 0;
+
+        // Ne compte que si le vehicule bouge sur au moins un des deux points.
+        if ((curr.SpeedKph ?? 0) <= 0 && (prev.SpeedKph ?? 0) <= 0) return false;
+
+        var km = HaversineKm(prev.Latitude, prev.Longitude, curr.Latitude, curr.Longitude);
+        if (km < MinSegmentKm || km > MaxSegmentKm) return false;
+
+        var elapsedHours = (curr.RecordedAt - prev.RecordedAt).TotalHours;
+        if (elapsedHours > 0 && km / elapsedHours > MaxImpliedKph) return false;
+
+        segmentKm = km;
+        return true;
     }
 
     /// <summary>

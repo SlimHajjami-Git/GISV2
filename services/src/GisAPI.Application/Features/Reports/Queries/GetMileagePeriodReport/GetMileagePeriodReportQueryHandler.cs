@@ -97,6 +97,12 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
     {
         var report = CreateBaseReport(vehicle, request);
 
+        // Distance repartie par bucket sur la liste CONTINUE : la somme des heures
+        // egale la distance reelle (aucun segment perdu aux frontieres d heure), donc
+        // le total est identique quelle que soit la granularite choisie.
+        var distByHour = GpsDistanceCalculator.CalculateBucketedDistanceKm(
+            positions, p => (p.RecordedAt + LocalOffset).Hour);
+
         // Group by hour of day (adjusted to local time: UTC+1 for Tunisia)
         var hourlyGroups = positions
             .GroupBy(p => (p.RecordedAt + LocalOffset).Hour)
@@ -111,7 +117,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
             if (hourGroup != null)
             {
                 var hourPositions = hourGroup.OrderBy(p => p.RecordedAt).ToList();
-                var distance = CalculateTotalDistance(hourPositions);
+                var distance = distByHour.GetValueOrDefault(hour);
                 var tripCount = CountTrips(hourPositions);
                 var drivingMinutes = CalculateDrivingMinutes(hourPositions);
                 var maxSpeed = hourPositions.Where(p => p.SpeedKph > 0).Select(p => p.SpeedKph ?? 0).ToList();
@@ -170,6 +176,11 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
     {
         var report = CreateBaseReport(vehicle, request);
 
+        // Distance repartie par jour sur la liste CONTINUE : la somme des jours egale
+        // la distance reelle (aucun segment perdu au passage de minuit).
+        var distByDate = GpsDistanceCalculator.CalculateBucketedDistanceKm(
+            positions, p => (p.RecordedAt + LocalOffset).Date);
+
         // Group by date (adjusted to local time: UTC+1 for Tunisia)
         var dailyGroups = positions
             .GroupBy(p => (p.RecordedAt + LocalOffset).Date)
@@ -186,7 +197,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
             if (dayGroup != null)
             {
                 var dayPositions = dayGroup.OrderBy(p => p.RecordedAt).ToList();
-                var distance = CalculateTotalDistance(dayPositions);
+                var distance = distByDate.GetValueOrDefault(currentDate);
                 var tripCount = CountTrips(dayPositions);
                 var drivingMinutes = CalculateDrivingMinutes(dayPositions);
                 var maxSpeed = dayPositions.Where(p => p.SpeedKph > 0).Select(p => p.SpeedKph ?? 0).ToList();
@@ -248,6 +259,12 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
     {
         var report = CreateBaseReport(vehicle, request);
 
+        // Distance repartie par JOUR sur la liste CONTINUE. La distance d un mois =
+        // somme de ses jours, et le total = somme de tous les jours : identique aux
+        // vues heure/jour pour la meme fenetre (plus de segments perdus aux frontieres).
+        var distByDate = GpsDistanceCalculator.CalculateBucketedDistanceKm(
+            positions, p => (p.RecordedAt + LocalOffset).Date);
+
         // Group by month (adjusted to local time: UTC+1 for Tunisia)
         var monthlyGroups = positions
             .GroupBy(p => new { (p.RecordedAt + LocalOffset).Year, (p.RecordedAt + LocalOffset).Month })
@@ -268,14 +285,17 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
             if (monthGroup != null)
             {
                 var monthPositions = monthGroup.OrderBy(p => p.RecordedAt).ToList();
-                var distance = CalculateTotalDistance(monthPositions);
+                // Distance + jours actifs derives du bucketing JOURNALIER continu
+                // (somme des jours = distance reelle du mois, coherente avec heure/jour).
+                var monthDates = distByDate
+                    .Where(kv => kv.Key.Year == currentMonth.Year && kv.Key.Month == currentMonth.Month)
+                    .ToList();
+                var distance = monthDates.Sum(kv => kv.Value);
                 var tripCount = CountTrips(monthPositions);
                 var drivingMinutes = CalculateDrivingMinutes(monthPositions);
-                
+
                 // Count days with activity
-                var daysWithActivity = monthPositions
-                    .GroupBy(p => (p.RecordedAt + LocalOffset).Date)
-                    .Count(g => CalculateTotalDistance(g.ToList()) > 0);
+                var daysWithActivity = monthDates.Count(kv => kv.Value > 0);
 
                 monthlyBreakdown.Add(new MonthlyMileagePeriodDto
                 {
@@ -345,15 +365,6 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
             HasData = true
         };
     }
-
-    /// <summary>
-    /// Calypso 8 — calcul de distance delegue au service partage
-    /// GpsDistanceCalculator pour que tous les consommateurs (rapport km
-    /// + calcul d emprunt) donnent exactement la meme valeur sur la meme
-    /// fenetre temporelle.
-    /// </summary>
-    private static double CalculateTotalDistance(List<GpsPosition> positions)
-        => GpsDistanceCalculator.CalculateTotalDistanceKm(positions);
 
     /// <summary>
     /// Calypso 8 — bug rapporte : "Kilometrage 0, trajets 5, vitesse max 8 km/h".
