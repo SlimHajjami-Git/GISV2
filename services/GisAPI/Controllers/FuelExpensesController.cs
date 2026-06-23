@@ -81,6 +81,22 @@ public class FuelExpensesController : ControllerBase
     }
 
     /// <summary>
+    /// GPS-independent fuel consumption ("Carburant réel"): L/100km, cost/km and
+    /// distance derived purely from manually entered fill-ups (full-to-full).
+    /// Works for vehicles WITHOUT a GPS box — for the "Gestion sans GPS" clients.
+    /// </summary>
+    [HttpGet("real-consumption")]
+    public async Task<ActionResult<RealFuelConsumptionReportDto>> GetRealConsumption(
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate,
+        [FromQuery] int? vehicleId)
+    {
+        var query = new GetRealFuelConsumptionQuery(startDate, endDate, vehicleId);
+        var result = await _mediator.Send(query);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Get current fuel prices for the company
     /// </summary>
     [HttpGet("prices")]
