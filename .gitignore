@@ -53,6 +53,14 @@ osrm-data/
 postgres-data/
 rabbitmq-data/
 
+# Database dumps — NEVER commit (contain production personal data)
+*.dump
+*.dump.gz
+*.sql.gz
+prod-*.sql
+*-tn-*.dump
+*-tn.dump
+
 # Temp files
 *.tmp
 *.bak
