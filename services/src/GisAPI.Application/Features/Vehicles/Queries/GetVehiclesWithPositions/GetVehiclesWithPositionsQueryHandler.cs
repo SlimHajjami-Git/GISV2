@@ -54,8 +54,11 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
             .Include(v => v.GpsDevice)
             .AsQueryable();
 
-        // Non-admin users only see their assigned vehicles
-        if (!isAdmin && userId > 0)
+        // Vehicle visibility is driven by EXPLICIT assignments: any user who has assigned
+        // vehicles is restricted to exactly those — even if their role was (auto-)promoted to
+        // company_admin (e.g. by granting all permissions). A real company admin / CEO has NO
+        // assignments and keeps seeing the whole fleet, including newly added vehicles.
+        if (userId > 0)
         {
             var assignedVehicleIds = await _context.UserVehicles
                 .Where(uv => uv.UserId == userId)
@@ -64,7 +67,7 @@ public class GetVehiclesWithPositionsQueryHandler : IRequestHandler<GetVehiclesW
 
             if (assignedVehicleIds.Any())
                 vehicleQuery = vehicleQuery.Where(v => assignedVehicleIds.Contains(v.Id));
-            else
+            else if (!isAdmin)
                 vehicleQuery = vehicleQuery.Where(v => false);
         }
 

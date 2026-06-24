@@ -35,13 +35,23 @@ public class GetVehicleDetailsQueryHandler : IRequestHandler<GetVehicleDetailsQu
         if (vehicle == null)
             return null;
 
-        // Non-admin users can only access their assigned vehicles
-        if (!isAdmin && userId > 0)
+        // Vehicle visibility is driven by EXPLICIT assignments: a user WITH assignments can only
+        // access assigned vehicles (even if (auto-)promoted to admin); a real admin/CEO has no
+        // assignments and can access any vehicle of the company.
+        if (userId > 0)
         {
-            var hasAccess = await _context.UserVehicles
-                .AnyAsync(uv => uv.UserId == userId && uv.VehicleId == request.VehicleId, ct);
-            if (!hasAccess)
+            var hasAnyAssignment = await _context.UserVehicles.AnyAsync(uv => uv.UserId == userId, ct);
+            if (hasAnyAssignment)
+            {
+                var hasAccess = await _context.UserVehicles
+                    .AnyAsync(uv => uv.UserId == userId && uv.VehicleId == request.VehicleId, ct);
+                if (!hasAccess)
+                    return null;
+            }
+            else if (!isAdmin)
+            {
                 return null;
+            }
         }
 
         var now = DateTime.UtcNow;
