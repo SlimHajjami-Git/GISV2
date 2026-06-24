@@ -318,6 +318,15 @@ interface VehicleOption {
               <!-- Step 2: Permissions -->
               <div *ngIf="userModalStep === 2">
                 <div class="form-section">
+                  <label class="perm-check perm-critical" style="display:flex; align-items:flex-start; gap:10px;">
+                    <input type="checkbox" [(ngModel)]="userForm.isCompanyAdmin" style="margin-top:3px;">
+                    <span style="display:flex; flex-direction:column;">
+                      <span class="perm-label">👑 Administrateur de la société</span>
+                      <span class="perm-desc">Accès à <strong>tous les véhicules</strong> et à toutes les fonctionnalités. À réserver au responsable / CEO. Sinon, laissez décoché et limitez les véhicules à l'étape « Véhicules ».</span>
+                    </span>
+                  </label>
+                </div>
+                <div class="form-section">
                   <h3 class="section-title">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                     Accès aux modules
@@ -515,7 +524,8 @@ interface VehicleOption {
                     Véhicules assignés
                   </h3>
                   <p class="section-hint">Sélectionnez les véhicules que cet utilisateur pourra superviser. Les administrateurs ont accès à tous les véhicules.</p>
-                  <div class="vehicle-checkboxes">
+                  <div class="empty-hint" *ngIf="userForm.isCompanyAdmin" style="padding:14px; line-height:1.5;">👑 Cet utilisateur est <strong>administrateur</strong> : il a déjà accès à tous les véhicules. La sélection ci-dessous n'est pas nécessaire.</div>
+                  <div class="vehicle-checkboxes" *ngIf="!userForm.isCompanyAdmin">
                     <label class="vehicle-check" *ngFor="let v of availableVehicles">
                       <input type="checkbox" [checked]="isVehicleSelected(v.id)" (change)="toggleVehicle(v.id)">
                       <span class="check-label">{{ v.name }} <span class="plate-tag">{{ v.plate }}</span></span>
@@ -1782,6 +1792,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     password: '',
     roleId: 0,
     status: 'active',
+    isCompanyAdmin: false,
     assignedVehicleIds: [] as number[],
     canMonitoring: true,
     canVehicles: true,
@@ -2088,6 +2099,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         password: '',
         roleId: user.roleId,
         status: user.status,
+        isCompanyAdmin: user.isCompanyAdmin ?? false,
         assignedVehicleIds: [...(user.assignedVehicleIds || [])],
         canMonitoring: up?.canMonitoring ?? true,
         canVehicles: up?.canVehicles ?? true,
@@ -2133,6 +2145,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         password: '',
         roleId: this.roles.find(r => !r.isCompanyAdmin)?.id || (this.roles.length > 0 ? this.roles[0].id : 0),
         status: 'active',
+        isCompanyAdmin: false,
         assignedVehicleIds: [],
         canMonitoring: true,
         canVehicles: true,
@@ -2331,6 +2344,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         phone: this.userForm.phone,
         roleId: this.userForm.roleId,
         status: this.userForm.status,
+        isCompanyAdmin: this.userForm.isCompanyAdmin,
         assignedVehicleIds: this.userForm.assignedVehicleIds,
         ...permissionPayload
       }).subscribe({
@@ -2352,6 +2366,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         phone: this.userForm.phone,
         password: this.userForm.password,
         roleId: this.userForm.roleId,
+        isCompanyAdmin: this.userForm.isCompanyAdmin,
         assignedVehicleIds: this.userForm.assignedVehicleIds,
         ...permissionPayload
       }).subscribe({

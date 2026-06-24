@@ -52,7 +52,8 @@ public record CreateUserRequest(
     bool AlertAssurance = false,
     bool AlertTaxeCirculation = false,
     bool AlertVisiteTechnique = false,
-    bool AlertEntretien = false
+    bool AlertEntretien = false,
+    bool IsCompanyAdmin = false
 );
 
 public record UpdateUserRequest(
@@ -98,7 +99,8 @@ public record UpdateUserRequest(
     bool? AlertAssurance = null,
     bool? AlertTaxeCirculation = null,
     bool? AlertVisiteTechnique = null,
-    bool? AlertEntretien = null
+    bool? AlertEntretien = null,
+    bool? IsCompanyAdmin = null
 );
 
 public record UserSettingsDto(

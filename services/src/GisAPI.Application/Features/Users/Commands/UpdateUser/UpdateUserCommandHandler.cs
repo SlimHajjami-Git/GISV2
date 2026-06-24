@@ -29,27 +29,24 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
             .FirstOrDefaultAsync(u => u.Id == request.Id && u.CompanyId == companyId, ct)
             ?? throw new NotFoundException("Utilisateur", request.Id);
 
-        // Auto-select role based on permissions (same logic as CreateUser)
-        var allPerms = (request.CanMonitoring ?? user.CanMonitoring)
-            && (request.CanVehicles ?? user.CanVehicles) && (request.CanDrivers ?? user.CanDrivers)
-            && (request.CanReports ?? user.CanReports) && (request.CanGeofences ?? user.CanGeofences)
-            && (request.CanMaintenance ?? user.CanMaintenance) && (request.CanCosts ?? user.CanCosts)
-            && (request.CanFuel ?? user.CanFuel)
-            && (request.CanDocuments ?? user.CanDocuments) && (request.CanAccidents ?? user.CanAccidents)
-            && (request.CanUsers ?? user.CanUsers) && (request.CanSettings ?? user.CanSettings)
-            && (request.CanSuppliers ?? user.CanSuppliers) && (request.CanFleetManagement ?? user.CanFleetManagement)
-            && (request.CanTours ?? user.CanTours) && (request.CanPlayback ?? user.CanPlayback);
-
-        if (allPerms)
+        // Admin status is EXPLICIT (decoupled from permissions). Only change the role
+        // when the request explicitly sets IsCompanyAdmin:
+        //   true  → promote to the company_admin role
+        //   false → demote to a non-admin role (prefer the role sent by the frontend)
+        //   null  → leave the role unchanged
+        // Granting all feature permissions no longer makes a user an admin.
+        if (request.IsCompanyAdmin == true)
         {
             var adminRole = await _context.Roles
                 .FirstOrDefaultAsync(r => r.SocieteId == companyId && r.IsCompanyAdmin, ct);
             if (adminRole != null) user.RoleId = adminRole.Id;
         }
-        else
+        else if (request.IsCompanyAdmin == false)
         {
             var nonAdminRole = await _context.Roles
-                .FirstOrDefaultAsync(r => r.SocieteId == companyId && !r.IsCompanyAdmin, ct);
+                .FirstOrDefaultAsync(r => r.Id == request.RoleId && r.SocieteId == companyId && !r.IsCompanyAdmin, ct)
+                ?? await _context.Roles
+                    .FirstOrDefaultAsync(r => r.SocieteId == companyId && !r.IsCompanyAdmin, ct);
             if (nonAdminRole == null)
             {
                 nonAdminRole = new Role { Name = "Opérateur", SocieteId = companyId, IsCompanyAdmin = false, IsSystemRole = false };

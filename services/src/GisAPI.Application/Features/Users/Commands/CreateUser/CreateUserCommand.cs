@@ -52,5 +52,7 @@ public record CreateUserCommand(
     bool AlertAssurance = false,
     bool AlertTaxeCirculation = false,
     bool AlertVisiteTechnique = false,
-    bool AlertEntretien = false
+    bool AlertEntretien = false,
+    // Admin status is EXPLICIT (decoupled from permissions): true => company_admin role
+    bool IsCompanyAdmin = false
 ) : ICommand<UserListDto>;

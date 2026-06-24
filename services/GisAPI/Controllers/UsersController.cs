@@ -46,6 +46,9 @@ public class UsersController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<UserListDto>> CreateUser([FromBody] CreateUserRequest request)
     {
+        // NOTE: use NAMED arguments for every permission field. The command and the
+        // request DTO declare these bools in different orders, so positional mapping
+        // silently scrambled them (e.g. CanFuel <- CanDocuments). Named args are safe.
         var command = new CreateUserCommand(
             request.FirstName,
             request.LastName,
@@ -62,34 +65,40 @@ public class UsersController : ControllerBase
             request.DateOfBirth,
             request.HireDate,
             request.AccessLevel,
-            request.CanMonitoring,
-            request.CanVehicles,
-            request.CanDrivers,
-            request.CanReports,
-            request.CanGeofences,
-            request.CanMaintenance,
-            request.CanCosts,
-            request.CanDocuments,
-            request.CanAccidents,
-            request.CanUsers,
-            request.CanSettings,
-            request.CanSuppliers,
-            request.CanFleetManagement,
-            request.CanFuel,
-            request.CanTours,
-            request.CanPlayback,
-            request.CanReportTrips,
-            request.CanReportFuel,
-            request.CanReportSpeed,
-            request.CanReportStops,
-            request.CanReportMileage,
-            request.CanReportCosts,
-            request.CanReportMaintenance,
-            request.CanReportDaily,
-            request.CanReportMonthly,
-            request.CanReportMileagePeriod,
-            request.CanReportSpeedInfraction,
-            request.CanReportDrivingBehavior
+            CanMonitoring: request.CanMonitoring,
+            CanVehicles: request.CanVehicles,
+            CanDrivers: request.CanDrivers,
+            CanReports: request.CanReports,
+            CanGeofences: request.CanGeofences,
+            CanMaintenance: request.CanMaintenance,
+            CanCosts: request.CanCosts,
+            CanFuel: request.CanFuel,
+            CanDocuments: request.CanDocuments,
+            CanAccidents: request.CanAccidents,
+            CanUsers: request.CanUsers,
+            CanSettings: request.CanSettings,
+            CanSuppliers: request.CanSuppliers,
+            CanFleetManagement: request.CanFleetManagement,
+            CanTours: request.CanTours,
+            CanPlayback: request.CanPlayback,
+            CanReportTrips: request.CanReportTrips,
+            CanReportFuel: request.CanReportFuel,
+            CanReportSpeed: request.CanReportSpeed,
+            CanReportStops: request.CanReportStops,
+            CanReportMileage: request.CanReportMileage,
+            CanReportCosts: request.CanReportCosts,
+            CanReportMaintenance: request.CanReportMaintenance,
+            CanReportDaily: request.CanReportDaily,
+            CanReportMonthly: request.CanReportMonthly,
+            CanReportMileagePeriod: request.CanReportMileagePeriod,
+            CanReportSpeedInfraction: request.CanReportSpeedInfraction,
+            CanReportDrivingBehavior: request.CanReportDrivingBehavior,
+            CanReportMonthlyCosts: request.CanReportMonthlyCosts,
+            AlertAssurance: request.AlertAssurance,
+            AlertTaxeCirculation: request.AlertTaxeCirculation,
+            AlertVisiteTechnique: request.AlertVisiteTechnique,
+            AlertEntretien: request.AlertEntretien,
+            IsCompanyAdmin: request.IsCompanyAdmin
         );
 
         var user = await _mediator.Send(command);
@@ -135,7 +144,13 @@ public class UsersController : ControllerBase
             CanReportMonthly: request.CanReportMonthly,
             CanReportMileagePeriod: request.CanReportMileagePeriod,
             CanReportSpeedInfraction: request.CanReportSpeedInfraction,
-            CanReportDrivingBehavior: request.CanReportDrivingBehavior
+            CanReportDrivingBehavior: request.CanReportDrivingBehavior,
+            CanReportMonthlyCosts: request.CanReportMonthlyCosts,
+            AlertAssurance: request.AlertAssurance,
+            AlertTaxeCirculation: request.AlertTaxeCirculation,
+            AlertVisiteTechnique: request.AlertVisiteTechnique,
+            AlertEntretien: request.AlertEntretien,
+            IsCompanyAdmin: request.IsCompanyAdmin
         );
 
         await _mediator.Send(command);

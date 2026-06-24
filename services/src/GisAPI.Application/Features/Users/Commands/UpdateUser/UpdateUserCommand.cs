@@ -54,5 +54,7 @@ public record UpdateUserCommand(
     bool? AlertAssurance = null,
     bool? AlertTaxeCirculation = null,
     bool? AlertVisiteTechnique = null,
-    bool? AlertEntretien = null
+    bool? AlertEntretien = null,
+    // Admin status is EXPLICIT: true => promote to company_admin, false => demote, null => unchanged
+    bool? IsCompanyAdmin = null
 ) : ICommand;

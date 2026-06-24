@@ -51,17 +51,12 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
         if (await _context.Users.AnyAsync(u => u.Email == request.Email, ct))
             throw new ConflictException("Cet email est déjà utilisé");
 
-        // Auto-select role based on permissions:
-        // All permissions checked → Administrateur (company_admin)
-        // Any permission unchecked → non-admin role (Chef de parc / Opérateur)
-        var allPermissionsGranted = request.CanMonitoring && request.CanVehicles && request.CanDrivers
-            && request.CanReports && request.CanGeofences && request.CanMaintenance
-            && request.CanCosts && request.CanFuel && request.CanDocuments && request.CanAccidents
-            && request.CanUsers && request.CanSettings && request.CanSuppliers
-            && request.CanFleetManagement && request.CanTours && request.CanPlayback;
-
+        // Admin status is EXPLICIT (decoupled from permissions): only the explicit
+        // IsCompanyAdmin flag promotes to the company_admin role. Granting many/all
+        // feature permissions no longer makes a user an admin — so a user can have
+        // full permissions while staying restricted to their assigned vehicles.
         Role role;
-        if (allPermissionsGranted)
+        if (request.IsCompanyAdmin)
         {
             // Assign company admin role
             role = await _context.Roles
