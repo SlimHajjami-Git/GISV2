@@ -31,10 +31,8 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
             .Include(v => v.GpsDevice)
             .AsQueryable();
 
-        // Vehicle visibility is driven by EXPLICIT assignments (see GetVehiclesWithPositions):
-        // any user with assigned vehicles is restricted to those — even if (auto-)promoted to
-        // admin; a real admin/CEO has no assignments and sees the whole fleet.
-        if (userId > 0)
+        // Non-admin users only see their assigned vehicles
+        if (!isAdmin && userId > 0)
         {
             var assignedVehicleIds = await _context.UserVehicles
                 .Where(uv => uv.UserId == userId)
@@ -45,9 +43,9 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
             {
                 query = query.Where(v => assignedVehicleIds.Contains(v.Id));
             }
-            else if (!isAdmin)
+            else
             {
-                // Non-admin with no assignment = see nothing (admin/CEO with none = see all)
+                // No vehicles assigned = see nothing
                 query = query.Where(v => false);
             }
         }
