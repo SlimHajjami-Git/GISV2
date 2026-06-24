@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Services;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -20,11 +21,16 @@ public class GetExpiryAlertsQueryHandler : IRequestHandler<GetExpiryAlertsQuery,
     {
         // Scope by caller's company even for system admins.
         var companyId = _tenantService.CompanyId ?? 0;
+        var userId = _tenantService.UserId ?? 0;
+        var isAdmin = _tenantService.UserRoles.Any(r => r == "company_admin" || r == "admin" || r == "super_admin" || r == "system_admin");
+        var visibleVehicleIds = await VehicleVisibility.GetVisibleVehicleIdsAsync(_context, userId, isAdmin, cancellationToken);
 
-        var vehicles = await _context.Vehicles
+        var vehiclesQuery = _context.Vehicles
             .AsNoTracking()
-            .Where(v => v.CompanyId == companyId)
-            .ToListAsync(cancellationToken);
+            .Where(v => v.CompanyId == companyId);
+        if (visibleVehicleIds != null)
+            vehiclesQuery = vehiclesQuery.Where(v => visibleVehicleIds.Contains(v.Id));
+        var vehicles = await vehiclesQuery.ToListAsync(cancellationToken);
 
         var today = DateTime.UtcNow.Date;
         var threshold = today.AddDays(request.DaysThreshold);

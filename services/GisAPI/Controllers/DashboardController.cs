@@ -536,17 +536,12 @@ public class DashboardController : ControllerBase
             .Where(v => v.CompanyId == companyId)
             .AsQueryable();
 
-        // Non-admin users only see their assigned vehicles
-        if (!isAdmin && userId > 0)
-        {
-            var assignedVehicleIds = await _context.UserVehicles
-                .Where(uv => uv.UserId == userId)
-                .Select(uv => uv.VehicleId)
-                .ToListAsync();
-
-            if (assignedVehicleIds.Any())
-                vehicleQuery = vehicleQuery.Where(v => assignedVehicleIds.Contains(v.Id));
-        }
+        // Vehicle visibility: explicit assignments are authoritative (see VehicleVisibility) —
+        // a user WITH assigned vehicles is restricted to them even if (auto-)promoted to admin.
+        var visibleVehicleIds = await GisAPI.Application.Common.Services.VehicleVisibility
+            .GetVisibleVehicleIdsAsync(_context, userId, isAdmin);
+        if (visibleVehicleIds != null)
+            vehicleQuery = vehicleQuery.Where(v => visibleVehicleIds.Contains(v.Id));
 
         var vehicles = await vehicleQuery.ToListAsync();
 

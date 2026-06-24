@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Models;
+using GisAPI.Application.Common.Services;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -25,11 +26,17 @@ public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, Paginat
         // for system roles, so without this explicit filter the échéances page
         // leaked every company's vehicles + drivers.
         var companyId = _tenantService.CompanyId ?? 0;
+        var userId = _tenantService.UserId ?? 0;
+        var isAdmin = _tenantService.UserRoles.Any(r => r == "company_admin" || r == "admin" || r == "super_admin" || r == "system_admin");
+        // Restrict to the user's assigned vehicles (authoritative — even for admins with assignments).
+        var visibleVehicleIds = await VehicleVisibility.GetVisibleVehicleIdsAsync(_context, userId, isAdmin, cancellationToken);
 
-        var vehicles = await _context.Vehicles
+        var vehiclesQuery = _context.Vehicles
             .AsNoTracking()
-            .Where(v => v.CompanyId == companyId)
-            .ToListAsync(cancellationToken);
+            .Where(v => v.CompanyId == companyId);
+        if (visibleVehicleIds != null)
+            vehiclesQuery = vehiclesQuery.Where(v => visibleVehicleIds.Contains(v.Id));
+        var vehicles = await vehiclesQuery.ToListAsync(cancellationToken);
 
         if (request.VehicleId.HasValue)
         {
@@ -48,10 +55,13 @@ public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, Paginat
         // Add driver permit expiries (from the standalone drivers table)
         if (!request.VehicleId.HasValue)
         {
-            var drivers = await _context.Drivers
+            var driversQuery = _context.Drivers
                 .AsNoTracking()
-                .Where(d => d.CompanyId == companyId && d.PermitExpiry != null)
-                .ToListAsync(cancellationToken);
+                .Where(d => d.CompanyId == companyId && d.PermitExpiry != null);
+            // Restricted users only see permits of drivers assigned to a vehicle they can see.
+            if (visibleVehicleIds != null)
+                driversQuery = driversQuery.Where(d => d.AssignedVehicleId != null && visibleVehicleIds.Contains(d.AssignedVehicleId.Value));
+            var drivers = await driversQuery.ToListAsync(cancellationToken);
 
             foreach (var driver in drivers)
             {
