@@ -110,8 +110,11 @@ public class VehiclesController : ControllerBase
                             .GroupBy(p => p.DeviceUid)
                             .ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.CachedAt).First());
                         
-                        // Update vehicles with cached positions (more recent data)
-                        foreach (var vehicle in vehicles.Where(v => v.DeviceUid != null))
+                        // Update vehicles with cached positions (more recent data).
+                        // Iterate a SNAPSHOT (.ToList()): the loop reassigns vehicles[idx] = ...,
+                        // and List<T>'s indexer setter bumps the list version, which would throw
+                        // "Collection was modified" on a lazy .Where() enumerator over `vehicles`.
+                        foreach (var vehicle in vehicles.Where(v => v.DeviceUid != null).ToList())
                         {
                             if (cacheByDevice.TryGetValue(vehicle.DeviceUid!, out var cached))
                             {
