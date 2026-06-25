@@ -7,7 +7,7 @@ use tracing::{debug, info};
 use super::model::{FrameKind, FrameVersion, HhFrame};
 
 // ============================================================================
-// Teltonika Codec 8 / 8 Extended / 16 Decoder (FMB130, FMB150, FMC, FMU, FMM)
+// Teltonika Codec 8 / 8 Extended / 16 Decoder (FMB120, FMB130, FMB150, FMC, FMU, FMM)
 // ============================================================================
 //
 // Protocol layout — TCP only (UDP is handled by a separate datagram codec):

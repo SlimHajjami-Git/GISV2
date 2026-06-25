@@ -81,10 +81,10 @@ impl ProtocolMetadata {
                 model_name: Some("NORON"),
                 firmware_flavor: Some("NR024"),
             },
-            // teltonika => Teltonika family — FMB130, FMB150, FMC130, FMU130,
-            // FMM130 all speak the same Codec 8 / 8 Extended on TCP. The
-            // exact model is stamped per-device in gps_devices.boitier_type
-            // by the operator; this metadata only tags the firmware family.
+            // teltonika => Teltonika family — FMB120, FMB130, FMB150, FMC130,
+            // FMU130, FMM130 all speak the same Codec 8 / 8 Extended on TCP. The
+            // exact model is stamped per-device in gps_devices.model by the
+            // operator; this metadata only tags the firmware family.
             "teltonika" => Self {
                 model_name: Some("TELTONIKA"),
                 firmware_flavor: Some("Codec8"),

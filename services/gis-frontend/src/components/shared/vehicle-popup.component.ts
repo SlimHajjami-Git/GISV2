@@ -318,6 +318,7 @@ export interface CompanyOption {
                     <option value="NR024">NR024</option>
                   </ng-container>
                   <ng-container *ngIf="formData.gpsBrand === 'Teltonika'">
+                    <option value="FMB120">FMB120</option>
                     <option value="FMB130">FMB130</option>
                     <option value="FMB150">FMB150</option>
                   </ng-container>
@@ -1253,9 +1254,9 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       this.formData.gpsFuelSensorMode = 'raw_255';
     } else if (brand === 'Teltonika') {
       // Default to FMB130 — the most common Teltonika tracker in the fleet.
-      // Operators can switch to FMB150 (industrial variant) in the version
-      // dropdown below. Fuel sensor mode is irrelevant: FMB does not expose
-      // a canonical fuel-level IO, so we hide the field entirely.
+      // Operators can switch to FMB120 (entry-level) or FMB150 (industrial
+      // variant) in the version dropdown below. Fuel sensor mode is irrelevant:
+      // FMB does not expose a canonical fuel-level IO, so we hide the field.
       this.formData.gpsModel = 'FMB130';
       this.formData.gpsFuelSensorMode = 'raw_255';
     } else if (brand === 'Concox') {

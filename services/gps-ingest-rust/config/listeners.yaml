@@ -15,7 +15,7 @@ listeners:
   - port: 6300
     protocol: noron
     transport: udp
-  # teltonika => Codec 8 / 8 Extended TCP (FMB130, FMB150, FMC130, FMU130, FMM130)
+  # teltonika => Codec 8 / 8 Extended TCP (FMB120, FMB130, FMB150, FMC130, FMU130, FMM130)
   # Devices configure their server URL to this host:port. IMEI handshake then
   # binary AVL frames; see src/telemetry/teltonika.rs for the IO ID mapping.
   - port: 6400
