@@ -106,8 +106,14 @@ public class FcmService : IFcmService
             {
                 if (!response.Responses[i].IsSuccess)
                 {
-                    var error = response.Responses[i].Exception?.MessagingErrorCode;
-                    errors.Add(error?.ToString() ?? "unknown");
+                    var respEx = response.Responses[i].Exception;
+                    var error = respEx?.MessagingErrorCode;
+                    // When the code is null ("unknown") the real cause is in the message
+                    // (e.g. "Firebase Cloud Messaging API has not been used ... or it is
+                    // disabled", auth/permission errors, project mismatch). Surface it.
+                    errors.Add(error?.ToString()
+                        ?? respEx?.Message?.Replace(",", ";")
+                        ?? "unknown");
                     if (error == MessagingErrorCode.Unregistered || error == MessagingErrorCode.InvalidArgument)
                     {
                         var badToken = tokens[i];
