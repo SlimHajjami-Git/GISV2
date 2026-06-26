@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
+using GisAPI.Services;
 
 namespace GisAPI.Controllers;
 
@@ -12,10 +13,12 @@ namespace GisAPI.Controllers;
 public class DeviceTokensController : ControllerBase
 {
     private readonly IGisDbContext _context;
+    private readonly IFcmService _fcm;
 
-    public DeviceTokensController(IGisDbContext context)
+    public DeviceTokensController(IGisDbContext context, IFcmService fcm)
     {
         _context = context;
+        _fcm = fcm;
     }
 
     private int GetUserId() => int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
@@ -67,6 +70,24 @@ public class DeviceTokensController : ControllerBase
         }
 
         return Ok(new { success = true });
+    }
+
+    /// <summary>
+    /// Diagnostic: send a test push to the CURRENT user's active device(s) and
+    /// return the FCM result (initialized? token count? success/failure + error codes).
+    /// Call this with the app CLOSED to verify background delivery end-to-end.
+    /// </summary>
+    [HttpPost("test-push")]
+    public async Task<IActionResult> TestPush()
+    {
+        var userId = GetUserId();
+        var result = await _fcm.SendToUserAsync(
+            userId,
+            "🔔 Test de notification",
+            "Si tu vois ceci, les notifications push fonctionnent !",
+            new Dictionary<string, string> { ["type"] = "test" },
+            badgeCount: 1);
+        return Ok(result);
     }
 }
 

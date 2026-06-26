@@ -6,9 +6,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Services;
 
+/// <summary>Result of an FCM multicast send — used by the test endpoint and logs.</summary>
+public record FcmSendResult(bool Initialized, int TokenCount, int SuccessCount, int FailureCount, List<string> Errors);
+
 public interface IFcmService
 {
-    Task SendToUserAsync(int userId, string title, string body, Dictionary<string, string>? data = null, int? badgeCount = null);
+    Task<FcmSendResult> SendToUserAsync(int userId, string title, string body, Dictionary<string, string>? data = null, int? badgeCount = null);
 }
 
 public class FcmService : IFcmService
@@ -45,16 +48,24 @@ public class FcmService : IFcmService
         }
     }
 
-    public async Task SendToUserAsync(int userId, string title, string body, Dictionary<string, string>? data = null, int? badgeCount = null)
+    public async Task<FcmSendResult> SendToUserAsync(int userId, string title, string body, Dictionary<string, string>? data = null, int? badgeCount = null)
     {
-        if (!_initialized) return;
+        if (!_initialized)
+        {
+            _logger.LogWarning("FCM push skipped for user {UserId}: Firebase not initialized (service account missing?).", userId);
+            return new FcmSendResult(false, 0, 0, 0, new List<string> { "firebase_not_initialized" });
+        }
 
         var tokens = await _context.UserDeviceTokens
             .Where(t => t.UserId == userId && t.IsActive)
             .Select(t => t.Token)
             .ToListAsync();
 
-        if (tokens.Count == 0) return;
+        if (tokens.Count == 0)
+        {
+            _logger.LogInformation("FCM push skipped for user {UserId}: no active device tokens.", userId);
+            return new FcmSendResult(true, 0, 0, 0, new List<string> { "no_active_tokens" });
+        }
 
         var message = new MulticastMessage
         {
@@ -88,15 +99,15 @@ public class FcmService : IFcmService
         try
         {
             var response = await FirebaseMessaging.DefaultInstance.SendEachForMulticastAsync(message);
-            _logger.LogDebug("FCM sent to user {UserId}: {Success}/{Total} success",
-                userId, response.SuccessCount, tokens.Count);
 
-            // Deactivate invalid tokens
+            // Collect per-token error codes + deactivate permanently-invalid tokens.
+            var errors = new List<string>();
             for (int i = 0; i < response.Responses.Count; i++)
             {
                 if (!response.Responses[i].IsSuccess)
                 {
                     var error = response.Responses[i].Exception?.MessagingErrorCode;
+                    errors.Add(error?.ToString() ?? "unknown");
                     if (error == MessagingErrorCode.Unregistered || error == MessagingErrorCode.InvalidArgument)
                     {
                         var badToken = tokens[i];
@@ -105,16 +116,24 @@ public class FcmService : IFcmService
                         if (entity != null)
                         {
                             entity.IsActive = false;
-                            _logger.LogDebug("Deactivated invalid FCM token for user {UserId}", userId);
+                            _logger.LogInformation("Deactivated invalid FCM token for user {UserId}", userId);
                         }
                     }
                 }
             }
             await _context.SaveChangesAsync();
+
+            // Information level (was Debug) so FCM delivery is observable in prod logs.
+            _logger.LogInformation("FCM sent to user {UserId}: {Success}/{Total} success{ErrorSuffix}",
+                userId, response.SuccessCount, tokens.Count,
+                errors.Count > 0 ? $" — errors: {string.Join(",", errors)}" : string.Empty);
+
+            return new FcmSendResult(true, tokens.Count, response.SuccessCount, response.FailureCount, errors);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to send FCM to user {UserId}", userId);
+            return new FcmSendResult(true, tokens.Count, 0, tokens.Count, new List<string> { ex.Message });
         }
     }
 }
