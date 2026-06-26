@@ -8,7 +8,7 @@ namespace GisAPI.Services;
 
 public interface IFcmService
 {
-    Task SendToUserAsync(int userId, string title, string body, Dictionary<string, string>? data = null);
+    Task SendToUserAsync(int userId, string title, string body, Dictionary<string, string>? data = null, int? badgeCount = null);
 }
 
 public class FcmService : IFcmService
@@ -45,7 +45,7 @@ public class FcmService : IFcmService
         }
     }
 
-    public async Task SendToUserAsync(int userId, string title, string body, Dictionary<string, string>? data = null)
+    public async Task SendToUserAsync(int userId, string title, string body, Dictionary<string, string>? data = null, int? badgeCount = null)
     {
         if (!_initialized) return;
 
@@ -72,9 +72,17 @@ public class FcmService : IFcmService
                 {
                     Sound = "default",
                     ChannelId = "immobilization",
-                    Priority = NotificationPriority.MAX
+                    Priority = NotificationPriority.MAX,
+                    // App-icon badge count ("cercle avec le nombre"). Launcher-dependent:
+                    // Samsung/Xiaomi/etc. render the number, stock Android shows a dot.
+                    // Null leaves the badge unchanged.
+                    NotificationCount = badgeCount
                 }
-            }
+            },
+            // iOS: set the springboard (app-icon) badge number.
+            Apns = badgeCount.HasValue
+                ? new ApnsConfig { Aps = new Aps { Badge = badgeCount.Value, Sound = "default" } }
+                : null
         };
 
         try

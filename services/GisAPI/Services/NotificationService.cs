@@ -90,6 +90,21 @@ public class NotificationService : INotificationService
             _logger.LogWarning(ex, "Failed to push notification to user_{UserId}", userId);
         }
 
+        // Authoritative unread count — used BOTH for the FCM app-icon badge (so the
+        // "cercle avec le nombre" shows even when the app is closed) and the SignalR
+        // bell badge below. Computed once after the insert so it includes this notif.
+        var unreadCount = 0;
+        try
+        {
+            unreadCount = await _context.Notifications
+                .AsNoTracking()
+                .CountAsync(n => n.UserId == userId && !n.IsRead, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to compute unread count for user {UserId}", userId);
+        }
+
         // Push via FCM for mobile devices (works even when app is closed)
         try
         {
@@ -104,7 +119,7 @@ public class NotificationService : INotificationService
                 foreach (var kv in metadata)
                     fcmData[kv.Key] = kv.Value?.ToString() ?? "";
             }
-            await _fcmService.SendToUserAsync(userId, title, message, fcmData);
+            await _fcmService.SendToUserAsync(userId, title, message, fcmData, unreadCount);
         }
         catch (Exception ex)
         {
@@ -124,9 +139,6 @@ public class NotificationService : INotificationService
         // locally — which caused desync when the client missed the event.
         try
         {
-            var unreadCount = await _context.Notifications
-                .AsNoTracking()
-                .CountAsync(n => n.UserId == userId && !n.IsRead, ct);
             await SendUnreadCountAsync(userId, unreadCount);
         }
         catch (Exception ex)
