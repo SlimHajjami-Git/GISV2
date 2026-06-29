@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, BehaviorSubject, of, tap, map, catchError } from 'rxjs';
+import { UserPreferencesService } from './user-preferences.service';
 import { SubscriptionFeatures } from './permission.service';
 
 export interface UserPermissions {
@@ -38,6 +39,8 @@ export interface AuthUser {
   subscriptionFeatures: SubscriptionFeatures | null;
   assignedVehicleIds: number[] | null;
   userPermissions: UserPermissions | null;
+  /** Account currency (server-side: Societe.Settings.Currency, else deployment default). */
+  currency?: string;
 }
 
 export interface AuthResponse {
@@ -60,6 +63,7 @@ export interface AuthResponse {
     subscriptionFeatures: SubscriptionFeatures | null;
     assignedVehicleIds: number[] | null;
     userPermissions: UserPermissions | null;
+    currency?: string;
   };
 }
 
@@ -70,8 +74,19 @@ export class AuthService {
   private readonly API_URL = this.getApiUrl();
   private currentUser$ = new BehaviorSubject<AuthUser | null>(null);
 
-  constructor(private http: HttpClient) {
+  constructor(private http: HttpClient, private userPrefs: UserPreferencesService) {
     this.loadStoredAuth();
+  }
+
+  /**
+   * The currency shown across the app follows the ACCOUNT (server-side
+   * Societe.Settings.Currency, else the deployment default), not the browser.
+   * Seeding it into UserPreferencesService on login / session-restore makes
+   * every screen consistent and overrides any stale localStorage value
+   * (e.g. an old "TND" left over before a deployment was switched to DZD).
+   */
+  private applyAccountCurrency(currency: string | null | undefined): void {
+    if (currency) this.userPrefs.update({ currency: currency as any });
   }
 
   private getApiUrl(): string {
@@ -99,8 +114,10 @@ export class AuthService {
           isSystemAdmin: parsed.isSystemAdmin ?? false,
           subscriptionFeatures: parsed.subscriptionFeatures ?? null,
           assignedVehicleIds: parsed.assignedVehicleIds ?? null,
-          userPermissions: parsed.userPermissions ?? null
+          userPermissions: parsed.userPermissions ?? null,
+          currency: parsed.currency
         });
+        this.applyAccountCurrency(parsed.currency);
       } catch (e) {
         console.error('Error loading stored auth:', e);
       }
@@ -215,7 +232,8 @@ export class AuthService {
           isSystemAdmin: response.user.isSystemAdmin,
           subscriptionFeatures: response.user.subscriptionFeatures,
           assignedVehicleIds: response.user.assignedVehicleIds ?? null,
-          userPermissions: response.user.userPermissions ?? null
+          userPermissions: response.user.userPermissions ?? null,
+          currency: response.user.currency
         };
         console.log('AuthService.login - Mapped subscriptionFeatures:', user.subscriptionFeatures);
         console.log('AuthService.login - User permissions:', user.userPermissions);
@@ -223,6 +241,7 @@ export class AuthService {
         localStorage.setItem('refresh_token', response.refreshToken);
         localStorage.setItem('auth_user', JSON.stringify(user));
         this.currentUser$.next(user);
+        this.applyAccountCurrency(user.currency);
         console.log('AuthService.login - User mapped:', user);
         return user;
       }),
@@ -393,12 +412,14 @@ export class AuthService {
           isSystemAdmin: response.user.isSystemAdmin,
           subscriptionFeatures: response.user.subscriptionFeatures,
           assignedVehicleIds: response.user.assignedVehicleIds ?? null,
-          userPermissions: response.user.userPermissions ?? null
+          userPermissions: response.user.userPermissions ?? null,
+          currency: response.user.currency
         };
         localStorage.setItem('auth_token', response.token);
         localStorage.setItem('refresh_token', response.refreshToken);
         localStorage.setItem('auth_user', JSON.stringify(user));
         this.currentUser$.next(user);
+        this.applyAccountCurrency(user.currency);
         console.log('AuthService - Token refreshed successfully');
       }),
       catchError(err => {
