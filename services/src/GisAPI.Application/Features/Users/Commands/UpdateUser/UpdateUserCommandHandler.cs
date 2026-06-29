@@ -111,14 +111,16 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         // Update vehicle assignments if provided
         if (request.AssignedVehicleIds != null)
         {
-            // Validate vehicles belong to company
-            if (request.AssignedVehicleIds.Length > 0)
-            {
-                var validCount = await _context.Vehicles
-                    .CountAsync(v => request.AssignedVehicleIds.Contains(v.Id) && v.CompanyId == companyId, ct);
-                if (validCount != request.AssignedVehicleIds.Length)
-                    throw new DomainException("Un ou plusieurs véhicules sont invalides");
-            }
+            // Resolve to the subset of vehicles that actually belong to this company.
+            // Stale/foreign ids (e.g. left over from an old assignment of a since-deleted
+            // or moved vehicle) are silently dropped instead of blocking the whole save
+            // with "Un ou plusieurs véhicules sont invalides".
+            var validVehicleIds = request.AssignedVehicleIds.Length > 0
+                ? await _context.Vehicles
+                    .Where(v => request.AssignedVehicleIds.Contains(v.Id) && v.CompanyId == companyId)
+                    .Select(v => v.Id)
+                    .ToListAsync(ct)
+                : new List<int>();
 
             // Remove old assignments
             var oldAssignments = await _context.UserVehicles
@@ -126,8 +128,8 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
                 .ToListAsync(ct);
             _context.UserVehicles.RemoveRange(oldAssignments);
 
-            // Add new assignments
-            foreach (var vehicleId in request.AssignedVehicleIds)
+            // Add the valid assignments
+            foreach (var vehicleId in validVehicleIds)
             {
                 _context.UserVehicles.Add(new UserVehicle
                 {

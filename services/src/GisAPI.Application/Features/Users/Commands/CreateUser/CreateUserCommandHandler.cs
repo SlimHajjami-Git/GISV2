@@ -80,14 +80,15 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
             }
         }
 
-        // Validate vehicle assignments
-        if (request.AssignedVehicleIds is { Length: > 0 })
-        {
-            var validCount = await _context.Vehicles
-                .CountAsync(v => request.AssignedVehicleIds.Contains(v.Id) && v.CompanyId == companyId, ct);
-            if (validCount != request.AssignedVehicleIds.Length)
-                throw new DomainException("Un ou plusieurs véhicules sont invalides");
-        }
+        // Resolve the vehicle assignments to the subset that actually belongs to this
+        // company. Stale/foreign ids are silently dropped instead of blocking the whole
+        // create with "Un ou plusieurs véhicules sont invalides".
+        var validVehicleIds = request.AssignedVehicleIds is { Length: > 0 }
+            ? await _context.Vehicles
+                .Where(v => request.AssignedVehicleIds.Contains(v.Id) && v.CompanyId == companyId)
+                .Select(v => v.Id)
+                .ToListAsync(ct)
+            : new List<int>();
 
         var user = new User
         {
@@ -145,10 +146,10 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
         _context.Users.Add(user);
         await _context.SaveChangesAsync(ct);
 
-        // Save vehicle assignments
-        if (request.AssignedVehicleIds is { Length: > 0 })
+        // Save vehicle assignments (valid company subset resolved above)
+        if (validVehicleIds.Count > 0)
         {
-            foreach (var vehicleId in request.AssignedVehicleIds)
+            foreach (var vehicleId in validVehicleIds)
             {
                 _context.UserVehicles.Add(new UserVehicle
                 {

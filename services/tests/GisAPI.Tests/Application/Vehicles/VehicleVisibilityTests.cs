@@ -115,4 +115,18 @@ public class VehicleVisibilityTests
         (await VisibleIdsAsync(ctx, AdminTenant()))
             .Should().Equal(new[] { 1, 2, 3 }, "an admin/CEO sees all company vehicles regardless of assignments");
     }
+
+    [Fact]
+    public async Task Assigning_with_a_stale_or_foreign_vehicle_id_assigns_only_the_valid_ones()
+    {
+        using var ctx = TestDbContextFactory.Create();
+        await SeedAsync(ctx); // company 1 has vehicles 1 and 2
+
+        // Assign [1, 999] — 999 doesn't exist / isn't in the company. This must NOT throw
+        // "Un ou plusieurs véhicules sont invalides"; only the valid #1 is assigned.
+        await AssignAsync(ctx, 1, 999);
+
+        (await VisibleIdsAsync(ctx, OperatorTenant()))
+            .Should().Equal(new[] { 1 }, "the stale/foreign id is dropped, the valid one is assigned (no error)");
+    }
 }
