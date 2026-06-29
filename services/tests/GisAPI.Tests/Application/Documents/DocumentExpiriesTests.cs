@@ -14,7 +14,7 @@ public class DocumentExpiriesTests
     {
         // Arrange
         using var context = TestDbContextFactory.Create();
-        var handler = new GetExpiriesQueryHandler(context);
+        var handler = new GetExpiriesQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetExpiriesQuery();
 
         // Act
@@ -49,7 +49,7 @@ public class DocumentExpiriesTests
         );
         await context.SaveChangesAsync();
 
-        var handler = new GetExpiriesQueryHandler(context);
+        var handler = new GetExpiriesQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetExpiriesQuery();
 
         // Act
@@ -82,7 +82,7 @@ public class DocumentExpiriesTests
         );
         await context.SaveChangesAsync();
 
-        var handler = new GetExpiriesQueryHandler(context);
+        var handler = new GetExpiriesQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetExpiriesQuery(Status: "expired");
 
         // Act
@@ -104,7 +104,7 @@ public class DocumentExpiriesTests
         );
         await context.SaveChangesAsync();
 
-        var handler = new GetExpiryStatsQueryHandler(context);
+        var handler = new GetExpiryStatsQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetExpiryStatsQuery();
 
         // Act
@@ -132,7 +132,7 @@ public class DocumentExpiriesTests
         });
         await context.SaveChangesAsync();
 
-        var handler = new RenewDocumentCommandHandler(context, tenantService.Object);
+        var handler = new RenewDocumentCommandHandler(context, tenantService.Object, Microsoft.Extensions.Logging.Abstractions.NullLogger<RenewDocumentCommandHandler>.Instance);
         var command = new RenewDocumentCommand(
             1,
             "insurance",
@@ -172,7 +172,7 @@ public class DocumentExpiriesTests
         context.Vehicles.Add(new Vehicle { Id = 1, Name = "Test Vehicle", CompanyId = 1 });
         await context.SaveChangesAsync();
 
-        var handler = new RenewDocumentCommandHandler(context, tenantService.Object);
+        var handler = new RenewDocumentCommandHandler(context, tenantService.Object, Microsoft.Extensions.Logging.Abstractions.NullLogger<RenewDocumentCommandHandler>.Instance);
         var command = new RenewDocumentCommand(
             1,
             "invalid_type",
@@ -227,7 +227,7 @@ public class DocumentExpiriesTests
         );
         await context.SaveChangesAsync();
 
-        var handler = new GetExpiryAlertsQueryHandler(context);
+        var handler = new GetExpiryAlertsQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetExpiryAlertsQuery(DaysThreshold: 30);
 
         // Act

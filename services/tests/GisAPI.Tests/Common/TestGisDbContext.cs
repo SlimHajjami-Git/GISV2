@@ -111,6 +111,12 @@ public class TestGisDbContext : DbContext, IGisDbContext
     // Alert Emails
     public DbSet<AlertEmail> AlertEmails => Set<AlertEmail>();
 
+    // Towing
+    public DbSet<TowEvent> TowEvents => Set<TowEvent>();
+
+    // Audit
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -168,6 +174,9 @@ public class TestGisDbContext : DbContext, IGisDbContext
         // === GPS: JSONB metadata ===
         modelBuilder.Entity<GpsPosition>().Ignore(p => p.Metadata);
         modelBuilder.Entity<Notification>().Ignore(n => n.Metadata);
+
+        // === AuditLog: Dictionary<string,object> JSON columns (jsonb in prod) ===
+        modelBuilder.Entity<AuditLog>().Ignore(a => a.OldValues).Ignore(a => a.NewValues);
 
         // === SubscriptionType: JSONB ===
         modelBuilder.Entity<SubscriptionType>().Ignore(s => s.AccessRights);

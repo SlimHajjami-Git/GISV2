@@ -77,7 +77,7 @@ public class MaintenanceTemplateTests
         );
         await context.SaveChangesAsync();
 
-        var handler = new GetMaintenanceTemplatesQueryHandler(context);
+        var handler = new GetMaintenanceTemplatesQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetMaintenanceTemplatesQuery();
 
         // Act
@@ -98,7 +98,7 @@ public class MaintenanceTemplateTests
         );
         await context.SaveChangesAsync();
 
-        var handler = new GetMaintenanceTemplatesQueryHandler(context);
+        var handler = new GetMaintenanceTemplatesQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetMaintenanceTemplatesQuery(Category: "Moteur");
 
         // Act
