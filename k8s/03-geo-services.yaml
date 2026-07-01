@@ -201,3 +201,139 @@ spec:
         - name: nominatim-data
           persistentVolumeClaim:
             claimName: nominatim-data
+
+---
+# -----------------------------------------------------------------------------
+# OSRM (Open Source Routing Machine) — road-following gap-fill for GPS ingest
+# -----------------------------------------------------------------------------
+# Consumed ONLY by the Rust gps-ingest gap_filler (http://osrm:5000): when GPS
+# frames are lost it fetches an OSRM route between the last and new position to
+# interpolate along real roads instead of a straight line (falls back to linear
+# if OSRM is unreachable). Data = merged Algeria + Tunisia extract, car profile,
+# MLD pipeline. Self-preparing via init containers; idempotent (sentinels skip
+# the heavy build once done, so restarts are fast no-ops).
+apiVersion: v1
+kind: Service
+metadata:
+  name: osrm
+  namespace: gisv2
+  labels:
+    app: osrm
+spec:
+  ports:
+    - port: 5000
+      targetPort: 5000
+  selector:
+    app: osrm
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: osrm-data
+  namespace: gisv2
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 6Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: osrm
+  namespace: gisv2
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: osrm
+  template:
+    metadata:
+      labels:
+        app: osrm
+    spec:
+      initContainers:
+        # 1) Download Algeria + Tunisia extracts and merge them (once).
+        - name: fetch-merge
+          image: debian:bookworm-slim
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              cd /data
+              if [ -f merged.osm.pbf ]; then echo "merged.osm.pbf present — skip download"; exit 0; fi
+              apt-get update
+              apt-get install -y --no-install-recommends osmium-tool ca-certificates wget
+              wget -nv -O algeria.osm.pbf https://download.geofabrik.de/africa/algeria-latest.osm.pbf
+              wget -nv -O tunisia.osm.pbf https://download.geofabrik.de/africa/tunisia-latest.osm.pbf
+              osmium merge algeria.osm.pbf tunisia.osm.pbf -o merged.osm.pbf
+              rm -f algeria.osm.pbf tunisia.osm.pbf
+              echo "merged Algeria + Tunisia OK"
+          volumeMounts:
+            - name: osrm-data
+              mountPath: /data
+          resources:
+            requests: { memory: "512Mi", cpu: "250m" }
+            limits:   { memory: "3Gi",   cpu: "2000m" }
+        # 2) Build the OSRM graph (extract + partition + customize) once.
+        - name: prepare
+          image: osrm/osrm-backend:v5.27.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              cd /data
+              if [ -f .osrm_ready ]; then echo "graph present — skip build"; exit 0; fi
+              osrm-extract -p /opt/car.lua merged.osm.pbf
+              osrm-partition merged.osrm
+              osrm-customize merged.osrm
+              touch .osrm_ready
+              echo "OSRM graph built"
+          volumeMounts:
+            - name: osrm-data
+              mountPath: /data
+          resources:
+            requests: { memory: "1Gi", cpu: "500m" }
+            limits:   { memory: "6Gi", cpu: "4000m" }
+      containers:
+        - name: osrm
+          image: osrm/osrm-backend:v5.27.1
+          command: ["osrm-routed"]
+          args: ["--algorithm", "mld", "/data/merged.osrm"]
+          ports:
+            - containerPort: 5000
+          volumeMounts:
+            - name: osrm-data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "1500m"
+          readinessProbe:
+            httpGet:
+              path: /route/v1/driving/3.06,36.75;3.05,36.76
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 15
+          livenessProbe:
+            httpGet:
+              path: /route/v1/driving/3.06,36.75;3.05,36.76
+              port: 5000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 10
+      volumes:
+        - name: osrm-data
+          persistentVolumeClaim:
+            claimName: osrm-data
