@@ -2,10 +2,18 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../environments/environment';
 
 interface ChatMessage {
   role: 'user' | 'ai';
   text: string;
+}
+
+/** Response shape from POST /api/assistant/ask */
+interface AssistantResponse {
+  answer: string;
+  tokensUsed?: number;
 }
 
 /**
@@ -13,9 +21,10 @@ interface ChatMessage {
  *
  * A ChatGPT-style conversation, dressed as a premium automotive cockpit:
  * midnight background, headlight glow, receding "road" grid, custom vehicle
- * SVGs, and staggered page-load motion. The chat is fully interactive with
- * topic-matched canned answers (interface-first) — wiring the real backend is
- * a one-line swap in `respond()`. "Accéder à Calypso" routes to /login.
+ * SVGs, and staggered page-load motion. The chat is backed by the public Groq
+ * endpoint POST /api/assistant/ask (rate-limited server-side); if that call
+ * fails it degrades gracefully to the built-in offline answers in `respond()`.
+ * "Accéder à Calypso" and "Se connecter" route to /login.
  */
 @Component({
   selector: 'app-ai-landing',
@@ -56,10 +65,16 @@ interface ChatMessage {
           <span class="brand-badge">Assistant Auto · IA</span>
         </div>
       </div>
-      <button class="btn-calypso" (click)="goToCalypso()">
-        Accéder à Calypso
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
+      <div class="nav-actions">
+        <button class="btn-login" (click)="goToLogin()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="btn-login-lbl">Se connecter</span>
+        </button>
+        <button class="btn-calypso" (click)="goToCalypso()">
+          Accéder à Calypso
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
     </header>
 
     <!-- conversation -->
@@ -119,13 +134,14 @@ interface ChatMessage {
             [(ngModel)]="draft"
             (keydown.enter)="send()"
             (focus)="focused = true" (blur)="focused = false"
+            maxlength="500"
             placeholder="Posez votre question automobile…"
             aria-label="Votre question" />
           <button class="send" (click)="send()" [disabled]="!draft.trim() || thinking" aria-label="Envoyer">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </div>
-        <p class="disclaimer">Aperçu de l'interface — l'assistant IA complet sera bientôt connecté. Vérifiez toujours les informations critiques.</p>
+        <p class="disclaimer">Assistant IA — les réponses peuvent contenir des erreurs. Vérifiez toujours les informations critiques auprès d'un professionnel.</p>
       </div>
     </main>
   </div>
@@ -183,6 +199,13 @@ interface ChatMessage {
     .btn-calypso:hover{ transform:translateY(-2px); filter:brightness(1.08);
       box-shadow:0 16px 34px rgba(47,107,255,.55), inset 0 1px 0 rgba(255,255,255,.3); }
     .btn-calypso svg{ transition:transform .18s ease; } .btn-calypso:hover svg{ transform:translateX(3px); }
+    .nav-actions{ display:flex; align-items:center; gap:12px; }
+    .btn-login{ display:inline-flex; align-items:center; gap:8px; cursor:pointer;
+      font-family:'Rajdhani',sans-serif; font-weight:700; font-size:15px; letter-spacing:.06em; text-transform:uppercase;
+      color:var(--text); padding:11px 16px; border-radius:12px; border:1px solid var(--line);
+      background:rgba(255,255,255,.03); transition:border-color .18s ease, color .18s ease, background .18s ease; }
+    .btn-login svg{ color:var(--cyan); }
+    .btn-login:hover{ border-color:rgba(47,107,255,.55); color:#fff; background:rgba(47,107,255,.10); }
 
     /* stage */
     .stage{ position:relative; z-index:2; flex:1; display:flex; flex-direction:column;
@@ -259,7 +282,10 @@ interface ChatMessage {
     @media (max-width:640px){
       .tiles{ grid-template-columns:1fr; }
       .brand-badge{ display:none; }
+      .nav-actions{ gap:8px; }
       .btn-calypso{ padding:10px 14px; font-size:13px; }
+      .btn-login{ padding:10px 12px; }
+      .btn-login-lbl{ display:none; }
       .bg-car{ opacity:.6; }
     }
     @media (prefers-reduced-motion:reduce){ .up,.msg,.bg-glow{ animation:none; opacity:1; transform:none; } }
@@ -278,24 +304,48 @@ export class AiLandingComponent {
     { q: 'Comment réduire ma consommation de carburant ?', icon: this.ico('fuel') },
   ];
 
-  constructor(private router: Router) {}
+  constructor(private router: Router, private http: HttpClient) {}
 
   goToCalypso(): void { this.router.navigate(['/login']); }
+  goToLogin(): void { this.router.navigate(['/login']); }
 
   ask(q: string): void { this.draft = q; this.send(); }
 
   send(): void {
     const q = this.draft.trim();
     if (!q || this.thinking) return;
+
+    // Conversation so far (before this question) → bounded history for context.
+    const history = this.messages.slice(-12).map(m => ({
+      role: m.role === 'ai' ? 'assistant' : 'user',
+      content: m.text,
+    }));
+
     this.messages.push({ role: 'user', text: q });
     this.draft = '';
     this.thinking = true;
-    // Interface-first stub. To wire the real AI, replace this timeout with an
-    // HTTP call and push the response into `messages`.
-    setTimeout(() => {
-      this.thinking = false;
-      this.messages.push({ role: 'ai', text: this.respond(q) });
-    }, 850 + Math.min(q.length * 12, 700));
+
+    // Real Groq-backed assistant (public endpoint, rate-limited server-side).
+    this.http.post<AssistantResponse>(`${environment.apiUrl}/assistant/ask`, { message: q, history })
+      .subscribe({
+        next: (res) => {
+          this.thinking = false;
+          const answer = (res?.answer || '').trim();
+          this.messages.push({ role: 'ai', text: answer || this.respond(q) });
+        },
+        error: (err) => {
+          this.thinking = false;
+          if (err?.status === 429) {
+            this.messages.push({
+              role: 'ai',
+              text: "Vous avez posé plusieurs questions coup sur coup 🙂 Merci de patienter quelques instants avant de réessayer.",
+            });
+          } else {
+            // Graceful degradation: fall back to the built-in offline answers.
+            this.messages.push({ role: 'ai', text: this.respond(q) });
+          }
+        },
+      });
   }
 
   private respond(q: string): string {

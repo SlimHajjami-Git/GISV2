@@ -8,6 +8,8 @@ using GisAPI.Infrastructure;
 using GisAPI.Middleware;
 using GisAPI.Hubs;
 using GisAPI.Domain.Constants;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 
 // Force Npgsql to return DateTime with Kind=Utc (fixes timezone serialization)
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
@@ -257,6 +259,58 @@ builder.Services.AddCors(options =>
     });
 });
 
+// ── Rate limiting for the PUBLIC AI assistant (pre-login, cost-bearing LLM) ──
+// Every route except /api/assistant is unlimited. For /api/assistant we apply a
+// CHAINED limiter (both parts must pass): a per-IP sliding window (spam/abuse)
+// AND a service-wide fixed window (a hard cost ceiling across all IPs). The IP
+// is resolved from X-Forwarded-For behind k3s/traefik — see
+// AssistantController.ResolveClientIp. Rejections return 429 + Retry-After.
+var aiPerIpPerMin  = builder.Configuration.GetValue<int?>("AiAssistant:RequestsPerMinutePerIp") ?? 10;
+var aiGlobalPerMin = builder.Configuration.GetValue<int?>("AiAssistant:GlobalRequestsPerMinute") ?? 90;
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    static bool IsAssistant(HttpContext c) => c.Request.Path.StartsWithSegments("/api/assistant");
+
+    options.GlobalLimiter = PartitionedRateLimiter.CreateChained(
+        // 1) per-IP sliding window
+        PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+            IsAssistant(ctx)
+                ? RateLimitPartition.GetSlidingWindowLimiter(
+                    "ip:" + GisAPI.Controllers.AssistantController.ResolveClientIp(ctx),
+                    _ => new SlidingWindowRateLimiterOptions
+                    {
+                        PermitLimit = aiPerIpPerMin,
+                        Window = TimeSpan.FromMinutes(1),
+                        SegmentsPerWindow = 6,
+                        QueueLimit = 0
+                    })
+                : RateLimitPartition.GetNoLimiter("open")),
+        // 2) service-wide fixed window (cost safety net)
+        PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+            IsAssistant(ctx)
+                ? RateLimitPartition.GetFixedWindowLimiter("assistant-global",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = aiGlobalPerMin,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0
+                    })
+                : RateLimitPartition.GetNoLimiter("open")));
+
+    options.OnRejected = async (context, token) =>
+    {
+        context.HttpContext.Response.Headers["Retry-After"] = "30";
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsJsonAsync(new
+        {
+            status = 429,
+            message = "Trop de questions en peu de temps. Patientez quelques instants avant de réessayer."
+        }, token);
+    };
+});
+
 // In-memory cache for dashboard and reports
 builder.Services.AddMemoryCache();
 
@@ -304,6 +358,11 @@ app.UseStaticFiles(new StaticFileOptions
 });
 
 app.UseCors();
+
+// Rate limiter (public AI assistant). Path-scoped via a global limiter, so it
+// is safe here right after CORS and before auth.
+app.UseRateLimiter();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
