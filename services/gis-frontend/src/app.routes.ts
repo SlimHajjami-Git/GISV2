@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { AiLandingComponent } from './components/ai-landing.component';
 import { LandingComponent } from './components/landing.component';
 import { LoginComponent } from './components/login.component';
 import { DashboardComponent } from './components/dashboard.component';
@@ -45,7 +46,12 @@ import { TowingComponent } from './components/towing.component';
 
 export const routes: Routes = [
   // Public routes (no auth required)
-  { path: '', component: LandingComponent },
+  // The AI automobile assistant is the first page users land on (pre-login).
+  // "Accéder à Calypso" from there routes to /login. The former marketing
+  // landing stays reachable at /accueil.
+  { path: '', component: AiLandingComponent },
+  { path: 'assistant', component: AiLandingComponent },
+  { path: 'accueil', component: LandingComponent },
   { path: 'login', component: LoginComponent },
   { path: 'device-check', component: DeviceCheckComponent },
   { path: 'politique-de-confidentialite', component: PrivacyPolicyComponent },
