@@ -666,9 +666,17 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
 
   deleteVehicle() {
     if (this.vehicleToDelete) {
-      this.adminService.deleteVehicle(this.vehicleToDelete.id).pipe(takeUntil(this.destroy$)).subscribe(() => {
-        this.loadData();
-        this.closeDeleteModal();
+      this.adminService.deleteVehicle(this.vehicleToDelete.id).pipe(takeUntil(this.destroy$)).subscribe({
+        next: () => {
+          this.loadData();
+          this.closeDeleteModal();
+        },
+        error: (err) => {
+          // Never fail silently — surface the reason so the operator knows.
+          console.error('[AdminVehicles] delete failed', err);
+          alert(err?.error?.message || "La suppression du véhicule a échoué. Réessayez.");
+          this.closeDeleteModal();
+        },
       });
     }
   }

@@ -1,3 +1,4 @@
+using GisAPI.Application.Common.Helpers;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
@@ -27,8 +28,10 @@ public class DeleteVehicleCommandHandler : IRequestHandler<DeleteVehicleCommand>
         if (vehicle == null)
             throw new NotFoundException("Vehicle", request.Id);
 
-        _context.Vehicles.Remove(vehicle);
-        await _context.SaveChangesAsync(ct);
+        // Cascade-delete the vehicle and all its history in one transaction —
+        // otherwise RESTRICT foreign keys on the child tables (costs, maintenance,
+        // fuel, documents, trips…) reject the delete with Postgres 23503.
+        await VehicleDeletionHelper.CascadeDeleteAsync(_context, vehicle.Id, ct);
     }
 }
 

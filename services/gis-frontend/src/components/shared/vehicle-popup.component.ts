@@ -163,6 +163,10 @@ export interface CompanyOption {
                   <label for="fuelTankCapacity">Capacité réservoir (L)</label>
                   <input type="number" id="fuelTankCapacity" name="fuelTankCapacity" [(ngModel)]="formData.fuelTankCapacity" min="0" placeholder="Ex: 60" />
                 </div>
+                <div class="form-group">
+                  <label for="registrationDate">Date de mise en circulation</label>
+                  <input type="date" id="registrationDate" name="registrationDate" [(ngModel)]="formData.registrationDate" />
+                </div>
               </div>
             </div>
 
@@ -422,10 +426,6 @@ export interface CompanyOption {
                 </div>
               </div>
               <div class="form-row">
-                <div class="form-group">
-                  <label for="registrationDate">Date mise en circulation</label>
-                  <input type="date" id="registrationDate" name="registrationDate" [(ngModel)]="formData.registrationDate" />
-                </div>
                 <div class="form-group">
                   <label for="purchasePrice">{{ formData.acquisitionType === 'leasing' ? 'Montant Auto-financement' : "Prix d'achat" }}</label>
                   <div class="input-with-suffix">

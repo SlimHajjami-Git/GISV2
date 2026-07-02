@@ -1,3 +1,4 @@
+using GisAPI.Application.Common.Helpers;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.Admin.Vehicles.Services;
 using MediatR;
@@ -19,11 +20,16 @@ public class DeleteAdminVehicleCommandHandler : IRequestHandler<DeleteAdminVehic
 
         if (vehicle == null) return false;
 
+        // Free the GPS device first (unlink + mark available), then cascade-delete
+        // the vehicle and all its history — otherwise RESTRICT foreign keys on the
+        // child tables reject the delete (Postgres 23503) and it fails silently.
         if (vehicle.GpsDeviceId.HasValue)
+        {
             await GpsDeviceResolver.ReleaseAsync(_context, vehicle.GpsDeviceId);
+            await _context.SaveChangesAsync(ct);
+        }
 
-        _context.Vehicles.Remove(vehicle);
-        await _context.SaveChangesAsync(ct);
+        await VehicleDeletionHelper.CascadeDeleteAsync(_context, vehicle.Id, ct);
         return true;
     }
 }
