@@ -206,6 +206,10 @@ public class CarAdvisorService : ICarAdvisorService
         var wantOccasion = condition is null or "occasion" or "les_deux";
 
         var candidates = new List<(int Fiabilite, object Payload)>();
+        // Nearest grounded options ABOVE budget, so a "nothing fits" answer can
+        // still propose something real ("à partir de X TND vous avez…").
+        var above = new List<(decimal Price, object Payload)>();
+
         foreach (var m in models)
         {
             if (segments != null && !segments.Contains(m.Segment, StringComparer.OrdinalIgnoreCase)) continue;
@@ -216,7 +220,33 @@ public class CarAdvisorService : ICarAdvisorService
             var occasion = wantOccasion
                 ? Curve(m).Where(p => p.PriceTnd <= budget).OrderByDescending(p => p.Year).FirstOrDefault()
                 : null;
-            if (!neufOk && occasion == null) continue;
+
+            if (!neufOk && occasion == null)
+            {
+                var cheapestAbove = new List<(decimal Price, string Type, int? Year, int? Km)>();
+                if (wantOccasion)
+                {
+                    var pt = Curve(m).Where(p => p.PriceTnd > budget).OrderBy(p => p.PriceTnd).FirstOrDefault();
+                    if (pt != null) cheapestAbove.Add((pt.PriceTnd, "occasion", pt.Year, pt.Km));
+                }
+                if (wantNeuf && m.NewPriceTnd is { } np2 && np2 > budget)
+                    cheapestAbove.Add((np2, "neuf", null, null));
+
+                if (cheapestAbove.Count > 0)
+                {
+                    var best = cheapestAbove.OrderBy(o => o.Price).First();
+                    above.Add((best.Price, new
+                    {
+                        vehicule = $"{m.Brand} {m.Model}",
+                        type = best.Type,
+                        annee = best.Year,
+                        km = best.Km,
+                        prixTnd = best.Price,
+                        fiabiliteSur10 = m.ReliabilityScore
+                    }));
+                }
+                continue;
+            }
 
             candidates.Add((m.ReliabilityScore ?? 0, new
             {
@@ -242,7 +272,12 @@ public class CarAdvisorService : ICarAdvisorService
             budgetTnd = budget,
             count = ranked.Count,
             candidats = ranked,
-            message = ranked.Count == 0 ? "Aucun modèle de la base ne rentre dans ces critères — élargir le budget ou les critères." : null,
+            alternativesAuDessusDuBudget = ranked.Count == 0
+                ? above.OrderBy(a => a.Price).Select(a => a.Payload).Take(3).ToList()
+                : null,
+            message = ranked.Count == 0
+                ? "Aucun modèle de la base ne rentre dans ce budget — proposer les alternatives les plus proches au-dessus (chiffres fournis) et/ou suggérer d'élargir les critères."
+                : null,
             disclaimer = Disclaimer
         };
     }

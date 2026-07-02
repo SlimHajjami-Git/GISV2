@@ -135,6 +135,25 @@ public class CarAdvisorServiceTests
     }
 
     [Fact]
+    public async Task Recommend_with_too_small_budget_returns_grounded_alternatives_above_budget()
+    {
+        // Real user scenario: "budget 30-35k" used to get a dry "nothing found".
+        // The tool must return the nearest REAL options above budget so the
+        // assistant can propose "à partir de 38 000 TND…" instead of refusing.
+        using var ctx = TestDbContextFactory.Create();
+        var svc = await BuildAsync(ctx);
+
+        var r = await CallAsync(svc, "recommend_cars", """{"budget_tnd":35000}""");
+
+        r.GetProperty("found").GetBoolean().Should().BeFalse();
+        var alts = r.GetProperty("alternativesAuDessusDuBudget").EnumerateArray().ToList();
+        alts.Should().NotBeEmpty();
+        // Cheapest above 35k in the test seed is the Picanto 2020 at 38 000.
+        alts[0].GetProperty("prixTnd").GetDecimal().Should().Be(38000);
+        alts[0].GetProperty("vehicule").GetString().Should().Contain("Picanto");
+    }
+
+    [Fact]
     public async Task Unknown_tool_returns_an_error_payload_instead_of_throwing()
     {
         using var ctx = TestDbContextFactory.Create();

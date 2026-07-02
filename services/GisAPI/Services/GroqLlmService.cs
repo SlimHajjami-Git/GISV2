@@ -97,7 +97,23 @@ public class GroqLlmService : ILlmService
                 ? new { model = _model, messages = requestMessages, temperature = 0.3, max_tokens = maxTokens, top_p = 0.9, tools = toolsPayload, tool_choice = "auto" }
                 : new { model = _model, messages = requestMessages, temperature = 0.3, max_tokens = maxTokens, top_p = 0.9 };
 
-            var result = await SendAsync(requestBody, ct);
+            GroqChatResponse? result;
+            try
+            {
+                result = await SendAsync(requestBody, ct);
+            }
+            catch (Exception ex) when (offerTools && ex is not OperationCanceledException)
+            {
+                // llama sometimes emits malformed tool syntax on conversational /
+                // meta questions and Groq rejects the WHOLE completion with 400
+                // tool_use_failed. The question itself is fine — retry the same
+                // round without tools instead of failing the user.
+                _logger.LogWarning(ex, "Tools round failed — retrying without tools");
+                var retry = await SendAsync(new { model = _model, messages = requestMessages, temperature = 0.3, max_tokens = maxTokens, top_p = 0.9 }, ct);
+                totalTokens += retry?.Usage?.TotalTokens ?? 0;
+                return new LlmResponse(retry?.Choices?.FirstOrDefault()?.Message?.Content ?? "Pas de réponse disponible.", totalTokens);
+            }
+
             totalTokens += result?.Usage?.TotalTokens ?? 0;
             var message = result?.Choices?.FirstOrDefault()?.Message;
 
@@ -170,7 +186,22 @@ public class GroqLlmService : ILlmService
                 ? new { model = _model, messages = requestMessages, temperature = 0.3, max_tokens = maxTokens, top_p = 0.9, stream = true, tools = toolsPayload, tool_choice = "auto" }
                 : new { model = _model, messages = requestMessages, temperature = 0.3, max_tokens = maxTokens, top_p = 0.9, stream = true };
 
-            var (content, toolCalls, tokens) = await StreamRoundAsync(requestBody, onDelta, ct);
+            string content; List<GroqToolCall> toolCalls; int tokens;
+            try
+            {
+                (content, toolCalls, tokens) = await StreamRoundAsync(requestBody, onDelta, ct);
+            }
+            catch (Exception ex) when (offerTools && ex is not OperationCanceledException)
+            {
+                // Same tool_use_failed recovery as the non-streamed path: Groq
+                // rejects the round up-front (nothing streamed yet), so we can
+                // safely re-run it without tools and stream that answer.
+                _logger.LogWarning(ex, "Streamed tools round failed — retrying without tools");
+                (content, toolCalls, tokens) = await StreamRoundAsync(
+                    new { model = _model, messages = requestMessages, temperature = 0.3, max_tokens = maxTokens, top_p = 0.9, stream = true }, onDelta, ct);
+                totalTokens += tokens;
+                return new LlmResponse(string.IsNullOrEmpty(content) ? "Pas de réponse disponible." : content, totalTokens);
+            }
             totalTokens += tokens;
 
             if (offerTools && toolCalls.Count > 0)

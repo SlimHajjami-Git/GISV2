@@ -19,9 +19,75 @@
         { "part": "Batterie 45Ah", "priceTnd": 280 }
       ],
       "priceCurve": [
+        { "year": 2018, "km": 90000, "priceTnd": 33000 },
         { "year": 2020, "km": 60000, "priceTnd": 38000 },
         { "year": 2022, "km": 35000, "priceTnd": 44000 },
         { "year": 2024, "km": 15000, "priceTnd": 49000 }
+      ]
+    },
+    {
+      "brand": "Kia", "model": "Picanto", "generation": "TA", "yearFrom": 2012, "yearTo": 2017,
+      "segment": "populaire", "energy": "essence", "engineLabel": "1.2 MPI 85ch", "fiscalPower": 4, "seats": 5,
+      "newPriceTnd": null, "realConsumptionL100": 5.9, "reliabilityScore": 8,
+      "buyingAdvice": "L'ancienne génération : le meilleur point d'entrée fiable sous 32 000 DT. Mécanique simple et connue, pièces très disponibles. Contrôler l'usure d'embrayage et les amortisseurs sur les exemplaires urbains.",
+      "knownIssues": [
+        { "issue": "Embrayage fatigué en usage urbain", "severity": "moyenne", "kmWindow": "> 80 000 km", "checkTip": "Patinage en côte en 3e à bas régime" },
+        { "issue": "Amortisseurs en fin de vie", "severity": "moyenne", "kmWindow": "> 100 000 km", "checkTip": "Rebonds sur ralentisseurs, fuites sur les tiges" },
+        { "issue": "Climatisation faible (gaz/compresseur)", "severity": "faible", "kmWindow": "> 8 ans", "checkTip": "Froid rapide au ralenti en plein soleil" }
+      ],
+      "partsPrices": [
+        { "part": "Plaquettes avant", "priceTnd": 130 },
+        { "part": "Filtre à huile", "priceTnd": 28 },
+        { "part": "Kit embrayage", "priceTnd": 800 },
+        { "part": "Amortisseur avant (unité)", "priceTnd": 300 }
+      ],
+      "priceCurve": [
+        { "year": 2014, "km": 140000, "priceTnd": 26500 },
+        { "year": 2016, "km": 110000, "priceTnd": 30500 }
+      ]
+    },
+    {
+      "brand": "Renault", "model": "Symbol", "generation": "L52", "yearFrom": 2013, "yearTo": 2020,
+      "segment": "berline", "energy": "essence", "engineLabel": "1.2 16v 75ch", "fiscalPower": 5, "seats": 5,
+      "newPriceTnd": null, "realConsumptionL100": 6.8, "reliabilityScore": 7,
+      "buyingAdvice": "La berline économique par excellence en Tunisie : coffre familial, mécanique Renault connue de tous les ateliers, pièces parmi les moins chères. Finition basique ; nombreux ex-taxis — vérifier l'historique et la cohérence du kilométrage.",
+      "knownIssues": [
+        { "issue": "Nombreux ex-taxis au compteur incertain", "severity": "élevée", "kmWindow": "toutes", "checkTip": "Usure volant/pédales/siège vs km affiché ; historique d'entretien" },
+        { "issue": "Embrayage et boîte sollicités", "severity": "moyenne", "kmWindow": "> 100 000 km", "checkTip": "Patinage, craquements 2e/3e" },
+        { "issue": "Direction assistée électrique capricieuse", "severity": "faible", "kmWindow": "> 120 000 km", "checkTip": "Points durs au braquage à l'arrêt" }
+      ],
+      "partsPrices": [
+        { "part": "Plaquettes avant", "priceTnd": 120 },
+        { "part": "Filtre à huile", "priceTnd": 25 },
+        { "part": "Kit embrayage", "priceTnd": 720 },
+        { "part": "Amortisseur avant (unité)", "priceTnd": 280 }
+      ],
+      "priceCurve": [
+        { "year": 2015, "km": 160000, "priceTnd": 28500 },
+        { "year": 2017, "km": 120000, "priceTnd": 33500 },
+        { "year": 2019, "km": 90000, "priceTnd": 38500 }
+      ]
+    },
+    {
+      "brand": "Suzuki", "model": "Celerio", "generation": "LF", "yearFrom": 2015, "yearTo": 2022,
+      "segment": "populaire", "energy": "essence", "engineLabel": "1.0 68ch", "fiscalPower": 4, "seats": 5,
+      "newPriceTnd": null, "realConsumptionL100": 4.9, "reliabilityScore": 8,
+      "buyingAdvice": "La conso réelle la plus basse du marché (~5 L/100) et une fiabilité Suzuki éprouvée : imbattable comme premier budget sous 34 000 DT. Habitacle bruyant et équipement minimal, assumés.",
+      "knownIssues": [
+        { "issue": "Insonorisation très faible", "severity": "faible", "kmWindow": "toutes", "checkTip": "Essai à 90-110 km/h" },
+        { "issue": "Sensible au vent latéral (caisse légère)", "severity": "faible", "kmWindow": "toutes", "checkTip": "Essai sur voie rapide" },
+        { "issue": "Embrayage en usage urbain intensif", "severity": "moyenne", "kmWindow": "> 90 000 km", "checkTip": "Patinage en côte" }
+      ],
+      "partsPrices": [
+        { "part": "Plaquettes avant", "priceTnd": 130 },
+        { "part": "Filtre à huile", "priceTnd": 28 },
+        { "part": "Kit embrayage", "priceTnd": 780 },
+        { "part": "Batterie 40Ah", "priceTnd": 250 }
+      ],
+      "priceCurve": [
+        { "year": 2016, "km": 120000, "priceTnd": 25000 },
+        { "year": 2018, "km": 90000, "priceTnd": 29000 },
+        { "year": 2020, "km": 60000, "priceTnd": 33500 }
       ]
     },
     {
@@ -63,6 +129,7 @@
         { "part": "Batterie 45Ah", "priceTnd": 290 }
       ],
       "priceCurve": [
+        { "year": 2018, "km": 90000, "priceTnd": 36000 },
         { "year": 2020, "km": 60000, "priceTnd": 42000 },
         { "year": 2022, "km": 35000, "priceTnd": 50000 }
       ]
@@ -129,6 +196,7 @@
         { "part": "Amortisseur avant (unité)", "priceTnd": 290 }
       ],
       "priceCurve": [
+        { "year": 2015, "km": 150000, "priceTnd": 31000 },
         { "year": 2017, "km": 120000, "priceTnd": 38000 },
         { "year": 2019, "km": 90000, "priceTnd": 46000 }
       ]
@@ -214,6 +282,7 @@
         { "part": "Amortisseurs avant (paire)", "priceTnd": 620 }
       ],
       "priceCurve": [
+        { "year": 2017, "km": 130000, "priceTnd": 40000 },
         { "year": 2019, "km": 100000, "priceTnd": 48000 },
         { "year": 2021, "km": 70000, "priceTnd": 58000 }
       ]
@@ -299,6 +368,7 @@
         { "part": "Vanne EGR", "priceTnd": 650 }
       ],
       "priceCurve": [
+        { "year": 2015, "km": 220000, "priceTnd": 30000 },
         { "year": 2017, "km": 180000, "priceTnd": 36000 },
         { "year": 2019, "km": 130000, "priceTnd": 45000 },
         { "year": 2021, "km": 90000, "priceTnd": 55000 }
