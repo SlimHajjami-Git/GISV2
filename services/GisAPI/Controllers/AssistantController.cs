@@ -42,35 +42,9 @@ public class AssistantController : ControllerBase
     [HttpPost("ask")]
     public async Task<IActionResult> Ask([FromBody] AssistantAskRequest request, CancellationToken ct)
     {
-        var maxLen     = _config.GetValue<int?>("AiAssistant:MaxMessageLength") ?? 500;
-        var maxHistory = _config.GetValue<int?>("AiAssistant:MaxHistoryTurns") ?? 6;
-        var maxTokens  = _config.GetValue<int?>("AiAssistant:MaxResponseTokens") ?? 700;
-
-        var message = request?.Message?.Trim();
-        if (string.IsNullOrWhiteSpace(message))
-            return BadRequest(new { status = 400, message = "La question ne peut pas être vide." });
-        if (message.Length > maxLen)
-            return BadRequest(new { status = 400, message = $"Question trop longue (max {maxLen} caractères)." });
-
-        // Bounded conversation: keep only the last N turns, clip each turn, and
-        // accept only the two valid roles. Anything else is silently dropped so a
-        // crafted payload can't inflate the prompt (and therefore the token cost).
-        var messages = new List<LlmMessage>();
-        if (request?.History is { Count: > 0 })
-        {
-            foreach (var turn in request.History.TakeLast(maxHistory))
-            {
-                var role = turn?.Role?.Trim().ToLowerInvariant();
-                var content = turn?.Content?.Trim();
-                if (string.IsNullOrWhiteSpace(content)) continue;
-                if (role != "user" && role != "assistant") continue;
-                if (content.Length > maxLen) content = content[..maxLen];
-                messages.Add(new LlmMessage(role, content));
-            }
-        }
-        messages.Add(new LlmMessage("user", message));
-
-        var maxToolRounds = _config.GetValue<int?>("AiAssistant:MaxToolRounds") ?? 4;
+        var (messages, error) = BuildConversation(request);
+        if (messages == null)
+            return BadRequest(new { status = 400, message = error });
 
         try
         {
@@ -78,7 +52,7 @@ public class AssistantController : ControllerBase
             // (prices, defects, parts, resale) before answering. Bounded rounds
             // keep the worst-case cost of one HTTP request predictable.
             var result = await _llm.ChatWithToolsAsync(
-                SystemPrompt, messages, _advisor.Tools, _advisor.ExecuteToolAsync, maxTokens, maxToolRounds, ct);
+                SystemPrompt, messages, _advisor.Tools, _advisor.ExecuteToolAsync, MaxTokens, MaxToolRounds, ct);
             var answer = result.Content?.Trim();
             if (string.IsNullOrWhiteSpace(answer))
                 return StatusCode(StatusCodes.Status502BadGateway,
@@ -96,6 +70,99 @@ public class AssistantController : ControllerBase
             return StatusCode(StatusCodes.Status502BadGateway,
                 new { status = 502, message = "L'assistant est momentanément indisponible. Réessayez dans un instant." });
         }
+    }
+
+    /// <summary>
+    /// Streamed variant (Server-Sent Events): emits <c>data: {"delta":"…"}</c>
+    /// fragments as the model produces the answer (tool rounds stay silent),
+    /// then <c>data: {"done":true}</c> — or <c>data: {"error":"…"}</c> on
+    /// failure. Same caps and rate limits as /ask.
+    /// </summary>
+    [HttpPost("ask/stream")]
+    public async Task AskStream([FromBody] AssistantAskRequest request, CancellationToken ct)
+    {
+        var (messages, error) = BuildConversation(request);
+        if (messages == null)
+        {
+            Response.StatusCode = StatusCodes.Status400BadRequest;
+            await Response.WriteAsJsonAsync(new { status = 400, message = error }, ct);
+            return;
+        }
+
+        Response.ContentType = "text/event-stream; charset=utf-8";
+        Response.Headers.CacheControl = "no-cache";
+        // nginx honors this per-response and disables proxy buffering — without
+        // it the SSE would be held back until the proxy buffer fills.
+        Response.Headers["X-Accel-Buffering"] = "no";
+
+        try
+        {
+            var result = await _llm.ChatStreamWithToolsAsync(
+                SystemPrompt, messages, _advisor.Tools, _advisor.ExecuteToolAsync,
+                delta => WriteEventAsync(new { delta }, ct),
+                MaxTokens, MaxToolRounds, ct);
+
+            await WriteEventAsync(new { done = true, tokensUsed = result.TokensUsed }, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // Client disconnected — nothing to write to.
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Public assistant LLM stream failed");
+            try
+            {
+                await WriteEventAsync(new
+                {
+                    error = "L'assistant est momentanément indisponible. Réessayez dans un instant."
+                }, ct);
+            }
+            catch (OperationCanceledException) { /* client gone mid-error */ }
+        }
+    }
+
+    private async Task WriteEventAsync(object payload, CancellationToken ct)
+    {
+        await Response.WriteAsync($"data: {System.Text.Json.JsonSerializer.Serialize(payload)}\n\n", ct);
+        await Response.Body.FlushAsync(ct);
+    }
+
+    private int MaxTokens => _config.GetValue<int?>("AiAssistant:MaxResponseTokens") ?? 700;
+    private int MaxToolRounds => _config.GetValue<int?>("AiAssistant:MaxToolRounds") ?? 4;
+
+    /// <summary>
+    /// Shared validation + prompt assembly for /ask and /ask/stream. Bounded
+    /// conversation: last N turns only, clipped lengths, only user/assistant
+    /// roles — a crafted payload can't inflate the prompt (token cost).
+    /// Returns (null, error) when the request is invalid.
+    /// </summary>
+    private (List<LlmMessage>? Messages, string? Error) BuildConversation(AssistantAskRequest? request)
+    {
+        var maxLen     = _config.GetValue<int?>("AiAssistant:MaxMessageLength") ?? 500;
+        var maxHistory = _config.GetValue<int?>("AiAssistant:MaxHistoryTurns") ?? 6;
+
+        var message = request?.Message?.Trim();
+        if (string.IsNullOrWhiteSpace(message))
+            return (null, "La question ne peut pas être vide.");
+        if (message.Length > maxLen)
+            return (null, $"Question trop longue (max {maxLen} caractères).");
+
+        var messages = new List<LlmMessage>();
+        if (request?.History is { Count: > 0 })
+        {
+            foreach (var turn in request.History.TakeLast(maxHistory))
+            {
+                var role = turn?.Role?.Trim().ToLowerInvariant();
+                var content = turn?.Content?.Trim();
+                if (string.IsNullOrWhiteSpace(content)) continue;
+                if (role != "user" && role != "assistant") continue;
+                if (content.Length > maxLen) content = content[..maxLen];
+                messages.Add(new LlmMessage(role, content));
+            }
+        }
+        messages.Add(new LlmMessage("user", message));
+        return (messages, null);
     }
 
     /// <summary>

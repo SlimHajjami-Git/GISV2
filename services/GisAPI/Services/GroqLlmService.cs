@@ -138,6 +138,186 @@ public class GroqLlmService : ILlmService
         throw new Exception("Le service IA n'a pas produit de réponse finale.");
     }
 
+    public async Task<LlmResponse> ChatStreamWithToolsAsync(
+        string systemPrompt,
+        List<LlmMessage> messages,
+        IReadOnlyList<LlmToolDefinition> tools,
+        Func<string, string, CancellationToken, Task<string>> executeTool,
+        Func<string, Task> onDelta,
+        int maxTokens,
+        int maxToolRounds,
+        CancellationToken ct = default)
+    {
+        var requestMessages = BuildInitialMessages(systemPrompt, messages);
+
+        var toolsPayload = tools.Select(t => new
+        {
+            type = "function",
+            function = new
+            {
+                name = t.Name,
+                description = t.Description,
+                parameters = JsonSerializer.Deserialize<JsonElement>(t.ParametersJsonSchema)
+            }
+        }).ToList();
+
+        var totalTokens = 0;
+
+        for (var round = 0; round <= maxToolRounds; round++)
+        {
+            var offerTools = round < maxToolRounds && toolsPayload.Count > 0;
+            object requestBody = offerTools
+                ? new { model = _model, messages = requestMessages, temperature = 0.3, max_tokens = maxTokens, top_p = 0.9, stream = true, tools = toolsPayload, tool_choice = "auto" }
+                : new { model = _model, messages = requestMessages, temperature = 0.3, max_tokens = maxTokens, top_p = 0.9, stream = true };
+
+            var (content, toolCalls, tokens) = await StreamRoundAsync(requestBody, onDelta, ct);
+            totalTokens += tokens;
+
+            if (offerTools && toolCalls.Count > 0)
+            {
+                requestMessages.Add(new { role = "assistant", content = string.IsNullOrEmpty(content) ? null : content, tool_calls = toolCalls });
+
+                foreach (var call in toolCalls)
+                {
+                    var name = call.Function?.Name ?? "";
+                    var args = call.Function?.Arguments ?? "{}";
+                    string toolResult;
+                    try
+                    {
+                        toolResult = await executeTool(name, args, ct);
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Tool {Tool} failed for args {Args}", name, args);
+                        toolResult = JsonSerializer.Serialize(new { error = $"L'outil {name} a échoué. Réponds sans cette donnée et signale l'indisponibilité." });
+                    }
+
+                    requestMessages.Add(new { role = "tool", tool_call_id = call.Id, content = toolResult });
+                }
+
+                continue;
+            }
+
+            return new LlmResponse(string.IsNullOrEmpty(content) ? "Pas de réponse disponible." : content, totalTokens);
+        }
+
+        throw new Exception("Le service IA n'a pas produit de réponse finale.");
+    }
+
+    /// <summary>
+    /// One streamed completion round. Reads Groq's SSE ("data: {chunk}" lines,
+    /// terminated by "data: [DONE]"), returning the assembled text, the
+    /// re-assembled tool calls (delta.tool_calls arrive as index-keyed
+    /// fragments: id/name first, arguments concatenated across chunks) and the
+    /// usage from the final chunk (x_groq.usage). Content deltas are forwarded
+    /// to <paramref name="onDelta"/> ONLY while no tool fragment has been seen:
+    /// a tool round must stay silent for the end user.
+    /// </summary>
+    private async Task<(string Content, List<GroqToolCall> ToolCalls, int Tokens)> StreamRoundAsync(
+        object requestBody, Func<string, Task> onDelta, CancellationToken ct)
+    {
+        if (_httpClient.DefaultRequestHeaders.Authorization == null)
+            throw new Exception("Clé API Groq non configurée. Créez une clé sur https://console.groq.com/keys puis définissez la variable Groq__ApiKey.");
+
+        var json = JsonSerializer.Serialize(requestBody);
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, _completionsPath)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
+        };
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, ct);
+        }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new Exception("Le service IA est temporairement indisponible (timeout).");
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Failed to connect to Groq API (stream)");
+            throw new Exception("Impossible de se connecter au service IA.");
+        }
+
+        using (response)
+        {
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogError("Groq API stream error {StatusCode}: {Body}", response.StatusCode, body);
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    throw new Exception("Clé API Groq invalide ou expirée. Vérifiez votre clé sur https://console.groq.com/keys");
+                throw new Exception($"Erreur Groq API: {response.StatusCode}");
+            }
+
+            var content = new StringBuilder();
+            // index → in-progress tool call (arguments concatenate across chunks)
+            var toolAcc = new SortedDictionary<int, (string? Id, string? Name, StringBuilder Args)>();
+            var tokens = 0;
+
+            await using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var reader = new StreamReader(stream);
+
+            while (await reader.ReadLineAsync(ct) is { } line)
+            {
+                if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
+                var payload = line["data:".Length..].Trim();
+                if (payload.Length == 0) continue;
+                if (payload == "[DONE]") break;
+
+                GroqStreamChunk? chunk;
+                try { chunk = JsonSerializer.Deserialize<GroqStreamChunk>(payload); }
+                catch (JsonException ex)
+                {
+                    _logger.LogWarning(ex, "Unparseable Groq stream chunk: {Chunk}", payload.Length > 200 ? payload[..200] : payload);
+                    continue;
+                }
+
+                tokens = Math.Max(tokens, chunk?.XGroq?.Usage?.TotalTokens ?? 0);
+
+                var delta = chunk?.Choices?.FirstOrDefault()?.Delta;
+                if (delta == null) continue;
+
+                if (delta.ToolCalls is { Count: > 0 })
+                {
+                    foreach (var frag in delta.ToolCalls)
+                    {
+                        if (!toolAcc.TryGetValue(frag.Index, out var acc))
+                            acc = (null, null, new StringBuilder());
+                        toolAcc[frag.Index] = (
+                            frag.Id ?? acc.Id,
+                            frag.Function?.Name ?? acc.Name,
+                            acc.Args.Append(frag.Function?.Arguments));
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(delta.Content))
+                {
+                    content.Append(delta.Content);
+                    // Only a text-answer round streams to the user; a stray
+                    // preamble before tool fragments is dropped from the UI
+                    // (it stays in `content` for the assistant echo message).
+                    if (toolAcc.Count == 0)
+                        await onDelta(delta.Content);
+                }
+            }
+
+            var toolCalls = toolAcc.Values
+                .Where(a => !string.IsNullOrEmpty(a.Name))
+                .Select(a => new GroqToolCall
+                {
+                    Id = a.Id,
+                    Type = "function",
+                    Function = new GroqToolFunction { Name = a.Name, Arguments = a.Args.ToString() }
+                })
+                .ToList();
+
+            return (content.ToString(), toolCalls, tokens);
+        }
+    }
+
     private static List<object> BuildInitialMessages(string systemPrompt, List<LlmMessage> messages)
     {
         var requestMessages = new List<object> { new { role = "system", content = systemPrompt } };
@@ -232,4 +412,56 @@ public class GroqUsage
 {
     [JsonPropertyName("total_tokens")]
     public int TotalTokens { get; set; }
+}
+
+// ── Streaming (SSE) chunk models ─────────────────────────────────────────────
+
+public class GroqStreamChunk
+{
+    [JsonPropertyName("choices")]
+    public List<GroqStreamChoice>? Choices { get; set; }
+
+    /// <summary>Groq puts the usage of a streamed completion on the last chunk.</summary>
+    [JsonPropertyName("x_groq")]
+    public GroqXGroq? XGroq { get; set; }
+}
+
+public class GroqXGroq
+{
+    [JsonPropertyName("usage")]
+    public GroqUsage? Usage { get; set; }
+}
+
+public class GroqStreamChoice
+{
+    [JsonPropertyName("delta")]
+    public GroqStreamDelta? Delta { get; set; }
+
+    [JsonPropertyName("finish_reason")]
+    public string? FinishReason { get; set; }
+}
+
+public class GroqStreamDelta
+{
+    [JsonPropertyName("content")]
+    public string? Content { get; set; }
+
+    [JsonPropertyName("tool_calls")]
+    public List<GroqStreamToolCallFragment>? ToolCalls { get; set; }
+}
+
+/// <summary>
+/// A fragment of a streamed tool call: the first fragment of an index carries
+/// id + function.name, subsequent ones append to function.arguments.
+/// </summary>
+public class GroqStreamToolCallFragment
+{
+    [JsonPropertyName("index")]
+    public int Index { get; set; }
+
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("function")]
+    public GroqToolFunction? Function { get; set; }
 }

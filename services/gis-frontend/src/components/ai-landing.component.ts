@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -304,7 +304,7 @@ export class AiLandingComponent {
     { q: 'Comment réduire ma consommation de carburant ?', icon: this.ico('fuel') },
   ];
 
-  constructor(private router: Router, private http: HttpClient) {}
+  constructor(private router: Router, private http: HttpClient, private zone: NgZone) {}
 
   goToCalypso(): void { this.router.navigate(['/login']); }
   goToLogin(): void { this.router.navigate(['/login']); }
@@ -325,7 +325,82 @@ export class AiLandingComponent {
     this.draft = '';
     this.thinking = true;
 
-    // Real Groq-backed assistant (public endpoint, rate-limited server-side).
+    this.streamAsk(q, history);
+  }
+
+  /**
+   * SSE streaming (réponse mot-à-mot, façon ChatGPT). fetch — et non HttpClient —
+   * pour lire le flux incrémentalement ; l'endpoint est public donc pas de JWT.
+   * Toute défaillance bascule sur le POST classique, puis sur les réponses
+   * hors-ligne intégrées.
+   */
+  private async streamAsk(q: string, history: { role: string; content: string }[]): Promise<void> {
+    let aiMsg: ChatMessage | null = null;
+    try {
+      const res = await fetch(`${environment.apiUrl}/assistant/ask/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: q, history }),
+      });
+
+      if (res.status === 429) {
+        this.zone.run(() => {
+          this.thinking = false;
+          this.messages.push({
+            role: 'ai',
+            text: "Vous avez posé plusieurs questions coup sur coup 🙂 Merci de patienter quelques instants avant de réessayer.",
+          });
+        });
+        return;
+      }
+      if (!res.ok || !res.body) throw new Error(`stream http ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let streamError: string | null = null;
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let sep: number;
+        while ((sep = buffer.indexOf('\n\n')) >= 0) {
+          const raw = buffer.slice(0, sep).trim();
+          buffer = buffer.slice(sep + 2);
+          if (!raw.startsWith('data:')) continue;
+          let evt: { delta?: string; error?: string; done?: boolean };
+          try { evt = JSON.parse(raw.slice(5).trim()); } catch { continue; }
+
+          if (evt.delta) {
+            // zone.run: les callbacks du reader peuvent échapper à la détection
+            // de changements — chaque fragment doit rafraîchir la bulle.
+            this.zone.run(() => {
+              this.thinking = false;
+              if (!aiMsg) { aiMsg = { role: 'ai', text: '' }; this.messages.push(aiMsg); }
+              aiMsg.text += evt.delta;
+            });
+          } else if (evt.error) {
+            streamError = evt.error;
+          }
+        }
+      }
+
+      if (!aiMsg) throw new Error(streamError || 'empty stream');
+      this.zone.run(() => { this.thinking = false; });
+    } catch {
+      if (aiMsg) {
+        // Une réponse partielle a déjà été affichée — ne pas la doubler.
+        this.zone.run(() => { this.thinking = false; });
+        return;
+      }
+      this.fallbackAsk(q, history);
+    }
+  }
+
+  /** POST non-streamé ; dégrade vers les réponses hors-ligne intégrées. */
+  private fallbackAsk(q: string, history: { role: string; content: string }[]): void {
     this.http.post<AssistantResponse>(`${environment.apiUrl}/assistant/ask`, { message: q, history })
       .subscribe({
         next: (res) => {

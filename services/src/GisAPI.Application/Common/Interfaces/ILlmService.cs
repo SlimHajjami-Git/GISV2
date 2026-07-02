@@ -21,6 +21,23 @@ public interface ILlmService
         int maxTokens,
         int maxToolRounds,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Same tool-calling loop as <see cref="ChatWithToolsAsync"/>, but STREAMED:
+    /// text fragments of the answer are pushed to <paramref name="onDelta"/> as
+    /// the model produces them (tool-invoking rounds stay silent — only rounds
+    /// that turn out to be text answers are forwarded). Returns the full final
+    /// text + accumulated tokens once the stream completes.
+    /// </summary>
+    Task<LlmResponse> ChatStreamWithToolsAsync(
+        string systemPrompt,
+        List<LlmMessage> messages,
+        IReadOnlyList<LlmToolDefinition> tools,
+        Func<string, string, CancellationToken, Task<string>> executeTool,
+        Func<string, Task> onDelta,
+        int maxTokens,
+        int maxToolRounds,
+        CancellationToken ct = default);
 }
 
 public record LlmMessage(string Role, string Content);
