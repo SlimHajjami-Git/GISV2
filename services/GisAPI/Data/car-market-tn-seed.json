@@ -1,0 +1,308 @@
+{
+  "_comment": "Argus tunisien — seed curaté (prix INDICATIFS en TND, à valider/actualiser régulièrement). Upserté au démarrage par SeedCarMarketAsync, clé = (brand, model, generation).",
+  "models": [
+    {
+      "brand": "Kia", "model": "Picanto", "generation": "JA", "yearFrom": 2017, "yearTo": null,
+      "segment": "populaire", "energy": "essence", "engineLabel": "1.2 MPI 84ch", "fiscalPower": 4, "seats": 5,
+      "newPriceTnd": 52900, "realConsumptionL100": 5.8, "reliabilityScore": 8,
+      "buyingAdvice": "Reine du segment populaire (4 CV) : décote très faible, pièces disponibles partout, entretien économique. En occasion viser < 90 000 km ; embrayage souvent fatigué en usage urbain intensif.",
+      "knownIssues": [
+        { "issue": "Usure prématurée de l'embrayage en conduite urbaine", "severity": "moyenne", "kmWindow": "60 000 - 90 000 km", "checkTip": "Tester le patinage en côte en 3e à bas régime" },
+        { "issue": "Peinture fine, rayures et éclats fréquents", "severity": "faible", "kmWindow": "toutes", "checkTip": "Inspecter carrosserie en plein jour, traces de retouches" },
+        { "issue": "Silentblocs de train avant sur routes dégradées", "severity": "faible", "kmWindow": "> 80 000 km", "checkTip": "Claquements sur dos d'âne à basse vitesse" }
+      ],
+      "partsPrices": [
+        { "part": "Plaquettes avant", "priceTnd": 140 },
+        { "part": "Filtre à huile", "priceTnd": 30 },
+        { "part": "Kit embrayage", "priceTnd": 850 },
+        { "part": "Amortisseur avant (unité)", "priceTnd": 320 },
+        { "part": "Batterie 45Ah", "priceTnd": 280 }
+      ],
+      "priceCurve": [
+        { "year": 2020, "km": 60000, "priceTnd": 38000 },
+        { "year": 2022, "km": 35000, "priceTnd": 44000 },
+        { "year": 2024, "km": 15000, "priceTnd": 49000 }
+      ]
+    },
+    {
+      "brand": "Hyundai", "model": "Grand i10", "generation": "AI3", "yearFrom": 2020, "yearTo": null,
+      "segment": "populaire", "energy": "essence", "engineLabel": "1.2 MPI 87ch", "fiscalPower": 4, "seats": 5,
+      "newPriceTnd": 51500, "realConsumptionL100": 5.9, "reliabilityScore": 8,
+      "buyingAdvice": "Concurrente directe de la Picanto, un peu plus logeable. Fiable et économique ; amortisseurs à surveiller sur nos routes.",
+      "knownIssues": [
+        { "issue": "Amortisseurs faibles sur routes dégradées", "severity": "moyenne", "kmWindow": "> 60 000 km", "checkTip": "Rebonds excessifs sur ralentisseurs, fuites sur les tiges" },
+        { "issue": "Compresseur de climatisation", "severity": "moyenne", "kmWindow": "> 100 000 km", "checkTip": "Clim au max à l'arrêt : froid rapide et constant ?" },
+        { "issue": "Bruits de plastiques dans l'habitacle", "severity": "faible", "kmWindow": "toutes", "checkTip": "Essai sur route pavée/dégradée" }
+      ],
+      "partsPrices": [
+        { "part": "Plaquettes avant", "priceTnd": 150 },
+        { "part": "Filtre à huile", "priceTnd": 32 },
+        { "part": "Kit embrayage", "priceTnd": 880 },
+        { "part": "Amortisseur avant (unité)", "priceTnd": 340 },
+        { "part": "Batterie 45Ah", "priceTnd": 280 }
+      ],
+      "priceCurve": [
+        { "year": 2020, "km": 60000, "priceTnd": 36500 },
+        { "year": 2022, "km": 35000, "priceTnd": 42500 },
+        { "year": 2024, "km": 15000, "priceTnd": 47500 }
+      ]
+    },
+    {
+      "brand": "Suzuki", "model": "Swift", "generation": "A2L", "yearFrom": 2018, "yearTo": null,
+      "segment": "citadine", "energy": "essence", "engineLabel": "1.2 DualJet 83ch", "fiscalPower": 4, "seats": 5,
+      "newPriceTnd": 61900, "realConsumptionL100": 5.4, "reliabilityScore": 9,
+      "buyingAdvice": "La plus fiable des citadines du marché : mécanique simple, conso réelle très basse. Habitabilité arrière et coffre justes.",
+      "knownIssues": [
+        { "issue": "Très peu de pannes récurrentes signalées", "severity": "faible", "kmWindow": "toutes", "checkTip": "Vérifier l'historique d'entretien, c'est l'essentiel" },
+        { "issue": "Peinture et tôlerie fines", "severity": "faible", "kmWindow": "toutes", "checkTip": "Inspecter impacts de gravillons à l'avant" }
+      ],
+      "partsPrices": [
+        { "part": "Plaquettes avant", "priceTnd": 160 },
+        { "part": "Filtre à huile", "priceTnd": 35 },
+        { "part": "Kit embrayage", "priceTnd": 950 },
+        { "part": "Batterie 45Ah", "priceTnd": 290 }
+      ],
+      "priceCurve": [
+        { "year": 2020, "km": 60000, "priceTnd": 42000 },
+        { "year": 2022, "km": 35000, "priceTnd": 50000 }
+      ]
+    },
+    {
+      "brand": "Volkswagen", "model": "Polo", "generation": "AW", "yearFrom": 2018, "yearTo": null,
+      "segment": "citadine", "energy": "essence", "engineLabel": "1.6 MPI 110ch", "fiscalPower": 6, "seats": 5,
+      "newPriceTnd": 86500, "realConsumptionL100": 7.2, "reliabilityScore": 7,
+      "buyingAdvice": "Cote de revente très solide en Tunisie et image premium. Préférer la boîte manuelle : la DSG7 vieillissante coûte cher. Le 1.6 MPI est robuste mais gourmand en ville.",
+      "knownIssues": [
+        { "issue": "Boîte DSG7 (mécatronique) sur versions automatiques", "severity": "élevée", "kmWindow": "> 100 000 km", "checkTip": "À-coups entre 1re et 2e à froid, hésitations en manœuvre" },
+        { "issue": "Bobines d'allumage", "severity": "moyenne", "kmWindow": "> 80 000 km", "checkTip": "Ratés/tremblements au ralenti, voyant moteur clignotant" },
+        { "issue": "Supports moteur", "severity": "faible", "kmWindow": "> 120 000 km", "checkTip": "Vibrations excessives au ralenti en D (BVA)" }
+      ],
+      "partsPrices": [
+        { "part": "Plaquettes avant", "priceTnd": 220 },
+        { "part": "Filtre à huile", "priceTnd": 45 },
+        { "part": "Kit embrayage", "priceTnd": 1200 },
+        { "part": "Courroie de distribution (kit)", "priceTnd": 700 },
+        { "part": "Amortisseurs avant (paire)", "priceTnd": 750 }
+      ],
+      "priceCurve": [
+        { "year": 2018, "km": 120000, "priceTnd": 52000 },
+        { "year": 2020, "km": 80000, "priceTnd": 63000 },
+        { "year": 2022, "km": 45000, "priceTnd": 74000 }
+      ]
+    },
+    {
+      "brand": "Volkswagen", "model": "Golf", "generation": "Golf 7", "yearFrom": 2013, "yearTo": 2020,
+      "segment": "compacte", "energy": "essence", "engineLabel": "1.4 TSI 125ch", "fiscalPower": 7, "seats": 5,
+      "newPriceTnd": null, "realConsumptionL100": 7.5, "reliabilityScore": 7,
+      "buyingAdvice": "Valeur sûre de l'occasion « statutaire ». Exiger l'historique : chaîne de distribution sur les premiers 1.4 TSI et DSG7 sont LES deux points qui coûtent cher. Bien entretenue, elle est excellente.",
+      "knownIssues": [
+        { "issue": "Chaîne de distribution (1.4 TSI avant 2016)", "severity": "élevée", "kmWindow": "> 120 000 km", "checkTip": "Cliquetis métallique au démarrage à froid = fuir ou négocier fort" },
+        { "issue": "Boîte DSG7 à sec : mécatronique et embrayages", "severity": "élevée", "kmWindow": "> 100 000 km", "checkTip": "À-coups à froid, patinage entre rapports" },
+        { "issue": "Consommation d'huile (TSI)", "severity": "moyenne", "kmWindow": "> 100 000 km", "checkTip": "Demander la fréquence d'appoint ; jauge avant/après essai" }
+      ],
+      "partsPrices": [
+        { "part": "Plaquettes avant", "priceTnd": 240 },
+        { "part": "Kit chaîne de distribution", "priceTnd": 1500 },
+        { "part": "Kit embrayage", "priceTnd": 1350 },
+        { "part": "Amortisseurs avant (paire)", "priceTnd": 850 }
+      ],
+      "priceCurve": [
+        { "year": 2016, "km": 150000, "priceTnd": 58000 },
+        { "year": 2018, "km": 110000, "priceTnd": 72000 },
+        { "year": 2020, "km": 80000, "priceTnd": 88000 }
+      ]
+    },
+    {
+      "brand": "Renault", "model": "Clio", "generation": "Clio 4", "yearFrom": 2013, "yearTo": 2019,
+      "segment": "citadine", "energy": "essence", "engineLabel": "1.2 16v 75ch", "fiscalPower": 5, "seats": 5,
+      "newPriceTnd": null, "realConsumptionL100": 6.5, "reliabilityScore": 7,
+      "buyingAdvice": "Occasion abondante et pièces parmi les moins chères du marché. Éviter la boîte EDC ; le 1.2 atmosphérique est simple et connu de tous les mécaniciens.",
+      "knownIssues": [
+        { "issue": "Bobines et bougies (ratés d'allumage)", "severity": "moyenne", "kmWindow": "> 80 000 km", "checkTip": "Ralenti instable, voyant moteur" },
+        { "issue": "Boîte EDC fragile (si version automatique)", "severity": "élevée", "kmWindow": "> 90 000 km", "checkTip": "À-coups, surchauffe en embouteillage — préférer la manuelle" },
+        { "issue": "Lève-vitres et poignées de portes", "severity": "faible", "kmWindow": "toutes", "checkTip": "Tester les 4 vitres et toutes les poignées" }
+      ],
+      "partsPrices": [
+        { "part": "Plaquettes avant", "priceTnd": 130 },
+        { "part": "Filtre à huile", "priceTnd": 25 },
+        { "part": "Kit embrayage", "priceTnd": 750 },
+        { "part": "Amortisseur avant (unité)", "priceTnd": 290 }
+      ],
+      "priceCurve": [
+        { "year": 2017, "km": 120000, "priceTnd": 38000 },
+        { "year": 2019, "km": 90000, "priceTnd": 46000 }
+      ]
+    },
+    {
+      "brand": "Dacia", "model": "Sandero", "generation": "Sandero 3", "yearFrom": 2021, "yearTo": null,
+      "segment": "citadine", "energy": "essence", "engineLabel": "1.0 SCe 65ch", "fiscalPower": 5, "seats": 5,
+      "newPriceTnd": 58900, "realConsumptionL100": 6.1, "reliabilityScore": 8,
+      "buyingAdvice": "Le meilleur rapport prix/prestations en neuf : mécanique Renault éprouvée, pièces très abordables. Finition et insonorisation basiques, assumées.",
+      "knownIssues": [
+        { "issue": "Insonorisation faible (bruits d'air et de roulement)", "severity": "faible", "kmWindow": "toutes", "checkTip": "Essai autoroute à 110 km/h" },
+        { "issue": "Boîte un peu ferme à froid", "severity": "faible", "kmWindow": "toutes", "checkTip": "Passer 1re/2e/marche arrière moteur froid" }
+      ],
+      "partsPrices": [
+        { "part": "Plaquettes avant", "priceTnd": 120 },
+        { "part": "Filtre à huile", "priceTnd": 25 },
+        { "part": "Kit embrayage", "priceTnd": 720 },
+        { "part": "Amortisseur avant (unité)", "priceTnd": 280 }
+      ],
+      "priceCurve": [
+        { "year": 2021, "km": 60000, "priceTnd": 43000 },
+        { "year": 2023, "km": 30000, "priceTnd": 52000 }
+      ]
+    },
+    {
+      "brand": "Dacia", "model": "Duster", "generation": "Duster 2", "yearFrom": 2018, "yearTo": null,
+      "segment": "suv", "energy": "diesel", "engineLabel": "1.5 dCi/Blue dCi 115ch", "fiscalPower": 6, "seats": 5,
+      "newPriceTnd": 98500, "realConsumptionL100": 6.3, "reliabilityScore": 8,
+      "buyingAdvice": "Roi du rapport prix/usage en Tunisie : SUV robuste, gasoil sobre, pièces Renault partout. Décote très lente — excellent à la revente. Surveiller injection et turbo sur forts kilométrages.",
+      "knownIssues": [
+        { "issue": "Injecteurs sensibles au gasoil de mauvaise qualité", "severity": "moyenne", "kmWindow": "> 120 000 km", "checkTip": "Démarrage à froid difficile, fumées, claquements" },
+        { "issue": "Turbo en fin de vie sur forts kilométrages", "severity": "moyenne", "kmWindow": "> 150 000 km", "checkTip": "Sifflement à l'accélération, perte de puissance, fumée bleue" },
+        { "issue": "Embrayage (usage chargé/remorquage)", "severity": "moyenne", "kmWindow": "> 100 000 km", "checkTip": "Patinage en côte chargé" }
+      ],
+      "partsPrices": [
+        { "part": "Plaquettes avant", "priceTnd": 180 },
+        { "part": "Filtre à gasoil", "priceTnd": 60 },
+        { "part": "Kit embrayage", "priceTnd": 950 },
+        { "part": "Injecteur (unité)", "priceTnd": 850 },
+        { "part": "Amortisseurs avant (paire)", "priceTnd": 700 }
+      ],
+      "priceCurve": [
+        { "year": 2019, "km": 120000, "priceTnd": 62000 },
+        { "year": 2021, "km": 80000, "priceTnd": 76000 },
+        { "year": 2023, "km": 40000, "priceTnd": 89000 }
+      ]
+    },
+    {
+      "brand": "Peugeot", "model": "208", "generation": "P21", "yearFrom": 2019, "yearTo": null,
+      "segment": "citadine", "energy": "essence", "engineLabel": "1.2 PureTech 75/100ch", "fiscalPower": 5, "seats": 5,
+      "newPriceTnd": 84900, "realConsumptionL100": 6.4, "reliabilityScore": 6,
+      "buyingAdvice": "Très séduisante (design, i-Cockpit) MAIS le 1.2 PureTech a un défaut majeur connu : la courroie de distribution baignant dans l'huile s'use prématurément. En occasion, EXIGER la facture de remplacement de courroie ou la faire immédiatement.",
+      "knownIssues": [
+        { "issue": "Courroie de distribution humide PureTech : usure prématurée, risque casse moteur", "severity": "élevée", "kmWindow": "60 000 - 100 000 km", "checkTip": "Facture de remplacement obligatoire ; sinon budgéter ~900 TND immédiatement. Voyant dépollution/perte puissance = alerte" },
+        { "issue": "Consommation d'huile", "severity": "moyenne", "kmWindow": "> 60 000 km", "checkTip": "Vérifier le niveau et demander la fréquence d'appoint" },
+        { "issue": "Écran tactile / électronique capricieuse", "severity": "faible", "kmWindow": "toutes", "checkTip": "Tester écran, caméra, capteurs au complet" }
+      ],
+      "partsPrices": [
+        { "part": "Kit courroie de distribution", "priceTnd": 900 },
+        { "part": "Plaquettes avant", "priceTnd": 210 },
+        { "part": "Filtre à huile", "priceTnd": 40 },
+        { "part": "Kit embrayage", "priceTnd": 1100 }
+      ],
+      "priceCurve": [
+        { "year": 2019, "km": 100000, "priceTnd": 50000 },
+        { "year": 2021, "km": 70000, "priceTnd": 62000 },
+        { "year": 2023, "km": 35000, "priceTnd": 74000 }
+      ]
+    },
+    {
+      "brand": "Fiat", "model": "Tipo", "generation": "356", "yearFrom": 2016, "yearTo": null,
+      "segment": "berline", "energy": "essence", "engineLabel": "1.4 Fire 95ch", "fiscalPower": 6, "seats": 5,
+      "newPriceTnd": 76900, "realConsumptionL100": 7.0, "reliabilityScore": 7,
+      "buyingAdvice": "Berline spacieuse au prix d'une citadine, moteur Fire simple et connu. Finition moyenne mais coûts d'usage bas — très bon choix familial rationnel.",
+      "knownIssues": [
+        { "issue": "Capteurs et petits soucis électroniques", "severity": "faible", "kmWindow": "toutes", "checkTip": "Scanner OBD avant achat, vérifier voyants" },
+        { "issue": "Embrayage moyen en usage chargé", "severity": "moyenne", "kmWindow": "> 90 000 km", "checkTip": "Patinage en côte" }
+      ],
+      "partsPrices": [
+        { "part": "Plaquettes avant", "priceTnd": 160 },
+        { "part": "Filtre à huile", "priceTnd": 30 },
+        { "part": "Kit embrayage", "priceTnd": 900 },
+        { "part": "Amortisseurs avant (paire)", "priceTnd": 620 }
+      ],
+      "priceCurve": [
+        { "year": 2019, "km": 100000, "priceTnd": 48000 },
+        { "year": 2021, "km": 70000, "priceTnd": 58000 }
+      ]
+    },
+    {
+      "brand": "Toyota", "model": "Hilux", "generation": "AN120", "yearFrom": 2016, "yearTo": null,
+      "segment": "pickup", "energy": "diesel", "engineLabel": "2.4 D-4D 150ch", "fiscalPower": 9, "seats": 5,
+      "newPriceTnd": 165000, "realConsumptionL100": 9.5, "reliabilityScore": 10,
+      "buyingAdvice": "Référence absolue du pickup : fiabilité légendaire, décote la plus faible du marché — un Hilux se revend toujours. Cher à l'achat mais coût de possession imbattable sur la durée. Attention aux exemplaires de chantier maquillés.",
+      "knownIssues": [
+        { "issue": "Quasi aucun défaut récurrent — vérifier l'usage passé (chantier ?)", "severity": "faible", "kmWindow": "toutes", "checkTip": "Châssis : corrosion/soudures ; benne : usure anormale" },
+        { "issue": "Injecteurs sur très forts kilométrages", "severity": "moyenne", "kmWindow": "> 250 000 km", "checkTip": "Claquement à froid, fumée" },
+        { "issue": "Suspension arrière sèche à vide (normal)", "severity": "faible", "kmWindow": "toutes", "checkTip": "Ce n'est pas un défaut — essai chargé si possible" }
+      ],
+      "partsPrices": [
+        { "part": "Plaquettes avant", "priceTnd": 280 },
+        { "part": "Filtres (kit vidange complet)", "priceTnd": 190 },
+        { "part": "Amortisseurs avant (paire)", "priceTnd": 1100 },
+        { "part": "Batterie 70Ah", "priceTnd": 420 }
+      ],
+      "priceCurve": [
+        { "year": 2018, "km": 200000, "priceTnd": 95000 },
+        { "year": 2020, "km": 150000, "priceTnd": 118000 },
+        { "year": 2022, "km": 90000, "priceTnd": 140000 }
+      ]
+    },
+    {
+      "brand": "Isuzu", "model": "D-Max", "generation": "RG", "yearFrom": 2017, "yearTo": null,
+      "segment": "pickup", "energy": "diesel", "engineLabel": "1.9 Ddi 163ch", "fiscalPower": 8, "seats": 5,
+      "newPriceTnd": 132000, "realConsumptionL100": 8.5, "reliabilityScore": 9,
+      "buyingAdvice": "Le favori des flottes tunisiennes : moins cher que le Hilux, très endurant, gasoil sobre pour un pickup. Filtration gasoil à entretenir religieusement — l'injection n'aime pas le carburant sale.",
+      "knownIssues": [
+        { "issue": "Injection sensible au gasoil sale (filtration cruciale)", "severity": "moyenne", "kmWindow": "> 100 000 km", "checkTip": "Historique de remplacement des filtres gasoil ; démarrage à froid" },
+        { "issue": "Confort sec à vide", "severity": "faible", "kmWindow": "toutes", "checkTip": "Normal pour un châssis-échelle — essai avant achat" },
+        { "issue": "Peinture/vernis sous soleil intense", "severity": "faible", "kmWindow": "> 5 ans", "checkTip": "Ternissement capot/toit" }
+      ],
+      "partsPrices": [
+        { "part": "Plaquettes avant", "priceTnd": 250 },
+        { "part": "Filtre à gasoil", "priceTnd": 85 },
+        { "part": "Kit embrayage", "priceTnd": 1600 },
+        { "part": "Amortisseurs avant (paire)", "priceTnd": 950 }
+      ],
+      "priceCurve": [
+        { "year": 2019, "km": 180000, "priceTnd": 78000 },
+        { "year": 2021, "km": 120000, "priceTnd": 95000 },
+        { "year": 2023, "km": 60000, "priceTnd": 112000 }
+      ]
+    },
+    {
+      "brand": "Hyundai", "model": "i20", "generation": "BC3", "yearFrom": 2021, "yearTo": null,
+      "segment": "citadine", "energy": "essence", "engineLabel": "1.4 MPI 100ch", "fiscalPower": 5, "seats": 5,
+      "newPriceTnd": 69900, "realConsumptionL100": 6.2, "reliabilityScore": 8,
+      "buyingAdvice": "Citadine polyvalente bien équipée, fiabilité Hyundai et réseau solide en Tunisie. Bon compromis entre la Picanto (plus petite) et la Polo (plus chère).",
+      "knownIssues": [
+        { "issue": "Usure des freins avant un peu rapide", "severity": "faible", "kmWindow": "> 40 000 km", "checkTip": "État des disques (rayures, lèvre au bord)" },
+        { "issue": "Clim à entretenir (filtre habitacle, gaz)", "severity": "faible", "kmWindow": "> 60 000 km", "checkTip": "Froid rapide et constant au ralenti" }
+      ],
+      "partsPrices": [
+        { "part": "Plaquettes avant", "priceTnd": 170 },
+        { "part": "Filtre à huile", "priceTnd": 35 },
+        { "part": "Kit embrayage", "priceTnd": 920 },
+        { "part": "Batterie 50Ah", "priceTnd": 300 }
+      ],
+      "priceCurve": [
+        { "year": 2021, "km": 70000, "priceTnd": 48000 },
+        { "year": 2023, "km": 40000, "priceTnd": 57000 }
+      ]
+    },
+    {
+      "brand": "Peugeot", "model": "301", "generation": "301", "yearFrom": 2013, "yearTo": null,
+      "segment": "berline", "energy": "diesel", "engineLabel": "1.6 BlueHDi 100ch", "fiscalPower": 5, "seats": 5,
+      "newPriceTnd": 74500, "realConsumptionL100": 5.2, "reliabilityScore": 8,
+      "buyingAdvice": "Le cheval de bataille des taxis et flottes : diesel sobre et endurant, coffre géant, pièces partout. Intérieur daté mais coût au km parmi les plus bas du marché.",
+      "knownIssues": [
+        { "issue": "FAP encrassé en usage urbain exclusif", "severity": "moyenne", "kmWindow": "> 100 000 km", "checkTip": "Voyant FAP, perte de puissance ; privilégier un ex-routier" },
+        { "issue": "Trains roulants sollicités (taxis)", "severity": "moyenne", "kmWindow": "> 150 000 km", "checkTip": "Jeu dans la direction, bruits de rotules — attention aux compteurs trafiqués" },
+        { "issue": "Vanne EGR", "severity": "moyenne", "kmWindow": "> 120 000 km", "checkTip": "Ralenti instable, fumées noires" }
+      ],
+      "partsPrices": [
+        { "part": "Plaquettes avant", "priceTnd": 150 },
+        { "part": "Filtre à gasoil", "priceTnd": 55 },
+        { "part": "Kit embrayage", "priceTnd": 980 },
+        { "part": "Vanne EGR", "priceTnd": 650 }
+      ],
+      "priceCurve": [
+        { "year": 2017, "km": 180000, "priceTnd": 36000 },
+        { "year": 2019, "km": 130000, "priceTnd": 45000 },
+        { "year": 2021, "km": 90000, "priceTnd": 55000 }
+      ]
+    }
+  ]
+}

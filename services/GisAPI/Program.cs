@@ -151,6 +151,10 @@ builder.Services.AddScoped<GisAPI.Services.IDrivingBehaviorService, GisAPI.Servi
 // Maintenance Scheduler Service
 builder.Services.AddScoped<GisAPI.Application.Services.IMaintenanceSchedulerService, GisAPI.Application.Services.MaintenanceSchedulerService>();
 
+// Car Advisor tools — "Argus tunisien" knowledge base queried by the public AI
+// assistant through Groq function calling (Scoped: depends on IGisDbContext).
+builder.Services.AddScoped<GisAPI.Application.Services.ICarAdvisorService, GisAPI.Application.Services.CarAdvisorService>();
+
 // Alert Email Dispatcher — fans out alerts to configured alert_emails recipients
 // (with a company-admin fallback) for assurance / taxe_circulation / visite_technique / entretien
 builder.Services.AddScoped<IAlertEmailDispatcher, GisAPI.Application.Services.AlertEmailDispatcher>();
@@ -420,6 +424,7 @@ using (var scope = app.Services.CreateScope())
     await SeedBeliveCompany(context);
     await SeedSubscriptionPlansAndTestCompany(context);
     await SeedFuelTypesAndPricing(context);
+    await SeedCarMarketAsync(context, app.Environment.ContentRootPath);
 }
 
 app.Run();
@@ -811,6 +816,87 @@ static async Task SeedFuelTypesAndPricing(GisAPI.Infrastructure.Persistence.GisD
     catch (Exception ex)
     {
         Console.WriteLine($"[Seed] Warning: Could not seed fuel types/pricing: {ex.Message}");
+    }
+}
+
+// =============================================================================
+// Seed: "Argus tunisien" car market knowledge base (AI buying advisor)
+// =============================================================================
+// Loads Data/car-market-tn-seed.json and UPSERTS by (Brand, Model, Generation):
+// new models are inserted, existing ones get their curated data refreshed. This
+// lets us improve prices/défauts by simply editing the JSON and redeploying.
+static async Task SeedCarMarketAsync(GisAPI.Infrastructure.Persistence.GisDbContext context, string contentRootPath)
+{
+    try
+    {
+        var seedPath = Path.Combine(contentRootPath, "Data", "car-market-tn-seed.json");
+        if (!File.Exists(seedPath))
+        {
+            Console.WriteLine($"[Seed] Car market seed not found at {seedPath} — skipping");
+            return;
+        }
+
+        using var doc = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(seedPath));
+        if (!doc.RootElement.TryGetProperty("models", out var models) ||
+            models.ValueKind != System.Text.Json.JsonValueKind.Array)
+        {
+            Console.WriteLine("[Seed] Car market seed: no 'models' array — skipping");
+            return;
+        }
+
+        var existing = await context.CarMarketModels.ToListAsync();
+        int added = 0, updated = 0;
+
+        foreach (var m in models.EnumerateArray())
+        {
+            string? GetStr(string name) => m.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() : null;
+            int? GetInt(string name) => m.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number ? v.GetInt32() : null;
+            decimal? GetDec(string name) => m.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number ? v.GetDecimal() : null;
+            double? GetDbl(string name) => m.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number ? v.GetDouble() : null;
+            string GetJson(string name) => m.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Array ? v.GetRawText() : "[]";
+
+            var brand = GetStr("brand");
+            var model = GetStr("model");
+            if (string.IsNullOrWhiteSpace(brand) || string.IsNullOrWhiteSpace(model)) continue;
+            var generation = GetStr("generation");
+
+            var row = existing.FirstOrDefault(e =>
+                e.Brand == brand && e.Model == model && e.Generation == generation);
+            if (row == null)
+            {
+                row = new GisAPI.Domain.Entities.CarMarketModel { Brand = brand, Model = model, Generation = generation };
+                context.CarMarketModels.Add(row);
+                added++;
+            }
+            else
+            {
+                updated++;
+            }
+
+            row.YearFrom = GetInt("yearFrom") ?? row.YearFrom;
+            row.YearTo = GetInt("yearTo");
+            row.Segment = GetStr("segment") ?? row.Segment;
+            row.Energy = GetStr("energy") ?? row.Energy;
+            row.EngineLabel = GetStr("engineLabel");
+            row.FiscalPower = GetInt("fiscalPower");
+            row.Seats = GetInt("seats");
+            row.NewPriceTnd = GetDec("newPriceTnd");
+            row.RealConsumptionL100 = GetDbl("realConsumptionL100");
+            row.ReliabilityScore = GetInt("reliabilityScore");
+            row.BuyingAdvice = GetStr("buyingAdvice");
+            row.KnownIssuesJson = GetJson("knownIssues");
+            row.PartsPricesJson = GetJson("partsPrices");
+            row.PriceCurveJson = GetJson("priceCurve");
+            row.IsActive = true;
+            row.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await context.SaveChangesAsync();
+        Console.WriteLine($"[Seed] ✅ Car market (Argus TN): {added} added, {updated} refreshed");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Seed] Warning: Could not seed car market: {ex.Message}");
     }
 }
 

@@ -33,4 +33,13 @@
     <ProjectReference Include="..\src\GisAPI.Shared\GisAPI.Shared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Seed data (Argus tunisien) — must ship with publish output so the
+         startup seeder finds it under ContentRootPath/Data. The Web SDK already
+         auto-includes *.json as Content, so Update (not Include) is required. -->
+    <Content Update="Data\car-market-tn-seed.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

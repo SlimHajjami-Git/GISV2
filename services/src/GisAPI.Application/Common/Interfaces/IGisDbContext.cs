@@ -34,6 +34,10 @@ public interface IGisDbContext
     DbSet<AccidentEventDocument> AccidentEventDocuments { get; }
     DbSet<AccidentEventThirdParty> AccidentEventThirdParties { get; }
     DbSet<TowEvent> TowEvents { get; }
+
+    // "Argus tunisien" — global (non-tenant) car market knowledge base feeding
+    // the public AI assistant's buying-advisor tools.
+    DbSet<CarMarketModel> CarMarketModels { get; }
     DbSet<MaintenanceTemplate> MaintenanceTemplates { get; }
     DbSet<VehicleMaintenanceSchedule> VehicleMaintenanceSchedules { get; }
     DbSet<MaintenanceLog> MaintenanceLogs { get; }

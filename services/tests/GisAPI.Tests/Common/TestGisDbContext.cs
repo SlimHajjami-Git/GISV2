@@ -114,6 +114,9 @@ public class TestGisDbContext : DbContext, IGisDbContext
     // Towing
     public DbSet<TowEvent> TowEvents => Set<TowEvent>();
 
+    // Argus tunisien (global reference data — no tenant filter)
+    public DbSet<CarMarketModel> CarMarketModels => Set<CarMarketModel>();
+
     // Audit
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 

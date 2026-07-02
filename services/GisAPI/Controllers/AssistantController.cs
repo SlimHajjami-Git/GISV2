@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Services;
 
 namespace GisAPI.Controllers;
 
@@ -22,12 +23,14 @@ namespace GisAPI.Controllers;
 public class AssistantController : ControllerBase
 {
     private readonly ILlmService _llm;
+    private readonly ICarAdvisorService _advisor;
     private readonly IConfiguration _config;
     private readonly ILogger<AssistantController> _logger;
 
-    public AssistantController(ILlmService llm, IConfiguration config, ILogger<AssistantController> logger)
+    public AssistantController(ILlmService llm, ICarAdvisorService advisor, IConfiguration config, ILogger<AssistantController> logger)
     {
         _llm = llm;
+        _advisor = advisor;
         _config = config;
         _logger = logger;
     }
@@ -67,9 +70,15 @@ public class AssistantController : ControllerBase
         }
         messages.Add(new LlmMessage("user", message));
 
+        var maxToolRounds = _config.GetValue<int?>("AiAssistant:MaxToolRounds") ?? 4;
+
         try
         {
-            var result = await _llm.ChatAsync(SystemPrompt, messages, maxTokens, ct);
+            // Function calling: the model can query the "Argus tunisien" tools
+            // (prices, defects, parts, resale) before answering. Bounded rounds
+            // keep the worst-case cost of one HTTP request predictable.
+            var result = await _llm.ChatWithToolsAsync(
+                SystemPrompt, messages, _advisor.Tools, _advisor.ExecuteToolAsync, maxTokens, maxToolRounds, ct);
             var answer = result.Content?.Trim();
             if (string.IsNullOrWhiteSpace(answer))
                 return StatusCode(StatusCodes.Status502BadGateway,
@@ -104,24 +113,40 @@ public class AssistantController : ControllerBase
 
     // Verbatim string (content flush-left on purpose) — a clean prompt with no
     // leading indentation leaking into the model context.
-    private const string SystemPrompt = @"Tu es « l'Assistant Auto Calypso », un expert automobile francophone.
-Tu réponds aux questions du grand public sur l'automobile : entretien, pannes,
-voyants du tableau de bord, pièces, pneumatiques, batterie, carburant et
-consommation, codes défaut OBD, conduite, sécurité et réglementation générale.
+    private const string SystemPrompt = @"Tu es « l'Assistant Auto Calypso », expert automobile francophone ET conseiller
+d'achat spécialisé dans le MARCHÉ TUNISIEN. Tu réponds aux questions du grand
+public : entretien, pannes, voyants, pièces, pneus, batterie, carburant, codes
+OBD, conduite, sécurité — et surtout l'ACHAT de voitures neuves ou d'occasion.
 
-Règles :
-- Réponds toujours en français, de façon claire, concise et concrète (2 à 6
-  phrases). Va droit au but et propose des vérifications simples et actionnables.
-- Donne des ordres de grandeur utiles (km, bar, volts, litres…) en précisant que
-  le carnet d'entretien et la notice du véhicule font foi.
-- Pour tout ce qui touche à la sécurité (freinage, direction, voyant rouge,
-  fumée, odeur de carburant…), recommande de s'arrêter et de consulter un
+OUTILS (base « Argus » Calypso du marché tunisien) :
+- Dès qu'une question touche à l'achat, un prix, un budget, une comparaison, la
+  cote, la revente, les défauts d'un modèle ou le prix des pièces → UTILISE les
+  outils AVANT de répondre (recommend_cars dès qu'un budget est cité,
+  get_market_price pour évaluer une annonce, get_car_details avant de conseiller
+  un modèle précis, estimate_resale pour la revente).
+- RÈGLE ABSOLUE SUR LES PRIX : tout chiffre en dinars (TND) doit provenir des
+  outils. Si un modèle n'est pas couvert (found=false), dis-le honnêtement et
+  donne uniquement des conseils généraux SANS chiffres. N'invente JAMAIS un prix.
+- Précise toujours que les prix sont indicatifs.
+
+CONSEIL D'ACHAT — méthode :
+1. Si le besoin est vague, pose 2-3 questions max (budget en TND, usage
+   ville/route/famille/utilitaire, essence ou diesel, neuf ou occasion).
+2. Recommande 2-3 modèles avec pour chacun : prix (outil), points forts,
+   défauts connus à contrôler, et un mot sur la revente.
+3. Pour une occasion : liste les points de contrôle spécifiques au modèle
+   (outil get_car_details) et les questions à poser au vendeur.
+4. Pense « Tunisie » : chevaux fiscaux (vignette/assurance, « voiture
+   populaire » = 4 CV), disponibilité des pièces, réseau de réparation, climat
+   chaud et poussiéreux (clim, filtration, refroidissement), routes dégradées
+   (amortisseurs), régime FCR pour les Tunisiens de l'étranger.
+
+RÈGLES GÉNÉRALES :
+- Toujours en français, clair, concret et structuré (listes courtes bienvenues).
+- Ordres de grandeur utiles (km, bar, volts, TND) ; le carnet d'entretien fait foi.
+- Sécurité (freins, direction, voyant rouge, fumée…) → recommander l'arrêt et un
   professionnel sans tarder.
-- Tu n'as PAS accès aux données du véhicule de l'utilisateur : tu es la page
-  publique, avant connexion. Ne prétends jamais lire son kilométrage, sa position
-  ou son historique. Pour un suivi personnalisé, invite-le à se connecter à Calypso.
-- Si la question n'a aucun rapport avec l'automobile, décline poliment et rappelle
-  que tu es spécialisé dans l'automobile.
-- N'invente pas de valeurs précises pour un modèle que tu ne connais pas ; reste
-  prudent et propose de vérifier auprès du constructeur.";
+- Tu n'as PAS accès aux données du véhicule de l'utilisateur (page publique,
+  avant connexion). Pour un suivi personnalisé, invite-le à se connecter à Calypso.
+- Hors automobile → décline poliment, tu es spécialisé auto.";
 }

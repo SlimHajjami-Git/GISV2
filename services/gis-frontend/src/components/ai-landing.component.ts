@@ -298,9 +298,9 @@ export class AiLandingComponent {
   messages: ChatMessage[] = [];
 
   readonly suggestions = [
-    { q: 'Quand dois-je faire ma prochaine vidange ?', icon: this.ico('drop') },
+    { q: 'Quelle voiture acheter avec un budget de 50 000 DT ?', icon: this.ico('car') },
     { q: 'Mon voyant moteur est allumé, que faire ?', icon: this.ico('warn') },
-    { q: 'Quelle est la bonne pression pour mes pneus ?', icon: this.ico('tire') },
+    { q: 'Quand dois-je faire ma prochaine vidange ?', icon: this.ico('drop') },
     { q: 'Comment réduire ma consommation de carburant ?', icon: this.ico('fuel') },
   ];
 
@@ -350,6 +350,8 @@ export class AiLandingComponent {
 
   private respond(q: string): string {
     const s = q.toLowerCase();
+    if (s.includes('achat') || s.includes('acheter') || s.includes('budget') || s.includes('occasion'))
+      return "Pour un conseil d'achat personnalisé (modèles adaptés, prix du marché tunisien, défauts à contrôler, revente), j'ai besoin de la connexion à l'IA qui est momentanément indisponible. Réessayez dans un instant — et préparez votre budget (DT) et votre usage (ville, route, famille, utilitaire). 🚗";
     if (s.includes('vidange') || s.includes('huile'))
       return "En général : tous les 10 000–15 000 km (ou une fois par an) en essence, et 7 000–10 000 km en diesel — plus tôt en usage intensif. Le carnet d'entretien de votre modèle fait foi. 🔧";
     if (s.includes('voyant') || s.includes('warning') || (s.includes('moteur') && s.includes('allum')))
@@ -369,6 +371,7 @@ export class AiLandingComponent {
 
   private ico(kind: string): string {
     const p: Record<string, string> = {
+      car: '<path d="M4 13l1.6-4.4A2 2 0 0 1 7.5 7.3h9a2 2 0 0 1 1.9 1.3L20 13M4 13h16M4 13v4M20 13v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="17" r="1.6" stroke="currentColor" stroke-width="1.7"/><circle cx="16" cy="17" r="1.6" stroke="currentColor" stroke-width="1.7"/>',
       drop: '<path d="M12 3s6 6.5 6 11a6 6 0 1 1-12 0C6 9.5 12 3 12 3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
       warn: '<path d="M12 4l9 15H3l9-15Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 10v4M12 17h.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
       tire: '<circle cx="12" cy="12" r="8.2" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.7"/><path d="M12 3.8v3M12 17.2v3M3.8 12h3M17.2 12h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',

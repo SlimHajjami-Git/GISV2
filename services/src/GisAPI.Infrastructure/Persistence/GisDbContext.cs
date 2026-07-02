@@ -99,6 +99,10 @@ public class GisDbContext : DbContext, IGisDbContext
     // of accidents — surfaced on the dedicated /remorquages page.
     public DbSet<TowEvent> TowEvents => Set<TowEvent>();
 
+    // "Argus tunisien" — GLOBAL reference data (no tenant filter): curated car
+    // market knowledge (prices, defects, parts, resale) for the AI assistant.
+    public DbSet<CarMarketModel> CarMarketModels => Set<CarMarketModel>();
+
     // Maintenance Templates
     public DbSet<MaintenanceTemplate> MaintenanceTemplates => Set<MaintenanceTemplate>();
     public DbSet<VehicleMaintenanceSchedule> VehicleMaintenanceSchedules => Set<VehicleMaintenanceSchedule>();
