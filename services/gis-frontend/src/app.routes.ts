@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { environment } from './environments/environment';
 import { AiLandingComponent } from './components/ai-landing.component';
 import { LandingComponent } from './components/landing.component';
 import { LoginComponent } from './components/login.component';
@@ -44,13 +45,21 @@ import { PrivacyPolicyComponent } from './components/privacy-policy.component';
 import { TowingComponent } from './components/towing.component';
 
 
+// The AI automobile assistant landing is PER-DEPLOYMENT: enabled only when the
+// server's LOCAL environment.ts sets aiAssistantLanding: true (Calypso/TN).
+// Deployments without the flag (e.g. Bougeo/DZ) get the classic marketing
+// landing. `as any` on purpose: the flag may be absent from a deployment's
+// local copy of environment.ts, and that absence must mean "disabled", not a
+// compile error.
+const aiLandingEnabled = (environment as any).aiAssistantLanding === true;
+
 export const routes: Routes = [
   // Public routes (no auth required)
-  // The AI automobile assistant is the first page users land on (pre-login).
-  // "Accéder à Calypso" from there routes to /login. The former marketing
+  // When enabled, the AI automobile assistant is the first page users land on
+  // (pre-login); "Accéder à Calypso" routes to /login and the former marketing
   // landing stays reachable at /accueil.
-  { path: '', component: AiLandingComponent },
-  { path: 'assistant', component: AiLandingComponent },
+  { path: '', component: aiLandingEnabled ? AiLandingComponent : LandingComponent },
+  { path: 'assistant', component: aiLandingEnabled ? AiLandingComponent : LandingComponent },
   { path: 'accueil', component: LandingComponent },
   { path: 'login', component: LoginComponent },
   { path: 'device-check', component: DeviceCheckComponent },
