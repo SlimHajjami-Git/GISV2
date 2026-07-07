@@ -8,6 +8,7 @@ import { PdfExportService, PdfGroup, GroupedPdfReportConfig } from '../services/
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { AppCurrencyPipe } from '../pipes/user-preference-pipes';
 import { UserPreferencesService } from '../services/user-preferences.service';
+import { AuthService } from '../services/auth.service';
 
 export interface Expense {
   id: string;
@@ -142,7 +143,12 @@ export class ExpensesComponent implements OnInit, OnDestroy {
 
   get currencyCode(): string { return this.userPrefs.current.currency || 'TND'; }
 
-  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef, private route: ActivatedRoute, private pdfService: PdfExportService, private userPrefs: UserPreferencesService) {}
+  // Invoice scan is gated to a single pilot user during testing.
+  get canScanInvoice(): boolean {
+    return (this.authService.getCurrentUserSync()?.email || '').toLowerCase() === 'admin@belive.tn';
+  }
+
+  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef, private route: ActivatedRoute, private pdfService: PdfExportService, private userPrefs: UserPreferencesService, private authService: AuthService) {}
 
   ngOnInit(): void {
     // Check for expenseId query param (from notification click)
