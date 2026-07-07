@@ -21,6 +21,8 @@ public class VehicleCostConfiguration : IEntityTypeConfiguration<VehicleCost>
         builder.Property(e => e.Mileage).HasColumnName("mileage");
         builder.Property(e => e.ReceiptNumber).HasColumnName("receipt_number").HasMaxLength(100);
         builder.Property(e => e.ReceiptUrl).HasColumnName("receipt_url").HasMaxLength(500);
+        // Invoice breakdown (scanned facture lines) — JSON array, see entity doc.
+        builder.Property(e => e.DetailsJson).HasColumnName("details_json");
         builder.Property(e => e.FuelType).HasColumnName("fuel_type").HasMaxLength(20);
         builder.Property(e => e.Liters).HasColumnName("liters").HasColumnType("decimal(10,2)");
         builder.Property(e => e.PricePerLiter).HasColumnName("price_per_liter").HasColumnType("decimal(10,2)");

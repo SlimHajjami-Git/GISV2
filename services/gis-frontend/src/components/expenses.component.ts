@@ -31,6 +31,11 @@ export interface Expense {
   accidentEventId?: number | null;
   /** True when the row is an insurance refund — UI renders amount as a credit (green). */
   isRefund?: boolean;
+
+  /** Justificatif (facture scannée) — image ou PDF servie par /uploads. */
+  receiptUrl?: string | null;
+  /** Détail de la facture (lignes décortiquées par le scan IA) — affiché dans le panneau. */
+  details?: Array<{ label: string; amount: number; category: string }>;
 }
 
 export interface RepairPart {
@@ -128,10 +133,10 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     vehicleId: string; category: string; date: string; amount: number;
     supplierName: string; invoiceNumber: string; description: string;
     vehiclePlate: string; confidence: string; receiptUrl: string;
-    /** Lignes de la facture (détail extrait par l'IA, éditable). */
-    items: Array<{ label: string; amount: number; category: string; include: boolean }>;
-    /** true = enregistrer une dépense PAR ligne cochée, false = une dépense unique. */
-    split: boolean;
+    /** Lignes de la facture (détail extrait par l'IA, éditable). Enregistrées
+     *  AVEC la dépense (details_json) — une facture reste UNE seule dépense,
+     *  le détail décortiqué s'affiche dans le panneau de la dépense. */
+    items: Array<{ label: string; amount: number; category: string }>;
   } = this.emptyScan();
   readonly scanCategories = [
     { value: 'fuel', label: 'Carburant' },
@@ -209,6 +214,23 @@ export class ExpensesComponent implements OnInit, OnDestroy {
         // accidentEventId for the badge and the link to the report).
         (result.costs || []).forEach((c: any) => {
           const isRefund = c.type === 'insurance_refund';
+          // Détail de la facture (scan IA) — JSON défensif : une valeur
+          // corrompue ne doit jamais casser la liste.
+          let details: Expense['details'];
+          if (c.detailsJson) {
+            try {
+              const parsed = JSON.parse(c.detailsJson);
+              if (Array.isArray(parsed)) {
+                details = parsed
+                  .filter((it: any) => it && (it.label || it.amount))
+                  .map((it: any) => ({
+                    label: String(it.label || ''),
+                    amount: Number(it.amount) || 0,
+                    category: String(it.category || 'other')
+                  }));
+              }
+            } catch { /* détail illisible → ignoré */ }
+          }
           allExpenses.push({
             id: 'cost_' + c.id,
             vehicleId: c.vehicleId,
@@ -225,6 +247,8 @@ export class ExpensesComponent implements OnInit, OnDestroy {
             sourceTable: 'costs',
             accidentEventId: c.accidentEventId ?? null,
             isRefund,
+            receiptUrl: c.receiptUrl || null,
+            details: details?.length ? details : undefined,
           });
         });
 
@@ -577,8 +601,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       vehicleId: '', category: 'other', date: new Date().toISOString().split('T')[0],
       amount: 0, supplierName: '', invoiceNumber: '', description: '',
       vehiclePlate: '', confidence: '', receiptUrl: '',
-      items: [] as Array<{ label: string; amount: number; category: string; include: boolean }>,
-      split: false
+      items: [] as Array<{ label: string; amount: number; category: string }>
     };
   }
 
@@ -598,8 +621,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
           .map((it: any) => ({
             label: it?.label || '',
             amount: typeof it?.amount === 'number' ? it.amount : 0,
-            category: it?.category || x.category || 'other',
-            include: true
+            category: it?.category || x.category || 'other'
           }))
           .filter((it: any) => it.label || it.amount);
         this.scan = {
@@ -613,8 +635,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
           vehiclePlate: x.vehiclePlate || '',
           confidence: x.confidence || '',
           receiptUrl: res?.receiptUrl || '',
-          items,
-          split: false
+          items
         };
         this.showScanReview = true;
         this.cdr.detectChanges();
@@ -657,10 +678,8 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   }
 
   // ── Détail de la facture (lignes) ──────────────────────────────────────────
-  scanIncludedItems() { return this.scan.items.filter(it => it.include); }
-
   scanItemsSum(): number {
-    return this.scanIncludedItems().reduce((s, it) => s + (Number(it.amount) || 0), 0);
+    return this.scan.items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
   }
 
   /** Somme des lignes ≠ total facture (tolérance 0,01) → avertissement visuel. */
@@ -670,57 +689,50 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   }
 
   addScanItem(): void {
-    this.scan.items.push({ label: '', amount: 0, category: this.scan.category || 'other', include: true });
+    this.scan.items.push({ label: '', amount: 0, category: this.scan.category || 'other' });
   }
 
   removeScanItem(i: number): void { this.scan.items.splice(i, 1); }
 
-  /** Bouton Enregistrer actif ? (mode unique : total ; mode décomposé : lignes valides) */
   canSaveScan(): boolean {
-    if (!this.scan.vehicleId || this.saving) return false;
-    if (!this.scan.split) return !!this.scan.amount;
-    const inc = this.scanIncludedItems();
-    return inc.length > 0 && inc.every(it => Number(it.amount) > 0);
+    return !!this.scan.vehicleId && !!this.scan.amount && !this.saving;
+  }
+
+  /** Libellé FR d'une catégorie de ligne (les lignes utilisent les catégories du scan). */
+  lineCategoryLabel(cat: string): string {
+    return this.scanCategories.find(c => c.value === cat)?.label || this.getCategoryLabel(cat);
+  }
+
+  /** Somme des lignes décortiquées d'une dépense (panneau de détail). */
+  detailsSum(e: Expense): number {
+    return (e.details || []).reduce((s, it) => s + (Number(it.amount) || 0), 0);
   }
 
   saveScanned(): void {
     if (!this.canSaveScan()) return;
     this.saving = true;
 
-    const base = {
+    // Une facture = UNE dépense. Le détail (lignes) part avec elle en JSON et
+    // s'affiche dans le panneau de la dépense — pas de lignes multiples dans
+    // la liste.
+    const cleanItems = this.scan.items
+      .filter(it => (it.label || '').trim() || Number(it.amount) > 0)
+      .map(it => ({ label: (it.label || '').trim(), amount: Number(it.amount) || 0, category: it.category || 'other' }));
+
+    const data = {
       vehicleId: parseInt(this.scan.vehicleId),
+      type: this.scan.category || 'other',
+      description: this.scan.description || this.scan.supplierName || null,
+      amount: Number(this.scan.amount),
       date: new Date(this.scan.date).toISOString(),
       mileage: null,
       receiptNumber: this.scan.invoiceNumber || null,
-      receiptUrl: this.scan.receiptUrl || null
+      receiptUrl: this.scan.receiptUrl || null,
+      detailsJson: cleanItems.length ? JSON.stringify(cleanItems) : null
     };
-
-    // Mode décomposé : une dépense PAR ligne cochée (catégorie/montant propres),
-    // toutes rattachées à la même facture (même n° + même justificatif).
-    const payloads = this.scan.split
-      ? this.scanIncludedItems().map(it => ({
-          ...base,
-          type: it.category || this.scan.category || 'other',
-          description: [this.scan.supplierName, it.label].filter(s => !!s).join(' — ') || null,
-          amount: Number(it.amount)
-        }))
-      : [{
-          ...base,
-          type: this.scan.category || 'other',
-          description: this.scan.description || this.scan.supplierName || null,
-          amount: Number(this.scan.amount)
-        }];
-
-    forkJoin(payloads.map(p => this.apiService.createCost(p))).subscribe({
+    this.apiService.createCost(data).subscribe({
       next: () => { this.saving = false; this.showScanReview = false; this.loadExpenses(); },
-      error: (err) => {
-        this.saving = false;
-        console.error('Error saving scanned cost(s):', err);
-        alert(this.scan.split
-          ? "L'enregistrement a échoué — certaines lignes ont pu être créées, vérifiez la liste avant de réessayer."
-          : "L'enregistrement a échoué.");
-        this.loadExpenses();
-      }
+      error: (err) => { this.saving = false; console.error('Error saving scanned cost:', err); alert("L'enregistrement a échoué."); }
     });
   }
 

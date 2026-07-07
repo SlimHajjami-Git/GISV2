@@ -28,6 +28,15 @@ public class VehicleCost : TenantEntity
     public int? Mileage { get; set; }
     public string? ReceiptNumber { get; set; }
     public string? ReceiptUrl { get; set; }
+
+    /// <summary>
+    /// Optional invoice breakdown as a JSON array of
+    /// <c>{"label","amount","category"}</c> objects — the billed lines of a
+    /// scanned facture (vidange, filtres, main d'œuvre…). The expense stays a
+    /// SINGLE row (one facture = one dépense); the breakdown is only rendered
+    /// in the expense detail panel. Null for expenses without a breakdown.
+    /// </summary>
+    public string? DetailsJson { get; set; }
     public string? FuelType { get; set; }
     public decimal? Liters { get; set; }
     public decimal? PricePerLiter { get; set; }

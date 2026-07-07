@@ -1154,6 +1154,120 @@ textarea.sm-input { resize: vertical; min-height: 56px; }
   text-align: center;
 }
 .sm-items-empty p { margin: 0; font-size: 12px; line-height: 1.5; color: #64748b; }
+.sm-items-hint { font-size: 11px; color: #94a3b8; font-style: italic; }
+
+/* ── Panneau détail dépense (xd-*) ─────────────────────────────────────────
+   Namespace autonome : le corps du slide-in droit, redessiné. */
+.xd-body { display: flex; flex-direction: column; gap: 14px; }
+
+.xd-hero {
+  position: relative;
+  padding: 18px 16px;
+  border-radius: 14px;
+  background: linear-gradient(150deg, #0f172a, #1e293b 60%, #27354d);
+  color: #ffffff;
+  overflow: hidden;
+}
+.xd-hero::after {
+  content: '';
+  position: absolute; right: -30px; top: -30px;
+  width: 130px; height: 130px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(124, 58, 237, .35), transparent 70%);
+  pointer-events: none;
+}
+.xd-hero-refund { background: linear-gradient(150deg, #064e3b, #065f46 60%, #047857); }
+.xd-hero-refund::after { background: radial-gradient(circle, rgba(16, 185, 129, .35), transparent 70%); }
+
+.xd-cat {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 999px;
+  background: rgba(255, 255, 255, .12);
+  font-size: 11.5px; font-weight: 600; letter-spacing: .02em;
+}
+.xd-amount {
+  margin-top: 10px;
+  font-size: 27px; font-weight: 800; letter-spacing: -.02em;
+  line-height: 1.1;
+}
+.xd-hero-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.xd-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 9px; border-radius: 999px;
+  background: rgba(255, 255, 255, .1);
+  font-size: 11px; font-weight: 600; color: #e2e8f0;
+}
+
+.xd-card {
+  background: #ffffff;
+  border: 1px solid #e8edf5;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.xd-card-title {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 10px;
+}
+.xd-count {
+  display: inline-grid; place-items: center;
+  min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px;
+  background: #7c3aed; color: #fff;
+  font-size: 10px; font-weight: 800;
+}
+
+.xd-row {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 14px;
+  padding: 7px 0;
+  border-bottom: 1px solid #f4f6fa;
+}
+.xd-row:last-child { border-bottom: none; padding-bottom: 0; }
+.xd-row-label { flex: 0 0 auto; font-size: 12px; color: #94a3b8; }
+.xd-row-value { font-size: 13px; color: #1e293b; font-weight: 500; text-align: right; word-break: break-word; }
+
+/* Lignes de la facture (lecture seule) */
+.xd-lines { display: flex; flex-direction: column; }
+.xd-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 92px;
+  gap: 10px; align-items: center;
+  padding: 7px 0;
+  border-bottom: 1px solid #f4f6fa;
+}
+.xd-line:last-child { border-bottom: none; }
+.xd-line-label { font-size: 13px; color: #1e293b; font-weight: 500; min-width: 0; overflow-wrap: break-word; }
+.xd-line-cat {
+  justify-self: start;
+  padding: 2px 8px; border-radius: 999px;
+  background: #f5f3ff; color: #6d28d9;
+  font-size: 10.5px; font-weight: 700;
+  white-space: nowrap;
+}
+.xd-line-amt { font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; white-space: nowrap; }
+.xd-line-total { border-top: 1px solid #e8edf5; margin-top: 2px; padding-top: 9px; }
+.xd-line-total .xd-line-label { font-size: 12px; color: #64748b; font-weight: 600; }
+.xd-line-total .xd-line-amt { color: #6d28d9; }
+
+/* Justificatif */
+.xd-receipt-img {
+  display: block;
+  border: 1px solid #e8edf5; border-radius: 10px;
+  overflow: hidden; background: #f8fafc;
+}
+.xd-receipt-img img {
+  display: block; width: 100%; max-height: 240px; object-fit: contain;
+  cursor: zoom-in; transition: transform .2s ease;
+}
+.xd-receipt-img:hover img { transform: scale(1.02); }
+.xd-receipt-pdf {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  border: 1px dashed #cbd5e1; border-radius: 10px;
+  color: #475569; text-decoration: none;
+  font-size: 13px; font-weight: 600;
+  transition: border-color .15s, color .15s;
+}
+.xd-receipt-pdf:hover { border-color: #a78bfa; color: #6d28d9; }
 
 /* Aperçu du document */
 .sm-doc {

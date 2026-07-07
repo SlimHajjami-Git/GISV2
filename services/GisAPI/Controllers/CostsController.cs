@@ -134,6 +134,10 @@ public class CostsController : ControllerBase
                 c.Date,
                 c.Mileage,
                 c.ReceiptNumber,
+                // Justificatif (facture scannée) + détail des lignes — rendus
+                // dans le panneau de détail de la dépense.
+                c.ReceiptUrl,
+                c.DetailsJson,
                 c.CreatedAt,
                 // Calypso 7 — link to the accident timeline that produced
                 // this cost (Phase 5 repair / Phase 6 insurance refund).
@@ -210,6 +214,11 @@ public class CostsController : ControllerBase
         cost.CreatedByUserId = userId;
         cost.CreatedAt = DateTime.UtcNow;
         cost.UpdatedAt = DateTime.UtcNow;
+
+        // Invoice breakdown: bound the stored JSON (30 short lines max ≈ 4 KB)
+        // so a hostile client can't inflate the row.
+        if (cost.DetailsJson is { Length: > 8000 })
+            cost.DetailsJson = null;
 
         // Calculate total for fuel
         if (cost.Type == "fuel" && cost.Liters.HasValue && cost.PricePerLiter.HasValue)

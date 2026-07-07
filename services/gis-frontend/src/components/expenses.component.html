@@ -130,7 +130,9 @@
                   <textarea class="sm-input" rows="2" [(ngModel)]="scan.description" placeholder="Prestations, pièces, carburant…"></textarea>
                 </div>
 
-                <!-- Détail de la facture : lignes extraites par l'IA, décomposables -->
+                <!-- Détail de la facture : lignes extraites par l'IA, éditables.
+                     Enregistrées AVEC la dépense (une facture = une seule ligne
+                     dans la liste) et visibles dans le panneau de la dépense. -->
                 <div class="sm-field sm-field-full sm-items">
                   <div class="sm-items-head">
                     <label class="sm-label">
@@ -138,18 +140,13 @@
                       @if (scan.items.length > 0) { <span class="sm-count">{{ scan.items.length }}</span> }
                     </label>
                     @if (scan.items.length > 0) {
-                      <label class="sm-switch" title="Créer une dépense distincte pour chaque ligne cochée">
-                        <input type="checkbox" [(ngModel)]="scan.split">
-                        <span class="sm-switch-track"><span class="sm-switch-thumb"></span></span>
-                        Décomposer en dépenses séparées
-                      </label>
+                      <span class="sm-items-hint">Visible en ouvrant la dépense</span>
                     }
                   </div>
 
                   @if (scan.items.length > 0) {
                     <div class="sm-items-tbl">
-                      <div class="sm-item-cols" [class.sm-item-grid-split]="scan.split">
-                        @if (scan.split) { <span></span> }
+                      <div class="sm-item-cols">
                         <span>Désignation</span>
                         <span>Catégorie</span>
                         <span class="sm-col-amt">Montant</span>
@@ -157,10 +154,7 @@
                       </div>
 
                       @for (it of scan.items; track $index) {
-                        <div class="sm-item-row" [class.sm-item-grid-split]="scan.split" [class.sm-item-off]="scan.split && !it.include">
-                          @if (scan.split) {
-                            <input class="sm-item-check" type="checkbox" [(ngModel)]="it.include" title="Inclure cette ligne">
-                          }
+                        <div class="sm-item-row">
                           <input class="sm-input sm-input-xs sm-item-label" type="text" [(ngModel)]="it.label" placeholder="Désignation…">
                           <select class="sm-input sm-input-xs sm-item-cat" [(ngModel)]="it.category">
                             @for (c of scanCategories; track c.value) { <option [value]="c.value">{{ c.label }}</option> }
@@ -183,23 +177,14 @@
                         </span>
                       </div>
                     </div>
-
-                    @if (scan.split) {
-                      <p class="sm-split-note">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                        {{ scanIncludedItems().length }} dépense{{ scanIncludedItems().length > 1 ? 's' : '' }} distincte{{ scanIncludedItems().length > 1 ? 's' : '' }}
-                        sera{{ scanIncludedItems().length > 1 ? 'ont' : '' }} créée{{ scanIncludedItems().length > 1 ? 's' : '' }} — une par ligne cochée,
-                        chacune avec sa catégorie et son montant, rattachées à la même facture.
-                      </p>
-                    }
                   } @else {
                     <div class="sm-items-empty">
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
                         <line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>
                       </svg>
-                      <p>L'IA n'a pas détecté de lignes détaillées sur cette facture.<br>Vous pouvez les saisir manuellement pour décomposer la dépense.</p>
-                      <button class="sm-add-line" (click)="addScanItem(); scan.split = true">+ Ajouter des lignes</button>
+                      <p>L'IA n'a pas détecté de lignes détaillées sur cette facture.<br>Vous pouvez les saisir manuellement — elles resteront attachées à cette dépense.</p>
+                      <button class="sm-add-line" (click)="addScanItem()">+ Ajouter des lignes</button>
                     </div>
                   }
                 </div>
@@ -238,7 +223,7 @@
                 @if (!saving) {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                 }
-                {{ saving ? 'Enregistrement…' : (scan.split ? 'Enregistrer ' + scanIncludedItems().length + ' dépense' + (scanIncludedItems().length > 1 ? 's' : '') : 'Enregistrer la dépense') }}
+                {{ saving ? 'Enregistrement…' : 'Enregistrer la dépense' }}
               </button>
             </div>
           </div>
@@ -577,89 +562,82 @@
         </svg>
       </button>
     </div>
-    <div class="slide-panel-body" *ngIf="detailExpense">
-      <!-- Category badge -->
-      <div class="detail-category">
-        <span class="category-badge large">{{ getCategoryIcon(detailExpense.category) }} {{ getCategoryLabel(detailExpense.category) }}</span>
+    <div class="slide-panel-body xd-body" *ngIf="detailExpense">
+      <!-- En-tête : catégorie + montant + méta -->
+      <div class="xd-hero" [class.xd-hero-refund]="detailExpense.isRefund">
+        <span class="xd-cat">{{ getCategoryIcon(detailExpense.category) }} {{ getCategoryLabel(detailExpense.category) }}</span>
+        <div class="xd-amount">{{ detailExpense.totalAmount | appCurrency }}</div>
+        <div class="xd-hero-meta">
+          <span class="xd-pill">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            {{ detailExpense.date | date:'dd/MM/yyyy' }}
+          </span>
+          <span class="xd-pill" *ngIf="detailExpense.vehiclePlate || detailExpense.vehicleName">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+            {{ detailExpense.vehiclePlate || detailExpense.vehicleName }}
+          </span>
+        </div>
       </div>
 
-      <!-- Amount -->
-      <div class="detail-amount-card">
-        <div class="detail-amount-value">{{ detailExpense.totalAmount | appCurrency }}</div>
-        <div class="detail-amount-label">Montant total</div>
+      <!-- Détail de la facture (lignes décortiquées par le scan IA) -->
+      <div class="xd-card" *ngIf="detailExpense.details?.length">
+        <div class="xd-card-title">
+          Détail de la facture
+          <span class="xd-count">{{ detailExpense.details!.length }}</span>
+        </div>
+        <div class="xd-lines">
+          <div class="xd-line" *ngFor="let it of detailExpense.details">
+            <span class="xd-line-label">{{ it.label || '—' }}</span>
+            <span class="xd-line-cat">{{ lineCategoryLabel(it.category) }}</span>
+            <span class="xd-line-amt">{{ it.amount | appCurrency }}</span>
+          </div>
+          <div class="xd-line xd-line-total">
+            <span class="xd-line-label">Total des lignes</span>
+            <span></span>
+            <span class="xd-line-amt">{{ detailsSum(detailExpense) | appCurrency }}</span>
+          </div>
+        </div>
       </div>
 
-      <!-- Info rows -->
-      <div class="detail-info-list">
-        <div class="detail-info-row">
-          <div class="detail-info-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          </div>
-          <div class="detail-info-content">
-            <span class="detail-info-label">Date</span>
-            <span class="detail-info-value">{{ detailExpense.date | date:'dd/MM/yyyy' }}</span>
-          </div>
+      <!-- Informations -->
+      <div class="xd-card">
+        <div class="xd-card-title">Informations</div>
+        <div class="xd-row">
+          <span class="xd-row-label">Description</span>
+          <span class="xd-row-value">{{ detailExpense.label || '-' }}</span>
         </div>
+        <div class="xd-row" *ngIf="detailExpense.description && detailExpense.description !== detailExpense.label">
+          <span class="xd-row-label">Notes</span>
+          <span class="xd-row-value">{{ detailExpense.description }}</span>
+        </div>
+        <div class="xd-row" *ngIf="detailExpense.vehicleName">
+          <span class="xd-row-label">Véhicule</span>
+          <span class="xd-row-value"><span class="plate-badge">{{ detailExpense.vehiclePlate }}</span> {{ detailExpense.vehicleName }}</span>
+        </div>
+        <div class="xd-row" *ngIf="detailExpense.quantity > 1 || detailExpense.category === 'carburant'">
+          <span class="xd-row-label">Détail prix</span>
+          <span class="xd-row-value">{{ detailExpense.quantity | number:'1.2-2' }} × {{ detailExpense.unitPrice | appCurrency:3 }}</span>
+        </div>
+        <div class="xd-row">
+          <span class="xd-row-label">Enregistré le</span>
+          <span class="xd-row-value">{{ detailExpense.createdAt | date:'dd/MM/yyyy HH:mm' }}</span>
+        </div>
+        <div class="xd-row">
+          <span class="xd-row-label">Source</span>
+          <span class="xd-row-value">{{ detailExpense.sourceTable === 'fuelentries' ? 'Entrée carburant' : detailExpense.sourceTable === 'repairs' ? 'Réparation' : 'Coût véhicule' }}</span>
+        </div>
+      </div>
 
-        <div class="detail-info-row">
-          <div class="detail-info-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
-          </div>
-          <div class="detail-info-content">
-            <span class="detail-info-label">Véhicule</span>
-            <span class="detail-info-value"><span class="plate-badge">{{ detailExpense.vehiclePlate }}</span> {{ detailExpense.vehicleName }}</span>
-          </div>
-        </div>
-
-        <div class="detail-info-row">
-          <div class="detail-info-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          </div>
-          <div class="detail-info-content">
-            <span class="detail-info-label">Description</span>
-            <span class="detail-info-value">{{ detailExpense.label || '-' }}</span>
-          </div>
-        </div>
-
-        <div class="detail-info-row" *ngIf="detailExpense.description">
-          <div class="detail-info-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
-          </div>
-          <div class="detail-info-content">
-            <span class="detail-info-label">Notes</span>
-            <span class="detail-info-value">{{ detailExpense.description }}</span>
-          </div>
-        </div>
-
-        <div class="detail-info-row" *ngIf="detailExpense.quantity > 1 || detailExpense.category === 'carburant'">
-          <div class="detail-info-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          </div>
-          <div class="detail-info-content">
-            <span class="detail-info-label">Détail prix</span>
-            <span class="detail-info-value">{{ detailExpense.quantity | number:'1.2-2' }} x {{ detailExpense.unitPrice | appCurrency:3 }}</span>
-          </div>
-        </div>
-
-        <div class="detail-info-row">
-          <div class="detail-info-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          </div>
-          <div class="detail-info-content">
-            <span class="detail-info-label">Enregistré le</span>
-            <span class="detail-info-value">{{ detailExpense.createdAt | date:'dd/MM/yyyy HH:mm' }}</span>
-          </div>
-        </div>
-
-        <div class="detail-info-row">
-          <div class="detail-info-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-          </div>
-          <div class="detail-info-content">
-            <span class="detail-info-label">Source</span>
-            <span class="detail-info-value">{{ detailExpense.sourceTable === 'fuelentries' ? 'Entrée carburant' : detailExpense.sourceTable === 'repairs' ? 'Réparation' : 'Coût véhicule' }}</span>
-          </div>
-        </div>
+      <!-- Justificatif (facture scannée) -->
+      <div class="xd-card" *ngIf="detailExpense.receiptUrl">
+        <div class="xd-card-title">Justificatif</div>
+        <a *ngIf="!isPdf(detailExpense.receiptUrl!)" class="xd-receipt-img" [href]="detailExpense.receiptUrl" target="_blank" title="Agrandir">
+          <img [src]="detailExpense.receiptUrl" alt="Facture" />
+        </a>
+        <a *ngIf="isPdf(detailExpense.receiptUrl!)" class="xd-receipt-pdf" [href]="detailExpense.receiptUrl" target="_blank">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Ouvrir la facture (PDF)
+        </a>
       </div>
     </div>
     <div class="slide-panel-footer">
