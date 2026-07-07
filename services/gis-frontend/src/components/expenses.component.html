@@ -41,12 +41,19 @@
         Exporter PDF
       </button>
       @if (canScanInvoice) {
-        <button class="btn-scan" (click)="invoiceInput.click()" [disabled]="scanning" title="Scanner une facture avec l'IA">
+        <button class="btn-scan" (click)="invoiceInput.click()"
+                [disabled]="scanning || scanQuota?.remaining === 0"
+                [title]="scanQuota?.remaining === 0 ? 'Quota mensuel de scans atteint — contactez votre administrateur' : 'Scanner une facture avec l\'IA'">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
             <line x1="3" y1="12" x2="21" y2="12"/>
           </svg>
           {{ scanning ? 'Analyse…' : 'Scanner une facture' }}
+          @if (scanQuota) {
+            <span class="scan-quota-chip" [class.scan-quota-chip-empty]="scanQuota.remaining === 0">
+              {{ scanQuota.remaining }}/{{ scanQuota.limit }}
+            </span>
+          }
         </button>
         <input #invoiceInput type="file" accept="image/*,application/pdf" hidden (change)="onInvoiceFile($event)">
       }

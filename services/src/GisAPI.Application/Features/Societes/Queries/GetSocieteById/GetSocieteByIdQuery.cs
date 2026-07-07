@@ -35,7 +35,12 @@ public record SocieteDetailDto(
     int GeofencesCount,
     int RolesCount,
     DateTime CreatedAt,
-    DateTime UpdatedAt
+    DateTime UpdatedAt,
+    // Quota mensuel de scans de factures IA — null = défaut plateforme (20),
+    // 0 = désactivé. Paramètres avec défauts : les handlers Create/Update
+    // construisent ce DTO sans ces infos, l'admin UI recharge via GET.
+    int? InvoiceScanMonthlyLimit = null,
+    int InvoiceScanUsedThisMonth = 0
 );
 
 public record SocieteSettingsDto(

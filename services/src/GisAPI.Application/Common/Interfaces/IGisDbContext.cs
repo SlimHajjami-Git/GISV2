@@ -95,6 +95,9 @@ public interface IGisDbContext
     // Alert Emails
     DbSet<AlertEmail> AlertEmails { get; }
 
+    // Invoice scan quota (one row per successful AI scan)
+    DbSet<InvoiceScanLog> InvoiceScanLogs { get; }
+
     // Audit log (login / logout / activity history)
     DbSet<AuditLog> AuditLogs { get; }
 

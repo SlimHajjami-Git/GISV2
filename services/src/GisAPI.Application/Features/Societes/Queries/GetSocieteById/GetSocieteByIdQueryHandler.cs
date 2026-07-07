@@ -26,6 +26,13 @@ public class GetSocieteByIdQueryHandler : IRequestHandler<GetSocieteByIdQuery, S
             .FirstOrDefaultAsync(s => s.Id == request.Id, ct)
             ?? throw new NotFoundException("Societe", request.Id);
 
+        // Consommation du quota de scans IA sur le mois calendaire en cours (UTC).
+        var now = DateTime.UtcNow;
+        var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var scansThisMonth = await _context.InvoiceScanLogs
+            .AsNoTracking()
+            .CountAsync(l => l.CompanyId == societe.Id && l.CreatedAt >= monthStart, ct);
+
         return new SocieteDetailDto(
             societe.Id,
             societe.Name,
@@ -64,7 +71,9 @@ public class GetSocieteByIdQueryHandler : IRequestHandler<GetSocieteByIdQuery, S
             societe.Geofences.Count,
             societe.Roles.Count,
             societe.CreatedAt,
-            societe.UpdatedAt
+            societe.UpdatedAt,
+            societe.InvoiceScanMonthlyLimit,
+            scansThisMonth
         );
     }
 }

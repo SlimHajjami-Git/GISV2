@@ -16,8 +16,11 @@ namespace GisAPI.Application.Services;
 /// </summary>
 public interface IInvoiceExtractionService
 {
-    Task<InvoiceExtraction> ExtractAsync(byte[] content, string contentType, string fileName, CancellationToken ct);
+    Task<InvoiceExtractionResult> ExtractAsync(byte[] content, string contentType, string fileName, CancellationToken ct);
 }
+
+/// <summary>Extraction + real Groq token consumption (for the per-société quota log).</summary>
+public record InvoiceExtractionResult(InvoiceExtraction Extraction, int TokensUsed);
 
 /// <summary>One billed line of the invoice (détail) — lets the user split the
 /// invoice into separate expenses, one per line.</summary>
@@ -81,7 +84,7 @@ N'INVENTE JAMAIS de ligne — si le détail est absent ou illisible, renvoie ite
 Si le document n'est pas une facture, mets confidence=""low"", items=[] et les champs à null.
 Réponds UNIQUEMENT avec le JSON, sans texte autour, en gardant chaque désignation courte (max 60 caractères).";
 
-    public async Task<InvoiceExtraction> ExtractAsync(byte[] content, string contentType, string fileName, CancellationToken ct)
+    public async Task<InvoiceExtractionResult> ExtractAsync(byte[] content, string contentType, string fileName, CancellationToken ct)
     {
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
         var isImage = contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
@@ -114,7 +117,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte autour, en gardant chaque désignat
             throw new InvalidOperationException("Format non supporté. Envoyez une image (JPG/PNG) ou un PDF.");
         }
 
-        return Parse(response.Content);
+        return new InvoiceExtractionResult(Parse(response.Content), response.TokensUsed);
     }
 
     private static string ExtractPdfText(byte[] content)

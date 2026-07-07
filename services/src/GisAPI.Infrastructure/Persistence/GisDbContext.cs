@@ -141,6 +141,9 @@ public class GisDbContext : DbContext, IGisDbContext
     // Alert Emails
     public DbSet<AlertEmail> AlertEmails => Set<AlertEmail>();
 
+    // Invoice scan quota (one row per successful AI scan)
+    public DbSet<InvoiceScanLog> InvoiceScanLogs => Set<InvoiceScanLog>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -229,6 +232,8 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<ChatMessage>().ToTable("chat_messages");
         modelBuilder.Entity<AiChatMessage>().ToTable("ai_chat_messages");
         modelBuilder.Entity<AlertEmail>().ToTable("alert_emails");
+        modelBuilder.Entity<InvoiceScanLog>().ToTable("invoice_scan_logs");
+        modelBuilder.Entity<InvoiceScanLog>().HasIndex(l => new { l.CompanyId, l.CreatedAt });
 
         // UserDeviceToken — FCM push notification targeting (one row per (user, device))
         modelBuilder.Entity<UserDeviceToken>().ToTable("user_device_tokens");

@@ -44,6 +44,12 @@ public class Societe : AuditableEntity
     [Column("last_weekly_report_sent_date")]
     public DateOnly? LastWeeklyReportSentDate { get; set; }
 
+    // Quota mensuel de scans de factures IA. NULL = défaut plateforme (20),
+    // 0 = fonctionnalité désactivée. Modifiable par le sys admin depuis
+    // l'interface société de l'admin.
+    [Column("invoice_scan_monthly_limit")]
+    public int? InvoiceScanMonthlyLimit { get; set; }
+
     // Navigation collections
     public ICollection<User> Users { get; set; } = new List<User>();
     public ICollection<Role> Roles { get; set; } = new List<Role>();

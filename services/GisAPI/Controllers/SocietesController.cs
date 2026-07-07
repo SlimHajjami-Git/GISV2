@@ -6,6 +6,7 @@ using GisAPI.Application.Features.Societes.Queries.GetSocieteById;
 using GisAPI.Application.Features.Societes.Commands.CreateSociete;
 using GisAPI.Application.Features.Societes.Commands.UpdateSociete;
 using GisAPI.Application.Features.Societes.Commands.DeleteSociete;
+using GisAPI.Application.Features.Societes.Commands.SetSocieteScanQuota;
 using GisAPI.Domain.Entities;
 
 namespace GisAPI.Controllers;
@@ -103,6 +104,17 @@ public class SocietesController : ControllerBase
     }
 
     /// <summary>
+    /// Fixe le quota mensuel de scans de factures IA de la société.
+    /// null = défaut plateforme (20), 0 = fonctionnalité désactivée.
+    /// </summary>
+    [HttpPut("{id}/scan-quota")]
+    public async Task<IActionResult> SetScanQuota(int id, [FromBody] SetScanQuotaRequest request)
+    {
+        await _mediator.Send(new SetSocieteScanQuotaCommand(id, request.MonthlyLimit));
+        return Ok(new { invoiceScanMonthlyLimit = request.MonthlyLimit });
+    }
+
+    /// <summary>
     /// Supprime une société (si vide)
     /// </summary>
     [HttpDelete("{id}")]
@@ -150,6 +162,8 @@ public record CreateSocieteRequest(
     string AdminEmail,
     string AdminPassword
 );
+
+public record SetScanQuotaRequest(int? MonthlyLimit);
 
 public record UpdateSocieteRequest(
     string? Name,

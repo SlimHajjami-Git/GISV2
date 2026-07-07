@@ -34,6 +34,37 @@ public class CostsController : ControllerBase
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
     private int GetUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
 
+    /// <summary>Default monthly AI invoice-scan quota when the société has no
+    /// explicit limit. The sys admin can raise/lower it per société from the
+    /// admin company page (0 = feature disabled).</summary>
+    private const int DefaultScanMonthlyLimit = 20;
+
+    private async Task<(int Limit, int Used)> GetScanQuotaAsync(int companyId, CancellationToken ct)
+    {
+        var limit = await _context.Societes
+            .AsNoTracking()
+            .Where(s => s.Id == companyId)
+            .Select(s => s.InvoiceScanMonthlyLimit)
+            .FirstOrDefaultAsync(ct) ?? DefaultScanMonthlyLimit;
+
+        var now = DateTime.UtcNow;
+        var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var used = await _context.InvoiceScanLogs
+            .AsNoTracking()
+            .CountAsync(l => l.CompanyId == companyId && l.CreatedAt >= monthStart, ct);
+
+        return (limit, used);
+    }
+
+    /// <summary>Current company's monthly scan quota — drives the counter shown
+    /// next to the "Scanner une facture" button.</summary>
+    [HttpGet("scan-quota")]
+    public async Task<ActionResult> GetScanQuota(CancellationToken ct)
+    {
+        var (limit, used) = await GetScanQuotaAsync(GetCompanyId(), ct);
+        return Ok(new { used, limit, remaining = Math.Max(0, limit - used) });
+    }
+
     /// <summary>
     /// Scan an invoice (image or PDF) with AI and return the EXTRACTED fields for
     /// the user to review — nothing is saved to costs here. The invoice file is
@@ -52,6 +83,23 @@ public class CostsController : ControllerBase
         if (!allowed.Contains(ext))
             return BadRequest(new { message = "Format non supporté. Envoyez une image (JPG/PNG) ou un PDF." });
 
+        // Monthly quota per société — checked BEFORE storing anything or paying
+        // for a Groq call. Only successful scans count against the quota.
+        var companyId = GetCompanyId();
+        var (limit, used) = await GetScanQuotaAsync(companyId, ct);
+        if (limit <= 0)
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                message = "Le scan de factures IA n'est pas activé pour votre société.",
+                used, limit
+            });
+        if (used >= limit)
+            return StatusCode(StatusCodes.Status429TooManyRequests, new
+            {
+                message = $"Quota mensuel de scans atteint ({used}/{limit}). Contactez votre administrateur pour augmenter la limite.",
+                used, limit
+            });
+
         byte[] bytes;
         using (var ms = new MemoryStream())
         {
@@ -60,7 +108,6 @@ public class CostsController : ControllerBase
         }
 
         // Persist the invoice so the created cost can point at it (receiptUrl).
-        var companyId = GetCompanyId();
         var dir = Path.Combine(_env.ContentRootPath, "uploads", "invoices", companyId.ToString());
         Directory.CreateDirectory(dir);
         var storedName = $"{Guid.NewGuid():N}{ext}";
@@ -69,8 +116,23 @@ public class CostsController : ControllerBase
 
         try
         {
-            var extraction = await _invoiceExtraction.ExtractAsync(bytes, file.ContentType ?? "", file.FileName, ct);
-            return Ok(new { extraction, receiptUrl });
+            var result = await _invoiceExtraction.ExtractAsync(bytes, file.ContentType ?? "", file.FileName, ct);
+
+            // Count the scan against the monthly quota + audit token consumption.
+            _context.InvoiceScanLogs.Add(new InvoiceScanLog
+            {
+                CompanyId = companyId,
+                UserId = GetUserId(),
+                TokensUsed = result.TokensUsed
+            });
+            await _context.SaveChangesAsync(ct);
+
+            return Ok(new
+            {
+                extraction = result.Extraction,
+                receiptUrl,
+                quota = new { used = used + 1, limit, remaining = Math.Max(0, limit - used - 1) }
+            });
         }
         catch (InvalidOperationException ex)
         {

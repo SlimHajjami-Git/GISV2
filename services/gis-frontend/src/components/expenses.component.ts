@@ -157,6 +157,17 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     return (this.authService.getCurrentUserSync()?.email || '').toLowerCase() === 'admin@belive.tn';
   }
 
+  /** Quota mensuel de scans IA de la société (null tant que non chargé). */
+  scanQuota: { used: number; limit: number; remaining: number } | null = null;
+
+  private loadScanQuota(): void {
+    if (!this.canScanInvoice) return;
+    this.apiService.getScanQuota().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (q) => { this.scanQuota = q; this.cdr.detectChanges(); },
+      error: () => { /* quota indisponible → bouton reste utilisable, le serveur tranche */ }
+    });
+  }
+
   constructor(private apiService: ApiService, private cdr: ChangeDetectorRef, private route: ActivatedRoute, private pdfService: PdfExportService, private userPrefs: UserPreferencesService, private authService: AuthService) {}
 
   ngOnInit(): void {
@@ -166,6 +177,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       this.pendingExpenseId = qp['expenseId'];
     }
     this.loadAllData();
+    this.loadScanQuota();
   }
 
   ngOnDestroy(): void {
@@ -613,6 +625,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     this.apiService.scanInvoice(file).subscribe({
       next: (res: any) => {
         this.scanning = false;
+        if (res?.quota) this.scanQuota = res.quota;   // compteur mis à jour par le serveur
         const x = res?.extraction || {};
         const veh = this.matchVehicleByPlate(x.vehiclePlate);
         const desc = [x.supplierName, x.description].filter((s: string) => !!s).join(' — ');

@@ -111,6 +111,9 @@ public class TestGisDbContext : DbContext, IGisDbContext
     // Alert Emails
     public DbSet<AlertEmail> AlertEmails => Set<AlertEmail>();
 
+    // Invoice scan quota
+    public DbSet<InvoiceScanLog> InvoiceScanLogs => Set<InvoiceScanLog>();
+
     // Towing
     public DbSet<TowEvent> TowEvents => Set<TowEvent>();
 

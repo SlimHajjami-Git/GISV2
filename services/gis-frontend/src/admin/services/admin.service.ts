@@ -214,6 +214,10 @@ export interface Societe {
   rolesCount: number;
   createdAt: Date;
   updatedAt: Date;
+  /** Quota mensuel de scans de factures IA — null = défaut plateforme (20), 0 = désactivé. */
+  invoiceScanMonthlyLimit?: number | null;
+  /** Scans IA consommés sur le mois calendaire en cours. */
+  invoiceScanUsedThisMonth?: number;
 }
 
 export interface SubscriptionType {
@@ -877,6 +881,11 @@ export class AdminService {
 
   updateSociete(id: number, updates: Partial<Societe>): Observable<Societe> {
     return this.http.put<Societe>(`${this.apiUrl}/admin/societes/${id}`, updates, { headers: this.getHeaders() });
+  }
+
+  /** Quota mensuel de scans de factures IA — null = défaut plateforme (20), 0 = désactivé. */
+  setScanQuota(id: number, monthlyLimit: number | null): Observable<any> {
+    return this.http.put<any>(`${this.apiUrl}/admin/societes/${id}/scan-quota`, { monthlyLimit }, { headers: this.getHeaders() });
   }
 
   deleteSociete(id: number): Observable<void> {

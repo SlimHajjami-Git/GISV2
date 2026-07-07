@@ -702,6 +702,12 @@ export class ApiService {
     return this.http.post<any>(`${this.API_URL}/costs/scan-invoice`, formData, { headers });
   }
 
+  /** Quota mensuel de scans IA de la société — { used, limit, remaining }. */
+  getScanQuota(): Observable<{ used: number; limit: number; remaining: number }> {
+    return this.http.get<{ used: number; limit: number; remaining: number }>(
+      `${this.API_URL}/costs/scan-quota`, { headers: this.getHeaders() });
+  }
+
   updateCost(id: number, cost: any): Observable<void> {
     if (this.isMockUser()) {
       return of(void 0);

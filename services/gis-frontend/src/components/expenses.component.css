@@ -915,6 +915,16 @@ tr.accident-linked:not(.refund):hover { background: #fef08a; }
 }
 .btn-scan:hover:not(:disabled) { background: #ede9fe; border-color: #c4b5fd; }
 .btn-scan:disabled { opacity: .6; cursor: progress; }
+.btn-scan:disabled:not(.scanning) { cursor: not-allowed; }
+
+/* Compteur de quota mensuel (scans restants / limite) */
+.scan-quota-chip {
+  display: inline-grid; place-items: center;
+  padding: 1px 7px; border-radius: 999px;
+  background: #7c3aed; color: #ffffff;
+  font-size: 10.5px; font-weight: 800; letter-spacing: .01em;
+}
+.scan-quota-chip-empty { background: #dc2626; }
 
 /* ── Modal de revue de facture scannée (namespace sm-*) ───────────────────
    Autonome : ne réutilise AUCUNE classe .modal* (celles-ci appartiennent au

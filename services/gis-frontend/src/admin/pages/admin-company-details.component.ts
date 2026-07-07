@@ -125,6 +125,34 @@ type CompanyRole = Role & { userCount?: number };
           </div>
         </div>
 
+        <!-- Quota mensuel de scans de factures IA -->
+        <div class="scan-quota-card">
+          <div class="scan-quota-head">
+            <div class="scan-quota-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
+                <line x1="3" y1="12" x2="21" y2="12"/>
+              </svg>
+            </div>
+            <div class="scan-quota-txt">
+              <h3>Scan de factures (IA)</h3>
+              <p>Utilisés ce mois : <strong>{{ scanQuotaUsed }}</strong> / {{ scanQuotaEffective }}
+                <span *ngIf="scanQuotaLimit === null" class="scan-quota-default-tag">défaut</span>
+                <span *ngIf="scanQuotaEffective === 0" class="scan-quota-off-tag">désactivé</span>
+              </p>
+            </div>
+          </div>
+          <div class="scan-quota-form">
+            <input type="number" min="0" max="100000" [(ngModel)]="scanQuotaInput"
+                   [placeholder]="SCAN_QUOTA_DEFAULT + ' (défaut)'" />
+            <button class="btn-secondary" (click)="saveScanQuota()" [disabled]="scanQuotaSaving">
+              {{ scanQuotaSaving ? 'Enregistrement…' : 'Enregistrer' }}
+            </button>
+          </div>
+          <p class="scan-quota-hint">Vide = défaut plateforme ({{ SCAN_QUOTA_DEFAULT }}/mois) • 0 = désactiver • le quota se réinitialise chaque mois</p>
+          <p class="scan-quota-msg" *ngIf="scanQuotaMsg">{{ scanQuotaMsg }}</p>
+        </div>
+
         <!-- Tabs -->
         <div class="tabs-container">
           <div class="tabs">
@@ -2107,6 +2135,40 @@ type CompanyRole = Role & { userCount?: number };
         grid-template-columns: 1fr;
       }
     }
+
+    /* ── Quota mensuel de scans de factures IA ── */
+    .scan-quota-card {
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+      background: var(--admin-card-bg, #ffffff);
+      border: 1px solid var(--admin-border, #e2e8f0);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 24px;
+    }
+    .scan-quota-head { display: flex; align-items: center; gap: 12px; flex: 1 1 260px; min-width: 0; }
+    .scan-quota-icon {
+      flex: 0 0 auto;
+      width: 36px; height: 36px; border-radius: 10px;
+      display: grid; place-items: center;
+      color: #ffffff;
+      background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+    }
+    .scan-quota-txt h3 { margin: 0; font-size: 14px; font-weight: 700; }
+    .scan-quota-txt p { margin: 2px 0 0; font-size: 12.5px; opacity: .75; }
+    .scan-quota-default-tag, .scan-quota-off-tag {
+      margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+      font-size: 10.5px; font-weight: 700;
+      background: #ede9fe; color: #6d28d9;
+    }
+    .scan-quota-off-tag { background: #fee2e2; color: #b91c1c; }
+    .scan-quota-form { display: flex; align-items: center; gap: 8px; }
+    .scan-quota-form input {
+      width: 120px; padding: 8px 10px;
+      border: 1px solid var(--admin-border, #e2e8f0); border-radius: 8px;
+      font-size: 13px; background: transparent; color: inherit;
+    }
+    .scan-quota-hint { flex-basis: 100%; margin: 0; font-size: 11.5px; opacity: .55; }
+    .scan-quota-msg { flex-basis: 100%; margin: 0; font-size: 12px; font-weight: 600; color: #6d28d9; }
   `]
 })
 export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
@@ -2206,7 +2268,7 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
 
   loadCompanyDetails() {
     this.loading = true;
-    
+
     this.adminService.getClient(this.companyId).pipe(takeUntil(this.destroy$)).subscribe({
       next: (company) => {
         this.company = company || null;
@@ -2214,6 +2276,7 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
           this.loadVehicles();
           this.loadRoles();
           this.loadUsers();
+          this.loadScanQuota();
         }
         this.loading = false;
         this.cdr.detectChanges();
@@ -2222,6 +2285,57 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
         console.error('Error loading company:', err);
         this.company = null;
         this.loading = false;
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  // ── Quota mensuel de scans de factures IA ─────────────────────────────────
+  /** Limite effective (null = défaut plateforme 20). */
+  scanQuotaLimit: number | null = null;
+  scanQuotaUsed = 0;
+  /** Champ de saisie : '' = défaut plateforme. */
+  scanQuotaInput = '';
+  scanQuotaSaving = false;
+  scanQuotaMsg = '';
+  readonly SCAN_QUOTA_DEFAULT = 20;
+
+  get scanQuotaEffective(): number {
+    return this.scanQuotaLimit ?? this.SCAN_QUOTA_DEFAULT;
+  }
+
+  loadScanQuota() {
+    this.adminService.getSociete(this.companyId).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (s) => {
+        this.scanQuotaLimit = s?.invoiceScanMonthlyLimit ?? null;
+        this.scanQuotaUsed = s?.invoiceScanUsedThisMonth ?? 0;
+        this.scanQuotaInput = this.scanQuotaLimit === null ? '' : String(this.scanQuotaLimit);
+        this.cdr.detectChanges();
+      },
+      error: (err) => console.error('Error loading scan quota:', err)
+    });
+  }
+
+  saveScanQuota() {
+    const raw = (this.scanQuotaInput || '').trim();
+    const limit = raw === '' ? null : Math.max(0, Math.floor(Number(raw)));
+    if (raw !== '' && (isNaN(limit as number) || (limit as number) > 100000)) {
+      this.scanQuotaMsg = 'Valeur invalide (0 à 100000, ou vide pour le défaut).';
+      return;
+    }
+    this.scanQuotaSaving = true;
+    this.scanQuotaMsg = '';
+    this.adminService.setScanQuota(this.companyId, limit).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        this.scanQuotaSaving = false;
+        this.scanQuotaLimit = limit;
+        this.scanQuotaMsg = 'Quota enregistré.';
+        this.cdr.detectChanges();
+        setTimeout(() => { this.scanQuotaMsg = ''; this.cdr.detectChanges(); }, 2500);
+      },
+      error: (err) => {
+        this.scanQuotaSaving = false;
+        this.scanQuotaMsg = err?.error?.message || "Échec de l'enregistrement.";
         this.cdr.detectChanges();
       }
     });
