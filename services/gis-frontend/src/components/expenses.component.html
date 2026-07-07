@@ -61,80 +61,112 @@
     <!-- ============ Revue de facture scannée (IA) ============ -->
     <!-- Rien n'est enregistré tant que l'utilisateur n'a pas validé. -->
     @if (showScanReview) {
-      <div class="modal-overlay" (click)="closeScanReview()">
-        <div class="modal scan-modal" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>Vérifier la facture</h3>
-            <button class="modal-close" (click)="closeScanReview()">×</button>
-          </div>
-          <p class="scan-hint">
-            L'IA a pré-rempli ces champs à partir de la facture. <strong>Vérifiez et corrigez</strong> avant d'enregistrer.
-            @if (scan.confidence) { <span class="conf conf-{{ scan.confidence }}">fiabilité : {{ scanConfidenceLabel() }}</span> }
-          </p>
+      <div class="sm-overlay" (click)="closeScanReview()">
+        <div class="sm-card" (click)="$event.stopPropagation()">
 
-          <div class="scan-body">
-            <div class="scan-fields">
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Véhicule *</label>
-                  <select [(ngModel)]="scan.vehicleId">
+          <!-- En-tête -->
+          <div class="sm-head">
+            <div class="sm-head-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
+                <path d="M12 8l1 2.2 2.2 1-2.2 1L12 14.4l-1-2.2-2.2-1 2.2-1z" fill="currentColor" stroke="none"/>
+              </svg>
+            </div>
+            <div class="sm-head-txt">
+              <h3>Vérifier la facture</h3>
+              <p>Champs pré-remplis par l'IA — vérifiez et corrigez avant d'enregistrer.</p>
+            </div>
+            @if (scan.confidence) {
+              <span class="sm-conf sm-conf-{{ scan.confidence }}">
+                <i class="sm-dot"></i>{{ scanConfidenceLabel() }}
+              </span>
+            }
+            <button class="sm-close" (click)="closeScanReview()" aria-label="Fermer">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          <!-- Corps : champs + aperçu du document -->
+          <div class="sm-body">
+            <div class="sm-fields">
+              <div class="sm-grid">
+                <div class="sm-field">
+                  <label class="sm-label">Véhicule <span class="sm-req">*</span></label>
+                  <select class="sm-input" [(ngModel)]="scan.vehicleId">
                     <option value="">Sélectionner…</option>
                     @for (v of vehicles; track v.id) { <option [value]="v.id">{{ v.plate }} — {{ v.name }}</option> }
                   </select>
                   @if (scan.vehiclePlate && !scan.vehicleId) {
-                    <small class="warn">Plaque détectée « {{ scan.vehiclePlate }} » — non trouvée, choisissez le véhicule.</small>
+                    <small class="sm-warn">Plaque détectée « {{ scan.vehiclePlate }} » — introuvable, choisissez le véhicule.</small>
                   }
                 </div>
-                <div class="form-group">
-                  <label>Catégorie *</label>
-                  <select [(ngModel)]="scan.category">
+                <div class="sm-field">
+                  <label class="sm-label">Catégorie <span class="sm-req">*</span></label>
+                  <select class="sm-input" [(ngModel)]="scan.category">
                     @for (c of scanCategories; track c.value) { <option [value]="c.value">{{ c.label }}</option> }
                   </select>
                 </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Date *</label>
-                  <input type="date" [(ngModel)]="scan.date">
+                <div class="sm-field">
+                  <label class="sm-label">Date <span class="sm-req">*</span></label>
+                  <input class="sm-input" type="date" [(ngModel)]="scan.date">
                 </div>
-                <div class="form-group">
-                  <label>Montant TTC ({{ currencyCode }}) *</label>
-                  <input type="number" step="0.001" [(ngModel)]="scan.amount">
+                <div class="sm-field">
+                  <label class="sm-label">Montant TTC <span class="sm-req">*</span></label>
+                  <div class="sm-amount">
+                    <input class="sm-input sm-input-amount" type="number" step="0.001" min="0" [(ngModel)]="scan.amount" placeholder="0.000">
+                    <span class="sm-currency">{{ currencyCode }}</span>
+                  </div>
                 </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Fournisseur</label>
-                  <input type="text" [(ngModel)]="scan.supplierName" placeholder="Nom du garage / station…">
+                <div class="sm-field">
+                  <label class="sm-label">Fournisseur</label>
+                  <input class="sm-input" type="text" [(ngModel)]="scan.supplierName" placeholder="Garage, station, assureur…">
                 </div>
-                <div class="form-group">
-                  <label>N° facture</label>
-                  <input type="text" [(ngModel)]="scan.invoiceNumber">
+                <div class="sm-field">
+                  <label class="sm-label">N° facture</label>
+                  <input class="sm-input" type="text" [(ngModel)]="scan.invoiceNumber" placeholder="Ex : FA-2026-0042">
                 </div>
-              </div>
-              <div class="form-group">
-                <label>Description</label>
-                <textarea rows="2" [(ngModel)]="scan.description" placeholder="Prestations / pièces…"></textarea>
+                <div class="sm-field sm-field-full">
+                  <label class="sm-label">Description</label>
+                  <textarea class="sm-input" rows="2" [(ngModel)]="scan.description" placeholder="Prestations, pièces, carburant…"></textarea>
+                </div>
               </div>
             </div>
 
             @if (scan.receiptUrl) {
-              <div class="scan-preview">
-                <label>Facture</label>
+              <aside class="sm-doc">
+                <span class="sm-doc-title">Document scanné</span>
                 @if (isPdf(scan.receiptUrl)) {
-                  <a [href]="scan.receiptUrl" target="_blank" class="pdf-chip">📄 Ouvrir le PDF</a>
+                  <a [href]="scan.receiptUrl" target="_blank" class="sm-doc-pdf">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    <span>Ouvrir le PDF</span>
+                  </a>
                 } @else {
-                  <a [href]="scan.receiptUrl" target="_blank"><img [src]="scan.receiptUrl" alt="facture" /></a>
+                  <a class="sm-doc-img" [href]="scan.receiptUrl" target="_blank" title="Agrandir">
+                    <img [src]="scan.receiptUrl" alt="Facture scannée" />
+                  </a>
                 }
-              </div>
+                <span class="sm-doc-hint">Cliquez pour agrandir</span>
+              </aside>
             }
           </div>
 
-          <div class="modal-actions">
-            <button class="btn-cancel" (click)="closeScanReview()">Annuler</button>
-            <button class="btn-save" (click)="saveScanned()" [disabled]="!scan.vehicleId || !scan.amount || saving">
-              {{ saving ? 'Enregistrement…' : 'Enregistrer la dépense' }}
-            </button>
+          <!-- Pied : note + actions -->
+          <div class="sm-foot">
+            <span class="sm-foot-note">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              Rien n'est enregistré sans votre validation
+            </span>
+            <div class="sm-foot-actions">
+              <button class="sm-btn-ghost" (click)="closeScanReview()">Annuler</button>
+              <button class="sm-btn-primary" (click)="saveScanned()" [disabled]="!scan.vehicleId || !scan.amount || saving">
+                @if (!saving) {
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                }
+                {{ saving ? 'Enregistrement…' : 'Enregistrer la dépense' }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
