@@ -605,7 +605,12 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       error: (err: any) => {
         this.scanning = false;
         const receiptUrl = err?.error?.receiptUrl || '';
-        alert(err?.error?.message || "L'analyse de la facture a échoué. Vous pouvez saisir la dépense manuellement.");
+        // 413 = rejected by the proxy for size before reaching the API — the
+        // generic message would mislead the user into retrying the same file.
+        const msg = err?.status === 413
+          ? 'Fichier trop volumineux (maximum 12 Mo). Réduisez la taille ou envoyez une photo compressée.'
+          : (err?.error?.message || "L'analyse de la facture a échoué. Vous pouvez saisir la dépense manuellement.");
+        alert(msg);
         // The file may still be stored — let the user fill the fields by hand.
         if (receiptUrl) {
           this.scan = { ...this.emptyScan(), confidence: 'low', receiptUrl };
