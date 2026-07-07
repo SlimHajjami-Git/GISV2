@@ -19,6 +19,13 @@ public interface IInvoiceExtractionService
     Task<InvoiceExtraction> ExtractAsync(byte[] content, string contentType, string fileName, CancellationToken ct);
 }
 
+/// <summary>One billed line of the invoice (détail) — lets the user split the
+/// invoice into separate expenses, one per line.</summary>
+public record InvoiceLineItem(
+    string? Label,         // désignation de la ligne
+    decimal? Amount,       // montant TTC de la ligne
+    string? Category);     // same whitelist as InvoiceExtraction.Category, or null
+
 /// <summary>Fields pre-filled into the expense review form (all nullable/best-effort).</summary>
 public record InvoiceExtraction(
     string? SupplierName,
@@ -31,7 +38,8 @@ public record InvoiceExtraction(
     string? Category,      // fuel|maintenance|insurance|tax|toll|parking|fine|repair|other
     string? VehiclePlate,
     string? Description,
-    string? Confidence);   // high|medium|low
+    string? Confidence,    // high|medium|low
+    List<InvoiceLineItem>? Items = null);  // lignes de la facture (détail, best-effort)
 
 public class InvoiceExtractionService : IInvoiceExtractionService
 {
@@ -57,11 +65,18 @@ Réponds UNIQUEMENT par un objet JSON avec exactement ces clés :
   ""category"": string|null,            // UNE parmi: fuel, maintenance, insurance, tax, toll, parking, fine, repair, other
   ""vehiclePlate"": string|null,        // immatriculation si présente, ex: 123 TU 4567
   ""description"": string|null,         // résumé court des biens/prestations
-  ""confidence"": string|null           // high | medium | low
+  ""confidence"": string|null,          // high | medium | low
+  ""items"": [                          // DÉTAIL: chaque ligne facturée (article/prestation)
+    { ""label"": string,                // désignation de la ligne, ex: ""Vidange moteur""
+      ""amount"": number|null,          // montant TTC de la ligne
+      ""category"": string|null }       // même liste que category, la plus adaptée à CETTE ligne
+  ]
 }
 Règles: les montants sont des NOMBRES (pas de texte, pas de symbole). Utilise null si une valeur est absente ou illisible.
 Choisis la catégorie la plus probable d'après le contenu (carburant→fuel, entretien/vidange→maintenance, réparation→repair, assurance→insurance, vignette→tax, péage→toll, parking→parking, amende→fine, sinon other).
-Si le document n'est pas une facture, mets confidence=""low"" et les champs à null.";
+Pour items: liste les lignes réellement facturées (désignation + montant TTC ligne), dans l'ordre du document.
+N'INVENTE JAMAIS de ligne — si le détail est absent ou illisible, renvoie items=[]. Ignore les sous-totaux, remises globales et lignes de TVA.
+Si le document n'est pas une facture, mets confidence=""low"", items=[] et les champs à null.";
 
     public async Task<InvoiceExtraction> ExtractAsync(byte[] content, string contentType, string fileName, CancellationToken ct)
     {
@@ -120,12 +135,35 @@ Si le document n'est pas une facture, mets confidence=""low"" et les champs à n
                 NormalizeCategory(Str(r, "category")),
                 Str(r, "vehiclePlate"),
                 Str(r, "description"),
-                Str(r, "confidence"));
+                Str(r, "confidence"),
+                ParseItems(r));
         }
         catch
         {
-            return new InvoiceExtraction(null, null, null, null, null, null, null, null, null, null, "low");
+            return new InvoiceExtraction(null, null, null, null, null, null, null, null, null, null, "low", new List<InvoiceLineItem>());
         }
+    }
+
+    /// <summary>Tolerant mapping of the "items" array — skips junk entries, caps the
+    /// count, accepts a few alternative key names the LLM occasionally produces.</summary>
+    private static List<InvoiceLineItem> ParseItems(JsonElement root)
+    {
+        var list = new List<InvoiceLineItem>();
+        if (!root.TryGetProperty("items", out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return list;
+
+        foreach (var it in arr.EnumerateArray())
+        {
+            if (it.ValueKind != JsonValueKind.Object) continue;
+            var label = Str(it, "label") ?? Str(it, "designation") ?? Str(it, "description");
+            var amount = Dec(it, "amount") ?? Dec(it, "amountTTC") ?? Dec(it, "total") ?? Dec(it, "price");
+            if (label is null && amount is null) continue;   // junk line
+
+            var rawCat = Str(it, "category");
+            list.Add(new InvoiceLineItem(label, amount, rawCat is null ? null : NormalizeCategory(rawCat)));
+            if (list.Count >= 30) break;                     // hard cap — a facture never has more
+        }
+        return list;
     }
 
     private static readonly HashSet<string> Categories = new(StringComparer.OrdinalIgnoreCase)

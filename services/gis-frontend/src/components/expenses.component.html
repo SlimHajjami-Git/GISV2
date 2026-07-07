@@ -129,6 +129,63 @@
                   <label class="sm-label">Description</label>
                   <textarea class="sm-input" rows="2" [(ngModel)]="scan.description" placeholder="Prestations, pièces, carburant…"></textarea>
                 </div>
+
+                <!-- Détail de la facture : lignes extraites par l'IA, décomposables -->
+                @if (scan.items.length > 0 || scan.split) {
+                  <div class="sm-field sm-field-full sm-items">
+                    <div class="sm-items-head">
+                      <label class="sm-label">Détail de la facture ({{ scan.items.length }} ligne{{ scan.items.length > 1 ? 's' : '' }})</label>
+                      <label class="sm-switch" title="Créer une dépense distincte pour chaque ligne cochée">
+                        <input type="checkbox" [(ngModel)]="scan.split">
+                        <span class="sm-switch-track"><span class="sm-switch-thumb"></span></span>
+                        Décomposer en dépenses séparées
+                      </label>
+                    </div>
+
+                    @for (it of scan.items; track $index) {
+                      <div class="sm-item-row" [class.sm-item-off]="scan.split && !it.include">
+                        @if (scan.split) {
+                          <input class="sm-item-check" type="checkbox" [(ngModel)]="it.include" title="Inclure cette ligne">
+                        }
+                        <input class="sm-input sm-input-xs sm-item-label" type="text" [(ngModel)]="it.label" placeholder="Désignation…">
+                        <select class="sm-input sm-input-xs sm-item-cat" [(ngModel)]="it.category">
+                          @for (c of scanCategories; track c.value) { <option [value]="c.value">{{ c.label }}</option> }
+                        </select>
+                        <div class="sm-amount sm-item-amt">
+                          <input class="sm-input sm-input-xs" type="number" step="0.001" min="0" [(ngModel)]="it.amount" placeholder="0.000">
+                          <span class="sm-currency sm-currency-xs">{{ currencyCode }}</span>
+                        </div>
+                        <button class="sm-item-del" (click)="removeScanItem($index)" title="Supprimer la ligne">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                      </div>
+                    }
+
+                    <div class="sm-items-foot">
+                      <button class="sm-add-line" (click)="addScanItem()">+ Ajouter une ligne</button>
+                      @if (scan.items.length > 0) {
+                        <span class="sm-sum" [class.sm-sum-warn]="scanSumMismatch()">
+                          Somme des lignes : <strong>{{ scanItemsSum() | number:'1.3-3' }} {{ currencyCode }}</strong>
+                          @if (scanSumMismatch()) { <em>≠ total {{ scan.amount | number:'1.3-3' }}</em> }
+                        </span>
+                      }
+                    </div>
+
+                    @if (scan.split) {
+                      <p class="sm-split-note">
+                        {{ scanIncludedItems().length }} dépense{{ scanIncludedItems().length > 1 ? 's' : '' }} distincte{{ scanIncludedItems().length > 1 ? 's' : '' }}
+                        sera{{ scanIncludedItems().length > 1 ? 'ont' : '' }} créée{{ scanIncludedItems().length > 1 ? 's' : '' }} — une par ligne cochée,
+                        chacune avec sa catégorie et son montant, rattachées à la même facture.
+                      </p>
+                    }
+                  </div>
+                } @else {
+                  <div class="sm-field sm-field-full">
+                    <button class="sm-add-line sm-add-line-solo" (click)="addScanItem(); scan.split = true">
+                      + Décomposer la facture en plusieurs dépenses
+                    </button>
+                  </div>
+                }
               </div>
             </div>
 
@@ -160,11 +217,11 @@
             </span>
             <div class="sm-foot-actions">
               <button class="sm-btn-ghost" (click)="closeScanReview()">Annuler</button>
-              <button class="sm-btn-primary" (click)="saveScanned()" [disabled]="!scan.vehicleId || !scan.amount || saving">
+              <button class="sm-btn-primary" (click)="saveScanned()" [disabled]="!canSaveScan()">
                 @if (!saving) {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                 }
-                {{ saving ? 'Enregistrement…' : 'Enregistrer la dépense' }}
+                {{ saving ? 'Enregistrement…' : (scan.split ? 'Enregistrer ' + scanIncludedItems().length + ' dépense' + (scanIncludedItems().length > 1 ? 's' : '') : 'Enregistrer la dépense') }}
               </button>
             </div>
           </div>

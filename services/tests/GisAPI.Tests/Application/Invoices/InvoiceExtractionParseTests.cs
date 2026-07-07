@@ -81,4 +81,47 @@ public class InvoiceExtractionParseTests
         r.Confidence.Should().Be("low");
         r.AmountTTC.Should().BeNull();
     }
+
+    [Fact]
+    public void Items_are_parsed_with_string_amounts_and_bad_categories_normalized()
+    {
+        const string json = """
+        {
+          "amountTTC": 342.5,
+          "category": "maintenance",
+          "items": [
+            { "label": "Vidange moteur", "amount": 120, "category": "maintenance" },
+            { "label": "Filtre à huile", "amount": "82,500", "category": "pièces" },
+            { "label": "Main d'œuvre", "amount": 140 },
+            { "notALabel": true },
+            "junk-string"
+          ]
+        }
+        """;
+
+        var r = InvoiceExtractionService.Parse(json);
+
+        r.Items.Should().NotBeNull();
+        r.Items!.Should().HaveCount(3);                    // junk entries skipped
+        r.Items[0].Label.Should().Be("Vidange moteur");
+        r.Items[0].Amount.Should().Be(120m);
+        r.Items[0].Category.Should().Be("maintenance");
+        r.Items[1].Amount.Should().Be(82.500m);            // "82,500" → 82.5
+        r.Items[1].Category.Should().Be("other");          // "pièces" not in whitelist
+        r.Items[2].Category.Should().BeNull();             // absent stays null (frontend falls back)
+    }
+
+    [Fact]
+    public void Missing_items_array_yields_empty_list_and_alternative_keys_are_accepted()
+    {
+        InvoiceExtractionService.Parse("""{"amountTTC": 10}""")
+            .Items.Should().BeEmpty();
+
+        var r = InvoiceExtractionService.Parse("""
+        {"items": [ { "designation": "Pneu 205/55R16", "total": "890" } ]}
+        """);
+        r.Items.Should().ContainSingle();
+        r.Items![0].Label.Should().Be("Pneu 205/55R16");
+        r.Items[0].Amount.Should().Be(890m);
+    }
 }

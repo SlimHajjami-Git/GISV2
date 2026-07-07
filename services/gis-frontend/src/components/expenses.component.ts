@@ -128,6 +128,10 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     vehicleId: string; category: string; date: string; amount: number;
     supplierName: string; invoiceNumber: string; description: string;
     vehiclePlate: string; confidence: string; receiptUrl: string;
+    /** Lignes de la facture (détail extrait par l'IA, éditable). */
+    items: Array<{ label: string; amount: number; category: string; include: boolean }>;
+    /** true = enregistrer une dépense PAR ligne cochée, false = une dépense unique. */
+    split: boolean;
   } = this.emptyScan();
   readonly scanCategories = [
     { value: 'fuel', label: 'Carburant' },
@@ -572,7 +576,9 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     return {
       vehicleId: '', category: 'other', date: new Date().toISOString().split('T')[0],
       amount: 0, supplierName: '', invoiceNumber: '', description: '',
-      vehiclePlate: '', confidence: '', receiptUrl: ''
+      vehiclePlate: '', confidence: '', receiptUrl: '',
+      items: [] as Array<{ label: string; amount: number; category: string; include: boolean }>,
+      split: false
     };
   }
 
@@ -587,6 +593,15 @@ export class ExpensesComponent implements OnInit, OnDestroy {
         const x = res?.extraction || {};
         const veh = this.matchVehicleByPlate(x.vehiclePlate);
         const desc = [x.supplierName, x.description].filter((s: string) => !!s).join(' — ');
+        const items = (Array.isArray(x.items) ? x.items : [])
+          .slice(0, 30)
+          .map((it: any) => ({
+            label: it?.label || '',
+            amount: typeof it?.amount === 'number' ? it.amount : 0,
+            category: it?.category || x.category || 'other',
+            include: true
+          }))
+          .filter((it: any) => it.label || it.amount);
         this.scan = {
           vehicleId: veh ? String(veh.id) : '',
           category: x.category || 'other',
@@ -597,7 +612,9 @@ export class ExpensesComponent implements OnInit, OnDestroy {
           description: desc,
           vehiclePlate: x.vehiclePlate || '',
           confidence: x.confidence || '',
-          receiptUrl: res?.receiptUrl || ''
+          receiptUrl: res?.receiptUrl || '',
+          items,
+          split: false
         };
         this.showScanReview = true;
         this.cdr.detectChanges();
@@ -639,22 +656,71 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     return ({ high: 'élevée', medium: 'moyenne', low: 'faible' } as Record<string, string>)[this.scan.confidence] || this.scan.confidence;
   }
 
+  // ── Détail de la facture (lignes) ──────────────────────────────────────────
+  scanIncludedItems() { return this.scan.items.filter(it => it.include); }
+
+  scanItemsSum(): number {
+    return this.scanIncludedItems().reduce((s, it) => s + (Number(it.amount) || 0), 0);
+  }
+
+  /** Somme des lignes ≠ total facture (tolérance 0,01) → avertissement visuel. */
+  scanSumMismatch(): boolean {
+    if (!this.scan.items.length || !this.scan.amount) return false;
+    return Math.abs(this.scanItemsSum() - Number(this.scan.amount)) > 0.01;
+  }
+
+  addScanItem(): void {
+    this.scan.items.push({ label: '', amount: 0, category: this.scan.category || 'other', include: true });
+  }
+
+  removeScanItem(i: number): void { this.scan.items.splice(i, 1); }
+
+  /** Bouton Enregistrer actif ? (mode unique : total ; mode décomposé : lignes valides) */
+  canSaveScan(): boolean {
+    if (!this.scan.vehicleId || this.saving) return false;
+    if (!this.scan.split) return !!this.scan.amount;
+    const inc = this.scanIncludedItems();
+    return inc.length > 0 && inc.every(it => Number(it.amount) > 0);
+  }
+
   saveScanned(): void {
-    if (!this.scan.vehicleId || !this.scan.amount || this.saving) return;
+    if (!this.canSaveScan()) return;
     this.saving = true;
-    const data = {
+
+    const base = {
       vehicleId: parseInt(this.scan.vehicleId),
-      type: this.scan.category || 'other',
-      description: this.scan.description || this.scan.supplierName || null,
-      amount: Number(this.scan.amount),
       date: new Date(this.scan.date).toISOString(),
       mileage: null,
       receiptNumber: this.scan.invoiceNumber || null,
       receiptUrl: this.scan.receiptUrl || null
     };
-    this.apiService.createCost(data).subscribe({
+
+    // Mode décomposé : une dépense PAR ligne cochée (catégorie/montant propres),
+    // toutes rattachées à la même facture (même n° + même justificatif).
+    const payloads = this.scan.split
+      ? this.scanIncludedItems().map(it => ({
+          ...base,
+          type: it.category || this.scan.category || 'other',
+          description: [this.scan.supplierName, it.label].filter(s => !!s).join(' — ') || null,
+          amount: Number(it.amount)
+        }))
+      : [{
+          ...base,
+          type: this.scan.category || 'other',
+          description: this.scan.description || this.scan.supplierName || null,
+          amount: Number(this.scan.amount)
+        }];
+
+    forkJoin(payloads.map(p => this.apiService.createCost(p))).subscribe({
       next: () => { this.saving = false; this.showScanReview = false; this.loadExpenses(); },
-      error: (err) => { this.saving = false; console.error('Error saving scanned cost:', err); alert("L'enregistrement a échoué."); }
+      error: (err) => {
+        this.saving = false;
+        console.error('Error saving scanned cost(s):', err);
+        alert(this.scan.split
+          ? "L'enregistrement a échoué — certaines lignes ont pu être créées, vérifiez la liste avant de réessayer."
+          : "L'enregistrement a échoué.");
+        this.loadExpenses();
+      }
     });
   }
 
