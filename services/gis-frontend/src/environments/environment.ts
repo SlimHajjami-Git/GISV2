@@ -14,5 +14,13 @@ export const environment = {
   // Pre-login AI automobile assistant as the landing page. PER-DEPLOYMENT:
   // true on Calypso/TN; leave absent (or false) on deployments that must keep
   // the classic marketing landing (e.g. Bougeo/DZ).
-  aiAssistantLanding: true
+  aiAssistantLanding: true,
+  // Mobile/SIM operators shown when configuring a GPS device. PER-DEPLOYMENT:
+  // Tunisian carriers here by default; the Algeria/Bougeo build replaces this
+  // list with Mobilis / Djezzy / Ooredoo Algérie in its own copy of this file.
+  simOperators: [
+    { value: 'ooredoo', label: 'Ooredoo' },
+    { value: 'orange_tunisie', label: 'Orange Tunisie' },
+    { value: 'tunisie_telecom', label: 'Tunisie Telecom' }
+  ]
 };

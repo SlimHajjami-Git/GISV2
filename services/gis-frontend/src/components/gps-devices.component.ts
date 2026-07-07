@@ -6,6 +6,7 @@ import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { environment } from '../environments/environment';
 
 // View model for GPS device display
 interface GPSDeviceView {
@@ -44,9 +45,7 @@ interface GPSDeviceView {
           </select>
           <select class="filter-select" [(ngModel)]="filterOperator" (change)="filterDevices()">
             <option value="">Tous les opérateurs</option>
-            <option value="ooredoo">Ooredoo</option>
-            <option value="orange_tunisie">Orange Tunisie</option>
-            <option value="tunisie_telecom">Tunisie Telecom</option>
+            <option *ngFor="let op of simOperators" [value]="op.value">{{ op.label }}</option>
           </select>
           <a routerLink="/vehicles" class="btn-add">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -602,14 +601,15 @@ export class GPSDevicesComponent implements OnInit, OnDestroy {
     return this.allDevices.filter(d => d.vehicleStatus === 'maintenance').length;
   }
 
+  // Per-deployment SIM operators (Tunisia by default; Algeria on the Bougeo
+  // build). Driven by environment.ts so the list never has to be hardcoded here.
+  readonly simOperators: { value: string; label: string }[] =
+    (environment as any).simOperators ?? [];
+
   getOperatorLabel(operator: string): string {
-    const labels: any = {
-      ooredoo: 'Ooredoo',
-      orange_tunisie: 'Orange Tunisie',
-      tunisie_telecom: 'Tunisie Telecom',
-      other: 'Autre'
-    };
-    return labels[operator] || operator || '-';
+    if (!operator) return '-';
+    if (operator === 'other') return 'Autre';
+    return this.simOperators.find(o => o.value === operator)?.label || operator;
   }
 
   getStatusLabel(status: string): string {

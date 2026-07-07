@@ -7,6 +7,7 @@ import { ApiService } from '../../services/api.service';
 import { UserPreferencesService } from '../../services/user-preferences.service';
 import { USER_PREF_PIPES } from '../../pipes/user-preference-pipes';
 import { trigger, transition, style, animate } from '@angular/animations';
+import { environment } from '../../environments/environment';
 
 interface Brand {
   id: number;
@@ -252,9 +253,7 @@ export interface CompanyOption {
                 <label for="gpsSimOperatorExisting">Opérateur SIM</label>
                 <select id="gpsSimOperatorExisting" name="gpsSimOperatorExisting" [(ngModel)]="formData.gpsSimOperator">
                   <option value="">Sélectionner</option>
-                  <option value="ooredoo">Ooredoo</option>
-                  <option value="orange_tunisie">Orange Tunisie</option>
-                  <option value="tunisie_telecom">Tunisie Telecom</option>
+                  <option *ngFor="let op of simOperators" [value]="op.value">{{ op.label }}</option>
                   <option value="other">Autre</option>
                 </select>
               </div>
@@ -290,9 +289,7 @@ export interface CompanyOption {
                 <label for="gpsSimOperator">Opérateur SIM</label>
                 <select id="gpsSimOperator" name="gpsSimOperator" [(ngModel)]="formData.gpsSimOperator">
                   <option value="">Sélectionner</option>
-                  <option value="ooredoo">Ooredoo</option>
-                  <option value="orange_tunisie">Orange Tunisie</option>
-                  <option value="tunisie_telecom">Tunisie Telecom</option>
+                  <option *ngFor="let op of simOperators" [value]="op.value">{{ op.label }}</option>
                   <option value="other">Autre</option>
                 </select>
               </div>
@@ -940,6 +937,11 @@ export interface CompanyOption {
   `]
 })
 export class VehiclePopupComponent implements OnInit, OnChanges {
+  // Per-deployment SIM operators (Tunisia by default; Algeria on the Bougeo
+  // build) — sourced from environment.ts, never hardcoded in the template.
+  readonly simOperators: { value: string; label: string }[] =
+    (environment as any).simOperators ?? [];
+
   @Input() isOpen = false;
   @Input() vehicle: Vehicle | null = null;
   @Input() companies: CompanyOption[] = [];
