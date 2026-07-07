@@ -690,6 +690,18 @@ export class ApiService {
     return this.http.post<any>(`${this.API_URL}/costs`, cost, { headers: this.getHeaders() });
   }
 
+  /**
+   * Scan an invoice (image/PDF) with AI. Returns { extraction, receiptUrl } for
+   * user review — nothing is saved. The confirmed data is saved via createCost.
+   */
+  scanInvoice(file: File): Observable<any> {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    // Let the browser set multipart boundary — must NOT send our JSON Content-Type.
+    const headers = this.getHeaders().delete('Content-Type');
+    return this.http.post<any>(`${this.API_URL}/costs/scan-invoice`, formData, { headers });
+  }
+
   updateCost(id: number, cost: any): Observable<void> {
     if (this.isMockUser()) {
       return of(void 0);

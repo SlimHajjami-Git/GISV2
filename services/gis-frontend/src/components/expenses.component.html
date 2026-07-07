@@ -40,6 +40,14 @@
         </svg>
         Exporter PDF
       </button>
+      <button class="btn-scan" (click)="invoiceInput.click()" [disabled]="scanning" title="Scanner une facture avec l'IA">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+        </svg>
+        {{ scanning ? 'Analyse…' : 'Scanner une facture' }}
+      </button>
+      <input #invoiceInput type="file" accept="image/*,application/pdf" hidden (change)="onInvoiceFile($event)">
       <button class="btn-add" (click)="openAddForm()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -47,6 +55,88 @@
         Nouvelle dépense
       </button>
     </div>
+
+    <!-- ============ Revue de facture scannée (IA) ============ -->
+    <!-- Rien n'est enregistré tant que l'utilisateur n'a pas validé. -->
+    @if (showScanReview) {
+      <div class="modal-overlay" (click)="closeScanReview()">
+        <div class="modal scan-modal" (click)="$event.stopPropagation()">
+          <div class="modal-header">
+            <h3>Vérifier la facture</h3>
+            <button class="modal-close" (click)="closeScanReview()">×</button>
+          </div>
+          <p class="scan-hint">
+            L'IA a pré-rempli ces champs à partir de la facture. <strong>Vérifiez et corrigez</strong> avant d'enregistrer.
+            @if (scan.confidence) { <span class="conf conf-{{ scan.confidence }}">fiabilité : {{ scanConfidenceLabel() }}</span> }
+          </p>
+
+          <div class="scan-body">
+            <div class="scan-fields">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Véhicule *</label>
+                  <select [(ngModel)]="scan.vehicleId">
+                    <option value="">Sélectionner…</option>
+                    @for (v of vehicles; track v.id) { <option [value]="v.id">{{ v.plate }} — {{ v.name }}</option> }
+                  </select>
+                  @if (scan.vehiclePlate && !scan.vehicleId) {
+                    <small class="warn">Plaque détectée « {{ scan.vehiclePlate }} » — non trouvée, choisissez le véhicule.</small>
+                  }
+                </div>
+                <div class="form-group">
+                  <label>Catégorie *</label>
+                  <select [(ngModel)]="scan.category">
+                    @for (c of scanCategories; track c.value) { <option [value]="c.value">{{ c.label }}</option> }
+                  </select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Date *</label>
+                  <input type="date" [(ngModel)]="scan.date">
+                </div>
+                <div class="form-group">
+                  <label>Montant TTC ({{ currencyCode }}) *</label>
+                  <input type="number" step="0.001" [(ngModel)]="scan.amount">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Fournisseur</label>
+                  <input type="text" [(ngModel)]="scan.supplierName" placeholder="Nom du garage / station…">
+                </div>
+                <div class="form-group">
+                  <label>N° facture</label>
+                  <input type="text" [(ngModel)]="scan.invoiceNumber">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Description</label>
+                <textarea rows="2" [(ngModel)]="scan.description" placeholder="Prestations / pièces…"></textarea>
+              </div>
+            </div>
+
+            @if (scan.receiptUrl) {
+              <div class="scan-preview">
+                <label>Facture</label>
+                @if (isPdf(scan.receiptUrl)) {
+                  <a [href]="scan.receiptUrl" target="_blank" class="pdf-chip">📄 Ouvrir le PDF</a>
+                } @else {
+                  <a [href]="scan.receiptUrl" target="_blank"><img [src]="scan.receiptUrl" alt="facture" /></a>
+                }
+              </div>
+            }
+          </div>
+
+          <div class="modal-actions">
+            <button class="btn-cancel" (click)="closeScanReview()">Annuler</button>
+            <button class="btn-save" (click)="saveScanned()" [disabled]="!scan.vehicleId || !scan.amount || saving">
+              {{ saving ? 'Enregistrement…' : 'Enregistrer la dépense' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    }
 
     <!-- Stats -->
     <div class="stats-bar">

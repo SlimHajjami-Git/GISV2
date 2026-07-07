@@ -10,6 +10,7 @@ public class GroqLlmService : ILlmService
 {
     private readonly HttpClient _httpClient;
     private readonly string _model;
+    private readonly string _visionModel;
     private readonly string _completionsPath;
     private readonly ILogger<GroqLlmService> _logger;
 
@@ -17,6 +18,9 @@ public class GroqLlmService : ILlmService
     {
         _logger = logger;
         _model = configuration["Groq:Model"] ?? "llama-3.3-70b-versatile";
+        // Multimodal model used when an image is supplied (invoice scan). Groq's
+        // current vision model; override via Groq:VisionModel.
+        _visionModel = configuration["Groq:VisionModel"] ?? "meta-llama/llama-4-scout-17b-16e-instruct";
 
         var apiUrl = configuration["Groq:ApiUrl"] ?? "https://api.groq.com/openai/v1/chat/completions";
         var uri = new Uri(apiUrl);
@@ -152,6 +156,34 @@ public class GroqLlmService : ILlmService
 
         // Unreachable: the final round never offers tools, so it always returns.
         throw new Exception("Le service IA n'a pas produit de réponse finale.");
+    }
+
+    public async Task<LlmResponse> ExtractJsonAsync(
+        string systemPrompt, string userText, string? imageDataUrl, int maxTokens, CancellationToken ct = default)
+    {
+        // The user message content is an array (OpenAI multimodal format): the
+        // instruction text plus, optionally, the image as a data: URL.
+        var userContent = new List<object> { new { type = "text", text = userText } };
+        if (!string.IsNullOrWhiteSpace(imageDataUrl))
+            userContent.Add(new { type = "image_url", image_url = new { url = imageDataUrl } });
+
+        var requestBody = new
+        {
+            model = imageDataUrl != null ? _visionModel : _model,
+            messages = new object[]
+            {
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = userContent }
+            },
+            temperature = 0.1,
+            max_tokens = maxTokens,
+            // Force a parseable JSON object — no prose, no code fences.
+            response_format = new { type = "json_object" }
+        };
+
+        var result = await SendAsync(requestBody, ct);
+        var reply = result?.Choices?.FirstOrDefault()?.Message?.Content ?? "{}";
+        return new LlmResponse(reply, result?.Usage?.TotalTokens ?? 0);
     }
 
     public async Task<LlmResponse> ChatStreamWithToolsAsync(

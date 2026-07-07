@@ -130,6 +130,11 @@ builder.Services.AddHostedService<GisAPI.Services.BatteryMonitoringService>();
 // charging, or the saturated-firmware long-silence pattern).
 builder.Services.AddHostedService<GisAPI.Services.VoltageHealthMonitoringService>();
 
+// Invoice Orphan Cleanup — deletes scanned-invoice files under uploads/invoices
+// that no VehicleCost.ReceiptUrl references and are older than 24h (abandoned
+// scans / deleted costs), so the AI invoice-scan feature can't grow disk forever.
+builder.Services.AddHostedService<GisAPI.Services.InvoiceOrphanCleanupService>();
+
 // Document Expiry Monitoring Service — Calypso 6 (P8.1) "Dès la date de
 // notification, on affiche une notification dans la cloche". Every 60 min,
 // scans Vehicles for assurance / vignette / visite technique entering their
@@ -154,6 +159,11 @@ builder.Services.AddScoped<GisAPI.Application.Services.IMaintenanceSchedulerServ
 // Car Advisor tools — "Argus tunisien" knowledge base queried by the public AI
 // assistant through Groq function calling (Scoped: depends on IGisDbContext).
 builder.Services.AddScoped<GisAPI.Application.Services.ICarAdvisorService, GisAPI.Application.Services.CarAdvisorService>();
+
+// Invoice scan — extracts expense fields from an uploaded invoice (image via
+// Groq vision, PDF via PdfPig text) for user review before saving. Singleton:
+// depends only on ILlmService (singleton).
+builder.Services.AddSingleton<GisAPI.Application.Services.IInvoiceExtractionService, GisAPI.Application.Services.InvoiceExtractionService>();
 
 // Alert Email Dispatcher — fans out alerts to configured alert_emails recipients
 // (with a company-admin fallback) for assurance / taxe_circulation / visite_technique / entretien
@@ -276,8 +286,23 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
     static bool IsAssistant(HttpContext c) => c.Request.Path.StartsWithSegments("/api/assistant");
+    // Invoice scan hits the paid Groq VISION model per request — throttle per IP
+    // so an authenticated user (or a runaway client retry) can't drain cost/disk.
+    static bool IsInvoiceScan(HttpContext c) => c.Request.Path.StartsWithSegments("/api/costs/scan-invoice");
 
     options.GlobalLimiter = PartitionedRateLimiter.CreateChained(
+        // 0) invoice scan: per-IP fixed window (runs before auth, so partition by IP)
+        PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+            IsInvoiceScan(ctx)
+                ? RateLimitPartition.GetFixedWindowLimiter(
+                    "scan:" + GisAPI.Controllers.AssistantController.ResolveClientIp(ctx),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 12,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0
+                    })
+                : RateLimitPartition.GetNoLimiter("open")),
         // 1) per-IP sliding window
         PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
             IsAssistant(ctx)

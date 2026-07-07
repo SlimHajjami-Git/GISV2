@@ -905,3 +905,43 @@ tr.accident-linked:not(.refund):hover { background: #fef08a; }
   font-weight: 500;
   word-break: break-word;
 }
+
+/* ── Scanner une facture (IA) ─────────────────────────────────────────────── */
+.btn-scan {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe;
+  transition: background .15s, border-color .15s;
+}
+.btn-scan:hover:not(:disabled) { background: #ede9fe; border-color: #c4b5fd; }
+.btn-scan:disabled { opacity: .6; cursor: progress; }
+
+.scan-modal { max-width: 720px; width: 92%; }
+.scan-hint { margin: 0 0 14px; font-size: 13px; color: #475569; line-height: 1.5; }
+.scan-hint .conf {
+  display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600;
+}
+.conf-high { background: #dcfce7; color: #15803d; }
+.conf-medium { background: #fef9c3; color: #a16207; }
+.conf-low { background: #fee2e2; color: #b91c1c; }
+
+.scan-body { display: flex; gap: 18px; }
+.scan-fields { flex: 1 1 auto; min-width: 0; }
+.scan-preview { flex: 0 0 200px; }
+.scan-preview label { display: block; font-size: 12px; color: #64748b; margin-bottom: 6px; }
+.scan-preview img {
+  width: 100%; max-height: 260px; object-fit: contain; border-radius: 8px;
+  border: 1px solid #e2e8f0; background: #f8fafc; cursor: zoom-in;
+}
+.pdf-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 10px 14px;
+  border-radius: 8px; background: #f1f5f9; color: #334155; text-decoration: none;
+  font-size: 13px; font-weight: 500;
+}
+.scan-fields .warn { display: block; margin-top: 4px; font-size: 11px; color: #b45309; }
+
+@media (max-width: 640px) {
+  .scan-body { flex-direction: column; }
+  .scan-preview { flex-basis: auto; }
+}

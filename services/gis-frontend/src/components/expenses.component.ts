@@ -119,6 +119,29 @@ export class ExpensesComponent implements OnInit, OnDestroy {
 
   loading = false;
 
+  // ── Invoice scan (IA) — extract → review → save as a generic cost ──────────
+  scanning = false;
+  saving = false;
+  showScanReview = false;
+  scan: {
+    vehicleId: string; category: string; date: string; amount: number;
+    supplierName: string; invoiceNumber: string; description: string;
+    vehiclePlate: string; confidence: string; receiptUrl: string;
+  } = this.emptyScan();
+  readonly scanCategories = [
+    { value: 'fuel', label: 'Carburant' },
+    { value: 'maintenance', label: 'Entretien' },
+    { value: 'repair', label: 'Réparation' },
+    { value: 'insurance', label: 'Assurance' },
+    { value: 'tax', label: 'Vignette' },
+    { value: 'toll', label: 'Péage' },
+    { value: 'parking', label: 'Stationnement' },
+    { value: 'fine', label: 'Amende' },
+    { value: 'other', label: 'Autre' },
+  ];
+
+  get currencyCode(): string { return this.userPrefs.current.currency || 'TND'; }
+
   constructor(private apiService: ApiService, private cdr: ChangeDetectorRef, private route: ActivatedRoute, private pdfService: PdfExportService, private userPrefs: UserPreferencesService) {}
 
   ngOnInit(): void {
@@ -535,6 +558,92 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     this.apiService.createCost(data).subscribe({
       next: () => { this.loadExpenses(); this.closeAddForm(); },
       error: (err) => console.error('Error creating cost:', err)
+    });
+  }
+
+  // ── Invoice scan (IA) ──────────────────────────────────────────────────────
+  private emptyScan() {
+    return {
+      vehicleId: '', category: 'other', date: new Date().toISOString().split('T')[0],
+      amount: 0, supplierName: '', invoiceNumber: '', description: '',
+      vehiclePlate: '', confidence: '', receiptUrl: ''
+    };
+  }
+
+  onInvoiceFile(event: any): void {
+    const file: File | undefined = event?.target?.files?.[0];
+    if (event?.target) event.target.value = '';       // allow re-selecting the same file
+    if (!file) return;
+    this.scanning = true;
+    this.apiService.scanInvoice(file).subscribe({
+      next: (res: any) => {
+        this.scanning = false;
+        const x = res?.extraction || {};
+        const veh = this.matchVehicleByPlate(x.vehiclePlate);
+        const desc = [x.supplierName, x.description].filter((s: string) => !!s).join(' — ');
+        this.scan = {
+          vehicleId: veh ? String(veh.id) : '',
+          category: x.category || 'other',
+          date: x.date || new Date().toISOString().split('T')[0],
+          amount: x.amountTTC ?? x.amountHT ?? 0,
+          supplierName: x.supplierName || '',
+          invoiceNumber: x.invoiceNumber || '',
+          description: desc,
+          vehiclePlate: x.vehiclePlate || '',
+          confidence: x.confidence || '',
+          receiptUrl: res?.receiptUrl || ''
+        };
+        this.showScanReview = true;
+        this.cdr.detectChanges();
+      },
+      error: (err: any) => {
+        this.scanning = false;
+        const receiptUrl = err?.error?.receiptUrl || '';
+        alert(err?.error?.message || "L'analyse de la facture a échoué. Vous pouvez saisir la dépense manuellement.");
+        // The file may still be stored — let the user fill the fields by hand.
+        if (receiptUrl) {
+          this.scan = { ...this.emptyScan(), confidence: 'low', receiptUrl };
+          this.showScanReview = true;
+          this.cdr.detectChanges();
+        }
+      }
+    });
+  }
+
+  private matchVehicleByPlate(plate?: string): any {
+    if (!plate) return null;
+    const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const target = norm(plate);
+    if (!target) return null;
+    return this.vehicles.find(v => norm(v.plate) === target)
+        || this.vehicles.find(v => norm(v.plate) && (norm(v.plate).includes(target) || target.includes(norm(v.plate))))
+        || null;
+  }
+
+  closeScanReview(): void { this.showScanReview = false; }
+
+  isPdf(url: string): boolean { return (url || '').toLowerCase().endsWith('.pdf'); }
+
+  scanConfidenceLabel(): string {
+    return ({ high: 'élevée', medium: 'moyenne', low: 'faible' } as Record<string, string>)[this.scan.confidence] || this.scan.confidence;
+  }
+
+  saveScanned(): void {
+    if (!this.scan.vehicleId || !this.scan.amount || this.saving) return;
+    this.saving = true;
+    const data = {
+      vehicleId: parseInt(this.scan.vehicleId),
+      type: this.scan.category || 'other',
+      description: this.scan.description || this.scan.supplierName || null,
+      amount: Number(this.scan.amount),
+      date: new Date(this.scan.date).toISOString(),
+      mileage: null,
+      receiptNumber: this.scan.invoiceNumber || null,
+      receiptUrl: this.scan.receiptUrl || null
+    };
+    this.apiService.createCost(data).subscribe({
+      next: () => { this.saving = false; this.showScanReview = false; this.loadExpenses(); },
+      error: (err) => { this.saving = false; console.error('Error saving scanned cost:', err); alert("L'enregistrement a échoué."); }
     });
   }
 

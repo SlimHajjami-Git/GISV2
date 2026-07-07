@@ -5,6 +5,7 @@ using System.Security.Claims;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using GisAPI.Application.Features.Notifications.Events;
+using GisAPI.Application.Services;
 using MediatR;
 
 namespace GisAPI.Controllers;
@@ -16,15 +17,76 @@ public class CostsController : ControllerBase
 {
     private readonly GisDbContext _context;
     private readonly IPublisher _publisher;
+    private readonly IInvoiceExtractionService _invoiceExtraction;
+    private readonly IWebHostEnvironment _env;
+    private readonly ILogger<CostsController> _logger;
 
-    public CostsController(GisDbContext context, IPublisher publisher)
+    public CostsController(GisDbContext context, IPublisher publisher,
+        IInvoiceExtractionService invoiceExtraction, IWebHostEnvironment env, ILogger<CostsController> logger)
     {
         _context = context;
         _publisher = publisher;
+        _invoiceExtraction = invoiceExtraction;
+        _env = env;
+        _logger = logger;
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
     private int GetUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+
+    /// <summary>
+    /// Scan an invoice (image or PDF) with AI and return the EXTRACTED fields for
+    /// the user to review — nothing is saved to costs here. The invoice file is
+    /// stored and its URL returned so the confirmed cost can reference it
+    /// (receiptUrl). The user saves via the normal POST /api/costs afterwards.
+    /// </summary>
+    [HttpPost("scan-invoice")]
+    [RequestSizeLimit(12_000_000)]
+    public async Task<IActionResult> ScanInvoice(IFormFile file, CancellationToken ct)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest(new { message = "Aucun fichier reçu." });
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var allowed = new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf" };
+        if (!allowed.Contains(ext))
+            return BadRequest(new { message = "Format non supporté. Envoyez une image (JPG/PNG) ou un PDF." });
+
+        byte[] bytes;
+        using (var ms = new MemoryStream())
+        {
+            await file.CopyToAsync(ms, ct);
+            bytes = ms.ToArray();
+        }
+
+        // Persist the invoice so the created cost can point at it (receiptUrl).
+        var companyId = GetCompanyId();
+        var dir = Path.Combine(_env.ContentRootPath, "uploads", "invoices", companyId.ToString());
+        Directory.CreateDirectory(dir);
+        var storedName = $"{Guid.NewGuid():N}{ext}";
+        await System.IO.File.WriteAllBytesAsync(Path.Combine(dir, storedName), bytes, ct);
+        var receiptUrl = $"/uploads/invoices/{companyId}/{storedName}";
+
+        try
+        {
+            var extraction = await _invoiceExtraction.ExtractAsync(bytes, file.ContentType ?? "", file.FileName, ct);
+            return Ok(new { extraction, receiptUrl });
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Unsupported / scanned-PDF-with-no-text — the file is still stored.
+            return BadRequest(new { message = ex.Message, receiptUrl });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Invoice extraction failed");
+            return StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                message = "L'analyse de la facture a échoué (service IA momentanément indisponible). Le fichier est enregistré, vous pouvez saisir les champs manuellement.",
+                receiptUrl
+            });
+        }
+    }
 
     [HttpGet]
     public async Task<ActionResult> GetCosts(

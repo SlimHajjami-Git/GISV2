@@ -23,6 +23,21 @@ public interface ILlmService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Single-shot STRUCTURED extraction. Sends one user message (text + an
+    /// optional inline image as a <c>data:</c> URL) and forces a JSON-object
+    /// response (Groq/OpenAI <c>response_format: json_object</c>). When an image
+    /// is provided the multimodal vision model is used, otherwise the text
+    /// model. Returns the raw JSON string in <see cref="LlmResponse.Content"/>.
+    /// Used by the invoice-scan feature.
+    /// </summary>
+    Task<LlmResponse> ExtractJsonAsync(
+        string systemPrompt,
+        string userText,
+        string? imageDataUrl,
+        int maxTokens,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Same tool-calling loop as <see cref="ChatWithToolsAsync"/>, but STREAMED:
     /// text fragments of the answer are pushed to <paramref name="onDelta"/> as
     /// the model produces them (tool-invoking rounds stay silent — only rounds
