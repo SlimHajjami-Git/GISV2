@@ -73,10 +73,13 @@ Réponds UNIQUEMENT par un objet JSON avec exactement ces clés :
   ]
 }
 Règles: les montants sont des NOMBRES (pas de texte, pas de symbole). Utilise null si une valeur est absente ou illisible.
+PRÉCISION AVANT TOUT: recopie chaque nombre EXACTEMENT comme imprimé sur le document (mêmes chiffres, mêmes décimales) — ne recalcule pas, n'arrondis pas, ne devine pas. Un chiffre douteux/flou = null. Il vaut mieux un champ null qu'un champ faux.
+amountTTC = la ligne ""TOTAL TTC"" / ""NET À PAYER"" du document (pas ta propre addition).
 Choisis la catégorie la plus probable d'après le contenu (carburant→fuel, entretien/vidange→maintenance, réparation→repair, assurance→insurance, vignette→tax, péage→toll, parking→parking, amende→fine, sinon other).
-Pour items: liste les lignes réellement facturées (désignation + montant TTC ligne), dans l'ordre du document.
+Pour items: liste les lignes réellement facturées (désignation + montant TTC ligne), dans l'ordre du document. Vérifie que la somme des lignes est cohérente avec le total — si elle ne l'est pas, re-lis le document avant de répondre.
 N'INVENTE JAMAIS de ligne — si le détail est absent ou illisible, renvoie items=[]. Ignore les sous-totaux, remises globales et lignes de TVA.
-Si le document n'est pas une facture, mets confidence=""low"", items=[] et les champs à null.";
+Si le document n'est pas une facture, mets confidence=""low"", items=[] et les champs à null.
+Réponds UNIQUEMENT avec le JSON, sans texte autour, en gardant chaque désignation courte (max 60 caractères).";
 
     public async Task<InvoiceExtraction> ExtractAsync(byte[] content, string contentType, string fileName, CancellationToken ct)
     {
@@ -90,8 +93,11 @@ Si le document n'est pas une facture, mets confidence=""low"", items=[] et les c
         {
             var mime = contentType.StartsWith("image/") ? contentType : "image/jpeg";
             var dataUrl = $"data:{mime};base64,{Convert.ToBase64String(content)}";
+            // 2500 tokens: the items array made 1024 too small — a truncated
+            // response is invalid JSON, and Parse() then degrades to an all-null
+            // low-confidence result (seen in prod as "aucun champ extrait").
             response = await _llm.ExtractJsonAsync(SystemPrompt,
-                "Analyse cette facture et renvoie le JSON demandé.", dataUrl, 1024, ct);
+                "Analyse cette facture et renvoie le JSON demandé.", dataUrl, 2500, ct);
         }
         else if (isPdf)
         {
@@ -101,7 +107,7 @@ Si le document n'est pas une facture, mets confidence=""low"", items=[] et les c
                     "PDF probablement scanné (aucun texte lisible). Merci d'envoyer une photo ou une image de la facture.");
             if (text.Length > 12000) text = text[..12000];
             response = await _llm.ExtractJsonAsync(SystemPrompt,
-                "Voici le texte extrait d'une facture. Renvoie le JSON demandé.\n\n" + text, null, 1024, ct);
+                "Voici le texte extrait d'une facture. Renvoie le JSON demandé.\n\n" + text, null, 2500, ct);
         }
         else
         {
