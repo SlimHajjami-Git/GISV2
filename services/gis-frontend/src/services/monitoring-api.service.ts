@@ -56,6 +56,19 @@ export interface VehicleStats {
   endDate: string;
 }
 
+/**
+ * Lightweight vehicle status for the header offline-bell. Comes from the cheap
+ * GET /vehicles/status endpoint (no gps_positions read) so the every-page poll
+ * stays fast. isOnline is server-computed from the device's last communication.
+ */
+export interface VehicleStatus {
+  id: number;
+  name: string;
+  plate: string;
+  isOnline: boolean;
+  lastCommunication?: string;
+}
+
 export interface VehicleWithPosition {
   id: number;
   name: string;
@@ -293,6 +306,22 @@ export class MonitoringApiService implements OnDestroy {
       { headers: this.getAuthHeaders() }
     ).pipe(
       tap(data => this.setCache(cacheKey, data)),
+      catchError(error => this.handleError(error)),
+      takeUntil(this.destroy$)
+    );
+  }
+
+  /**
+   * Cheap online/offline snapshot for the header bell. Deliberately separate from
+   * getVehiclesWithPositions(): the bell only needs isOnline, so this avoids the
+   * heavy 24h-positions computation that endpoint does on every poll.
+   */
+  getVehiclesStatus(): Observable<VehicleStatus[]> {
+    return this.http.get<VehicleStatus[]>(
+      `${this.baseUrl}/vehicles/status`,
+      { headers: this.getAuthHeaders() }
+    ).pipe(
+      retry({ count: 2, delay: 1000 }),
       catchError(error => this.handleError(error)),
       takeUntil(this.destroy$)
     );

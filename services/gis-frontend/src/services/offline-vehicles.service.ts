@@ -1,6 +1,6 @@
 import { Injectable, OnDestroy } from '@angular/core';
 import { BehaviorSubject, Observable, Subscription, timer } from 'rxjs';
-import { MonitoringApiService, VehicleWithPosition } from './monitoring-api.service';
+import { MonitoringApiService, VehicleWithPosition, VehicleStatus } from './monitoring-api.service';
 import { SignalRService, PositionUpdate } from './signalr.service';
 
 /**
@@ -93,10 +93,22 @@ export class OfflineVehiclesService implements OnDestroy {
 
   /** Force a fresh fetch (e.g. when the user opens the dropdown) */
   refresh(): void {
-    this.monitoringApi.getVehiclesWithPositions().subscribe({
-      next: (vehicles) => {
-        const offline = (vehicles || []).filter(v => !v.isOnline);
-        // Sort by longest offline first (oldest lastPosition.recordedAt first)
+    // Uses the CHEAP /vehicles/status endpoint (no gps_positions read) instead of
+    // the heavy /with-positions — this poll runs on every page, so it must stay
+    // light. We map the light DTO into the shape the bell already renders
+    // (lastCommunication → lastPosition.recordedAt for the "hors ligne depuis X").
+    this.monitoringApi.getVehiclesStatus().subscribe({
+      next: (vehicles: VehicleStatus[]) => {
+        const offline = (vehicles || [])
+          .filter(v => !v.isOnline)
+          .map(v => ({
+            id: v.id,
+            name: v.name,
+            plate: v.plate,
+            isOnline: v.isOnline,
+            lastPosition: v.lastCommunication ? { recordedAt: v.lastCommunication } : undefined
+          } as unknown as VehicleWithPosition));
+        // Sort by longest offline first (oldest last communication first)
         offline.sort((a, b) => {
           const ta = a.lastPosition?.recordedAt ? new Date(a.lastPosition.recordedAt).getTime() : 0;
           const tb = b.lastPosition?.recordedAt ? new Date(b.lastPosition.recordedAt).getTime() : 0;

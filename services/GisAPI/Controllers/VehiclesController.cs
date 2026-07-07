@@ -8,9 +8,11 @@ using GisAPI.Application.Features.Vehicles.Commands.UpdateVehicle;
 using GisAPI.Application.Features.Vehicles.Commands.PatchVehicle;
 using GisAPI.Application.Features.Vehicles.Commands.DeleteVehicle;
 using GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions;
+using GisAPI.Application.Features.Vehicles.Queries.GetVehiclesStatus;
 using GisAPI.Application.Features.Vehicles.Commands.SyncMileage;
 using GisAPI.Application.Features.Vehicles.Commands.SetVehicleImmobilization;
 using GisAPI.Services;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace GisAPI.Controllers;
 
@@ -21,12 +23,14 @@ public class VehiclesController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly IRedisCacheService _redisCache;
+    private readonly IMemoryCache _memoryCache;
     private readonly ILogger<VehiclesController> _logger;
 
-    public VehiclesController(IMediator mediator, IRedisCacheService redisCache, ILogger<VehiclesController> logger)
+    public VehiclesController(IMediator mediator, IRedisCacheService redisCache, IMemoryCache memoryCache, ILogger<VehiclesController> logger)
     {
         _mediator = mediator;
         _redisCache = redisCache;
+        _memoryCache = memoryCache;
         _logger = logger;
     }
 
@@ -88,6 +92,18 @@ public class VehiclesController : ControllerBase
     [HttpGet("with-positions")]
     public async Task<ActionResult<List<VehicleWithPositionDto>>> GetVehiclesWithPositions()
     {
+        // Short-lived per-user cache. This endpoint is polled every 30s on EVERY
+        // page by the header offline-bell (OfflineVehiclesService) AND by the
+        // dashboard live map — often by several tabs/users at once. Recomputing it
+        // means loading 24h of positions for the whole fleet, which dominated
+        // server time and made the whole app feel slow. An 8s cache collapses the
+        // redundant polls into a single computation while SignalR still delivers
+        // live position deltas on top. Keyed per user because non-admins only see
+        // their assigned vehicles.
+        var cacheKey = $"vwp:{User.FindFirst("companyId")?.Value ?? "0"}:{User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0"}";
+        if (_memoryCache.TryGetValue(cacheKey, out List<VehicleWithPositionDto>? cachedResult) && cachedResult != null)
+            return Ok(cachedResult);
+
         try
         {
             // Get base vehicle data from DB (always needed for vehicle info)
@@ -199,7 +215,8 @@ public class VehiclesController : ControllerBase
             {
                 _logger.LogWarning(redisEx, "Redis cache enhancement failed, returning DB-only positions");
             }
-            
+
+            _memoryCache.Set(cacheKey, vehicles, TimeSpan.FromSeconds(8));
             return Ok(vehicles);
         }
         catch (Exception ex)
@@ -207,6 +224,19 @@ public class VehiclesController : ControllerBase
             _logger.LogError(ex, "Failed to get vehicles with positions");
             return StatusCode(500, new { error = "An internal error occurred. Please try again later." });
         }
+    }
+
+    /// <summary>
+    /// Lightweight online/offline status for the caller's vehicles — feeds the
+    /// header offline-bell (OfflineVehiclesService), which polls on every page.
+    /// Unlike /with-positions this never touches gps_positions (isOnline comes from
+    /// GpsDevice.LastCommunication), so the global poll costs ~one indexed query.
+    /// </summary>
+    [HttpGet("status")]
+    public async Task<ActionResult<List<VehicleStatusDto>>> GetVehiclesStatus()
+    {
+        var result = await _mediator.Send(new GetVehiclesStatusQuery());
+        return Ok(result);
     }
 
     [HttpPost("{id}/sync-mileage")]
