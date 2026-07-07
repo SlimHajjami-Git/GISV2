@@ -65,7 +65,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
     // Geofence state tracking: vehicleId -> set of geofenceIds the vehicle is currently inside
     private static readonly ConcurrentDictionary<int, HashSet<int>> _vehicleGeofenceState = new();
     // Geofence cache: companyId -> list of active geofences (refreshed every 2 minutes)
-    private static readonly ConcurrentDictionary<int, (DateTime CachedAt, List<GeofenceCacheEntry> Geofences)> _geofenceCache = new();
+    private static readonly ConcurrentDictionary<int, (DateTime CachedAt, List<GeofenceCacheEntry> Geofences, TimeZoneInfo Tz)> _geofenceCache = new();
     private static readonly TimeSpan _geofenceCacheTtl = TimeSpan.FromMinutes(2);
 
     // Per-zone speed-alert peak tracking — (vehicleId, geofenceId) → highest
@@ -409,7 +409,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
         double lat, double lng, double speed, DateTime timestamp, CancellationToken ct)
     {
         // Get cached geofences for this company
-        var geofences = await GetCompanyGeofences(companyId, ct);
+        var (geofences, tz) = await GetCompanyGeofences(companyId, ct);
         if (geofences.Count == 0) return;
 
         // Get current state for this vehicle
@@ -423,8 +423,13 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
 
             var wasInside = currentInside.Contains(gf.Id);
 
+            // Planification jour/horaire : hors planning, la présence continue
+            // d'être SUIVIE (état entrée/sortie) mais aucune alerte ne part —
+            // sinon la reprise du planning générerait de fausses "entrées".
+            var scheduleActive = IsScheduleActive(gf, timestamp, tz);
+
             // Entry detection
-            if (isInside && !wasInside && gf.AlertOnEntry)
+            if (isInside && !wasInside && gf.AlertOnEntry && scheduleActive)
             {
                 _logger.LogInformation("🔔 Geofence ENTRY: Vehicle {Vehicle} entered \"{Geofence}\"",
                     vehicleName ?? $"#{vehicleId}", gf.Name);
@@ -448,7 +453,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             }
 
             // Exit detection
-            if (!isInside && wasInside && gf.AlertOnExit)
+            if (!isInside && wasInside && gf.AlertOnExit && scheduleActive)
             {
                 _logger.LogInformation("🔔 Geofence EXIT: Vehicle {Vehicle} left \"{Geofence}\"",
                     vehicleName ?? $"#{vehicleId}", gf.Name);
@@ -480,7 +485,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             // The session peak is cleared when speed drops back under the
             // limit, OR when the vehicle leaves the zone (handled at the end
             // of this method via newInside comparison).
-            if (isInside && gf.AlertSpeedLimit.HasValue && speed > 0)
+            if (isInside && scheduleActive && gf.AlertSpeedLimit.HasValue && speed > 0)
             {
                 var zoneLimit = gf.AlertSpeedLimit.Value;
                 var key = (vehicleId, gf.Id);
@@ -536,11 +541,11 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
         _vehicleGeofenceState[vehicleId] = newInside;
     }
 
-    private async Task<List<GeofenceCacheEntry>> GetCompanyGeofences(int companyId, CancellationToken ct)
+    private async Task<(List<GeofenceCacheEntry> Geofences, TimeZoneInfo Tz)> GetCompanyGeofences(int companyId, CancellationToken ct)
     {
         if (_geofenceCache.TryGetValue(companyId, out var cached) && (DateTime.UtcNow - cached.CachedAt) < _geofenceCacheTtl)
         {
-            return cached.Geofences;
+            return (cached.Geofences, cached.Tz);
         }
 
         var geofences = await _context.Geofences
@@ -548,12 +553,82 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             .Where(g => g.CompanyId == companyId && g.IsActive)
             .Select(g => new GeofenceCacheEntry(
                 g.Id, g.Name, g.Type, g.Coordinates, g.CenterLat, g.CenterLng, g.Radius,
-                g.AlertOnEntry, g.AlertOnExit, g.AlertSpeedLimit
+                g.AlertOnEntry, g.AlertOnExit, g.AlertSpeedLimit,
+                g.ActiveDays, g.ActiveStartTime, g.ActiveEndTime
             ))
             .ToListAsync(ct);
 
-        _geofenceCache[companyId] = (DateTime.UtcNow, geofences);
-        return geofences;
+        // Fuseau de la société : les jours/horaires du planning sont exprimés en
+        // heure LOCALE (Africa/Tunis, Africa/Algiers…) alors que les positions
+        // arrivent en UTC. Rafraîchi avec le cache (TTL court).
+        var settings = await _context.Societes
+            .AsNoTracking()
+            .Where(s => s.Id == companyId)
+            .Select(s => s.Settings)
+            .FirstOrDefaultAsync(ct);
+        var tz = ResolveTimeZone(settings?.Timezone);
+
+        _geofenceCache[companyId] = (DateTime.UtcNow, geofences, tz);
+        return (geofences, tz);
+    }
+
+    private static TimeZoneInfo ResolveTimeZone(string? ianaId)
+    {
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(
+                string.IsNullOrWhiteSpace(ianaId) ? "Africa/Tunis" : ianaId);
+        }
+        catch
+        {
+            // tzdata absent du conteneur / id inconnu → UTC+1 fixe (TN et DZ,
+            // toutes deux sans heure d'été).
+            return TimeZoneInfo.CreateCustomTimeZone("UTC+1", TimeSpan.FromHours(1), "UTC+1", "UTC+1");
+        }
+    }
+
+    /// <summary>
+    /// Le planning de la zone autorise-t-il les alertes à cet instant ?
+    /// Jours vides + fenêtre vide = zone active en permanence. La fenêtre
+    /// horaire supporte le passage de minuit (ex. 22:00 → 06:00). Les jours
+    /// acceptent "monday" (UI actuelle) comme "Mon" (anciennes données).
+    /// Public static : exposé pour les tests unitaires.
+    /// </summary>
+    public static bool IsScheduleActive(GeofenceCacheEntry gf, DateTime utcTimestamp, TimeZoneInfo tz)
+    {
+        var hasDays = gf.ActiveDays is { Length: > 0 };
+        var hasWindow = gf.ActiveStartTime.HasValue || gf.ActiveEndTime.HasValue;
+        if (!hasDays && !hasWindow) return true;
+
+        var local = TimeZoneInfo.ConvertTimeFromUtc(
+            DateTime.SpecifyKind(utcTimestamp, DateTimeKind.Utc), tz);
+
+        if (hasDays)
+        {
+            var today = local.DayOfWeek.ToString().ToLowerInvariant();   // "monday"
+            var dayMatch = gf.ActiveDays!.Any(d =>
+                !string.IsNullOrWhiteSpace(d)
+                && today.StartsWith(d.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (!dayMatch) return false;
+        }
+
+        if (hasWindow)
+        {
+            var t = local.TimeOfDay;
+            var start = gf.ActiveStartTime ?? TimeSpan.Zero;
+            var end = gf.ActiveEndTime ?? new TimeSpan(23, 59, 59);
+            if (start <= end)
+            {
+                if (t < start || t > end) return false;
+            }
+            else
+            {
+                // Fenêtre nocturne (start > end) : active de start à minuit ET de minuit à end.
+                if (t < start && t > end) return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -608,7 +683,12 @@ public record GeofenceCacheEntry(
     double? Radius,
     bool AlertOnEntry,
     bool AlertOnExit,
-    int? AlertSpeedLimit
+    int? AlertSpeedLimit,
+    // Planification : jours actifs ("monday"…) + fenêtre horaire LOCALE de la
+    // société. null/vide = zone active en permanence.
+    string[]? ActiveDays,
+    TimeSpan? ActiveStartTime,
+    TimeSpan? ActiveEndTime
 );
 
 /// <summary>
