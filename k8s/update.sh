@@ -29,10 +29,14 @@ build_and_deploy() {
     local dockerfile="$2"
     local context="$3"
     local k8s_name="$4"
+    shift 4
+    # Les arguments restants sont passés tels quels à docker build
+    # (ex. --build-arg BASE_HREF=/mobile/ pour le service mobile).
 
     info "Building ${service}..."
     docker build -t ${REGISTRY}/gisv2/${service}:latest \
                  -t ${REGISTRY}/gisv2/${service}:${TIMESTAMP} \
+                 "$@" \
                  -f "${dockerfile}" "${context}"
     docker push ${REGISTRY}/gisv2/${service}:latest
     docker push ${REGISTRY}/gisv2/${service}:${TIMESTAMP}
@@ -84,10 +88,14 @@ case "$CMD" in
             "frontend"
         ;;
     mobile)
+        # BASE_HREF obligatoire : la ConfigMap nginx sert l'app sous /mobile/ —
+        # sans ce build-arg les fichiers restent à la racine de l'image et
+        # nginx boucle sur /mobile/index.html (CrashLoop de 20 jours).
         build_and_deploy "mobile" \
             "${PROJECT_ROOT}/services/gis-mobile/Dockerfile.prod" \
             "${PROJECT_ROOT}/services/gis-mobile" \
-            "mobile"
+            "mobile" \
+            --build-arg BASE_HREF=/mobile/
         ;;
     all)
         info "Pulling latest code..."
@@ -108,7 +116,8 @@ case "$CMD" in
         build_and_deploy "mobile" \
             "${PROJECT_ROOT}/services/gis-mobile/Dockerfile.prod" \
             "${PROJECT_ROOT}/services/gis-mobile" \
-            "mobile"
+            "mobile" \
+            --build-arg BASE_HREF=/mobile/
 
         log "All services updated"
         ;;

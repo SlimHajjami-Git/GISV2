@@ -11,6 +11,7 @@ import { NotificationService, Notification } from '../../services/notification.s
 import { SignalRService } from '../../services/signalr.service';
 import { GeocodingService } from '../../services/geocoding.service';
 import { OfflineVehiclesService } from '../../services/offline-vehicles.service';
+import { VersionCheckService } from '../../services/version-check.service';
 import { ChatComponent } from './chat.component';
 import { AccidentDecisionModalComponent } from './accident-decision-modal.component';
 import { OfflineVehiclesBellComponent } from './offline-vehicles-bell.component';
@@ -42,6 +43,11 @@ type NotifBucket = Notification | NotifThreadGroup;
   imports: [CommonModule, RouterModule, ChatComponent, AccidentDecisionModalComponent, OfflineVehiclesBellComponent],
   template: `
     <div class="app-container">
+      <!-- Bandeau nouvelle version : un déploiement a eu lieu, l'onglet tourne sur un vieux bundle -->
+      <div *ngIf="versionCheck.newVersionAvailable$ | async" style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;background:linear-gradient(90deg,#2563eb,#1d4ed8);color:#fff;padding:8px 16px;font-size:13px;font-weight:600;position:sticky;top:0;z-index:3000;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
+        <span>🔄 Une nouvelle version de Calypso est disponible</span>
+        <button type="button" (click)="versionCheck.reloadNow()" style="background:rgba(255,255,255,0.25);border:1px solid rgba(255,255,255,0.6);color:#fff;padding:4px 12px;border-radius:6px;font-weight:600;cursor:pointer;white-space:nowrap;">Actualiser maintenant</button>
+      </div>
       <!-- Bandeau impersonation ("voir en tant que") -->
       <div *ngIf="isImpersonating()" style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;background:linear-gradient(90deg,#f59e0b,#f97316);color:#fff;padding:8px 16px;font-size:13px;font-weight:600;position:sticky;top:0;z-index:3000;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
         <span>👁️ Vous voyez l'application <b>en tant que {{ impersonatedName }}</b><span *ngIf="impersonatedCompany"> — société <b>{{ impersonatedCompany }}</b></span></span>
@@ -1501,6 +1507,7 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     private signalR: SignalRService,
     private geocodingService: GeocodingService,
     private offlineVehiclesService: OfflineVehiclesService,
+    public versionCheck: VersionCheckService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -1521,6 +1528,10 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
 
     // Start the offline-vehicles watcher so the header bell stays in sync on every page
     this.offlineVehiclesService.start();
+
+    // Détection des nouveaux déploiements : bandeau « Actualiser » quand un
+    // bundle plus récent est en ligne (onglets restés ouverts longtemps).
+    this.versionCheck.start();
 
     // Subscribe to real-time unread count
     this.subs.push(

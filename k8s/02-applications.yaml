@@ -621,15 +621,18 @@ spec:
             limits:
               memory: "128Mi"
               cpu: "200m"
+          # /health répond 200 sans dépendre du contenu déployé : sonder /
+          # suivait la redirection 301 → /mobile/ et tuait le pod dès que le
+          # contenu était mal placé (CrashLoop au lieu d'un simple 500 visible).
           livenessProbe:
             httpGet:
-              path: /
+              path: /health
               port: 80
             initialDelaySeconds: 10
             periodSeconds: 15
           readinessProbe:
             httpGet:
-              path: /
+              path: /health
               port: 80
             initialDelaySeconds: 5
             periodSeconds: 10
