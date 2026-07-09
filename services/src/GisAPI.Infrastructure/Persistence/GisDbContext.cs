@@ -241,6 +241,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<UserDeviceToken>().Property(t => t.UserId).HasColumnName("user_id");
         modelBuilder.Entity<UserDeviceToken>().Property(t => t.Token).HasColumnName("token");
         modelBuilder.Entity<UserDeviceToken>().Property(t => t.Platform).HasColumnName("platform").HasMaxLength(20);
+        modelBuilder.Entity<UserDeviceToken>().Property(t => t.DeviceId).HasColumnName("device_id").HasMaxLength(100);
         modelBuilder.Entity<UserDeviceToken>().Property(t => t.IsActive).HasColumnName("is_active");
         modelBuilder.Entity<UserDeviceToken>().Property(t => t.RegisteredAt).HasColumnName("registered_at");
         modelBuilder.Entity<UserDeviceToken>().Property(t => t.LastUsedAt).HasColumnName("last_used_at");

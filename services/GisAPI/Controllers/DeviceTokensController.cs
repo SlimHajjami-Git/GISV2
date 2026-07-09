@@ -29,6 +29,19 @@ public class DeviceTokensController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrWhiteSpace(req.Token)) return BadRequest(new { message = "Token requis" });
 
+        // Un téléphone = UN jeton actif. Quand l'appli fournit son identifiant
+        // d'appareil stable (Android ID), on désactive les jetons précédents du
+        // même téléphone : chaque réinstallation/MAJ créait un nouveau jeton FCM
+        // sans invalider les anciens (livrables des semaines) → N copies de
+        // chaque notification (4 constatées en test Play Store).
+        if (!string.IsNullOrWhiteSpace(req.DeviceId))
+        {
+            var previous = await _context.UserDeviceTokens
+                .Where(t => t.DeviceId == req.DeviceId && t.Token != req.Token && t.IsActive)
+                .ToListAsync();
+            foreach (var p in previous) p.IsActive = false;
+        }
+
         var existing = await _context.UserDeviceTokens
             .FirstOrDefaultAsync(t => t.Token == req.Token);
 
@@ -37,6 +50,7 @@ public class DeviceTokensController : ControllerBase
             existing.UserId = userId;
             existing.IsActive = true;
             existing.Platform = req.Platform ?? "android";
+            existing.DeviceId = req.DeviceId ?? existing.DeviceId;
             existing.LastUsedAt = DateTime.UtcNow;
         }
         else
@@ -46,6 +60,7 @@ public class DeviceTokensController : ControllerBase
                 UserId = userId,
                 Token = req.Token,
                 Platform = req.Platform ?? "android",
+                DeviceId = req.DeviceId,
                 IsActive = true,
                 RegisteredAt = DateTime.UtcNow
             });
@@ -95,6 +110,9 @@ public class RegisterTokenRequest
 {
     public string Token { get; set; } = string.Empty;
     public string? Platform { get; set; }
+    /// <summary>Identifiant stable de l'appareil (Capacitor Device.getId()) —
+    /// optionnel, absent sur les anciennes versions de l'appli.</summary>
+    public string? DeviceId { get; set; }
 }
 
 public class UnregisterTokenRequest

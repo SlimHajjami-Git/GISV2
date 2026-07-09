@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Platform } from '@ionic/angular';
 import { PushNotifications, Token, PushNotificationSchema, ActionPerformed } from '@capacitor/push-notifications';
+import { Device } from '@capacitor/device';
 import { ApiService } from './api.service';
 import { AuthService } from './auth.service';
 import { ImmobilizationApprovalService } from './immobilization-approval.service';
@@ -134,9 +135,19 @@ export class PushNotificationService {
     console.log('[PushNotif] init() complete — lock-screen notifications armed');
   }
 
-  private registerTokenWithBackend(token: string): void {
+  private async registerTokenWithBackend(token: string): Promise<void> {
     const platform = this.platform.is('android') ? 'android' : 'ios';
-    this.api.registerDeviceToken(token, platform).subscribe({
+    // Identifiant STABLE de l'appareil (survit aux réinstallations) : permet au
+    // backend de désactiver les anciens jetons FCM du même téléphone — sans lui,
+    // chaque réinstallation empile un jeton livrable et chaque notification
+    // arrive en N exemplaires.
+    let deviceId: string | undefined;
+    try {
+      deviceId = (await Device.getId()).identifier;
+    } catch (e) {
+      console.warn('[PushNotif] Device.getId() failed, registering without deviceId', e);
+    }
+    this.api.registerDeviceToken(token, platform, deviceId).subscribe({
       next: () => console.log('Device token registered with backend'),
       error: (err) => console.error('Failed to register device token:', err)
     });

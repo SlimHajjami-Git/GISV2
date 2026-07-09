@@ -201,8 +201,8 @@ export class ApiService {
   }
 
   // ─── Device Tokens (FCM Push) ──────────────────────────
-  registerDeviceToken(token: string, platform: string): Observable<any> {
-    return this.http.post<any>(`${this.API}/devicetokens`, { token, platform });
+  registerDeviceToken(token: string, platform: string, deviceId?: string): Observable<any> {
+    return this.http.post<any>(`${this.API}/devicetokens`, { token, platform, deviceId });
   }
 
   unregisterDeviceToken(token: string): Observable<any> {
