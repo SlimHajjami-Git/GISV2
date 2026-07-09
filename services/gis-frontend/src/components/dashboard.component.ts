@@ -23,8 +23,9 @@ import { DateFilterBarComponent } from './shared/ui';
   <div class="dash-bg"></div>
   <div class="dash-inner">
 
-    <!-- ════ HEADER ════ -->
-    <header class="page-head reveal" style="--d:0">
+    <!-- ════ HERO — bandeau sombre : en-tête + KPIs ════ -->
+    <div class="hero reveal" style="--d:0">
+    <header class="page-head">
       <div class="ph-left">
         <div class="ph-eyebrow">
           <span class="live" [class.on]="isConnected">
@@ -44,7 +45,7 @@ import { DateFilterBarComponent } from './shared/ui';
     </header>
 
     <!-- ════ KPI STRIP ════ -->
-    <div class="kpis reveal" style="--d:1">
+    <div class="kpis">
       <div class="kpi" style="--c:var(--primary)">
         <div class="kpi-ic">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="3" width="15" height="13" rx="1.5"/><path d="M16 8h4l3 4v4h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -86,6 +87,7 @@ import { DateFilterBarComponent } from './shared/ui';
       </div>
       </ng-container>
     </div>
+    </div><!-- /hero -->
 
     <!-- ════ MAIN GRID ════ -->
     <div class="grid">
@@ -144,15 +146,15 @@ import { DateFilterBarComponent } from './shared/ui';
           <svg viewBox="0 0 500 140" preserveAspectRatio="none" class="chart-svg">
             <defs>
               <linearGradient id="cFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#6366f1" stop-opacity=".22"/>
-                <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+                <stop offset="0%" class="chart-stop" stop-opacity=".22"/>
+                <stop offset="100%" class="chart-stop" stop-opacity="0"/>
               </linearGradient>
             </defs>
             <line *ngFor="let y of [0,35,70,105,140]" x1="0" [attr.y1]="y" x2="500" [attr.y2]="y" class="chart-grid"/>
             <polygon *ngIf="cPts" [attr.points]="'0,140 '+cPts+' 500,140'" fill="url(#cFill)" class="chart-area"/>
-            <polyline *ngIf="cPts" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" [attr.points]="cPts" class="chart-line"/>
+            <polyline *ngIf="cPts" fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" [attr.points]="cPts" class="chart-line"/>
             <ng-container *ngFor="let p of cPoints;let pi=index">
-              <circle [attr.cx]="p.x" [attr.cy]="p.y" [attr.r]="cIdx===pi?5:0" fill="#6366f1" class="chart-pt"/>
+              <circle [attr.cx]="p.x" [attr.cy]="p.y" [attr.r]="cIdx===pi?5:0" class="chart-pt"/>
             </ng-container>
             <line *ngIf="cIdx>=0&&cPoints[cIdx]" [attr.x1]="cPoints[cIdx].x" y1="0" [attr.x2]="cPoints[cIdx].x" y2="140" class="chart-cursor"/>
           </svg>
@@ -377,10 +379,29 @@ import { DateFilterBarComponent } from './shared/ui';
     .reveal { animation: rise .55s cubic-bezier(.16,1,.3,1) both; animation-delay: calc(var(--d,0) * 55ms + 60ms); }
     @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 
+    /* ════ HERO — bandeau sombre premium (même langage que les modals validés) ════ */
+    .hero {
+      position: relative; overflow: hidden;
+      border-radius: 18px;
+      background: linear-gradient(150deg, #0f172a, #1e293b 58%, #27354d);
+      border: 1px solid rgba(255,255,255,.08);
+      padding: 22px 22px 20px;
+      margin-bottom: 22px;
+      box-shadow: 0 20px 48px -20px rgba(15,23,42,.5);
+    }
+    .hero::before {
+      content: ''; position: absolute; inset: 0; pointer-events: none;
+      background:
+        radial-gradient(42% 90% at 88% -10%, rgba(99,102,241,.28) 0%, transparent 70%),
+        radial-gradient(34% 80% at 8% 110%, rgba(14,165,233,.14) 0%, transparent 70%);
+    }
+    .hero > * { position: relative; }
+    :host-context([data-theme="dark"]) .hero { border-color: rgba(255,255,255,.1); }
+
     /* ════ HEADER ════ */
-    .page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 18px; flex-wrap: wrap; margin-bottom: 22px; }
-    .ph-eyebrow { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
-    .ph-company { color: var(--text-secondary); }
+    .page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 18px; flex-wrap: wrap; margin-bottom: 20px; }
+    .ph-eyebrow { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: rgba(203,213,225,.85); }
+    .ph-company { color: #cbd5e1; }
     .ph-sep { opacity: .5; }
     .live { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 100px;
       background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); font-size: 11px; font-weight: 700; letter-spacing: .2px; }
@@ -388,48 +409,48 @@ import { DateFilterBarComponent } from './shared/ui';
     .live-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
     .live.on .live-dot { box-shadow: 0 0 0 0 currentColor; animation: ping 2s ease-out infinite; }
     @keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 60%, transparent); } 100% { box-shadow: 0 0 0 7px transparent; } }
-    .ph-title { margin: 8px 0 2px; font-size: 27px; font-weight: 800; letter-spacing: -.6px; color: var(--text-primary); }
-    .ph-date { margin: 0; font-size: 13px; color: var(--text-muted); text-transform: capitalize; }
+    .ph-title { margin: 8px 0 2px; font-size: 27px; font-weight: 800; letter-spacing: -.6px; color: #ffffff; }
+    .ph-date { margin: 0; font-size: 13px; color: rgba(148,163,184,.95); text-transform: capitalize; }
     .ph-right { display: flex; align-items: center; }
 
-    /* Re-skin the shared date filter to match (it ships sky-blue + hard borders). */
+    /* Re-skin the shared date filter — verre sur le héro sombre. */
     ::ng-deep .dash .filter-bar {
-      background: var(--bg-card) !important; border: 1px solid var(--line) !important;
-      border-radius: 10px !important; padding: 6px 8px !important; box-shadow: var(--shadow-sm); gap: 12px !important;
+      background: rgba(255,255,255,.06) !important; border: 1px solid rgba(255,255,255,.13) !important;
+      border-radius: 10px !important; padding: 6px 8px !important; box-shadow: none; gap: 12px !important;
     }
     ::ng-deep .dash .period-buttons button {
-      background: transparent !important; border: 1px solid var(--line) !important; border-right: none !important;
-      color: var(--text-secondary) !important; font-size: 12px !important; font-weight: 600 !important; padding: 5px 11px !important;
+      background: transparent !important; border: 1px solid rgba(255,255,255,.14) !important; border-right: none !important;
+      color: #cbd5e1 !important; font-size: 12px !important; font-weight: 600 !important; padding: 5px 11px !important;
     }
-    ::ng-deep .dash .period-buttons button:last-child { border-right: 1px solid var(--line) !important; }
+    ::ng-deep .dash .period-buttons button:last-child { border-right: 1px solid rgba(255,255,255,.14) !important; }
     ::ng-deep .dash .period-buttons button.active { background: var(--primary) !important; border-color: var(--primary) !important; color: #fff !important; }
-    ::ng-deep .dash .period-buttons button:hover:not(.active) { background: var(--tint) !important; }
-    ::ng-deep .dash .date-label { color: var(--text-muted) !important; }
-    ::ng-deep .dash .date-input { color: var(--text-secondary) !important; text-decoration: none !important; }
+    ::ng-deep .dash .period-buttons button:hover:not(.active) { background: rgba(255,255,255,.09) !important; }
+    ::ng-deep .dash .date-label { color: rgba(148,163,184,.9) !important; }
+    ::ng-deep .dash .date-input { color: #e2e8f0 !important; text-decoration: none !important; }
     ::ng-deep .dash .btn-apply { background: var(--primary) !important; border-radius: 7px !important; }
     ::ng-deep .dash .btn-apply:hover { background: var(--primary-dark) !important; }
 
-    /* ════ KPI STRIP ════ */
-    .kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--gap); margin-bottom: 22px; }
+    /* ════ KPI STRIP — tuiles verre sur le héro ════ */
+    .kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
     .kpi {
-      display: flex; align-items: center; gap: 13px; padding: 16px 16px;
-      background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--r);
-      box-shadow: var(--shadow-sm); position: relative; overflow: hidden;
-      transition: transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .25s, border-color .25s;
+      display: flex; align-items: center; gap: 13px; padding: 15px 16px;
+      background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.11); border-radius: 13px;
+      position: relative; overflow: hidden;
+      transition: transform .25s cubic-bezier(.34,1.56,.64,1), background .25s, border-color .25s;
     }
-    .kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--c); opacity: .9; }
-    .kpi:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--c) 35%, var(--line)); }
+    .kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--c); opacity: .95; }
+    .kpi:hover { transform: translateY(-2px); background: rgba(255,255,255,.09); border-color: color-mix(in srgb, var(--c) 45%, rgba(255,255,255,.14)); }
     .kpi-ic { width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-      background: color-mix(in srgb, var(--c) 13%, transparent); color: var(--c); }
+      background: color-mix(in srgb, var(--c) 24%, transparent); color: color-mix(in srgb, var(--c) 60%, #ffffff); }
     .kpi-ic svg { width: 21px; height: 21px; }
     .kpi-meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-    .kpi-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .4px; }
-    .kpi-num { font-size: 27px; font-weight: 800; line-height: 1; color: var(--text-primary); letter-spacing: -1px; font-variant-numeric: tabular-nums; }
-    .kpi-num i { font-size: 13px; font-weight: 600; font-style: normal; color: var(--text-muted); margin-left: 3px; }
-    .kpi-sub { font-size: 11px; font-weight: 700; color: var(--text-muted); font-variant-numeric: tabular-nums; margin-top: 2px; display: flex; align-items: center; gap: 4px; }
+    .kpi-label { font-size: 10.5px; font-weight: 600; color: rgba(148,163,184,1); text-transform: uppercase; letter-spacing: .5px; }
+    .kpi-num { font-size: 26px; font-weight: 800; line-height: 1; color: #ffffff; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+    .kpi-num i { font-size: 13px; font-weight: 600; font-style: normal; color: rgba(148,163,184,1); margin-left: 3px; }
+    .kpi-sub { font-size: 11px; font-weight: 700; color: rgba(148,163,184,1); font-variant-numeric: tabular-nums; margin-top: 2px; display: flex; align-items: center; gap: 4px; }
     .kpi-sub small { font-weight: 500; opacity: .75; }
-    .kpi-sub.good { color: var(--success); }
-    .kpi-sub.bad { color: var(--danger); }
+    .kpi-sub.good { color: #34d399; }
+    .kpi-sub.bad { color: #f87171; }
     .kpi-sub.inline { margin: 0; }
     .kpi-alert::before { animation: alertbar 1.6s ease-in-out infinite; }
     @keyframes alertbar { 0%,100% { opacity: .9; } 50% { opacity: .35; } }
@@ -439,13 +460,13 @@ import { DateFilterBarComponent } from './shared/ui';
     .c4 { grid-column: span 4; } .c6 { grid-column: span 6; } .c8 { grid-column: span 8; }
 
     .card {
-      background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--r);
+      background: var(--bg-card); border: 1px solid var(--line); border-radius: 16px;
       padding: 18px 20px 20px; box-shadow: var(--shadow-sm);
       transition: box-shadow .25s, border-color .25s; min-width: 0;
     }
     .card:hover { box-shadow: var(--shadow-md); }
     .card-h { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-    .card-h h3 { margin: 0; flex: 1; font-size: 13.5px; font-weight: 700; color: var(--text-primary); letter-spacing: -.1px; }
+    .card-h h3 { margin: 0; flex: 1; font-size: 11.5px; font-weight: 700; color: var(--text-muted); letter-spacing: .06em; text-transform: uppercase; }
 
     /* ── Fleet mini-map ── */
     .gc-map .card-h { flex-wrap: wrap; }
@@ -499,7 +520,9 @@ import { DateFilterBarComponent } from './shared/ui';
     .chart { position: relative; padding-top: 4px; }
     .chart-svg { width: 100%; height: 150px; display: block; overflow: visible; }
     .chart-grid { stroke: var(--line); stroke-width: 1; }
-    .chart-line { stroke-dasharray: 1400; stroke-dashoffset: 1400; animation: draw 1.4s ease forwards .2s; }
+    .chart-stop { stop-color: var(--primary); }
+    .chart-pt { fill: var(--primary); }
+    .chart-line { stroke: var(--primary); stroke-dasharray: 1400; stroke-dashoffset: 1400; animation: draw 1.4s ease forwards .2s; }
     .chart-area { opacity: 0; animation: fade .6s ease forwards .7s; }
     @keyframes draw { to { stroke-dashoffset: 0; } }
     @keyframes fade { to { opacity: 1; } }
@@ -588,6 +611,7 @@ import { DateFilterBarComponent } from './shared/ui';
     }
     @media (max-width: 760px) {
       .dash-inner { padding: 16px 14px 40px; }
+      .hero { padding: 16px 14px 14px; border-radius: 14px; }
       .kpis { grid-template-columns: repeat(2, 1fr); }
       .grid { grid-template-columns: 1fr; }
       .c4, .c6, .c8 { grid-column: span 1; }
@@ -741,46 +765,60 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     });
   }
 
-  private anim(from:number,to:number,cb:(v:number)=>void){
-    const t0=performance.now();
-    const step=(now:number)=>{const p=Math.min((now-t0)/900,1);cb(Math.round(from+(to-from)*(1-Math.pow(1-p,4))));this.cdr.detectChanges();if(p<1)requestAnimationFrame(step);};
+  /** Compte à rebours des 6 KPI en UNE seule boucle rAF (un detectChanges par
+   *  frame, ~550 ms), et UNIQUEMENT au premier chargement. L'ancienne version
+   *  lançait 6 boucles simultanées × 55 frames × detectChanges du composant
+   *  entier — ~330 cycles de rendu par rafale, relancés à chaque refresh 30 s
+   *  et à chaque alerte SignalR : c'était LA cause du dashboard "lent". */
+  private firstLoad=true;
+  private animateKpis(){
+    const to={dVehicles:this.totalMotion,dMoving:this.motionData.movingIgnition,dStopped:this.motionData.stationary,dAlerts:this.alerts.length,dFuel:this.totalFuelConsumed,dCost:this.totalCost};
+    if(!this.firstLoad){Object.assign(this,to);return;}
+    this.firstLoad=false;
+    const keys=Object.keys(to) as (keyof typeof to)[];
+    const t0=performance.now(),dur=550;
+    const step=(now:number)=>{
+      const p=Math.min((now-t0)/dur,1),e=1-Math.pow(1-p,4);
+      for(const k of keys)(this as any)[k]=Math.round(to[k]*e);
+      this.cdr.detectChanges();
+      if(p<1)requestAnimationFrame(step);
+    };
     requestAnimationFrame(step);
   }
 
   private rebuild(){
     const tot=this.totalMotion||1;
-    this.anim(this.dVehicles,this.totalMotion,v=>this.dVehicles=v);
-    this.anim(this.dMoving,this.motionData.movingIgnition,v=>this.dMoving=v);
-    this.anim(this.dStopped,this.motionData.stationary,v=>this.dStopped=v);
-    this.anim(this.dAlerts,this.alerts.length,v=>this.dAlerts=v);
-    this.anim(this.dFuel,this.totalFuelConsumed,v=>this.dFuel=v);
-    this.anim(this.dCost,this.totalCost,v=>this.dCost=v);
+    this.animateKpis();
 
     const segs=[
-      {name:'En circulation',color:'#10b981',value:this.motionData.movingIgnition},
-      {name:'Moteur allumé',color:'#f59e0b',value:this.motionData.ignitionOn},
+      {name:'En circulation',color:'#059669',value:this.motionData.movingIgnition},
+      {name:'Moteur allumé',color:'#d97706',value:this.motionData.ignitionOn},
       {name:'À l\'arrêt',color:'#64748b',value:this.motionData.stationary},
-      {name:'Maintenance',color:'#6366f1',value:this.motionData.noState},
+      {name:'Maintenance',color:'#4f46e5',value:this.motionData.noState},
       {name:'Sans GPS',color:'#cbd5e1',value:this.motionData.noCoords},
     ];
     this.fleetSegs=segs.map(s=>({...s,pct:tot?Math.round((s.value/tot)*100):0}));
+    // Espace de ~2 px entre les segments du donut (lisibilité daltonisme +
+    // règle "surface gap" du guide dataviz) — seulement s'il y a ≥ 2 segments.
+    const visible=segs.filter(s=>s.value>0);
+    const gap=visible.length>1?4:0;
     let cum=0;
-    this.donutSegs=segs.filter(s=>s.value>0).map(s=>{
-      const da2=(s.value/tot)*this.circ62;
+    this.donutSegs=visible.map(s=>{
+      const da2=Math.max((s.value/tot)*this.circ62-gap,1);
       const offset2=-(cum/tot)*this.circ62;
       cum+=s.value;
       return{...s,da2,offset2};
     });
     this.expItems=[
-      {name:'Carburant',color:'#6366f1',value:this.fuelCost},
-      {name:'Entretien',color:'#10b981',value:this.maintenanceCost},
-      {name:'Réparation',color:'#f59e0b',value:this.repairCost},
+      {name:'Carburant',color:'#4f46e5',value:this.fuelCost},
+      {name:'Entretien',color:'#059669',value:this.maintenanceCost},
+      {name:'Réparation',color:'#d97706',value:this.repairCost},
       {name:'Autres',color:'#94a3b8',value:this.otherCost},
     ];
     this.hItems=[
-      {name:'Bon état',color:'#10b981',value:this.healthData.healthy},
-      {name:'Attention',color:'#f59e0b',value:this.healthData.attention},
-      {name:'Mauvais',color:'#ef4444',value:this.healthData.unhealthy},
+      {name:'Bon état',color:'#059669',value:this.healthData.healthy},
+      {name:'Attention',color:'#d97706',value:this.healthData.attention},
+      {name:'Mauvais',color:'#dc2626',value:this.healthData.unhealthy},
     ];
   }
 
