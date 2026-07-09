@@ -107,4 +107,58 @@ public class AlertEmailDispatcherTests
 
         sent.Should().BeEquivalentTo(new[] { "a@corp.tn" }, "A opted in to assurance");
     }
+
+    [Fact]
+    public async Task Explicitly_saved_all_unchecked_preferences_silence_the_alert_no_admin_fallback()
+    {
+        // THE client bug: the admin unchecked every box and saved — yet the old
+        // fallback re-subscribed all admins because "nobody opted in" looked
+        // identical to "never configured". AlertPrefsConfigured disambiguates.
+        using var ctx = TestDbContextFactory.Create();
+        ctx.Roles.Add(AdminRole());
+        var a = AdminUser(1, "a@corp.tn", entretien: false);
+        a.AlertPrefsConfigured = true;   // preferences explicitly saved (all unchecked)
+        ctx.Users.Add(a);
+        ctx.Users.Add(AdminUser(2, "b@corp.tn", entretien: false));
+        await ctx.SaveChangesAsync();
+
+        var (dispatcher, sent) = Build(ctx);
+        await dispatcher.DispatchAsync(CompanyId, "entretien", "Entretien dû", "…");
+
+        sent.Should().BeEmpty("someone explicitly saved preferences with nobody opted in — that's a deliberate opt-out, not a missing config");
+    }
+
+    [Fact]
+    public async Task Never_configured_company_still_gets_the_admin_fallback()
+    {
+        // Safety net preserved: no AlertPrefsConfigured anywhere → legacy fallback,
+        // so companies that never opened the alert settings keep receiving.
+        using var ctx = TestDbContextFactory.Create();
+        ctx.Roles.Add(AdminRole());
+        ctx.Users.Add(AdminUser(1, "a@corp.tn", entretien: false));
+        await ctx.SaveChangesAsync();
+
+        var (dispatcher, sent) = Build(ctx);
+        await dispatcher.DispatchAsync(CompanyId, "entretien", "Entretien dû", "…");
+
+        sent.Should().BeEquivalentTo(new[] { "a@corp.tn" });
+    }
+
+    [Fact]
+    public async Task Accident_alerts_keep_the_admin_fallback_even_when_preferences_are_configured()
+    {
+        // "accident" has no per-user checkbox — an explicit opt-out of the four
+        // document types must NOT silence accident notifications.
+        using var ctx = TestDbContextFactory.Create();
+        ctx.Roles.Add(AdminRole());
+        var a = AdminUser(1, "a@corp.tn", entretien: false);
+        a.AlertPrefsConfigured = true;
+        ctx.Users.Add(a);
+        await ctx.SaveChangesAsync();
+
+        var (dispatcher, sent) = Build(ctx);
+        await dispatcher.DispatchAsync(CompanyId, "accident", "Accident détecté", "…");
+
+        sent.Should().BeEquivalentTo(new[] { "a@corp.tn" }, "accidents must never go unnoticed");
+    }
 }

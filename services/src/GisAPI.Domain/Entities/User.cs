@@ -77,6 +77,15 @@ public class User : TenantEntity
     public bool AlertVisiteTechnique { get; set; } = false;
     [Column("alert_entretien")]
     public bool AlertEntretien { get; set; } = false;
+    /// <summary>
+    /// Vrai dès qu'un enregistrement EXPLICITE des préférences d'alerte a eu
+    /// lieu pour cet utilisateur. Distingue « la société n'a jamais configuré
+    /// les alertes » (fallback legacy vers tous les admins) de « tout a été
+    /// volontairement décoché » (vrai opt-out : aucun envoi).
+    /// Voir AlertEmailDispatcher.
+    /// </summary>
+    [Column("alert_prefs_configured")]
+    public bool AlertPrefsConfigured { get; set; } = false;
     [Column("daily_report_email_enabled")]
     public bool DailyReportEmailEnabled { get; set; } = false;
 

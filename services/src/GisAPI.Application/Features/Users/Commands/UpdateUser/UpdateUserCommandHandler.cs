@@ -108,6 +108,16 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         if (request.AlertVisiteTechnique.HasValue) user.AlertVisiteTechnique = request.AlertVisiteTechnique.Value;
         if (request.AlertEntretien.HasValue) user.AlertEntretien = request.AlertEntretien.Value;
 
+        // Toute sauvegarde EXPLICITE des préférences d'alerte (le formulaire
+        // envoie les 4 cases ensemble) marque la config comme volontaire :
+        // AlertEmailDispatcher n'applique alors plus le fallback « tous les
+        // admins » pour cette société — tout décocher devient un vrai opt-out.
+        if (request.AlertAssurance.HasValue || request.AlertTaxeCirculation.HasValue
+            || request.AlertVisiteTechnique.HasValue || request.AlertEntretien.HasValue)
+        {
+            user.AlertPrefsConfigured = true;
+        }
+
         // Update vehicle assignments if provided
         if (request.AssignedVehicleIds != null)
         {

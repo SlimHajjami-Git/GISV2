@@ -67,6 +67,32 @@ public class AlertEmailDispatcher : IAlertEmailDispatcher
         // colleague opt out of (e.g.) entretien while the other stays subscribed.
         if (recipients.Count == 0)
         {
+            // « Zéro destinataire » a deux significations distinctes :
+            //   - la société n'a JAMAIS enregistré de préférences → fallback
+            //     legacy vers les admins (personne ne doit cesser de recevoir
+            //     les échéances silencieusement) ;
+            //   - au moins un utilisateur a EXPLICITEMENT enregistré ses
+            //     préférences (même toutes décochées) → opt-out volontaire :
+            //     on n'envoie RIEN. Sans ce gate, tout décocher ré-abonnait
+            //     de force les admins via le fallback.
+            // Le gate ne s'applique qu'aux types opt-out-ables ; les autres
+            // (ex. "accident") gardent le fallback inconditionnel — un
+            // accident ne doit jamais passer inaperçu.
+            if (IsOptOutableType(alertType))
+            {
+                var explicitlyConfigured = await _context.Users
+                    .IgnoreQueryFilters()
+                    .AsNoTracking()
+                    .AnyAsync(u => u.CompanyId == companyId && u.AlertPrefsConfigured, ct);
+
+                if (explicitlyConfigured)
+                {
+                    _logger.LogInformation(
+                        "AlertEmailDispatcher: company {CompanyId} type {AlertType} — preferences explicitly saved with nobody opted in; honoring the opt-out (no admin fallback)",
+                        companyId, alertType);
+                    return 0;
+                }
+            }
             recipients = await _context.Users
                 .IgnoreQueryFilters()
                 .AsNoTracking()
@@ -129,6 +155,13 @@ public class AlertEmailDispatcher : IAlertEmailDispatcher
 
         return unique.Count;
     }
+
+    /// <summary>
+    /// Types d'alerte couverts par les cases à cocher utilisateur — les seuls
+    /// pour lesquels un opt-out explicite désactive le fallback admins.
+    /// </summary>
+    private static bool IsOptOutableType(string alertType) =>
+        alertType is "assurance" or "taxe_circulation" or "visite_technique" or "entretien";
 
     /// <summary>
     /// Company users who opted IN to this alert type via their profile
