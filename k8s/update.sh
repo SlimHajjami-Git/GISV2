@@ -42,6 +42,24 @@ build_and_deploy() {
     kubectl rollout restart deployment/${k8s_name} -n gisv2
     kubectl rollout status deployment/${k8s_name} -n gisv2 --timeout=300s
     log "${k8s_name} deployed (zero-downtime rolling update)"
+
+    cleanup_build_residue
+}
+
+cleanup_build_residue() {
+    # Chaque build laisse derrière lui l'image précédente (dé-taguée ou avec un
+    # tag horodaté jamais réutilisé) + du cache BuildKit. Sans nettoyage, le
+    # disque de la VM se remplit (constaté : ~63 Go de résidus, disque à 83% →
+    # GC kubelet + lenteurs générales). On garde 7 jours d'images (rollback
+    # possible via les tags horodatés récents) et ~8 Go de cache de build
+    # (les couches de base restent chaudes → rebuilds rapides).
+    info "Cleaning build residue (old images + build cache)..."
+    docker image prune -af --filter "until=168h" >/dev/null 2>&1 || true
+    docker builder prune -f --keep-storage 8GB >/dev/null 2>&1 || true
+    # Côté containerd (K3s) : retire les anciennes versions importées qui ne
+    # sont plus utilisées par aucun pod.
+    k3s crictl rmi --prune >/dev/null 2>&1 || true
+    log "Build residue cleaned (images >7j + cache >8GB + containerd orphelins)"
 }
 
 CMD="${1:-all}"
