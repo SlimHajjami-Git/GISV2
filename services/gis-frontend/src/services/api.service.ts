@@ -1108,7 +1108,7 @@ export class ApiService {
     return this.http.get<any>(`${this.API_URL}/dashboard/stats`, { headers: this.getHeaders() });
   }
 
-  getDashboardAll(period: string = 'week'): Observable<any> {
+  getDashboardAll(period: string = 'week', from?: string, to?: string): Observable<any> {
     if (this.isMockUser()) {
       return of({
         vehicleStatus: { stopped: 0, ignitionOn: 0, moving: 0, maintenance: 0, noGps: 0 },
@@ -1118,7 +1118,8 @@ export class ApiService {
         topUnits: [], geofences: [], alerts: [], recentTrips: [], drivers: []
       });
     }
-    const params = new HttpParams().set('period', period);
+    let params = new HttpParams().set('period', period);
+    if (from && to) params = params.set('from', from).set('to', to);
     return this.http.get<any>(`${this.API_URL}/dashboard/all`, { headers: this.getHeaders(), params });
   }
 

@@ -11,93 +11,114 @@ import { Company } from '../models/types';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { AppLayoutComponent } from './shared/app-layout.component';
-import { DateFilterBarComponent } from './shared/ui';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, DateFilterBarComponent, ...USER_PREF_PIPES],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ...USER_PREF_PIPES],
   template: `
 <app-layout>
 <div class="dash">
-  <div class="dash-bg"></div>
-  <div class="dash-inner">
+  <div class="shell">
 
-    <!-- ════ HERO — bandeau sombre : en-tête + KPIs ════ -->
-    <div class="hero reveal" style="--d:0">
-    <header class="page-head">
-      <div class="ph-left">
-        <div class="ph-eyebrow">
-          <span class="live" [class.on]="isConnected">
-            <span class="live-dot"></span>{{ isConnected ? 'En direct' : 'Hors ligne' }}
-          </span>
-          <span class="ph-sep">·</span>
-          <span class="ph-company">{{ company?.name || 'Flotte' }}</span>
+    <!-- ════ 1 · MASTHEAD : en-tête + filtre + KPIs (bande carbone) ════ -->
+    <header class="mast anim" style="--i:0">
+      <div class="mast-top">
+        <div class="brand">
+          <span class="live" [class.off]="!isConnected"><span class="live-dot"></span>{{ isConnected ? 'En direct' : 'Hors ligne' }}</span>
+          <span>Calypso&nbsp;·&nbsp;<b>{{ company?.name || 'Flotte' }}</b></span>
         </div>
-        <h1 class="ph-title">Tableau de bord</h1>
-        <p class="ph-date">{{ todayLabel }}</p>
+        <div class="mast-date">{{ todayLabel }}</div>
       </div>
-      <div class="ph-right">
-        <ui-date-filter-bar [selectedPeriod]="selectedPeriod" [fromDate]="fromDate" [toDate]="toDate" [periods]="periodsFr"
-          (periodChange)="onPeriodChange($event)" (dateRangeChange)="onDateRangeChange($event)" (applyFilter)="applyFilter()">
-        </ui-date-filter-bar>
+
+      <div class="mast-title">
+        <h1>Tableau de bord</h1>
+        <div class="meta">
+          <span><b>{{ totalMotion }}</b>&nbsp;véhicules</span>
+          <span *ngIf="drivers.length"><b>{{ activeDrivers }}</b>&nbsp;conducteurs actifs</span>
+          <span *ngIf="hasGps && geofences.length"><b>{{ geofences.length }}</b>&nbsp;géozones</span>
+        </div>
+      </div>
+
+      <!-- Filtre de période : pilules + plage personnalisée Du/Au (enfin fonctionnelle) -->
+      <div class="toolbar" role="group" aria-label="Filtre de période">
+        <nav class="pills">
+          <button *ngFor="let p of periodsFr" class="pill" type="button"
+            [class.active]="selectedPeriod===p.value" [attr.aria-pressed]="selectedPeriod===p.value"
+            (click)="onPeriodClick(p.value)">{{ p.label }}</button>
+          <button class="pill custom" type="button" [class.active]="selectedPeriod==='custom'"
+            [attr.aria-pressed]="selectedPeriod==='custom'" (click)="applyCustom()">Personnalisé</button>
+        </nav>
+        <span class="tb-sep" aria-hidden="true"></span>
+        <div class="range">
+          <div class="rfield">
+            <label for="d-from">Du</label>
+            <input id="d-from" type="date" [(ngModel)]="fromDate">
+          </div>
+          <div class="rfield">
+            <label for="d-to">Au</label>
+            <input id="d-to" type="date" [(ngModel)]="toDate">
+          </div>
+          <button class="apply" type="button" (click)="applyCustom()">Appliquer</button>
+        </div>
+      </div>
+
+      <!-- ════ 2 · KPIs en filets (dans le masthead) ════ -->
+      <div class="kpis" [class.k2]="!hasGps">
+        <div class="kpi">
+          <span class="kpi-l">Véhicules</span>
+          <span class="kpi-v">{{ dVehicles }}</span>
+          <span class="kpi-s">flotte totale</span>
+        </div>
+        <ng-container *ngIf="hasGps">
+        <div class="kpi">
+          <span class="kpi-l"><span class="dot" style="background:#34d399"></span>En circulation</span>
+          <span class="kpi-v">{{ dMoving }}</span>
+          <span class="kpi-s">{{ movingPct }}&nbsp;% de la flotte</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-l"><span class="dot" style="background:#94a3b8"></span>À l'arrêt</span>
+          <span class="kpi-v">{{ dStopped }}</span>
+          <span class="kpi-s">{{ stoppedPct }}&nbsp;% de la flotte</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-l">Carburant</span>
+          <span class="kpi-v">{{ dFuel | number:'1.0-0' }}<span class="kpi-u">L</span></span>
+          <span class="kpi-s">sur la période</span>
+        </div>
+        </ng-container>
+        <div class="kpi">
+          <span class="kpi-l">Coût total</span>
+          <span class="kpi-v">{{ costValue }}<span class="kpi-u">{{ currencyCode }}</span></span>
+          <span class="kpi-s" *ngIf="costTrend!==null && costTrend!==0">
+            <span class="kchip" [class.kchip-danger]="costTrend>0" [class.kchip-ok]="costTrend<0">
+              <svg width="8" height="8" viewBox="0 0 10 10" fill="currentColor" aria-hidden="true" [style.transform]="costTrend<0?'rotate(180deg)':''"><path d="M5 1.6 8.6 7H1.4Z"/></svg>
+              {{ absPct(costTrend) }}&nbsp;%</span>
+            vs préc.
+          </span>
+          <span class="kpi-s" *ngIf="costTrend===null || costTrend===0">sur la période</span>
+        </div>
+        <div class="kpi" *ngIf="hasGps">
+          <span class="kpi-l">Alertes</span>
+          <span class="kpi-v">{{ dAlerts }}</span>
+          <span class="kpi-s">sur la période</span>
+        </div>
       </div>
     </header>
 
-    <!-- ════ KPI STRIP ════ -->
-    <div class="kpis">
-      <div class="kpi" style="--c:var(--primary)">
-        <div class="kpi-ic">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="3" width="15" height="13" rx="1.5"/><path d="M16 8h4l3 4v4h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-        </div>
-        <div class="kpi-meta"><span class="kpi-label">Véhicules</span><span class="kpi-num">{{ dVehicles }}</span></div>
-      </div>
-      <ng-container *ngIf="hasGps">
-      <div class="kpi" style="--c:#10b981">
-        <div class="kpi-ic">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M5 12a7 7 0 0 1 7-7"/><path d="M19 12a7 7 0 0 1-7 7"/></svg>
-        </div>
-        <div class="kpi-meta"><span class="kpi-label">En circulation</span><span class="kpi-num">{{ dMoving }}</span></div>
-      </div>
-      <div class="kpi" style="--c:#64748b">
-        <div class="kpi-ic">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="16" rx="1.5"/><rect x="14" y="4" width="6" height="16" rx="1.5"/></svg>
-        </div>
-        <div class="kpi-meta"><span class="kpi-label">À l'arrêt</span><span class="kpi-num">{{ dStopped }}</span></div>
-      </div>
-      <div class="kpi" style="--c:#0ea5e9">
-        <div class="kpi-ic">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 22V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v17"/><path d="M14 11h2a2 2 0 0 1 2 2v4a2 2 0 0 0 3 0V9l-3-3"/><path d="M3 11h11"/></svg>
-        </div>
-        <div class="kpi-meta"><span class="kpi-label">Carburant</span><span class="kpi-num">{{ dFuel }}<i>L</i></span></div>
-      </div>
-      </ng-container>
-      <div class="kpi" style="--c:#f59e0b">
-        <div class="kpi-ic">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="13" rx="2.5"/><path d="M2 10h20"/></svg>
-        </div>
-        <div class="kpi-meta"><span class="kpi-label">Coût total</span><span class="kpi-num">{{ dCost | number:'1.0-0' }}<i>{{ currencyCode }}</i></span><span class="kpi-sub" *ngIf="costTrend!==null && costTrend!==0" [class.bad]="costTrend>0" [class.good]="costTrend<0">{{ costTrend>0?'▲':'▼' }} {{ absPct(costTrend) }}% <small>vs préc.</small></span></div>
-      </div>
-      <ng-container *ngIf="hasGps">
-      <div class="kpi" style="--c:#ef4444" [class.kpi-alert]="dAlerts>0">
-        <div class="kpi-ic">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
-        </div>
-        <div class="kpi-meta"><span class="kpi-label">Alertes</span><span class="kpi-num">{{ dAlerts }}</span></div>
-      </div>
-      </ng-container>
-    </div>
-    </div><!-- /hero -->
+    <!-- ════ BENTO ════ -->
+    <div class="bento">
 
-    <!-- ════ MAIN GRID ════ -->
-    <div class="grid">
-
-      <!-- GPS-only widgets — hidden for "Gestion sans GPS" clients (moduleMonitoring off) -->
       <ng-container *ngIf="hasGps">
-      <!-- Flotte en direct (mini-carte) -->
-      <section class="card c8 gc-map">
-        <div class="card-h">
-          <h3>Flotte en direct</h3>
+      <!-- ── Flotte en direct (Leaflet) ── -->
+      <section class="card span-8 acc-indigo anim" style="--i:1">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4z"/><path d="M9 4v13M15 6.5v13"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Temps réel</div><h2>Flotte en direct</h2></div>
+          <div class="head-right"><span class="chip"><i class="chip-dot" [style.background]="isConnected?'#10b981':'#ef4444'"></i>{{ totalMotion }} véhicules</span></div>
+        </div>
+        <div class="map-wrap">
+          <div #fleetMap class="fleet-map"></div>
           <div class="map-legend">
             <span><i style="background:#10b981"></i>En circulation</span>
             <span><i style="background:#f59e0b"></i>Moteur allumé</span>
@@ -105,13 +126,15 @@ import { DateFilterBarComponent } from './shared/ui';
             <span><i style="background:#cbd5e1"></i>Hors ligne</span>
           </div>
         </div>
-        <div #fleetMap class="fleet-map"></div>
       </section>
 
-      <!-- État flotte -->
-      <section class="card c4 reveal" style="--d:2">
-        <div class="card-h"><h3>État de la flotte</h3></div>
-        <div class="fleet">
+      <!-- ── État de la flotte (donut) ── -->
+      <section class="card acc-green anim" style="--i:2">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9"/><path d="M12 3a9 9 0 0 1 9 9h-9z"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Flotte</div><h2>État de la flotte</h2></div>
+        </div>
+        <div class="donut-flex">
           <div class="donut">
             <svg viewBox="0 0 160 160">
               <circle cx="80" cy="80" r="62" fill="none" class="donut-track" stroke-width="13"/>
@@ -126,119 +149,152 @@ import { DateFilterBarComponent } from './shared/ui';
             </div>
           </div>
           <div class="legend">
-            <div *ngFor="let s of fleetSegs" class="leg-row" (mouseenter)="hSeg=donutIdx(s.name)" (mouseleave)="hSeg=-1" [class.hl]="hSeg>=0 && donutSegs[hSeg]?.name===s.name">
-              <span class="leg-dot" [style.background]="s.color"></span>
-              <span class="leg-name">{{ s.name }}</span>
-              <b class="leg-val">{{ s.value }}</b>
+            <div *ngFor="let s of fleetSegs" class="lg" (mouseenter)="hSeg=donutIdx(s.name)" (mouseleave)="hSeg=-1" [class.hl]="hSeg>=0 && donutSegs[hSeg]?.name===s.name">
+              <i [style.background]="s.color"></i>
+              <span class="lbl">{{ s.name }}</span>
+              <b>{{ s.value }}</b>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- Activité / consommation -->
-      <section class="card c8 reveal" style="--d:3">
-        <div class="card-h">
-          <h3>Consommation carburant</h3>
-          <span class="badge badge-muted" *ngIf="fuelEstimated" title="Estimation issue des capteurs GPS — chiffre indicatif">estimé</span>
-          <span class="badge badge-primary">{{ totalFuelConsumed | number:'1.0-0' }} L</span>
-        </div>
-        <div class="chart" (mousemove)="onChartHover($event)" (mouseleave)="cIdx=-1">
-          <svg viewBox="0 0 500 140" preserveAspectRatio="none" class="chart-svg">
-            <defs>
-              <linearGradient id="cFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" class="chart-stop" stop-opacity=".22"/>
-                <stop offset="100%" class="chart-stop" stop-opacity="0"/>
-              </linearGradient>
-            </defs>
-            <line *ngFor="let y of [0,35,70,105,140]" x1="0" [attr.y1]="y" x2="500" [attr.y2]="y" class="chart-grid"/>
-            <polygon *ngIf="cPts" [attr.points]="'0,140 '+cPts+' 500,140'" fill="url(#cFill)" class="chart-area"/>
-            <polyline *ngIf="cPts" fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" [attr.points]="cPts" class="chart-line"/>
-            <ng-container *ngFor="let p of cPoints;let pi=index">
-              <circle [attr.cx]="p.x" [attr.cy]="p.y" [attr.r]="cIdx===pi?5:0" class="chart-pt"/>
-            </ng-container>
-            <line *ngIf="cIdx>=0&&cPoints[cIdx]" [attr.x1]="cPoints[cIdx].x" y1="0" [attr.x2]="cPoints[cIdx].x" y2="140" class="chart-cursor"/>
-          </svg>
-          <div class="chart-x"><span *ngFor="let l of cLabels">{{ l }}</span></div>
-          <div class="chart-tip" *ngIf="cIdx>=0&&cVals[cIdx]!==undefined" [style.left.%]="cPoints[cIdx]?(cPoints[cIdx].x/5):0">
-            <b>{{ cVals[cIdx]|number:'1.0-0' }} L</b><span>{{ cLabels[cIdx]||'' }}</span>
+      <!-- ── Consommation carburant (graphique) ── -->
+      <section class="card span-8 acc-cyan anim" style="--i:3">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5s-6 6.2-6 11a6 6 0 0 0 12 0c0-4.8-6-11-6-11z"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Carburant</div><h2>Consommation carburant</h2></div>
+          <div class="head-right">
+            <span class="chip"><b class="num">{{ totalFuelConsumed | number:'1.0-0' }}&nbsp;L</b></span>
+            <span class="chip ghost" *ngIf="fuelEstimated" title="Estimation issue des capteurs GPS — chiffre indicatif">estimé</span>
           </div>
         </div>
+        <div class="chart-wrap" *ngIf="cPath" (mousemove)="onChartHover($event)" (mouseleave)="cIdx=-1">
+          <svg class="chart-svg" viewBox="0 0 660 230" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="fuelFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" class="chart-stop" stop-opacity=".22"/>
+                <stop offset="1" class="chart-stop" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <line *ngFor="let t of yTicks" class="gridline" x1="40" [attr.y1]="t.y" x2="620" [attr.y2]="t.y"/>
+            <line class="gridline" x1="40" y1="190" x2="620" y2="190"/>
+            <text *ngFor="let t of yTicks" class="ax" text-anchor="end" x="34" [attr.y]="t.y+3">{{ t.label }}</text>
+            <path [attr.d]="cAreaPath" fill="url(#fuelFill)" class="chart-area"/>
+            <path [attr.d]="cPath" fill="none" stroke-width="2" stroke-linecap="round" class="chart-line"/>
+            <ng-container *ngIf="cIdx>=0 && cPoints[cIdx]">
+              <line [attr.x1]="cPoints[cIdx].x" y1="52" [attr.x2]="cPoints[cIdx].x" y2="190" class="chart-cursor"/>
+              <circle [attr.cx]="cPoints[cIdx].x" [attr.cy]="cPoints[cIdx].y" r="8" class="chart-pt halo"/>
+              <circle [attr.cx]="cPoints[cIdx].x" [attr.cy]="cPoints[cIdx].y" r="4" class="chart-pt ring"/>
+            </ng-container>
+            <text *ngFor="let t of xTicks" class="ax" text-anchor="middle" [attr.x]="t.x" y="212">{{ t.label }}</text>
+          </svg>
+          <div class="chart-tip" *ngIf="cIdx>=0 && cVals[cIdx]!==undefined" [style.left.%]="cPoints[cIdx] ? (cPoints[cIdx].x/6.6) : 0">
+            <span>{{ cLabels[cIdx] || '' }}</span><b>{{ cVals[cIdx] | number:'1.0-0' }} L</b>
+          </div>
+        </div>
+        <div class="empty" *ngIf="!cPath"><span>Aucune donnée sur la période</span></div>
       </section>
 
-      <!-- Santé véhicules -->
-      <section class="card c4 reveal" style="--d:4">
-        <div class="card-h"><h3>Santé des véhicules</h3></div>
-        <div class="health">
+      <!-- ── Santé des véhicules ── -->
+      <section class="card acc-green anim" style="--i:4">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12h4l2-5 3.5 10 2-5h5.5"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Maintenance</div><h2>Santé des véhicules</h2></div>
+        </div>
+        <div class="gauge-flex">
           <div class="gauge">
-            <svg viewBox="0 0 160 160">
-              <circle cx="80" cy="80" r="64" fill="none" class="donut-track" stroke-width="11"/>
-              <circle cx="80" cy="80" r="64" fill="none" [attr.stroke]="hColor" stroke-width="11" stroke-linecap="round"
-                stroke-dasharray="402" [attr.stroke-dashoffset]="402-(hPct/100)*402" class="gauge-ring"/>
+            <svg viewBox="0 0 140 140">
+              <circle cx="70" cy="70" r="54" fill="none" class="donut-track" stroke-width="10"/>
+              <circle cx="70" cy="70" r="54" fill="none" [attr.stroke]="hColor" stroke-width="10" stroke-linecap="round"
+                stroke-dasharray="339.29" [attr.stroke-dashoffset]="339.29-(hPct/100)*339.29" transform="rotate(-90 70 70)" class="gauge-ring"/>
             </svg>
-            <div class="gauge-c">
-              <span class="gauge-n" [style.color]="hColor">{{ hPct }}<i>%</i></span>
-              <span class="gauge-l">en bon état</span>
+            <div class="donut-c">
+              <span class="gauge-n">{{ hPct }}%</span>
+              <span class="donut-l">en bon état</span>
             </div>
           </div>
           <div class="hbars">
             <div *ngFor="let h of hItems" class="hbar">
-              <div class="hbar-top"><span>{{ h.name }}</span><b [style.color]="h.color">{{ h.value }}</b></div>
-              <div class="track"><div class="fill" [style.width.%]="totalHealth?(h.value/totalHealth)*100:0" [style.background]="h.color"></div></div>
+              <div class="hb-top"><span>{{ h.name }}</span><b>{{ h.value }}</b></div>
+              <div class="bar"><i [style.width.%]="maxHealth ? (h.value/maxHealth)*100 : 0" [style.background]="h.color"></i></div>
             </div>
           </div>
         </div>
       </section>
       </ng-container>
 
-      <!-- Dépenses -->
-      <section class="card c4 reveal" style="--d:5">
-        <div class="card-h"><h3>Dépenses</h3><span class="badge badge-amber">{{ totalCost | appCurrency:0 }}</span></div>
+      <!-- ── Dépenses ── -->
+      <section class="card acc-indigo spend anim" style="--i:5">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 6.5H9.8a2.8 2.8 0 0 0 0 5.6h4.4a2.8 2.8 0 0 1 0 5.6H6.5"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Finances</div><h2>Dépenses</h2></div>
+          <div class="head-right"><span class="chip"><b class="num">{{ totalCost | appCurrency:0 }}</b></span></div>
+        </div>
         <div class="rows">
-          <div *ngFor="let e of expItems" class="exp">
-            <div class="exp-top"><span class="leg-dot sm" [style.background]="e.color"></span><span class="exp-name">{{ e.name }}</span><b>{{ e.value | appCurrency:0 }}</b></div>
-            <div class="track"><div class="fill" [style.width.%]="totalCost?(e.value/totalCost)*100:0" [style.background]="e.color"></div></div>
+          <div *ngFor="let e of expItems" class="row">
+            <div class="lblc"><i [style.background]="e.color"></i><span>{{ e.name }}</span></div>
+            <div class="bar"><i [style.width.%]="maxExp ? (e.value/maxExp)*100 : 0" [style.background]="e.color"></i></div>
+            <div class="val num">{{ e.value | appCurrency:0 }}</div>
           </div>
         </div>
       </section>
 
-      <!-- Échéances à venir — visible pour tous (essentiel pour la gestion sans GPS) -->
-      <section class="card c6 reveal" style="--d:5">
-        <div class="card-h"><h3>Échéances à venir</h3><span class="badge badge-red" *ngIf="deadlinesOverdue>0">{{ deadlinesOverdue }} en retard</span></div>
+      <!-- ── Échéances à venir ── -->
+      <section class="card acc-amber anim" [class.span-8]="!hasGps" style="--i:6">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10.5h17"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Conformité</div><h2>Échéances à venir</h2></div>
+          <div class="head-right"><span class="chip down" *ngIf="deadlinesOverdue>0">{{ deadlinesOverdue }} en retard</span></div>
+        </div>
         <div class="rows" *ngIf="deadlines.length">
-          <div *ngFor="let d of deadlines" class="row" style="display:flex;align-items:center;gap:10px;">
-            <span class="leg-dot" [style.background]="deadlineColor(d)"></span>
-            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ d.vehiclePlate || d.vehicleName }} · {{ docLabel(d.documentType) }}</span>
-            <span style="font-size:12px;opacity:.65;white-space:nowrap;">{{ d.expiryDate | date:'dd/MM/yyyy' }}</span>
-            <b [style.color]="deadlineColor(d)" style="white-space:nowrap;">{{ daysLabel(d) }}</b>
+          <div *ngFor="let d of deadlines" class="row">
+            <span class="plate">{{ d.vehiclePlate || d.vehicleName }}</span>
+            <div class="grow"><div class="t1">{{ docLabel(d.documentType) }}</div><div class="t2 num">{{ d.expiryDate | date:'dd/MM/yyyy' }}</div></div>
+            <span class="due" [ngClass]="dueCls(d)">{{ daysLabel(d) }}</span>
           </div>
         </div>
         <div class="empty" *ngIf="!deadlines.length"><span>Aucune échéance sous 60 jours</span></div>
       </section>
 
       <ng-container *ngIf="hasGps">
-      <!-- Répartition par type -->
-      <section class="card c4 reveal" style="--d:6">
-        <div class="card-h"><h3>Répartition par type</h3></div>
+      <!-- ── Répartition par type ── -->
+      <section class="card acc-slate spend types anim" style="--i:7">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5-9-5z"/><path d="M3 13l9 5 9-5"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Parc</div><h2>Répartition par type</h2></div>
+        </div>
         <div class="rows" *ngIf="typeBreakdown.length">
           <div *ngFor="let t of typeBreakdown" class="row">
-            <span class="leg-dot" [style.background]="t.color"></span>
-            <div class="row-stack"><span class="row-name">{{ t.type }}</span><span class="row-sub">{{ t.km | number:'1.0-0' }} km</span></div>
-            <div class="track"><div class="fill" [style.width.%]="(t.count/maxTypeCount)*100" [style.background]="t.color"></div></div>
-            <b class="row-val">{{ t.count }}</b>
+            <div class="lblc"><i [style.background]="t.color"></i><span>{{ t.type }}</span></div>
+            <div class="bar"><i [style.width.%]="(t.count/maxTypeCount)*100" [style.background]="t.color"></i></div>
+            <div class="val num">{{ t.count }} <small>· {{ t.km | number:'1.0-0' }}&nbsp;km</small></div>
           </div>
         </div>
         <div class="empty" *ngIf="!typeBreakdown.length"><span>Aucune donnée</span></div>
       </section>
 
-      <!-- Alertes -->
-      <section class="card c4 reveal" style="--d:6">
-        <div class="card-h"><h3>Alertes</h3><span class="badge badge-red" *ngIf="alerts.length">{{ alerts.length }}</span></div>
-        <div class="rows tight" *ngIf="alerts.length">
-          <div *ngFor="let a of pagedAlerts" class="alert" [class.is-new]="a._isNew">
-            <span class="alert-dot" [class.a-warn]="a.severity==='warning'" [class.a-danger]="a.severity==='danger'" [class.a-info]="a.severity==='info'"></span>
-            <div class="alert-body"><span class="alert-msg">{{ a.message }}</span><span class="alert-time">{{ a.time }}</span></div>
+      <!-- ── Alertes ── -->
+      <section class="card acc-red anim" style="--i:8">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.2 2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4M12 16.8v.2"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Sécurité</div><h2>Alertes</h2></div>
+          <div class="head-right">
+            <div class="pager" *ngIf="alerts.length>5">
+              <button type="button" (click)="alertsP=alertsP-1" [disabled]="alertsP===0" aria-label="Précédent"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+              <span class="num">{{ alertsP+1 }}&thinsp;/&thinsp;{{ Math.ceil(alerts.length/5) }}</span>
+              <button type="button" (click)="alertsP=alertsP+1" [disabled]="(alertsP+1)*5>=alerts.length" aria-label="Suivant"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+            </div>
           </div>
-          <div class="pgr" *ngIf="alerts.length>5"><button (click)="alertsP=alertsP-1" [disabled]="alertsP===0">‹</button><span>{{ alertsP+1 }}/{{ Math.ceil(alerts.length/5) }}</span><button (click)="alertsP=alertsP+1" [disabled]="(alertsP+1)*5>=alerts.length">›</button></div>
+        </div>
+        <div class="rows" *ngIf="alerts.length">
+          <div *ngFor="let a of pagedAlerts" class="row" [class.is-new]="a._isNew">
+            <span class="al-ic" [class.warn]="a.severity==='warning'" [class.dang]="a.severity==='danger'" [class.info]="a.severity!=='warning' && a.severity!=='danger'">
+              <svg *ngIf="a.severity==='warning'" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 13l3.5-3.5M12 2.5h0"/></svg>
+              <svg *ngIf="a.severity==='danger'" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><path d="M9.5 7.5l5 5M14.5 7.5l-5 5"/></svg>
+              <svg *ngIf="a.severity!=='warning' && a.severity!=='danger'" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.2"/></svg>
+            </span>
+            <div class="grow"><div class="t1">{{ a.message }}</div><div class="t2">{{ a.time }}</div></div>
+          </div>
         </div>
         <div class="empty" *ngIf="!alerts.length">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg>
@@ -246,379 +302,564 @@ import { DateFilterBarComponent } from './shared/ui';
         </div>
       </section>
 
-      <!-- Kilométrage -->
-      <section class="card c6 reveal" style="--d:7">
-        <div class="card-h"><h3>Kilométrage par véhicule</h3><span class="badge badge-primary" *ngIf="periodDistance>0">{{ periodDistance | number:'1.0-0' }} km</span><span class="kpi-sub inline" *ngIf="distanceTrend!==null && distanceTrend!==0">{{ distanceTrend>0?'▲':'▼' }} {{ absPct(distanceTrend) }}%</span></div>
+      <!-- ── Kilométrage par véhicule ── -->
+      <section class="card acc-indigo anim" style="--i:9">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8.5"/><path d="M12 13l4-4"/><path d="M12 4.5V2.5M9 3h6"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Activité</div><h2>Kilométrage</h2></div>
+          <div class="head-right"><span class="chip" *ngIf="periodDistance>0"><b class="num">{{ periodDistance | number:'1.0-0' }}&nbsp;km</b><span class="delta" *ngIf="distanceTrend!==null && distanceTrend!==0" [class.good]="distanceTrend>0" [class.bad]="distanceTrend<0"><svg viewBox="0 0 24 24" fill="currentColor" [style.transform]="distanceTrend<0?'rotate(180deg)':''"><path d="M12 5l7 10H5z"/></svg>{{ absPct(distanceTrend) }}%</span></span></div>
+        </div>
         <div class="rows" *ngIf="topUnits.length">
           <div *ngFor="let u of pUnits" class="row">
-            <span class="row-name">{{ u.name }}</span>
-            <div class="track"><div class="fill primary" [style.width.%]="(u.mileage/maxMileage)*100"></div></div>
-            <span class="row-val">{{ u.mileage|number:'1.0-0' }} km</span>
+            <span class="plate">{{ u.name }}</span>
+            <div class="grow"><div class="bar"><i [style.width.%]="(u.mileage/maxMileage)*100" style="background:var(--primary)"></i></div></div>
+            <div class="val num">{{ u.mileage | number:'1.0-0' }} <small>km</small></div>
           </div>
-          <div class="pgr" *ngIf="topUnits.length>5"><button (click)="unP=unP-1" [disabled]="unP===0">‹</button><span>{{ unP+1 }}/{{ Math.ceil(topUnits.length/5) }}</span><button (click)="unP=unP+1" [disabled]="(unP+1)*5>=topUnits.length">›</button></div>
+        </div>
+        <div class="pgr-foot" *ngIf="topUnits.length>5">
+          <div class="pager">
+            <button type="button" (click)="unP=unP-1" [disabled]="unP===0" aria-label="Précédent"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+            <span class="num">{{ unP+1 }}&thinsp;/&thinsp;{{ Math.ceil(topUnits.length/5) }}</span>
+            <button type="button" (click)="unP=unP+1" [disabled]="(unP+1)*5>=topUnits.length" aria-label="Suivant"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+          </div>
         </div>
         <div class="empty" *ngIf="!topUnits.length"><span>Aucune donnée</span></div>
       </section>
 
-      <!-- Scores de conduite -->
-      <section class="card c6 reveal" style="--d:8">
-        <div class="card-h"><h3>Scores de conduite</h3></div>
+      <!-- ── Scores de conduite ── -->
+      <section class="card acc-green anim" style="--i:10">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="5.5"/><path d="M8.5 13.5 7 21l5-2.6L17 21l-1.5-7.5"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Conduite</div><h2>Scores de conduite</h2></div>
+          <div class="head-right">
+            <div class="pager" *ngIf="drivingScores.length>5">
+              <button type="button" (click)="scP=scP-1" [disabled]="scP===0" aria-label="Précédent"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+              <span class="num">{{ scP+1 }}&thinsp;/&thinsp;{{ Math.ceil(drivingScores.length/5) }}</span>
+              <button type="button" (click)="scP=scP+1" [disabled]="(scP+1)*5>=drivingScores.length" aria-label="Suivant"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+            </div>
+          </div>
+        </div>
         <div class="rows" *ngIf="drivingScores.length">
           <div *ngFor="let s of pScores;let i=index" class="row">
-            <span class="rank" [class.gold]="scP*5+i<1" [class.silver]="scP*5+i===1" [class.bronze]="scP*5+i===2">{{ scP*5+i+1 }}</span>
-            <span class="row-name">{{ s.plate }}</span>
-            <div class="track"><div class="fill" [style.width.%]="s.score" [style.background]="scoreC(s.score)"></div></div>
-            <b class="row-val" [style.color]="scoreC(s.score)">{{ s.score }}</b>
+            <span class="rank" [class.r1]="scP*5+i===0" [class.r2]="scP*5+i===1" [class.r3]="scP*5+i===2" [class.rx]="scP*5+i>2">{{ scP*5+i+1 }}</span>
+            <span class="plate">{{ s.plate }}</span>
+            <div class="grow"><div class="bar"><i [style.width.%]="s.score" [style.background]="scoreC(s.score)"></i></div></div>
+            <span class="score num" [ngClass]="tintCls(s.score>=80?0:s.score>=60?1:2)">{{ s.score }}</span>
           </div>
-          <div class="pgr" *ngIf="drivingScores.length>5"><button (click)="scP=scP-1" [disabled]="scP===0">‹</button><span>{{ scP+1 }}/{{ Math.ceil(drivingScores.length/5) }}</span><button (click)="scP=scP+1" [disabled]="(scP+1)*5>=drivingScores.length">›</button></div>
         </div>
         <div class="empty" *ngIf="!drivingScores.length"><span>Aucun score</span></div>
       </section>
 
-      <!-- Derniers trajets -->
-      <section class="card c6 reveal" style="--d:9">
-        <div class="card-h"><h3>Derniers trajets</h3></div>
+      <!-- ── Derniers trajets ── -->
+      <section class="card acc-cyan anim" style="--i:11">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="5" r="2.2"/><path d="M8 19h7a4 4 0 0 0 0-8H9a4 4 0 0 1 0-8h6.5"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Activité</div><h2>Derniers trajets</h2></div>
+          <div class="head-right">
+            <div class="pager" *ngIf="recentTrips.length>5">
+              <button type="button" (click)="trP=trP-1" [disabled]="trP===0" aria-label="Précédent"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+              <span class="num">{{ trP+1 }}&thinsp;/&thinsp;{{ Math.ceil(recentTrips.length/5) }}</span>
+              <button type="button" (click)="trP=trP+1" [disabled]="(trP+1)*5>=recentTrips.length" aria-label="Suivant"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+            </div>
+          </div>
+        </div>
         <div class="rows" *ngIf="recentTrips.length">
           <div *ngFor="let t of pTrips" class="row">
-            <svg viewBox="0 0 20 28" width="13" height="19" fill="none" class="trip-ic"><circle cx="10" cy="5" r="3.2" stroke="#10b981" stroke-width="1.6"/><line x1="10" y1="9" x2="10" y2="19" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 2"/><circle cx="10" cy="23" r="3.2" stroke="#ef4444" stroke-width="1.6"/></svg>
-            <div class="row-stack"><span class="row-name">{{ t.plate }}</span><span class="row-sub">{{ t.distance }} km · {{ t.duration }}</span></div>
-            <span class="row-date">{{ t.date }}</span>
+            <span class="plate">{{ t.plate }}</span>
+            <div class="grow"><div class="t1 num">{{ t.distance }}&nbsp;km <small>· {{ t.duration }}</small></div></div>
+            <span class="t2 num nof">{{ t.date }}</span>
           </div>
-          <div class="pgr" *ngIf="recentTrips.length>5"><button (click)="trP=trP-1" [disabled]="trP===0">‹</button><span>{{ trP+1 }}/{{ Math.ceil(recentTrips.length/5) }}</span><button (click)="trP=trP+1" [disabled]="(trP+1)*5>=recentTrips.length">›</button></div>
         </div>
         <div class="empty" *ngIf="!recentTrips.length"><span>Aucun trajet</span></div>
       </section>
 
-      <!-- Conso / véhicule -->
-      <section class="card c6 reveal" style="--d:10">
-        <div class="card-h"><h3>Consommation / véhicule</h3><span class="badge badge-muted">L/100km</span></div>
+      <!-- ── Consommation / véhicule ── -->
+      <section class="card acc-amber anim" style="--i:12">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v14M3.5 20h11"/><path d="M15 9h2.2a1.8 1.8 0 0 1 1.8 1.8V17a1.5 1.5 0 0 0 3 0v-6.4L19.5 8"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Carburant</div><h2>Conso / véhicule</h2></div>
+          <div class="head-right">
+            <span class="chip ghost">L/100&nbsp;km</span>
+            <div class="pager" *ngIf="vehicleFuelStats.length>5">
+              <button type="button" (click)="fuP=fuP-1" [disabled]="fuP===0" aria-label="Précédent"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+              <span class="num">{{ fuP+1 }}&thinsp;/&thinsp;{{ Math.ceil(vehicleFuelStats.length/5) }}</span>
+              <button type="button" (click)="fuP=fuP+1" [disabled]="(fuP+1)*5>=vehicleFuelStats.length" aria-label="Suivant"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+            </div>
+          </div>
+        </div>
         <div class="rows" *ngIf="vehicleFuelStats.length">
           <div *ngFor="let v of pFuel" class="row">
-            <span class="row-name">{{ v.plate }}</span>
-            <div class="track"><div class="fill" [style.width.%]="(v.consumption/maxFuelConsumption)*100" [style.background]="fuelC(v.consumption)"></div></div>
-            <b class="row-val" [style.color]="fuelC(v.consumption)">{{ v.consumption|number:'1.1-1' }}</b>
+            <span class="plate">{{ v.plate }}</span>
+            <div class="grow"><div class="bar"><i [style.width.%]="(v.consumption/maxFuelConsumption)*100" [style.background]="fuelC(v.consumption)"></i></div></div>
+            <span class="score num sm" [ngClass]="tintCls(v.consumption<=6?0:v.consumption<=8?1:2)">{{ v.consumption | number:'1.1-1' }}</span>
           </div>
-          <div class="pgr" *ngIf="vehicleFuelStats.length>5"><button (click)="fuP=fuP-1" [disabled]="fuP===0">‹</button><span>{{ fuP+1 }}/{{ Math.ceil(vehicleFuelStats.length/5) }}</span><button (click)="fuP=fuP+1" [disabled]="(fuP+1)*5>=vehicleFuelStats.length">›</button></div>
         </div>
         <div class="empty" *ngIf="!vehicleFuelStats.length"><span>Aucune donnée</span></div>
       </section>
 
-      <!-- Géozones -->
-      <section class="card c4 reveal" style="--d:11">
-        <div class="card-h"><h3>Géozones</h3></div>
-        <div class="rows tight" *ngIf="geofences.length">
+      <!-- ── Géozones ── -->
+      <section class="card acc-cyan geo anim" style="--i:13">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8 20 7v10l-8 4.2L4 17V7l8-4.2z"/><circle cx="12" cy="12" r="2.6"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Zones</div><h2>Géozones</h2></div>
+          <div class="head-right"><span class="chip" *ngIf="geofences.length">{{ geofences.length }} actives</span></div>
+        </div>
+        <div class="rows" *ngIf="geofences.length">
           <div *ngFor="let g of geofences" class="row">
-            <span class="leg-dot" style="background:var(--primary)"></span>
-            <span class="row-name flex">{{ g.name }}</span>
-            <b class="row-val">{{ g.count }}</b>
+            <span class="gz-ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V8l7-4.5V21M10 21V12l7-3v12M3 21h18"/></svg></span>
+            <div class="grow"><div class="t1">{{ g.name }}</div><div class="t2">passages sur la période</div></div>
+            <span class="cnt num">{{ g.count }}</span>
           </div>
         </div>
         <div class="empty" *ngIf="!geofences.length"><span>Aucune géozone</span></div>
       </section>
       </ng-container>
 
-      <!-- Conducteurs -->
-      <section class="card c8 reveal" style="--d:12">
-        <div class="card-h"><h3>Conducteurs</h3><span class="badge badge-muted">{{ drivers.length }}</span></div>
-        <div class="drv-grid" *ngIf="drivers.length">
-          <div *ngFor="let d of pDrv" class="drv">
-            <div class="drv-av" [class.on]="d.active">{{ d.initials }}</div>
-            <div class="row-stack"><span class="row-name">{{ d.name }}</span><span class="row-sub">{{ d.vehicle||'Non assigné' }}</span></div>
-            <span class="drv-st" [class.on]="d.active">{{ d.active?'Actif':'—' }}</span>
+      <!-- ── Conducteurs ── -->
+      <section class="card span-12 acc-indigo anim" style="--i:14">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.4"/><path d="M2.8 20c.6-3.6 3.1-5.6 6.2-5.6s5.6 2 6.2 5.6"/><circle cx="17.5" cy="9.5" r="2.6"/><path d="M16 14.7c3-.3 5 1.6 5.4 4.3"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Équipe</div><h2>Conducteurs</h2></div>
+          <div class="head-right">
+            <span class="chip">{{ drivers.length }} conducteurs</span>
+            <div class="pager" *ngIf="drivers.length>8">
+              <button type="button" (click)="drP=drP-1" [disabled]="drP===0" aria-label="Précédent"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+              <span class="num">{{ drP+1 }}&thinsp;/&thinsp;{{ Math.ceil(drivers.length/8) }}</span>
+              <button type="button" (click)="drP=drP+1" [disabled]="(drP+1)*8>=drivers.length" aria-label="Suivant"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+            </div>
           </div>
         </div>
-        <div class="pgr" *ngIf="drivers.length>8"><button (click)="drP=drP-1" [disabled]="drP===0">‹</button><span>{{ drP+1 }}/{{ Math.ceil(drivers.length/8) }}</span><button (click)="drP=drP+1" [disabled]="(drP+1)*8>=drivers.length">›</button></div>
+        <div class="drivers" *ngIf="drivers.length">
+          <div *ngFor="let d of pDrv;let i=index" class="driver" [ngClass]="accFor(i)">
+            <span class="avatar">{{ d.initials }}</span>
+            <div class="grow"><div class="t1">{{ d.name }}</div><div class="t2 num">{{ d.vehicle || 'Non assigné' }}</div></div>
+            <span *ngIf="d.active" class="badge-on">Actif</span>
+            <span *ngIf="!d.active" class="badge-off">—</span>
+          </div>
+        </div>
         <div class="empty" *ngIf="!drivers.length"><span>Aucun conducteur</span></div>
       </section>
 
-    </div>
+    </div><!-- /bento -->
   </div>
 </div>
 </app-layout>
   `,
   styles: [`
     /* ══════════════════════════════════════════════════════════
-       CALYPSO COMMAND — clean, theme-aware fleet dashboard.
-       Built entirely on the app's design tokens (global_styles.css)
-       so it follows light / dark mode and matches every other page.
+       CALYPSO COMMAND — masthead carbone éditorial + corps bento.
+       Construit sur les tokens de l'app (global_styles.css) pour
+       suivre les thèmes clair/sombre partout.
     ══════════════════════════════════════════════════════════ */
 
-    :host {
-      --r: 14px;            /* card radius */
-      --gap: 16px;
-      --line: var(--border-color);
-      --tint: color-mix(in srgb, var(--primary) 7%, transparent);
+    :host{
+      /* teintes 600 (texte teinté lisible sur surface claire) */
+      --ok-600:#059669; --warn-600:#d97706; --bad-600:#dc2626;
+      --acc-indigo:#4f46e5;  --acc-indigo-ink:#4338ca;
+      --acc-green:#059669;   --acc-green-ink:#047857;
+      --acc-amber:#d97706;   --acc-amber-ink:#b45309;
+      --acc-red:#dc2626;     --acc-red-ink:#b91c1c;
+      --acc-cyan:#0891b2;    --acc-cyan-ink:#0e7490;
+      --acc-slate:#64748b;   --acc-slate-ink:#475569;
+
+      --track:#eef2f7;
+      --grid-line:#e9eef5;
+      --dot-grain:rgba(100,116,139,.10);
+      --card-shadow:0 1px 2px rgba(15,23,42,.05), 0 10px 28px -14px rgba(15,23,42,.14);
+      --card-shadow-hover:0 2px 4px rgba(15,23,42,.06), 0 18px 40px -16px rgba(15,23,42,.20);
+      --chip-bg:var(--bg-secondary);
+
+      /* masthead carbone — constant dans les deux thèmes (signature) */
+      --mast-bg1:#0d1425; --mast-bg2:#16213a; --mast-glow:rgba(99,102,241,.24);
+      --mast-ink:#f8fafc; --mast-sub:#94a3b8; --mast-hair:rgba(148,163,184,.16);
+      --mast-border:transparent;
+    }
+    :host-context([data-theme="dark"]){
+      --ok-600:#34d399; --warn-600:#fbbf24; --bad-600:#f87171;
+      --acc-indigo:#818cf8;  --acc-indigo-ink:#a5b4fc;
+      --acc-green:#10b981;   --acc-green-ink:#34d399;
+      --acc-amber:#f59e0b;   --acc-amber-ink:#fbbf24;
+      --acc-red:#ef4444;     --acc-red-ink:#f87171;
+      --acc-cyan:#06b6d4;    --acc-cyan-ink:#22d3ee;
+      --acc-slate:#94a3b8;   --acc-slate-ink:#cbd5e1;
+
+      --track:#2b3a52;
+      --grid-line:#2a3a54;
+      --dot-grain:rgba(148,163,184,.07);
+      --card-shadow:0 1px 2px rgba(2,6,23,.5), 0 14px 34px -16px rgba(2,6,23,.7);
+      --card-shadow-hover:0 2px 4px rgba(2,6,23,.5), 0 22px 48px -18px rgba(2,6,23,.85);
+      --chip-bg:rgba(148,163,184,.10);
+
+      --mast-bg1:#111a30; --mast-bg2:#1a2643; --mast-glow:rgba(99,102,241,.3);
+      --mast-border:rgba(148,163,184,.14);
     }
 
-    .dash {
-      flex: 1;
-      min-height: calc(100vh - 42px);
-      background: var(--bg-page);
-      position: relative;
-      color: var(--text-primary);
-      font-family: var(--font-family);
+    .dash{
+      flex:1; min-height:calc(100vh - 42px);
+      background:var(--bg-page); color:var(--text-primary);
+      font-family:var(--font-family); font-size:13px; line-height:1.45;
+      font-variant-numeric:tabular-nums; position:relative;
+    }
+    .dash::before{ /* trame de points très subtile */
+      content:""; position:absolute; inset:0; pointer-events:none;
+      background-image:radial-gradient(circle at 1px 1px, var(--dot-grain) 1px, transparent 1.5px);
+      background-size:22px 22px;
+    }
+    .shell{max-width:1600px;margin:0 auto;padding:20px 24px 56px;position:relative}
+    svg{display:block}
+    button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+    .num{font-variant-numeric:tabular-nums}
+
+    @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+    .anim{opacity:0;animation:rise .55s cubic-bezier(.22,1,.36,1) forwards;animation-delay:calc(var(--i,0)*45ms)}
+    @media (prefers-reduced-motion:reduce){
+      *,*::before,*::after{animation-duration:.001s!important;animation-delay:0s!important;transition:none!important}
+      .anim{opacity:1}
     }
 
-    /* Soft brand glow behind the header — subtle, theme-aware, no neon. */
-    .dash-bg {
-      position: absolute; inset: 0 0 auto 0; height: 320px; z-index: 0; pointer-events: none;
+    /* ════ 1 · MASTHEAD ════ */
+    .mast{
+      position:relative;overflow:hidden;
+      border-radius:18px;border:1px solid var(--mast-border);
+      padding:22px 28px 22px;margin-bottom:8px;
+      color:var(--mast-ink);
       background:
-        radial-gradient(60% 100% at 18% 0%, color-mix(in srgb, var(--primary) 12%, transparent) 0%, transparent 70%),
-        radial-gradient(50% 100% at 92% 0%, color-mix(in srgb, var(--info) 9%, transparent) 0%, transparent 72%);
-      opacity: .8;
+        radial-gradient(1100px 380px at 88% -30%, var(--mast-glow), transparent 62%),
+        linear-gradient(132deg,var(--mast-bg1) 0%, var(--mast-bg2) 58%, var(--mast-bg1) 100%);
+      box-shadow:0 24px 50px -24px rgba(2,6,23,.5);
     }
-
-    .dash-inner {
-      position: relative; z-index: 1;
-      max-width: 1600px; margin: 0 auto;
-      padding: 22px 24px 56px;
+    .mast::before{ /* colonnes fantômes façon gabarit éditorial */
+      content:"";position:absolute;inset:0;pointer-events:none;
+      background:repeating-linear-gradient(90deg, rgba(148,163,184,.05) 0 1px, transparent 1px 132px);
+      mask:linear-gradient(180deg,transparent 4%,#000 30%,#000 78%,transparent 100%);
     }
+    .mast>*{position:relative}
 
-    /* Staggered entrance — degrades gracefully when body.no-animations
-       zeroes the duration (fill:both lands on the final, visible state). */
-    .reveal { animation: rise .55s cubic-bezier(.16,1,.3,1) both; animation-delay: calc(var(--d,0) * 55ms + 60ms); }
-    @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+    .mast-top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+    .brand{display:flex;align-items:center;gap:9px;font-size:10.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--mast-sub)}
+    .brand b{color:#e2e8f0;font-weight:700}
+    .live{display:inline-flex;align-items:center;gap:7px;padding:4px 11px 4px 8px;border-radius:999px;
+      background:rgba(16,185,129,.12);border:1px solid rgba(52,211,153,.35);
+      color:#6ee7b7;font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+    .live.off{background:rgba(239,68,68,.12);border-color:rgba(248,113,113,.35);color:#fca5a5}
+    .live-dot{width:7px;height:7px;border-radius:50%;background:#34d399;position:relative}
+    .live.off .live-dot{background:#f87171}
+    .live-dot::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:1.5px solid currentColor;opacity:.7;animation:pulse 2s ease-out infinite}
+    @keyframes pulse{0%{transform:scale(.5);opacity:.8}80%,100%{transform:scale(1.5);opacity:0}}
+    .mast-date{font-size:12px;color:var(--mast-sub);letter-spacing:.02em;text-transform:capitalize}
 
-    /* ════ HERO — bandeau sombre premium (même langage que les modals validés) ════ */
-    .hero {
-      position: relative; overflow: hidden;
-      border-radius: 18px;
-      background: linear-gradient(150deg, #0f172a, #1e293b 58%, #27354d);
-      border: 1px solid rgba(255,255,255,.08);
-      padding: 22px 22px 20px;
-      margin-bottom: 22px;
-      box-shadow: 0 20px 48px -20px rgba(15,23,42,.5);
+    .mast-title{display:flex;align-items:baseline;justify-content:space-between;gap:20px;flex-wrap:wrap;margin:12px 0 16px}
+    .mast-title h1{margin:0;font-size:clamp(28px,3.2vw,42px);font-weight:800;letter-spacing:-.035em;line-height:1.02;color:var(--mast-ink)}
+    .mast-title .meta{display:flex;gap:22px;font-size:12px;color:var(--mast-sub);white-space:nowrap;flex-wrap:wrap}
+    .mast-title .meta b{color:#e2e8f0;font-weight:700}
+
+    /* ── LA barre de filtre ── */
+    .toolbar{
+      display:flex;align-items:center;gap:12px 20px;flex-wrap:wrap;
+      padding:12px 0;border-top:1px solid var(--mast-hair);border-bottom:1px solid var(--mast-hair);
     }
-    .hero::before {
-      content: ''; position: absolute; inset: 0; pointer-events: none;
-      background:
-        radial-gradient(42% 90% at 88% -10%, rgba(99,102,241,.28) 0%, transparent 70%),
-        radial-gradient(34% 80% at 8% 110%, rgba(14,165,233,.14) 0%, transparent 70%);
+    .pills{display:flex;gap:4px;flex-wrap:wrap}
+    .pill{
+      border:1px solid transparent;background:none;border-radius:999px;
+      padding:7px 14px;font-size:12px;font-weight:550;color:rgba(203,213,225,.72);
+      transition:background .2s,color .2s,border-color .2s;white-space:nowrap;
     }
-    .hero > * { position: relative; }
-    :host-context([data-theme="dark"]) .hero { border-color: rgba(255,255,255,.1); }
-
-    /* ════ HEADER ════ */
-    .page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 18px; flex-wrap: wrap; margin-bottom: 20px; }
-    .ph-eyebrow { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: rgba(203,213,225,.85); }
-    .ph-company { color: #cbd5e1; }
-    .ph-sep { opacity: .5; }
-    .live { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 100px;
-      background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); font-size: 11px; font-weight: 700; letter-spacing: .2px; }
-    .live.on { background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); }
-    .live-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-    .live.on .live-dot { box-shadow: 0 0 0 0 currentColor; animation: ping 2s ease-out infinite; }
-    @keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 60%, transparent); } 100% { box-shadow: 0 0 0 7px transparent; } }
-    .ph-title { margin: 8px 0 2px; font-size: 27px; font-weight: 800; letter-spacing: -.6px; color: #ffffff; }
-    .ph-date { margin: 0; font-size: 13px; color: rgba(148,163,184,.95); text-transform: capitalize; }
-    .ph-right { display: flex; align-items: center; }
-
-    /* Re-skin the shared date filter — verre sur le héro sombre. */
-    ::ng-deep .dash .filter-bar {
-      background: rgba(255,255,255,.06) !important; border: 1px solid rgba(255,255,255,.13) !important;
-      border-radius: 10px !important; padding: 6px 8px !important; box-shadow: none; gap: 12px !important;
+    .pill:hover{background:rgba(148,163,184,.12);color:#f1f5f9}
+    .pill.active{
+      background:rgba(99,102,241,.22);border-color:rgba(129,140,248,.55);color:#fff;font-weight:650;
+      box-shadow:inset 0 0 0 1px rgba(129,140,248,.15), 0 4px 14px -6px rgba(99,102,241,.6);
     }
-    ::ng-deep .dash .period-buttons button {
-      background: transparent !important; border: 1px solid rgba(255,255,255,.14) !important; border-right: none !important;
-      color: #cbd5e1 !important; font-size: 12px !important; font-weight: 600 !important; padding: 5px 11px !important;
+    .pill.active::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:#a5b4fc;margin-right:7px;vertical-align:1.5px}
+    .pill.custom:not(.active){color:rgba(148,163,184,.6)}
+
+    .tb-sep{width:1px;height:26px;background:var(--mast-hair)}
+    .range{display:flex;align-items:flex-end;gap:10px;margin-left:auto;flex-wrap:wrap}
+    .rfield{display:flex;flex-direction:column;gap:3px}
+    .rfield label{font-size:9.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--mast-sub)}
+    /* Inputs date : posés sur la bande carbone → color-scheme:dark
+       (icône calendrier native claire, jamais de boîte blanche flottante). */
+    .range input[type="date"]{
+      color-scheme:dark;
+      appearance:none;-webkit-appearance:none;
+      font:inherit;font-size:12.5px;font-variant-numeric:tabular-nums;
+      color:#e2e8f0;background:rgba(148,163,184,.09);
+      border:none;border-bottom:1px solid rgba(148,163,184,.4);
+      border-radius:8px 8px 2px 2px;padding:7px 10px 6px;min-width:132px;
+      transition:border-color .2s,background .2s;
     }
-    ::ng-deep .dash .period-buttons button:last-child { border-right: 1px solid rgba(255,255,255,.14) !important; }
-    ::ng-deep .dash .period-buttons button.active { background: var(--primary) !important; border-color: var(--primary) !important; color: #fff !important; }
-    ::ng-deep .dash .period-buttons button:hover:not(.active) { background: rgba(255,255,255,.09) !important; }
-    ::ng-deep .dash .date-label { color: rgba(148,163,184,.9) !important; }
-    ::ng-deep .dash .date-input { color: #e2e8f0 !important; text-decoration: none !important; }
-    ::ng-deep .dash .btn-apply { background: var(--primary) !important; border-radius: 7px !important; }
-    ::ng-deep .dash .btn-apply:hover { background: var(--primary-dark) !important; }
-
-    /* ════ KPI STRIP — tuiles verre sur le héro ════ */
-    .kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
-    .kpi {
-      display: flex; align-items: center; gap: 13px; padding: 15px 16px;
-      background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.11); border-radius: 13px;
-      position: relative; overflow: hidden;
-      transition: transform .25s cubic-bezier(.34,1.56,.64,1), background .25s, border-color .25s;
+    .range input[type="date"]:hover{background:rgba(148,163,184,.14)}
+    .range input[type="date"]:focus{outline:none;border-bottom-color:#818cf8;background:rgba(99,102,241,.14)}
+    .range input[type="date"]::-webkit-calendar-picker-indicator{opacity:.75;cursor:pointer}
+    .apply{
+      border:none;border-radius:8px;padding:8px 16px;
+      background:var(--primary-light);color:#fff;font-size:12px;font-weight:650;letter-spacing:.01em;
+      box-shadow:0 6px 16px -6px rgba(99,102,241,.65);
+      transition:transform .15s,box-shadow .2s,background .2s;
     }
-    .kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--c); opacity: .95; }
-    .kpi:hover { transform: translateY(-2px); background: rgba(255,255,255,.09); border-color: color-mix(in srgb, var(--c) 45%, rgba(255,255,255,.14)); }
-    .kpi-ic { width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-      background: color-mix(in srgb, var(--c) 24%, transparent); color: color-mix(in srgb, var(--c) 60%, #ffffff); }
-    .kpi-ic svg { width: 21px; height: 21px; }
-    .kpi-meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-    .kpi-label { font-size: 10.5px; font-weight: 600; color: rgba(148,163,184,1); text-transform: uppercase; letter-spacing: .5px; }
-    .kpi-num { font-size: 26px; font-weight: 800; line-height: 1; color: #ffffff; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
-    .kpi-num i { font-size: 13px; font-weight: 600; font-style: normal; color: rgba(148,163,184,1); margin-left: 3px; }
-    .kpi-sub { font-size: 11px; font-weight: 700; color: rgba(148,163,184,1); font-variant-numeric: tabular-nums; margin-top: 2px; display: flex; align-items: center; gap: 4px; }
-    .kpi-sub small { font-weight: 500; opacity: .75; }
-    .kpi-sub.good { color: #34d399; }
-    .kpi-sub.bad { color: #f87171; }
-    .kpi-sub.inline { margin: 0; }
-    .kpi-alert::before { animation: alertbar 1.6s ease-in-out infinite; }
-    @keyframes alertbar { 0%,100% { opacity: .9; } 50% { opacity: .35; } }
+    .apply:hover{background:#4f46e5;transform:translateY(-1px);box-shadow:0 10px 20px -6px rgba(99,102,241,.7)}
+    .apply:active{transform:none}
 
-    /* ════ GRID + CARDS ════ */
-    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--gap); }
-    .c4 { grid-column: span 4; } .c6 { grid-column: span 6; } .c8 { grid-column: span 8; }
-
-    .card {
-      background: var(--bg-card); border: 1px solid var(--line); border-radius: 16px;
-      padding: 18px 20px 20px; box-shadow: var(--shadow-sm);
-      transition: box-shadow .25s, border-color .25s; min-width: 0;
+    /* ── rangée KPI (filets) ── */
+    .kpis{display:grid;grid-template-columns:repeat(6,1fr);padding-top:16px}
+    .kpis.k2{grid-template-columns:repeat(2,1fr)}
+    .kpi{padding:2px 22px 4px;border-left:1px solid var(--mast-hair);min-width:0}
+    .kpi:first-child{border-left:none;padding-left:2px}
+    .kpi-l{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--mast-sub);white-space:nowrap}
+    .kpi-l .dot{width:6px;height:6px;border-radius:50%;flex:none}
+    .kpi-v{
+      display:flex;align-items:baseline;gap:5px;margin-top:6px;white-space:nowrap;
+      font-size:clamp(21px,1.7vw,29px);font-weight:800;letter-spacing:-.03em;line-height:1.05;color:var(--mast-ink);
+      font-variant-numeric:tabular-nums;
     }
-    .card:hover { box-shadow: var(--shadow-md); }
-    .card-h { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-    .card-h h3 { margin: 0; flex: 1; font-size: 11.5px; font-weight: 700; color: var(--text-muted); letter-spacing: .06em; text-transform: uppercase; }
+    .kpi-u{font-size:.48em;font-weight:650;letter-spacing:.06em;color:var(--mast-sub)}
+    .kpi-s{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11px;color:var(--mast-sub);white-space:nowrap}
+    .kchip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:700}
+    .kchip svg{flex:none}
+    .kchip-danger{background:rgba(239,68,68,.16);color:#fca5a5}
+    .kchip-ok{background:rgba(16,185,129,.14);color:#6ee7b7}
 
-    /* ── Fleet mini-map ── */
-    .gc-map .card-h { flex-wrap: wrap; }
-    .fleet-map { height: 340px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--bg-secondary); }
-    :host-context([data-theme="dark"]) .fleet-map { background: #0b1220; }
-    :host-context([data-theme="dark"]) .fleet-map ::ng-deep .leaflet-tile { filter: invert(1) hue-rotate(180deg) brightness(.95) contrast(.9); }
-    .map-legend { display: flex; gap: 12px; flex-wrap: wrap; }
-    .map-legend span { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 500; color: var(--text-muted); }
-    .map-legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+    /* ════ BENTO ════ */
+    .bento{display:grid;grid-template-columns:repeat(12,1fr);gap:14px;margin-top:14px}
+    .card{
+      grid-column:span 4;
+      background:var(--bg-card);
+      border:1px solid var(--border-color);
+      border-radius:20px;
+      box-shadow:var(--card-shadow);
+      padding:18px 20px;
+      position:relative;overflow:hidden;min-width:0;
+      transition:transform .22s cubic-bezier(.22,1,.36,1), box-shadow .22s;
+      display:flex;flex-direction:column;
+    }
+    .card:hover{transform:translateY(-2px);box-shadow:var(--card-shadow-hover)}
+    .card::before{ /* rail d'accent */
+      content:"";position:absolute;left:0;top:20px;width:3px;height:26px;
+      border-radius:0 3px 3px 0;background:var(--accent,var(--primary));
+    }
+    .span-6{grid-column:span 6}.span-8{grid-column:span 8}.span-12{grid-column:span 12}
 
-    .badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .badge-primary { color: var(--primary); background: var(--tint); }
-    .badge-amber { color: #b45309; background: color-mix(in srgb, var(--warning) 16%, transparent); }
-    .badge-red { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
-    .badge-muted { color: var(--text-muted); background: color-mix(in srgb, var(--secondary) 12%, transparent); font-weight: 600; }
+    .acc-indigo{--accent:var(--acc-indigo);--accent-ink:var(--acc-indigo-ink)}
+    .acc-green {--accent:var(--acc-green); --accent-ink:var(--acc-green-ink)}
+    .acc-amber {--accent:var(--acc-amber); --accent-ink:var(--acc-amber-ink)}
+    .acc-red   {--accent:var(--acc-red);   --accent-ink:var(--acc-red-ink)}
+    .acc-cyan  {--accent:var(--acc-cyan);  --accent-ink:var(--acc-cyan-ink)}
+    .acc-slate {--accent:var(--acc-slate); --accent-ink:var(--acc-slate-ink)}
 
-    /* shared bits */
-    .track { flex: 1; height: 7px; border-radius: 100px; background: color-mix(in srgb, var(--secondary) 14%, transparent); overflow: hidden; }
-    .fill { height: 100%; border-radius: 100px; background: var(--primary); transition: width .9s cubic-bezier(.16,1,.3,1); }
-    .fill.primary { background: var(--primary); }
-    .leg-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-    .leg-dot.sm { width: 8px; height: 8px; }
-    .rows { display: flex; flex-direction: column; gap: 9px; }
-    .rows.tight { gap: 2px; }
+    .card-head{display:flex;align-items:center;gap:11px;margin-bottom:14px}
+    .icon-chip{
+      width:32px;height:32px;border-radius:10px;flex:none;
+      display:grid;place-items:center;
+      background:color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+    .icon-chip svg{stroke:var(--accent-ink);width:16px;height:16px}
+    .head-txt{min-width:0}
+    .eyebrow{font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--accent-ink);line-height:1.2}
+    .card-head h2{margin:0;font-size:14px;font-weight:700;letter-spacing:-.015em;color:var(--text-primary);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .head-right{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
 
-    .row { display: flex; align-items: center; gap: 11px; padding: 6px 8px; border-radius: 9px; transition: background .15s; }
-    .row:hover { background: var(--tint); }
-    .row-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); min-width: 76px; }
-    .row-name.flex { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .row-val { font-size: 12.5px; font-weight: 700; color: var(--text-primary); min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
-    .row-stack { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-    .row-sub { font-size: 11px; color: var(--text-muted); }
-    .row-date { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+    .chip{
+      display:inline-flex;align-items:center;gap:5px;
+      font-size:11px;font-weight:700;padding:3.5px 9px;border-radius:999px;
+      background:var(--chip-bg);border:1px solid var(--border-color);
+      color:var(--text-secondary);white-space:nowrap;
+    }
+    .chip.ghost{border-style:dashed;color:var(--text-muted);font-weight:600}
+    .chip.down{color:var(--bad-600);background:color-mix(in srgb,var(--acc-red) 10%,transparent);border-color:color-mix(in srgb,var(--acc-red) 26%,transparent)}
+    .chip-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+    .delta{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700}
+    .delta.bad{color:var(--bad-600)}
+    .delta.good{color:var(--ok-600)}
+    .delta svg{width:9px;height:9px}
 
-    /* ── Donut ── */
-    .fleet { display: flex; gap: 18px; align-items: center; }
-    .donut { position: relative; width: 138px; height: 138px; flex-shrink: 0; }
-    .donut svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-    .donut-track { stroke: color-mix(in srgb, var(--secondary) 16%, transparent); }
-    .donut-seg { transition: stroke-width .2s ease, stroke-dasharray .7s cubic-bezier(.16,1,.3,1); cursor: pointer; }
-    .donut-c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    .donut-n { font-size: 30px; font-weight: 800; color: var(--text-primary); letter-spacing: -1px; line-height: 1; font-variant-numeric: tabular-nums; }
-    .donut-l { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
-    .legend { flex: 1; display: flex; flex-direction: column; gap: 1px; }
-    .leg-row { display: flex; align-items: center; gap: 9px; padding: 5px 8px; border-radius: 8px; transition: background .15s; }
-    .leg-row.hl, .leg-row:hover { background: var(--tint); }
-    .leg-name { flex: 1; font-size: 12px; font-weight: 500; color: var(--text-secondary); }
-    .leg-val { font-size: 13px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+    .pager{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--text-muted)}
+    .pager button{
+      width:22px;height:22px;border-radius:7px;display:grid;place-items:center;
+      border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-secondary);
+      transition:background .15s;
+    }
+    .pager button:hover:not(:disabled){background:var(--bg-secondary)}
+    .pager button:disabled{opacity:.35;cursor:default}
+    .pager svg{width:11px;height:11px;stroke:currentColor}
+    .pgr-foot{display:flex;justify-content:flex-end;margin-top:10px}
 
-    /* ── Chart ── */
-    .chart { position: relative; padding-top: 4px; }
-    .chart-svg { width: 100%; height: 150px; display: block; overflow: visible; }
-    .chart-grid { stroke: var(--line); stroke-width: 1; }
-    .chart-stop { stop-color: var(--primary); }
-    .chart-pt { fill: var(--primary); }
-    .chart-line { stroke: var(--primary); stroke-dasharray: 1400; stroke-dashoffset: 1400; animation: draw 1.4s ease forwards .2s; }
-    .chart-area { opacity: 0; animation: fade .6s ease forwards .7s; }
-    @keyframes draw { to { stroke-dashoffset: 0; } }
-    @keyframes fade { to { opacity: 1; } }
-    .chart-pt { transition: r .15s ease; }
-    .chart-cursor { stroke: var(--primary); stroke-width: 1; opacity: .35; stroke-dasharray: 3 3; }
-    .chart-x { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-muted); margin-top: 9px; font-variant-numeric: tabular-nums; }
-    .chart-tip { position: absolute; top: -2px; transform: translateX(-50%); background: var(--text-primary); color: var(--bg-card);
-      border-radius: 9px; padding: 6px 11px; box-shadow: var(--shadow-lg); pointer-events: none; z-index: 5;
-      display: flex; flex-direction: column; align-items: center; gap: 1px; }
-    .chart-tip b { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
-    .chart-tip span { font-size: 10px; opacity: .7; }
+    /* ── carte Leaflet ── */
+    .map-wrap{position:relative;border-radius:14px;overflow:hidden;flex:1;border:1px solid var(--border-color)}
+    .fleet-map{height:360px;background:var(--bg-secondary)}
+    :host-context([data-theme="dark"]) .fleet-map{background:#0b1220}
+    :host-context([data-theme="dark"]) .fleet-map ::ng-deep .leaflet-tile{filter:invert(1) hue-rotate(180deg) brightness(.95) contrast(.9)}
+    .map-legend{
+      position:absolute;left:12px;bottom:12px;z-index:1000;
+      display:flex;gap:4px;flex-wrap:wrap;
+      background:color-mix(in srgb, var(--bg-card) 82%, transparent);
+      backdrop-filter:blur(8px);
+      border:1px solid var(--border-color);border-radius:11px;padding:6px 8px;
+      pointer-events:none;
+    }
+    .map-legend span{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;color:var(--text-secondary);padding:2px 6px}
+    .map-legend i{width:8px;height:8px;border-radius:50%;flex:none}
 
-    /* ── Health gauge ── */
-    .health { display: flex; gap: 22px; align-items: center; }
-    .gauge { position: relative; width: 130px; height: 130px; flex-shrink: 0; }
-    .gauge svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-    .gauge-ring { transition: stroke-dashoffset 1.2s cubic-bezier(.16,1,.3,1); }
-    .gauge-c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    .gauge-n { font-size: 28px; font-weight: 800; letter-spacing: -1px; line-height: 1; font-variant-numeric: tabular-nums; }
-    .gauge-n i { font-size: 15px; font-weight: 600; font-style: normal; }
-    .gauge-l { font-size: 10.5px; color: var(--text-muted); margin-top: 3px; }
-    .hbars { flex: 1; display: flex; flex-direction: column; gap: 12px; }
-    .hbar { display: flex; flex-direction: column; gap: 6px; }
-    .hbar-top { display: flex; justify-content: space-between; font-size: 12px; }
-    .hbar-top span { color: var(--text-secondary); font-weight: 500; }
-    .hbar-top b { font-weight: 700; font-variant-numeric: tabular-nums; }
+    /* ── rangées génériques ── */
+    .rows{display:flex;flex-direction:column;flex:1}
+    .row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border-color);min-width:0}
+    .rows .row:last-child{border-bottom:0;padding-bottom:2px}
+    .rows .row:first-child{padding-top:2px}
+    .row.is-new{animation:flash .8s ease}
+    @keyframes flash{0%{background:color-mix(in srgb,var(--primary) 8%,transparent)}100%{background:transparent}}
+    .plate{
+      font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.02em;
+      background:var(--chip-bg);border:1px solid var(--border-color);
+      border-radius:7px;padding:2.5px 7px;color:var(--text-secondary);white-space:nowrap;flex:none;
+    }
+    .row .grow{flex:1;min-width:0}
+    .row .t1{font-size:12px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .row .t1 small{color:var(--text-muted);font-weight:600}
+    .row .t2{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+    .row .t2.nof{flex:none;overflow:visible}
+    .row .val{font-size:12.5px;font-weight:700;color:var(--text-primary);white-space:nowrap;flex:none}
+    .row .val small{font-weight:600;color:var(--text-muted);font-size:10.5px}
 
-    /* ── Expenses ── */
-    .exp { display: flex; flex-direction: column; gap: 7px; }
-    .exp-top { display: flex; align-items: center; gap: 9px; font-size: 12.5px; }
-    .exp-name { flex: 1; color: var(--text-secondary); font-weight: 500; }
-    .exp-top b { font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+    .bar{height:7px;border-radius:99px;background:var(--track);overflow:hidden;position:relative}
+    .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:99px;transition:width .9s cubic-bezier(.16,1,.3,1)}
 
-    /* ── Alerts ── */
-    .alert { display: flex; gap: 11px; padding: 9px 8px; border-radius: 9px; transition: background .15s; }
-    .alert:hover { background: var(--tint); }
-    .alert.is-new { animation: flash .8s ease; }
-    @keyframes flash { 0% { background: var(--tint); } 100% { background: transparent; } }
-    .alert-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; background: var(--text-muted); }
-    .alert-dot.a-warn { background: var(--warning); } .alert-dot.a-danger { background: var(--danger); } .alert-dot.a-info { background: var(--info); }
-    .alert-body { min-width: 0; }
-    .alert-msg { display: block; font-size: 12.5px; font-weight: 500; color: var(--text-primary); line-height: 1.4; }
-    .alert-time { display: block; font-size: 10.5px; color: var(--text-muted); margin-top: 1px; }
+    .due{font-size:11px;font-weight:700;border-radius:999px;padding:3px 9px;white-space:nowrap;flex:none}
+    .due.red{color:var(--bad-600);background:color-mix(in srgb,var(--acc-red) 11%,transparent)}
+    .due.amber{color:var(--warn-600);background:color-mix(in srgb,var(--acc-amber) 12%,transparent)}
+    .due.green{color:var(--ok-600);background:color-mix(in srgb,var(--acc-green) 11%,transparent)}
 
-    /* ── Rank badges ── */
-    .rank { width: 22px; height: 22px; border-radius: 7px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 700; color: var(--text-muted); background: color-mix(in srgb, var(--secondary) 12%, transparent); font-variant-numeric: tabular-nums; }
-    .rank.gold { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #fff; }
-    .rank.silver { background: linear-gradient(135deg, #cbd5e1, #94a3b8); color: #fff; }
-    .rank.bronze { background: linear-gradient(135deg, #d6a06a, #b45309); color: #fff; }
+    .al-ic{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;flex:none}
+    .al-ic svg{width:14px;height:14px}
+    .al-ic.warn{background:color-mix(in srgb,var(--acc-amber) 13%,transparent)}.al-ic.warn svg{stroke:var(--acc-amber-ink)}
+    .al-ic.dang{background:color-mix(in srgb,var(--acc-red) 12%,transparent)}.al-ic.dang svg{stroke:var(--acc-red-ink)}
+    .al-ic.info{background:color-mix(in srgb,var(--acc-cyan) 12%,transparent)}.al-ic.info svg{stroke:var(--acc-cyan-ink)}
 
-    /* ── Trips ── */
-    .trip-ic { flex-shrink: 0; color: var(--text-muted); }
+    .rank{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;flex:none;font-size:11px;font-weight:800;color:#fff}
+    .rank.r1{background:linear-gradient(160deg,#fbbf24,#d97706);box-shadow:0 2px 6px rgba(217,119,6,.4)}
+    .rank.r2{background:linear-gradient(160deg,#cbd5e1,#94a3b8);box-shadow:0 2px 6px rgba(100,116,139,.35)}
+    .rank.r3{background:linear-gradient(160deg,#d6a06a,#b45309);box-shadow:0 2px 6px rgba(180,83,9,.35)}
+    .rank.rx{background:var(--chip-bg);color:var(--text-muted);border:1px solid var(--border-color);font-weight:700}
+    .score{font-size:14px;font-weight:800;letter-spacing:-.02em;flex:none}
+    .score.sm{font-size:13px}
+    .tint-ok{color:var(--ok-600)}.tint-warn{color:var(--warn-600)}.tint-bad{color:var(--bad-600)}
 
-    /* ── Drivers ── */
-    .drv-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 18px; }
-    .drv { display: flex; align-items: center; gap: 11px; padding: 7px 8px; border-radius: 9px; transition: background .15s; }
-    .drv:hover { background: var(--tint); }
-    .drv-av { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 700; background: var(--tint); color: var(--primary); border: 2px solid transparent; }
-    .drv-av.on { border-color: var(--success); }
-    .drv-st { font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 100px; margin-left: auto;
-      color: var(--text-muted); background: color-mix(in srgb, var(--secondary) 12%, transparent); }
-    .drv-st.on { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+    .drivers{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    .driver{
+      display:flex;align-items:center;gap:10px;min-width:0;
+      border:1px solid var(--border-color);border-radius:13px;
+      background:var(--bg-secondary);padding:10px 12px;
+      transition:transform .18s, box-shadow .18s;
+    }
+    .driver:hover{transform:translateY(-1px);box-shadow:var(--card-shadow)}
+    .driver .grow{flex:1;min-width:0}
+    .avatar{
+      width:34px;height:34px;border-radius:50%;flex:none;display:grid;place-items:center;
+      font-size:11.5px;font-weight:800;letter-spacing:.02em;
+      color:var(--accent-ink);
+      background:color-mix(in srgb, var(--accent) 14%, transparent);
+    }
+    .badge-on{font-size:10px;font-weight:700;color:var(--ok-600);background:color-mix(in srgb,var(--acc-green) 11%,transparent);border-radius:999px;padding:2.5px 8px;white-space:nowrap;flex:none}
+    .badge-off{font-size:10px;font-weight:700;color:var(--text-muted);background:var(--chip-bg);border:1px solid var(--border-color);border-radius:999px;padding:2px 8px;white-space:nowrap;flex:none}
 
-    /* ── Pagination ── */
-    .pgr { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
-    .pgr button { width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-card); color: var(--text-secondary);
-      font-size: 16px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .2s; }
-    .pgr button:hover:not(:disabled) { background: var(--primary); color: #fff; border-color: var(--primary); }
-    .pgr button:disabled { opacity: .35; cursor: default; }
-    .pgr span { font-size: 11px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    /* ── donut + jauge ── */
+    .donut-flex,.gauge-flex{display:flex;align-items:center;gap:22px;flex:1}
+    .donut,.gauge{position:relative;flex:none}
+    .donut{width:150px;height:150px}
+    .gauge{width:140px;height:140px}
+    .donut svg,.gauge svg{width:100%;height:100%}
+    .donut svg{transform:rotate(-90deg)}
+    .donut-track{stroke:var(--track)}
+    .donut-seg{transition:stroke-width .2s ease, stroke-dasharray .7s cubic-bezier(.16,1,.3,1);cursor:pointer}
+    .donut-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+    .donut-n{font-size:29px;font-weight:800;color:var(--text-primary);letter-spacing:-.04em;line-height:1;font-variant-numeric:tabular-nums}
+    .gauge-n{font-size:26px;font-weight:800;color:var(--text-primary);letter-spacing:-.04em;line-height:1;font-variant-numeric:tabular-nums}
+    .donut-l{font-size:9.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.14em;margin-top:4px}
+    .gauge-ring{transition:stroke-dashoffset 1.2s cubic-bezier(.16,1,.3,1)}
+    .legend{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
+    .legend .lg{display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 8px;border-radius:8px;transition:background .15s}
+    .legend .lg.hl,.legend .lg:hover{background:color-mix(in srgb,var(--primary) 7%,transparent)}
+    .legend .lg i{width:9px;height:9px;border-radius:3px;flex:none}
+    .legend .lg .lbl{flex:1;color:var(--text-secondary);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .legend .lg b{font-weight:800;font-size:13px;color:var(--text-primary);padding-left:12px}
 
-    /* ── Empty ── */
-    .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 30px 16px; color: var(--text-muted); }
-    .empty svg { width: 26px; height: 26px; opacity: .6; }
-    .empty span { font-size: 12px; font-weight: 500; }
+    .hbars{flex:1;display:flex;flex-direction:column;gap:13px;min-width:0}
+    .hbar .hb-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;gap:8px}
+    .hbar .hb-top span{font-size:11.5px;font-weight:600;color:var(--text-secondary);white-space:nowrap}
+    .hbar .hb-top b{font-size:12.5px;font-weight:800;color:var(--text-primary)}
+
+    /* ── graphique carburant ── */
+    .chart-wrap{flex:1;min-height:0;position:relative}
+    .chart-wrap svg{width:100%;height:auto;overflow:visible}
+    .ax{font-size:10px;font-weight:600;fill:var(--text-muted)}
+    .gridline{stroke:var(--grid-line);stroke-width:1}
+    .chart-stop{stop-color:var(--primary)}
+    .chart-line{stroke:var(--primary)}
+    .chart-area{opacity:0;animation:fadeIn .6s ease forwards .5s}
+    @keyframes fadeIn{to{opacity:1}}
+    .chart-pt.halo{fill:var(--primary);opacity:.14}
+    .chart-pt.ring{fill:var(--primary);stroke:var(--bg-card);stroke-width:2}
+    .chart-cursor{stroke:var(--border-color);stroke-width:1;stroke-dasharray:3 4}
+    .chart-tip{
+      position:absolute;top:-4px;transform:translateX(-50%);
+      background:var(--bg-card);border:1px solid var(--border-color);
+      border-radius:9px;padding:5px 11px;box-shadow:var(--card-shadow-hover);pointer-events:none;z-index:5;
+      display:flex;flex-direction:column;align-items:center;gap:1px;
+    }
+    .chart-tip span{font-size:10px;font-weight:700;color:var(--text-muted);letter-spacing:.08em}
+    .chart-tip b{font-size:13px;font-weight:800;color:var(--text-primary);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+
+    /* ── dépenses / types ── */
+    .spend .lblc{display:flex;align-items:center;gap:8px;width:96px;flex:none}
+    .spend .lblc i{width:9px;height:9px;border-radius:3px;flex:none}
+    .spend .lblc span{font-size:11.5px;font-weight:600;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .spend .bar{flex:1}
+    .spend .val{min-width:86px;text-align:right}
+
+    /* ── géozones ── */
+    .geo .gz-ic{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;background:color-mix(in srgb,var(--acc-cyan) 11%,transparent);flex:none}
+    .geo .gz-ic svg{width:15px;height:15px;stroke:var(--acc-cyan-ink)}
+    .geo .cnt{font-size:16px;font-weight:800;letter-spacing:-.02em;flex:none}
+
+    /* ── vide ── */
+    .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:30px 16px;color:var(--text-muted);flex:1}
+    .empty svg{width:26px;height:26px;opacity:.6}
+    .empty span{font-size:12px;font-weight:500}
 
     /* ════ RESPONSIVE ════ */
-    @media (max-width: 1280px) {
-      .c8 { grid-column: span 12; } .c6 { grid-column: span 6; } .c4 { grid-column: span 4; }
+    @media (max-width:1280px){
+      .shell{padding:16px 16px 48px}
+      .span-8{grid-column:span 12}
+      .card{grid-column:span 6}
+      .span-6{grid-column:span 6}
+      .span-12{grid-column:span 12}
+      .kpis{grid-template-columns:repeat(3,1fr);row-gap:0}
+      .kpi{padding:14px 22px}
+      .kpi:nth-child(3n+1){border-left:none;padding-left:2px}
+      .kpi:nth-child(-n+3){padding-top:2px}
+      .kpi:nth-child(n+4){border-top:1px solid var(--mast-hair)}
+      .drivers{grid-template-columns:repeat(2,1fr)}
     }
-    @media (max-width: 1024px) {
-      .kpis { grid-template-columns: repeat(3, 1fr); }
-      .c4, .c6, .c8 { grid-column: span 6; }
+    @media (max-width:1024px){
+      .card,.span-6{grid-column:span 6}
     }
-    @media (max-width: 760px) {
-      .dash-inner { padding: 16px 14px 40px; }
-      .hero { padding: 16px 14px 14px; border-radius: 14px; }
-      .kpis { grid-template-columns: repeat(2, 1fr); }
-      .grid { grid-template-columns: 1fr; }
-      .c4, .c6, .c8 { grid-column: span 1; }
-      .fleet, .health { flex-direction: column; align-items: stretch; }
-      .donut, .gauge { margin: 0 auto; }
-      .drv-grid { grid-template-columns: 1fr; }
-      .page-head { flex-direction: column; align-items: stretch; }
+    @media (max-width:760px){
+      .card,.span-6,.span-8{grid-column:span 12}
+      .drivers{grid-template-columns:1fr}
+      .mast{padding:18px 16px}
+      .mast-title{margin:12px 0 14px}
+      .toolbar{gap:12px}
+      .range{margin-left:0;width:100%}
+      .range input[type="date"]{flex:1;min-width:0}
+      .rfield{flex:1}
+      .tb-sep{display:none}
+      .kpis{grid-template-columns:repeat(2,1fr)}
+      .kpi{padding:13px 16px}
+      .kpi:nth-child(3n+1){border-left:1px solid var(--mast-hair);padding-left:16px}
+      .kpi:nth-child(2n+1){border-left:none;padding-left:2px}
+      .kpi:nth-child(-n+3){padding-top:13px}
+      .kpi:nth-child(-n+2){padding-top:2px;border-top:none}
+      .kpi:nth-child(3){border-top:1px solid var(--mast-hair)}
+      .donut-flex,.gauge-flex{flex-direction:column;align-items:stretch}
+      .donut,.gauge{align-self:center}
+      .fleet-map{height:300px}
     }
   `]
 })
@@ -628,9 +869,9 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   private fleetMarkers?: L.LayerGroup;
   private destroy$ = new Subject<void>();
   company: Company | null = null;
-  // Dashboard opens on the full year by default (repairs/fuel/other + all widgets
-  // scoped to the current year). Operators can switch to Mois/Semaine/etc. via the
-  // period bar; the backend re-scopes everything via GetPeriodRange(period).
+  // Le dashboard s'ouvre sur l'année en cours ; les opérateurs peuvent basculer
+  // sur une période nommée ou une plage personnalisée Du/Au (selectedPeriod='custom')
+  // — la plage est désormais transmise au backend (from/to sur /dashboard/all).
   selectedPeriod = 'year'; fromDate = ''; toDate = '';
   isConnected = false;
   todayLabel = '';
@@ -656,7 +897,11 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   periodDistance = 0;
   typeBreakdown:{type:string;count:number;km:number;color:string}[]=[];
   maxTypeCount=1;
-  cPts=''; cLabels:string[]=[]; cVals:number[]=[]; cPoints:{x:number;y:number}[]=[]; cIdx=-1;
+  // graphique carburant : géométrie 660×230, X∈[40,620], Y∈[66,190]
+  cPath=''; cAreaPath='';
+  cLabels:string[]=[]; cVals:number[]=[]; cPoints:{x:number;y:number}[]=[]; cIdx=-1;
+  yTicks:{y:number;label:string}[]=[];
+  xTicks:{x:number;label:string}[]=[];
   hSeg=-1;
   fuelCost=0; maintenanceCost=0; repairCost=0; otherCost=0; totalCost=0;
   drivingScores:{plate:string;score:number}[]=[];
@@ -673,11 +918,22 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   fleetSegs:any[]=[]; donutSegs:any[]=[];
   readonly circ62=2*Math.PI*62;
   expItems:any[]=[]; hItems:any[]=[];
+  maxExp=1;
 
   get totalMotion():number{return this.motionData.stationary+this.motionData.ignitionOn+this.motionData.movingIgnition+this.motionData.noState+this.motionData.noCoords;}
   get totalHealth():number{return this.healthData.healthy+this.healthData.attention+this.healthData.unhealthy;}
+  get maxHealth():number{return Math.max(this.healthData.healthy,this.healthData.attention,this.healthData.unhealthy,1);}
   get hPct():number{return this.totalHealth?Math.round((this.healthData.healthy/this.totalHealth)*100):0;}
-  get hColor():string{const p=this.hPct;return p>=80?'#10b981':p>=50?'#f59e0b':'#ef4444';}
+  get hColor():string{const p=this.hPct;return p>=80?'#059669':p>=50?'#d97706':'#dc2626';}
+  get movingPct():number{return this.totalMotion?Math.round((this.motionData.movingIgnition/this.totalMotion)*100):0;}
+  get stoppedPct():number{return this.totalMotion?Math.round((this.motionData.stationary/this.totalMotion)*100):0;}
+  get activeDrivers():number{return this.drivers.filter(d=>d.active).length;}
+  /** Coût compact : au-delà du million, "1,17 M" — la tuile absorbe les gros montants sans casse. */
+  get costValue():string{
+    const v=this.dCost;
+    if(v>=1_000_000) return (v/1_000_000).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' M';
+    return Math.round(v).toLocaleString('fr-FR');
+  }
 
   scP=0;unP=0;fuP=0;alertsP=0;trP=0;drP=0;
   get pScores(){return this.drivingScores.slice(this.scP*5,this.scP*5+5);}
@@ -697,8 +953,8 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   deadlines: VehicleExpiryDto[] = [];
   get deadlinesOverdue():number{ return this.deadlines.filter(d=>(d.daysUntilExpiry??0)<0).length; }
   docLabel(t:string):string{ return ({insurance:'Assurance',tax:'Vignette',technical_inspection:'Visite technique'} as Record<string,string>)[t] || t; }
-  deadlineColor(d:VehicleExpiryDto):string{ const n=d.daysUntilExpiry??0; return n<0?'#ef4444':n<=30?'#f59e0b':'#10b981'; }
-  daysLabel(d:VehicleExpiryDto):string{ const n=d.daysUntilExpiry??0; return n<0?((-n)+'j retard'):(n+'j'); }
+  dueCls(d:VehicleExpiryDto):string{ const n=d.daysUntilExpiry??0; return n<0?'red':n<=30?'amber':'green'; }
+  daysLabel(d:VehicleExpiryDto):string{ const n=d.daysUntilExpiry??0; return n<0?((-n)+' j retard'):(n+' j'); }
   loadDeadlines(){
     this.apiService.getExpiryAlerts(60).pipe(takeUntil(this.destroy$)).subscribe({
       next:(list)=>{ this.deadlines=(list||[]).sort((a,b)=>(a.daysUntilExpiry??0)-(b.daysUntilExpiry??0)).slice(0,8); this.cdr.detectChanges(); },
@@ -712,9 +968,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     if(u) this.company={id:u.companyId.toString(),name:u.companyName,type:'transport',subscriptionId:'1'} as Company;
     const today=new Date();
     this.todayLabel=today.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-    this.toDate=today.toISOString().split('T')[0];
-    this.fromDate=new Date(today.getTime()-7*86400000).toISOString().split('T')[0];
-    this.cLabels=Array.from({length:7},(_,i)=>new Date(today.getTime()-(6-i)*86400000).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}));
+    this.setRangeFor(this.selectedPeriod);
     this.loadAll();
     this.loadDeadlines();
     this.wire();
@@ -765,11 +1019,9 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     });
   }
 
-  /** Compte à rebours des 6 KPI en UNE seule boucle rAF (un detectChanges par
-   *  frame, ~550 ms), et UNIQUEMENT au premier chargement. L'ancienne version
-   *  lançait 6 boucles simultanées × 55 frames × detectChanges du composant
-   *  entier — ~330 cycles de rendu par rafale, relancés à chaque refresh 30 s
-   *  et à chaque alerte SignalR : c'était LA cause du dashboard "lent". */
+  /** Compte à rebours des KPI en UNE seule boucle rAF (un detectChanges par
+   *  frame, ~550 ms), et UNIQUEMENT au premier chargement — les refresh 30 s
+   *  et les alertes SignalR assignent directement (pas de tempête de rendus). */
   private firstLoad=true;
   private animateKpis(){
     const to={dVehicles:this.totalMotion,dMoving:this.motionData.movingIgnition,dStopped:this.motionData.stationary,dAlerts:this.alerts.length,dFuel:this.totalFuelConsumed,dCost:this.totalCost};
@@ -798,8 +1050,8 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
       {name:'Sans GPS',color:'#cbd5e1',value:this.motionData.noCoords},
     ];
     this.fleetSegs=segs.map(s=>({...s,pct:tot?Math.round((s.value/tot)*100):0}));
-    // Espace de ~2 px entre les segments du donut (lisibilité daltonisme +
-    // règle "surface gap" du guide dataviz) — seulement s'il y a ≥ 2 segments.
+    // Espace de ~2 px entre les segments du donut (règle "surface gap" dataviz)
+    // — seulement s'il y a ≥ 2 segments visibles.
     const visible=segs.filter(s=>s.value>0);
     const gap=visible.length>1?4:0;
     let cum=0;
@@ -815,11 +1067,50 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
       {name:'Réparation',color:'#d97706',value:this.repairCost},
       {name:'Autres',color:'#94a3b8',value:this.otherCost},
     ];
+    this.maxExp=Math.max(this.fuelCost,this.maintenanceCost,this.repairCost,this.otherCost,1);
     this.hItems=[
       {name:'Bon état',color:'#059669',value:this.healthData.healthy},
       {name:'Attention',color:'#d97706',value:this.healthData.attention},
       {name:'Mauvais',color:'#dc2626',value:this.healthData.unhealthy},
     ];
+  }
+
+  /** Courbe lissée (Catmull-Rom → Bézier) dans la géométrie 660×230. */
+  private buildChart(values:number[],days:string[]){
+    this.cVals=values||[];
+    const n=this.cVals.length;
+    if(!n){this.cPath='';this.cAreaPath='';this.cPoints=[];this.yTicks=[];this.xTicks=[];return;}
+    const mx=Math.max(...this.cVals,0.1);
+    const X0=40,X1=620,Y0=66,Y1=190;
+    this.cPoints=this.cVals.map((v,i)=>({x:n>1?X0+(i/(n-1))*(X1-X0):330,y:Y1-(v/mx)*(Y1-Y0)}));
+    this.cPath=this.smoothPath(this.cPoints);
+    this.cAreaPath=this.cPath?`${this.cPath} L${this.cPoints[n-1].x.toFixed(1)},190 L${this.cPoints[0].x.toFixed(1)},190 Z`:'';
+    const fmtK=(v:number)=>v>=1000?((v/1000).toLocaleString('fr-FR',{maximumFractionDigits:1})+'k'):String(Math.round(v));
+    this.yTicks=[
+      {y:66,label:fmtK(mx)},
+      {y:97,label:fmtK(mx*0.75)},
+      {y:128,label:fmtK(mx*0.5)},
+      {y:159,label:fmtK(mx*0.25)},
+    ];
+    const toLbl=(d:string)=>{const p=(d||'').split('-');return p.length>=3?`${p[2]}/${p[1]}`:d;};
+    this.cLabels=(days||[]).map(toLbl);
+    const step=Math.max(1,Math.ceil(n/7));
+    this.xTicks=this.cPoints
+      .map((p,i)=>({x:p.x,label:this.cLabels[i]||'',i}))
+      .filter(t=>t.i%step===0||t.i===n-1)
+      .map(t=>({x:t.x,label:t.label}));
+  }
+
+  private smoothPath(pts:{x:number;y:number}[]):string{
+    if(pts.length<2)return '';
+    let d=`M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
+    for(let i=0;i<pts.length-1;i++){
+      const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(pts.length-1,i+2)];
+      const c1x=p1.x+(p2.x-p0.x)/6,c1y=p1.y+(p2.y-p0.y)/6;
+      const c2x=p2.x-(p3.x-p1.x)/6,c2y=p2.y-(p3.y-p1.y)/6;
+      d+=` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+    }
+    return d;
   }
 
   private wire(){
@@ -842,7 +1133,9 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   loadAll(){
-    this.apiService.getDashboardAll(this.selectedPeriod).pipe(takeUntil(this.destroy$)).subscribe({
+    const custom=this.selectedPeriod==='custom'&&!!this.fromDate&&!!this.toDate;
+    this.apiService.getDashboardAll(custom?'custom':this.selectedPeriod,custom?this.fromDate:undefined,custom?this.toDate:undefined)
+      .pipe(takeUntil(this.destroy$)).subscribe({
       next:(d:any)=>{
         if(d.vehicleStatus){const v=d.vehicleStatus;this.motionData={stationary:v.stopped??0,ignitionOn:v.ignitionOn??0,moving:0,movingIgnition:v.moving??0,lbs:0,wifi:0,noState:v.maintenance??0,noCoords:v.noGps??0};}
         if(d.expenses){const e=d.expenses;this.fuelCost=e.fuelCost??0;this.maintenanceCost=e.maintenanceCost??0;this.repairCost=e.repairCost??0;this.otherCost=e.otherCost??0;this.totalCost=e.totalCost??(this.fuelCost+this.maintenanceCost+this.repairCost+this.otherCost);}
@@ -858,13 +1151,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
           this.fuelEstimated=fc.estimated===true;
           if(fc.vehicleStats?.length){this.vehicleFuelStats=fc.vehicleStats.map((v:any)=>({plate:v.plate||'Inconnu',consumption:Number(v.consumption)||0,totalLiters:Math.round(Number(v.totalLiters)||0),totalKm:Math.round(Number(v.totalKm)||0)}));this.maxFuelConsumption=Math.max(...this.vehicleFuelStats.map(v=>v.consumption),1);}
           if(fc.fleetTotalLiters>0)this.totalFuelConsumed=Math.round(fc.fleetTotalLiters);
-          if(fc.chartValues?.length){
-            this.cVals=fc.chartValues as number[];
-            const mx=Math.max(...this.cVals,0.1);
-            this.cPoints=this.cVals.map((v:number,i:number)=>({x:this.cVals.length>1?(i/(this.cVals.length-1))*500:250,y:130-(v/mx)*122}));
-            this.cPts=this.cPoints.map(p=>`${p.x.toFixed(0)},${p.y.toFixed(0)}`).join(' ');
-            if(fc.chartDays?.length){const step=Math.max(1,Math.floor(fc.chartDays.length/7));this.cLabels=(fc.chartDays as string[]).filter((_:string,i:number)=>i%step===0||i===fc.chartDays.length-1).map((dd:string)=>{const p=dd.split('-');return p.length>=3?`${p[2]}/${p[1]}`:dd;});}
-          }
+          this.buildChart(fc.chartValues||[],fc.chartDays||[]);
         }
         if(d.trends){this.costTrend=d.trends.cost??null;this.distanceTrend=d.trends.distance??null;}
         if(d.periodDistance!=null)this.periodDistance=d.periodDistance;
@@ -880,18 +1167,50 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     const svg=(e.currentTarget as HTMLElement).querySelector('.chart-svg');
     if(!svg)return;
     const r=svg.getBoundingClientRect();
-    this.cIdx=Math.round(Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*(this.cPoints.length-1));
+    // X∈[40,620] dans un viewBox de 660 — on retranche les marges avant de mapper.
+    const xView=(e.clientX-r.left)/r.width*660;
+    const t=Math.max(0,Math.min(1,(xView-40)/580));
+    this.cIdx=Math.round(t*(this.cPoints.length-1));
   }
 
   donutIdx(name:string):number{return this.donutSegs.findIndex(s=>s.name===name);}
 
   absPct(v:number):string{return Math.abs(v).toFixed(1);}
 
-  scoreC(s:number):string{return s>=80?'#10b981':s>=60?'#f59e0b':'#ef4444';}
-  scoreE(s:number):string{return s>=80?'#34d399':s>=60?'#fbbf24':'#f87171';}
-  fuelC(c:number):string{return c<=6?'#10b981':c<=8?'#f59e0b':'#ef4444';}
+  scoreC(s:number):string{return s>=80?'#059669':s>=60?'#d97706':'#dc2626';}
+  fuelC(c:number):string{return c<=6?'#059669':c<=8?'#d97706':'#dc2626';}
+  tintCls(level:number):string{return level===0?'tint-ok':level===1?'tint-warn':'tint-bad';}
 
-  onPeriodChange(p:string){this.selectedPeriod=p;}
-  onDateRangeChange(r:{from:string;to:string}){this.fromDate=r.from;this.toDate=r.to;}
-  applyFilter(){this.scP=0;this.unP=0;this.fuP=0;this.alertsP=0;this.trP=0;this.drP=0;this.loadAll();}
+  private readonly accCycle=['acc-indigo','acc-cyan','acc-green','acc-amber','acc-slate'];
+  accFor(i:number):string{return this.accCycle[i%this.accCycle.length];}
+
+  /** Reflète la période nommée dans les champs Du/Au (miroir de GetPeriodRange côté API). */
+  private setRangeFor(p:string){
+    const today=new Date();
+    const iso=(d:Date)=>d.toISOString().split('T')[0];
+    switch(p){
+      case 'today': this.fromDate=iso(today); this.toDate=iso(today); break;
+      case 'yesterday': {const y=new Date(today.getTime()-86400000); this.fromDate=iso(y); this.toDate=iso(y); break;}
+      case 'week': {const s=new Date(today.getTime()-today.getDay()*86400000); this.fromDate=iso(s); this.toDate=iso(today); break;}
+      case 'month': this.fromDate=iso(new Date(today.getFullYear(),today.getMonth(),1)); this.toDate=iso(today); break;
+      case 'year': this.fromDate=iso(new Date(today.getFullYear(),0,1)); this.toDate=iso(today); break;
+    }
+  }
+
+  private resetPagers(){this.scP=0;this.unP=0;this.fuP=0;this.alertsP=0;this.trP=0;this.drP=0;}
+
+  onPeriodClick(p:string){
+    this.selectedPeriod=p;
+    this.setRangeFor(p);
+    this.resetPagers();
+    this.loadAll();
+  }
+
+  applyCustom(){
+    if(!this.fromDate||!this.toDate)return;
+    if(this.fromDate>this.toDate){const t=this.fromDate;this.fromDate=this.toDate;this.toDate=t;}
+    this.selectedPeriod='custom';
+    this.resetPagers();
+    this.loadAll();
+  }
 }

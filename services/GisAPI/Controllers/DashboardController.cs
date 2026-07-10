@@ -516,18 +516,36 @@ public class DashboardController : ControllerBase
     /// </summary>
     [HttpGet("all")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<ActionResult> GetDashboardAll([FromQuery] string period = "week")
+    public async Task<ActionResult> GetDashboardAll([FromQuery] string period = "week",
+        [FromQuery] string? from = null, [FromQuery] string? to = null)
     {
         var companyId = GetCompanyId();
         var userId = GetUserId();
         var isAdmin = IsAdminUser();
-        var cacheKey = isAdmin ? $"dashboard_all_{companyId}_{period}" : $"dashboard_all_{companyId}_{userId}_{period}";
-        if (_cache.TryGetValue(cacheKey, out object? cached) && cached != null)
-            return Ok(cached);
 
         var now = DateTime.UtcNow;
         var today = now.Date;
         var (periodStart, periodEnd, prevStart, prevEnd) = GetPeriodRange(now, period);
+
+        // Plage personnalisée (champs Du/Au du dashboard). Historiquement ces champs
+        // n'étaient jamais transmis : le filtre affichait des dates sans effet.
+        // Quand les deux bornes sont valides, elles remplacent la période nommée et
+        // la période de comparaison devient la fenêtre de même durée juste avant.
+        var isCustomRange = false;
+        if (DateTime.TryParse(from, out var fromD) && DateTime.TryParse(to, out var toD) && fromD.Date <= toD.Date)
+        {
+            isCustomRange = true;
+            periodStart = DateTime.SpecifyKind(fromD.Date, DateTimeKind.Utc);
+            periodEnd = DateTime.SpecifyKind(toD.Date.AddDays(1).AddSeconds(-1), DateTimeKind.Utc);
+            var lengthDays = (toD.Date - fromD.Date).Days + 1;
+            prevEnd = periodStart.AddSeconds(-1);
+            prevStart = periodStart.AddDays(-lengthDays);
+            period = $"custom_{fromD:yyyyMMdd}_{toD:yyyyMMdd}";
+        }
+
+        var cacheKey = isAdmin ? $"dashboard_all_{companyId}_{period}" : $"dashboard_all_{companyId}_{userId}_{period}";
+        if (_cache.TryGetValue(cacheKey, out object? cached) && cached != null)
+            return Ok(cached);
 
         // ── 1. Load vehicles once (shared across sections) ──
         var vehicleQuery = _context.Vehicles
@@ -783,8 +801,21 @@ public class DashboardController : ControllerBase
         }).ToList();
 
         // ── 11. Fuel consumption (FuelCalculationService) ──
-        var fuelDays = period switch { "today" => 1, "yesterday" => 1, "week" => 7, "quarter" => 90, _ => 30 };
-        var fuelStartDate = now.AddDays(-fuelDays);
+        // En plage personnalisée, le graphique couvre la plage demandée (bornée au
+        // présent et à 90 jours de calcul) au lieu des N derniers jours glissants.
+        int fuelDays;
+        DateTime fuelEndDate;
+        if (isCustomRange)
+        {
+            fuelEndDate = periodEnd > now ? now : periodEnd;
+            fuelDays = Math.Clamp((fuelEndDate.Date - periodStart.Date).Days + 1, 1, 90);
+        }
+        else
+        {
+            fuelEndDate = now;
+            fuelDays = period switch { "today" => 1, "yesterday" => 1, "week" => 7, "quarter" => 90, _ => 30 };
+        }
+        var fuelStartDate = fuelEndDate.AddDays(-fuelDays);
 
         var fuelPrices = await _context.FuelPricings
             .Where(fp => fp.CompanyId == companyId && fp.IsActive &&
@@ -796,7 +827,7 @@ public class DashboardController : ControllerBase
 
         // Batch fuel calculation: 3 SQL queries instead of N*4 per-vehicle
         var batchFuelResults = await _fuelCalcService.CalculateFleetFuelBatchAsync(
-            vehicles.Where(v => v.GpsDeviceId.HasValue).ToList(), fuelStartDate, now, priceDict);
+            vehicles.Where(v => v.GpsDeviceId.HasValue).ToList(), fuelStartDate, fuelEndDate, priceDict);
 
         var vehicleFuelStats = batchFuelResults
             .Select(e => new
@@ -823,7 +854,7 @@ public class DashboardController : ControllerBase
         }
 
         var chartDays = Enumerable.Range(0, Math.Min(fuelDays, 30))
-            .Select(i => now.AddDays(-((Math.Min(fuelDays, 30) - 1) - i)).ToString("yyyy-MM-dd"))
+            .Select(i => fuelEndDate.AddDays(-((Math.Min(fuelDays, 30) - 1) - i)).ToString("yyyy-MM-dd"))
             .ToList();
         var chartValues = chartDays.Select(d => Math.Round(dailyFleetFuel.GetValueOrDefault(d), 2)).ToList();
 
