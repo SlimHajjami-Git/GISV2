@@ -214,10 +214,11 @@ type CompanyRole = Role & { userCount?: number };
               <p *ngIf="!autoSuspendEnabled">Désactivée — cette société n'est <strong>jamais bloquée automatiquement</strong> : bannière rouge permanente une fois expirée, marquée impayée, mais l'accès reste ouvert. Seule votre suspension manuelle coupe.</p>
             </div>
             <label class="auto-suspend-switch">
-              <input type="checkbox" [checked]="autoSuspendEnabled" (change)="toggleAutoSuspend($any($event.target).checked)" [disabled]="autoSuspendSaving" />
+              <input type="checkbox" [checked]="autoSuspendEnabled" (change)="toggleAutoSuspend($event)" [disabled]="autoSuspendSaving" />
               <span>{{ autoSuspendSaving ? '…' : (autoSuspendEnabled ? 'Activée' : 'Désactivée') }}</span>
             </label>
           </div>
+          <p class="scan-quota-msg" *ngIf="autoSuspendMsg">{{ autoSuspendMsg }}</p>
         </div>
 
         <!-- Tabs -->
@@ -2492,23 +2493,39 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
   /** Interrupteur « suspension automatique à l'expiration » (par société). */
   autoSuspendEnabled = true;
   autoSuspendSaving = false;
-  toggleAutoSuspend(enabled: boolean) {
+  autoSuspendMsg = '';
+  toggleAutoSuspend(ev: Event) {
+    const input = ev.target as HTMLInputElement;
+    const enabled = input.checked;
     if (!enabled && !confirm(`Désactiver la suspension automatique pour « ${this.company?.name || 'cette société'} » ?\n\nUne fois expirée, elle gardera l'accès à l'application (bannière rouge permanente) tant que vous ne la suspendez pas manuellement.`)) {
-      this.autoSuspendEnabled = true;        // ré-affiche l'état réel (case décochée annulée)
+      // Annulé : le binding [checked] ne se ré-applique pas quand la valeur
+      // n'a pas changé (true→true) — on restaure le DOM directement, sinon la
+      // case reste décochée à l'écran alors que rien n'a été enregistré.
+      input.checked = true;
+      this.autoSuspendEnabled = true;
       this.cdr.detectChanges();
       return;
     }
     this.autoSuspendSaving = true;
+    this.autoSuspendMsg = '';
     this.adminService.setAutoSuspend(this.companyId, enabled).pipe(takeUntil(this.destroy$)).subscribe({
       next: (r) => {
         this.autoSuspendSaving = false;
         this.autoSuspendEnabled = r?.autoSuspendEnabled ?? enabled;
+        input.checked = this.autoSuspendEnabled;
+        this.autoSuspendMsg = this.autoSuspendEnabled
+          ? 'Suspension automatique activée.'
+          : 'Suspension automatique désactivée — cette société ne sera jamais bloquée automatiquement.';
         this.cdr.detectChanges();
+        setTimeout(() => { this.autoSuspendMsg = ''; this.cdr.detectChanges(); }, 3500);
       },
-      error: () => {
+      error: (err) => {
         this.autoSuspendSaving = false;
-        alert('Le changement a échoué. Réessayez.');
-        this.loadScanQuota();                // recharge l'état réel
+        input.checked = this.autoSuspendEnabled;   // restaure l'état réel dans le DOM
+        this.autoSuspendMsg = err?.status === 404
+          ? "Échec : l'API ne connaît pas encore cet interrupteur — redéployez le backend (update.sh api)."
+          : 'Le changement a échoué. Réessayez.';
+        this.cdr.detectChanges();
       }
     });
   }
