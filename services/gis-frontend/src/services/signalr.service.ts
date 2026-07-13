@@ -79,6 +79,8 @@ export class SignalRService implements OnDestroy {
   public geofenceEvent$ = new Subject<GeofenceEvent>();
   public notification$ = new Subject<SignalRNotification>();
   public unreadCount$ = new BehaviorSubject<number>(0);
+  /** Suspension/réactivation de l'abonnement de la société par le sys_admin. */
+  public subscriptionChanged$ = new Subject<{ status: string }>();
   public connectionState$ = this.connectionState.asObservable();
 
   constructor(private ngZone: NgZone) {}
@@ -94,6 +96,7 @@ export class SignalRService implements OnDestroy {
     this.geofenceEvent$.complete();
     this.notification$.complete();
     this.unreadCount$.complete();
+    this.subscriptionChanged$.complete();
     this.connectionState.complete();
   }
 
@@ -219,6 +222,10 @@ export class SignalRService implements OnDestroy {
 
     this.hubConnection.on('UnreadCountChanged', (data: UnreadCountChange) => {
       this.ngZone.run(() => this.unreadCount$.next(data.count));
+    });
+
+    this.hubConnection.on('SubscriptionChanged', (data: { status: string }) => {
+      this.ngZone.run(() => this.subscriptionChanged$.next(data));
     });
   }
 

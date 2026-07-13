@@ -127,6 +127,12 @@ public class GpsHubService : GisAPI.Application.Common.Interfaces.IGpsHubService
         await _hubContext.Clients.Group($"geofence_{geofenceId}")
             .SendAsync("GeofenceEvent", geofenceEvent);
     }
+
+    public async Task SendSubscriptionChangedAsync(int companyId, string status)
+    {
+        await _hubContext.Clients.Group($"company_{companyId}")
+            .SendAsync("SubscriptionChanged", new { status });
+    }
 }
 
 

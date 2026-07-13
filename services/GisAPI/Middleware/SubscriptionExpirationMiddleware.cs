@@ -1,18 +1,24 @@
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Application.Common;
 using GisAPI.Infrastructure.Persistence;
-using System.Security.Claims;
 
 namespace GisAPI.Middleware;
 
 /// <summary>
-/// Middleware to check subscription expiration and block access for expired subscriptions
+/// Bloque à chaque requête les sociétés dont l'abonnement est suspendu/annulé par
+/// le sys_admin, ou expiré AU-DELÀ de la période de grâce (7 jours). Pendant la
+/// grâce, l'accès est maintenu (la bannière rouge côté client avertit) et le statut
+/// passe à "expired" pour la supervision — sans toucher IsActive, qui est réservé
+/// à la suspension manuelle. Les règles viennent de <see cref="SubscriptionPolicy"/>.
 /// </summary>
 public class SubscriptionExpirationMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<SubscriptionExpirationMiddleware> _logger;
 
-    // Paths that should always be accessible regardless of subscription status
+    // Paths that should always be accessible regardless of subscription status.
+    // /api/subscriptions/banner doit rester joignable une fois bloqué : c'est lui
+    // qui dit à l'écran de blocage pourquoi et jusqu'à quand.
     private static readonly string[] AllowedPaths = new[]
     {
         "/api/auth",
@@ -20,6 +26,7 @@ public class SubscriptionExpirationMiddleware
         "/api/health",
         "/api/subscription/status",
         "/api/subscription/renew",
+        "/api/subscriptions/banner",
         "/swagger",
         "/hub"
     };
@@ -34,21 +41,25 @@ public class SubscriptionExpirationMiddleware
     {
         var path = context.Request.Path.Value?.ToLower() ?? "";
 
-        // Allow certain paths without subscription check
         if (AllowedPaths.Any(p => path.StartsWith(p.ToLower())))
         {
             await _next(context);
             return;
         }
 
-        // Check if user is authenticated
         if (!context.User.Identity?.IsAuthenticated ?? true)
         {
             await _next(context);
             return;
         }
 
-        // Get company ID from claims
+        // Le sys_admin plateforme n'est jamais bloqué par l'abonnement de SA société.
+        if (context.User.IsInRole("system_admin"))
+        {
+            await _next(context);
+            return;
+        }
+
         var companyIdClaim = context.User.FindFirst("companyId")?.Value;
         if (string.IsNullOrEmpty(companyIdClaim) || !int.TryParse(companyIdClaim, out var companyId))
         {
@@ -56,7 +67,6 @@ public class SubscriptionExpirationMiddleware
             return;
         }
 
-        // Check company subscription status
         var company = await dbContext.Societes
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == companyId);
@@ -67,55 +77,43 @@ public class SubscriptionExpirationMiddleware
             return;
         }
 
-        // Check if subscription is expired
-        if (company.SubscriptionExpiresAt.HasValue && company.SubscriptionExpiresAt.Value < DateTime.UtcNow)
+        var state = SubscriptionPolicy.Evaluate(company, DateTime.UtcNow);
+
+        // Date dépassée : marquer "expired" pour la supervision — SANS IsActive=false
+        // (l'accès reste ouvert pendant la grâce ; IsActive = suspension manuelle).
+        if (company.SubscriptionExpiresAt < DateTime.UtcNow && company.SubscriptionStatus == "active")
         {
-            // Update company status if not already expired
-            if (company.SubscriptionStatus != "expired")
+            var toUpdate = await dbContext.Societes.FindAsync(companyId);
+            if (toUpdate != null)
             {
-                var companyToUpdate = await dbContext.Societes.FindAsync(companyId);
-                if (companyToUpdate != null)
-                {
-                    companyToUpdate.SubscriptionStatus = "expired";
-                    companyToUpdate.IsActive = false;
-                    companyToUpdate.UpdatedAt = DateTime.UtcNow;
-                    await dbContext.SaveChangesAsync();
-                }
+                toUpdate.SubscriptionStatus = "expired";
+                toUpdate.UpdatedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
             }
-
-            _logger.LogWarning("Blocked access for company {CompanyId} due to expired subscription", companyId);
-
-            context.Response.StatusCode = 403;
-            context.Response.ContentType = "application/json";
-            await context.Response.WriteAsJsonAsync(new
-            {
-                error = "subscription_expired",
-                message = "Votre abonnement a expiré. Veuillez renouveler pour continuer à utiliser la plateforme.",
-                expiredAt = company.SubscriptionExpiresAt,
-                renewUrl = "/subscription/renew"
-            });
-            return;
         }
 
-        // Check if subscription is suspended
-        if (company.SubscriptionStatus == "suspended" || company.SubscriptionStatus == "cancelled")
+        if (!state.IsBlocked)
         {
-            _logger.LogWarning("Blocked access for company {CompanyId} due to {Status} subscription", companyId, company.SubscriptionStatus);
-
-            context.Response.StatusCode = 403;
-            context.Response.ContentType = "application/json";
-            await context.Response.WriteAsJsonAsync(new
-            {
-                error = "subscription_" + company.SubscriptionStatus,
-                message = company.SubscriptionStatus == "suspended" 
-                    ? "Votre abonnement est suspendu. Veuillez contacter le support."
-                    : "Votre abonnement a été annulé. Veuillez renouveler pour continuer.",
-                status = company.SubscriptionStatus
-            });
+            await _next(context);
             return;
         }
 
-        await _next(context);
+        _logger.LogWarning("Blocked access for company {CompanyId}: subscription {Reason}", companyId, state.Reason);
+
+        context.Response.StatusCode = 403;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            error = "subscription_" + state.Reason,
+            message = state.Reason switch
+            {
+                "suspended" => "L'abonnement de votre société est suspendu. Veuillez contacter votre prestataire.",
+                "cancelled" => "L'abonnement de votre société a été annulé. Veuillez contacter votre prestataire.",
+                _ => "L'abonnement de votre société a expiré. Veuillez le renouveler pour continuer à utiliser la plateforme."
+            },
+            status = state.Reason,
+            expiredAt = state.ExpiresAt
+        });
     }
 }
 

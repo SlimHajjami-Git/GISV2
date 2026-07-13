@@ -79,6 +79,10 @@ builder.Services.AddHostedService<GisAPI.Services.MaintenanceStatusRefreshServic
 // activity summary for the previous day with an .xlsx attachment.
 builder.Services.AddHostedService<GisAPI.Services.DailyFleetReportService>();
 
+// Supervision des abonnements : digest quotidien aux sys_admins des sociétés
+// qui expirent sous 30 j, en période de grâce (impayées) ou bloquées.
+builder.Services.AddHostedService<GisAPI.Services.SubscriptionMonitoringService>();
+
 // Calypso 7 (P-maint-couche4): DESACTIVÉ. La notif "tracker odomètre muet"
 // était trop technique pour les clients (mention CAN bus / FMS) et ne leur
 // apportait aucune action utile — le fallback trips couvre déjà le cas.

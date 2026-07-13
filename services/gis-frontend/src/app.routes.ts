@@ -33,6 +33,7 @@ import { ExpensesComponent } from './components/expenses.component';
 import { CarburantComponent } from './components/carburant.component';
 import { ToursComponent } from './components/tours.component';
 import { DeviceCheckComponent } from './components/device-check.component';
+import { SubscriptionBlockedComponent } from './components/subscription-blocked.component';
 import { SecuriteComponent } from './components/securite.component';
 import { adminRoutes } from './admin/admin.routes';
 import { AuthGuard } from './guards/auth.guard';
@@ -63,6 +64,8 @@ export const routes: Routes = [
   { path: 'accueil', component: LandingComponent },
   { path: 'login', component: LoginComponent },
   { path: 'device-check', component: DeviceCheckComponent },
+  // Écran pleine page hors layout : abonnement de la société suspendu/expiré.
+  { path: 'abonnement-suspendu', component: SubscriptionBlockedComponent },
   { path: 'politique-de-confidentialite', component: PrivacyPolicyComponent },
   { path: 'privacy-policy', redirectTo: 'politique-de-confidentialite', pathMatch: 'full' },
   // Protected routes - Dashboard (always accessible when logged in)

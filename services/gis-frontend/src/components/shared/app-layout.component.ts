@@ -12,6 +12,7 @@ import { SignalRService } from '../../services/signalr.service';
 import { GeocodingService } from '../../services/geocoding.service';
 import { OfflineVehiclesService } from '../../services/offline-vehicles.service';
 import { VersionCheckService } from '../../services/version-check.service';
+import { SubscriptionStatusService, SubscriptionBanner } from '../../services/subscription-status.service';
 import { ChatComponent } from './chat.component';
 import { AccidentDecisionModalComponent } from './accident-decision-modal.component';
 import { OfflineVehiclesBellComponent } from './offline-vehicles-bell.component';
@@ -53,6 +54,13 @@ type NotifBucket = Notification | NotifThreadGroup;
         <span>👁️ Vous voyez l'application <b>en tant que {{ impersonatedName }}</b><span *ngIf="impersonatedCompany"> — société <b>{{ impersonatedCompany }}</b></span></span>
         <button type="button" (click)="stopImpersonation()" style="background:rgba(255,255,255,0.25);border:1px solid rgba(255,255,255,0.6);color:#fff;padding:4px 12px;border-radius:6px;font-weight:600;cursor:pointer;white-space:nowrap;">↩ Revenir à mon compte</button>
       </div>
+      <!-- Bandeau abonnement : ambre = expire bientôt (admins société), rouge = J-7 ou grâce après expiration (tous) -->
+      <ng-container *ngIf="subStatus.banner$ | async as subBanner">
+        <div *ngIf="subBannerVisible(subBanner)" [style.background]="subBanner.level==='danger' ? 'linear-gradient(90deg,#dc2626,#b91c1c)' : 'linear-gradient(90deg,#d97706,#b45309)'" style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;color:#fff;padding:8px 16px;font-size:13px;font-weight:600;position:sticky;top:0;z-index:3000;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
+          <span>{{ subBanner.level==='danger' ? '🔴' : '⏳' }} {{ subBannerText(subBanner) }}</span>
+          <button *ngIf="subBanner.level==='warning'" type="button" (click)="dismissSubBanner()" aria-label="Masquer" style="background:transparent;border:none;color:rgba(255,255,255,0.85);font-size:16px;line-height:1;cursor:pointer;padding:2px 6px;">✕</button>
+        </div>
+      </ng-container>
       <!-- WIALON-STYLE TOP NAVIGATION BAR -->
       <nav class="top-nav">
         <!-- Logo Calypso (pin tourbillon + œil) -->
@@ -1508,8 +1516,34 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     private geocodingService: GeocodingService,
     private offlineVehiclesService: OfflineVehiclesService,
     public versionCheck: VersionCheckService,
+    public subStatus: SubscriptionStatusService,
     private cdr: ChangeDetectorRef
   ) {}
+
+  /** Bannière abonnement : ambre J-30 (admins société), rouge J-7 / grâce (tous). */
+  subBannerVisible(b: SubscriptionBanner | null): boolean {
+    if (!b) return false;
+    if (b.level === 'danger') return true;
+    if (b.level === 'warning') {
+      if (sessionStorage.getItem('sub_banner_dismissed') === '1') return false;
+      const u = this.authService.getCurrentUserSync() as any;
+      return !!(u?.isCompanyAdmin || u?.isSystemAdmin);
+    }
+    return false;
+  }
+
+  subBannerText(b: SubscriptionBanner): string {
+    if (b.reason === 'grace')
+      return `L'abonnement de votre société a expiré — l'accès sera suspendu dans ${b.graceDaysLeft} jour${(b.graceDaysLeft ?? 0) > 1 ? 's' : ''}`;
+    if ((b.daysRemaining ?? 99) <= 1)
+      return `L'abonnement de votre société expire aujourd'hui`;
+    return `L'abonnement de votre société expire dans ${b.daysRemaining} jours`;
+  }
+
+  dismissSubBanner(): void {
+    sessionStorage.setItem('sub_banner_dismissed', '1');
+    this.subStatus.banner$.next(this.subStatus.banner$.value); // re-render
+  }
 
   get isDarkMode(): boolean {
     return this.themeService.isDarkMode;
@@ -1532,6 +1566,14 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     // Détection des nouveaux déploiements : bandeau « Actualiser » quand un
     // bundle plus récent est en ligne (onglets restés ouverts longtemps).
     this.versionCheck.start();
+
+    // Surveillance de l'abonnement de la société : bannière J-30/J-7/grâce et
+    // redirection vers l'écran de blocage si suspendu. Une suspension par le
+    // sys_admin est poussée en temps réel via SignalR → re-vérification immédiate.
+    this.subStatus.start();
+    this.subs.push(
+      this.signalR.subscriptionChanged$.subscribe(() => this.subStatus.refresh())
+    );
 
     // Subscribe to real-time unread count
     this.subs.push(

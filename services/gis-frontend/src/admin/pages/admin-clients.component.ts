@@ -5,7 +5,7 @@ import { Router } from '@angular/router';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
-import { AdminService, Client, SubscriptionType } from '../services/admin.service';
+import { AdminService, Client, SubscriptionType, BillingOverviewItem } from '../services/admin.service';
 import { environment } from '../../environments/environment';
 
 @Component({
@@ -15,6 +15,28 @@ import { environment } from '../../environments/environment';
   template: `
     <admin-layout pageTitle="Gestion des Sociétés">
       <div class="clients-page">
+
+        <!-- Bandeau supervision abonnements : sociétés qui expirent, en grâce (impayées) ou bloquées -->
+        <div class="billing-alerts" *ngIf="billingItems.length">
+          <div class="ba-head">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 4.2 2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4M12 16.8v.2"/></svg>
+            <b>{{ billingItems.length }} abonnement(s) à surveiller</b>
+          </div>
+          <div class="ba-list">
+            <div class="ba-item" *ngFor="let b of billingItems" [class.blocked]="b.level==='blocked'" [class.danger]="b.level==='danger'" (click)="viewClientById(b.id)">
+              <span class="ba-name">{{ b.name }}</span>
+              <span class="ba-info">
+                <ng-container *ngIf="b.reason==='expiring'">expire dans {{ b.daysRemaining }} j</ng-container>
+                <ng-container *ngIf="b.reason==='grace'">EXPIRÉ — grâce {{ b.graceDaysLeft }} j</ng-container>
+                <ng-container *ngIf="b.reason==='expired'">BLOQUÉ — expiré depuis {{ -(b.daysRemaining || 0) }} j</ng-container>
+                <ng-container *ngIf="b.reason==='suspended' || b.reason==='cancelled'">suspendu</ng-container>
+              </span>
+              <span class="ba-unpaid" *ngIf="b.unpaid">impayé</span>
+              <span class="ba-amount" *ngIf="b.amountDue">{{ b.amountDue | number:'1.0-0' }} {{ currencyCode }}</span>
+            </div>
+          </div>
+        </div>
+
         <div class="page-header">
           <div class="header-left">
             <div class="search-box">
@@ -563,6 +585,37 @@ import { environment } from '../../environments/environment';
       flex-direction: column;
       gap: 24px;
     }
+
+    /* ── Bandeau supervision abonnements ── */
+    .billing-alerts {
+      background: #fffbeb;
+      border: 1px solid #fcd34d;
+      border-left: 4px solid #d97706;
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .ba-head {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; color: #92400e; margin-bottom: 10px;
+    }
+    .ba-head svg { stroke: #d97706; flex: none; }
+    .ba-list { display: flex; flex-direction: column; gap: 6px; }
+    .ba-item {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      background: #ffffff; border: 1px solid #fde68a; border-radius: 8px;
+      padding: 8px 12px; cursor: pointer; transition: box-shadow .15s;
+    }
+    .ba-item:hover { box-shadow: 0 2px 8px rgba(217, 119, 6, .18); }
+    .ba-item.danger { border-color: #fca5a5; }
+    .ba-item.blocked { border-color: #f87171; background: #fef2f2; }
+    .ba-name { font-weight: 700; font-size: 13px; color: #1e293b; }
+    .ba-info { font-size: 12px; color: #64748b; flex: 1; }
+    .ba-item.danger .ba-info, .ba-item.blocked .ba-info { color: #b91c1c; font-weight: 600; }
+    .ba-unpaid {
+      font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+      color: #b91c1c; background: #fee2e2; border-radius: 999px; padding: 2px 8px;
+    }
+    .ba-amount { font-size: 12.5px; font-weight: 700; color: #92400e; font-variant-numeric: tabular-nums; }
 
     .page-header {
       display: flex;
@@ -1716,7 +1769,19 @@ export class AdminClientsComponent implements OnInit, OnDestroy {
     this.loadData();
   }
 
+  /** Sociétés à surveiller (bandeau supervision abonnements). */
+  billingItems: BillingOverviewItem[] = [];
+
+  viewClientById(id: number) {
+    this.router.navigate(['/admin/clients', id]);
+  }
+
   loadData() {
+    this.adminService.getBillingOverview().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (o) => { this.billingItems = o?.items ?? []; this.cdr.detectChanges(); },
+      error: () => {}
+    });
+
     this.adminService.getClients().pipe(takeUntil(this.destroy$)).subscribe(clients => {
       this.clients = clients;
       this.filterClients();

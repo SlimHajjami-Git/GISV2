@@ -189,6 +189,44 @@ public class AdminController : ControllerBase
         return found ? Ok(new { message = "Société supprimée" }) : NotFound();
     }
 
+    /// <summary>
+    /// Vue « facturation » plateforme : toutes les sociétés à surveiller —
+    /// expirent sous 30 j, expirées en grâce (= facture IMPAYÉE), bloquées,
+    /// ou suspendues manuellement. Alimente le bandeau d'alerte et la cloche
+    /// de l'admin. Les règles viennent de SubscriptionPolicy (mêmes seuils que
+    /// la bannière client et le digest quotidien).
+    /// </summary>
+    [HttpGet("billing/overview")]
+    public async Task<ActionResult> GetBillingOverview()
+    {
+        var now = DateTime.UtcNow;
+        var societes = await _context.Societes.AsNoTracking().ToListAsync();
+
+        var items = societes
+            .Select(s => new { Societe = s, State = Application.Common.SubscriptionPolicy.Evaluate(s, now) })
+            .Where(x => x.State.Level != "none")
+            .OrderBy(x => x.State.Level == "blocked" ? 0 : x.State.Reason == "grace" ? 1 : 2)
+            .ThenBy(x => x.State.DaysRemaining ?? int.MaxValue)
+            .Select(x => new
+            {
+                id = x.Societe.Id,
+                name = x.Societe.Name,
+                level = x.State.Level,                    // warning | danger | blocked
+                reason = x.State.Reason,                  // expiring | grace | expired | suspended | cancelled
+                expiresAt = x.Societe.SubscriptionExpiresAt,
+                daysRemaining = x.State.DaysRemaining,
+                graceDaysLeft = x.State.GraceDaysLeft,
+                unpaid = x.State.Reason is "grace" or "expired",
+                amountDue = x.Societe.NextPaymentAmount,
+                lastPaymentAt = x.Societe.LastPaymentAt,
+                subscriptionStatus = x.Societe.SubscriptionStatus,
+                isActive = x.Societe.IsActive
+            })
+            .ToList();
+
+        return Ok(new { count = items.Count, items });
+    }
+
     [HttpGet("company/{companyId}/users")]
     public async Task<ActionResult<List<AdminUserDto>>> GetCompanyUsers(int companyId)
     {

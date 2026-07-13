@@ -43,6 +43,30 @@ public class SubscriptionsController : ControllerBase
         return Ok(subscription);
     }
 
+    /// <summary>
+    /// Statut LÉGER pour la bannière d'abonnement (poll 10 min côté client).
+    /// Whitelisté par le SubscriptionExpirationMiddleware : reste joignable même
+    /// bloqué, c'est lui qui alimente l'écran « abonnement suspendu/expiré ».
+    /// level: none | warning (J-30, admins société) | danger (J-7 ou grâce, tous) | blocked.
+    /// </summary>
+    [HttpGet("banner")]
+    public async Task<ActionResult> GetBanner()
+    {
+        var companyId = GetCompanyId();
+        var company = await _context.Societes.AsNoTracking().FirstOrDefaultAsync(c => c.Id == companyId);
+        if (company == null) return Ok(new { level = "none", reason = "active" });
+
+        var s = GisAPI.Application.Common.SubscriptionPolicy.Evaluate(company, DateTime.UtcNow);
+        return Ok(new
+        {
+            level = s.Level,
+            reason = s.Reason,
+            expiresAt = s.ExpiresAt,
+            daysRemaining = s.DaysRemaining,
+            graceDaysLeft = s.GraceDaysLeft
+        });
+    }
+
     [HttpGet("current")]
     public async Task<ActionResult> GetCurrentSubscription()
     {

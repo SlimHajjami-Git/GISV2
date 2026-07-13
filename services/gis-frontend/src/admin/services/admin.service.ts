@@ -13,6 +13,22 @@ export interface AdminUser {
   lastLogin?: Date;
 }
 
+/** Ligne de /admin/billing/overview — abonnement à surveiller. */
+export interface BillingOverviewItem {
+  id: number;
+  name: string;
+  level: 'warning' | 'danger' | 'blocked';
+  reason: 'expiring' | 'grace' | 'expired' | 'suspended' | 'cancelled';
+  expiresAt: string | null;
+  daysRemaining: number | null;
+  graceDaysLeft: number | null;
+  unpaid: boolean;
+  amountDue: number | null;
+  lastPaymentAt: string | null;
+  subscriptionStatus: string;
+  isActive: boolean;
+}
+
 export interface Client {
   id: number;
   name: string;
@@ -428,6 +444,12 @@ export class AdminService {
 
   suspendClient(id: number): Observable<void> {
     return this.http.post<void>(`${this.apiUrl}/admin/company/${id}/suspend`, {}, { headers: this.getHeaders() });
+  }
+
+  /** Sociétés à surveiller (expirent ≤30 j, en grâce = impayées, bloquées, suspendues). */
+  getBillingOverview(): Observable<{ count: number; items: BillingOverviewItem[] }> {
+    return this.http.get<{ count: number; items: BillingOverviewItem[] }>(
+      `${this.apiUrl}/admin/billing/overview`, { headers: this.getHeaders() });
   }
 
   activateClient(id: number): Observable<void> {

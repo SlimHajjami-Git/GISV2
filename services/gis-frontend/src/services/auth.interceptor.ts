@@ -53,6 +53,16 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(request).pipe(
     catchError((error: HttpErrorResponse) => {
+      // Société suspendue par le sys_admin ou abonnement expiré au-delà de la
+      // grâce : le backend renvoie 403 { error: "subscription_..." } sur toutes
+      // les requêtes → écran de blocage dédié (pas d'espace admin concerné).
+      if (error.status === 403 && !isAdminRoute
+          && typeof error.error?.error === 'string' && error.error.error.startsWith('subscription_')
+          && !router.url.startsWith('/abonnement-suspendu')) {
+        const reason = error.error.error.replace('subscription_', '');
+        router.navigate(['/abonnement-suspendu'], { queryParams: { reason } });
+        return throwError(() => error);
+      }
       if (error.status === 401 && !req.url.includes('/auth/')) {
         // Token expired — try to refresh
         if (!isRefreshing) {

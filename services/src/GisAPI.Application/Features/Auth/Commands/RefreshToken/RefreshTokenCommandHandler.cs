@@ -61,6 +61,17 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, L
         if (user == null || user.Status != "active")
             throw new DomainException("Compte désactivé ou supprimé");
 
+        // Société suspendue/expirée au-delà de la grâce : le refresh ne doit pas
+        // prolonger la session (sinon un token de 7 j contourne la suspension).
+        if (user.Societe != null && user.Role?.IsSystemRole != true)
+        {
+            var subState = Common.SubscriptionPolicy.Evaluate(user.Societe, DateTime.UtcNow);
+            if (subState.IsBlocked)
+                throw new DomainException(subState.Reason == "expired"
+                    ? "L'abonnement de votre société a expiré. Contactez votre prestataire pour le renouveler."
+                    : "L'abonnement de votre société est suspendu. Contactez votre prestataire.");
+        }
+
         // Explicitly load SubscriptionType if Societe has one
         if (user.Societe?.SubscriptionTypeId != null)
         {

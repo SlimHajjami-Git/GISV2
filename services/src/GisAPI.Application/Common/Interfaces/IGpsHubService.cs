@@ -24,6 +24,13 @@ public interface IGpsHubService
     /// Send geofence event to clients subscribed to a geofence
     /// </summary>
     Task SendGeofenceEventAsync(int geofenceId, object geofenceEvent);
+
+    /// <summary>
+    /// Notifie en temps réel tous les utilisateurs connectés d'une société que
+    /// l'état de son abonnement a changé (suspension/réactivation par le
+    /// sys_admin) — le front re-vérifie immédiatement son statut.
+    /// </summary>
+    Task SendSubscriptionChangedAsync(int companyId, string status);
 }
 
 

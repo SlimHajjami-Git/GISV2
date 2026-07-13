@@ -41,6 +41,17 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
         if (user.Status != "active")
             throw new DomainException("Compte désactivé");
 
+        // Société suspendue ou expirée au-delà de la grâce : pas de nouveau token
+        // (le sys_admin plateforme, lui, doit toujours pouvoir se connecter).
+        if (user.Societe != null && user.Role?.IsSystemRole != true)
+        {
+            var subState = Common.SubscriptionPolicy.Evaluate(user.Societe, DateTime.UtcNow);
+            if (subState.IsBlocked)
+                throw new DomainException(subState.Reason == "expired"
+                    ? "L'abonnement de votre société a expiré. Contactez votre prestataire pour le renouveler."
+                    : "L'abonnement de votre société est suspendu. Contactez votre prestataire.");
+        }
+
         // Explicitly load SubscriptionType if Societe has one
         if (user.Societe?.SubscriptionTypeId != null)
         {

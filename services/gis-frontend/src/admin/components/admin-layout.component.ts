@@ -74,12 +74,14 @@ interface NavItem {
               </svg>
               <input type="text" placeholder="Search clients, users..." />
             </div>
-            <button class="header-btn notification-btn">
+            <!-- Cloche = abonnements à surveiller (expirent ≤30 j, impayés, bloqués) -->
+            <button class="header-btn notification-btn" (click)="goToBilling()"
+              [title]="billingAlertCount > 0 ? billingAlertCount + ' abonnement(s) à surveiller' : 'Aucune alerte abonnement'">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
                 <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
               </svg>
-              <span class="notification-badge">3</span>
+              <span class="notification-badge" *ngIf="billingAlertCount > 0">{{ billingAlertCount > 9 ? '9+' : billingAlertCount }}</span>
             </button>
             <div class="header-time">{{ currentTime }}</div>
           </div>
@@ -542,10 +544,21 @@ export class AdminLayoutComponent implements OnInit {
     private adminService: AdminService
   ) {}
 
+  /** Nombre de sociétés dont l'abonnement demande une action (badge cloche). */
+  billingAlertCount = 0;
+
   ngOnInit() {
     this.adminUser = this.adminService.getAdminUser();
     this.updateTime();
     setInterval(() => this.updateTime(), 1000);
+    this.adminService.getBillingOverview().subscribe({
+      next: (o) => this.billingAlertCount = o?.count ?? 0,
+      error: () => {}
+    });
+  }
+
+  goToBilling() {
+    this.router.navigate(['/admin/clients']);
   }
 
   updateTime() {

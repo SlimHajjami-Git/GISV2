@@ -74,6 +74,16 @@ type CompanyRole = Role & { userCount?: number };
               </svg>
               Modifier
             </button>
+            <!-- Suspension abonnement : coupe l'accès de TOUTE la société (403 sur
+                 chaque requête + refus de login) jusqu'à réactivation. -->
+            <button *ngIf="company.status !== 'suspended'" class="btn-suspend" (click)="toggleSuspension(false)" [disabled]="togglingStatus">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+              {{ togglingStatus ? '…' : 'Suspendre l\\'abonnement' }}
+            </button>
+            <button *ngIf="company.status === 'suspended'" class="btn-reactivate" (click)="toggleSuspension(true)" [disabled]="togglingStatus">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 11V7a4 4 0 0 1 8 0"/><rect x="4" y="11" width="16" height="9" rx="2"/></svg>
+              {{ togglingStatus ? '…' : 'Réactiver l\\'abonnement' }}
+            </button>
           </div>
         </div>
 
@@ -1033,6 +1043,17 @@ type CompanyRole = Role & { userCount?: number };
     .btn-secondary:hover {
       background: #e2e8f0;
     }
+
+    .btn-suspend, .btn-reactivate {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 20px; border-radius: 10px;
+      font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+    }
+    .btn-suspend { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; }
+    .btn-suspend:hover:not(:disabled) { background: #fee2e2; }
+    .btn-reactivate { background: #ecfdf5; border: 1px solid #6ee7b7; color: #047857; }
+    .btn-reactivate:hover:not(:disabled) { background: #d1fae5; }
+    .btn-suspend:disabled, .btn-reactivate:disabled { opacity: .6; cursor: default; }
 
     /* Vehicles Table */
     .vehicles-table {
@@ -2412,6 +2433,19 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
 
   editCompany() {
     this.router.navigate(['/admin/clients'], { queryParams: { edit: this.companyId } });
+  }
+
+  /** Suspension/réactivation de l'abonnement depuis la fiche (confirmation avant coupure). */
+  togglingStatus = false;
+  toggleSuspension(reactivate: boolean) {
+    const name = this.company?.name || 'cette société';
+    if (!reactivate && !confirm(`Suspendre l'abonnement de « ${name} » ?\n\nTous ses utilisateurs perdront immédiatement l'accès à l'application, jusqu'à réactivation.`)) return;
+    this.togglingStatus = true;
+    const call = reactivate ? this.adminService.activateClient(this.companyId) : this.adminService.suspendClient(this.companyId);
+    call.subscribe({
+      next: () => { this.togglingStatus = false; this.loadCompanyDetails(); },
+      error: () => { this.togglingStatus = false; alert("Le changement de statut a échoué. Réessayez."); }
+    });
   }
 
   formatDate(date: Date): string {
