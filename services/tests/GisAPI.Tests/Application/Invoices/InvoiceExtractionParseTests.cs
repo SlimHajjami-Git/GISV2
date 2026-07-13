@@ -124,4 +124,59 @@ public class InvoiceExtractionParseTests
         r.Items![0].Label.Should().Be("Pneu 205/55R16");
         r.Items[0].Amount.Should().Be(890m);
     }
+
+    [Fact]
+    public void Negative_string_amounts_keep_their_sign_for_remise_lines()
+    {
+        var r = InvoiceExtractionService.Parse("""
+        {"amountTTC": 100, "items": [
+          { "label": "Pneus x2", "amount": 112 },
+          { "label": "Remise", "amount": "-12,000" }
+        ]}
+        """);
+        r.Items![1].Amount.Should().Be(-12m);
+        InvoiceExtractionService.CoherenceIssues(r).Should().BeEmpty();  // 112 - 12 = 100
+    }
+
+    // ── Contrôle de cohérence des montants (déclenche la passe corrective) ──
+
+    [Fact]
+    public void Coherent_amounts_with_timbre_fiscal_tolerance_raise_no_issue()
+    {
+        // HT + TVA + timbre (1,000 DT) = TTC — écart de 1 DT ≤ tolérance 1,5 DT.
+        var x = new InvoiceExtraction(null, null, null, 100m, 19m, 120m, "TND", "repair", null, null, "high");
+        InvoiceExtractionService.CoherenceIssues(x).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Ht_plus_tva_far_from_ttc_is_flagged()
+    {
+        // 100 + 19 = 119 vs TTC 220 → chiffre mal lu quelque part.
+        var x = new InvoiceExtraction(null, null, null, 100m, 19m, 220m, "TND", "repair", null, null, "high");
+        InvoiceExtractionService.CoherenceIssues(x).Should().ContainSingle(i => i.Contains("amountTTC"));
+    }
+
+    [Fact]
+    public void Items_sum_far_from_ttc_is_flagged_only_when_all_lines_have_amounts()
+    {
+        var items = new List<InvoiceLineItem>
+        {
+            new("Vidange", 120m, "maintenance"),
+            new("Filtre", 80m, "maintenance"),
+        };
+        var bad = new InvoiceExtraction(null, null, null, null, null, 342.5m, "TND", "maintenance", null, null, "high", items);
+        InvoiceExtractionService.CoherenceIssues(bad).Should().ContainSingle(i => i.Contains("somme des lignes"));
+
+        // Une ligne sans montant → la somme n'est pas vérifiable, pas de faux positif.
+        var partial = new InvoiceExtraction(null, null, null, null, null, 342.5m, "TND", "maintenance", null, null, "high",
+            new List<InvoiceLineItem> { new("Vidange", 120m, null), new("Filtre", null, null) });
+        InvoiceExtractionService.CoherenceIssues(partial).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void No_ttc_means_nothing_to_check()
+    {
+        var x = new InvoiceExtraction(null, null, null, 100m, 19m, null, "TND", "repair", null, null, "low");
+        InvoiceExtractionService.CoherenceIssues(x).Should().BeEmpty();
+    }
 }

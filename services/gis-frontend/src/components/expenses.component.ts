@@ -617,12 +617,42 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     };
   }
 
-  onInvoiceFile(event: any): void {
+  /** Prépare la photo avant upload : rotation EXIF appliquée, côté max 2000 px,
+   *  ré-encodage JPEG qualité 0,85. Une photo de téléphone (4000×3000, ~6 Mo)
+   *  devient ~500 Ko — upload bien plus rapide et lecture IA plus fiable.
+   *  Les PDF et les petites images passent tels quels ; en cas d'échec de
+   *  décodage (navigateur ancien, format exotique) on renvoie l'original. */
+  private async prepareInvoiceImage(file: File): Promise<File> {
+    if (!file.type.startsWith('image/') || file.type === 'image/gif') return file;
+    const MAX_SIDE = 2000;
+    try {
+      const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions);
+      const scale = Math.min(1, MAX_SIDE / Math.max(bmp.width, bmp.height));
+      if (scale === 1 && file.size < 1_500_000) { bmp.close(); return file; }
+      const w = Math.max(1, Math.round(bmp.width * scale));
+      const h = Math.max(1, Math.round(bmp.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { bmp.close(); return file; }
+      ctx.drawImage(bmp, 0, 0, w, h);
+      bmp.close();
+      const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.85));
+      if (!blob || blob.size >= file.size) return file;   // pas de gain → original
+      return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+    } catch {
+      return file;
+    }
+  }
+
+  async onInvoiceFile(event: any): Promise<void> {
     const file: File | undefined = event?.target?.files?.[0];
     if (event?.target) event.target.value = '';       // allow re-selecting the same file
     if (!file) return;
     this.scanning = true;
-    this.apiService.scanInvoice(file).subscribe({
+    this.cdr.detectChanges();
+    const prepared = await this.prepareInvoiceImage(file);
+    this.apiService.scanInvoice(prepared).subscribe({
       next: (res: any) => {
         this.scanning = false;
         if (res?.quota) this.scanQuota = res.quota;   // compteur mis à jour par le serveur
