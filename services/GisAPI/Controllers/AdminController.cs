@@ -41,15 +41,17 @@ public class AdminController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly IPermissionService _permissionService;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly Application.Common.Interfaces.IGpsHubService _gpsHub;
     private static MaintenanceModeDto _maintenanceMode = new() { Enabled = false, Pages = new List<string>(), Message = "" };
 
-    public AdminController(GisDbContext context, IConfiguration configuration, IMediator mediator, IPermissionService permissionService, IHttpClientFactory httpClientFactory)
+    public AdminController(GisDbContext context, IConfiguration configuration, IMediator mediator, IPermissionService permissionService, IHttpClientFactory httpClientFactory, Application.Common.Interfaces.IGpsHubService gpsHub)
     {
         _context = context;
         _configuration = configuration;
         _mediator = mediator;
         _permissionService = permissionService;
         _httpClientFactory = httpClientFactory;
+        _gpsHub = gpsHub;
     }
 
     // ==================== SUBSCRIPTIONS ====================
@@ -187,6 +189,50 @@ public class AdminController : ControllerBase
     {
         var found = await _mediator.Send(new DeleteCompanyCommand(id));
         return found ? Ok(new { message = "Société supprimée" }) : NotFound();
+    }
+
+    /// <summary>
+    /// Modifie directement la DATE D'ÉCHÉANCE de l'abonnement d'une société
+    /// (fiche société admin). Si la nouvelle date est dans le futur et que la
+    /// société était marquée expirée, elle repasse active — les utilisateurs
+    /// bloqués retrouvent l'accès immédiatement (push SignalR).
+    /// </summary>
+    [HttpPut("company/{id}/subscription-expiry")]
+    public async Task<ActionResult> SetSubscriptionExpiry(int id, [FromBody] SetSubscriptionExpiryRequest request)
+    {
+        var societe = await _context.Societes.FindAsync(id);
+        if (societe == null) return NotFound();
+
+        // Fin de journée UTC : une échéance « au 15/08 » reste valable le 15/08.
+        var expires = DateTime.SpecifyKind(request.ExpiresAt.Date.AddDays(1).AddSeconds(-1), DateTimeKind.Utc);
+        societe.SubscriptionExpiresAt = expires;
+        if (expires > DateTime.UtcNow && societe.SubscriptionStatus == "expired")
+            societe.SubscriptionStatus = "active";
+        societe.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        try { await _gpsHub.SendSubscriptionChangedAsync(societe.Id, societe.SubscriptionStatus); } catch { /* best effort */ }
+        return Ok(new { subscriptionExpiresAt = societe.SubscriptionExpiresAt, subscriptionStatus = societe.SubscriptionStatus });
+    }
+
+    /// <summary>
+    /// « Marquer comme payé » : prolonge l'abonnement d'UN cycle de facturation
+    /// (à partir de l'échéance courante si elle est future, sinon d'aujourd'hui),
+    /// enregistre le paiement (LastPaymentAt=maintenant), repasse la société
+    /// active et recalcule le montant du prochain cycle. Réutilise la logique
+    /// de renouvellement standard (RenewSubscriptionCommand).
+    /// </summary>
+    [HttpPost("company/{id}/mark-paid")]
+    public async Task<ActionResult> MarkSubscriptionPaid(int id)
+    {
+        var societe = await _context.Societes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id);
+        if (societe == null) return NotFound();
+
+        var result = await _mediator.Send(new GisAPI.Application.Features.Subscriptions.Commands.RenewSubscription.RenewSubscriptionCommand(
+            id, string.IsNullOrWhiteSpace(societe.BillingCycle) ? "yearly" : societe.BillingCycle));
+
+        try { await _gpsHub.SendSubscriptionChangedAsync(id, "active"); } catch { /* best effort */ }
+        return Ok(result);
     }
 
     /// <summary>
@@ -1186,6 +1232,8 @@ public class CreateAdminCompanyRequest
 }
 
 public record SetAutoSuspendRequest(bool Enabled);
+
+public record SetSubscriptionExpiryRequest(DateTime ExpiresAt);
 
 public class UpdateAdminCompanyRequest
 {

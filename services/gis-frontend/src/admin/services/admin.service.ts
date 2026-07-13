@@ -459,6 +459,18 @@ export class AdminService {
       `${this.apiUrl}/admin/company/${id}/auto-suspend`, { enabled }, { headers: this.getHeaders() });
   }
 
+  /** Modifie la date d'échéance de l'abonnement (fiche société). */
+  setSubscriptionExpiry(id: number, expiresAt: string): Observable<{ subscriptionExpiresAt: string; subscriptionStatus: string }> {
+    return this.http.put<{ subscriptionExpiresAt: string; subscriptionStatus: string }>(
+      `${this.apiUrl}/admin/company/${id}/subscription-expiry`, { expiresAt }, { headers: this.getHeaders() });
+  }
+
+  /** Marque l'abonnement comme payé : prolonge d'un cycle + enregistre le paiement. */
+  markSubscriptionPaid(id: number): Observable<{ newExpirationDate: string; amount: number; billingCycle: string }> {
+    return this.http.post<{ newExpirationDate: string; amount: number; billingCycle: string }>(
+      `${this.apiUrl}/admin/company/${id}/mark-paid`, {}, { headers: this.getHeaders() });
+  }
+
   activateClient(id: number): Observable<void> {
     return this.http.post<void>(`${this.apiUrl}/admin/company/${id}/activate`, {}, { headers: this.getHeaders() });
   }

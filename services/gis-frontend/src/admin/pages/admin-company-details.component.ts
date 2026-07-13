@@ -6,6 +6,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, Client, AdminVehicle, Role, SystemUser } from '../services/admin.service';
+import { environment } from '../../environments/environment';
 import { AuthService } from '../../services/auth.service';
 import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.component';
 import { PermissionEditorComponent } from '../components/permission-editor.component';
@@ -161,6 +162,42 @@ type CompanyRole = Role & { userCount?: number };
           </div>
           <p class="scan-quota-hint">Vide = défaut plateforme ({{ SCAN_QUOTA_DEFAULT }}/mois) • 0 = désactiver • le quota se réinitialise chaque mois</p>
           <p class="scan-quota-msg" *ngIf="scanQuotaMsg">{{ scanQuotaMsg }}</p>
+        </div>
+
+        <!-- Échéance & paiement de l'abonnement -->
+        <div class="scan-quota-card">
+          <div class="scan-quota-head">
+            <div class="scan-quota-icon sub">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10.5h17"/>
+              </svg>
+            </div>
+            <div class="scan-quota-txt">
+              <h3>Abonnement — échéance</h3>
+              <p *ngIf="subExpiresAt">
+                Échéance : <strong>{{ subExpiresAt | date:'dd/MM/yyyy' }}</strong>
+                <span class="sub-days ok" *ngIf="subStatus !== 'suspended' && (subDaysRemaining ?? 0) > 30">{{ subDaysRemaining }} j restants</span>
+                <span class="sub-days warn" *ngIf="subStatus !== 'suspended' && (subDaysRemaining ?? 0) <= 30 && (subDaysRemaining ?? 0) > 0">{{ subDaysRemaining }} j restants</span>
+                <span class="sub-days bad" *ngIf="subStatus !== 'suspended' && (subDaysRemaining ?? 99) <= 0">expiré depuis {{ -(subDaysRemaining || 0) }} j</span>
+                <span class="sub-days bad" *ngIf="subStatus === 'suspended'">suspendu</span>
+              </p>
+              <p *ngIf="!subExpiresAt">Aucune date d'échéance définie — l'abonnement n'expire jamais.</p>
+              <p>Dernier paiement : <strong>{{ subLastPaymentAt ? (subLastPaymentAt | date:'dd/MM/yyyy') : '—' }}</strong>
+                &nbsp;•&nbsp; Cycle : {{ cycleLabel }}
+                <ng-container *ngIf="subNextAmount">&nbsp;•&nbsp; Montant : <strong>{{ subNextAmount | number:'1.0-0' }} {{ adminCurrency }}</strong></ng-container>
+              </p>
+            </div>
+          </div>
+          <div class="scan-quota-form">
+            <input type="date" [(ngModel)]="subExpiryInput" />
+            <button class="btn-secondary" (click)="saveSubscriptionExpiry()" [disabled]="subSaving">{{ subSaving ? 'Enregistrement…' : 'Enregistrer' }}</button>
+            <button class="btn-paid" (click)="markPaid()" [disabled]="subPaying">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              {{ subPaying ? 'Traitement…' : 'Marquer comme payé' }}
+            </button>
+          </div>
+          <p class="scan-quota-hint">« Marquer comme payé » prolonge d'un cycle ({{ cycleLabel }}) à partir de l'échéance courante — ou d'aujourd'hui si elle est dépassée — et enregistre le paiement à la date du jour.</p>
+          <p class="scan-quota-msg" *ngIf="subMsg">{{ subMsg }}</p>
         </div>
 
         <!-- Suspension automatique à l'expiration de l'abonnement -->
@@ -2204,6 +2241,22 @@ type CompanyRole = Role & { userCount?: number };
     .scan-quota-off-tag { background: #fee2e2; color: #b91c1c; }
     .scan-quota-form { display: flex; align-items: center; gap: 8px; }
     .scan-quota-icon.off { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    .scan-quota-icon.sub { background: linear-gradient(135deg, #06b6d4, #0e7490); }
+    .sub-days {
+      margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+      font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+    }
+    .sub-days.ok { background: #d1fae5; color: #047857; }
+    .sub-days.warn { background: #fef3c7; color: #b45309; }
+    .sub-days.bad { background: #fee2e2; color: #b91c1c; }
+    .btn-paid {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 9px 16px; border-radius: 10px; border: 1px solid #6ee7b7;
+      background: #ecfdf5; color: #047857; font-size: 13.5px; font-weight: 650; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-paid:hover:not(:disabled) { background: #d1fae5; }
+    .btn-paid:disabled { opacity: .6; cursor: default; }
     .auto-suspend-switch {
       display: flex; align-items: center; gap: 8px; flex: 0 0 auto;
       font-size: 13px; font-weight: 600; color: #1f2937; cursor: pointer;
@@ -2359,9 +2412,80 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
         this.scanQuotaUsed = s?.invoiceScanUsedThisMonth ?? 0;
         this.scanQuotaInput = this.scanQuotaLimit === null ? '' : String(this.scanQuotaLimit);
         this.autoSuspendEnabled = (s as any)?.autoSuspendEnabled ?? true;
+        // Échéance & facturation (carte Abonnement)
+        this.subExpiresAt = (s as any)?.subscriptionExpiresAt ?? null;
+        this.subExpiryInput = this.subExpiresAt ? String(this.subExpiresAt).substring(0, 10) : '';
+        this.subStatus = (s as any)?.subscriptionStatus ?? '';
+        this.subLastPaymentAt = (s as any)?.lastPaymentAt ?? null;
+        this.subNextAmount = (s as any)?.nextPaymentAmount ?? null;
+        this.subBillingCycle = (s as any)?.billingCycle || 'yearly';
         this.cdr.detectChanges();
       },
       error: (err) => console.error('Error loading scan quota:', err)
+    });
+  }
+
+  /** Carte « Abonnement — échéance » : date modifiable + marquer comme payé. */
+  subExpiresAt: string | null = null;
+  subExpiryInput = '';
+  subStatus = '';
+  subLastPaymentAt: string | null = null;
+  subNextAmount: number | null = null;
+  subBillingCycle = 'yearly';
+  subSaving = false;
+  subPaying = false;
+  subMsg = '';
+
+  get adminCurrency(): string {
+    return (environment as { defaultCurrency?: string }).defaultCurrency || 'TND';
+  }
+
+  get subDaysRemaining(): number | null {
+    if (!this.subExpiresAt) return null;
+    return Math.ceil((new Date(this.subExpiresAt).getTime() - Date.now()) / 86400000);
+  }
+
+  get cycleLabel(): string {
+    return this.subBillingCycle === 'monthly' ? 'Mensuel'
+      : this.subBillingCycle === 'quarterly' ? 'Trimestriel' : 'Annuel';
+  }
+
+  saveSubscriptionExpiry() {
+    if (!this.subExpiryInput) { this.subMsg = 'Choisissez une date.'; return; }
+    this.subSaving = true;
+    this.subMsg = '';
+    this.adminService.setSubscriptionExpiry(this.companyId, this.subExpiryInput).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => {
+        this.subSaving = false;
+        this.subExpiresAt = r?.subscriptionExpiresAt ?? this.subExpiryInput;
+        this.subStatus = r?.subscriptionStatus ?? this.subStatus;
+        this.subMsg = 'Échéance enregistrée.';
+        this.cdr.detectChanges();
+        setTimeout(() => { this.subMsg = ''; this.cdr.detectChanges(); }, 2500);
+        this.loadCompanyDetails();          // rafraîchit le badge de statut du header
+      },
+      error: () => { this.subSaving = false; this.subMsg = "L'enregistrement a échoué. Réessayez."; this.cdr.detectChanges(); }
+    });
+  }
+
+  markPaid() {
+    const future = this.subExpiresAt && new Date(this.subExpiresAt).getTime() > Date.now();
+    const base = future
+      ? `l'échéance courante (${new Date(this.subExpiresAt as string).toLocaleDateString('fr-FR')})`
+      : `aujourd'hui`;
+    if (!confirm(`Marquer l'abonnement de « ${this.company?.name || 'cette société'} » comme payé ?\n\nL'échéance sera prolongée d'un cycle (${this.cycleLabel}) à partir de ${base}, et le paiement enregistré à la date du jour.`)) return;
+    this.subPaying = true;
+    this.subMsg = '';
+    this.adminService.markSubscriptionPaid(this.companyId).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        this.subPaying = false;
+        this.subMsg = 'Paiement enregistré — abonnement prolongé.';
+        this.cdr.detectChanges();
+        setTimeout(() => { this.subMsg = ''; this.cdr.detectChanges(); }, 3000);
+        this.loadScanQuota();               // recharge échéance/paiement affichés
+        this.loadCompanyDetails();          // rafraîchit le badge de statut du header
+      },
+      error: () => { this.subPaying = false; this.subMsg = 'Le renouvellement a échoué. Réessayez.'; this.cdr.detectChanges(); }
     });
   }
 
