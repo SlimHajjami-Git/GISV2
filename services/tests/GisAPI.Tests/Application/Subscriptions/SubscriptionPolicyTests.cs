@@ -80,6 +80,25 @@ public class SubscriptionPolicyTests
     }
 
     [Fact]
+    public void Auto_suspend_disabled_keeps_access_after_grace_with_permanent_red_banner()
+    {
+        var s = Make(Now.AddDays(-30));
+        s.AutoSuspendEnabled = false;
+        var state = SubscriptionPolicy.Evaluate(s, Now);
+        state.IsBlocked.Should().BeFalse();               // jamais bloquée automatiquement
+        state.Level.Should().Be("danger");                // bannière rouge permanente
+        state.Reason.Should().Be("expired");
+    }
+
+    [Fact]
+    public void Manual_suspension_still_blocks_when_auto_suspend_disabled()
+    {
+        var s = Make(Now.AddDays(-30), "suspended");
+        s.AutoSuspendEnabled = false;
+        SubscriptionPolicy.Evaluate(s, Now).IsBlocked.Should().BeTrue();
+    }
+
+    [Fact]
     public void Legacy_expired_rows_with_isactive_false_follow_grace_not_suspension()
     {
         // L'ancien middleware posait IsActive=false à l'expiration : ces lignes

@@ -163,6 +163,26 @@ type CompanyRole = Role & { userCount?: number };
           <p class="scan-quota-msg" *ngIf="scanQuotaMsg">{{ scanQuotaMsg }}</p>
         </div>
 
+        <!-- Suspension automatique à l'expiration de l'abonnement -->
+        <div class="scan-quota-card">
+          <div class="scan-quota-head">
+            <div class="scan-quota-icon" [class.off]="!autoSuspendEnabled">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+              </svg>
+            </div>
+            <div class="scan-quota-txt">
+              <h3>Suspension automatique à l'expiration</h3>
+              <p *ngIf="autoSuspendEnabled">Activée — blocage automatique {{ 7 }} jours après l'expiration de l'abonnement (période de grâce).</p>
+              <p *ngIf="!autoSuspendEnabled">Désactivée — cette société n'est <strong>jamais bloquée automatiquement</strong> : bannière rouge permanente une fois expirée, marquée impayée, mais l'accès reste ouvert. Seule votre suspension manuelle coupe.</p>
+            </div>
+            <label class="auto-suspend-switch">
+              <input type="checkbox" [checked]="autoSuspendEnabled" (change)="toggleAutoSuspend($any($event.target).checked)" [disabled]="autoSuspendSaving" />
+              <span>{{ autoSuspendSaving ? '…' : (autoSuspendEnabled ? 'Activée' : 'Désactivée') }}</span>
+            </label>
+          </div>
+        </div>
+
         <!-- Tabs -->
         <div class="tabs-container">
           <div class="tabs">
@@ -2183,6 +2203,13 @@ type CompanyRole = Role & { userCount?: number };
     }
     .scan-quota-off-tag { background: #fee2e2; color: #b91c1c; }
     .scan-quota-form { display: flex; align-items: center; gap: 8px; }
+    .scan-quota-icon.off { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    .auto-suspend-switch {
+      display: flex; align-items: center; gap: 8px; flex: 0 0 auto;
+      font-size: 13px; font-weight: 600; color: #1f2937; cursor: pointer;
+      padding: 8px 14px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc;
+    }
+    .auto-suspend-switch input { width: 18px; height: 18px; accent-color: #6d28d9; cursor: pointer; }
     .scan-quota-form input {
       width: 120px; padding: 8px 10px;
       border: 1px solid var(--admin-border, #e2e8f0); border-radius: 8px;
@@ -2331,9 +2358,34 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
         this.scanQuotaLimit = s?.invoiceScanMonthlyLimit ?? null;
         this.scanQuotaUsed = s?.invoiceScanUsedThisMonth ?? 0;
         this.scanQuotaInput = this.scanQuotaLimit === null ? '' : String(this.scanQuotaLimit);
+        this.autoSuspendEnabled = (s as any)?.autoSuspendEnabled ?? true;
         this.cdr.detectChanges();
       },
       error: (err) => console.error('Error loading scan quota:', err)
+    });
+  }
+
+  /** Interrupteur « suspension automatique à l'expiration » (par société). */
+  autoSuspendEnabled = true;
+  autoSuspendSaving = false;
+  toggleAutoSuspend(enabled: boolean) {
+    if (!enabled && !confirm(`Désactiver la suspension automatique pour « ${this.company?.name || 'cette société'} » ?\n\nUne fois expirée, elle gardera l'accès à l'application (bannière rouge permanente) tant que vous ne la suspendez pas manuellement.`)) {
+      this.autoSuspendEnabled = true;        // ré-affiche l'état réel (case décochée annulée)
+      this.cdr.detectChanges();
+      return;
+    }
+    this.autoSuspendSaving = true;
+    this.adminService.setAutoSuspend(this.companyId, enabled).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => {
+        this.autoSuspendSaving = false;
+        this.autoSuspendEnabled = r?.autoSuspendEnabled ?? enabled;
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.autoSuspendSaving = false;
+        alert('Le changement a échoué. Réessayez.');
+        this.loadScanQuota();                // recharge l'état réel
+      }
     });
   }
 

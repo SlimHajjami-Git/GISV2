@@ -50,6 +50,14 @@ public class Societe : AuditableEntity
     [Column("invoice_scan_monthly_limit")]
     public int? InvoiceScanMonthlyLimit { get; set; }
 
+    // Suspension AUTOMATIQUE à l'expiration de l'abonnement (après la grâce de
+    // 7 j — voir SubscriptionPolicy). true = comportement standard ; false = la
+    // société expirée garde l'accès (bannière rouge permanente, marquée impayée
+    // côté admin) et SEULE la suspension manuelle du sys_admin coupe l'accès.
+    // Modifiable par le sys_admin depuis la fiche société de l'admin.
+    [Column("auto_suspend_enabled")]
+    public bool AutoSuspendEnabled { get; set; } = true;
+
     // Navigation collections
     public ICollection<User> Users { get; set; } = new List<User>();
     public ICollection<Role> Roles { get; set; } = new List<Role>();

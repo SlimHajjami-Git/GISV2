@@ -47,9 +47,14 @@ public static class SubscriptionPolicy
         if (expires <= nowUtc)
         {
             var graceLeft = GraceDays + days; // days est négatif après expiration
-            return graceLeft > 0
-                ? new State("danger", "grace", expires, days, graceLeft)
-                : new State("blocked", "expired", expires, days, 0);
+            if (graceLeft > 0)
+                return new State("danger", "grace", expires, days, graceLeft);
+            // Suspension automatique désactivée pour cette société (choix du
+            // sys_admin) : expirée mais tolérée — bannière rouge permanente,
+            // accès maintenu, marquée impayée côté supervision.
+            return s.AutoSuspendEnabled
+                ? new State("blocked", "expired", expires, days, 0)
+                : new State("danger", "expired", expires, days, 0);
         }
         if (days <= UrgentDays) return new State("danger", "expiring", expires, days, null);
         if (days <= WarnDays) return new State("warning", "expiring", expires, days, null);

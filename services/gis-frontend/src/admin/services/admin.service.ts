@@ -27,6 +27,7 @@ export interface BillingOverviewItem {
   lastPaymentAt: string | null;
   subscriptionStatus: string;
   isActive: boolean;
+  autoSuspendEnabled: boolean;
 }
 
 export interface Client {
@@ -450,6 +451,12 @@ export class AdminService {
   getBillingOverview(): Observable<{ count: number; items: BillingOverviewItem[] }> {
     return this.http.get<{ count: number; items: BillingOverviewItem[] }>(
       `${this.apiUrl}/admin/billing/overview`, { headers: this.getHeaders() });
+  }
+
+  /** Active/désactive la suspension AUTOMATIQUE à l'expiration pour une société. */
+  setAutoSuspend(id: number, enabled: boolean): Observable<{ autoSuspendEnabled: boolean }> {
+    return this.http.put<{ autoSuspendEnabled: boolean }>(
+      `${this.apiUrl}/admin/company/${id}/auto-suspend`, { enabled }, { headers: this.getHeaders() });
   }
 
   activateClient(id: number): Observable<void> {

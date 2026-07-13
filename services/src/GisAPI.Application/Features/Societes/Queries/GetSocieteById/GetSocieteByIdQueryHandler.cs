@@ -73,7 +73,8 @@ public class GetSocieteByIdQueryHandler : IRequestHandler<GetSocieteByIdQuery, S
             societe.CreatedAt,
             societe.UpdatedAt,
             societe.InvoiceScanMonthlyLimit,
-            scansThisMonth
+            scansThisMonth,
+            societe.AutoSuspendEnabled
         );
     }
 }

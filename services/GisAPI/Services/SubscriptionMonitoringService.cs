@@ -82,7 +82,8 @@ public class SubscriptionMonitoringService : BackgroundService
             return x.State.Reason switch
             {
                 "grace" => $"{s.Name} : EXPIRÉ, grâce {x.State.GraceDaysLeft} j restants (impayé{amount})",
-                "expired" => $"{s.Name} : BLOQUÉ, expiré depuis {-x.State.DaysRemaining} j (impayé{amount})",
+                "expired" when x.State.IsBlocked => $"{s.Name} : BLOQUÉ, expiré depuis {-x.State.DaysRemaining} j (impayé{amount})",
+                "expired" => $"{s.Name} : expiré depuis {-x.State.DaysRemaining} j, suspension auto DÉSACTIVÉE (impayé{amount})",
                 _ => $"{s.Name} : expire dans {x.State.DaysRemaining} j{amount}",
             };
         }).ToList();

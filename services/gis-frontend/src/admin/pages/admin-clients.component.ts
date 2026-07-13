@@ -28,7 +28,8 @@ import { environment } from '../../environments/environment';
               <span class="ba-info">
                 <ng-container *ngIf="b.reason==='expiring'">expire dans {{ b.daysRemaining }} j</ng-container>
                 <ng-container *ngIf="b.reason==='grace'">EXPIRÉ — grâce {{ b.graceDaysLeft }} j</ng-container>
-                <ng-container *ngIf="b.reason==='expired'">BLOQUÉ — expiré depuis {{ -(b.daysRemaining || 0) }} j</ng-container>
+                <ng-container *ngIf="b.reason==='expired' && b.level==='blocked'">BLOQUÉ — expiré depuis {{ -(b.daysRemaining || 0) }} j</ng-container>
+                <ng-container *ngIf="b.reason==='expired' && b.level!=='blocked'">expiré depuis {{ -(b.daysRemaining || 0) }} j — suspension auto désactivée</ng-container>
                 <ng-container *ngIf="b.reason==='suspended' || b.reason==='cancelled'">suspendu</ng-container>
               </span>
               <span class="ba-unpaid" *ngIf="b.unpaid">impayé</span>

@@ -40,7 +40,10 @@ public record SocieteDetailDto(
     // 0 = désactivé. Paramètres avec défauts : les handlers Create/Update
     // construisent ce DTO sans ces infos, l'admin UI recharge via GET.
     int? InvoiceScanMonthlyLimit = null,
-    int InvoiceScanUsedThisMonth = 0
+    int InvoiceScanUsedThisMonth = 0,
+    // Suspension automatique à l'expiration (grâce 7 j). false = jamais
+    // bloquée automatiquement, seule la suspension manuelle coupe.
+    bool AutoSuspendEnabled = true
 );
 
 public record SocieteSettingsDto(

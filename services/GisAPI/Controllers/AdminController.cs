@@ -190,6 +190,25 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
+    /// Interrupteur PAR SOCIÉTÉ de la suspension automatique à l'expiration.
+    /// enabled=false : la société expirée n'est jamais bloquée automatiquement
+    /// (bannière rouge permanente, marquée impayée) — seule la suspension
+    /// manuelle coupe l'accès. La bascule prend effet immédiatement (le
+    /// middleware ré-évalue à chaque requête).
+    /// </summary>
+    [HttpPut("company/{id}/auto-suspend")]
+    public async Task<ActionResult> SetAutoSuspend(int id, [FromBody] SetAutoSuspendRequest request)
+    {
+        var societe = await _context.Societes.FindAsync(id);
+        if (societe == null) return NotFound();
+
+        societe.AutoSuspendEnabled = request.Enabled;
+        societe.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return Ok(new { autoSuspendEnabled = societe.AutoSuspendEnabled });
+    }
+
+    /// <summary>
     /// Vue « facturation » plateforme : toutes les sociétés à surveiller —
     /// expirent sous 30 j, expirées en grâce (= facture IMPAYÉE), bloquées,
     /// ou suspendues manuellement. Alimente le bandeau d'alerte et la cloche
@@ -220,7 +239,8 @@ public class AdminController : ControllerBase
                 amountDue = x.Societe.NextPaymentAmount,
                 lastPaymentAt = x.Societe.LastPaymentAt,
                 subscriptionStatus = x.Societe.SubscriptionStatus,
-                isActive = x.Societe.IsActive
+                isActive = x.Societe.IsActive,
+                autoSuspendEnabled = x.Societe.AutoSuspendEnabled
             })
             .ToList();
 
@@ -1164,6 +1184,8 @@ public class CreateAdminCompanyRequest
     public string? AdminEmail { get; set; }
     public string? AdminPassword { get; set; }
 }
+
+public record SetAutoSuspendRequest(bool Enabled);
 
 public class UpdateAdminCompanyRequest
 {

@@ -1535,6 +1535,8 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   subBannerText(b: SubscriptionBanner): string {
     if (b.reason === 'grace')
       return `L'abonnement de votre société a expiré — l'accès sera suspendu dans ${b.graceDaysLeft} jour${(b.graceDaysLeft ?? 0) > 1 ? 's' : ''}`;
+    if (b.reason === 'expired')   // suspension auto désactivée : expirée mais tolérée
+      return `L'abonnement de votre société a expiré — merci de régulariser votre situation`;
     if ((b.daysRemaining ?? 99) <= 1)
       return `L'abonnement de votre société expire aujourd'hui`;
     return `L'abonnement de votre société expire dans ${b.daysRemaining} jours`;
