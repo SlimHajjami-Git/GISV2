@@ -56,6 +56,12 @@ builder.Services.AddSingleton<GisAPI.Services.IAccidentNarrativeService, GisAPI.
 builder.Services.AddSingleton<GisAPI.Services.IManualAccidentEnricher, GisAPI.Services.ManualAccidentEnrichmentService>();
 builder.Services.AddSingleton<GisAPI.Services.IVehicleHealthScoreService, GisAPI.Services.VehicleHealthScoreService>();
 
+// Dashboard : calcul extrait dans un service réutilisable + cache coalescé
+// (anti-stampede) + pré-chauffage en arrière-plan pour un affichage instantané.
+builder.Services.AddScoped<GisAPI.Services.IDashboardService, GisAPI.Services.DashboardService>();
+builder.Services.AddSingleton<GisAPI.Services.IDashboardCache, GisAPI.Services.DashboardCache>();
+builder.Services.AddHostedService<GisAPI.Services.DashboardPrewarmService>();
+
 // GPS Telemetry Consumer (RabbitMQ -> SignalR)
 builder.Services.AddHostedService<GisAPI.Services.GpsTelemetryConsumer>();
 
