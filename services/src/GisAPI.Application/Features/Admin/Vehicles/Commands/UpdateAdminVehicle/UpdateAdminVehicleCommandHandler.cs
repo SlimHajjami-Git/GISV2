@@ -103,6 +103,12 @@ public class UpdateAdminVehicleCommandHandler : IRequestHandler<UpdateAdminVehic
                 if (!string.IsNullOrWhiteSpace(r.GpsSimNumber)) gpsDevice.SimNumber = r.GpsSimNumber;
                 if (!string.IsNullOrWhiteSpace(r.GpsSimOperator)) gpsDevice.SimOperator = r.GpsSimOperator;
                 if (r.GpsInstallationDate.HasValue) gpsDevice.InstallationDate = r.GpsInstallationDate;
+
+                // Anti-doublons IMEI/MAT/SIM sur les valeurs FINALES du boîtier.
+                // Rien n'est persisté avant SaveChanges : retourner ici annule tout.
+                var conflict = await GpsDeviceUniquenessGuard.FindConflictAsync(
+                    _context, gpsDevice.Id, gpsDevice.DeviceUid, gpsDevice.Mat, gpsDevice.SimNumber, ct);
+                if (conflict != null) return new UpdateAdminVehicleResult(false, conflict);
             }
         }
 

@@ -23,7 +23,7 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
-              <input type="text" [(ngModel)]="searchQuery" (input)="filterVehicles()" placeholder="Rechercher par matricule, MAT, nom..." />
+              <input type="text" [(ngModel)]="searchQuery" (input)="filterVehicles()" placeholder="Rechercher par matricule, MAT, IMEI, tél, nom..." />
             </div>
             <select class="filter-select" [(ngModel)]="statusFilter" (change)="filterVehicles()">
               <option value="all">Tous les statuts</option>
@@ -81,6 +81,10 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
                   MAT
                   <span class="sort-icon" *ngIf="sortColumn === 'gpsMat'">{{ sortDirection === 'asc' ? '&#9650;' : '&#9660;' }}</span>
                 </th>
+                <th class="th-sortable" (click)="toggleSort('gpsImei')">
+                  IMEI
+                  <span class="sort-icon" *ngIf="sortColumn === 'gpsImei'">{{ sortDirection === 'asc' ? '&#9650;' : '&#9660;' }}</span>
+                </th>
                 <th class="th-sortable" (click)="toggleSort('name')">
                   Nom
                   <span class="sort-icon" *ngIf="sortColumn === 'name'">{{ sortDirection === 'asc' ? '&#9650;' : '&#9660;' }}</span>
@@ -106,6 +110,10 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
                 <td class="td-mat">
                   <span class="mat-badge" *ngIf="vehicle.gpsMat">{{ vehicle.gpsMat }}</span>
                   <span class="text-muted" *ngIf="!vehicle.gpsMat">-</span>
+                </td>
+                <td class="td-imei">
+                  <span class="imei-badge" *ngIf="vehicle.gpsImei">{{ vehicle.gpsImei }}</span>
+                  <span class="text-muted" *ngIf="!vehicle.gpsImei">-</span>
                 </td>
                 <td>
                   <div class="cell-name">
@@ -355,6 +363,8 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
     .plate-badge { background: #f1f5f9; padding: 4px 10px; border-radius: 6px; font-size: 13px; color: #1e293b; letter-spacing: 0.5px; }
     .td-mat { font-family: 'Courier New', monospace; }
     .mat-badge { background: rgba(139,92,246,0.1); color: #7c3aed; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+    .td-imei { font-family: 'Courier New', monospace; }
+    .imei-badge { background: rgba(14,165,233,0.1); color: #0284c7; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.3px; }
     .td-km { font-weight: 600; color: #1f2937; white-space: nowrap; }
     .td-phone { font-family: 'Courier New', monospace; font-size: 12px; }
     .text-muted { color: #cbd5e1; }
@@ -434,7 +444,7 @@ import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.com
 
     @media (max-width: 900px) {
       .table-container { overflow-x: auto; }
-      .vehicles-table { min-width: 800px; }
+      .vehicles-table { min-width: 950px; }
       .stats-bar { gap: 8px; }
       .stat-card { min-width: 80px; padding: 10px 14px; }
       .stat-number { font-size: 18px; }
@@ -569,6 +579,7 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
         vehicle.name.toLowerCase().includes(q) ||
         (vehicle.plate && vehicle.plate.toLowerCase().includes(q)) ||
         (vehicle.gpsMat && vehicle.gpsMat.toLowerCase().includes(q)) ||
+        (vehicle.gpsImei && vehicle.gpsImei.toLowerCase().includes(q)) ||
         (vehicle.gpsSimNumber && vehicle.gpsSimNumber.toLowerCase().includes(q)) ||
         (vehicle.companyName && vehicle.companyName.toLowerCase().includes(q)) ||
         (vehicle.brand && vehicle.brand.toLowerCase().includes(q));
@@ -729,7 +740,8 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           console.error('Error updating vehicle:', err);
-          alert('Erreur lors de la mise à jour du véhicule');
+          // Le backend renvoie un message précis (ex: doublon IMEI/MAT/SIM refusé) — l'afficher tel quel.
+          alert(err?.error?.message || 'Erreur lors de la mise à jour du véhicule');
         }
       });
     } else {
@@ -740,7 +752,7 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           console.error('Error creating vehicle:', err);
-          alert('Erreur lors de la création du véhicule');
+          alert(err?.error?.message || 'Erreur lors de la création du véhicule');
         }
       });
     }

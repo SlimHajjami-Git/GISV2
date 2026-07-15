@@ -55,6 +55,13 @@ public class CreateVehicleCommandHandler : IRequestHandler<CreateVehicleCommand,
         }
         else if (request.NewGpsDevice != null)
         {
+            // Anti-doublons IMEI/SIM : jamais deux boîtiers avec le même identifiant
+            // (le middleware mappe DomainException → 400 avec le message).
+            var conflict = await GisAPI.Application.Features.Admin.Vehicles.Services.GpsDeviceUniquenessGuard
+                .FindConflictAsync(_context, 0, request.NewGpsDevice.DeviceUid, null, request.NewGpsDevice.SimNumber, ct);
+            if (conflict != null)
+                throw new GisAPI.Domain.Exceptions.DomainException(conflict);
+
             // Create new GPS device
             var newDevice = new GpsDevice
             {
