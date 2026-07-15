@@ -126,15 +126,21 @@ CROSS JOIN LATERAL (
             latestPositions = rows.ToDictionary(p => p.DeviceId);
         }
 
-        // Get today's stats per device (last 24 hours) — ONE query for all devices
-        // Fetch all positions for all devices at once, then compute stats in-memory
+        // Stats du jour par device (24 h) — AGRÉGÉES EN SQL.
+        //
+        // L'ancienne version RAMENAIT EN MÉMOIRE toutes les positions des
+        // dernières 24 h (≈165 000 lignes sur la flotte prod) puis calculait
+        // les stats en .NET. Ce handler étant appelé par la carte de suivi ET
+        // le dashboard, en polling ~30 s et par utilisateur, chaque appel
+        // matérialisait 165 000 objets → pression GC massive et lenteur
+        // GÉNÉRALE dès que plusieurs opérateurs étaient connectés en même temps
+        // (cause de la lenteur signalée le 15/07).
+        //
+        // Postgres calcule maintenant vitesse max / minutes en mouvement /
+        // à l'arrêt / nombre de trames via une fenêtre LAG et ne renvoie
+        // qu'UNE ligne par device (~280 au lieu de 165 000). Même écart de
+        // temps entre deux trames plafonné à 10 min (offline non compté).
         var since = DateTime.UtcNow.AddHours(-24);
-        var allRecentPositions = await _context.GpsPositions
-            .AsNoTracking()
-            .Where(p => deviceIds.Contains(p.DeviceId) && p.RecordedAt >= since)
-            .OrderBy(p => p.RecordedAt)
-            .Select(p => new { p.DeviceId, p.RecordedAt, p.SpeedKph })
-            .ToListAsync(ct);
 
         // "Engine off since" — for each device, the most recent frame
         // where the engine was on. After that timestamp the engine has
@@ -183,27 +189,33 @@ CROSS JOIN LATERAL (
         }
 
         var deviceStats = new Dictionary<int, (double MaxSpeed, double MovingMinutes, double StoppedMinutes, int TotalCount)>();
-        foreach (var group in allRecentPositions.GroupBy(p => p.DeviceId))
+        if (deviceIds.Count > 0)
         {
-            var positions = group.ToList();
-            var maxSpeed = positions.Max(p => p.SpeedKph ?? 0);
-            double movingSeconds = 0;
-            double stoppedSeconds = 0;
-
-            for (int i = 1; i < positions.Count; i++)
-            {
-                var gap = (positions[i].RecordedAt - positions[i - 1].RecordedAt).TotalSeconds;
-                // Cap gap at 10 minutes to avoid counting long offline periods
-                if (gap > 600) gap = 600;
-
-                // Attribute the gap to moving or stopped based on the previous position's speed
-                if ((positions[i - 1].SpeedKph ?? 0) > 5)
-                    movingSeconds += gap;
-                else
-                    stoppedSeconds += gap;
-            }
-
-            deviceStats[group.Key] = (maxSpeed, movingSeconds / 60.0, stoppedSeconds / 60.0, positions.Count);
+            // Fenêtre LAG : pour chaque trame, écart avec la précédente (plafonné
+            // à 600 s pour ne pas compter les coupures offline), attribué en
+            // mouvement/arrêt selon la vitesse de la trame précédente — exactement
+            // l'ancienne logique .NET, mais exécutée par Postgres et agrégée.
+            const string statsSql = @"
+SELECT device_id AS ""DeviceId"",
+       COALESCE(MAX(speed_kph), 0)::double precision AS ""MaxSpeed"",
+       (COALESCE(SUM(CASE WHEN prev_speed > 5 THEN gap ELSE 0 END), 0) / 60.0)::double precision AS ""MovingMinutes"",
+       (COALESCE(SUM(CASE WHEN prev_speed <= 5 OR prev_speed IS NULL THEN gap ELSE 0 END), 0) / 60.0)::double precision AS ""StoppedMinutes"",
+       COUNT(*)::int AS ""TotalCount""
+FROM (
+    SELECT device_id, speed_kph,
+           LEAST(GREATEST(EXTRACT(EPOCH FROM (recorded_at - LAG(recorded_at) OVER w)), 0), 600) AS gap,
+           LAG(speed_kph) OVER w AS prev_speed
+    FROM gps_positions
+    WHERE device_id = ANY({0}) AND recorded_at >= {1}
+    WINDOW w AS (PARTITION BY device_id ORDER BY recorded_at)
+) t
+GROUP BY device_id;
+";
+            var statRows = await _context.Database
+                .SqlQueryRaw<DeviceStatRow>(statsSql, deviceIds.ToArray(), since)
+                .ToListAsync(ct);
+            foreach (var r in statRows)
+                deviceStats[r.DeviceId] = (r.MaxSpeed, r.MovingMinutes, r.StoppedMinutes, r.TotalCount);
         }
 
         var result = vehicles.Select(v =>
@@ -395,6 +407,16 @@ CROSS JOIN LATERAL (
     {
         public int DeviceId { get; set; }
         public DateTime LastOn { get; set; }
+    }
+
+    /// <summary>Stats du jour agrégées en SQL (une ligne par device).</summary>
+    public class DeviceStatRow
+    {
+        public int DeviceId { get; set; }
+        public double MaxSpeed { get; set; }
+        public double MovingMinutes { get; set; }
+        public double StoppedMinutes { get; set; }
+        public int TotalCount { get; set; }
     }
 }
 
