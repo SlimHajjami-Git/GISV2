@@ -52,6 +52,15 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
         return await CalculateForVehicle(context, vehicle, ct);
     }
 
+    /// <summary>
+    /// Scores de TOUTE la flotte — 4 requêtes agrégées au lieu de 3 par véhicule.
+    ///
+    /// L'ancienne version bouclait sur chaque véhicule et exécutait 3 requêtes à
+    /// l'intérieur (schedules, réparations, alertes) : ~1 + 219×3 = ~658 requêtes
+    /// SÉQUENTIELLES chez HERTZ. C'était la cause PRINCIPALE des >80 s du
+    /// dashboard (mesuré le 15/07). On agrège désormais les 3 compteurs par
+    /// véhicule en 3 GROUP BY, puis on calcule les scores en mémoire.
+    /// </summary>
     public async Task<List<VehicleHealthResult>> CalculateAllScoresAsync(int companyId, CancellationToken ct = default)
     {
         using var scope = _serviceProvider.CreateScope();
@@ -61,16 +70,91 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
             .AsNoTracking()
             .Where(v => v.CompanyId == companyId)
             .ToListAsync(ct);
+        if (vehicles.Count == 0) return new List<VehicleHealthResult>();
 
-        var results = new List<VehicleHealthResult>();
+        var vehicleIds = vehicles.Select(v => v.Id).ToList();
+        var now = DateTime.UtcNow;
+        var sixMonthsAgo = now.AddMonths(-6);
+        var thirtyDaysAgo = now.AddDays(-30);
+
+        // 1 requête : entretiens par (véhicule, statut).
+        var schedRows = await context.VehicleMaintenanceSchedules
+            .AsNoTracking()
+            .Where(s => vehicleIds.Contains(s.VehicleId))
+            .GroupBy(s => new { s.VehicleId, s.Status })
+            .Select(g => new { g.Key.VehicleId, g.Key.Status, Count = g.Count() })
+            .ToListAsync(ct);
+        var schedByVehicle = schedRows
+            .GroupBy(x => x.VehicleId)
+            .ToDictionary(g => g.Key, g => g.ToDictionary(x => x.Status ?? "", x => x.Count));
+
+        // 1 requête : réparations des 6 derniers mois par véhicule.
+        var repairCounts = (await context.Repairs
+            .AsNoTracking()
+            .Where(r => vehicleIds.Contains(r.VehicleId) && r.RepairDate >= sixMonthsAgo)
+            .GroupBy(r => r.VehicleId)
+            .Select(g => new { VehicleId = g.Key, Count = g.Count() })
+            .ToListAsync(ct))
+            .ToDictionary(x => x.VehicleId, x => x.Count);
+
+        // 1 requête : alertes des 30 derniers jours par véhicule.
+        var alertCounts = (await context.GpsAlerts
+            .AsNoTracking()
+            .Where(a => a.VehicleId != null && vehicleIds.Contains(a.VehicleId.Value) && a.Timestamp >= thirtyDaysAgo)
+            .GroupBy(a => a.VehicleId!.Value)
+            .Select(g => new { VehicleId = g.Key, Count = g.Count() })
+            .ToListAsync(ct))
+            .ToDictionary(x => x.VehicleId, x => x.Count);
+
+        var results = new List<VehicleHealthResult>(vehicles.Count);
         foreach (var vehicle in vehicles)
         {
-            results.Add(await CalculateForVehicle(context, vehicle, ct));
+            var statusCounts = schedByVehicle.GetValueOrDefault(vehicle.Id) ?? new Dictionary<string, int>();
+            results.Add(ScoreVehicle(vehicle,
+                statusCounts,
+                repairCounts.GetValueOrDefault(vehicle.Id, 0),
+                alertCounts.GetValueOrDefault(vehicle.Id, 0),
+                now));
         }
         return results;
     }
 
     private async Task<VehicleHealthResult> CalculateForVehicle(IGisDbContext context, Vehicle vehicle, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+
+        var schedules = await context.VehicleMaintenanceSchedules
+            .AsNoTracking()
+            .Where(s => s.VehicleId == vehicle.Id)
+            .Select(s => s.Status)
+            .ToListAsync(ct);
+        var statusCounts = schedules
+            .GroupBy(s => s ?? "")
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var sixMonthsAgo = now.AddMonths(-6);
+        var recentRepairs = await context.Repairs
+            .AsNoTracking()
+            .Where(r => r.VehicleId == vehicle.Id && r.RepairDate >= sixMonthsAgo)
+            .CountAsync(ct);
+
+        var thirtyDaysAgo = now.AddDays(-30);
+        var alertCount = await context.GpsAlerts
+            .AsNoTracking()
+            .Where(a => a.VehicleId == vehicle.Id && a.Timestamp >= thirtyDaysAgo)
+            .CountAsync(ct);
+
+        return ScoreVehicle(vehicle, statusCounts, recentRepairs, alertCount, now);
+    }
+
+    /// <summary>
+    /// Calcul PUR du score santé (aucun accès base) — partagé par le mode unitaire
+    /// et le mode batch. <paramref name="statusCounts"/> = nombre d'entretiens par
+    /// statut ; <paramref name="recentRepairs"/> = réparations sur 6 mois ;
+    /// <paramref name="alertCount"/> = alertes sur 30 jours.
+    /// </summary>
+    private static VehicleHealthResult ScoreVehicle(
+        Vehicle vehicle, Dictionary<string, int> statusCounts, int recentRepairs, int alertCount, DateTime now)
     {
         var result = new VehicleHealthResult
         {
@@ -78,20 +162,15 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
             VehicleName = vehicle.Name
         };
 
-        var now = DateTime.UtcNow;
         var factors = new List<HealthFactor>();
 
         // ═══ FACTOR 1: Maintenance Schedule Compliance (25 pts) ═══
-        var schedules = await context.VehicleMaintenanceSchedules
-            .AsNoTracking()
-            .Where(s => s.VehicleId == vehicle.Id)
-            .ToListAsync(ct);
-
+        var scheduleTotal = statusCounts.Values.Sum();
         int maintScore = 25;
-        if (schedules.Count > 0)
+        if (scheduleTotal > 0)
         {
-            var overdue = schedules.Count(s => s.Status == "overdue" || s.Status == "critical");
-            var due = schedules.Count(s => s.Status == "due");
+            var overdue = statusCounts.GetValueOrDefault("overdue") + statusCounts.GetValueOrDefault("critical");
+            var due = statusCounts.GetValueOrDefault("due");
 
             maintScore -= overdue * 8;
             maintScore -= due * 3;
@@ -100,15 +179,9 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
             if (overdue > 0) result.Warnings.Add($"{overdue} entretien(s) en retard");
             if (due > 0) result.Warnings.Add($"{due} entretien(s) à effectuer bientôt");
         }
-        factors.Add(new HealthFactor { Name = "Entretiens", Score = maintScore, MaxScore = 25, Detail = $"{schedules.Count(s => s.Status == "ok")} à jour" });
+        factors.Add(new HealthFactor { Name = "Entretiens", Score = maintScore, MaxScore = 25, Detail = $"{statusCounts.GetValueOrDefault("ok")} à jour" });
 
         // ═══ FACTOR 2: Repair Frequency (20 pts) ═══
-        var sixMonthsAgo = now.AddMonths(-6);
-        var recentRepairs = await context.Repairs
-            .AsNoTracking()
-            .Where(r => r.VehicleId == vehicle.Id && r.RepairDate >= sixMonthsAgo)
-            .CountAsync(ct);
-
         int repairScore = 20;
         if (recentRepairs >= 5) { repairScore = 4; result.Warnings.Add($"{recentRepairs} réparations en 6 mois (fréquence élevée)"); }
         else if (recentRepairs >= 3) { repairScore = 10; }
@@ -134,12 +207,6 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
         factors.Add(new HealthFactor { Name = "Documents", Score = docScore, MaxScore = 15, Detail = docScore == 15 ? "Tous à jour" : "À vérifier" });
 
         // ═══ FACTOR 4: Alerts & Driving Behavior (20 pts) ═══
-        var thirtyDaysAgo = now.AddDays(-30);
-        var alertCount = await context.GpsAlerts
-            .AsNoTracking()
-            .Where(a => a.VehicleId == vehicle.Id && a.Timestamp >= thirtyDaysAgo)
-            .CountAsync(ct);
-
         int alertScore = 20;
         if (alertCount >= 20) { alertScore = 4; result.Warnings.Add($"{alertCount} alertes en 30 jours (comportement critique)"); }
         else if (alertCount >= 10) { alertScore = 10; }

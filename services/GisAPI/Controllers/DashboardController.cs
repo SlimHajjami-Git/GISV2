@@ -581,9 +581,16 @@ public class DashboardController : ControllerBase
 
         if (gpsDeviceIds.Any())
         {
+            // BORNE TEMPORELLE (30 min) : la classification ne compte de toute façon
+            // que les positions fraîches (voir le filtre plus bas). Sans cette borne,
+            // le GROUP BY device_id + Max(id) scannait TOUT l'historique de chaque
+            // boîtier sur gps_positions (13 Go) → 700-800 ms et l'un des principaux
+            // contributeurs aux >80 s du dashboard. Avec la borne, l'index
+            // (device_id, recorded_at) ne lit que les rares trames récentes.
+            var freshSince = now.AddMinutes(-30);
             var latestPosIds = await _context.GpsPositions
                 .AsNoTracking()
-                .Where(p => gpsDeviceIds.Contains(p.DeviceId))
+                .Where(p => gpsDeviceIds.Contains(p.DeviceId) && p.RecordedAt >= freshSince)
                 .GroupBy(p => p.DeviceId)
                 .Select(g => g.Max(p => p.Id))
                 .ToListAsync();
@@ -596,7 +603,6 @@ public class DashboardController : ControllerBase
             // A vehicle only counts as "moving"/"ignition on" if its LAST fix is RECENT.
             // Without this freshness gate, a vehicle whose last-ever frame had speed>3 but
             // stopped reporting hours/days ago kept showing as "en circulation" (phantom movement).
-            var freshSince = now.AddMinutes(-30);
             foreach (var v in gpsVehicles)
             {
                 if (latestPositions.TryGetValue(v.GpsDeviceId!.Value, out var pos) && pos.RecordedAt >= freshSince)
