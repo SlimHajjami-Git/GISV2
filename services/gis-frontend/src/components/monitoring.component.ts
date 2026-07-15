@@ -404,6 +404,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    this._destroyed = true;
     // Save playback state if active so it can be restored on return
     if (this.monitoringView === 'playback' && this.isPlaybackLoaded && this.playbackPositions.length > 0) {
       this.stopPlaybackAnimation();
@@ -502,7 +503,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     this.lastProcessedPosition.set(dedupKey, update.recordedAt);
 
-    this.ngZone.run(() => {
+    // HORS zone Angular : la mise à jour donnée + marqueur Leaflet ne doit PAS
+    // déclencher de détection de changements. Sinon, avec 219 véhicules en
+    // temps réel, chaque trame relançait un cycle Angular → page saccadée.
+    // Seul scheduleUiFlush() (throttlé) rentre dans la zone pour rendre.
+    this.ngZone.runOutsideAngular(() => {
       // Find the vehicle and update its position
       const vehicleIndex = this.vehicles.findIndex(
         v => v.id?.toString() === update.vehicleId?.toString()
@@ -537,24 +542,42 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           };
         }
 
-        // Update the marker on the map with smooth animation
+        // Le marqueur bouge IMMÉDIATEMENT (fluidité visuelle) — c'est du DOM
+        // Leaflet, pas de la détection de changements Angular.
         this.updateSingleVehicleMarker(vehicle);
-        
-        // Update stats
-        this.updateStats();
-        
-        // Update filtered vehicles to reflect changes in sidebar
+
+        // Met à jour la donnée du véhicule dans la liste filtrée (peu coûteux).
         this.updateFilteredVehicle(vehicle);
-        
-        // If this vehicle is selected, update the panel
+
         if (this.selectedVehicle?.id === vehicle.id) {
           this.selectedVehicle = { ...vehicle };
         }
-        
-        // Force change detection
-        this.cdr.detectChanges();
+
+        // updateStats() (recompte les 219 véhicules) + detectChanges() (rendu
+        // complet) sont COALESCÉS à ~3 fois/seconde. Avec 219 véhicules poussant
+        // des positions en temps réel, les faire à CHAQUE trame déclenchait des
+        // dizaines de cycles de rendu par seconde → page saccadée (même tempête
+        // de détection que celle corrigée sur le dashboard). Le marqueur reste
+        // fluide ; les stats et la liste se rafraîchissent à 3 Hz, largement
+        // suffisant pour une vue de supervision.
+        this.scheduleUiFlush();
       }
     });
+  }
+
+  private uiFlushScheduled = false;
+  private _destroyed = false;
+  private scheduleUiFlush() {
+    if (this.uiFlushScheduled) return;
+    this.uiFlushScheduled = true;
+    setTimeout(() => {
+      this.uiFlushScheduled = false;
+      if (this._destroyed) return;   // ne pas rendre un composant détruit
+      this.ngZone.run(() => {
+        this.updateStats();
+        this.cdr.detectChanges();
+      });
+    }, 300);
   }
 
   // Update a single vehicle in filteredVehicles without re-filtering all
