@@ -314,7 +314,14 @@ SELECT
     COALESCE(kph_bef, 0)::double precision AS ""KphBef"",
     n_mov_bef::int                         AS ""NMovBef"",
     COALESCE(kph_aft, 0)::double precision AS ""KphAft"",
-    n_aft::int                             AS ""NAft""
+    n_aft::int                             AS ""NAft"",
+    -- Extras narratifs non calculés par la voie SQL (voir AccidentCandidate) :
+    -- SqlQueryRaw exige CHAQUE propriété dans le résultat — sans ces défauts,
+    -- la requête lève « The required column 'HasTow' was not present » et la
+    -- détection d'accidents échoue silencieusement à chaque cycle.
+    0::int                                 AS ""TiltDurationMin"",
+    0::double precision                    AS ""SecondShockMag"",
+    FALSE                                  AS ""HasTow""
 FROM enriched
 WHERE n_prior_7d   <  2
   AND COALESCE(kph_bef, 0) >= 30
