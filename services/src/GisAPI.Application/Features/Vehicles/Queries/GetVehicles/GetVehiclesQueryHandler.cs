@@ -117,17 +117,40 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
 
         if (firmwareLDeviceIds.Any())
         {
-            // Batch fetch latest odometer_km for all firmware "L" devices
-            var latestOdometers = await _context.GpsPositions
-                .Where(p => firmwareLDeviceIds.Contains(p.DeviceId)
-                         && p.OdometerKm.HasValue
-                         && p.OdometerKm > 0
-                         && p.OdometerKm != 1048574)
-                .GroupBy(p => p.DeviceId)
-                .Select(g => new { DeviceId = g.Key, OdometerKm = g.OrderByDescending(p => p.RecordedAt).First().OdometerKm })
+            // Dernier odomètre GPS par boîtier firmware "L".
+            //
+            // L'ancienne version (GroupBy + OrderByDescending.First avec un
+            // FILTRE odometer valide) était traduite par EF en une sous-requête
+            // corrélée par boîtier : pour les boîtiers dont les trames récentes
+            // portent un odomètre invalide (sentinelle 1048574 / NULL), Postgres
+            // remontait des MILLIERS de lignes → 15-36 s pour 219 boîtiers
+            // (mesuré EXPLAIN ANALYZE sur prod). C'était LA lenteur de la page
+            // véhicules (et du picker de véhicules dans la gestion utilisateurs).
+            //
+            // On récupère désormais la trame LA PLUS RÉCENTE par boîtier via un
+            // LATERAL JOIN — une seule lecture d'index par boîtier, aucun filtre
+            // odomètre côté SQL (donc aucune remontée) : 6 ms pour 219 boîtiers.
+            // La validité de l'odomètre (>0, ≠ sentinelle) est contrôlée en C#
+            // sur cette seule trame ; si elle est invalide, on garde le
+            // kilométrage stocké du véhicule (repli acceptable et rare).
+            const string odoSql = @"
+SELECT d.device_id AS ""DeviceId"", lp.odometer_km AS ""OdometerKm""
+FROM unnest({0}::integer[]) AS d(device_id)
+CROSS JOIN LATERAL (
+    SELECT odometer_km
+    FROM gps_positions
+    WHERE device_id = d.device_id
+    ORDER BY recorded_at DESC
+    LIMIT 1
+) lp;
+";
+            var latestOdometers = await _context.Database
+                .SqlQueryRaw<DeviceOdometerRow>(odoSql, firmwareLDeviceIds.ToArray())
                 .ToListAsync(ct);
 
-            var odometerMap = latestOdometers.ToDictionary(x => x.DeviceId, x => x.OdometerKm ?? 0);
+            var odometerMap = latestOdometers
+                .Where(x => x.OdometerKm is > 0 and not 1048574)
+                .ToDictionary(x => x.DeviceId, x => (long)x.OdometerKm!.Value);
 
             result = new PaginatedList<VehicleDto>(
                 result.Items.Select(v =>
@@ -143,6 +166,13 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
         }
 
         return result;
+    }
+
+    /// <summary>Dernier odomètre GPS d'un boîtier (projection SqlQueryRaw).</summary>
+    public class DeviceOdometerRow
+    {
+        public int DeviceId { get; set; }
+        public long? OdometerKm { get; set; }
     }
 }
 
