@@ -699,23 +699,33 @@ public class ToursController : ControllerBase
     {
         if (t.Vehicle?.GpsDeviceId == null || !t.ActualStartTime.HasValue) return null;
 
-        var departure = t.ActualDepartureTime ?? t.ActualStartTime.Value;
+        var startTime = t.ActualStartTime.Value;
         var destination = t.Waypoints.Where(w => w.Type == "destination").OrderBy(w => w.SequenceOrder).LastOrDefault();
         var windowEnd = destination?.ActualArrivalTime ?? t.ActualEndTime ?? DateTime.UtcNow;
-        if (windowEnd <= departure) return null;
+        if (windowEnd <= startTime) return null;
 
         var deviceId = t.Vehicle.GpsDeviceId.Value;
         var trace = await _context.GpsPositions.AsNoTracking()
-            .Where(p => p.DeviceId == deviceId && p.RecordedAt >= departure && p.RecordedAt <= windowEnd)
+            .Where(p => p.DeviceId == deviceId && p.RecordedAt >= startTime && p.RecordedAt <= windowEnd)
             .OrderBy(p => p.RecordedAt)
             .Select(p => new { p.RecordedAt, p.SpeedKph, p.Latitude, p.Longitude, p.Address })
             .ToListAsync();
         if (trace.Count < 2) return null;
 
-        // Détection des arrêts : groupes consécutifs à ≤ 3 km/h durant ≥ 3 min.
+        // Départ RÉEL : la colonne persistée si le monitoring l'a observée,
+        // sinon dérivé de la trace (première vraie mise en mouvement) — c'est
+        // ce qui rend la chronologie exacte aussi pour les tournées créées
+        // avant le suivi du départ. Repli : l'heure de lancement.
+        var firstMoving = trace.FirstOrDefault(p => (p.SpeedKph ?? 0) >= 8);
+        var departure = t.ActualDepartureTime ?? firstMoving?.RecordedAt ?? startTime;
+        if (departure > windowEnd) departure = startTime;
+
+        // Détection des arrêts APRÈS le départ : groupes consécutifs à
+        // ≤ 3 km/h durant ≥ 3 min (l'attente initiale est comptée à part).
         var stops = new List<object>();
         int totalStopMinutes = 0;
         int i = 0;
+        while (i < trace.Count && trace[i].RecordedAt < departure) i++;
         while (i < trace.Count)
         {
             if ((trace[i].SpeedKph ?? 0) <= 3)
@@ -748,9 +758,14 @@ public class ToursController : ControllerBase
         {
             departureTime = departure,
             startTime = t.ActualStartTime,
+            scheduledStartTime = t.ScheduledStartTime,
+            // « Parti X min en retard par rapport au moment indiqué » — le chiffre
+            // clé du rapport. Signé : négatif = parti en avance.
+            departureDelayMinutes = (int)Math.Round((departure - t.ScheduledStartTime).TotalMinutes),
             waitBeforeDepartureMinutes = Math.Max(0, (int)Math.Round((departure - t.ActualStartTime.Value).TotalMinutes)),
             arrivalTime = destination?.ActualArrivalTime,
             arrivalName = destination?.Name ?? destination?.Address,
+            estimatedArrivalTime = destination?.EstimatedArrivalTime,
             totalMinutes,
             stoppedMinutes = totalStopMinutes,
             drivingMinutes = Math.Max(0, totalMinutes - totalStopMinutes),

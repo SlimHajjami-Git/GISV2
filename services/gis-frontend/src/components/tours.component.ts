@@ -1,6 +1,8 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, ChangeDetectorRef, NgZone } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { ApiService } from '../services/api.service';
@@ -509,6 +511,9 @@ declare let L: any;
           <button class="btn-outline-sm" *ngIf="selectedTour.status==='completed'||selectedTour.status==='in_progress'" (click)="replaySelectedTour()" title="Rejouer le trajet sur la carte">
             &#9654; Replay
           </button>
+          <button class="btn-outline-sm" *ngIf="selectedTour.timeline" (click)="generateTourReport()" title="Rapport PDF réel vs estimé">
+            &#128196; Rapport
+          </button>
           <button class="btn-cancel" (click)="closeDetail()">Retour</button>
           <button class="btn-outline-sm" *ngIf="selectedTour.status==='planned'" (click)="editTour()">Modifier</button>
           <button class="btn-danger-sm" *ngIf="selectedTour.status==='planned'||selectedTour.status==='in_progress'" (click)="cancelSelectedTour()">Annuler</button>
@@ -896,6 +901,105 @@ export class ToursComponent implements OnInit, OnDestroy {
         to: to.toISOString()
       }
     });
+  }
+
+  /// Rapport PDF « réel vs estimé » : comparatif chiffré, chronologie réelle
+  /// (départ, arrêts, arrivée) et phrases d'analyse (retard au départ, etc.).
+  generateTourReport() {
+    const t = this.selectedTour;
+    const tl = t?.timeline;
+    if (!t || !tl) return;
+
+    const fmtT = (d: any) => d ? new Date(d).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '-';
+    const fmtDT = (d: any) => d ? new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+    const signed = (n: number) => (n > 0 ? '+' : '') + n;
+
+    const doc = new jsPDF();
+    const pw = doc.internal.pageSize.getWidth();
+    let y = 18;
+
+    // ── En-tête ──
+    doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+    doc.text(`Rapport de tournée — ${t.name || ''}`, 14, y);
+    y += 7;
+    doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(100);
+    doc.text(`Véhicule : ${t.vehicleName || ''}${t.vehiclePlate ? ' (' + t.vehiclePlate + ')' : ''}` +
+      `${t.driverName ? '   ·   Chauffeur : ' + t.driverName : ''}   ·   Statut : ${t.status === 'completed' ? 'terminée' : t.status}`, 14, y);
+    y += 6;
+    doc.text(`Départ prévu : ${fmtDT(t.scheduledStartTime)}`, 14, y);
+    doc.setTextColor(0);
+    y += 8;
+
+    // ── Comparatif estimé vs réel ──
+    const drv = tl.drivingMinutes ?? t.actualDurationMinutes;
+    autoTable(doc, {
+      startY: y,
+      head: [['', 'Estimé', 'Réel', 'Écart']],
+      body: [
+        ['Distance', `${t.estimatedDistanceKm ?? '-'} km`,
+          t.actualDistanceKm != null ? `${t.actualDistanceKm} km` : '-',
+          t.distanceDiffKm != null ? `${signed(Math.round(t.distanceDiffKm * 10) / 10)} km` : '-'],
+        ['Durée de conduite', `${t.estimatedDurationMinutes} min`,
+          drv != null ? `${drv} min` : '-',
+          drv != null ? `${signed(drv - t.estimatedDurationMinutes)} min` : '-'],
+        ['Carburant', t.estimatedFuelLiters != null ? `${Math.round(t.estimatedFuelLiters * 10) / 10} L` : '-',
+          t.actualFuelLiters != null ? `${Math.round(t.actualFuelLiters * 10) / 10} L` : '-',
+          t.fuelDiffLiters != null ? `${signed(Math.round(t.fuelDiffLiters * 10) / 10)} L` : '-'],
+      ],
+      theme: 'grid', headStyles: { fillColor: [15, 23, 42] }, styles: { fontSize: 10 }
+    });
+    y = (doc as any).lastAutoTable.finalY + 10;
+
+    // ── Chronologie réelle ──
+    doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+    doc.text('Chronologie réelle', 14, y);
+    const chron: any[] = [];
+    chron.push(['Tournée lancée', fmtT(tl.startTime), '']);
+    chron.push(['Départ réel', fmtT(tl.departureTime),
+      tl.departureDelayMinutes != null ? `${signed(tl.departureDelayMinutes)} min vs prévu (${fmtT(tl.scheduledStartTime)})` : '']);
+    (tl.stops || []).forEach((s: any, i: number) =>
+      chron.push([`Arrêt ${i + 1}`, `${fmtT(s.startTime)} → ${fmtT(s.endTime)}`, `${s.durationMinutes} min${s.address ? ' · ' + s.address : ''}`]));
+    chron.push(['Arrivée' + (tl.arrivalName ? ' · ' + tl.arrivalName : ''), fmtT(tl.arrivalTime),
+      tl.estimatedArrivalTime ? `estimée ${fmtT(tl.estimatedArrivalTime)}` : '']);
+    autoTable(doc, {
+      startY: y + 2, head: [['Étape', 'Heure', 'Détail']], body: chron,
+      theme: 'striped', headStyles: { fillColor: [15, 23, 42] }, styles: { fontSize: 10 }
+    });
+    y = (doc as any).lastAutoTable.finalY + 10;
+
+    // ── Analyse ──
+    doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+    doc.text('Analyse', 14, y); y += 6;
+    doc.setFontSize(10); doc.setFont('helvetica', 'normal');
+    const lines: string[] = [];
+    if (tl.departureDelayMinutes > 2)
+      lines.push(`Le véhicule est parti ${tl.departureDelayMinutes} min en retard par rapport au moment indiqué (${fmtT(tl.scheduledStartTime)} → ${fmtT(tl.departureTime)}).`);
+    else if (tl.departureDelayMinutes < -2)
+      lines.push(`Le véhicule est parti ${-tl.departureDelayMinutes} min en avance (${fmtT(tl.scheduledStartTime)} → ${fmtT(tl.departureTime)}).`);
+    else
+      lines.push(`Le véhicule est parti à l'heure prévue (${fmtT(tl.departureTime)}).`);
+    if (tl.waitBeforeDepartureMinutes >= 1)
+      lines.push(`Attente de ${tl.waitBeforeDepartureMinutes} min entre le lancement de la tournée et la mise en mouvement du véhicule.`);
+    lines.push(`Conduite effective : ${tl.drivingMinutes} min (estimé : ${t.estimatedDurationMinutes} min) · arrêts en chemin : ${tl.stoppedMinutes} min (${(tl.stops || []).length} arrêt(s)).`);
+    if (tl.arrivalTime && tl.estimatedArrivalTime) {
+      const diff = Math.round((new Date(tl.arrivalTime).getTime() - new Date(tl.estimatedArrivalTime).getTime()) / 60000);
+      lines.push(diff > 2
+        ? `Arrivée avec ${diff} min de retard sur l'estimation (${fmtT(tl.estimatedArrivalTime)} → ${fmtT(tl.arrivalTime)}).`
+        : diff < -2
+          ? `Arrivée ${-diff} min en avance sur l'estimation (${fmtT(tl.estimatedArrivalTime)} → ${fmtT(tl.arrivalTime)}).`
+          : `Arrivée conforme à l'estimation (${fmtT(tl.arrivalTime)}).`);
+    }
+    lines.forEach(l => {
+      const wrapped = doc.splitTextToSize(`• ${l}`, pw - 28);
+      doc.text(wrapped, 14, y);
+      y += wrapped.length * 5 + 2;
+    });
+
+    doc.setFontSize(8); doc.setTextColor(130);
+    doc.text(`Généré le ${new Date().toLocaleString('fr-FR')}`, 14, doc.internal.pageSize.getHeight() - 8);
+
+    const day = t.scheduledStartTime ? new Date(t.scheduledStartTime).toISOString().slice(0, 10) : '';
+    doc.save(`tournee_${(t.name || t.id).toString().replace(/\s+/g, '_')}_${day}.pdf`);
   }
 
   // ── Mini-lecteur replay intégré à la carte du détail ──
