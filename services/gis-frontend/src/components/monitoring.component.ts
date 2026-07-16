@@ -274,8 +274,16 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.monitoringView = 'playback';
     }
 
+    // Un replay EXPLICITE est demandé par l'URL (bouton « Replay » d'une
+    // tournée : /playback?vehicleId&from&to) : il est prioritaire. Sans ce
+    // garde, la restauration ci-dessous affichait l'ANCIEN trajet sauvegardé
+    // (dernier playback joué) à la place de celui de la tournée demandée.
+    const qpSnap = this.route.snapshot.queryParams;
+    const hasExplicitReplay = !!(qpSnap['vehicleId'] && qpSnap['from'] && qpSnap['to']);
+    if (hasExplicitReplay) this.playbackStateService.clear();
+
     // Restore saved playback state if returning to playback page
-    if (this.monitoringView === 'playback' && this.playbackStateService.hasState()) {
+    if (this.monitoringView === 'playback' && !hasExplicitReplay && this.playbackStateService.hasState()) {
       const saved = this.playbackStateService.restore();
       if (saved) {
         this.playbackVehicleSelect = saved.vehicleId;
