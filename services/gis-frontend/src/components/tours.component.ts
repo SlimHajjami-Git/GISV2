@@ -479,6 +479,18 @@ declare let L: any;
       </div>
       <div class="cv-right">
         <div class="cv-map" #detailMapEl></div>
+        <!-- Mini-lecteur : rejoue le trajet REEL directement sur cette carte -->
+        <div class="replay-bar" *ngIf="selectedTour && selectedTour.actualStartTime && (selectedTour.status==='completed'||selectedTour.status==='in_progress')">
+          <button class="rp-btn" (click)="toggleTourReplay()" [disabled]="tourReplayLoading" [title]="tourReplayPlaying ? 'Pause' : 'Lecture'">
+            <span *ngIf="tourReplayLoading">&#8943;</span>
+            <span *ngIf="!tourReplayLoading">{{ tourReplayPlaying ? '&#10074;&#10074;' : '&#9654;' }}</span>
+          </button>
+          <input class="rp-slider" type="range" min="0" [max]="tourReplayPts.length ? tourReplayPts.length - 1 : 0"
+                 [value]="tourReplayIdx" (input)="seekTourReplay($event)" [disabled]="!tourReplayPts.length" />
+          <span class="rp-info" *ngIf="tourReplayPts.length">{{ replayClock() }} &middot; {{ replaySpeedKph() }} km/h</span>
+          <span class="rp-info rp-muted" *ngIf="!tourReplayPts.length && !tourReplayLoading">Replay du trajet r&eacute;el</span>
+          <button class="rp-speed" (click)="cycleTourReplaySpeed()" title="Vitesse de lecture">x{{ tourReplaySpeed }}</button>
+        </div>
       </div>
     </div>
 
@@ -567,6 +579,17 @@ declare let L: any;
     .cv-left, .dv-left { width: 440px; min-width: 440px; display: flex; flex-direction: column; border-right: 1px solid #e2e8f0; background: white; height: 100%; }
     .cv-right { flex: 1; position: relative; }
     .cv-map { width: 100%; height: 100%; }
+
+    /* Mini-lecteur replay superposé à la carte du détail */
+    .replay-bar { position: absolute; left: 14px; right: 14px; bottom: 14px; z-index: 1000; display: flex; align-items: center; gap: 10px; background: rgba(15,23,42,0.86); backdrop-filter: blur(6px); border-radius: 12px; padding: 8px 12px; color: #e2e8f0; box-shadow: 0 8px 24px rgba(15,23,42,0.35); }
+    .rp-btn { width: 34px; height: 34px; border: none; border-radius: 50%; background: #22c55e; color: #fff; font-size: 12px; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .rp-btn:hover { background: #16a34a; }
+    .rp-btn:disabled { opacity: .6; cursor: wait; }
+    .rp-slider { flex: 1; accent-color: #22c55e; cursor: pointer; }
+    .rp-info { font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .rp-muted { color: #94a3b8; }
+    .rp-speed { border: 1px solid rgba(255,255,255,0.25); background: transparent; color: #e2e8f0; border-radius: 8px; padding: 4px 9px; font-size: 12px; cursor: pointer; flex-shrink: 0; }
+    .rp-speed:hover { background: rgba(255,255,255,0.1); }
     .cv-left-head { display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid #f1f5f9; flex-shrink: 0; }
     .cv-left-head h2 { font-size: 15px; font-weight: 700; color: #0f172a; margin: 0; white-space: nowrap; }
     .back-btn { background: none; border: none; cursor: pointer; color: #64748b; padding: 4px; border-radius: 6px; display: flex; }
@@ -807,6 +830,126 @@ export class ToursComponent implements OnInit, OnDestroy {
     });
   }
 
+  // ── Mini-lecteur replay intégré à la carte du détail ──
+  tourReplayPts: any[] = [];
+  tourReplayIdx = 0;
+  tourReplayPlaying = false;
+  tourReplayLoading = false;
+  tourReplaySpeed = 1;
+  private tourReplayTimer: any = null;
+  private tourReplayTrace: any = null;
+  private tourReplayProgress: any = null;
+  private tourReplayMarker: any = null;
+
+  toggleTourReplay() {
+    if (this.tourReplayPlaying) { this.pauseTourReplay(); return; }
+    if (this.tourReplayPts.length === 0) { this.loadTourReplay(); return; }
+    if (this.tourReplayIdx >= this.tourReplayPts.length - 1) this.tourReplayIdx = 0; // relecture depuis le début
+    this.playTourReplay();
+  }
+
+  private loadTourReplay() {
+    const t = this.selectedTour;
+    if (!t?.vehicleId || !t.actualStartTime || this.tourReplayLoading) return;
+    const from = new Date(new Date(t.actualStartTime).getTime() - 5 * 60000);
+    const to = t.actualEndTime ? new Date(new Date(t.actualEndTime).getTime() + 5 * 60000) : new Date();
+    this.tourReplayLoading = true;
+    this.apiService.getVehicleHistory(t.vehicleId, from, to, 3000, false).subscribe({
+      next: (pts) => {
+        this.tourReplayLoading = false;
+        this.tourReplayPts = (pts || []).filter((p: any) => p.latitude && p.longitude);
+        if (this.tourReplayPts.length < 2) {
+          alert('Pas assez de positions GPS sur la fenêtre de cette tournée.');
+          this.cdr.detectChanges();
+          return;
+        }
+        this.drawTourReplayBase();
+        this.tourReplayIdx = 0;
+        this.playTourReplay();
+      },
+      error: (err) => {
+        this.tourReplayLoading = false;
+        console.error('[TourReplay] load failed', err);
+        alert('Impossible de charger le trajet réel.');
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  private drawTourReplayBase() {
+    if (!this.detailMap) return;
+    const latlngs = this.tourReplayPts.map((p: any) => [p.latitude, p.longitude]);
+    if (this.tourReplayTrace) this.detailMap.removeLayer(this.tourReplayTrace);
+    if (this.tourReplayProgress) this.detailMap.removeLayer(this.tourReplayProgress);
+    if (this.tourReplayMarker) this.detailMap.removeLayer(this.tourReplayMarker);
+    // trace complète en gris, progression orange, marqueur véhicule
+    this.tourReplayTrace = L.polyline(latlngs, { color: '#64748b', weight: 3, opacity: 0.55 }).addTo(this.detailMap);
+    this.tourReplayProgress = L.polyline([latlngs[0]], { color: '#f97316', weight: 4 }).addTo(this.detailMap);
+    this.tourReplayMarker = L.circleMarker(latlngs[0], { radius: 8, color: '#fff', weight: 2, fillColor: '#f97316', fillOpacity: 1 }).addTo(this.detailMap);
+    this.detailMap.fitBounds(this.tourReplayTrace.getBounds(), { padding: [40, 40] });
+  }
+
+  private playTourReplay() {
+    this.pauseTourReplay();
+    this.tourReplayPlaying = true;
+    // Cadence : trajet complet en ~45 s à x1, quel que soit le nombre de points.
+    const step = Math.max(1, Math.ceil(this.tourReplayPts.length / 300)) * this.tourReplaySpeed;
+    this.tourReplayTimer = setInterval(() => {
+      this.zone.run(() => {
+        this.tourReplayIdx = Math.min(this.tourReplayIdx + step, this.tourReplayPts.length - 1);
+        this.renderTourReplayFrame();
+        if (this.tourReplayIdx >= this.tourReplayPts.length - 1) this.pauseTourReplay();
+        this.cdr.detectChanges();
+      });
+    }, 150);
+  }
+
+  private pauseTourReplay() {
+    if (this.tourReplayTimer) { clearInterval(this.tourReplayTimer); this.tourReplayTimer = null; }
+    this.tourReplayPlaying = false;
+  }
+
+  seekTourReplay(ev: any) {
+    const idx = parseInt(ev?.target?.value, 10);
+    if (isNaN(idx) || this.tourReplayPts.length === 0) return;
+    this.tourReplayIdx = Math.min(Math.max(idx, 0), this.tourReplayPts.length - 1);
+    this.renderTourReplayFrame();
+  }
+
+  cycleTourReplaySpeed() {
+    this.tourReplaySpeed = this.tourReplaySpeed >= 8 ? 1 : this.tourReplaySpeed * 2;
+    if (this.tourReplayPlaying) this.playTourReplay(); // ré-applique la cadence
+  }
+
+  private renderTourReplayFrame() {
+    if (!this.detailMap || !this.tourReplayMarker) return;
+    const p = this.tourReplayPts[this.tourReplayIdx];
+    if (!p) return;
+    this.tourReplayMarker.setLatLng([p.latitude, p.longitude]);
+    this.tourReplayProgress.setLatLngs(
+      this.tourReplayPts.slice(0, this.tourReplayIdx + 1).map((q: any) => [q.latitude, q.longitude]));
+  }
+
+  replayClock(): string {
+    const p = this.tourReplayPts[this.tourReplayIdx];
+    return p ? new Date(p.recordedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+  }
+
+  replaySpeedKph(): number {
+    const p = this.tourReplayPts[this.tourReplayIdx];
+    return p ? Math.round(p.speedKph || 0) : 0;
+  }
+
+  private clearTourReplay() {
+    this.pauseTourReplay();
+    this.tourReplayPts = [];
+    this.tourReplayIdx = 0;
+    this.tourReplaySpeed = 1;
+    // les couches Leaflet meurent avec la carte (detailMap.remove()) — on
+    // libère juste les références
+    this.tourReplayTrace = this.tourReplayProgress = this.tourReplayMarker = null;
+  }
+
   ngOnInit() {
     this.loadData();
     this.searchSub = this.searchSubject.pipe(
@@ -834,6 +977,7 @@ export class ToursComponent implements OnInit, OnDestroy {
   ngOnDestroy() {
     if (this.searchSub) this.searchSub.unsubscribe();
     this.stopTracking();
+    this.clearTourReplay();
     this.destroyMaps();
   }
 
@@ -916,6 +1060,7 @@ export class ToursComponent implements OnInit, OnDestroy {
 
   closeDetail() {
     this.stopTracking();
+    this.clearTourReplay();
     this.currentView = 'list';
     this.selectedTour = null;
     this.destroyMaps();
@@ -1245,6 +1390,7 @@ export class ToursComponent implements OnInit, OnDestroy {
   }
 
   initDetailMap() {
+    this.clearTourReplay();
     if (this.detailMap) { this.detailMap.remove(); this.detailMap = null; }
     if (!this.detailMapEl?.nativeElement || !this.selectedTour) return;
     try {
