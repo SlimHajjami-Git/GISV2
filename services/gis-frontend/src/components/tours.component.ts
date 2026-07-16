@@ -479,6 +479,11 @@ declare let L: any;
       </div>
       <div class="cv-right">
         <div class="cv-map" #detailMapEl></div>
+        <!-- Légende : trajet calculé (routage) vs trajet réel (GPS) -->
+        <div class="map-legend" *ngIf="selectedTour">
+          <span class="lg-item"><span class="lg-line lg-est"></span> Calcul&eacute;</span>
+          <span class="lg-item" *ngIf="tourReplayPts.length"><span class="lg-line lg-real"></span> R&eacute;el</span>
+        </div>
         <!-- Mini-lecteur : rejoue le trajet REEL directement sur cette carte -->
         <div class="replay-bar" *ngIf="selectedTour && selectedTour.actualStartTime && (selectedTour.status==='completed'||selectedTour.status==='in_progress')">
           <button class="rp-btn" (click)="toggleTourReplay()" [disabled]="tourReplayLoading" [title]="tourReplayPlaying ? 'Pause' : 'Lecture'">
@@ -590,6 +595,13 @@ declare let L: any;
     .rp-muted { color: #94a3b8; }
     .rp-speed { border: 1px solid rgba(255,255,255,0.25); background: transparent; color: #e2e8f0; border-radius: 8px; padding: 4px 9px; font-size: 12px; cursor: pointer; flex-shrink: 0; }
     .rp-speed:hover { background: rgba(255,255,255,0.1); }
+
+    /* Légende calculé/réel en haut à droite de la carte */
+    .map-legend { position: absolute; top: 14px; right: 14px; z-index: 1000; display: flex; gap: 14px; background: rgba(15,23,42,0.86); backdrop-filter: blur(6px); border-radius: 10px; padding: 7px 12px; color: #e2e8f0; font-size: 12px; }
+    .lg-item { display: flex; align-items: center; gap: 6px; }
+    .lg-line { display: inline-block; width: 22px; height: 0; border-top: 3px solid; border-radius: 2px; }
+    .lg-est { border-color: #3b82f6; border-top-style: dashed; }
+    .lg-real { border-color: #f97316; }
     .cv-left-head { display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid #f1f5f9; flex-shrink: 0; }
     .cv-left-head h2 { font-size: 15px; font-weight: 700; color: #0f172a; margin: 0; white-space: nowrap; }
     .back-btn { background: none; border: none; cursor: pointer; color: #64748b; padding: 4px; border-radius: 6px; display: flex; }
@@ -938,6 +950,25 @@ export class ToursComponent implements OnInit, OnDestroy {
   replaySpeedKph(): number {
     const p = this.tourReplayPts[this.tourReplayIdx];
     return p ? Math.round(p.speedKph || 0) : 0;
+  }
+
+  /// Décode une polyline encodée en précision 6 (format Valhalla) en liste
+  /// de [lat, lng] pour Leaflet.
+  private decodePolyline6(encoded: string): [number, number][] {
+    const pts: [number, number][] = [];
+    let index = 0, lat = 0, lng = 0;
+    try {
+      while (index < encoded.length) {
+        let b, shift = 0, result = 0;
+        do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+        lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+        shift = 0; result = 0;
+        do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+        lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+        pts.push([lat / 1e6, lng / 1e6]);
+      }
+    } catch { return []; } // polyline corrompue → repli sur la liaison droite
+    return pts;
   }
 
   private clearTourReplay() {
@@ -1405,9 +1436,21 @@ export class ToursComponent implements OnInit, OnDestroy {
             .addTo(this.detailMap).bindPopup(`<b>${wp.name || wp.address || wp.type}</b>`);
           bounds.push([wp.latitude, wp.longitude]);
         });
-        if (bounds.length >= 2) {
+
+        // Trajet CALCULÉ (itinéraire routier Valhalla, polyline précision 6) —
+        // bien plus parlant que la liaison droite entre étapes, et comparable
+        // visuellement au trajet RÉEL orange du mini-lecteur. Repli sur la
+        // liaison droite pour les vieilles tournées sans polyline.
+        const encoded = this.selectedTour.estimatedRoutePolyline;
+        const routePts = encoded ? this.decodePolyline6(encoded) : [];
+        if (routePts.length >= 2) {
+          const line = L.polyline(routePts, { color: '#3b82f6', weight: 4, opacity: 0.75, dashArray: '8 6' }).addTo(this.detailMap);
+          this.detailMap.fitBounds(line.getBounds(), { padding: [40, 40] });
+        } else if (bounds.length >= 2) {
           L.polyline(bounds, { color: '#3b82f6', weight: 3, dashArray: '6 4' }).addTo(this.detailMap);
           this.detailMap.fitBounds(bounds, { padding: [40, 40] });
+        } else if (bounds.length === 1) {
+          this.detailMap.setView(bounds[0], 13);
         }
       }
     } catch (e) { console.error('Detail map error', e); }
