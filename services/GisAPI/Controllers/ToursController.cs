@@ -114,7 +114,13 @@ public class ToursController : ControllerBase
             }
         }
 
-        return Ok(MapToDetailDto(tour));
+        // Chronologie GPS (départ/arrêts/arrivée) — uniquement sur le détail
+        // consulté, best-effort.
+        object? timeline = null;
+        try { timeline = await BuildTimelineAsync(tour); }
+        catch (Exception ex) { _logger.LogWarning(ex, "Tour {TourId}: timeline build failed", tour.Id); }
+
+        return Ok(MapToDetailDto(tour, timeline));
     }
 
     // ────────────────── CREATE ──────────────────
@@ -683,8 +689,78 @@ public class ToursController : ControllerBase
         t.CreatedAt
     };
 
-    private static object MapToDetailDto(Tour t) => new
+    /// <summary>
+    /// Chronologie du trajet reconstruite depuis la trace GPS : départ réel,
+    /// arrêts intermédiaires (vitesse ≤ 3 km/h pendant ≥ 3 min), arrivée, et
+    /// bilan conduite/arrêts. Best-effort : null si pas de boîtier ou pas de
+    /// données. Fenêtre bornée [départ réel → arrivée destination/fin].
+    /// </summary>
+    private async Task<object?> BuildTimelineAsync(Tour t)
     {
+        if (t.Vehicle?.GpsDeviceId == null || !t.ActualStartTime.HasValue) return null;
+
+        var departure = t.ActualDepartureTime ?? t.ActualStartTime.Value;
+        var destination = t.Waypoints.Where(w => w.Type == "destination").OrderBy(w => w.SequenceOrder).LastOrDefault();
+        var windowEnd = destination?.ActualArrivalTime ?? t.ActualEndTime ?? DateTime.UtcNow;
+        if (windowEnd <= departure) return null;
+
+        var deviceId = t.Vehicle.GpsDeviceId.Value;
+        var trace = await _context.GpsPositions.AsNoTracking()
+            .Where(p => p.DeviceId == deviceId && p.RecordedAt >= departure && p.RecordedAt <= windowEnd)
+            .OrderBy(p => p.RecordedAt)
+            .Select(p => new { p.RecordedAt, p.SpeedKph, p.Latitude, p.Longitude, p.Address })
+            .ToListAsync();
+        if (trace.Count < 2) return null;
+
+        // Détection des arrêts : groupes consécutifs à ≤ 3 km/h durant ≥ 3 min.
+        var stops = new List<object>();
+        int totalStopMinutes = 0;
+        int i = 0;
+        while (i < trace.Count)
+        {
+            if ((trace[i].SpeedKph ?? 0) <= 3)
+            {
+                int j = i;
+                while (j + 1 < trace.Count && (trace[j + 1].SpeedKph ?? 0) <= 3) j++;
+                var duration = trace[j].RecordedAt - trace[i].RecordedAt;
+                if (duration >= TimeSpan.FromMinutes(3))
+                {
+                    var address = Enumerable.Range(i, j - i + 1)
+                        .Select(k => trace[k].Address).FirstOrDefault(a => !string.IsNullOrWhiteSpace(a));
+                    stops.Add(new
+                    {
+                        startTime = trace[i].RecordedAt,
+                        endTime = trace[j].RecordedAt,
+                        durationMinutes = (int)Math.Round(duration.TotalMinutes),
+                        latitude = trace[i].Latitude,
+                        longitude = trace[i].Longitude,
+                        address
+                    });
+                    totalStopMinutes += (int)Math.Round(duration.TotalMinutes);
+                }
+                i = j + 1;
+            }
+            else i++;
+        }
+
+        var totalMinutes = (int)Math.Round((windowEnd - departure).TotalMinutes);
+        return new
+        {
+            departureTime = departure,
+            startTime = t.ActualStartTime,
+            waitBeforeDepartureMinutes = Math.Max(0, (int)Math.Round((departure - t.ActualStartTime.Value).TotalMinutes)),
+            arrivalTime = destination?.ActualArrivalTime,
+            arrivalName = destination?.Name ?? destination?.Address,
+            totalMinutes,
+            stoppedMinutes = totalStopMinutes,
+            drivingMinutes = Math.Max(0, totalMinutes - totalStopMinutes),
+            stops
+        };
+    }
+
+    private static object MapToDetailDto(Tour t, object? timeline = null) => new
+    {
+        timeline,
         t.Id,
         t.Name,
         t.Description,

@@ -423,6 +423,46 @@ declare let L: any;
             </table>
           </div>
 
+          <!-- Chronologie du trajet réel (reconstruite depuis la trace GPS) -->
+          <div class="detail-section" *ngIf="selectedTour.timeline as tl">
+            <h4>Chronologie du trajet</h4>
+            <div class="tl-list">
+              <div class="tl-item" *ngIf="tl.waitBeforeDepartureMinutes >= 1">
+                <span class="tl-dot tl-wait"></span>
+                <div class="tl-body">
+                  <span class="tl-title">Tournee lancee</span>
+                  <span class="tl-sub">{{formatTime(tl.startTime)}} &middot; attente de {{tl.waitBeforeDepartureMinutes}} min avant le depart</span>
+                </div>
+              </div>
+              <div class="tl-item">
+                <span class="tl-dot tl-start"></span>
+                <div class="tl-body">
+                  <span class="tl-title">Depart</span>
+                  <span class="tl-sub">{{formatTime(tl.departureTime)}}</span>
+                </div>
+              </div>
+              <div class="tl-item" *ngFor="let s of tl.stops; let i = index">
+                <span class="tl-dot tl-stop"></span>
+                <div class="tl-body">
+                  <span class="tl-title">Arret {{i + 1}} &middot; {{s.durationMinutes}} min</span>
+                  <span class="tl-sub">{{formatTime(s.startTime)}} &rarr; {{formatTime(s.endTime)}}<ng-container *ngIf="s.address"> &middot; {{s.address}}</ng-container></span>
+                </div>
+              </div>
+              <div class="tl-item" *ngIf="tl.arrivalTime">
+                <span class="tl-dot tl-end"></span>
+                <div class="tl-body">
+                  <span class="tl-title">Arrivee<ng-container *ngIf="tl.arrivalName"> &middot; {{tl.arrivalName}}</ng-container></span>
+                  <span class="tl-sub">{{formatTime(tl.arrivalTime)}}</span>
+                </div>
+              </div>
+            </div>
+            <div class="tl-summary">
+              <span>Conduite <b>{{formatDuration(tl.drivingMinutes)}}</b></span>
+              <span>Arrets <b>{{formatDuration(tl.stoppedMinutes)}}</b></span>
+              <span>Total <b>{{formatDuration(tl.totalMinutes)}}</b></span>
+            </div>
+          </div>
+
           <!-- Waypoints timeline -->
           <div class="detail-section">
             <h4>Points de passage</h4>
@@ -721,6 +761,22 @@ declare let L: any;
     .c-red { color: #ef4444; font-weight: 600; }
     .c-green { color: #22c55e; font-weight: 600; }
     .c-orange { color: #f97316; font-weight: 600; }
+
+    /* Chronologie du trajet (depuis la trace GPS) */
+    .tl-list { display: flex; flex-direction: column; margin-bottom: 4px; }
+    .tl-item { display: flex; gap: 10px; padding: 6px 0; position: relative; }
+    .tl-item::before { content: ''; position: absolute; left: 5px; top: 22px; bottom: -8px; width: 2px; background: #e2e8f0; }
+    .tl-item:last-child::before { display: none; }
+    .tl-dot { width: 12px; height: 12px; border-radius: 50%; margin-top: 3px; flex-shrink: 0; position: relative; z-index: 1; }
+    .tl-wait { background: #f59e0b; }
+    .tl-start { background: #22c55e; }
+    .tl-stop { background: #f97316; }
+    .tl-end { background: #ef4444; }
+    .tl-body { display: flex; flex-direction: column; min-width: 0; }
+    .tl-title { font-size: 13px; font-weight: 600; color: #1f2937; }
+    .tl-sub { font-size: 12px; color: #64748b; overflow-wrap: anywhere; }
+    .tl-summary { display: flex; gap: 18px; font-size: 12px; color: #64748b; padding-top: 10px; border-top: 1px dashed #e2e8f0; }
+    .tl-summary b { color: #1f2937; }
 
     /* Detail timeline */
     .d-timeline { display: flex; flex-direction: column; }
