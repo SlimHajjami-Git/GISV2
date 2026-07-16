@@ -201,7 +201,10 @@ public class ValhallaService : IValhallaService
                         Points = snappedPoints,
                         TotalDistanceKm = valhallaResponse.Trip?.Summary?.Length ?? 0,
                         TotalTimeSeconds = valhallaResponse.Trip?.Summary?.Time ?? 0,
-                        DecodedPolyline = allLegPoints
+                        DecodedPolyline = allLegPoints,
+                        // Même bugfix que GetRouteFromWaypointsAsync : ce retour
+                        // anticipé n'alimentait jamais EncodedPolyline.
+                        EncodedPolyline = allLegPoints.Count > 1 ? EncodePolyline(allLegPoints) : null
                     };
                 }
             }
@@ -344,6 +347,11 @@ public class ValhallaService : IValhallaService
                 TotalDistanceKm = valhallaResponse.Trip.Summary?.Length ?? 0,
                 TotalTimeSeconds = valhallaResponse.Trip.Summary?.Time ?? 0,
                 DecodedPolyline = allPoints.Count > 0 ? allPoints : null,
+                // BUGFIX : EncodedPolyline n'était JAMAIS renseigné sur ce chemin
+                // (les tronçons per-leg sont le cas normal) → toutes les tournées
+                // stockaient EstimatedRoutePolyline = NULL et la carte du détail
+                // retombait sur la liaison droite. Ré-encode les points assemblés.
+                EncodedPolyline = allPoints.Count > 1 ? EncodePolyline(allPoints) : null,
                 LegTimesSeconds = legTimes,
                 LegDistancesKm = legDistances
             };
@@ -353,6 +361,38 @@ public class ValhallaService : IValhallaService
             _logger.LogError(ex, "Error calling Valhalla /route");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Encode une liste de points [lat, lng] en polyline précision 6 (format
+    /// Valhalla) — inverse exact de <see cref="DecodePolyline"/>. Sert à
+    /// reconstituer EstimatedRoutePolyline quand Valhalla répond par tronçons.
+    /// </summary>
+    public static string EncodePolyline(List<double[]> points)
+    {
+        var sb = new System.Text.StringBuilder();
+        long lastLat = 0, lastLng = 0;
+        foreach (var p in points)
+        {
+            var lat = (long)Math.Round(p[0] * 1e6);
+            var lng = (long)Math.Round(p[1] * 1e6);
+            EncodeValue(sb, lat - lastLat);
+            EncodeValue(sb, lng - lastLng);
+            lastLat = lat;
+            lastLng = lng;
+        }
+        return sb.ToString();
+    }
+
+    private static void EncodeValue(System.Text.StringBuilder sb, long value)
+    {
+        var v = value < 0 ? ~(value << 1) : value << 1;
+        while (v >= 0x20)
+        {
+            sb.Append((char)((0x20 | (v & 0x1f)) + 63));
+            v >>= 5;
+        }
+        sb.Append((char)(v + 63));
     }
 
     public static List<double[]> DecodePolyline(string encoded)

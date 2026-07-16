@@ -86,6 +86,34 @@ public class ToursController : ControllerBase
             .FirstOrDefaultAsync();
 
         if (tour == null) return NotFound();
+
+        // AUTO-RÉPARATION : les tournées créées avant le correctif ValhallaService
+        // (EncodedPolyline jamais renseigné sur le chemin per-leg) ont
+        // EstimatedRoutePolyline = NULL → la carte du détail retombait sur une
+        // liaison droite. On recalcule l'itinéraire UNE fois à l'ouverture et on
+        // ne persiste QUE la polyline (ni les estimations ni les étapes — une
+        // tournée terminée ne doit pas voir ses chiffres changer). Best-effort :
+        // si Valhalla est indisponible, on sert le détail tel quel.
+        if (string.IsNullOrEmpty(tour.EstimatedRoutePolyline) && tour.Waypoints.Count >= 2)
+        {
+            try
+            {
+                var pts = tour.Waypoints.OrderBy(w => w.SequenceOrder)
+                    .Select(w => new ValhallaPoint { Lat = w.Latitude, Lon = w.Longitude }).ToList();
+                var route = await _valhallaService.GetRouteFromWaypointsAsync(pts);
+                if (!string.IsNullOrEmpty(route?.EncodedPolyline))
+                {
+                    tour.EstimatedRoutePolyline = route.EncodedPolyline;
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Tour {TourId}: EstimatedRoutePolyline backfilled ({Len} chars)", tour.Id, route.EncodedPolyline.Length);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Tour {TourId}: polyline backfill failed", tour.Id);
+            }
+        }
+
         return Ok(MapToDetailDto(tour));
     }
 
