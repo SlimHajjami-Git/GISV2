@@ -436,8 +436,14 @@ public class ToursController : ControllerBase
         tour.Status = "completed";
         tour.ActualEndTime = DateTime.UtcNow;
 
+        // Durée de CONDUITE : depuis la première mise en mouvement observée
+        // (ActualDepartureTime), sinon depuis le démarrage — cohérent avec la
+        // complétion automatique du TourMonitoringService.
         if (tour.ActualStartTime.HasValue)
-            tour.ActualDurationMinutes = (int)(tour.ActualEndTime.Value - tour.ActualStartTime.Value).TotalMinutes;
+        {
+            var drivingStart = tour.ActualDepartureTime ?? tour.ActualStartTime.Value;
+            tour.ActualDurationMinutes = (int)(tour.ActualEndTime.Value - drivingStart).TotalMinutes;
+        }
 
         // Set actual values from request or GPS data
         if (request?.ActualDistanceKm.HasValue == true)
@@ -630,6 +636,10 @@ public class ToursController : ControllerBase
         t.ScheduledStartTime,
         t.ScheduledEndTime,
         t.ActualStartTime,
+        t.ActualDepartureTime,
+        waitBeforeDepartureMinutes = t.ActualDepartureTime.HasValue && t.ActualStartTime.HasValue
+            ? (int?)Math.Max(0, (int)(t.ActualDepartureTime.Value - t.ActualStartTime.Value).TotalMinutes)
+            : null,
         t.ActualEndTime,
         t.EstimatedDistanceKm,
         t.EstimatedDurationMinutes,
@@ -660,6 +670,10 @@ public class ToursController : ControllerBase
         t.ScheduledStartTime,
         t.ScheduledEndTime,
         t.ActualStartTime,
+        t.ActualDepartureTime,
+        waitBeforeDepartureMinutes = t.ActualDepartureTime.HasValue && t.ActualStartTime.HasValue
+            ? (int?)Math.Max(0, (int)(t.ActualDepartureTime.Value - t.ActualStartTime.Value).TotalMinutes)
+            : null,
         t.ActualEndTime,
         t.EstimatedDistanceKm,
         t.EstimatedDurationMinutes,

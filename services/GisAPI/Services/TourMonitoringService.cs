@@ -337,6 +337,32 @@ public class TourMonitoringService : BackgroundService
                 }
             }
             if (departedAt.HasValue) _departedAt[tour.Id] = departedAt.Value;
+
+            // Persiste la PREMIÈRE mise en mouvement réelle : la durée de conduite
+            // se mesure à partir d'ici, pas du clic « démarrer ». Uniquement sur
+            // preuve GPS (firstAway) — les fallbacks (pas d'origine, fenêtre
+            // tronquée) ne représentent pas un vrai départ observé.
+            if (tour.ActualDepartureTime == null && departedAt.HasValue && origin != null && departedAt.Value > startFloor)
+            {
+                tour.ActualDepartureTime = departedAt.Value;
+                changed = true;
+
+                // Même logique que le décalage « démarrage en retard » : les
+                // échéances par étape mesurent le temps de CONDUITE. Si le
+                // chauffeur attend N minutes après le lancement avant de partir,
+                // décaler les arrivées estimées des étapes non atteintes, sinon
+                // l'attente compte comme du retard de trajet.
+                var waitDelay = departedAt.Value - startFloor;
+                if (waitDelay > TimeSpan.FromMinutes(2))
+                {
+                    foreach (var w in waypoints.Where(w => !w.IsCompleted && w.EstimatedArrivalTime.HasValue))
+                        w.EstimatedArrivalTime = w.EstimatedArrivalTime!.Value.Add(waitDelay);
+
+                    _logger.LogInformation(
+                        "Tour {TourId}: vehicle departed {Wait:F0} min after start — estimates shifted to measure driving time",
+                        tour.Id, waitDelay.TotalMinutes);
+                }
+            }
         }
 
         foreach (var wp in waypoints)
@@ -556,10 +582,13 @@ public class TourMonitoringService : BackgroundService
         tour.Status = "completed";
         tour.ActualEndTime = DateTime.UtcNow;
 
-        // Calculate actual duration
+        // Durée réelle de CONDUITE : depuis la première mise en mouvement
+        // (ActualDepartureTime) si elle a été observée, sinon depuis le
+        // démarrage. L'attente avant départ est exposée séparément côté API.
         if (tour.ActualStartTime.HasValue)
         {
-            tour.ActualDurationMinutes = (int)(DateTime.UtcNow - tour.ActualStartTime.Value).TotalMinutes;
+            var drivingStart = tour.ActualDepartureTime ?? tour.ActualStartTime.Value;
+            tour.ActualDurationMinutes = (int)(DateTime.UtcNow - drivingStart).TotalMinutes;
         }
 
         // Try to calculate actual distance from GPS history

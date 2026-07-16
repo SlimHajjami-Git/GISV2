@@ -20,6 +20,11 @@ public class Tour : TenantEntity
     public DateTime ScheduledStartTime { get; set; }
     public DateTime? ScheduledEndTime { get; set; }
     public DateTime? ActualStartTime { get; set; }
+    // Première mise en mouvement RÉELLE (sortie du rayon du point de départ),
+    // détectée par TourMonitoringService. Peut être bien après ActualStartTime
+    // (clic « démarrer ») si le chauffeur attend avant de partir — la durée
+    // réelle de conduite se mesure à partir d'ici, l'attente est exposée à part.
+    public DateTime? ActualDepartureTime { get; set; }
     public DateTime? ActualEndTime { get; set; }
 
     // Estimated (from Valhalla route calculation)

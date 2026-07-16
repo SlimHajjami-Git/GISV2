@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, ChangeDetectorRef, NgZone } from '@angular/core';
+import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
@@ -379,7 +380,8 @@ declare let L: any;
               <div class="info-item"><span class="info-lbl">Vehicule</span><span class="info-val">{{selectedTour.vehicleName}}</span></div>
               <div class="info-item" *ngIf="selectedTour.driverName"><span class="info-lbl">Chauffeur</span><span class="info-val">{{selectedTour.driverName}}</span></div>
               <div class="info-item"><span class="info-lbl">Depart prevu</span><span class="info-val">{{formatDate(selectedTour.scheduledStartTime)}}</span></div>
-              <div class="info-item" *ngIf="selectedTour.actualStartTime"><span class="info-lbl">Depart reel</span><span class="info-val">{{formatDate(selectedTour.actualStartTime)}}</span></div>
+              <div class="info-item" *ngIf="selectedTour.actualDepartureTime || selectedTour.actualStartTime"><span class="info-lbl">Depart reel</span><span class="info-val">{{formatDate(selectedTour.actualDepartureTime || selectedTour.actualStartTime)}}</span></div>
+              <div class="info-item" *ngIf="selectedTour.waitBeforeDepartureMinutes >= 1"><span class="info-lbl">Attente avant depart</span><span class="info-val c-orange">{{selectedTour.waitBeforeDepartureMinutes}} min</span></div>
               <div class="info-item"><span class="info-lbl">Distance</span><span class="info-val">{{selectedTour.estimatedDistanceKm | appDistance:1}}</span></div>
               <div class="info-item"><span class="info-lbl">Duree</span><span class="info-val">{{formatDuration(selectedTour.estimatedDurationMinutes)}}</span></div>
               <div class="info-item"><span class="info-lbl">Carburant</span><span class="info-val">~{{selectedTour.estimatedFuelLiters | number:'1.1-1'}} L</span></div>
@@ -464,6 +466,9 @@ declare let L: any;
 
         <!-- Actions footer -->
         <div class="cv-left-foot">
+          <button class="btn-outline-sm" *ngIf="selectedTour.status==='completed'||selectedTour.status==='in_progress'" (click)="replaySelectedTour()" title="Rejouer le trajet sur la carte">
+            &#9654; Replay
+          </button>
           <button class="btn-cancel" (click)="closeDetail()">Retour</button>
           <button class="btn-outline-sm" *ngIf="selectedTour.status==='planned'" (click)="editTour()">Modifier</button>
           <button class="btn-danger-sm" *ngIf="selectedTour.status==='planned'||selectedTour.status==='in_progress'" (click)="cancelSelectedTour()">Annuler</button>
@@ -680,6 +685,7 @@ declare let L: any;
     .cmp-table td { padding: 6px 8px; border-bottom: 1px solid #f8fafc; color: #1e293b; }
     .c-red { color: #ef4444; font-weight: 600; }
     .c-green { color: #22c55e; font-weight: 600; }
+    .c-orange { color: #f97316; font-weight: 600; }
 
     /* Detail timeline */
     .d-timeline { display: flex; flex-direction: column; }
@@ -778,8 +784,28 @@ export class ToursComponent implements OnInit, OnDestroy {
     private apiService: ApiService,
     private http: HttpClient,
     private cdr: ChangeDetectorRef,
-    private zone: NgZone
+    private zone: NgZone,
+    private router: Router
   ) {}
+
+  /// Ouvre le lecteur de trajet (playback) borné à la fenêtre de la tournée :
+  /// 5 min avant le démarrage → 5 min après la fin (ou maintenant si en cours).
+  /// Permet de voir le détail réel : attente avant départ, arrêts, vitesses.
+  replaySelectedTour() {
+    const t = this.selectedTour;
+    if (!t?.vehicleId || !t.actualStartTime) return;
+    const from = new Date(new Date(t.actualStartTime).getTime() - 5 * 60000);
+    const to = t.actualEndTime
+      ? new Date(new Date(t.actualEndTime).getTime() + 5 * 60000)
+      : new Date();
+    this.router.navigate(['/playback'], {
+      queryParams: {
+        vehicleId: t.vehicleId,
+        from: from.toISOString(),
+        to: to.toISOString()
+      }
+    });
+  }
 
   ngOnInit() {
     this.loadData();

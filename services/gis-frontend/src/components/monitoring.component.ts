@@ -334,6 +334,17 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     // Uses the observable (not snapshot) so that navigating to /monitoring?lat=...
     // while already on /monitoring still triggers the zoom.
     this.queryParamsSub = this.route.queryParams.subscribe(qp => {
+      // Replay direct (ex: bouton « Replay » d'une tournée) :
+      // /playback?vehicleId=X&from=ISO&to=ISO[&autoplay=1]. Le chargement réel
+      // attend que la liste des véhicules soit arrivée (applyPendingPlayback).
+      if (qp['vehicleId'] && qp['from'] && qp['to']) {
+        this._pendingPlayback = {
+          vehicleId: String(qp['vehicleId']),
+          from: qp['from'],
+          to: qp['to']
+        };
+        this.applyPendingPlayback();
+      }
       if (qp['lat'] && qp['lng']) {
         const center = {
           lat: parseFloat(qp['lat']),
@@ -567,6 +578,27 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private uiFlushScheduled = false;
   private _destroyed = false;
+  // Replay demandé par query params (bouton « Replay » d'une tournée) —
+  // appliqué dès que la liste des véhicules est chargée.
+  private _pendingPlayback: { vehicleId: string; from: string; to: string } | null = null;
+
+  /// Applique un replay demandé par l'URL : sélectionne le véhicule, borne les
+  /// dates et lance le chargement du trajet. Ne fait rien tant que la liste des
+  /// véhicules n'est pas disponible (rappelée après loadData()).
+  private applyPendingPlayback() {
+    const req = this._pendingPlayback;
+    if (!req || this.monitoringView !== 'playback' || this.vehicles.length === 0) return;
+    const vehicle = this.vehicles.find(v => v.id?.toString() === req.vehicleId);
+    if (!vehicle) return;
+    this._pendingPlayback = null;
+
+    this.playbackVehicleSelect = vehicle.id;
+    this.selectedVehicle = vehicle;
+    this.playbackFromDate = this.toLocalDateTimeString(new Date(req.from));
+    this.playbackToDate = this.toLocalDateTimeString(new Date(req.to));
+    this.cdr.detectChanges();
+    this.loadPlaybackRoute();
+  }
   private scheduleUiFlush() {
     if (this.uiFlushScheduled) return;
     this.uiFlushScheduled = true;
@@ -954,7 +986,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           // Apply filters and update UI
           this.doApplyFilters();
           this.updateStats();
-          
+
+          // Un replay demandé par l'URL attendait la liste des véhicules
+          this.applyPendingPlayback();
+
           // Force change detection
           this.cdr.detectChanges();
           
