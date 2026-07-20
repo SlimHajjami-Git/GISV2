@@ -644,10 +644,14 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
           ...this.filteredVehicles.slice(0, index),
           ...this.filteredVehicles.slice(index + 1)
         ];
+        // L'appartenance a changé : resynchronise les groupes de la sidebar,
+        // sinon le véhicule y reste affiché jusqu'au prochain refresh complet.
+        this.buildVehicleGroups();
       }
     } else if (matchesFilter) {
       // Newly matches filter — append it
       this.filteredVehicles = [...this.filteredVehicles, vehicle];
+      this.buildVehicleGroups();
     }
   }
 
@@ -656,12 +660,15 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
    * search + status filter. Mirrors the logic in applyFilters().
    */
   private vehicleMatchesCurrentFilter(v: any): boolean {
-    // Search filter
+    // Search filter — UNION des champs de doApplyFilters (plaque/marque/modèle)
+    // + nom : ce prédicat gouverne aussi le retrait des marqueurs sur trame
+    // temps réel, il ne doit jamais être PLUS restrictif que le filtre
+    // principal (sinon un véhicule légitime se fait retirer de la carte).
     const q = (this.searchQuery || '').trim().toLowerCase();
     if (q) {
-      const name = (v.name || '').toLowerCase();
-      const plate = (v.plate || '').toLowerCase();
-      if (!name.includes(q) && !plate.includes(q)) return false;
+      const hit = [v.name, v.plate, v.brand, v.model]
+        .some((f: any) => (f || '').toLowerCase().includes(q));
+      if (!hit) return false;
     }
     // Status filter
     switch (this.filterStatus) {
@@ -816,6 +823,23 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     if (!this.map || !this.mapReady || !vehicle.currentLocation) return;
 
     const markerId = vehicle.id?.toString();
+
+    // FILTRE ACTIF : une trame temps réel ne doit JAMAIS faire (ré)apparaître
+    // un véhicule que le filtre exclut. Cas vécu : filtre « hors ligne » actif,
+    // un véhicule gris se met à émettre → il devient en ligne → son marqueur
+    // doit être RETIRÉ de la carte, pas recréé/mis à jour. Même contrat que
+    // updateVehicleMarkers (retrait + delete) ; symétrique du correctif P11
+    // côté liste. Un véhicule qui (re)devient conforme au filtre récupère un
+    // marqueur neuf au passage suivant.
+    if (!this.vehicleMatchesCurrentFilter(vehicle)) {
+      const stale = this.vehicleMarkers.get(markerId);
+      if (stale) {
+        this.removeVehicleMarker(stale);
+        this.vehicleMarkers.delete(markerId);
+      }
+      return;
+    }
+
     const existingMarker = this.vehicleMarkers.get(markerId);
     const isMoving = vehicle.isMoving ?? (vehicle.currentSpeed || 0) > 3;
     const icon = this.createVehicleIcon(vehicle, isMoving);
