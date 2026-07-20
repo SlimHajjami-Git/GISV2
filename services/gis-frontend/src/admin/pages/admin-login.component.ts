@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -587,7 +587,8 @@ export class AdminLoginComponent {
 
   constructor(
     private router: Router,
-    private adminService: AdminService
+    private adminService: AdminService,
+    private cdr: ChangeDetectorRef
   ) {
     if (this.adminService.isAuthenticated()) {
       this.router.navigate(['/admin/dashboard']);
@@ -610,6 +611,9 @@ export class AdminLoginComponent {
       error: (err) => {
         this.error = 'E-mail ou mot de passe incorrect';
         this.loading = false;
+        // Callback potentiellement hors cycle Angular : sans detectChanges,
+        // l'erreur ne s'affichait qu'à l'interaction suivante.
+        this.cdr.detectChanges();
       }
     });
   }
