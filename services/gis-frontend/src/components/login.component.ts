@@ -297,17 +297,30 @@ export class LoginComponent {
     private router: Router,
     private authService: AuthService,
     private cdr: ChangeDetectorRef
-  ) {}
+  ) {
+    // « Se souvenir de moi » : e-mail pré-rempli si mémorisé lors d'une
+    // connexion précédente (le mot de passe n'est jamais stocké).
+    const remembered = localStorage.getItem('remembered_email');
+    if (remembered) {
+      this.email = remembered;
+      this.rememberMe = true;
+    }
+  }
 
   onSubmit() {
     this.isLoading = true;
     this.errorMessage = '';
     this.cdr.detectChanges();
 
-    this.authService.login(this.email, this.password).subscribe({
+    this.authService.login(this.email, this.password, this.rememberMe).subscribe({
       next: (user) => {
         this.isLoading = false;
         if (user) {
+          if (this.rememberMe) {
+            localStorage.setItem('remembered_email', this.email);
+          } else {
+            localStorage.removeItem('remembered_email');
+          }
           this.router.navigate(['/dashboard']);
         } else {
           this.errorMessage = 'Email ou mot de passe incorrect';

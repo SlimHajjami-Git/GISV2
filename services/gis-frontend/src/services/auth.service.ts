@@ -75,7 +75,43 @@ export class AuthService {
   private currentUser$ = new BehaviorSubject<AuthUser | null>(null);
 
   constructor(private http: HttpClient, private userPrefs: UserPreferencesService) {
+    this.expireSessionOnlyIfBrowserClosed();
     this.loadStoredAuth();
+    this.startAliveHeartbeat();
+  }
+
+  /**
+   * « Se souvenir de moi » décoché → session de NAVIGATION seulement.
+   * Les jetons restent en localStorage (trop de lecteurs directs pour changer
+   * de stockage sans risque) ; à la place, chaque onglet authentifié émet un
+   * battement (app_alive_at). Au démarrage, si la session est marquée
+   * « session_only » et qu'aucun onglet n'a battu depuis > 90 s, le navigateur
+   * a été fermé entre-temps → session purgée. Multi-onglets sûr : un onglet
+   * ouvert maintient le battement pour les autres.
+   */
+  private setSessionPersistence(remember: boolean): void {
+    if (remember) localStorage.removeItem('session_only');
+    else localStorage.setItem('session_only', '1');
+    localStorage.setItem('app_alive_at', String(Date.now()));
+  }
+
+  private startAliveHeartbeat(): void {
+    setInterval(() => {
+      if (localStorage.getItem('auth_token')) {
+        localStorage.setItem('app_alive_at', String(Date.now()));
+      }
+    }, 15_000);
+  }
+
+  private expireSessionOnlyIfBrowserClosed(): void {
+    if (localStorage.getItem('session_only') !== '1') return;
+    const last = parseInt(localStorage.getItem('app_alive_at') || '0', 10);
+    if (last && Date.now() - last > 90_000) {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('auth_user');
+      localStorage.removeItem('session_only');
+    }
   }
 
   /**
@@ -124,7 +160,7 @@ export class AuthService {
     }
   }
 
-  login(email: string, password: string): Observable<AuthUser | null> {
+  login(email: string, password: string, rememberMe: boolean = true): Observable<AuthUser | null> {
     // Mock user check - admin@test.com with password "admin" (case insensitive)
     if (email === 'admin@test.com' && password.toLowerCase() === 'admin') {
       console.log('AuthService.login - Using mock user');
@@ -240,6 +276,7 @@ export class AuthService {
         localStorage.setItem('auth_token', response.token);
         localStorage.setItem('refresh_token', response.refreshToken);
         localStorage.setItem('auth_user', JSON.stringify(user));
+        this.setSessionPersistence(rememberMe);
         this.currentUser$.next(user);
         this.applyAccountCurrency(user.currency);
         console.log('AuthService.login - User mapped:', user);
@@ -277,6 +314,7 @@ export class AuthService {
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_user');
     localStorage.removeItem('impersonating_active');
+    localStorage.removeItem('session_only');
     this.currentUser$.next(null);
   }
 
