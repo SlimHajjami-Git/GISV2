@@ -84,6 +84,7 @@ interface VehiclePart {
         <div class="parts-section" *ngIf="selectedCategory">
           <div class="section-header">
             <h3>
+              <span class="title-dash"></span>
               <span class="category-badge">{{ selectedCategory.icon || '🔧' }}</span>
               Pièces - {{ selectedCategory.name }}
             </h3>
@@ -213,13 +214,13 @@ interface VehiclePart {
     .header-info h2 {
       margin: 0;
       font-size: 24px;
-      font-weight: 600;
-      color: #1f2937;
+      font-weight: 700;
+      color: var(--adm-ink);
     }
 
     .header-info p {
       margin: 4px 0 0;
-      color: #6b7280;
+      color: var(--adm-sub);
       font-size: 14px;
     }
 
@@ -227,9 +228,9 @@ interface VehiclePart {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 10px 20px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
-      color: white;
+      padding: 9px 18px;
+      background: var(--adm-indigo);
+      color: #fff;
       border: none;
       border-radius: 10px;
       font-weight: 600;
@@ -239,7 +240,7 @@ interface VehiclePart {
     }
 
     .btn-primary:hover {
-      box-shadow: 0 4px 16px rgba(0, 212, 170, 0.3);
+      background: var(--adm-indigo-ink);
     }
 
     .btn-primary:disabled {
@@ -252,18 +253,19 @@ interface VehiclePart {
       align-items: center;
       gap: 8px;
       padding: 8px 16px;
-      background: #f1f5f9;
-      color: #1f2937;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      font-weight: 500;
+      background: #fff;
+      color: var(--adm-ink);
+      border: 1px solid var(--adm-border);
+      border-radius: 10px;
+      font-weight: 600;
       font-size: 13px;
       cursor: pointer;
       transition: all 0.2s;
     }
 
     .btn-secondary:hover {
-      background: #e2e8f0;
+      border-color: var(--adm-indigo);
+      color: var(--adm-indigo-ink);
     }
 
     .categories-grid {
@@ -274,22 +276,35 @@ interface VehiclePart {
     }
 
     .category-card {
-      background: #fff;
-      border: 2px solid #e2e8f0;
-      border-radius: 12px;
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
+      border-radius: 16px;
       padding: 20px;
       cursor: pointer;
+      box-shadow: var(--adm-shadow);
       transition: all 0.2s;
+      animation: rise 0.25s ease both;
     }
 
     .category-card:hover {
-      border-color: #00d4aa;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      border-color: var(--adm-indigo);
+      box-shadow: var(--adm-shadow-hover);
+      transform: translateY(-1px);
     }
 
     .category-card.selected {
-      border-color: #00d4aa;
-      background: linear-gradient(135deg, rgba(0, 212, 170, 0.05) 0%, rgba(0, 163, 136, 0.05) 100%);
+      border-color: var(--adm-indigo);
+      background: rgba(79, 70, 229, 0.04);
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .category-card { animation: none; }
+      .category-card:hover { transform: none; }
     }
 
     .category-header {
@@ -318,43 +333,47 @@ interface VehiclePart {
       width: 28px;
       height: 28px;
       border: none;
-      background: #f1f5f9;
+      background: var(--adm-track);
       border-radius: 6px;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #64748b;
+      color: var(--adm-sub);
       transition: all 0.2s;
     }
 
     .btn-icon:hover {
-      background: #e2e8f0;
-      color: #1f2937;
+      background: rgba(79, 70, 229, 0.10);
+      color: var(--adm-indigo-ink);
     }
 
     .btn-icon.danger:hover {
-      background: #fee2e2;
-      color: #dc2626;
+      background: rgba(220, 38, 38, 0.10);
+      color: var(--adm-red);
     }
 
     .category-info h3 {
       margin: 0 0 4px;
       font-size: 16px;
       font-weight: 600;
-      color: #1f2937;
+      color: var(--adm-ink);
     }
 
     .category-info p {
       margin: 0 0 8px;
       font-size: 13px;
-      color: #6b7280;
+      color: var(--adm-sub);
     }
 
     .parts-count {
-      font-size: 12px;
-      color: #00a388;
-      font-weight: 500;
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(79, 70, 229, 0.10);
+      color: var(--adm-indigo-ink);
+      font-size: 11px;
+      font-weight: 700;
     }
 
     .add-card {
@@ -363,13 +382,13 @@ interface VehiclePart {
       align-items: center;
       justify-content: center;
       border-style: dashed;
-      color: #9ca3af;
+      color: var(--adm-sub);
       min-height: 140px;
     }
 
     .add-card:hover {
-      color: #00a388;
-      border-color: #00d4aa;
+      color: var(--adm-indigo-ink);
+      border-color: var(--adm-indigo);
     }
 
     .add-icon {
@@ -378,10 +397,11 @@ interface VehiclePart {
     }
 
     .parts-section {
-      background: #fff;
-      border-radius: 12px;
+      background: var(--adm-card);
+      border-radius: 16px;
       padding: 24px;
-      border: 1px solid #e2e8f0;
+      border: 1px solid var(--adm-border);
+      box-shadow: var(--adm-shadow);
     }
 
     .section-header {
@@ -393,16 +413,26 @@ interface VehiclePart {
 
     .section-header h3 {
       margin: 0;
-      font-size: 18px;
-      font-weight: 600;
-      color: #1f2937;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--adm-sub);
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
+    }
+
+    .title-dash {
+      width: 3px;
+      height: 12px;
+      border-radius: 2px;
+      background: var(--adm-indigo);
+      flex-shrink: 0;
     }
 
     .category-badge {
-      font-size: 24px;
+      font-size: 16px;
     }
 
     .parts-list {
@@ -416,13 +446,14 @@ interface VehiclePart {
       justify-content: space-between;
       align-items: center;
       padding: 14px 16px;
-      background: #f8fafc;
-      border-radius: 8px;
+      background: var(--adm-card);
+      border: 1px solid #eef2f7;
+      border-radius: 10px;
       transition: all 0.2s;
     }
 
     .part-item:hover {
-      background: #f1f5f9;
+      background: #f8fafc;
     }
 
     .part-info {
@@ -432,18 +463,20 @@ interface VehiclePart {
     }
 
     .part-name {
-      font-weight: 500;
-      color: #1f2937;
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--adm-ink);
     }
 
     .part-desc {
       font-size: 13px;
-      color: #6b7280;
+      color: var(--adm-sub);
     }
 
     .part-number {
       font-size: 12px;
-      color: #9ca3af;
+      color: var(--adm-sub);
+      font-variant-numeric: tabular-nums;
     }
 
     .part-actions {
@@ -460,7 +493,12 @@ interface VehiclePart {
     .empty-state, .no-selection {
       text-align: center;
       padding: 48px 24px;
-      color: #6b7280;
+      color: var(--adm-sub);
+    }
+
+    .empty-state .btn-primary {
+      display: inline-flex;
+      margin: 0 auto;
     }
 
     .empty-icon {
@@ -469,16 +507,17 @@ interface VehiclePart {
     }
 
     .no-selection {
-      background: #f8fafc;
-      border-radius: 12px;
-      border: 2px dashed #e2e8f0;
+      background: var(--adm-card);
+      border-radius: 16px;
+      border: 2px dashed var(--adm-border);
     }
 
     /* Modal Styles */
     .modal-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.5);
+      background: rgba(15, 23, 42, 0.55);
+      backdrop-filter: blur(4px);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -486,11 +525,11 @@ interface VehiclePart {
     }
 
     .modal-content {
-      background: #fff;
-      border-radius: 16px;
+      background: var(--adm-card);
+      border-radius: 18px;
       width: 100%;
       max-width: 480px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+      box-shadow: 0 24px 60px -24px rgba(2, 6, 23, 0.45);
     }
 
     .modal-header {
@@ -498,28 +537,31 @@ interface VehiclePart {
       justify-content: space-between;
       align-items: center;
       padding: 20px 24px;
-      border-bottom: 1px solid #e2e8f0;
+      border-bottom: 1px solid var(--adm-border);
     }
 
     .modal-header h3 {
       margin: 0;
       font-size: 18px;
-      font-weight: 600;
+      font-weight: 700;
+      color: var(--adm-ink);
     }
 
     .btn-close {
       width: 32px;
       height: 32px;
       border: none;
-      background: #f1f5f9;
+      background: var(--adm-track);
       border-radius: 8px;
       font-size: 20px;
       cursor: pointer;
-      color: #64748b;
+      color: var(--adm-sub);
+      transition: all 0.2s;
     }
 
     .btn-close:hover {
-      background: #e2e8f0;
+      background: var(--adm-border);
+      color: var(--adm-ink);
     }
 
     .modal-body {
@@ -534,25 +576,26 @@ interface VehiclePart {
       display: block;
       margin-bottom: 6px;
       font-size: 13px;
-      font-weight: 500;
-      color: #374151;
+      font-weight: 600;
+      color: var(--adm-ink);
     }
 
     .form-group input,
     .form-group textarea {
       width: 100%;
       padding: 10px 14px;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
+      border: 1px solid var(--adm-border);
+      border-radius: 10px;
       font-size: 14px;
-      transition: all 0.2s;
+      color: var(--adm-ink);
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
 
     .form-group input:focus,
     .form-group textarea:focus {
       outline: none;
-      border-color: #00d4aa;
-      box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.1);
+      border-color: var(--adm-indigo);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
     }
 
     .form-group textarea {
@@ -581,7 +624,7 @@ interface VehiclePart {
     .icon-suggestions button {
       width: 36px;
       height: 36px;
-      border: 1px solid #e2e8f0;
+      border: 1px solid var(--adm-border);
       background: #fff;
       border-radius: 8px;
       font-size: 18px;
@@ -590,8 +633,8 @@ interface VehiclePart {
     }
 
     .icon-suggestions button:hover {
-      border-color: #00d4aa;
-      background: rgba(0, 212, 170, 0.05);
+      border-color: var(--adm-indigo);
+      background: rgba(79, 70, 229, 0.06);
     }
 
     .modal-footer {
@@ -599,9 +642,9 @@ interface VehiclePart {
       justify-content: flex-end;
       gap: 12px;
       padding: 16px 24px;
-      border-top: 1px solid #e2e8f0;
+      border-top: 1px solid var(--adm-border);
       background: #f8fafc;
-      border-radius: 0 0 16px 16px;
+      border-radius: 0 0 18px 18px;
     }
   `]
 })

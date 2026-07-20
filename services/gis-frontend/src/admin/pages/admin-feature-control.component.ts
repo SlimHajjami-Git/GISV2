@@ -149,9 +149,10 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
     }
 
     .maintenance-section, .client-features-section {
-      background: linear-gradient(135deg, rgba(26, 31, 46, 0.8) 0%, rgba(20, 24, 36, 0.9) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 20px;
+      background: var(--adm-card);
+      box-shadow: var(--adm-shadow);
+      border: 1px solid var(--adm-border);
+      border-radius: 16px;
       padding: 28px;
     }
 
@@ -168,19 +169,19 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
       margin: 0 0 6px 0;
       font-size: 20px;
       font-weight: 600;
-      color: #e7e9ea;
+      color: var(--adm-ink);
     }
 
     .header-content p {
       margin: 0;
       font-size: 14px;
-      color: #8b98a5;
+      color: var(--adm-sub);
     }
 
     .maintenance-toggle {
       padding: 12px 20px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: #f8fafc;
+      border: 1px solid var(--adm-border);
       border-radius: 12px;
       transition: all 0.3s;
     }
@@ -202,7 +203,7 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
     .toggle-switch {
       width: 48px;
       height: 26px;
-      background: rgba(255, 255, 255, 0.1);
+      background: var(--adm-track);
       border-radius: 13px;
       position: relative;
       transition: all 0.3s;
@@ -213,7 +214,7 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
       position: absolute;
       width: 20px;
       height: 20px;
-      background: #8b98a5;
+      background: #94a3b8;
       border-radius: 50%;
       top: 3px;
       left: 3px;
@@ -244,13 +245,13 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
     }
 
     .feature-toggle input:checked + .toggle-switch {
-      background: #00d4aa;
+      background: #4f46e5;
     }
 
     .toggle-text {
       font-size: 14px;
       font-weight: 500;
-      color: #e7e9ea;
+      color: var(--adm-ink);
     }
 
     .maintenance-config {
@@ -274,15 +275,15 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
     .form-group label {
       font-size: 14px;
       font-weight: 500;
-      color: #e7e9ea;
+      color: var(--adm-ink);
     }
 
     .form-group textarea, .form-group input {
       padding: 12px 14px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #ffffff;
+      border: 1px solid var(--adm-border);
       border-radius: 10px;
-      color: #e7e9ea;
+      color: var(--adm-ink);
       font-size: 14px;
       outline: none;
       resize: vertical;
@@ -300,7 +301,7 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
       display: block;
       font-size: 14px;
       font-weight: 500;
-      color: #e7e9ea;
+      color: var(--adm-ink);
       margin-bottom: 12px;
     }
 
@@ -316,8 +317,8 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
       align-items: center;
       gap: 10px;
       padding: 10px 14px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: #f8fafc;
+      border: 1px solid var(--adm-border);
       border-radius: 8px;
       cursor: pointer;
       transition: all 0.2s;
@@ -325,7 +326,7 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
     }
 
     .page-checkbox:hover {
-      background: rgba(255, 255, 255, 0.06);
+      background: #eef2f7;
     }
 
     .page-checkbox input { display: none; }
@@ -333,8 +334,8 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
     .page-checkbox .checkmark {
       width: 18px;
       height: 18px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
       border-radius: 4px;
       display: flex;
       align-items: center;
@@ -358,7 +359,7 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
 
     .page-name {
       font-size: 13px;
-      color: #e7e9ea;
+      color: var(--adm-ink);
     }
 
     .quick-select {
@@ -368,18 +369,18 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
 
     .quick-select button {
       padding: 6px 12px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #ffffff;
+      border: 1px solid var(--adm-border);
       border-radius: 6px;
-      color: #8b98a5;
+      color: var(--adm-sub);
       font-size: 12px;
       cursor: pointer;
       transition: all 0.2s;
     }
 
     .quick-select button:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: #e7e9ea;
+      background: var(--adm-track);
+      color: var(--adm-ink);
     }
 
     .save-btn {
@@ -405,7 +406,7 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
 
     .maintenance-preview {
       padding: 20px;
-      background: rgba(255, 255, 255, 0.03);
+      background: #f8fafc;
       border-radius: 12px;
     }
 
@@ -413,7 +414,7 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
       margin: 0 0 14px 0;
       font-size: 14px;
       font-weight: 600;
-      color: #e7e9ea;
+      color: var(--adm-ink);
     }
 
     .disabled-pages-list {
@@ -435,10 +436,10 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
 
     .client-select {
       padding: 12px 16px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #ffffff;
+      border: 1px solid var(--adm-border);
       border-radius: 10px;
-      color: #e7e9ea;
+      color: var(--adm-ink);
       font-size: 14px;
       outline: none;
       cursor: pointer;
@@ -447,8 +448,8 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
 
     .client-features {
       padding: 24px;
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: #f8fafc;
+      border: 1px solid var(--adm-border);
       border-radius: 14px;
     }
 
@@ -458,7 +459,7 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
       justify-content: space-between;
       margin-bottom: 24px;
       padding-bottom: 20px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      border-bottom: 1px solid var(--adm-border);
     }
 
     .client-info {
@@ -470,7 +471,7 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
     .client-avatar {
       width: 52px;
       height: 52px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
       border-radius: 14px;
       display: flex;
       align-items: center;
@@ -484,12 +485,12 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
       margin: 0 0 4px 0;
       font-size: 18px;
       font-weight: 600;
-      color: #e7e9ea;
+      color: var(--adm-ink);
     }
 
     .client-plan {
       font-size: 13px;
-      color: #8b98a5;
+      color: var(--adm-sub);
     }
 
     .status-badge {
@@ -499,8 +500,8 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
       font-weight: 500;
     }
 
-    .status-badge.active { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
-    .status-badge.suspended { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+    .status-badge.active { background: rgba(5, 150, 105, 0.10); color: var(--adm-green-ink); font-weight: 700; border-radius: 999px; }
+    .status-badge.suspended { background: rgba(220, 38, 38, 0.10); color: var(--adm-red-ink); font-weight: 700; border-radius: 999px; }
 
     .features-grid {
       display: grid;
@@ -514,32 +515,33 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
       align-items: center;
       gap: 14px;
       padding: 16px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: #f8fafc;
+      border: 1px solid var(--adm-border);
       border-radius: 12px;
       transition: all 0.2s;
     }
 
     .feature-card:hover {
-      border-color: rgba(255, 255, 255, 0.15);
+      border-color: var(--adm-indigo);
+      box-shadow: var(--adm-shadow);
     }
 
     .feature-icon {
       width: 44px;
       height: 44px;
-      background: rgba(255, 255, 255, 0.05);
+      background: #ffffff;
       border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #6b7280;
+      color: var(--adm-sub);
       flex-shrink: 0;
       transition: all 0.3s;
     }
 
     .feature-icon.enabled {
-      background: rgba(0, 212, 170, 0.15);
-      color: #00d4aa;
+      background: rgba(79, 70, 229, 0.15);
+      color: #4f46e5;
     }
 
     .feature-info {
@@ -550,13 +552,13 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
       margin: 0 0 4px 0;
       font-size: 14px;
       font-weight: 600;
-      color: #e7e9ea;
+      color: var(--adm-ink);
     }
 
     .feature-info p {
       margin: 0;
       font-size: 12px;
-      color: #6b7280;
+      color: var(--adm-sub);
     }
 
     .feature-toggle {
@@ -568,15 +570,15 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
       justify-content: flex-end;
       gap: 12px;
       padding-top: 20px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      border-top: 1px solid var(--adm-border);
     }
 
     .btn-secondary {
       padding: 12px 20px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #ffffff;
+      border: 1px solid var(--adm-border);
       border-radius: 10px;
-      color: #e7e9ea;
+      color: var(--adm-ink);
       font-size: 14px;
       font-weight: 500;
       cursor: pointer;
@@ -584,7 +586,7 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
 
     .btn-primary {
       padding: 12px 20px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
       border: none;
       border-radius: 10px;
       color: #fff;
@@ -596,7 +598,7 @@ import { AdminService, Client, MaintenanceMode } from '../services/admin.service
     .no-client-selected {
       padding: 60px 40px;
       text-align: center;
-      color: #6b7280;
+      color: var(--adm-sub);
     }
 
     .no-client-selected svg {

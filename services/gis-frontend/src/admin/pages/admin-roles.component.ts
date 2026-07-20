@@ -163,30 +163,45 @@ import { AdminService, Role } from '../services/admin.service';
     }
     .header-left h2 {
       margin: 0;
-      font-size: 24px;
-      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--adm-sub);
+    }
+    .header-left h2::before {
+      content: '';
+      width: 3px;
+      height: 12px;
+      border-radius: 2px;
+      background: var(--adm-indigo);
     }
     .count {
-      background: #e2e8f0;
+      background: rgba(100, 116, 139, 0.10);
       padding: 4px 12px;
-      border-radius: 20px;
-      font-size: 14px;
-      color: #64748b;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--adm-slate-ink);
+      font-variant-numeric: tabular-nums;
     }
     .btn-primary {
       display: flex;
       align-items: center;
       gap: 8px;
-      background: #3b82f6;
-      color: white;
+      background: var(--adm-indigo);
+      color: #fff;
       border: none;
-      padding: 10px 20px;
-      border-radius: 8px;
+      padding: 9px 18px;
+      border-radius: 10px;
       cursor: pointer;
-      font-weight: 500;
+      font-weight: 600;
       transition: background 0.2s;
     }
-    .btn-primary:hover { background: #2563eb; }
+    .btn-primary:hover { background: var(--adm-indigo-ink); }
     .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; }
     
     .roles-grid {
@@ -195,18 +210,24 @@ import { AdminService, Role } from '../services/admin.service';
       gap: 20px;
     }
     .role-card {
-      background: white;
-      border-radius: 12px;
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
+      border-radius: 16px;
       padding: 20px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      box-shadow: var(--adm-shadow);
       transition: transform 0.2s, box-shadow 0.2s;
+      animation: rise 0.3s ease-out;
+    }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
     }
     .role-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      transform: translateY(-1px);
+      box-shadow: var(--adm-shadow-hover);
     }
     .role-card.system {
-      border: 2px solid #e2e8f0;
+      border: 1px solid var(--adm-border);
       background: #f8fafc;
     }
     .role-header {
@@ -219,40 +240,41 @@ import { AdminService, Role } from '../services/admin.service';
       width: 48px;
       height: 48px;
       border-radius: 12px;
-      background: #eff6ff;
-      color: #3b82f6;
+      background: rgba(79, 70, 229, 0.10);
+      color: var(--adm-indigo);
       display: flex;
       align-items: center;
       justify-content: center;
     }
-    .role-icon.system { background: #f1f5f9; color: #64748b; }
-    .role-icon.admin { background: #fef3c7; color: #f59e0b; }
+    .role-icon.system { background: var(--adm-track); color: var(--adm-slate-ink); }
+    .role-icon.admin { background: rgba(217, 119, 6, 0.12); color: var(--adm-amber-ink); }
     .role-info { flex: 1; }
     .role-info h3 {
       margin: 0 0 4px 0;
       font-size: 16px;
       font-weight: 600;
+      color: var(--adm-ink);
     }
     .role-type {
       font-size: 12px;
-      color: #64748b;
+      color: var(--adm-sub);
     }
     .role-badges {
       display: flex;
       gap: 6px;
     }
     .badge {
-      padding: 4px 8px;
-      border-radius: 4px;
+      padding: 4px 10px;
+      border-radius: 999px;
       font-size: 11px;
-      font-weight: 500;
+      font-weight: 700;
     }
-    .badge.system { background: #e2e8f0; color: #475569; }
-    .badge.default { background: #dcfce7; color: #16a34a; }
-    
+    .badge.system { background: rgba(100, 116, 139, 0.10); color: var(--adm-slate-ink); }
+    .badge.default { background: rgba(5, 150, 105, 0.10); color: var(--adm-green-ink); }
+
     .role-description {
-      font-size: 14px;
-      color: #64748b;
+      font-size: 13px;
+      color: var(--adm-sub);
       margin: 0 0 16px 0;
       line-height: 1.5;
     }
@@ -260,21 +282,28 @@ import { AdminService, Role } from '../services/admin.service';
       display: flex;
       gap: 24px;
       padding: 12px 0;
-      border-top: 1px solid #e2e8f0;
+      border-top: 1px solid var(--adm-border);
       margin-bottom: 12px;
     }
     .stat {
       display: flex;
       flex-direction: column;
+      border-left: 3px solid var(--adm-indigo);
+      border-radius: 2px;
+      padding-left: 10px;
     }
+    .stat:nth-child(2) { border-left-color: var(--adm-cyan); }
     .stat-value {
-      font-size: 20px;
-      font-weight: 600;
-      color: #1e293b;
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--adm-ink);
+      font-variant-numeric: tabular-nums;
     }
     .stat-label {
-      font-size: 12px;
-      color: #94a3b8;
+      font-size: 11px;
+      color: var(--adm-sub);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
     }
     .role-actions {
       display: flex;
@@ -285,17 +314,17 @@ import { AdminService, Role } from '../services/admin.service';
       width: 36px;
       height: 36px;
       border-radius: 8px;
-      border: 1px solid #e2e8f0;
-      background: white;
-      color: #64748b;
+      border: 1px solid var(--adm-border);
+      background: #fff;
+      color: var(--adm-sub);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       transition: all 0.2s;
     }
-    .btn-icon:hover { background: #f1f5f9; color: #3b82f6; }
-    .btn-icon.danger:hover { background: #fef2f2; color: #ef4444; }
+    .btn-icon:hover { background: #f8fafc; border-color: var(--adm-indigo); color: var(--adm-indigo); }
+    .btn-icon.danger:hover { background: rgba(220, 38, 38, 0.08); border-color: var(--adm-red); color: var(--adm-red); }
     .btn-icon:disabled { opacity: 0.5; cursor: not-allowed; }
     
     /* Modal */
@@ -305,15 +334,17 @@ import { AdminService, Role } from '../services/admin.service';
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0,0,0,0.5);
+      background: rgba(15, 23, 42, 0.55);
+      backdrop-filter: blur(4px);
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 1000;
     }
     .modal {
-      background: white;
-      border-radius: 16px;
+      background: var(--adm-card);
+      border-radius: 18px;
+      box-shadow: 0 24px 60px -24px rgba(2, 6, 23, 0.45);
       width: 100%;
       max-width: 560px;
       max-height: 90vh;
@@ -327,18 +358,21 @@ import { AdminService, Role } from '../services/admin.service';
       justify-content: space-between;
       align-items: center;
       padding: 20px 24px;
-      border-bottom: 1px solid #e2e8f0;
+      border-bottom: 1px solid var(--adm-border);
     }
-    .modal-header h3 { margin: 0; font-size: 18px; }
+    .modal-header h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--adm-ink); }
     .btn-close {
       width: 32px;
       height: 32px;
       border-radius: 8px;
       border: none;
-      background: #f1f5f9;
+      background: var(--adm-track);
+      color: var(--adm-sub);
       font-size: 20px;
       cursor: pointer;
+      transition: all 0.2s;
     }
+    .btn-close:hover { background: var(--adm-border); color: var(--adm-ink); }
     .modal-body {
       padding: 24px;
       overflow-y: auto;
@@ -348,27 +382,38 @@ import { AdminService, Role } from '../services/admin.service';
       justify-content: flex-end;
       gap: 12px;
       padding: 16px 24px;
-      border-top: 1px solid #e2e8f0;
+      border-top: 1px solid var(--adm-border);
     }
     .form-group {
       margin-bottom: 20px;
     }
     .form-group label {
       display: block;
-      font-size: 14px;
-      font-weight: 500;
+      font-size: 13px;
+      font-weight: 600;
       margin-bottom: 8px;
-      color: #374151;
+      color: var(--adm-ink);
     }
     .form-group input[type="text"],
     .form-group textarea,
     .form-group select {
       width: 100%;
       padding: 10px 14px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
+      border: 1px solid var(--adm-border);
+      border-radius: 10px;
       font-size: 14px;
+      color: var(--adm-ink);
+      background: #fff;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
+    .form-group input[type="text"]:focus,
+    .form-group textarea:focus,
+    .form-group select:focus {
+      border-color: var(--adm-indigo);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
+    .form-group input[type="checkbox"] { accent-color: var(--adm-indigo); }
     .form-group textarea {
       min-height: 80px;
       resize: vertical;
@@ -381,8 +426,21 @@ import { AdminService, Role } from '../services/admin.service';
     }
     .permissions-section h4 {
       margin: 0 0 12px 0;
-      font-size: 14px;
-      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--adm-sub);
+    }
+    .permissions-section h4::before {
+      content: '';
+      width: 3px;
+      height: 12px;
+      border-radius: 2px;
+      background: var(--adm-indigo);
     }
     .permissions-grid {
       display: grid;
@@ -394,34 +452,44 @@ import { AdminService, Role } from '../services/admin.service';
       align-items: center;
       gap: 8px;
       padding: 8px;
-      border-radius: 6px;
+      border-radius: 8px;
       cursor: pointer;
       font-size: 13px;
+      color: var(--adm-ink);
     }
-    .permission-item:hover { background: #f1f5f9; }
-    
+    .permission-item input[type="checkbox"] { accent-color: var(--adm-indigo); }
+    .permission-item:hover { background: #f8fafc; }
+
     .btn-secondary {
-      padding: 10px 20px;
-      border: 1px solid #d1d5db;
-      background: white;
-      border-radius: 8px;
+      padding: 9px 18px;
+      border: 1px solid var(--adm-border);
+      background: #fff;
+      color: var(--adm-ink);
+      border-radius: 10px;
       cursor: pointer;
-      font-weight: 500;
+      font-weight: 600;
+      transition: all 0.2s;
     }
-    .btn-secondary:hover { background: #f9fafb; }
+    .btn-secondary:hover { background: #f8fafc; border-color: var(--adm-indigo); }
     .btn-danger {
-      padding: 10px 20px;
-      background: #ef4444;
-      color: white;
+      padding: 9px 18px;
+      background: var(--adm-red);
+      color: #fff;
       border: none;
-      border-radius: 8px;
+      border-radius: 10px;
       cursor: pointer;
-      font-weight: 500;
+      font-weight: 600;
+      transition: background 0.2s;
     }
-    .btn-danger:hover { background: #dc2626; }
+    .btn-danger:hover { background: var(--adm-red-ink); }
     .warning {
-      color: #f59e0b;
-      font-size: 14px;
+      color: var(--adm-amber-ink);
+      font-size: 13px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .role-card { animation: none; }
+      .role-card:hover { transform: none; }
     }
   `]
 })

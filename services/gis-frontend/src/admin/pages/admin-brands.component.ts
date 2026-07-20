@@ -268,6 +268,11 @@ interface BrandDetail {
       gap: 24px;
     }
 
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+
     .page-header {
       display: flex;
       align-items: center;
@@ -286,20 +291,26 @@ interface BrandDetail {
       display: flex;
       align-items: center;
       gap: 10px;
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
       border-radius: 10px;
       padding: 10px 14px;
       width: 280px;
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
 
-    .search-box svg { color: #64748b; }
+    .search-box:focus-within {
+      border-color: var(--adm-indigo);
+      box-shadow: 0 0 0 3px rgba(79,70,229,0.12);
+    }
+
+    .search-box svg { color: var(--adm-sub); }
 
     .search-box input {
       flex: 1;
       border: none;
       background: transparent;
-      color: #1f2937;
+      color: var(--adm-ink);
       font-size: 14px;
       outline: none;
     }
@@ -308,20 +319,21 @@ interface BrandDetail {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 10px 20px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
+      padding: 9px 18px;
+      background: var(--adm-indigo);
       border: none;
       border-radius: 10px;
       color: #fff;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s;
     }
 
     .add-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 16px rgba(0, 212, 170, 0.3);
+      background: var(--adm-indigo-ink);
+      transform: translateY(-1px);
+      box-shadow: var(--adm-shadow-hover);
     }
 
     .brands-grid {
@@ -331,32 +343,34 @@ interface BrandDetail {
     }
 
     .brand-card {
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
+      border-radius: 16px;
+      box-shadow: var(--adm-shadow);
       padding: 20px;
       display: flex;
       align-items: center;
       gap: 16px;
       cursor: pointer;
       transition: all 0.2s;
+      animation: rise 0.25s ease-out both;
     }
 
     .brand-card:hover {
-      border-color: #00d4aa;
-      box-shadow: 0 4px 12px rgba(0, 212, 170, 0.15);
-      transform: translateY(-2px);
+      border-color: var(--adm-indigo);
+      box-shadow: var(--adm-shadow-hover);
+      transform: translateY(-1px);
     }
 
     .brand-logo {
       width: 56px;
       height: 56px;
-      background: linear-gradient(135deg, #f0fdf9 0%, #e0f7f3 100%);
+      background: rgba(79,70,229,0.08);
       border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #00a388;
+      color: var(--adm-indigo);
     }
 
     .brand-info {
@@ -367,12 +381,12 @@ interface BrandDetail {
       margin: 0 0 4px 0;
       font-size: 16px;
       font-weight: 600;
-      color: #1f2937;
+      color: var(--adm-ink);
     }
 
     .model-count {
       font-size: 13px;
-      color: #64748b;
+      color: var(--adm-sub);
     }
 
     .brand-actions {
@@ -398,13 +412,13 @@ interface BrandDetail {
     }
 
     .action-btn.edit {
-      background: rgba(59, 130, 246, 0.15);
-      color: #3b82f6;
+      background: rgba(79,70,229,0.10);
+      color: var(--adm-indigo-ink);
     }
 
     .action-btn.delete {
-      background: rgba(239, 68, 68, 0.15);
-      color: #ef4444;
+      background: rgba(220,38,38,0.10);
+      color: var(--adm-red-ink);
     }
 
     .action-btn:hover {
@@ -417,7 +431,7 @@ interface BrandDetail {
       align-items: center;
       justify-content: center;
       padding: 60px 20px;
-      color: #64748b;
+      color: var(--adm-sub);
     }
 
     .empty-state svg {
@@ -428,7 +442,7 @@ interface BrandDetail {
     .empty-state h3 {
       margin: 0 0 8px 0;
       font-size: 18px;
-      color: #1f2937;
+      color: var(--adm-ink);
     }
 
     .empty-state p {
@@ -440,7 +454,8 @@ interface BrandDetail {
     .detail-overlay, .form-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.5);
+      background: rgba(15,23,42,0.55);
+      backdrop-filter: blur(4px);
       z-index: 1000;
       display: flex;
       justify-content: flex-end;
@@ -450,10 +465,10 @@ interface BrandDetail {
       width: 480px;
       max-width: 100%;
       height: 100%;
-      background: #fff;
+      background: var(--adm-card);
       display: flex;
       flex-direction: column;
-      box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
+      box-shadow: -12px 0 32px -12px rgba(2,6,23,0.35);
     }
 
     .panel-header, .form-header {
@@ -461,7 +476,8 @@ interface BrandDetail {
       align-items: center;
       justify-content: space-between;
       padding: 20px 24px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
+      background: linear-gradient(135deg, var(--adm-carb1) 0%, var(--adm-carb2) 100%);
+      border-bottom: 1px solid var(--adm-glow);
       color: #fff;
     }
 
@@ -484,14 +500,14 @@ interface BrandDetail {
     .panel-header-info p, .form-header-info p {
       margin: 4px 0 0;
       font-size: 13px;
-      opacity: 0.9;
+      opacity: 0.75;
     }
 
     .btn-close-panel {
       width: 36px;
       height: 36px;
       border: none;
-      background: rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.12);
       border-radius: 8px;
       color: #fff;
       cursor: pointer;
@@ -502,7 +518,7 @@ interface BrandDetail {
     }
 
     .btn-close-panel:hover {
-      background: rgba(255,255,255,0.3);
+      background: rgba(255,255,255,0.22);
     }
 
     .panel-body, .form-body {
@@ -513,6 +529,7 @@ interface BrandDetail {
 
     .add-model-section {
       background: #f8fafc;
+      border: 1px solid var(--adm-border);
       border-radius: 12px;
       padding: 16px;
       margin-bottom: 24px;
@@ -520,9 +537,23 @@ interface BrandDetail {
 
     .add-model-section h3 {
       margin: 0 0 12px 0;
-      font-size: 14px;
-      font-weight: 600;
-      color: #374151;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--adm-sub);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .add-model-section h3::before {
+      content: '';
+      width: 3px;
+      height: 12px;
+      border-radius: 2px;
+      background: var(--adm-indigo);
+      flex-shrink: 0;
     }
 
     .add-model-form {
@@ -533,28 +564,34 @@ interface BrandDetail {
     .add-model-form input, .add-model-form select {
       flex: 1;
       padding: 10px 12px;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
+      border: 1px solid var(--adm-border);
+      border-radius: 10px;
       font-size: 14px;
       outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
 
     .add-model-form input:focus, .add-model-form select:focus {
-      border-color: #00d4aa;
+      border-color: var(--adm-indigo);
+      box-shadow: 0 0 0 3px rgba(79,70,229,0.12);
     }
 
     .btn-add-model {
       width: 40px;
       height: 40px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
+      background: var(--adm-indigo);
       border: none;
-      border-radius: 8px;
+      border-radius: 10px;
       color: #fff;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       transition: all 0.2s;
+    }
+
+    .btn-add-model:hover:not(:disabled) {
+      background: var(--adm-indigo-ink);
     }
 
     .btn-add-model:disabled {
@@ -564,9 +601,23 @@ interface BrandDetail {
 
     .models-section h3 {
       margin: 0 0 16px 0;
-      font-size: 14px;
-      font-weight: 600;
-      color: #374151;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--adm-sub);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .models-section h3::before {
+      content: '';
+      width: 3px;
+      height: 12px;
+      border-radius: 2px;
+      background: var(--adm-indigo);
+      flex-shrink: 0;
     }
 
     .models-list {
@@ -580,14 +631,15 @@ interface BrandDetail {
       align-items: center;
       justify-content: space-between;
       padding: 12px 16px;
-      background: #fff;
-      border: 1px solid #e2e8f0;
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
       border-radius: 10px;
       transition: all 0.2s;
     }
 
     .model-item:hover {
-      border-color: #00d4aa;
+      border-color: var(--adm-indigo);
+      box-shadow: var(--adm-shadow);
     }
 
     .model-info {
@@ -599,15 +651,16 @@ interface BrandDetail {
     .model-name {
       font-size: 14px;
       font-weight: 500;
-      color: #1f2937;
+      color: var(--adm-ink);
     }
 
     .model-type {
-      font-size: 12px;
-      padding: 2px 8px;
-      background: rgba(0, 212, 170, 0.1);
-      color: #00a388;
-      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 10px;
+      background: rgba(79,70,229,0.10);
+      color: var(--adm-indigo-ink);
+      border-radius: 999px;
     }
 
     .model-actions {
@@ -618,7 +671,7 @@ interface BrandDetail {
     .empty-models {
       padding: 24px;
       text-align: center;
-      color: #64748b;
+      color: var(--adm-sub);
       font-size: 14px;
     }
 
@@ -627,7 +680,7 @@ interface BrandDetail {
       justify-content: flex-end;
       gap: 12px;
       padding: 16px 24px;
-      border-top: 1px solid #e2e8f0;
+      border-top: 1px solid var(--adm-border);
     }
 
     .form-group {
@@ -637,55 +690,56 @@ interface BrandDetail {
     .form-group label {
       display: block;
       margin-bottom: 6px;
-      font-size: 14px;
-      font-weight: 500;
-      color: #374151;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--adm-ink);
     }
 
     .form-group input, .form-group select {
       width: 100%;
       padding: 12px 14px;
-      border: 1px solid #e2e8f0;
+      border: 1px solid var(--adm-border);
       border-radius: 10px;
       font-size: 14px;
       outline: none;
-      transition: border-color 0.2s;
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
 
     .form-group input:focus, .form-group select:focus {
-      border-color: #00d4aa;
+      border-color: var(--adm-indigo);
+      box-shadow: 0 0 0 3px rgba(79,70,229,0.12);
     }
 
     .btn-secondary {
-      padding: 10px 20px;
-      background: #f1f5f9;
-      border: 1px solid #e2e8f0;
+      padding: 9px 18px;
+      background: #fff;
+      border: 1px solid var(--adm-border);
       border-radius: 10px;
-      color: #1f2937;
-      font-size: 14px;
-      font-weight: 500;
+      color: var(--adm-ink);
+      font-size: 13px;
+      font-weight: 600;
       cursor: pointer;
       transition: all 0.2s;
     }
 
     .btn-secondary:hover {
-      background: #e2e8f0;
+      border-color: var(--adm-indigo);
     }
 
     .btn-primary {
-      padding: 10px 20px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
+      padding: 9px 18px;
+      background: var(--adm-indigo);
       border: none;
       border-radius: 10px;
       color: #fff;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s;
     }
 
     .btn-primary:hover {
-      box-shadow: 0 4px 16px rgba(0, 212, 170, 0.3);
+      background: var(--adm-indigo-ink);
     }
 
     .btn-primary:disabled {
@@ -697,7 +751,8 @@ interface BrandDetail {
     .modal-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.7);
+      background: rgba(15,23,42,0.55);
+      backdrop-filter: blur(4px);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -705,11 +760,11 @@ interface BrandDetail {
     }
 
     .modal {
-      background: white;
-      border-radius: 16px;
+      background: var(--adm-card);
+      border-radius: 18px;
       width: 400px;
       max-width: 90%;
-      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 24px 60px -24px rgba(2,6,23,0.45);
     }
 
     .modal-header {
@@ -717,27 +772,33 @@ interface BrandDetail {
       align-items: center;
       justify-content: space-between;
       padding: 20px 24px;
-      border-bottom: 1px solid #e2e8f0;
+      border-bottom: 1px solid var(--adm-border);
     }
 
     .modal-header h2 {
       margin: 0;
       font-size: 18px;
       font-weight: 600;
-      color: #1f2937;
+      color: var(--adm-ink);
     }
 
     .close-btn {
       width: 36px;
       height: 36px;
       border: none;
-      background: #f1f5f9;
+      background: var(--adm-track);
       border-radius: 10px;
-      color: #64748b;
+      color: var(--adm-sub);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: all 0.15s;
+    }
+
+    .close-btn:hover {
+      background: var(--adm-border);
+      color: var(--adm-ink);
     }
 
     .modal-body {
@@ -749,7 +810,12 @@ interface BrandDetail {
       justify-content: flex-end;
       gap: 12px;
       padding: 16px 24px;
-      border-top: 1px solid #e2e8f0;
+      border-top: 1px solid var(--adm-border);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .brand-card { animation: none; }
+      .brand-card:hover, .add-btn:hover, .action-btn:hover { transform: none; }
     }
   `]
 })

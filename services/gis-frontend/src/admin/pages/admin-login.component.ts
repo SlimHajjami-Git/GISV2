@@ -21,15 +21,15 @@ import { AdminService } from '../services/admin.service';
             <span class="logo-icon">C</span>
             <div class="logo-text">
               <span class="brand">Calypso</span>
-              <span class="subtitle">Admin Portal</span>
+              <span class="subtitle">Portail Admin</span>
             </div>
           </div>
-          <p class="welcome-text">Welcome back! Please sign in to continue.</p>
+          <p class="welcome-text">Bon retour ! Connectez-vous pour continuer.</p>
         </div>
 
         <form (ngSubmit)="login()" class="login-form">
           <div class="form-group">
-            <label for="email">Email Address</label>
+            <label for="email">Adresse e-mail</label>
             <div class="input-wrapper">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
@@ -47,7 +47,7 @@ import { AdminService } from '../services/admin.service';
           </div>
 
           <div class="form-group">
-            <label for="password">Password</label>
+            <label for="password">Mot de passe</label>
             <div class="input-wrapper">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -58,7 +58,7 @@ import { AdminService } from '../services/admin.service';
                 id="password"
                 [(ngModel)]="password"
                 name="password"
-                placeholder="Enter your password"
+                placeholder="Votre mot de passe"
                 required
               />
               <button type="button" class="toggle-password" (click)="showPassword = !showPassword">
@@ -78,9 +78,9 @@ import { AdminService } from '../services/admin.service';
             <label class="remember-me">
               <input type="checkbox" [(ngModel)]="rememberMe" name="rememberMe" />
               <span class="checkmark"></span>
-              Remember me
+              Se souvenir de moi
             </label>
-            <a href="#" class="forgot-link">Forgot password?</a>
+            <a href="#" class="forgot-link">Mot de passe oublié ?</a>
           </div>
 
           <div class="error-message" *ngIf="error">
@@ -93,7 +93,7 @@ import { AdminService } from '../services/admin.service';
           </div>
 
           <button type="submit" class="login-btn" [disabled]="loading">
-            <span *ngIf="!loading">Sign In</span>
+            <span *ngIf="!loading">Se connecter</span>
             <span *ngIf="loading" class="loading-spinner"></span>
           </button>
         </form>
@@ -103,14 +103,14 @@ import { AdminService } from '../services/admin.service';
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
             </svg>
-            <span>Secured Access - Admin Only</span>
+            <span>Accès sécurisé — Administrateurs uniquement</span>
           </div>
-          <p class="copyright">2024 Calypso. All rights reserved.</p>
+          <p class="copyright">© 2026 Calypso. Tous droits réservés.</p>
         </div>
       </div>
 
       <div class="login-info">
-        <h2>Admin Control Center</h2>
+        <h2>Centre de contrôle Calypso</h2>
         <ul class="features-list">
           <li>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -120,8 +120,8 @@ import { AdminService } from '../services/admin.service';
               <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
             </svg>
             <div>
-              <h3>Client Management</h3>
-              <p>Manage all clients, subscriptions, and permissions</p>
+              <h3>Gestion des sociétés</h3>
+              <p>Sociétés, abonnements et permissions centralisés</p>
             </div>
           </li>
           <li>
@@ -129,8 +129,8 @@ import { AdminService } from '../services/admin.service';
               <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
             </svg>
             <div>
-              <h3>System Monitoring</h3>
-              <p>Real-time health status of all services</p>
+              <h3>Supervision système</h3>
+              <p>Santé des services et flotte GPS en temps réel</p>
             </div>
           </li>
           <li>
@@ -141,8 +141,8 @@ import { AdminService } from '../services/admin.service';
               <rect x="3" y="14" width="7" height="7"/>
             </svg>
             <div>
-              <h3>Analytics Dashboard</h3>
-              <p>Comprehensive usage and performance metrics</p>
+              <h3>Tableaux de bord</h3>
+              <p>Usage, performance et facturation en un coup d&#39;œil</p>
             </div>
           </li>
         </ul>
@@ -150,17 +150,37 @@ import { AdminService } from '../services/admin.service';
     </div>
   `,
   styles: [`
+    /* Page hors shell admin-layout : les tokens --adm-* ne sont pas herites,
+       ils sont donc redefinis localement (valeurs de la spec Calypso Command). */
     .login-container {
+      --adm-indigo: #4f46e5;
+      --adm-indigo-ink: #4338ca;
+      --adm-red: #dc2626;
+      --adm-red-ink: #b91c1c;
+      --adm-card: #ffffff;
+      --adm-border: #e6eaf2;
+      --adm-ink: #0f172a;
+      --adm-sub: #64748b;
+      --adm-carb1: #0d1425;
+      --adm-carb2: #16213a;
+      --adm-glow: rgba(99, 102, 241, 0.24);
+
       min-height: 100vh;
       display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 72px;
+      padding: 48px 32px;
+      box-sizing: border-box;
       position: relative;
-      background: #f1f5f9;
+      background: linear-gradient(135deg, var(--adm-carb1) 0%, var(--adm-carb2) 100%);
     }
 
     .login-background {
       position: absolute;
       inset: 0;
       overflow: hidden;
+      pointer-events: none;
     }
 
     .bg-gradient {
@@ -169,7 +189,7 @@ import { AdminService } from '../services/admin.service';
       right: -20%;
       width: 80%;
       height: 150%;
-      background: radial-gradient(ellipse at center, rgba(0, 212, 170, 0.1) 0%, transparent 70%);
+      background: radial-gradient(ellipse at center, var(--adm-glow) 0%, transparent 70%);
       animation: pulse 8s ease-in-out infinite;
     }
 
@@ -177,7 +197,7 @@ import { AdminService } from '../services/admin.service';
       position: absolute;
       inset: 0;
       background-image:
-        radial-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
       background-size: 40px 40px;
     }
 
@@ -186,17 +206,28 @@ import { AdminService } from '../services/admin.service';
       50% { transform: scale(1.1); opacity: 0.8; }
     }
 
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+
     .login-card {
-      width: 480px;
+      width: 440px;
+      max-width: 100%;
       padding: 48px;
+      box-sizing: border-box;
       display: flex;
       flex-direction: column;
       justify-content: center;
-      background: #ffffff;
-      border-right: 1px solid #e2e8f0;
+      background: var(--adm-card);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
       position: relative;
       z-index: 1;
-      box-shadow: 4px 0 24px rgba(0, 0, 0, 0.08);
+      box-shadow:
+        0 24px 60px -24px rgba(2, 6, 23, 0.65),
+        0 48px 120px -32px rgba(2, 6, 23, 0.55);
+      animation: rise 0.35s ease-out both;
     }
 
     .login-header {
@@ -213,7 +244,7 @@ import { AdminService } from '../services/admin.service';
     .logo-icon {
       width: 52px;
       height: 52px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
+      background: var(--adm-indigo);
       border-radius: 14px;
       display: flex;
       align-items: center;
@@ -221,7 +252,7 @@ import { AdminService } from '../services/admin.service';
       font-weight: 700;
       font-size: 24px;
       color: #fff;
-      box-shadow: 0 8px 24px rgba(0, 212, 170, 0.3);
+      box-shadow: 0 8px 24px rgba(79, 70, 229, 0.35);
     }
 
     .logo-text {
@@ -232,17 +263,17 @@ import { AdminService } from '../services/admin.service';
     .brand {
       font-size: 24px;
       font-weight: 700;
-      color: #1f2937;
+      color: var(--adm-ink);
     }
 
     .subtitle {
       font-size: 14px;
-      color: #00d4aa;
-      font-weight: 500;
+      color: var(--adm-indigo);
+      font-weight: 600;
     }
 
     .welcome-text {
-      color: #64748b;
+      color: var(--adm-sub);
       font-size: 15px;
       margin: 0;
     }
@@ -270,20 +301,20 @@ import { AdminService } from '../services/admin.service';
       align-items: center;
       gap: 12px;
       background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
+      border: 1px solid var(--adm-border);
+      border-radius: 10px;
       padding: 14px 16px;
       transition: all 0.2s;
     }
 
     .input-wrapper:focus-within {
-      border-color: #00d4aa;
+      border-color: var(--adm-indigo);
       background: #ffffff;
-      box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.1);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
     }
 
     .input-wrapper svg {
-      color: #64748b;
+      color: var(--adm-sub);
       flex-shrink: 0;
     }
 
@@ -291,7 +322,7 @@ import { AdminService } from '../services/admin.service';
       flex: 1;
       border: none;
       background: transparent;
-      color: #1f2937;
+      color: var(--adm-ink);
       font-size: 15px;
       outline: none;
     }
@@ -305,14 +336,14 @@ import { AdminService } from '../services/admin.service';
       border: none;
       padding: 0;
       cursor: pointer;
-      color: #64748b;
+      color: var(--adm-sub);
       display: flex;
       align-items: center;
       transition: color 0.2s;
     }
 
     .toggle-password:hover {
-      color: #1f2937;
+      color: var(--adm-ink);
     }
 
     .form-options {
@@ -326,7 +357,7 @@ import { AdminService } from '../services/admin.service';
       align-items: center;
       gap: 10px;
       font-size: 14px;
-      color: #64748b;
+      color: var(--adm-sub);
       cursor: pointer;
       position: relative;
       padding-left: 28px;
@@ -350,8 +381,8 @@ import { AdminService } from '../services/admin.service';
     }
 
     .remember-me input:checked ~ .checkmark {
-      background: #00d4aa;
-      border-color: #00d4aa;
+      background: var(--adm-indigo);
+      border-color: var(--adm-indigo);
     }
 
     .checkmark::after {
@@ -373,13 +404,14 @@ import { AdminService } from '../services/admin.service';
 
     .forgot-link {
       font-size: 14px;
-      color: #00d4aa;
+      color: var(--adm-indigo);
+      font-weight: 500;
       text-decoration: none;
       transition: color 0.2s;
     }
 
     .forgot-link:hover {
-      color: #00e6b8;
+      color: var(--adm-indigo-ink);
     }
 
     .error-message {
@@ -387,24 +419,24 @@ import { AdminService } from '../services/admin.service';
       align-items: center;
       gap: 10px;
       padding: 12px 16px;
-      background: rgba(239, 68, 68, 0.1);
-      border: 1px solid rgba(239, 68, 68, 0.3);
+      background: rgba(220, 38, 38, 0.08);
+      border: 1px solid rgba(220, 38, 38, 0.25);
       border-radius: 10px;
-      color: #ef4444;
+      color: var(--adm-red-ink);
       font-size: 14px;
     }
 
     .login-btn {
       width: 100%;
-      padding: 16px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
+      padding: 14px 18px;
+      background: var(--adm-indigo);
       border: none;
-      border-radius: 12px;
+      border-radius: 10px;
       color: #fff;
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.3s;
+      transition: all 0.2s;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -412,8 +444,9 @@ import { AdminService } from '../services/admin.service';
     }
 
     .login-btn:hover:not(:disabled) {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(0, 212, 170, 0.35);
+      background: var(--adm-indigo-ink);
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(79, 70, 229, 0.35);
     }
 
     .login-btn:disabled {
@@ -444,34 +477,36 @@ import { AdminService } from '../services/admin.service';
       align-items: center;
       gap: 8px;
       padding: 8px 16px;
-      background: rgba(0, 212, 170, 0.1);
-      border-radius: 20px;
-      color: #00d4aa;
-      font-size: 13px;
+      background: rgba(79, 70, 229, 0.10);
+      border-radius: 999px;
+      color: var(--adm-indigo-ink);
+      font-size: 12px;
+      font-weight: 600;
       margin-bottom: 16px;
     }
 
     .copyright {
       font-size: 12px;
-      color: #6b7280;
+      color: var(--adm-sub);
       margin: 0;
     }
 
     .login-info {
-      flex: 1;
+      max-width: 460px;
       display: flex;
       flex-direction: column;
       justify-content: center;
-      padding: 48px 64px;
       position: relative;
       z-index: 1;
+      animation: rise 0.45s ease-out both;
     }
 
     .login-info h2 {
       font-size: 32px;
       font-weight: 700;
-      color: #1f2937;
+      color: #ffffff;
       margin: 0 0 40px 0;
+      letter-spacing: -0.01em;
     }
 
     .features-list {
@@ -491,24 +526,35 @@ import { AdminService } from '../services/admin.service';
 
     .features-list li svg {
       flex-shrink: 0;
-      color: #00d4aa;
+      color: #a5b4fc;
       padding: 12px;
-      background: rgba(0, 212, 170, 0.1);
+      background: rgba(99, 102, 241, 0.16);
+      border: 1px solid rgba(99, 102, 241, 0.28);
       border-radius: 12px;
     }
 
     .features-list li h3 {
       font-size: 18px;
       font-weight: 600;
-      color: #1f2937;
+      color: #e2e8f0;
       margin: 0 0 6px 0;
     }
 
     .features-list li p {
       font-size: 14px;
-      color: #64748b;
+      color: #94a3b8;
       margin: 0;
       line-height: 1.5;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .bg-gradient {
+        animation: none;
+      }
+      .login-card,
+      .login-info {
+        animation: none;
+      }
     }
 
     @media (max-width: 1024px) {
@@ -517,11 +563,14 @@ import { AdminService } from '../services/admin.service';
       }
       .login-card {
         width: 100%;
-        border-right: none;
+        max-width: 440px;
       }
     }
 
     @media (max-width: 480px) {
+      .login-container {
+        padding: 24px 16px;
+      }
       .login-card {
         padding: 32px 24px;
       }
@@ -547,7 +596,7 @@ export class AdminLoginComponent {
 
   login() {
     if (!this.email || !this.password) {
-      this.error = 'Please enter your email and password';
+      this.error = 'Veuillez saisir votre e-mail et votre mot de passe';
       return;
     }
 
@@ -559,7 +608,7 @@ export class AdminLoginComponent {
         this.router.navigate(['/admin/dashboard']);
       },
       error: (err) => {
-        this.error = 'Invalid email or password';
+        this.error = 'E-mail ou mot de passe incorrect';
         this.loading = false;
       }
     });

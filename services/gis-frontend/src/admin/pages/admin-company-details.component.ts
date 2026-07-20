@@ -772,29 +772,29 @@ type CompanyRole = Role & { userCount?: number };
       align-items: center;
       gap: 8px;
       font-size: 14px;
-      color: #64748b;
+      color: var(--adm-sub);
     }
 
     .breadcrumb a {
       display: flex;
       align-items: center;
       gap: 4px;
-      color: #00a388;
+      color: var(--adm-indigo);
       cursor: pointer;
       text-decoration: none;
       transition: color 0.2s;
     }
 
     .breadcrumb a:hover {
-      color: #00d4aa;
+      color: var(--adm-indigo-ink);
     }
 
     .breadcrumb .separator {
-      color: #cbd5e1;
+      color: var(--adm-border);
     }
 
     .breadcrumb .current {
-      color: #1f2937;
+      color: var(--adm-ink);
       font-weight: 500;
     }
 
@@ -803,17 +803,18 @@ type CompanyRole = Role & { userCount?: number };
       display: flex;
       align-items: center;
       gap: 20px;
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
       border-radius: 16px;
       padding: 24px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      box-shadow: var(--adm-shadow);
+      animation: rise 0.25s ease-out both;
     }
 
     .company-avatar {
       width: 72px;
       height: 72px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
+      background: linear-gradient(135deg, var(--adm-indigo) 0%, var(--adm-indigo-ink) 100%);
       border-radius: 16px;
       display: flex;
       align-items: center;
@@ -839,7 +840,7 @@ type CompanyRole = Role & { userCount?: number };
       margin: 0;
       font-size: 24px;
       font-weight: 600;
-      color: #1f2937;
+      color: var(--adm-ink);
     }
 
     .company-meta {
@@ -853,11 +854,11 @@ type CompanyRole = Role & { userCount?: number };
       align-items: center;
       gap: 6px;
       font-size: 14px;
-      color: #64748b;
+      color: var(--adm-sub);
     }
 
     .meta-item svg {
-      color: #94a3b8;
+      color: var(--adm-slate);
     }
 
     .company-actions {
@@ -867,25 +868,25 @@ type CompanyRole = Role & { userCount?: number };
 
     /* Status Badge */
     .status-badge {
-      padding: 4px 12px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 500;
+      padding: 3px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
     }
 
     .status-badge.active {
-      background: rgba(34, 197, 94, 0.15);
-      color: #22c55e;
+      background: rgba(5, 150, 105, 0.10);
+      color: var(--adm-green-ink);
     }
 
     .status-badge.suspended {
-      background: rgba(239, 68, 68, 0.15);
-      color: #ef4444;
+      background: rgba(220, 38, 38, 0.10);
+      color: var(--adm-red-ink);
     }
 
     .status-badge.pending {
-      background: rgba(249, 115, 22, 0.15);
-      color: #f97316;
+      background: rgba(217, 119, 6, 0.10);
+      color: var(--adm-amber-ink);
     }
 
     /* Stats Grid */
@@ -930,8 +931,8 @@ type CompanyRole = Role & { userCount?: number };
     }
 
     .stat-icon.subscription {
-      background: rgba(0, 212, 170, 0.1);
-      color: #00a388;
+      background: rgba(79, 70, 229, 0.1);
+      color: #4338ca;
     }
 
     .stat-content {
@@ -994,7 +995,7 @@ type CompanyRole = Role & { userCount?: number };
     }
 
     .tab.active {
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
       color: #fff;
     }
 
@@ -1062,7 +1063,7 @@ type CompanyRole = Role & { userCount?: number };
       align-items: center;
       gap: 8px;
       padding: 10px 20px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
       border: none;
       border-radius: 10px;
       color: #fff;
@@ -1074,7 +1075,7 @@ type CompanyRole = Role & { userCount?: number };
 
     .btn-primary:hover {
       transform: translateY(-2px);
-      box-shadow: 0 4px 16px rgba(0, 212, 170, 0.3);
+      box-shadow: 0 4px 16px rgba(79, 70, 229, 0.3);
     }
 
     .btn-primary:disabled {
@@ -1326,8 +1327,8 @@ type CompanyRole = Role & { userCount?: number };
     }
 
     .badge.default {
-      background: rgba(0, 212, 170, 0.15);
-      color: #00a388;
+      background: rgba(79, 70, 229, 0.15);
+      color: #4338ca;
     }
 
     .role-description {
@@ -1399,7 +1400,7 @@ type CompanyRole = Role & { userCount?: number };
       width: 40px;
       height: 40px;
       border: 3px solid #e2e8f0;
-      border-top-color: #00d4aa;
+      border-top-color: #4f46e5;
       border-radius: 50%;
       animation: spin 1s linear infinite;
       margin-bottom: 16px;
@@ -1531,7 +1532,7 @@ type CompanyRole = Role & { userCount?: number };
     .form-group input:focus,
     .form-group select:focus,
     .form-group textarea:focus {
-      border-color: #00d4aa;
+      border-color: #4f46e5;
       background: #fff;
     }
 
@@ -1614,7 +1615,7 @@ type CompanyRole = Role & { userCount?: number };
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
     }
 
     .header-title {
@@ -1695,7 +1696,7 @@ type CompanyRole = Role & { userCount?: number };
     }
 
     .section-title .badge {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
       color: white;
       font-size: 11px;
       font-weight: 600;
@@ -1795,7 +1796,7 @@ type CompanyRole = Role & { userCount?: number };
     }
 
     .checkbox-label-inline input[type="checkbox"]:checked + .checkmark {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
       border-color: transparent;
     }
 
@@ -1842,7 +1843,7 @@ type CompanyRole = Role & { userCount?: number };
 
     .popup-footer .btn-primary {
       padding: 10px 20px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
       color: white;
       border: none;
       border-radius: 8px;
@@ -1899,7 +1900,7 @@ type CompanyRole = Role & { userCount?: number };
 
     .vehicle-card.selected {
       border-color: #6366f1;
-      background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+      background: rgba(79, 70, 229, 0.06);
       box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
     }
 
@@ -1919,7 +1920,7 @@ type CompanyRole = Role & { userCount?: number };
     }
 
     .vehicle-card.selected .vehicle-card-check {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
       border-color: transparent;
       color: white;
     }
@@ -1937,7 +1938,7 @@ type CompanyRole = Role & { userCount?: number };
     }
 
     .vehicle-card.selected .vehicle-card-icon {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
       color: white;
     }
 
@@ -1970,7 +1971,7 @@ type CompanyRole = Role & { userCount?: number };
     }
 
     .vehicle-card.selected .vehicle-card-plate {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
     }
 
     .vehicle-card-status {

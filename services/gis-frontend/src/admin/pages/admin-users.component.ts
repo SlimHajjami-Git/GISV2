@@ -266,33 +266,47 @@ interface EditUserForm {
       display: flex;
       align-items: center;
       gap: 10px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
       border-radius: 10px;
-      padding: 10px 14px;
+      padding: 9px 14px;
       width: 260px;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
 
-    .search-box svg { color: #8b98a5; }
+    .search-box:focus-within {
+      border-color: var(--adm-indigo);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
+
+    .search-box svg { color: var(--adm-sub); }
 
     .search-box input {
       flex: 1;
       border: none;
       background: transparent;
-      color: #e7e9ea;
+      color: var(--adm-ink);
       font-size: 14px;
       outline: none;
     }
 
+    .search-box input::placeholder { color: var(--adm-sub); }
+
     .filter-select {
-      padding: 10px 14px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 9px 14px;
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
       border-radius: 10px;
-      color: #e7e9ea;
+      color: var(--adm-ink);
       font-size: 14px;
       outline: none;
       cursor: pointer;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .filter-select:focus {
+      border-color: var(--adm-indigo);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
     }
 
     .header-stats {
@@ -301,29 +315,30 @@ interface EditUserForm {
     }
 
     .stat-chip {
-      padding: 8px 14px;
-      border-radius: 20px;
-      font-size: 13px;
-      font-weight: 500;
+      padding: 7px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
       display: flex;
       align-items: center;
       gap: 8px;
+      font-variant-numeric: tabular-nums;
     }
 
     .stat-chip.online {
-      background: rgba(34, 197, 94, 0.15);
-      color: #22c55e;
+      background: rgba(5, 150, 105, 0.10);
+      color: var(--adm-green-ink);
     }
 
     .stat-chip.total {
-      background: rgba(255, 255, 255, 0.05);
-      color: #8b98a5;
+      background: rgba(100, 116, 139, 0.10);
+      color: var(--adm-slate-ink);
     }
 
     .stat-chip .dot {
       width: 8px;
       height: 8px;
-      background: #22c55e;
+      background: var(--adm-green);
       border-radius: 50%;
       animation: pulse 2s infinite;
     }
@@ -334,10 +349,17 @@ interface EditUserForm {
     }
 
     .users-table-container {
-      background: linear-gradient(135deg, rgba(26, 31, 46, 0.8) 0%, rgba(20, 24, 36, 0.9) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
       border-radius: 16px;
+      box-shadow: var(--adm-shadow);
       overflow: hidden;
+      animation: rise 0.3s ease-out;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
     }
 
     .users-table {
@@ -346,20 +368,26 @@ interface EditUserForm {
     }
 
     .users-table th {
-      padding: 16px 20px;
+      padding: 14px 20px;
       text-align: left;
-      font-size: 12px;
-      font-weight: 600;
+      font-size: 11px;
+      font-weight: 700;
       text-transform: uppercase;
-      color: #8b98a5;
-      background: rgba(255, 255, 255, 0.03);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      letter-spacing: 0.06em;
+      color: var(--adm-sub);
+      background: #f8fafc;
+      border-bottom: 1px solid var(--adm-border);
     }
 
     .users-table td {
-      padding: 16px 20px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 14px 20px;
+      border-bottom: 1px solid #eef2f7;
+      font-size: 13px;
+      color: var(--adm-ink);
     }
+
+    .users-table tbody tr { transition: background 0.15s; }
+    .users-table tbody tr:hover { background: #f8fafc; }
 
     .users-table tr:last-child td {
       border-bottom: none;
@@ -378,7 +406,7 @@ interface EditUserForm {
     .user-avatar {
       width: 40px;
       height: 40px;
-      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      background: linear-gradient(135deg, #6366f1 0%, var(--adm-indigo) 100%);
       border-radius: 10px;
       display: flex;
       align-items: center;
@@ -401,8 +429,8 @@ interface EditUserForm {
       right: -2px;
       width: 12px;
       height: 12px;
-      background: #22c55e;
-      border: 2px solid #141824;
+      background: var(--adm-green);
+      border: 2px solid var(--adm-card);
       border-radius: 50%;
     }
 
@@ -413,22 +441,23 @@ interface EditUserForm {
     }
 
     .user-name {
-      font-size: 14px;
-      font-weight: 500;
-      color: #e7e9ea;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--adm-ink);
     }
 
     .user-email {
       font-size: 12px;
-      color: #6b7280;
+      color: var(--adm-sub);
     }
 
     .company-badge {
       padding: 4px 10px;
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 8px;
-      font-size: 13px;
-      color: #8b98a5;
+      background: rgba(100, 116, 139, 0.10);
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--adm-slate-ink);
     }
 
     .roles {
@@ -438,12 +467,12 @@ interface EditUserForm {
     }
 
     .role-tag {
-      padding: 4px 8px;
-      background: rgba(0, 212, 170, 0.15);
-      color: #00d4aa;
-      border-radius: 6px;
+      padding: 4px 10px;
+      background: rgba(79, 70, 229, 0.10);
+      color: var(--adm-indigo-ink);
+      border-radius: 999px;
       font-size: 11px;
-      font-weight: 500;
+      font-weight: 700;
       text-transform: capitalize;
     }
 
@@ -455,16 +484,16 @@ interface EditUserForm {
 
     .perm-count {
       font-size: 13px;
-      color: #8b98a5;
+      color: var(--adm-sub);
     }
 
     .edit-perms-btn {
       width: 28px;
       height: 28px;
       border: none;
-      background: rgba(59, 130, 246, 0.15);
+      background: rgba(79, 70, 229, 0.10);
       border-radius: 6px;
-      color: #3b82f6;
+      color: var(--adm-indigo);
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -473,29 +502,35 @@ interface EditUserForm {
     }
 
     .edit-perms-btn:hover {
-      background: rgba(59, 130, 246, 0.25);
+      background: rgba(79, 70, 229, 0.18);
     }
 
     .status-badge {
       padding: 4px 10px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 500;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
     }
 
     .status-badge.active {
-      background: rgba(34, 197, 94, 0.15);
-      color: #22c55e;
+      background: rgba(5, 150, 105, 0.10);
+      color: var(--adm-green-ink);
     }
 
     .status-badge.suspended {
-      background: rgba(239, 68, 68, 0.15);
-      color: #ef4444;
+      background: rgba(220, 38, 38, 0.10);
+      color: var(--adm-red-ink);
+    }
+
+    .status-badge.inactive {
+      background: rgba(100, 116, 139, 0.10);
+      color: var(--adm-slate-ink);
     }
 
     .last-login {
       font-size: 13px;
-      color: #8b98a5;
+      color: var(--adm-sub);
+      font-variant-numeric: tabular-nums;
     }
 
     .actions {
@@ -516,18 +551,18 @@ interface EditUserForm {
     }
 
     .action-btn.suspend {
-      background: rgba(239, 68, 68, 0.15);
-      color: #ef4444;
+      background: rgba(220, 38, 38, 0.10);
+      color: var(--adm-red);
     }
 
     .action-btn.activate {
-      background: rgba(34, 197, 94, 0.15);
-      color: #22c55e;
+      background: rgba(5, 150, 105, 0.10);
+      color: var(--adm-green);
     }
 
     .action-btn.view {
-      background: rgba(255, 255, 255, 0.05);
-      color: #8b98a5;
+      background: rgba(8, 145, 178, 0.10);
+      color: var(--adm-cyan-ink);
     }
 
     .action-btn:hover {
@@ -541,7 +576,7 @@ interface EditUserForm {
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(15, 23, 42, 0.6);
+      background: rgba(15, 23, 42, 0.55);
       backdrop-filter: blur(4px);
       display: flex;
       align-items: center;
@@ -557,9 +592,9 @@ interface EditUserForm {
     }
 
     .popup-container {
-      background: #ffffff;
-      border-radius: 12px;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      background: var(--adm-card);
+      border-radius: 18px;
+      box-shadow: 0 24px 60px -24px rgba(2, 6, 23, 0.45);
       max-width: 600px;
       width: 100%;
       max-height: 85vh;
@@ -576,11 +611,11 @@ interface EditUserForm {
 
     .popup-header {
       padding: 16px 24px;
-      border-bottom: 1px solid #e2e8f0;
+      border-bottom: 1px solid var(--adm-border);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: var(--adm-card);
     }
 
     .header-title {
@@ -592,25 +627,25 @@ interface EditUserForm {
     .header-icon {
       width: 36px;
       height: 36px;
-      background: rgba(255, 255, 255, 0.2);
+      background: rgba(79, 70, 229, 0.10);
       border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: white;
+      color: var(--adm-indigo);
     }
 
     .popup-header h2 {
       margin: 0;
       font-size: 16px;
-      font-weight: 600;
-      color: white;
+      font-weight: 700;
+      color: var(--adm-ink);
     }
 
     .popup-header .close-btn {
-      background: rgba(255, 255, 255, 0.15);
+      background: var(--adm-track);
       border: none;
-      color: white;
+      color: var(--adm-sub);
       width: 32px;
       height: 32px;
       border-radius: 8px;
@@ -622,20 +657,21 @@ interface EditUserForm {
     }
 
     .popup-header .close-btn:hover {
-      background: rgba(255, 255, 255, 0.25);
+      background: var(--adm-border);
+      color: var(--adm-ink);
     }
 
     .popup-body {
       padding: 0;
       overflow-y: auto;
       flex: 1;
-      background: #f8fafc;
+      background: var(--adm-card);
     }
 
     .form-section {
       padding: 20px 24px;
-      background: white;
-      border-bottom: 1px solid #e2e8f0;
+      background: var(--adm-card);
+      border-bottom: 1px solid var(--adm-border);
     }
 
     .form-section:last-child {
@@ -647,34 +683,42 @@ interface EditUserForm {
       align-items: center;
       gap: 10px;
       margin-bottom: 16px;
-      font-size: 13px;
-      font-weight: 600;
-      color: #475569;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--adm-sub);
       text-transform: uppercase;
-      letter-spacing: 0.03em;
+      letter-spacing: 0.08em;
+    }
+
+    .section-title::before {
+      content: '';
+      width: 3px;
+      height: 12px;
+      border-radius: 2px;
+      background: var(--adm-indigo);
     }
 
     .section-title svg {
-      color: #6366f1;
+      color: var(--adm-indigo);
     }
 
     .popup-footer {
       padding: 16px 24px;
-      border-top: 1px solid #e2e8f0;
+      border-top: 1px solid var(--adm-border);
       display: flex;
       gap: 12px;
       justify-content: flex-end;
-      background: white;
+      background: var(--adm-card);
     }
 
     .popup-footer .btn-secondary,
     .btn-secondary {
-      padding: 10px 20px;
-      background: white;
-      color: #64748b;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      font-weight: 500;
+      padding: 9px 18px;
+      background: #fff;
+      color: var(--adm-ink);
+      border: 1px solid var(--adm-border);
+      border-radius: 10px;
+      font-weight: 600;
       font-size: 13px;
       cursor: pointer;
       transition: all 0.2s;
@@ -683,30 +727,31 @@ interface EditUserForm {
     .popup-footer .btn-secondary:hover,
     .btn-secondary:hover {
       background: #f8fafc;
-      border-color: #cbd5e1;
+      border-color: var(--adm-indigo);
     }
 
     .popup-footer .btn-primary,
     .btn-primary {
-      padding: 10px 20px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
+      padding: 9px 18px;
+      background: var(--adm-indigo);
+      color: #fff;
       border: none;
-      border-radius: 8px;
-      font-weight: 500;
+      border-radius: 10px;
+      font-weight: 600;
       font-size: 13px;
       cursor: pointer;
       display: flex;
       align-items: center;
       gap: 8px;
       transition: all 0.2s;
-      box-shadow: 0 2px 4px rgba(102, 126, 234, 0.25);
+      box-shadow: 0 2px 4px rgba(79, 70, 229, 0.25);
     }
 
     .popup-footer .btn-primary:hover,
     .btn-primary:hover {
+      background: var(--adm-indigo-ink);
       transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.35);
+      box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
     }
 
     .user-header {
@@ -718,25 +763,25 @@ interface EditUserForm {
     .user-header h3 {
       margin: 0 0 4px 0;
       font-size: 18px;
-      color: #1e293b;
+      color: var(--adm-ink);
     }
 
     .user-company {
       font-size: 14px;
-      color: #8b98a5;
+      color: var(--adm-sub);
     }
 
     .permissions-section h4 {
       margin: 0 0 6px 0;
       font-size: 15px;
       font-weight: 600;
-      color: #e7e9ea;
+      color: var(--adm-ink);
     }
 
     .section-desc {
       margin: 0 0 16px 0;
       font-size: 13px;
-      color: #6b7280;
+      color: var(--adm-sub);
     }
 
     .permissions-grid {
@@ -750,8 +795,8 @@ interface EditUserForm {
       align-items: center;
       gap: 12px;
       padding: 12px 14px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
       border-radius: 10px;
       cursor: pointer;
       transition: all 0.2s;
@@ -759,7 +804,7 @@ interface EditUserForm {
     }
 
     .permission-item:hover {
-      background: rgba(255, 255, 255, 0.05);
+      background: #f8fafc;
     }
 
     .permission-item input {
@@ -770,8 +815,8 @@ interface EditUserForm {
     .permission-item .checkmark {
       width: 20px;
       height: 20px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
       border-radius: 5px;
       display: flex;
       align-items: center;
@@ -780,8 +825,8 @@ interface EditUserForm {
     }
 
     .permission-item input:checked ~ .checkmark {
-      background: #00d4aa;
-      border-color: #00d4aa;
+      background: var(--adm-indigo);
+      border-color: var(--adm-indigo);
     }
 
     .permission-item input:checked ~ .checkmark::after {
@@ -795,7 +840,7 @@ interface EditUserForm {
 
     .permission-label {
       font-size: 14px;
-      color: #e7e9ea;
+      color: var(--adm-ink);
     }
 
     .quick-actions {
@@ -806,18 +851,19 @@ interface EditUserForm {
 
     .quick-btn {
       padding: 8px 16px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #fff;
+      border: 1px solid var(--adm-border);
       border-radius: 8px;
-      color: #8b98a5;
+      color: var(--adm-sub);
       font-size: 13px;
       cursor: pointer;
       transition: all 0.2s;
     }
 
     .quick-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: #e7e9ea;
+      background: #f8fafc;
+      border-color: var(--adm-indigo);
+      color: var(--adm-ink);
     }
 
     .modal-footer {
@@ -825,63 +871,45 @@ interface EditUserForm {
       justify-content: flex-end;
       gap: 12px;
       padding: 20px 24px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      border-top: 1px solid var(--adm-border);
     }
 
-    .btn-secondary {
-      padding: 10px 20px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 10px;
-      color: #e7e9ea;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-    }
-
-    .btn-primary {
-      padding: 10px 20px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
-      border: none;
-      border-radius: 10px;
-      color: #fff;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-    }
     .btn-primary:disabled, .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .btn-danger {
-      padding: 10px 20px;
-      background: #ef4444;
+      padding: 9px 18px;
+      background: var(--adm-red);
       border: none;
       border-radius: 10px;
       color: #fff;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
       cursor: pointer;
+      transition: background 0.2s;
     }
-    .btn-danger:hover { background: #dc2626; }
+    .btn-danger:hover { background: var(--adm-red-ink); }
 
     /* Calypso 7 — refonte modale Edit User */
     .edit-user-popup, .delete-popup { max-width: 560px; }
     .edit-user-popup .popup-body { padding: 20px 24px; }
+    .delete-popup .popup-body { padding: 20px 24px; }
+    .delete-popup .popup-body p { margin: 0 0 8px 0; color: var(--adm-ink); font-size: 14px; }
 
     .user-header {
       display: flex; align-items: center; gap: 14px;
       padding-bottom: 16px;
-      border-bottom: 1px solid rgba(255,255,255,0.08);
+      border-bottom: 1px solid var(--adm-border);
       margin-bottom: 20px;
     }
     .user-avatar.large {
       width: 48px; height: 48px;
       border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
+      background: linear-gradient(135deg, #6366f1 0%, var(--adm-indigo) 100%);
       color: #fff; font-size: 18px; font-weight: 700;
     }
-    .user-header h3 { margin: 0; color: #e7e9ea; font-size: 16px; }
-    .user-company { color: #8b98a5; font-size: 12px; }
+    .user-header h3 { margin: 0; color: var(--adm-ink); font-size: 16px; }
+    .user-company { color: var(--adm-sub); font-size: 12px; }
 
     .form-grid {
       display: grid;
@@ -891,62 +919,77 @@ interface EditUserForm {
     .form-field { display: flex; flex-direction: column; gap: 6px; }
     .form-field.full { grid-column: 1 / -1; }
     .form-field label {
-      font-size: 11px; font-weight: 600;
-      color: #8b98a5;
+      font-size: 11px; font-weight: 700;
+      color: var(--adm-sub);
       text-transform: uppercase;
-      letter-spacing: 0.3px;
+      letter-spacing: 0.06em;
     }
     .form-field input, .form-field select {
       padding: 9px 12px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 8px;
-      color: #e7e9ea;
+      background: #fff;
+      border: 1px solid var(--adm-border);
+      border-radius: 10px;
+      color: var(--adm-ink);
       font-size: 13px;
       outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
     .form-field input:focus, .form-field select:focus {
-      border-color: #00d4aa;
-      box-shadow: 0 0 0 2px rgba(0,212,170,0.18);
+      border-color: var(--adm-indigo);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
     }
     .field-hint {
       font-size: 11px;
-      color: #8b98a5;
+      color: var(--adm-sub);
       margin: 0;
     }
     .field-hint.muted { font-style: italic; }
     .form-error {
       margin-top: 14px;
       padding: 10px 12px;
-      background: rgba(239,68,68,0.12);
-      border: 1px solid rgba(239,68,68,0.3);
+      background: rgba(220, 38, 38, 0.08);
+      border: 1px solid rgba(220, 38, 38, 0.25);
       border-radius: 8px;
-      color: #fca5a5;
+      color: var(--adm-red-ink);
       font-size: 12px;
     }
 
-    .header-icon.danger { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .header-icon.danger { background: rgba(220, 38, 38, 0.10); color: var(--adm-red); }
     .delete-popup .warning {
-      color: #fca5a5;
+      color: var(--adm-red-ink);
       font-size: 12px;
       margin-top: 8px;
     }
 
     .action-btn.primary {
-      background: rgba(0,212,170,0.15);
-      color: #00d4aa;
-      border-color: rgba(0,212,170,0.3);
+      background: rgba(79, 70, 229, 0.10);
+      color: var(--adm-indigo);
+      border-color: rgba(79, 70, 229, 0.3);
     }
-    .action-btn.primary:hover { background: rgba(0,212,170,0.25); }
+    .action-btn.primary:hover { background: rgba(79, 70, 229, 0.18); }
     .action-btn.danger {
-      background: rgba(239,68,68,0.12);
-      color: #ef4444;
-      border-color: rgba(239,68,68,0.3);
+      background: rgba(220, 38, 38, 0.10);
+      color: var(--adm-red);
+      border-color: rgba(220, 38, 38, 0.3);
     }
-    .action-btn.danger:hover { background: rgba(239,68,68,0.2); }
+    .action-btn.danger:hover { background: rgba(220, 38, 38, 0.18); }
 
     @media (max-width: 640px) {
       .form-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .users-table-container,
+      .popup-overlay,
+      .popup-container,
+      .stat-chip .dot {
+        animation: none;
+      }
+      .action-btn:hover,
+      .btn-primary:hover,
+      .popup-footer .btn-primary:hover {
+        transform: none;
+      }
     }
   `]
 })

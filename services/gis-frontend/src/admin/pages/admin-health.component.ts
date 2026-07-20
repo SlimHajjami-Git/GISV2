@@ -140,25 +140,28 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
     }
 
     .overview-card {
-      background: linear-gradient(135deg, rgba(26, 31, 46, 0.8) 0%, rgba(20, 24, 36, 0.9) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 20px;
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
+      border-left-width: 3px;
+      border-radius: 16px;
+      box-shadow: var(--adm-shadow);
       padding: 32px;
       display: flex;
       align-items: center;
       gap: 32px;
+      animation: rise .35s ease backwards;
     }
 
     .overview-card.healthy {
-      border-color: rgba(34, 197, 94, 0.3);
+      border-left-color: var(--adm-green);
     }
 
     .overview-card.degraded {
-      border-color: rgba(249, 115, 22, 0.3);
+      border-left-color: var(--adm-amber);
     }
 
     .overview-card.down {
-      border-color: rgba(239, 68, 68, 0.3);
+      border-left-color: var(--adm-red);
     }
 
     .status-visual {
@@ -179,20 +182,20 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
 
     .ring-bg {
       fill: none;
-      stroke: rgba(255, 255, 255, 0.1);
+      stroke: var(--adm-track);
       stroke-width: 8;
     }
 
     .ring-progress {
       fill: none;
-      stroke: #22c55e;
+      stroke: var(--adm-green);
       stroke-width: 8;
       stroke-linecap: round;
       transition: stroke-dasharray 0.5s ease;
     }
 
-    .overview-card.degraded .ring-progress { stroke: #f97316; }
-    .overview-card.down .ring-progress { stroke: #ef4444; }
+    .overview-card.degraded .ring-progress { stroke: var(--adm-amber); }
+    .overview-card.down .ring-progress { stroke: var(--adm-red); }
 
     .uptime-value {
       position: absolute;
@@ -200,8 +203,9 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
       left: 50%;
       transform: translate(-50%, -50%);
       font-size: 24px;
-      font-weight: 700;
-      color: #e7e9ea;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      color: var(--adm-ink);
     }
 
     .overview-info {
@@ -212,17 +216,17 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
       margin: 0 0 8px 0;
       font-size: 22px;
       font-weight: 600;
-      color: #e7e9ea;
+      color: var(--adm-ink);
     }
 
-    .overview-info h2 span.healthy { color: #22c55e; }
-    .overview-info h2 span.degraded { color: #f97316; }
-    .overview-info h2 span.down { color: #ef4444; }
+    .overview-info h2 span.healthy { color: var(--adm-green-ink); }
+    .overview-info h2 span.degraded { color: var(--adm-amber-ink); }
+    .overview-info h2 span.down { color: var(--adm-red-ink); }
 
     .overview-info p {
       margin: 0 0 20px 0;
       font-size: 14px;
-      color: #8b98a5;
+      color: var(--adm-sub);
     }
 
     .overview-stats {
@@ -237,17 +241,21 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
     }
 
     .o-stat .count {
-      font-size: 28px;
-      font-weight: 700;
+      font-size: 26px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
     }
 
-    .o-stat .count.healthy { color: #22c55e; }
-    .o-stat .count.degraded { color: #f97316; }
-    .o-stat .count.down { color: #ef4444; }
+    .o-stat .count.healthy { color: var(--adm-green-ink); }
+    .o-stat .count.degraded { color: var(--adm-amber-ink); }
+    .o-stat .count.down { color: var(--adm-red-ink); }
 
     .o-stat .label {
-      font-size: 13px;
-      color: #8b98a5;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--adm-sub);
     }
 
     .refresh-info {
@@ -259,26 +267,26 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
 
     .refresh-info span {
       font-size: 12px;
-      color: #6b7280;
+      color: var(--adm-sub);
     }
 
     .refresh-btn {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 10px 18px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 9px 18px;
+      background: var(--adm-indigo);
+      border: none;
       border-radius: 10px;
-      color: #e7e9ea;
+      color: #fff;
       font-size: 14px;
-      font-weight: 500;
+      font-weight: 600;
       cursor: pointer;
       transition: all 0.2s;
     }
 
     .refresh-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: var(--adm-indigo-ink);
     }
 
     .services-grid {
@@ -288,21 +296,23 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
     }
 
     .service-card {
-      background: linear-gradient(135deg, rgba(26, 31, 46, 0.8) 0%, rgba(20, 24, 36, 0.9) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
       border-radius: 16px;
+      box-shadow: var(--adm-shadow);
       padding: 24px;
-      transition: all 0.3s;
+      transition: transform 0.2s, box-shadow 0.2s;
+      animation: rise .35s ease backwards;
     }
 
     .service-card:hover {
-      transform: translateY(-2px);
-      border-color: rgba(255, 255, 255, 0.15);
+      transform: translateY(-1px);
+      box-shadow: var(--adm-shadow-hover);
     }
 
-    .service-card.healthy { border-left: 3px solid #22c55e; }
-    .service-card.degraded { border-left: 3px solid #f97316; }
-    .service-card.down { border-left: 3px solid #ef4444; }
+    .service-card.healthy { border-left: 3px solid var(--adm-green); }
+    .service-card.degraded { border-left: 3px solid var(--adm-amber); }
+    .service-card.down { border-left: 3px solid var(--adm-red); }
 
     .service-header {
       display: flex;
@@ -324,42 +334,42 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
     }
 
     .status-dot.healthy {
-      background: #22c55e;
-      box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+      background: var(--adm-green);
+      box-shadow: 0 0 8px rgba(5, 150, 105, 0.45);
     }
 
     .status-dot.degraded {
-      background: #f97316;
-      box-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
+      background: var(--adm-amber);
+      box-shadow: 0 0 8px rgba(217, 119, 6, 0.45);
     }
 
     .status-dot.down {
-      background: #ef4444;
-      box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+      background: var(--adm-red);
+      box-shadow: 0 0 8px rgba(220, 38, 38, 0.45);
     }
 
     .status-text {
       font-size: 13px;
       font-weight: 500;
-      color: #8b98a5;
+      color: var(--adm-sub);
     }
 
     .service-icon {
       width: 44px;
       height: 44px;
-      background: rgba(255, 255, 255, 0.05);
+      background: var(--adm-track);
       border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #8b98a5;
+      color: var(--adm-slate-ink);
     }
 
     .service-name {
       margin: 0 0 20px 0;
       font-size: 18px;
       font-weight: 600;
-      color: #e7e9ea;
+      color: var(--adm-ink);
     }
 
     .service-metrics {
@@ -375,23 +385,27 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
     }
 
     .metric-label {
-      font-size: 12px;
-      color: #6b7280;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--adm-sub);
     }
 
     .metric-value {
       font-size: 18px;
-      font-weight: 600;
-      color: #e7e9ea;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--adm-ink);
     }
 
-    .metric-value.good { color: #22c55e; }
-    .metric-value.warning { color: #f97316; }
-    .metric-value.bad { color: #ef4444; }
+    .metric-value.good { color: var(--adm-green-ink); }
+    .metric-value.warning { color: var(--adm-amber-ink); }
+    .metric-value.bad { color: var(--adm-red-ink); }
 
     .uptime-bar {
       height: 6px;
-      background: rgba(255, 255, 255, 0.1);
+      background: var(--adm-track);
       border-radius: 3px;
       overflow: hidden;
       margin-bottom: 16px;
@@ -403,13 +417,13 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
       transition: width 0.5s ease;
     }
 
-    .uptime-fill.healthy { background: #22c55e; }
-    .uptime-fill.degraded { background: #f97316; }
-    .uptime-fill.down { background: #ef4444; }
+    .uptime-fill.healthy { background: var(--adm-green); }
+    .uptime-fill.degraded { background: var(--adm-amber); }
+    .uptime-fill.down { background: var(--adm-red); }
 
     .service-details {
       padding-top: 16px;
-      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      border-top: 1px solid var(--adm-border);
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -422,13 +436,14 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
     }
 
     .detail-key {
-      color: #6b7280;
+      color: var(--adm-sub);
       text-transform: capitalize;
     }
 
     .detail-value {
-      color: #e7e9ea;
+      color: var(--adm-ink);
       font-weight: 500;
+      font-variant-numeric: tabular-nums;
     }
 
     .health-footer {
@@ -436,9 +451,11 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
       align-items: center;
       justify-content: space-between;
       padding: 20px 24px;
-      background: linear-gradient(135deg, rgba(26, 31, 46, 0.6) 0%, rgba(20, 24, 36, 0.7) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      border-radius: 14px;
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
+      border-radius: 16px;
+      box-shadow: var(--adm-shadow);
+      animation: rise .35s ease backwards;
     }
 
     .toggle-label {
@@ -446,7 +463,7 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
       align-items: center;
       gap: 12px;
       font-size: 14px;
-      color: #8b98a5;
+      color: var(--adm-sub);
       cursor: pointer;
     }
 
@@ -457,7 +474,8 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
     .toggle-switch {
       width: 44px;
       height: 24px;
-      background: rgba(255, 255, 255, 0.1);
+      background: var(--adm-track);
+      border: 1px solid var(--adm-border);
       border-radius: 12px;
       position: relative;
       transition: all 0.3s;
@@ -468,19 +486,21 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
       position: absolute;
       width: 18px;
       height: 18px;
-      background: #8b98a5;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(2, 6, 23, 0.25);
       border-radius: 50%;
-      top: 3px;
+      top: 2px;
       left: 3px;
       transition: all 0.3s;
     }
 
     .toggle-label input:checked + .toggle-switch {
-      background: #00d4aa;
+      background: var(--adm-indigo);
+      border-color: var(--adm-indigo);
     }
 
     .toggle-label input:checked + .toggle-switch::after {
-      left: 23px;
+      left: 22px;
       background: #fff;
     }
 
@@ -494,7 +514,7 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
       align-items: center;
       gap: 8px;
       font-size: 13px;
-      color: #8b98a5;
+      color: var(--adm-sub);
     }
 
     .legend .dot {
@@ -503,9 +523,18 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
       border-radius: 50%;
     }
 
-    .legend .dot.healthy { background: #22c55e; }
-    .legend .dot.degraded { background: #f97316; }
-    .legend .dot.down { background: #ef4444; }
+    .legend .dot.healthy { background: var(--adm-green); }
+    .legend .dot.degraded { background: var(--adm-amber); }
+    .legend .dot.down { background: var(--adm-red); }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .overview-card, .service-card, .health-footer { animation: none; }
+    }
 
     @media (max-width: 768px) {
       .overview-card {

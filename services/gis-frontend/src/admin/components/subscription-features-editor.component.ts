@@ -34,7 +34,7 @@ interface FeatureItem {
   template: `
     <div class="features-editor">
       <div class="features-header">
-        <h3>Fonctionnalités de l'abonnement</h3>
+        <h3><span class="title-dash"></span>Fonctionnalités de l'abonnement</h3>
         <p class="features-subtitle">Sélectionnez les fonctionnalités incluses dans cet abonnement</p>
       </div>
 
@@ -92,29 +92,44 @@ interface FeatureItem {
   `,
   styles: [`
     .features-editor {
-      background: #fff;
-      border-radius: 12px;
-      border: 1px solid #e0e0e0;
+      background: var(--adm-card, #ffffff);
+      border-radius: 16px;
+      border: 1px solid var(--adm-border, #e6eaf2);
+      box-shadow: var(--adm-shadow, 0 1px 2px rgba(2, 6, 23, .06));
       overflow: hidden;
     }
 
     .features-header {
-      padding: 20px 24px;
-      border-bottom: 1px solid #e0e0e0;
-      background: linear-gradient(135deg, #f8fafc 0%, #fff 100%);
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--adm-border, #e6eaf2);
+      background: var(--adm-card, #ffffff);
     }
 
     .features-header h3 {
-      margin: 0 0 4px 0;
-      font-size: 16px;
-      font-weight: 600;
-      color: #1a1a2e;
+      margin: 0 0 6px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--adm-sub, #64748b);
+    }
+
+    .title-dash {
+      display: inline-block;
+      width: 3px;
+      height: 12px;
+      border-radius: 2px;
+      background: var(--adm-indigo, #4f46e5);
+      flex-shrink: 0;
     }
 
     .features-subtitle {
       margin: 0;
       font-size: 13px;
-      color: #666;
+      color: var(--adm-sub, #64748b);
     }
 
     .features-categories {
@@ -125,10 +140,11 @@ interface FeatureItem {
     }
 
     .feature-category {
-      background: #f8fafc;
-      border-radius: 10px;
-      border: 1px solid #e2e8f0;
+      background: var(--adm-bg, #f4f6fa);
+      border-radius: 12px;
+      border: 1px solid var(--adm-border, #e6eaf2);
       overflow: hidden;
+      animation: rise .25s ease both;
     }
 
     .category-header {
@@ -136,8 +152,8 @@ interface FeatureItem {
       align-items: center;
       gap: 12px;
       padding: 14px 16px;
-      background: #fff;
-      border-bottom: 1px solid #e2e8f0;
+      background: var(--adm-card, #ffffff);
+      border-bottom: 1px solid var(--adm-border, #e6eaf2);
     }
 
     .category-icon {
@@ -146,7 +162,7 @@ interface FeatureItem {
       justify-content: center;
       width: 40px;
       height: 40px;
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
+      background: var(--adm-indigo, #4f46e5);
       border-radius: 10px;
       color: #fff;
     }
@@ -166,12 +182,12 @@ interface FeatureItem {
     .category-name {
       font-weight: 600;
       font-size: 14px;
-      color: #1a1a2e;
+      color: var(--adm-ink, #0f172a);
     }
 
     .category-desc {
       font-size: 12px;
-      color: #64748b;
+      color: var(--adm-sub, #64748b);
     }
 
     .toggle-all {
@@ -179,7 +195,8 @@ interface FeatureItem {
       align-items: center;
       gap: 6px;
       font-size: 12px;
-      color: #64748b;
+      font-weight: 600;
+      color: var(--adm-sub, #64748b);
       cursor: pointer;
     }
 
@@ -187,6 +204,13 @@ interface FeatureItem {
       cursor: pointer;
       width: 16px;
       height: 16px;
+      accent-color: var(--adm-indigo, #4f46e5);
+    }
+
+    .toggle-all input:focus-visible {
+      outline: none;
+      border-radius: 4px;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, .12);
     }
 
     .category-features {
@@ -197,15 +221,16 @@ interface FeatureItem {
     }
 
     .feature-item {
-      background: #fff;
-      border-radius: 8px;
-      border: 1px solid #e2e8f0;
-      transition: all 0.2s;
+      background: var(--adm-card, #ffffff);
+      border-radius: 10px;
+      border: 1px solid var(--adm-border, #e6eaf2);
+      transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
     }
 
     .feature-item:hover {
-      border-color: #00d4aa;
-      box-shadow: 0 2px 8px rgba(0, 212, 170, 0.1);
+      border-color: var(--adm-indigo, #4f46e5);
+      box-shadow: 0 2px 8px rgba(79, 70, 229, .12);
+      transform: translateY(-1px);
     }
 
     .feature-toggle {
@@ -236,7 +261,8 @@ interface FeatureItem {
       left: 0;
       right: 0;
       bottom: 0;
-      background-color: #e2e8f0;
+      background-color: var(--adm-track, #eef2f7);
+      border: 1px solid var(--adm-border, #e6eaf2);
       border-radius: 24px;
       transition: 0.3s;
     }
@@ -246,20 +272,25 @@ interface FeatureItem {
       content: "";
       height: 18px;
       width: 18px;
-      left: 3px;
-      bottom: 3px;
+      left: 2px;
+      bottom: 2px;
       background-color: white;
       border-radius: 50%;
       transition: 0.3s;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 4px rgba(2, 6, 23, .12);
     }
 
     .toggle-switch input:checked + .toggle-slider {
-      background: linear-gradient(135deg, #00d4aa 0%, #00a388 100%);
+      background: var(--adm-indigo, #4f46e5);
+      border-color: var(--adm-indigo, #4f46e5);
     }
 
     .toggle-switch input:checked + .toggle-slider:before {
       transform: translateX(20px);
+    }
+
+    .toggle-switch input:focus-visible + .toggle-slider {
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, .12);
     }
 
     .feature-info {
@@ -269,14 +300,14 @@ interface FeatureItem {
     }
 
     .feature-name {
-      font-weight: 500;
+      font-weight: 600;
       font-size: 13px;
-      color: #1a1a2e;
+      color: var(--adm-ink, #0f172a);
     }
 
     .feature-desc {
       font-size: 11px;
-      color: #64748b;
+      color: var(--adm-sub, #64748b);
     }
 
     .features-summary {
@@ -285,24 +316,38 @@ interface FeatureItem {
       align-items: center;
       padding: 16px 24px;
       background: #f8fafc;
-      border-top: 1px solid #e0e0e0;
+      border-top: 1px solid var(--adm-border, #e6eaf2);
     }
 
     .summary-item {
       display: flex;
       align-items: center;
       gap: 8px;
+      padding-left: 12px;
+      border-left: 3px solid var(--adm-indigo, #4f46e5);
+    }
+
+    .summary-item:last-child {
+      border-left-color: var(--adm-slate, #64748b);
+    }
+
+    .summary-item.premium {
+      border-left-color: var(--adm-amber, #d97706);
     }
 
     .summary-count {
       font-size: 24px;
-      font-weight: 700;
-      color: #00a388;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      color: var(--adm-indigo-ink, #4338ca);
     }
 
     .summary-label {
-      font-size: 13px;
-      color: #64748b;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--adm-sub, #64748b);
     }
 
     .summary-icon {
@@ -310,8 +355,23 @@ interface FeatureItem {
     }
 
     .summary-item.premium .summary-label {
-      color: #00a388;
-      font-weight: 500;
+      color: var(--adm-amber-ink, #b45309);
+      font-weight: 700;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .feature-category {
+        animation: none;
+      }
+
+      .feature-item:hover {
+        transform: none;
+      }
     }
   `]
 })

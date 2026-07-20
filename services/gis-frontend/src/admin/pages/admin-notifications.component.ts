@@ -142,22 +142,33 @@ interface SendResult {
     .page-header h2 {
       font-size: 20px;
       font-weight: 700;
-      color: #1f2937;
+      color: var(--adm-ink);
       margin: 0 0 6px;
     }
 
     .subtitle {
-      color: #6b7280;
+      color: var(--adm-sub);
       font-size: 14px;
       margin: 0;
     }
 
     .notif-form-card, .history-card {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
+      border-radius: 16px;
+      box-shadow: var(--adm-shadow);
       padding: 24px;
       margin-bottom: 20px;
+      animation: rise 0.25s ease both;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .notif-form-card, .history-card { animation: none; }
     }
 
     .form-grid {
@@ -172,7 +183,7 @@ interface SendResult {
       display: block;
       font-size: 13px;
       font-weight: 600;
-      color: #374151;
+      color: var(--adm-ink);
       margin-bottom: 6px;
     }
 
@@ -181,12 +192,12 @@ interface SendResult {
     .form-group select {
       width: 100%;
       padding: 10px 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
+      border: 1px solid var(--adm-border);
+      border-radius: 10px;
       font-size: 14px;
-      color: #1f2937;
-      background: #fff;
-      transition: border-color 0.15s;
+      color: var(--adm-ink);
+      background: var(--adm-card);
+      transition: border-color 0.15s, box-shadow 0.15s;
       box-sizing: border-box;
     }
 
@@ -194,8 +205,8 @@ interface SendResult {
     .form-group textarea:focus,
     .form-group select:focus {
       outline: none;
-      border-color: #6366f1;
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+      border-color: var(--adm-indigo);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
     }
 
     .search-wrapper { position: relative; }
@@ -207,10 +218,10 @@ interface SendResult {
       top: 100%;
       left: 0;
       right: 0;
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
+      border-radius: 12px;
+      box-shadow: var(--adm-shadow-hover);
       max-height: 240px;
       overflow-y: auto;
       z-index: 50;
@@ -226,36 +237,37 @@ interface SendResult {
       transition: background 0.1s;
     }
 
-    .user-option:hover { background: #f3f4f6; }
-    .user-option.selected { background: #eef2ff; }
+    .user-option:hover { background: #f8fafc; }
+    .user-option.selected { background: rgba(79, 70, 229, 0.08); }
 
     .user-info {
       display: flex;
       flex-direction: column;
     }
 
-    .user-name { font-size: 13px; font-weight: 600; color: #1f2937; }
-    .user-email { font-size: 12px; color: #6b7280; }
-    .user-company { font-size: 11px; color: #9ca3af; background: #f3f4f6; padding: 2px 8px; border-radius: 10px; }
+    .user-name { font-size: 13px; font-weight: 600; color: var(--adm-ink); }
+    .user-email { font-size: 12px; color: var(--adm-sub); }
+    .user-company { font-size: 11px; font-weight: 600; color: var(--adm-slate-ink); background: var(--adm-track); padding: 2px 8px; border-radius: 999px; }
 
     .selected-badge {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      background: #eef2ff;
-      border: 1px solid #c7d2fe;
-      border-radius: 8px;
+      background: rgba(79, 70, 229, 0.10);
+      border: 1px solid rgba(79, 70, 229, 0.22);
+      border-radius: 999px;
       padding: 6px 12px;
       margin-top: 8px;
       font-size: 13px;
-      color: #4338ca;
+      font-weight: 600;
+      color: var(--adm-indigo-ink);
     }
 
     .badge-avatar {
       width: 24px;
       height: 24px;
       border-radius: 50%;
-      background: #6366f1;
+      background: var(--adm-indigo);
       color: #fff;
       display: flex;
       align-items: center;
@@ -267,7 +279,7 @@ interface SendResult {
     .badge-remove {
       background: none;
       border: none;
-      color: #6366f1;
+      color: var(--adm-indigo);
       font-size: 18px;
       cursor: pointer;
       padding: 0 4px;
@@ -286,15 +298,15 @@ interface SendResult {
     }
 
     .radio-label {
-      font-size: 13px;
-      font-weight: 500;
+      font-size: 11px;
+      font-weight: 700;
       padding: 3px 10px;
-      border-radius: 12px;
+      border-radius: 999px;
     }
 
-    .priority-low { background: #f0fdf4; color: #15803d; }
-    .priority-normal { background: #eff6ff; color: #1d4ed8; }
-    .priority-high { background: #fef2f2; color: #dc2626; }
+    .priority-low { background: rgba(5, 150, 105, 0.10); color: var(--adm-green-ink); }
+    .priority-normal { background: rgba(8, 145, 178, 0.10); color: var(--adm-cyan-ink); }
+    .priority-high { background: rgba(220, 38, 38, 0.10); color: var(--adm-red-ink); }
 
     .form-actions {
       margin-top: 24px;
@@ -306,18 +318,18 @@ interface SendResult {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 10px 24px;
-      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      padding: 9px 18px;
+      background: var(--adm-indigo);
       color: #fff;
       border: none;
-      border-radius: 8px;
+      border-radius: 10px;
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
-      transition: opacity 0.15s;
+      transition: background 0.15s;
     }
 
-    .send-btn:hover:not(:disabled) { opacity: 0.9; }
+    .send-btn:hover:not(:disabled) { background: var(--adm-indigo-ink); }
     .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .spinner {
@@ -332,10 +344,23 @@ interface SendResult {
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .history-card h3 {
-      font-size: 16px;
-      font-weight: 600;
-      color: #1f2937;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--adm-sub);
       margin: 0 0 16px;
+    }
+
+    .history-card h3::before {
+      content: '';
+      width: 3px;
+      height: 12px;
+      border-radius: 2px;
+      background: var(--adm-indigo);
     }
 
     .history-list {
@@ -349,8 +374,9 @@ interface SendResult {
       align-items: center;
       gap: 12px;
       padding: 10px 14px;
-      background: #f9fafb;
-      border-radius: 8px;
+      background: #f8fafc;
+      border: 1px solid #eef2f7;
+      border-radius: 10px;
     }
 
     .history-icon {
@@ -365,7 +391,7 @@ interface SendResult {
       flex-shrink: 0;
     }
 
-    .history-icon.success { background: #dcfce7; color: #16a34a; }
+    .history-icon.success { background: rgba(5, 150, 105, 0.12); color: var(--adm-green-ink); }
 
     .history-content {
       flex: 1;
@@ -373,9 +399,9 @@ interface SendResult {
       flex-direction: column;
     }
 
-    .history-title { font-size: 13px; font-weight: 600; color: #1f2937; }
-    .history-detail { font-size: 12px; color: #6b7280; }
-    .history-time { font-size: 11px; color: #9ca3af; white-space: nowrap; }
+    .history-title { font-size: 13px; font-weight: 600; color: var(--adm-ink); }
+    .history-detail { font-size: 12px; color: var(--adm-sub); }
+    .history-time { font-size: 11px; color: var(--adm-sub); white-space: nowrap; font-variant-numeric: tabular-nums; }
   `]
 })
 export class AdminNotificationsComponent implements OnInit, OnDestroy {

@@ -16,6 +16,7 @@ import { ReportsComponent } from '../../components/reports.component';
     :host {
       display: block;
       height: 100vh;
+      background: var(--adm-bg);
     }
     :host ::ng-deep .reports-page {
       height: calc(100vh - 64px);

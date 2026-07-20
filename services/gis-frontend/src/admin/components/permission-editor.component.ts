@@ -27,7 +27,7 @@ interface CategoryInfo {
   template: `
     <div class="permission-editor">
       <div class="permission-header">
-        <h3>Permissions du rôle</h3>
+        <h3><span class="title-dash"></span>Permissions du rôle</h3>
         <p class="permission-subtitle" *ngIf="subscriptionName">
           Limité par l'abonnement: <strong>{{ subscriptionName }}</strong>
         </p>
@@ -105,27 +105,48 @@ interface CategoryInfo {
   `,
   styles: [`
     .permission-editor {
-      background: #fff;
-      border-radius: 8px;
-      border: 1px solid #e0e0e0;
+      background: var(--adm-card, #ffffff);
+      border-radius: 16px;
+      border: 1px solid var(--adm-border, #e6eaf2);
+      box-shadow: var(--adm-shadow, 0 1px 2px rgba(2, 6, 23, .06));
+      overflow: hidden;
     }
 
     .permission-header {
       padding: 16px 20px;
-      border-bottom: 1px solid #e0e0e0;
+      border-bottom: 1px solid var(--adm-border, #e6eaf2);
     }
 
     .permission-header h3 {
-      margin: 0 0 4px 0;
-      font-size: 16px;
-      font-weight: 600;
-      color: #1a1a2e;
+      margin: 0 0 6px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--adm-sub, #64748b);
+    }
+
+    .title-dash {
+      display: inline-block;
+      width: 3px;
+      height: 12px;
+      border-radius: 2px;
+      background: var(--adm-indigo, #4f46e5);
+      flex-shrink: 0;
     }
 
     .permission-subtitle {
       margin: 0;
       font-size: 13px;
-      color: #666;
+      color: var(--adm-sub, #64748b);
+    }
+
+    .permission-subtitle strong {
+      color: var(--adm-ink, #0f172a);
+      font-weight: 600;
     }
 
     .permission-categories {
@@ -134,7 +155,8 @@ interface CategoryInfo {
     }
 
     .permission-category {
-      border-bottom: 1px solid #f0f0f0;
+      border-bottom: 1px solid var(--adm-track, #eef2f7);
+      animation: rise .25s ease both;
     }
 
     .permission-category:last-child {
@@ -155,7 +177,7 @@ interface CategoryInfo {
     }
 
     .category-header:hover {
-      background: #f8f9fa;
+      background: #f8fafc;
     }
 
     .category-info {
@@ -170,9 +192,9 @@ interface CategoryInfo {
       justify-content: center;
       width: 32px;
       height: 32px;
-      background: #e8f4fc;
-      border-radius: 8px;
-      color: #4a6cf7;
+      background: rgba(79, 70, 229, .10);
+      border-radius: 10px;
+      color: var(--adm-indigo, #4f46e5);
     }
 
     .category-icon svg {
@@ -181,30 +203,31 @@ interface CategoryInfo {
     }
 
     .category-name {
-      font-weight: 500;
-      color: #1a1a2e;
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--adm-ink, #0f172a);
     }
 
     .category-badge {
-      padding: 2px 8px;
-      border-radius: 4px;
+      padding: 3px 10px;
+      border-radius: 999px;
       font-size: 11px;
-      font-weight: 500;
+      font-weight: 700;
     }
 
     .category-badge.base {
-      background: #e8f5e9;
-      color: #2e7d32;
+      background: rgba(5, 150, 105, .10);
+      color: var(--adm-green-ink, #047857);
     }
 
     .category-badge.feature {
-      background: #e3f2fd;
-      color: #1565c0;
+      background: rgba(79, 70, 229, .10);
+      color: var(--adm-indigo-ink, #4338ca);
     }
 
     .category-badge.locked {
-      background: #ffebee;
-      color: #c62828;
+      background: rgba(220, 38, 38, .10);
+      color: var(--adm-red-ink, #b91c1c);
     }
 
     .category-controls {
@@ -218,16 +241,24 @@ interface CategoryInfo {
       align-items: center;
       gap: 6px;
       font-size: 12px;
-      color: #666;
+      font-weight: 600;
+      color: var(--adm-sub, #64748b);
       cursor: pointer;
     }
 
     .toggle-all input {
       cursor: pointer;
+      accent-color: var(--adm-indigo, #4f46e5);
+    }
+
+    .toggle-all input:focus-visible {
+      outline: none;
+      border-radius: 4px;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, .12);
     }
 
     .expand-icon {
-      color: #999;
+      color: var(--adm-slate, #64748b);
       font-size: 20px;
     }
 
@@ -252,11 +283,18 @@ interface CategoryInfo {
       gap: 8px;
       cursor: pointer;
       font-size: 13px;
-      color: #333;
+      color: var(--adm-ink, #0f172a);
     }
 
     .permission-checkbox input {
       cursor: pointer;
+      accent-color: var(--adm-indigo, #4f46e5);
+    }
+
+    .permission-checkbox input:focus-visible {
+      outline: none;
+      border-radius: 4px;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, .12);
     }
 
     .permission-checkbox input:disabled {
@@ -274,18 +312,19 @@ interface CategoryInfo {
       justify-content: center;
       gap: 10px;
       padding: 40px;
-      color: #666;
+      font-size: 13px;
+      color: var(--adm-sub, #64748b);
     }
 
     .permission-error {
-      color: #c62828;
+      color: var(--adm-red-ink, #b91c1c);
     }
 
     .spinner {
       width: 24px;
       height: 24px;
-      border: 3px solid #f0f0f0;
-      border-top-color: #4a6cf7;
+      border: 3px solid var(--adm-track, #eef2f7);
+      border-top-color: var(--adm-indigo, #4f46e5);
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
@@ -294,6 +333,16 @@ interface CategoryInfo {
       to { transform: rotate(360deg); }
     }
 
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .permission-category {
+        animation: none;
+      }
+    }
   `]
 })
 export class PermissionEditorComponent implements OnInit, OnChanges {

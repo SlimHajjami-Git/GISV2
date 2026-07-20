@@ -13,7 +13,7 @@ import { AdminService } from '../services/admin.service';
       <div class="recovery-page">
         <div class="page-header">
           <div>
-            <h2>Détections auto-recovery</h2>
+            <h2><span class="title-dash"></span>Détections auto-recovery</h2>
             <p class="subtitle">Historique des commandes AJ+GO envoyées automatiquement quand le Rust détecte bit5=0 (immobilisation non demandée)</p>
           </div>
           <div class="header-actions">
@@ -108,31 +108,56 @@ import { AdminService } from '../services/admin.service';
       gap: 16px;
       flex-wrap: wrap;
     }
-    .page-header h2 { margin: 0; font-size: 20px; color: #1e293b; }
-    .subtitle { margin: 4px 0 0; font-size: 13px; color: #64748b; }
+    .page-header h2 {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--adm-sub);
+    }
+    .title-dash {
+      display: inline-block;
+      width: 12px;
+      height: 3px;
+      border-radius: 2px;
+      background: var(--adm-indigo);
+    }
+    .subtitle { margin: 6px 0 0; font-size: 13px; color: var(--adm-sub); }
     .header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .header-actions select {
-      padding: 6px 10px;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
+      padding: 8px 12px;
+      border: 1px solid var(--adm-border);
+      border-radius: 10px;
       font-size: 13px;
-      background: #fff;
+      color: var(--adm-ink);
+      background: var(--adm-card);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .header-actions select:focus {
+      border-color: var(--adm-indigo);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
     }
 
     .btn-refresh {
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 7px 14px;
-      background: #3b82f6;
+      padding: 9px 18px;
+      background: var(--adm-indigo);
       color: #fff;
       border: none;
-      border-radius: 6px;
+      border-radius: 10px;
       font-size: 13px;
-      font-weight: 500;
+      font-weight: 600;
       cursor: pointer;
+      transition: background 0.2s;
     }
-    .btn-refresh:hover { background: #2563eb; }
+    .btn-refresh:hover { background: var(--adm-indigo-ink); }
 
     .stats-bar {
       display: flex;
@@ -140,16 +165,32 @@ import { AdminService } from '../services/admin.service';
       margin-bottom: 20px;
     }
     .stat-card {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 12px 20px;
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
+      border-left: 3px solid var(--adm-indigo);
+      border-radius: 16px;
+      box-shadow: var(--adm-shadow);
+      padding: 14px 20px;
       display: flex;
       flex-direction: column;
       gap: 2px;
+      animation: rise .35s ease backwards;
     }
-    .stat-value { font-size: 20px; font-weight: 700; color: #1e293b; }
-    .stat-label { font-size: 12px; color: #64748b; }
+    .stat-card:nth-child(2) { border-left-color: var(--adm-cyan); }
+    .stat-card:nth-child(3) { border-left-color: var(--adm-slate); }
+    .stat-value {
+      font-size: 24px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      color: var(--adm-ink);
+    }
+    .stat-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--adm-sub);
+    }
 
     .loading-state {
       display: flex;
@@ -157,64 +198,74 @@ import { AdminService } from '../services/admin.service';
       gap: 10px;
       padding: 40px;
       justify-content: center;
-      color: #64748b;
+      color: var(--adm-sub);
     }
     .spinner {
       width: 20px; height: 20px;
-      border: 2px solid #e5e7eb;
-      border-top-color: #3b82f6;
+      border: 2px solid var(--adm-track);
+      border-top-color: var(--adm-indigo);
       border-radius: 50%;
       animation: spin 0.6s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .table-container {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
+      border-radius: 16px;
+      box-shadow: var(--adm-shadow);
       overflow-x: auto;
+      animation: rise .35s ease backwards;
     }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     thead { background: #f8fafc; }
     th {
       padding: 10px 12px;
       text-align: left;
-      font-weight: 600;
-      color: #475569;
-      border-bottom: 1px solid #e5e7eb;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--adm-sub);
+      border-bottom: 1px solid var(--adm-border);
       white-space: nowrap;
     }
     td {
       padding: 8px 12px;
-      border-bottom: 1px solid #f1f5f9;
-      color: #334155;
+      font-size: 13px;
+      border-bottom: 1px solid #eef2f7;
+      color: var(--adm-ink);
     }
-    tr:hover td { background: #f8fafc; }
-    .mono { font-family: 'SF Mono', Monaco, monospace; font-size: 12px; }
-    .cmd { color: #059669; font-weight: 600; }
+    tbody tr:hover td { background: #f8fafc; }
+    .mono {
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .cmd { color: var(--adm-green-ink); font-weight: 600; }
 
     .status-badge {
       display: inline-block;
-      padding: 2px 8px;
-      border-radius: 4px;
+      padding: 3px 10px;
+      border-radius: 999px;
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 700;
       text-transform: uppercase;
     }
-    .status-badge.sent { background: #ecfdf5; color: #059669; }
-    .status-badge.pending { background: #fef3c7; color: #d97706; }
-    .status-badge.failed { background: #fef2f2; color: #dc2626; }
+    .status-badge.sent { background: rgba(5, 150, 105, 0.10); color: var(--adm-green-ink); }
+    .status-badge.pending { background: rgba(217, 119, 6, 0.12); color: var(--adm-amber-ink); }
+    .status-badge.failed { background: rgba(220, 38, 38, 0.10); color: var(--adm-red-ink); }
 
     .type-badge {
       display: inline-block;
-      padding: 2px 8px;
-      border-radius: 4px;
+      padding: 3px 10px;
+      border-radius: 999px;
       font-size: 11px;
       font-weight: 700;
       font-family: 'SF Mono', Monaco, monospace;
     }
-    .type-badge.GO_67 { background: #dbeafe; color: #1d4ed8; }
-    .type-badge.GO_C3 { background: #e0e7ff; color: #4338ca; }
+    .type-badge.GO_67 { background: rgba(8, 145, 178, 0.12); color: var(--adm-cyan-ink); }
+    .type-badge.GO_C3 { background: rgba(79, 70, 229, 0.12); color: var(--adm-indigo-ink); }
 
     .empty-state {
       display: flex;
@@ -222,9 +273,18 @@ import { AdminService } from '../services/admin.service';
       align-items: center;
       gap: 12px;
       padding: 60px 20px;
-      color: #94a3b8;
+      color: var(--adm-sub);
     }
     .empty-state p { font-size: 14px; }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .stat-card, .table-container { animation: none; }
+    }
   `]
 })
 export class AdminAutoRecoveryComponent implements OnInit {

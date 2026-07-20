@@ -16,6 +16,7 @@ import { MonitoringComponent } from '../../components/monitoring.component';
     :host {
       display: block;
       height: 100vh;
+      background: var(--adm-bg);
     }
     :host ::ng-deep .wialon-monitoring {
       height: calc(100vh - 64px);

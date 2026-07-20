@@ -214,33 +214,45 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
       display: flex;
       align-items: center;
       gap: 10px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
       border-radius: 10px;
       padding: 10px 14px;
       width: 240px;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
 
-    .search-box svg { color: #8b98a5; }
+    .search-box:focus-within {
+      border-color: var(--adm-indigo);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
+
+    .search-box svg { color: var(--adm-sub); }
 
     .search-box input {
       flex: 1;
       border: none;
       background: transparent;
-      color: #e7e9ea;
+      color: var(--adm-ink);
       font-size: 14px;
       outline: none;
     }
 
     .filter-select, .date-filter {
       padding: 10px 14px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
       border-radius: 10px;
-      color: #e7e9ea;
+      color: var(--adm-ink);
       font-size: 14px;
       outline: none;
       cursor: pointer;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .filter-select:focus, .date-filter:focus {
+      border-color: var(--adm-indigo);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
     }
 
     .header-actions {
@@ -248,26 +260,43 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
       gap: 10px;
     }
 
-    .export-btn, .refresh-btn {
+    .export-btn {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 10px 16px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 9px 18px;
+      background: var(--adm-indigo);
+      border: 1px solid var(--adm-indigo);
       border-radius: 10px;
-      color: #e7e9ea;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .export-btn:hover {
+      background: var(--adm-indigo-ink);
+      border-color: var(--adm-indigo-ink);
+    }
+
+    .refresh-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px;
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
+      border-radius: 10px;
+      color: var(--adm-ink);
       font-size: 14px;
       cursor: pointer;
       transition: all 0.2s;
     }
 
-    .export-btn:hover, .refresh-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
-    }
-
-    .refresh-btn {
-      padding: 10px;
+    .refresh-btn:hover {
+      border-color: var(--adm-indigo);
+      color: var(--adm-indigo-ink);
     }
 
     .activity-stats {
@@ -277,14 +306,22 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
     }
 
     .stat-card {
-      background: linear-gradient(135deg, rgba(26, 31, 46, 0.8) 0%, rgba(20, 24, 36, 0.9) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 14px;
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
+      border-left-width: 3px;
+      border-radius: 16px;
+      box-shadow: var(--adm-shadow);
       padding: 20px;
       display: flex;
       align-items: center;
       gap: 16px;
+      animation: rise .35s ease backwards;
     }
+
+    .stat-card:nth-child(1) { border-left-color: var(--adm-green); }
+    .stat-card:nth-child(2) { border-left-color: var(--adm-indigo); }
+    .stat-card:nth-child(3) { border-left-color: var(--adm-cyan); }
+    .stat-card:nth-child(4) { border-left-color: var(--adm-amber); }
 
     .stat-icon {
       width: 48px;
@@ -295,10 +332,10 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
       justify-content: center;
     }
 
-    .stat-icon.login { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
-    .stat-icon.actions { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
-    .stat-icon.users { background: rgba(0, 212, 170, 0.15); color: #00d4aa; }
-    .stat-icon.companies { background: rgba(249, 115, 22, 0.15); color: #f97316; }
+    .stat-icon.login { background: rgba(5, 150, 105, 0.12); color: var(--adm-green); }
+    .stat-icon.actions { background: rgba(79, 70, 229, 0.12); color: var(--adm-indigo); }
+    .stat-icon.users { background: rgba(8, 145, 178, 0.12); color: var(--adm-cyan); }
+    .stat-icon.companies { background: rgba(217, 119, 6, 0.12); color: var(--adm-amber); }
 
     .stat-content {
       display: flex;
@@ -308,20 +345,26 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
 
     .stat-value {
       font-size: 24px;
-      font-weight: 700;
-      color: #e7e9ea;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      color: var(--adm-ink);
     }
 
     .stat-label {
-      font-size: 13px;
-      color: #8b98a5;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--adm-sub);
     }
 
     .activity-table-container {
-      background: linear-gradient(135deg, rgba(26, 31, 46, 0.8) 0%, rgba(20, 24, 36, 0.9) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
       border-radius: 16px;
+      box-shadow: var(--adm-shadow);
       overflow: hidden;
+      animation: rise .35s ease backwards;
     }
 
     .activity-table {
@@ -330,19 +373,25 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
     }
 
     .activity-table th {
-      padding: 16px 20px;
+      padding: 14px 20px;
       text-align: left;
-      font-size: 12px;
-      font-weight: 600;
+      font-size: 11px;
+      font-weight: 700;
       text-transform: uppercase;
-      color: #8b98a5;
-      background: rgba(255, 255, 255, 0.03);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      letter-spacing: .06em;
+      color: var(--adm-sub);
+      background: #f8fafc;
+      border-bottom: 1px solid var(--adm-border);
     }
 
     .activity-table td {
       padding: 14px 20px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 13px;
+      border-bottom: 1px solid #eef2f7;
+    }
+
+    .activity-table tbody tr:hover td {
+      background: #f8fafc;
     }
 
     .activity-table tr:last-child td {
@@ -357,12 +406,13 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
 
     .timestamp .date {
       font-size: 13px;
-      color: #e7e9ea;
+      color: var(--adm-ink);
     }
 
     .timestamp .time {
       font-size: 11px;
-      color: #6b7280;
+      color: var(--adm-sub);
+      font-variant-numeric: tabular-nums;
     }
 
     .user-cell {
@@ -374,7 +424,7 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
     .user-avatar {
       width: 32px;
       height: 32px;
-      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      background: linear-gradient(135deg, var(--adm-indigo) 0%, var(--adm-indigo-ink) 100%);
       border-radius: 8px;
       display: flex;
       align-items: center;
@@ -386,40 +436,42 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
 
     .user-name {
       font-size: 14px;
-      color: #e7e9ea;
+      color: var(--adm-ink);
     }
 
     .company-badge {
-      padding: 4px 10px;
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 6px;
-      font-size: 12px;
-      color: #8b98a5;
+      padding: 3px 10px;
+      background: rgba(100, 116, 139, 0.10);
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--adm-slate-ink);
     }
 
     .action-badge {
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 500;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
     }
 
-    .action-badge.login { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
-    .action-badge.logout { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-    .action-badge.view { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
-    .action-badge.create { background: rgba(0, 212, 170, 0.15); color: #00d4aa; }
-    .action-badge.update { background: rgba(249, 115, 22, 0.15); color: #f97316; }
-    .action-badge.generate { background: rgba(168, 85, 247, 0.15); color: #a855f7; }
+    .action-badge.login { background: rgba(5, 150, 105, 0.10); color: var(--adm-green-ink); }
+    .action-badge.logout { background: rgba(220, 38, 38, 0.10); color: var(--adm-red-ink); }
+    .action-badge.view { background: rgba(8, 145, 178, 0.12); color: var(--adm-cyan-ink); }
+    .action-badge.create { background: rgba(79, 70, 229, 0.12); color: var(--adm-indigo-ink); }
+    .action-badge.update { background: rgba(217, 119, 6, 0.12); color: var(--adm-amber-ink); }
+    .action-badge.generate { background: rgba(100, 116, 139, 0.12); color: var(--adm-slate-ink); }
 
     .details {
       font-size: 13px;
-      color: #8b98a5;
+      color: var(--adm-sub);
     }
 
     .ip-address {
       font-size: 12px;
-      color: #6b7280;
+      color: var(--adm-sub);
       font-family: monospace;
+      font-variant-numeric: tabular-nums;
     }
 
     .pagination {
@@ -428,16 +480,16 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
       justify-content: center;
       gap: 16px;
       padding: 16px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      border-top: 1px solid var(--adm-border);
     }
 
     .page-btn {
       width: 36px;
       height: 36px;
-      border: none;
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 8px;
-      color: #8b98a5;
+      border: 1px solid var(--adm-border);
+      background: var(--adm-card);
+      border-radius: 10px;
+      color: var(--adm-sub);
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -446,8 +498,8 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
     }
 
     .page-btn:hover:not(:disabled) {
-      background: rgba(255, 255, 255, 0.1);
-      color: #e7e9ea;
+      border-color: var(--adm-indigo);
+      color: var(--adm-indigo-ink);
     }
 
     .page-btn:disabled {
@@ -456,17 +508,19 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
     }
 
     .page-info {
-      font-size: 14px;
-      color: #8b98a5;
+      font-size: 13px;
+      color: var(--adm-sub);
+      font-variant-numeric: tabular-nums;
     }
 
     .live-feed {
       position: fixed;
       bottom: 24px;
       right: 24px;
-      background: linear-gradient(135deg, #1a1f2e 0%, #141824 100%);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 14px;
+      background: linear-gradient(160deg, var(--adm-carb1) 0%, var(--adm-carb2) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      box-shadow: 0 24px 60px -24px rgba(2, 6, 23, 0.45);
       overflow: hidden;
       z-index: 50;
       transition: all 0.3s;
@@ -483,9 +537,9 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
       padding: 12px 18px;
       background: none;
       border: none;
-      color: #e7e9ea;
+      color: #e2e8f0;
       font-size: 14px;
-      font-weight: 500;
+      font-weight: 600;
       cursor: pointer;
       width: 100%;
     }
@@ -493,9 +547,10 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
     .live-indicator {
       width: 8px;
       height: 8px;
-      background: #22c55e;
+      background: var(--adm-green);
       border-radius: 50%;
       margin-left: auto;
+      box-shadow: 0 0 8px rgba(5, 150, 105, 0.6);
       animation: pulse 2s infinite;
     }
 
@@ -515,7 +570,7 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
       flex-direction: column;
       gap: 4px;
       padding: 12px 18px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     }
 
     .feed-item:last-child {
@@ -524,18 +579,29 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
 
     .feed-time {
       font-size: 11px;
-      color: #6b7280;
+      color: #94a3b8;
+      font-variant-numeric: tabular-nums;
     }
 
     .feed-user {
       font-size: 13px;
-      color: #e7e9ea;
+      color: #e2e8f0;
       font-weight: 500;
     }
 
     .feed-action {
       font-size: 12px;
-      color: #8b98a5;
+      color: #94a3b8;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .stat-card, .activity-table-container { animation: none; }
+      .live-indicator { animation: none; }
     }
 
     @media (max-width: 1200px) {

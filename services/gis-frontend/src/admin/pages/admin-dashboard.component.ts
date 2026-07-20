@@ -223,6 +223,11 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
       gap: 24px;
     }
 
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -230,22 +235,28 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
     }
 
     .stat-card {
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
+      border-left: 3px solid var(--adm-indigo);
       border-radius: 16px;
       padding: 24px;
       display: flex;
       align-items: flex-start;
       gap: 16px;
-      transition: all 0.3s;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      transition: box-shadow 0.2s, transform 0.2s;
+      box-shadow: var(--adm-shadow);
+      animation: rise 0.3s ease both;
     }
 
     .stat-card:hover {
-      transform: translateY(-2px);
-      border-color: #cbd5e1;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      transform: translateY(-1px);
+      box-shadow: var(--adm-shadow-hover);
     }
+
+    .stat-card.primary { border-left-color: var(--adm-indigo); }
+    .stat-card.success { border-left-color: var(--adm-green); }
+    .stat-card.info { border-left-color: var(--adm-cyan); }
+    .stat-card.warning { border-left-color: var(--adm-amber); }
 
     .stat-icon {
       width: 52px;
@@ -258,23 +269,23 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
     }
 
     .stat-card.primary .stat-icon {
-      background: rgba(0, 212, 170, 0.15);
-      color: #00d4aa;
+      background: rgba(79, 70, 229, 0.10);
+      color: var(--adm-indigo);
     }
 
     .stat-card.success .stat-icon {
-      background: rgba(34, 197, 94, 0.15);
-      color: #22c55e;
+      background: rgba(5, 150, 105, 0.10);
+      color: var(--adm-green);
     }
 
     .stat-card.info .stat-icon {
-      background: rgba(59, 130, 246, 0.15);
-      color: #3b82f6;
+      background: rgba(8, 145, 178, 0.10);
+      color: var(--adm-cyan);
     }
 
     .stat-card.warning .stat-icon {
-      background: rgba(249, 115, 22, 0.15);
-      color: #f97316;
+      background: rgba(217, 119, 6, 0.10);
+      color: var(--adm-amber);
     }
 
     .stat-content {
@@ -284,23 +295,27 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
     }
 
     .stat-value {
-      font-size: 28px;
-      font-weight: 700;
-      color: #1f2937;
+      font-size: 26px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      color: var(--adm-ink);
     }
 
     .stat-label {
-      font-size: 14px;
-      color: #64748b;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--adm-sub);
     }
 
     .stat-change {
       font-size: 12px;
-      color: #6b7280;
+      color: var(--adm-sub);
     }
 
     .stat-change.positive {
-      color: #22c55e;
+      color: var(--adm-green-ink);
     }
 
     .dashboard-grid {
@@ -311,11 +326,12 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
     }
 
     .card {
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
       border-radius: 16px;
       padding: 24px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      box-shadow: var(--adm-shadow);
+      animation: rise 0.3s ease both;
     }
 
     .card-header {
@@ -326,27 +342,43 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
     }
 
     .card-header h3 {
-      font-size: 16px;
-      font-weight: 600;
-      color: #1f2937;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--adm-sub);
       margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-header h3::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 12px;
+      border-radius: 2px;
+      background: var(--adm-indigo);
+      flex-shrink: 0;
     }
 
     .period-badge {
-      font-size: 12px;
-      color: #64748b;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--adm-slate-ink);
       padding: 4px 10px;
-      background: #f1f5f9;
-      border-radius: 12px;
+      background: rgba(100, 116, 139, 0.10);
+      border-radius: 999px;
     }
 
     .refresh-btn {
       width: 32px;
       height: 32px;
-      border: none;
-      background: #f1f5f9;
-      border-radius: 8px;
-      color: #64748b;
+      border: 1px solid var(--adm-border);
+      background: #ffffff;
+      border-radius: 10px;
+      color: var(--adm-sub);
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -355,19 +387,20 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
     }
 
     .refresh-btn:hover {
-      background: #e2e8f0;
-      color: #1f2937;
+      border-color: var(--adm-indigo);
+      color: var(--adm-indigo);
     }
 
     .view-all {
       font-size: 13px;
-      color: #00d4aa;
+      font-weight: 600;
+      color: var(--adm-indigo);
       text-decoration: none;
       transition: color 0.2s;
     }
 
     .view-all:hover {
-      color: #00e6b8;
+      color: var(--adm-indigo-ink);
     }
 
     .feature-list {
@@ -391,25 +424,25 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
 
     .feature-name {
       font-size: 14px;
-      color: #1f2937;
+      color: var(--adm-ink);
       font-weight: 500;
     }
 
     .feature-users {
       font-size: 12px;
-      color: #64748b;
+      color: var(--adm-sub);
     }
 
     .feature-bar-container {
       height: 8px;
-      background: #e2e8f0;
+      background: var(--adm-track);
       border-radius: 4px;
       overflow: hidden;
     }
 
     .feature-bar {
       height: 100%;
-      background: linear-gradient(90deg, #00d4aa 0%, #00a388 100%);
+      background: var(--adm-indigo);
       border-radius: 4px;
       transition: width 0.5s ease;
     }
@@ -425,23 +458,25 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
     .usage-count {
       font-size: 14px;
       font-weight: 600;
-      color: #1f2937;
+      font-variant-numeric: tabular-nums;
+      color: var(--adm-ink);
     }
 
     .trend {
       font-size: 12px;
+      font-weight: 600;
       display: flex;
       align-items: center;
       gap: 2px;
-      color: #6b7280;
+      color: var(--adm-sub);
     }
 
     .trend.positive {
-      color: #22c55e;
+      color: var(--adm-green-ink);
     }
 
     .trend.negative {
-      color: #ef4444;
+      color: var(--adm-red-ink);
     }
 
     .health-list {
@@ -476,18 +511,18 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
     }
 
     .health-status.healthy .status-dot {
-      background: #22c55e;
-      box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+      background: var(--adm-green);
+      box-shadow: 0 0 8px rgba(5, 150, 105, 0.45);
     }
 
     .health-status.degraded .status-dot {
-      background: #f97316;
-      box-shadow: 0 0 8px rgba(249, 115, 22, 0.5);
+      background: var(--adm-amber);
+      box-shadow: 0 0 8px rgba(217, 119, 6, 0.45);
     }
 
     .health-status.down .status-dot {
-      background: #ef4444;
-      box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+      background: var(--adm-red);
+      box-shadow: 0 0 8px rgba(220, 38, 38, 0.45);
     }
 
     .health-info {
@@ -499,26 +534,27 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
 
     .service-name {
       font-size: 14px;
-      color: #1f2937;
+      color: var(--adm-ink);
       font-weight: 500;
     }
 
     .service-uptime {
       font-size: 12px;
-      color: #64748b;
+      color: var(--adm-sub);
     }
 
     .response-time {
       font-size: 13px;
-      color: #64748b;
+      color: var(--adm-sub);
       font-weight: 500;
+      font-variant-numeric: tabular-nums;
     }
 
     .health-summary {
       display: flex;
       gap: 16px;
       padding-top: 12px;
-      border-top: 1px solid #e2e8f0;
+      border-top: 1px solid var(--adm-border);
     }
 
     .summary-item {
@@ -526,7 +562,7 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
       align-items: center;
       gap: 6px;
       font-size: 13px;
-      color: #64748b;
+      color: var(--adm-sub);
     }
 
     .dot {
@@ -535,9 +571,9 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
       border-radius: 50%;
     }
 
-    .dot.healthy { background: #22c55e; }
-    .dot.degraded { background: #f97316; }
-    .dot.down { background: #ef4444; }
+    .dot.healthy { background: var(--adm-green); }
+    .dot.degraded { background: var(--adm-amber); }
+    .dot.down { background: var(--adm-red); }
 
     .activity-list {
       display: flex;
@@ -550,7 +586,11 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
       align-items: center;
       gap: 12px;
       padding: 10px 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid #eef2f7;
+    }
+
+    .activity-item:hover {
+      background: #f8fafc;
     }
 
     .activity-item:last-child {
@@ -564,13 +604,14 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(255, 255, 255, 0.05);
-      color: #8b98a5;
+      background: var(--adm-track);
+      color: var(--adm-slate);
+      flex-shrink: 0;
     }
 
-    .activity-icon.login { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
-    .activity-icon.logout { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-    .activity-icon.action { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+    .activity-icon.login { background: rgba(5, 150, 105, 0.10); color: var(--adm-green-ink); }
+    .activity-icon.logout { background: rgba(220, 38, 38, 0.10); color: var(--adm-red-ink); }
+    .activity-icon.action { background: rgba(8, 145, 178, 0.10); color: var(--adm-cyan-ink); }
 
     .activity-content {
       flex: 1;
@@ -581,23 +622,24 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
 
     .activity-user {
       font-size: 14px;
-      color: #e7e9ea;
+      color: var(--adm-ink);
       font-weight: 500;
     }
 
     .activity-action {
       font-size: 12px;
-      color: #8b98a5;
+      color: var(--adm-sub);
     }
 
     .activity-company {
       font-size: 11px;
-      color: #6b7280;
+      color: var(--adm-sub);
     }
 
     .activity-time {
       font-size: 12px;
-      color: #6b7280;
+      color: var(--adm-sub);
+      font-variant-numeric: tabular-nums;
     }
 
     .actions-grid {
@@ -612,20 +654,20 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
       align-items: center;
       gap: 12px;
       padding: 20px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: #ffffff;
+      border: 1px solid var(--adm-border);
       border-radius: 12px;
-      color: #e7e9ea;
+      color: var(--adm-ink);
       font-size: 13px;
-      font-weight: 500;
+      font-weight: 600;
       cursor: pointer;
       transition: all 0.2s;
     }
 
     .action-btn:hover {
-      background: rgba(255, 255, 255, 0.06);
-      border-color: rgba(255, 255, 255, 0.15);
-      transform: translateY(-2px);
+      border-color: var(--adm-indigo);
+      box-shadow: var(--adm-shadow-hover);
+      transform: translateY(-1px);
     }
 
     .action-icon {
@@ -638,23 +680,34 @@ import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog 
     }
 
     .action-icon.add-client {
-      background: rgba(0, 212, 170, 0.15);
-      color: #00d4aa;
+      background: rgba(79, 70, 229, 0.10);
+      color: var(--adm-indigo);
     }
 
     .action-icon.create-estimate {
-      background: rgba(59, 130, 246, 0.15);
-      color: #3b82f6;
+      background: rgba(8, 145, 178, 0.10);
+      color: var(--adm-cyan);
     }
 
     .action-icon.maintenance {
-      background: rgba(249, 115, 22, 0.15);
-      color: #f97316;
+      background: rgba(217, 119, 6, 0.10);
+      color: var(--adm-amber);
     }
 
     .action-icon.health-check {
-      background: rgba(34, 197, 94, 0.15);
-      color: #22c55e;
+      background: rgba(5, 150, 105, 0.10);
+      color: var(--adm-green);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .stat-card,
+      .card {
+        animation: none;
+      }
+      .stat-card:hover,
+      .action-btn:hover {
+        transform: none;
+      }
     }
 
     @media (max-width: 1400px) {
