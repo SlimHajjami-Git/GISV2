@@ -4845,12 +4845,27 @@ export class ReportsComponent implements OnInit, OnDestroy {
           ? { day: '2-digit', month: '2-digit' }
           : { day: '2-digit', month: '2-digit', year: '2-digit' };
 
+      // Un remplissage est INSTANTANÉ : quand le niveau bondit entre deux
+      // points consécutifs (≥ 10 points de %), on insère un point synthétique
+      // (même instant, ancien niveau) pour dessiner un palier puis une montée
+      // VERTICALE au moment observé. Sans ça, si le boîtier était muet pendant
+      // le plein (contact coupé), la courbe reliait l'avant (ex: 28 %) à
+      // l'après (95 %) par une pente trompeuse étalée sur tout le trou de
+      // données — parfois plusieurs jours.
+      const fuelPts: { x: number; y: number }[] = [];
+      for (let k = 0; k < this.chartData.length; k++) {
+        const d = this.chartData[k];
+        const prev = k > 0 ? this.chartData[k - 1] : null;
+        if (prev && (d.value - prev.value) >= 10) fuelPts.push({ x: d.ts, y: prev.value });
+        fuelPts.push({ x: d.ts, y: d.value });
+      }
+
       config = {
         type: 'line',
         data: {
           datasets: [{
             label: 'Niveau carburant (%)',
-            data: this.chartData.map(d => ({ x: d.ts, y: d.value })),
+            data: fuelPts,
             borderColor: '#10B981',
             backgroundColor: (context: any) => {
               const chart = context.chart;
