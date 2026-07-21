@@ -387,6 +387,9 @@ export class AdminService {
   listBackups(): Observable<any[]> {
     return this.http.get<any[]>(`${this.apiUrl}/admin/database/backups`, { headers: this.getHeaders() });
   }
+  getDatabaseStorage(): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}/admin/database/storage`, { headers: this.getHeaders() });
+  }
   createBackup(): Observable<any> {
     return this.http.post<any>(`${this.apiUrl}/admin/database/backups`, {}, { headers: this.getHeaders() });
   }

@@ -37,6 +37,11 @@ public class DatabaseMaintenanceController : ControllerBase
     [HttpGet("backups")]
     public IActionResult ListBackups() => Ok(_svc.ListBackups());
 
+    /// <summary>Taille base + poids des backups + espace disque total/restant.</summary>
+    [HttpGet("storage")]
+    public async Task<IActionResult> Storage(CancellationToken ct)
+        => Ok(await _svc.GetStorageAsync(ct));
+
     [HttpPost("backups")]
     public async Task<IActionResult> CreateBackup(CancellationToken ct)
     {

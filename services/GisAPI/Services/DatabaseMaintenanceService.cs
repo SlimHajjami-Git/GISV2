@@ -137,6 +137,35 @@ public class DatabaseMaintenanceService
         return true;
     }
 
+    // ─────────────────── Stockage ───────────────────
+
+    public record StorageInfo(long DbSizeBytes, long BackupsBytes, long DiskTotalBytes, long DiskFreeBytes);
+
+    /// <summary>Taille de la base (pg_database_size), poids cumulé des backups,
+    /// et capacité/espace libre du disque portant le volume /backups.</summary>
+    public async Task<StorageInfo> GetStorageAsync(CancellationToken ct)
+    {
+        long dbSize = 0;
+        try { dbSize = await ScalarAsync("SELECT pg_database_size(current_database())", null, ct); }
+        catch (Exception ex) { _logger.LogWarning(ex, "pg_database_size indisponible"); }
+
+        long backups = 0;
+        if (Directory.Exists(_backupDir))
+            backups = new DirectoryInfo(_backupDir).GetFiles("*.dump").Sum(f => f.Length);
+
+        long total = 0, free = 0;
+        try
+        {
+            Directory.CreateDirectory(_backupDir);
+            var di = new DriveInfo(_backupDir);
+            total = di.TotalSize;
+            free = di.AvailableFreeSpace;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "DriveInfo indisponible pour {Dir}", _backupDir); }
+
+        return new StorageInfo(dbSize, backups, total, free);
+    }
+
     // ─────────────────── Purge ───────────────────
 
     public async Task<IReadOnlyList<PurgePreviewRow>> PreviewPurgeAsync(int months, IEnumerable<string> tables, CancellationToken ct)

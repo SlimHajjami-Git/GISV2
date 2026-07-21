@@ -13,6 +13,27 @@ import { AdminService } from '../services/admin.service';
     <admin-layout pageTitle="Base de données">
       <div class="db-page">
 
+        <!-- ══ Stockage ══ -->
+        <div class="stats-row" *ngIf="storage">
+          <div class="stat-card sc-indigo">
+            <span class="sc-num">{{ humanSize(storage.dbSizeBytes) }}</span>
+            <span class="sc-lbl">Taille de la base</span>
+          </div>
+          <div class="stat-card sc-cyan">
+            <span class="sc-num">{{ humanSize(storage.backupsBytes) }}</span>
+            <span class="sc-lbl">Sauvegardes stockées</span>
+          </div>
+          <div class="stat-card" [class.sc-green]="diskUsedPct() < 75" [class.sc-amber]="diskUsedPct() >= 75 && diskUsedPct() < 90" [class.sc-red]="diskUsedPct() >= 90">
+            <span class="sc-num">{{ humanSize(storage.diskFreeBytes) }}</span>
+            <span class="sc-lbl">Espace disque restant</span>
+            <div class="sc-bar" *ngIf="storage.diskTotalBytes > 0">
+              <div class="sc-bar-fill" [style.width.%]="diskUsedPct()"
+                   [class.bf-amber]="diskUsedPct() >= 75 && diskUsedPct() < 90" [class.bf-red]="diskUsedPct() >= 90"></div>
+            </div>
+            <span class="sc-sub" *ngIf="storage.diskTotalBytes > 0">{{ diskUsedPct() }} % utilisés sur {{ humanSize(storage.diskTotalBytes) }}</span>
+          </div>
+        </div>
+
         <!-- ══ Sauvegardes ══ -->
         <section class="card">
           <div class="card-head">
@@ -115,6 +136,22 @@ import { AdminService } from '../services/admin.service';
   `,
   styles: [`
     .db-page { display: flex; flex-direction: column; gap: 22px; max-width: 1000px; }
+
+    /* Cartes de stockage */
+    .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+    .stat-card { background: var(--adm-card); border: 1px solid var(--adm-border); border-left-width: 3px; border-radius: 14px; box-shadow: var(--adm-shadow); padding: 16px 18px; display: flex; flex-direction: column; gap: 3px; }
+    .sc-indigo { border-left-color: var(--adm-indigo); }
+    .sc-cyan { border-left-color: var(--adm-cyan); }
+    .sc-green { border-left-color: var(--adm-green); }
+    .sc-amber { border-left-color: var(--adm-amber); }
+    .sc-red { border-left-color: var(--adm-red); }
+    .sc-num { font-size: 24px; font-weight: 800; color: var(--adm-ink); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+    .sc-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--adm-sub); }
+    .sc-bar { height: 6px; background: var(--adm-track); border-radius: 999px; margin-top: 8px; overflow: hidden; }
+    .sc-bar-fill { height: 100%; background: var(--adm-green); border-radius: 999px; transition: width .4s ease; }
+    .sc-bar-fill.bf-amber { background: var(--adm-amber); }
+    .sc-bar-fill.bf-red { background: var(--adm-red); }
+    .sc-sub { font-size: 11.5px; color: var(--adm-sub); margin-top: 4px; }
     .card { background: var(--adm-card); border: 1px solid var(--adm-border); border-radius: 16px; box-shadow: var(--adm-shadow); padding: 24px; }
     .danger-card { border-color: rgba(220,38,38,.25); }
     .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
@@ -175,6 +212,7 @@ export class AdminDatabaseComponent implements OnInit {
   backups: any[] = [];
   loadingBackups = true;
   creating = false;
+  storage: any = null;
 
   purgeableTables: { table: string; label: string }[] = [];
   confirmPhrase = 'SUPPRIMER';
@@ -205,6 +243,17 @@ export class AdminDatabaseComponent implements OnInit {
       next: (b) => { this.backups = b || []; this.loadingBackups = false; this.cdr.detectChanges(); },
       error: () => { this.loadingBackups = false; this.cdr.detectChanges(); }
     });
+    // Le stockage évolue avec chaque backup/purge : rafraîchi en même temps.
+    this.admin.getDatabaseStorage().subscribe({
+      next: (s) => { this.storage = s; this.cdr.detectChanges(); },
+      error: () => {}
+    });
+  }
+
+  diskUsedPct(): number {
+    if (!this.storage?.diskTotalBytes) return 0;
+    const used = this.storage.diskTotalBytes - this.storage.diskFreeBytes;
+    return Math.round(used / this.storage.diskTotalBytes * 100);
   }
 
   createBackup() {
