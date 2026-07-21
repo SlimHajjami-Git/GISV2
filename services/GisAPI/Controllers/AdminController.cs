@@ -809,43 +809,162 @@ public class AdminController : ControllerBase
         return Ok(new List<FeatureUsageDto>());
     }
 
-    // ==================== ESTIMATES ====================
+    // ==================== DEVIS ====================
+
+    private static readonly string[] EstimateStatuses = { "draft", "sent", "accepted", "rejected" };
+
+    private static object MapEstimate(Estimate e)
+    {
+        var subtotal = e.Items.Sum(i => i.Quantity * i.UnitPrice);
+        var discountAmount = Math.Round(subtotal * e.DiscountPercent / 100m, 3);
+        var afterDiscount = subtotal - discountAmount;
+        var taxAmount = Math.Round(afterDiscount * e.TaxPercent / 100m, 3);
+        return new
+        {
+            e.Id, e.Number, e.CompanyId,
+            companyName = e.Company?.Name,
+            e.ClientName, e.ClientEmail, e.ClientPhone, e.ClientAddress,
+            e.Status, e.IssueDate, e.ValidUntil,
+            e.DiscountPercent, e.TaxPercent, e.Notes,
+            e.CreatedAt, e.UpdatedAt,
+            items = e.Items.OrderBy(i => i.SortOrder).Select(i => new
+            {
+                i.Id, i.Description, i.Quantity, i.UnitPrice,
+                total = i.Quantity * i.UnitPrice
+            }).ToList(),
+            subtotal, discountAmount, taxAmount,
+            total = afterDiscount + taxAmount
+        };
+    }
 
     [HttpGet("estimates")]
-    public async Task<ActionResult<List<EstimateDto>>> GetEstimates()
+    public async Task<ActionResult> GetEstimates()
     {
-        // Return empty list - estimates feature not yet implemented with database
-        return Ok(new List<EstimateDto>());
+        var list = await _context.Estimates.AsNoTracking()
+            .Include(e => e.Items).Include(e => e.Company)
+            .OrderByDescending(e => e.CreatedAt)
+            .ToListAsync();
+        return Ok(list.Select(MapEstimate).ToList());
+    }
+
+    [HttpGet("estimates/{id:int}")]
+    public async Task<ActionResult> GetEstimate(int id)
+    {
+        var e = await _context.Estimates.AsNoTracking()
+            .Include(x => x.Items).Include(x => x.Company)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        return e == null ? NotFound() : Ok(MapEstimate(e));
+    }
+
+    public record EstimateItemInput(string Description, decimal Quantity, decimal UnitPrice);
+    public record EstimateInput(int? CompanyId, string ClientName, string? ClientEmail, string? ClientPhone,
+        string? ClientAddress, DateTime? ValidUntil, decimal DiscountPercent, decimal TaxPercent,
+        string? Notes, List<EstimateItemInput> Items);
+
+    private static string? ValidateEstimate(EstimateInput r)
+    {
+        if (string.IsNullOrWhiteSpace(r.ClientName)) return "Le nom du client est requis.";
+        if (r.Items == null || r.Items.Count == 0 || r.Items.All(i => string.IsNullOrWhiteSpace(i.Description)))
+            return "Ajoutez au moins une ligne au devis.";
+        if (r.DiscountPercent is < 0 or > 100) return "Remise invalide (0-100 %).";
+        if (r.TaxPercent is < 0 or > 100) return "TVA invalide (0-100 %).";
+        return null;
+    }
+
+    private static void ApplyEstimateInput(Estimate e, EstimateInput r)
+    {
+        e.CompanyId = r.CompanyId;
+        e.ClientName = r.ClientName.Trim();
+        e.ClientEmail = r.ClientEmail?.Trim();
+        e.ClientPhone = r.ClientPhone?.Trim();
+        e.ClientAddress = r.ClientAddress?.Trim();
+        e.ValidUntil = r.ValidUntil;
+        e.DiscountPercent = r.DiscountPercent;
+        e.TaxPercent = r.TaxPercent;
+        e.Notes = r.Notes;
+        e.UpdatedAt = DateTime.UtcNow;
+        e.Items.Clear();
+        int order = 0;
+        foreach (var i in r.Items.Where(i => !string.IsNullOrWhiteSpace(i.Description)))
+            e.Items.Add(new EstimateItem
+            {
+                Description = i.Description.Trim(),
+                Quantity = i.Quantity <= 0 ? 1 : i.Quantity,
+                UnitPrice = i.UnitPrice < 0 ? 0 : i.UnitPrice,
+                SortOrder = order++
+            });
     }
 
     [HttpPost("estimates")]
-    public ActionResult<EstimateDto> CreateEstimate([FromBody] CreateEstimateRequest request)
+    public async Task<ActionResult> CreateEstimate([FromBody] EstimateInput request)
     {
-        var estimate = new EstimateDto
-        {
-            Id = $"EST-{DateTime.UtcNow.Ticks % 10000:D4}",
-            ClientId = request.ClientId,
-            ClientName = request.ClientName ?? "",
-            ClientEmail = request.ClientEmail ?? "",
-            Items = request.Items ?? new List<EstimateItemDto>(),
-            Subtotal = request.Items?.Sum(i => i.Total) ?? 0,
-            Tax = (request.Items?.Sum(i => i.Total) ?? 0) * 0.19m,
-            Total = (request.Items?.Sum(i => i.Total) ?? 0) * 1.19m,
-            Status = "draft",
-            ValidUntil = DateTime.UtcNow.AddDays(30),
-            CreatedAt = DateTime.UtcNow,
-            CreatedBy = "Admin",
-            Notes = request.Notes
-        };
+        var error = ValidateEstimate(request);
+        if (error != null) return BadRequest(new { message = error });
 
-        return CreatedAtAction(nameof(GetEstimates), estimate);
+        // Numérotation DEV-<année>-<seq> : max de l'année + 1 (volume admin faible,
+        // pas de concurrence significative ; l'index unique protège en dernier recours).
+        var year = DateTime.UtcNow.Year;
+        var prefix = $"DEV-{year}-";
+        var lastSeq = await _context.Estimates
+            .Where(e => e.Number.StartsWith(prefix))
+            .Select(e => e.Number.Substring(prefix.Length))
+            .ToListAsync();
+        var next = lastSeq.Select(s => int.TryParse(s, out var n) ? n : 0).DefaultIfEmpty(0).Max() + 1;
+
+        var estimate = new Estimate
+        {
+            Number = $"{prefix}{next:D4}",
+            Status = "draft",
+            IssueDate = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        };
+        ApplyEstimateInput(estimate, request);
+        _context.Estimates.Add(estimate);
+        await _context.SaveChangesAsync();
+
+        var created = await _context.Estimates.AsNoTracking()
+            .Include(x => x.Items).Include(x => x.Company).FirstAsync(x => x.Id == estimate.Id);
+        return Ok(MapEstimate(created));
     }
 
-    [HttpPut("estimates/{id}/status")]
-    public ActionResult UpdateEstimateStatus(string id, [FromBody] UpdateEstimateStatusRequest request)
+    [HttpPut("estimates/{id:int}")]
+    public async Task<ActionResult> UpdateEstimate(int id, [FromBody] EstimateInput request)
     {
-        // In production, update the estimate in the database
-        return Ok(new { message = $"Statut du devis {id} mis à jour: {request.Status}" });
+        var error = ValidateEstimate(request);
+        if (error != null) return BadRequest(new { message = error });
+
+        var e = await _context.Estimates.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        if (e == null) return NotFound();
+
+        ApplyEstimateInput(e, request);
+        await _context.SaveChangesAsync();
+
+        var updated = await _context.Estimates.AsNoTracking()
+            .Include(x => x.Items).Include(x => x.Company).FirstAsync(x => x.Id == id);
+        return Ok(MapEstimate(updated));
+    }
+
+    [HttpPut("estimates/{id:int}/status")]
+    public async Task<ActionResult> UpdateEstimateStatus(int id, [FromBody] UpdateEstimateStatusRequest request)
+    {
+        if (!EstimateStatuses.Contains(request.Status))
+            return BadRequest(new { message = "Statut invalide." });
+        var e = await _context.Estimates.FirstOrDefaultAsync(x => x.Id == id);
+        if (e == null) return NotFound();
+        e.Status = request.Status;
+        e.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return Ok(new { e.Id, e.Status });
+    }
+
+    [HttpDelete("estimates/{id:int}")]
+    public async Task<ActionResult> DeleteEstimate(int id)
+    {
+        var e = await _context.Estimates.FirstOrDefaultAsync(x => x.Id == id);
+        if (e == null) return NotFound();
+        _context.Estimates.Remove(e);
+        await _context.SaveChangesAsync();
+        return Ok(new { message = "Devis supprimé." });
     }
 
     // ==================== TEST NOTIFICATIONS ====================
@@ -1115,40 +1234,6 @@ public class MaintenanceModeDto
     public List<string> Pages { get; set; } = new();
     public string Message { get; set; } = string.Empty;
     public DateTime? ScheduledEnd { get; set; }
-}
-
-public class EstimateDto
-{
-    public string Id { get; set; } = string.Empty;
-    public int? ClientId { get; set; }
-    public string ClientName { get; set; } = string.Empty;
-    public string ClientEmail { get; set; } = string.Empty;
-    public List<EstimateItemDto> Items { get; set; } = new();
-    public decimal Subtotal { get; set; }
-    public decimal Tax { get; set; }
-    public decimal Total { get; set; }
-    public string Status { get; set; } = "draft";
-    public DateTime ValidUntil { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public string CreatedBy { get; set; } = string.Empty;
-    public string? Notes { get; set; }
-}
-
-public class EstimateItemDto
-{
-    public string Description { get; set; } = string.Empty;
-    public int Quantity { get; set; }
-    public decimal UnitPrice { get; set; }
-    public decimal Total { get; set; }
-}
-
-public class CreateEstimateRequest
-{
-    public int? ClientId { get; set; }
-    public string? ClientName { get; set; }
-    public string? ClientEmail { get; set; }
-    public List<EstimateItemDto>? Items { get; set; }
-    public string? Notes { get; set; }
 }
 
 public class UpdateEstimateStatusRequest

@@ -161,27 +161,49 @@ export interface ActivityLog {
   timestamp: Date;
 }
 
-export interface Estimate {
-  id: string;
-  clientId?: number;
-  clientName: string;
-  clientEmail: string;
-  items: EstimateItem[];
-  subtotal: number;
-  tax: number;
-  total: number;
-  status: 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
-  validUntil: Date;
-  createdAt: Date;
-  createdBy: string;
-  notes?: string;
-}
-
 export interface EstimateItem {
+  id?: number;
   description: string;
   quantity: number;
   unitPrice: number;
+  total?: number;
+}
+
+export interface Estimate {
+  id: number;
+  number: string;
+  companyId?: number | null;
+  companyName?: string | null;
+  clientName: string;
+  clientEmail?: string | null;
+  clientPhone?: string | null;
+  clientAddress?: string | null;
+  status: 'draft' | 'sent' | 'accepted' | 'rejected';
+  issueDate: string;
+  validUntil?: string | null;
+  discountPercent: number;
+  taxPercent: number;
+  notes?: string | null;
+  items: EstimateItem[];
+  subtotal: number;
+  discountAmount: number;
+  taxAmount: number;
   total: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EstimateInput {
+  companyId?: number | null;
+  clientName: string;
+  clientEmail?: string | null;
+  clientPhone?: string | null;
+  clientAddress?: string | null;
+  validUntil?: string | null;
+  discountPercent: number;
+  taxPercent: number;
+  notes?: string | null;
+  items: { description: string; quantity: number; unitPrice: number }[];
 }
 
 export interface MaintenanceMode {
@@ -725,32 +747,31 @@ export class AdminService {
     return this.http.post<void>(`${this.apiUrl}/admin/maintenance`, mode, { headers: this.getHeaders() });
   }
 
+  // ── Devis ──
   getEstimates(): Observable<Estimate[]> {
     return this.http.get<Estimate[]>(`${this.apiUrl}/admin/estimates`, { headers: this.getHeaders() }).pipe(
-      map(estimates => estimates.map(e => ({
-        ...e,
-        validUntil: new Date(e.validUntil),
-        createdAt: new Date(e.createdAt)
-      }))),
-      catchError(err => {
-        console.error('Error fetching estimates:', err);
-        return of([]);
-      })
+      catchError(err => { console.error('Error fetching estimates:', err); return of([]); })
     );
   }
 
-  createEstimate(estimate: Partial<Estimate>): Observable<Estimate> {
-    return this.http.post<Estimate>(`${this.apiUrl}/admin/estimates`, estimate, { headers: this.getHeaders() }).pipe(
-      map(e => ({
-        ...e,
-        validUntil: new Date(e.validUntil),
-        createdAt: new Date(e.createdAt)
-      }))
-    );
+  getEstimate(id: number): Observable<Estimate> {
+    return this.http.get<Estimate>(`${this.apiUrl}/admin/estimates/${id}`, { headers: this.getHeaders() });
   }
 
-  updateEstimateStatus(id: string, status: string): Observable<void> {
-    return this.http.put<void>(`${this.apiUrl}/admin/estimates/${id}/status`, { status }, { headers: this.getHeaders() });
+  createEstimate(input: EstimateInput): Observable<Estimate> {
+    return this.http.post<Estimate>(`${this.apiUrl}/admin/estimates`, input, { headers: this.getHeaders() });
+  }
+
+  updateEstimate(id: number, input: EstimateInput): Observable<Estimate> {
+    return this.http.put<Estimate>(`${this.apiUrl}/admin/estimates/${id}`, input, { headers: this.getHeaders() });
+  }
+
+  updateEstimateStatus(id: number, status: string): Observable<any> {
+    return this.http.put<any>(`${this.apiUrl}/admin/estimates/${id}/status`, { status }, { headers: this.getHeaders() });
+  }
+
+  deleteEstimate(id: number): Observable<any> {
+    return this.http.delete<any>(`${this.apiUrl}/admin/estimates/${id}`, { headers: this.getHeaders() });
   }
 
   getAllPages(): string[] {

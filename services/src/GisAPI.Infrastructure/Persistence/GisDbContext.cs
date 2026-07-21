@@ -129,6 +129,10 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<Repair> Repairs => Set<Repair>();
     public DbSet<RepairPart> RepairParts => Set<RepairPart>();
 
+    // Devis (admin plateforme)
+    public DbSet<Estimate> Estimates => Set<Estimate>();
+    public DbSet<EstimateItem> EstimateItems => Set<EstimateItem>();
+
     // Tours
     public DbSet<Tour> Tours => Set<Tour>();
     public DbSet<TourWaypoint> TourWaypoints => Set<TourWaypoint>();
@@ -222,6 +226,13 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<SubscriptionType>().ToTable("subscription_types");
         modelBuilder.Entity<Societe>().ToTable("societes");
         modelBuilder.Entity<Role>().ToTable("roles");
+        modelBuilder.Entity<Estimate>().ToTable("estimates");
+        modelBuilder.Entity<EstimateItem>().ToTable("estimate_items");
+        modelBuilder.Entity<Estimate>()
+            .HasMany(e => e.Items).WithOne(i => i.Estimate)
+            .HasForeignKey(i => i.EstimateId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<Estimate>().HasIndex(e => e.Number).IsUnique();
+
         modelBuilder.Entity<Tour>().ToTable("tours");
         modelBuilder.Entity<TourWaypoint>().ToTable("tour_waypoints");
         modelBuilder.Entity<TourWaypoint>().Property(w => w.GeofenceId).HasColumnName("geofence_id");
