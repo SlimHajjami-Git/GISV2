@@ -56,6 +56,9 @@ builder.Services.AddSingleton<GisAPI.Services.IAccidentNarrativeService, GisAPI.
 builder.Services.AddSingleton<GisAPI.Services.IManualAccidentEnricher, GisAPI.Services.ManualAccidentEnrichmentService>();
 builder.Services.AddSingleton<GisAPI.Services.IVehicleHealthScoreService, GisAPI.Services.VehicleHealthScoreService>();
 
+// Sauvegardes pg_dump + purge de l'historique (admin sys_admin).
+builder.Services.AddScoped<GisAPI.Services.DatabaseMaintenanceService>();
+
 // Dashboard : calcul extrait dans un service réutilisable + cache coalescé
 // (anti-stampede) + pré-chauffage en arrière-plan pour un affichage instantané.
 builder.Services.AddScoped<GisAPI.Services.IDashboardService, GisAPI.Services.DashboardService>();

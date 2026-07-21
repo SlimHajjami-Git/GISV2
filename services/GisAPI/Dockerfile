@@ -28,7 +28,17 @@ WORKDIR /app
 
 # Install cultures for localization + libfontconfig1 (required by SkiaSharp/QuestPDF
 # for server-side PDF generation of the daily fleet report).
-RUN apt-get update && apt-get install -y locales curl libfontconfig1 && rm -rf /var/lib/apt/lists/*
+# locales + libfontconfig1 (QuestPDF) + postgresql-client-16 (pg_dump/psql pour
+# les sauvegardes admin). Le client DOIT être en v16 pour correspondre au
+# serveur PostGIS 16 (pg_dump refuse une version majeure différente) → dépôt PGDG.
+RUN apt-get update \
+    && apt-get install -y locales curl libfontconfig1 gnupg ca-certificates \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y postgresql-client-16 \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/publish .
 

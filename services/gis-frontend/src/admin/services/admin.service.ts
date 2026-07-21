@@ -380,6 +380,32 @@ export class AdminService {
     });
   }
 
+  // ── Sauvegardes & purge de la base (sys_admin) ──
+  getPurgeableTables(): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}/admin/database/purgeable-tables`, { headers: this.getHeaders() });
+  }
+  listBackups(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/admin/database/backups`, { headers: this.getHeaders() });
+  }
+  createBackup(): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/admin/database/backups`, {}, { headers: this.getHeaders() });
+  }
+  deleteBackup(name: string): Observable<any> {
+    return this.http.delete<any>(`${this.apiUrl}/admin/database/backups/${encodeURIComponent(name)}`, { headers: this.getHeaders() });
+  }
+  downloadBackupUrl(name: string): string {
+    return `${this.apiUrl}/admin/database/backups/${encodeURIComponent(name)}/download`;
+  }
+  downloadBackup(name: string): Observable<Blob> {
+    return this.http.get(this.downloadBackupUrl(name), { headers: this.getHeaders(), responseType: 'blob' });
+  }
+  previewPurge(months: number, tables: string[]): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/admin/database/purge/preview`, { months, tables }, { headers: this.getHeaders() });
+  }
+  runPurge(months: number, tables: string[], confirm: string): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/admin/database/purge`, { months, tables, confirm }, { headers: this.getHeaders() });
+  }
+
   getDashboardStats(): Observable<DashboardStats> {
     return this.http.get<DashboardStats>(`${this.apiUrl}/admin/dashboard/stats`, { headers: this.getHeaders() }).pipe(
       catchError(err => {
