@@ -39,16 +39,34 @@ public class DatabaseMaintenanceService
     private readonly GisDbContext _context;
     private readonly ILogger<DatabaseMaintenanceService> _logger;
     private readonly string _backupDir;
+    private readonly string _rawConn;
 
     public DatabaseMaintenanceService(GisDbContext context, IConfiguration config, ILogger<DatabaseMaintenanceService> logger)
     {
         _context = context;
         _logger = logger;
         _backupDir = config["Backup:Directory"] ?? "/backups";
+        // IMPORTANT : lire la chaîne depuis la CONFIG, pas depuis
+        // context.Database.GetConnectionString() — Npgsql retire le mot de passe
+        // de la chaîne active (Persist Security Info=false par défaut), ce qui
+        // faisait échouer pg_dump/psql (« no password supplied »).
+        _rawConn = config.GetConnectionString("DefaultConnection")
+                   ?? context.Database.GetConnectionString()
+                   ?? "";
     }
 
+    /// <summary>Chaîne de connexion COMPLÈTE (mot de passe inclus). Repli sur la
+    /// variable d'env POSTGRES_PASSWORD si la chaîne n'en contient pas.</summary>
     private NpgsqlConnectionStringBuilder Conn()
-        => new(_context.Database.GetConnectionString());
+    {
+        var b = new NpgsqlConnectionStringBuilder(_rawConn);
+        if (string.IsNullOrEmpty(b.Password))
+        {
+            var envPw = Environment.GetEnvironmentVariable("POSTGRES_PASSWORD");
+            if (!string.IsNullOrEmpty(envPw)) b.Password = envPw;
+        }
+        return b;
+    }
 
     // ─────────────────── Sauvegardes ───────────────────
 
@@ -181,7 +199,7 @@ public class DatabaseMaintenanceService
 
     private async Task<long> ScalarAsync(string sql, DateTime? cutoff, CancellationToken ct)
     {
-        await using var conn = new NpgsqlConnection(_context.Database.GetConnectionString());
+        await using var conn = new NpgsqlConnection(Conn().ConnectionString);
         await conn.OpenAsync(ct);
         await using var cmd = new NpgsqlCommand(sql, conn);
         if (cutoff.HasValue) cmd.Parameters.AddWithValue("cutoff", cutoff.Value);
