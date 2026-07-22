@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { Subject } from 'rxjs';
@@ -741,9 +741,12 @@ export class AdminDashboardComponent implements OnInit, OnDestroy {
   recentActivity: ActivityLog[] = [];
   maxUsage = 0;
 
+  private refreshTimer: any = null;
+
   constructor(
     private router: Router,
-    private adminService: AdminService
+    private adminService: AdminService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit() {
@@ -753,28 +756,39 @@ export class AdminDashboardComponent implements OnInit, OnDestroy {
     }
 
     this.loadDashboard();
+    // « Chaque mouvement compte » : le dashboard se rafraîchit tout seul
+    // toutes les 30 s (stats, activité, santé) — l'activité récente reflète
+    // les actions des utilisateurs en quasi-direct.
+    this.refreshTimer = setInterval(() => this.loadDashboard(), 30_000);
   }
 
   loadDashboard() {
+    // detectChanges après CHAQUE arrivée de données : les callbacks HTTP
+    // peuvent s'exécuter hors du cycle Angular → sans ça, l'écran restait
+    // vide/périmé jusqu'à la prochaine interaction (bug signalé).
     this.adminService.getDashboardStats().pipe(takeUntil(this.destroy$)).subscribe(stats => {
       this.stats = stats;
+      this.cdr.detectChanges();
     });
 
     this.adminService.getFeatureUsage().pipe(takeUntil(this.destroy$)).subscribe(features => {
       this.featureUsage = features;
-      this.maxUsage = Math.max(...features.map(f => f.usageCount));
+      this.maxUsage = features.length ? Math.max(...features.map(f => f.usageCount)) : 0;
+      this.cdr.detectChanges();
     });
 
     this.loadHealth();
 
     this.adminService.getActivityLogs(10).pipe(takeUntil(this.destroy$)).subscribe(logs => {
       this.recentActivity = logs;
+      this.cdr.detectChanges();
     });
   }
 
   loadHealth() {
     this.adminService.getServiceHealth().pipe(takeUntil(this.destroy$)).subscribe(health => {
       this.serviceHealth = health;
+      this.cdr.detectChanges();
     });
   }
 
@@ -832,6 +846,7 @@ export class AdminDashboardComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    if (this.refreshTimer) clearInterval(this.refreshTimer);
     this.destroy$.next();
     this.destroy$.complete();
   }

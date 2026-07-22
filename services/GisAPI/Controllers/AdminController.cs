@@ -802,11 +802,55 @@ public class AdminController : ControllerBase
     }
 
     [HttpGet("dashboard/feature-usage")]
-    public ActionResult<List<FeatureUsageDto>> GetFeatureUsage()
+    public async Task<ActionResult<List<FeatureUsageDto>>> GetFeatureUsage()
     {
-        // Feature usage tracking would require analytics implementation
-        // Return empty for now - can be implemented with proper tracking
-        return Ok(new List<FeatureUsageDto>());
+        // Usage réel des modules, calculé depuis la piste d'audit
+        // (AuditTrailMiddleware) : actions des 7 derniers jours groupées par
+        // module, avec utilisateurs uniques et tendance vs les 7 jours d'avant.
+        var now = DateTime.UtcNow;
+        var last7 = now.AddDays(-7);
+        var prev7 = now.AddDays(-14);
+
+        var current = await _context.AuditLogs.AsNoTracking()
+            .Where(a => a.Timestamp >= last7 && a.EntityType != "")
+            .GroupBy(a => a.EntityType)
+            .Select(g => new
+            {
+                Module = g.Key,
+                Count = g.Count(),
+                Users = g.Where(a => a.UserId != null).Select(a => a.UserId).Distinct().Count()
+            })
+            .ToListAsync();
+
+        var previous = await _context.AuditLogs.AsNoTracking()
+            .Where(a => a.Timestamp >= prev7 && a.Timestamp < last7 && a.EntityType != "")
+            .GroupBy(a => a.EntityType)
+            .Select(g => new { Module = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Module, x => x.Count);
+
+        var labels = new Dictionary<string, string>
+        {
+            ["auth"] = "Connexions", ["vehicles"] = "Véhicules", ["tours"] = "Tournées",
+            ["expenses"] = "Dépenses", ["maintenance"] = "Entretiens", ["geofences"] = "Zones",
+            ["users"] = "Utilisateurs", ["estimates"] = "Devis", ["database"] = "Base de données",
+            ["repairs"] = "Réparations", ["drivers"] = "Chauffeurs", ["documents"] = "Documents"
+        };
+
+        var result = current
+            .OrderByDescending(x => x.Count)
+            .Take(10)
+            .Select(x => new FeatureUsageDto
+            {
+                Feature = labels.TryGetValue(x.Module, out var l) ? l : x.Module,
+                UsageCount = x.Count,
+                UniqueUsers = x.Users,
+                Trend = previous.TryGetValue(x.Module, out var p) && p > 0
+                    ? (int)Math.Round((x.Count - p) * 100.0 / p)
+                    : (x.Count > 0 ? 100 : 0)
+            })
+            .ToList();
+
+        return Ok(result);
     }
 
     // ==================== DEVIS ====================

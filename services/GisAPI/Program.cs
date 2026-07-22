@@ -414,6 +414,10 @@ app.UseSubscriptionExpiration();
 // Permission middleware - checks subscription module + user-level permissions
 app.UsePermissionMiddleware();
 
+// Piste d'audit : journalise chaque action authentifiée qui modifie des
+// données (POST/PUT/PATCH/DELETE réussis) — alimente Activité & Feature Usage.
+app.UseMiddleware<GisAPI.Middleware.AuditTrailMiddleware>();
+
 // Multi-tenant middleware - sets tenant context from JWT claims
 app.UseTenantMiddleware();
 
