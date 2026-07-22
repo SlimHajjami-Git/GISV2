@@ -88,7 +88,12 @@ interface NavItem {
         </header>
 
         <div class="content-area">
-          <ng-content></ng-content>
+          <!-- Gabarit centré : toutes les pages admin partagent la même
+               largeur maximale, centrée — fini le contenu étiré bord à bord
+               sur grand écran ou calé à gauche. -->
+          <div class="content-shell">
+            <ng-content></ng-content>
+          </div>
         </div>
       </main>
     </div>
@@ -312,6 +317,7 @@ interface NavItem {
     }
 
     .content-area { flex: 1; padding: 24px; overflow-y: auto; }
+    .content-shell { max-width: 1560px; margin: 0 auto; width: 100%; }
 
     @media (max-width: 1024px) {
       .sidebar { width: 72px; }

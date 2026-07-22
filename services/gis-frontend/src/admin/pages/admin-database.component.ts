@@ -135,7 +135,7 @@ import { AdminService } from '../services/admin.service';
     </admin-layout>
   `,
   styles: [`
-    .db-page { display: flex; flex-direction: column; gap: 22px; max-width: 1000px; }
+    .db-page { display: flex; flex-direction: column; gap: 22px; max-width: 1000px; margin: 0 auto; }
 
     /* Cartes de stockage */
     .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
