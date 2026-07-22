@@ -830,6 +830,9 @@ public class AdminController : ControllerBase
 
         var labels = new Dictionary<string, string>
         {
+            // "User" = EntityType des événements login/logout écrits par les
+            // handlers d'authentification (avant le middleware d'audit).
+            ["User"] = "Connexions",
             ["auth"] = "Connexions", ["vehicles"] = "Véhicules", ["tours"] = "Tournées",
             ["expenses"] = "Dépenses", ["maintenance"] = "Entretiens", ["geofences"] = "Zones",
             ["users"] = "Utilisateurs", ["estimates"] = "Devis", ["database"] = "Base de données",
