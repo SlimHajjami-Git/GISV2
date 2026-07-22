@@ -1,14 +1,23 @@
-import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
+import { HttpInterceptorFn, HttpErrorResponse, HttpClient } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { catchError, switchMap, throwError } from 'rxjs';
 import { AuthService } from './auth.service';
 
 let isRefreshing = false;
+let isAdminRefreshing = false;
+
+/** Purge la session ADMIN uniquement — sans toucher à la session utilisateur. */
+function clearAdminSession(): void {
+  localStorage.removeItem('admin_token');
+  localStorage.removeItem('admin_user');
+  localStorage.removeItem('admin_refresh_token');
+}
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
   const router = inject(Router);
+  const http = inject(HttpClient);
 
   // Skip auth header for public endpoints (login, register, refresh, device-check,
   // and the pre-login AI assistant). These must never carry a JWT or trigger the
@@ -25,8 +34,10 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     ? (localStorage.getItem('admin_token') || localStorage.getItem('auth_token'))
     : (localStorage.getItem('auth_token') || localStorage.getItem('admin_token'));
 
-  // Proactive refresh: if token is expiring soon, refresh before sending the request
-  if (token && authService.isTokenExpiringSoon() && !isRefreshing) {
+  // Proactive refresh: if token is expiring soon, refresh before sending the request.
+  // UNIQUEMENT hors espace admin : ce flux rafraîchit la session UTILISATEUR et
+  // rejouerait une requête /api/admin avec le jeton utilisateur (→ 403 silencieux).
+  if (!isAdminRoute && token && authService.isTokenExpiringSoon() && !isRefreshing) {
     isRefreshing = true;
     return authService.refreshAccessToken().pipe(
       switchMap(response => {
@@ -64,6 +75,47 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
         return throwError(() => error);
       }
       if (error.status === 401 && !req.url.includes('/auth/')) {
+        // ── Session ADMIN expirée (jeton 24 h) ────────────────────────────
+        // Cause du « dashboard admin à zéros » : l'ancien code lançait le
+        // refresh UTILISATEUR puis rejouait la requête /api/admin avec le
+        // jeton utilisateur → 403 avalé par les composants. La session admin
+        // a SON refresh token (stocké au login admin) : on rafraîchit le
+        // jeton ADMIN et on rejoue avec lui ; sinon retour à /admin/login.
+        if (isAdminRoute) {
+          const adminToken = localStorage.getItem('admin_token');
+          const adminRefresh = localStorage.getItem('admin_refresh_token');
+          if (adminToken && adminRefresh && !isAdminRefreshing) {
+            isAdminRefreshing = true;
+            return http.post<any>('/api/auth/refresh', { token: adminToken, refreshToken: adminRefresh }).pipe(
+              switchMap(resp => {
+                isAdminRefreshing = false;
+                if (resp?.token) {
+                  localStorage.setItem('admin_token', resp.token);
+                  if (resp.refreshToken) localStorage.setItem('admin_refresh_token', resp.refreshToken);
+                  return next(req.clone({ setHeaders: { Authorization: `Bearer ${resp.token}` } }));
+                }
+                clearAdminSession();
+                router.navigate(['/admin/login']);
+                return throwError(() => error);
+              }),
+              catchError(refreshErr => {
+                isAdminRefreshing = false;
+                clearAdminSession();
+                router.navigate(['/admin/login']);
+                return throwError(() => refreshErr);
+              })
+            );
+          }
+          // Pas de refresh possible (ancienne session sans refresh token) →
+          // reconnexion admin propre, sans toucher à la session utilisateur.
+          if (!isAdminRefreshing) {
+            clearAdminSession();
+            router.navigate(['/admin/login']);
+          }
+          return throwError(() => error);
+        }
+
+        // ── Session UTILISATEUR : flux existant ──
         // Token expired — try to refresh
         if (!isRefreshing) {
           isRefreshing = true;
