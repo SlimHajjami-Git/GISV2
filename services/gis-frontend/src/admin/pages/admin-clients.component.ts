@@ -61,75 +61,77 @@ import { environment } from '../../environments/environment';
           </button>
         </div>
 
-        <div class="clients-grid">
-          <div class="client-card" *ngFor="let client of filteredClients" [class]="client.status">
-            <div class="card-header">
-              <div class="client-avatar">{{ client.name?.charAt(0) || 'C' }}</div>
-              <div class="client-info">
-                <h3>{{ client.name }}</h3>
-                <span class="client-type">{{ client.type | titlecase }}</span>
-              </div>
-              <div class="status-badge" [class]="client.status">{{ client.status | titlecase }}</div>
-            </div>
-
-            <div class="card-body">
-              <div class="info-row">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                  <polyline points="22,6 12,13 2,6"/>
-                </svg>
-                <span>{{ client.email }}</span>
-              </div>
-              <div class="info-row" *ngIf="client.phone">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72"/>
-                </svg>
-                <span>{{ client.phone }}</span>
-              </div>
-
-              <div class="stats-row">
-                <div class="stat">
-                  <span class="stat-value">{{ client.currentVehicles }}/{{ client.maxVehicles }}</span>
-                  <span class="stat-label">Véhicules</span>
-                </div>
-                <div class="stat">
-                  <span class="stat-value">{{ client.currentUsers }}</span>
-                  <span class="stat-label">Utilisateurs</span>
-                </div>
-                <div class="stat">
-                  <span class="stat-value">{{ client.subscriptionName || 'Aucun' }}</span>
-                  <span class="stat-label">Plan</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="card-footer">
-              <span class="joined-date">Créé le {{ formatDate(client.createdAt) }}</span>
-              <div class="actions">
-                <button class="action-btn edit" (click)="editClient(client)" title="Edit">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                </button>
-                <button class="action-btn" [class.suspend]="client.status === 'active'" [class.activate]="client.status !== 'active'"
-                        (click)="toggleClientStatus(client)" [title]="client.status === 'active' ? 'Suspend' : 'Activate'">
-                  <svg *ngIf="client.status === 'active'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-                  </svg>
-                  <svg *ngIf="client.status !== 'active'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                    <polyline points="22,4 12,14.01 9,11.01"/>
-                  </svg>
-                </button>
-                <button class="action-btn view" (click)="viewClient(client)" title="View Details">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
+        <div class="table-card">
+          <table class="clients-table">
+            <thead>
+              <tr>
+                <th>Société</th>
+                <th>Contact</th>
+                <th>Plan</th>
+                <th class="num">Véhicules</th>
+                <th class="num">Utilisateurs</th>
+                <th>Statut</th>
+                <th>Créé le</th>
+                <th class="actions-col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let client of filteredClients" [class.row-suspended]="client.status === 'suspended'" (click)="viewClient(client)">
+                <td>
+                  <div class="cell-company">
+                    <div class="client-avatar sm">{{ client.name?.charAt(0) || 'C' }}</div>
+                    <div class="cell-lines">
+                      <span class="cell-main">{{ client.name }}</span>
+                      <span class="cell-sub">{{ client.type | titlecase }}</span>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-lines">
+                    <span class="cell-main">{{ client.email }}</span>
+                    <span class="cell-sub">{{ client.phone || '—' }}</span>
+                  </div>
+                </td>
+                <td>{{ client.subscriptionName || 'Aucun' }}</td>
+                <td class="num">
+                  <span class="quota" [class.quota-full]="client.currentVehicles >= client.maxVehicles">
+                    {{ client.currentVehicles }}/{{ client.maxVehicles }}
+                  </span>
+                </td>
+                <td class="num">{{ client.currentUsers }}</td>
+                <td><span class="status-badge" [class]="client.status">{{ statusLabel(client.status) }}</span></td>
+                <td class="date-cell">{{ formatDate(client.createdAt) }}</td>
+                <td class="actions-cell" (click)="$event.stopPropagation()">
+                  <div class="actions">
+                    <button class="action-btn edit" (click)="editClient(client)" title="Modifier">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
+                    <button class="action-btn" [class.suspend]="client.status === 'active'" [class.activate]="client.status !== 'active'"
+                            (click)="toggleClientStatus(client)" [title]="client.status === 'active' ? 'Suspendre' : 'Réactiver'">
+                      <svg *ngIf="client.status === 'active'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+                      </svg>
+                      <svg *ngIf="client.status !== 'active'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                        <polyline points="22,4 12,14.01 9,11.01"/>
+                      </svg>
+                    </button>
+                    <button class="action-btn view" (click)="viewClient(client)" title="Détails">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                      </svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr *ngIf="filteredClients.length === 0" class="empty-row">
+                <td colspan="8">Aucune société trouvée</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <!-- View/Edit Modal -->
@@ -196,7 +198,7 @@ import { environment } from '../../environments/environment';
                 <div class="client-avatar large">{{ selectedClient.name?.charAt(0) || 'C' }}</div>
                 <div>
                   <h3>{{ selectedClient.name }}</h3>
-                  <span class="status-badge" [class]="selectedClient.status">{{ selectedClient.status | titlecase }}</span>
+                  <span class="status-badge" [class]="selectedClient.status">{{ statusLabel(selectedClient.status) }}</span>
                 </div>
               </div>
               <div class="form-section">
@@ -699,37 +701,119 @@ import { environment } from '../../environments/environment';
       box-shadow: var(--adm-shadow-hover);
     }
 
-    .clients-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-      gap: 20px;
-    }
-
-    .client-card {
+    .table-card {
       background: var(--adm-card);
       border: 1px solid var(--adm-border);
       border-radius: 16px;
-      overflow: hidden;
-      transition: box-shadow 0.2s, transform 0.2s;
       box-shadow: var(--adm-shadow);
+      overflow-x: auto;
       animation: rise 0.25s ease-out both;
     }
 
-    .client-card:hover {
-      box-shadow: var(--adm-shadow-hover);
-      transform: translateY(-1px);
+    .clients-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 900px;
     }
 
-    .client-card.suspended {
-      opacity: 0.7;
+    .clients-table thead th {
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--adm-sub);
+      background: #f8fafc;
+      border-bottom: 1px solid var(--adm-border);
+      white-space: nowrap;
     }
 
-    .card-header {
+    .clients-table tbody td {
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--adm-ink);
+      border-bottom: 1px solid var(--adm-border);
+      vertical-align: middle;
+    }
+
+    .clients-table tbody tr {
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .clients-table tbody tr:hover {
+      background: #f8fafc;
+    }
+
+    .clients-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .clients-table tr.row-suspended td:not(.actions-cell) {
+      opacity: 0.6;
+    }
+
+    .clients-table th.num,
+    .clients-table td.num {
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .clients-table th.actions-col {
+      text-align: right;
+    }
+
+    .cell-company {
       display: flex;
       align-items: center;
-      gap: 14px;
-      padding: 20px;
-      border-bottom: 1px solid var(--adm-border);
+      gap: 12px;
+    }
+
+    .cell-lines {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .cell-main {
+      font-weight: 600;
+      color: var(--adm-ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 260px;
+    }
+
+    .cell-sub {
+      font-size: 12px;
+      color: var(--adm-sub);
+    }
+
+    .quota {
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .quota.quota-full {
+      color: var(--adm-amber-ink);
+    }
+
+    .date-cell {
+      white-space: nowrap;
+      color: var(--adm-sub);
+    }
+
+    .empty-row td {
+      text-align: center;
+      padding: 40px 16px;
+      color: var(--adm-sub);
+      font-size: 14px;
+    }
+
+    .actions-cell {
+      text-align: right;
     }
 
     .client-avatar {
@@ -751,20 +835,12 @@ import { environment } from '../../environments/environment';
       font-size: 28px;
     }
 
-    .client-info {
-      flex: 1;
-    }
-
-    .client-info h3 {
-      margin: 0 0 4px 0;
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--adm-ink);
-    }
-
-    .client-type {
-      font-size: 13px;
-      color: var(--adm-sub);
+    .client-avatar.sm {
+      width: 34px;
+      height: 34px;
+      font-size: 14px;
+      border-radius: 9px;
+      flex-shrink: 0;
     }
 
     .status-badge {
@@ -789,67 +865,13 @@ import { environment } from '../../environments/environment';
       color: var(--adm-amber-ink);
     }
 
-    .card-body {
-      padding: 20px;
-    }
-
-    .info-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 12px;
-      font-size: 13px;
-      color: var(--adm-sub);
-    }
-
-    .info-row svg {
-      color: var(--adm-sub);
-    }
-
-    .stats-row {
-      display: flex;
-      gap: 20px;
-      margin-top: 16px;
-      padding-top: 16px;
-      border-top: 1px solid var(--adm-border);
-    }
-
-    .stat {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .stat-value {
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--adm-ink);
-      font-variant-numeric: tabular-nums;
-    }
-
-    .stat-label {
-      font-size: 11px;
-      color: var(--adm-sub);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-    }
-
-    .card-footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px 20px;
-      background: #f8fafc;
-      border-top: 1px solid var(--adm-border);
-    }
-
-    .joined-date {
-      font-size: 12px;
+    .status-badge.cancelled {
+      background: rgba(100, 116, 139, 0.12);
       color: var(--adm-sub);
     }
 
     .actions {
-      display: flex;
+      display: inline-flex;
       gap: 8px;
     }
 
@@ -1734,7 +1756,7 @@ import { environment } from '../../environments/environment';
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .client-card,
+      .table-card,
       .popup-overlay,
       .popup-container,
       .modal-overlay,
@@ -2103,6 +2125,16 @@ export class AdminClientsComponent implements OnInit, OnDestroy {
 
   formatDate(date: Date): string {
     return new Date(date).toLocaleDateString('fr-FR', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  statusLabel(status: string): string {
+    const labels: Record<string, string> = {
+      active: 'Actif',
+      suspended: 'Suspendu',
+      pending: 'En attente',
+      cancelled: 'Annulé'
+    };
+    return labels[status] || status;
   }
 
   ngOnDestroy() {
