@@ -82,18 +82,20 @@ spec:
                   set -e
                   STAMP=$(date +%Y%m%d-%H%M%S)
                   DOW=$(date +%u)   # 1 = lundi
+                  # PRÉ-ROTATION : on libère la place AVANT d'écrire la nouvelle
+                  # sauvegarde, en supprimant les PLUS ANCIENNES — jamais la plus
+                  # récente. Le disque ne dépasse ainsi jamais le plateau (~13 Go
+                  # sur TN), et si pg_dump échoue, les dernières nuits restent
+                  # intactes. Rétention finale : 5 quotidiennes + 2 hebdo +
+                  # 3 pré-purge. Les manual_ ne sont JAMAIS touchées (écran admin).
+                  ls -1t /backups/auto_*.dump 2>/dev/null | tail -n +5 | xargs -r rm -f
+                  if [ "$DOW" = "1" ]; then ls -1t /backups/weekly_*.dump 2>/dev/null | tail -n +2 | xargs -r rm -f; fi
+                  ls -1t /backups/presuppr_*.dump 2>/dev/null | tail -n +4 | xargs -r rm -f
                   OUT=/backups/auto_${STAMP}.dump
                   echo "pg_dump -> $OUT"
                   pg_dump -Fc -h postgres -p 5432 -U postgres -d gis_v2 -f "$OUT"
                   # Copie hebdomadaire le lundi
                   if [ "$DOW" = "1" ]; then cp "$OUT" "/backups/weekly_${STAMP}.dump"; fi
-                  # Rotation dimensionnée pour TN (dump ~1,9 Go, 29 Go libres) :
-                  # 5 quotidiennes + 2 hebdo + 3 pré-purge ~= 19 Go max theorique,
-                  # ~13 Go en pratique. Les sauvegardes manuelles (manual_) ne sont
-                  # JAMAIS supprimées automatiquement — nettoyage via l'écran admin.
-                  ls -1t /backups/auto_*.dump 2>/dev/null | tail -n +6 | xargs -r rm -f
-                  ls -1t /backups/weekly_*.dump 2>/dev/null | tail -n +3 | xargs -r rm -f
-                  ls -1t /backups/presuppr_*.dump 2>/dev/null | tail -n +4 | xargs -r rm -f
                   echo "Backups présents :"; ls -lh /backups/*.dump 2>/dev/null || true
               volumeMounts:
                 - name: db-backups
