@@ -487,6 +487,17 @@ data:
             try_files $uri $uri/ /index.html;
         }
 
+        # index.html ne doit JAMAIS etre mis en cache : il reference les chunks
+        # JS/CSS hashes par contenu. Un index.html perime pointe vers d'anciens
+        # chunks -> apres chaque deploiement le navigateur execute du vieux code
+        # (dashboard admin fige/vide) ou tombe en 404. Exact-match = priorite max,
+        # s'applique aussi au fallback SPA (redirection interne try_files).
+        location = /index.html {
+            add_header Cache-Control "no-cache, no-store, must-revalidate";
+            add_header Pragma "no-cache";
+            expires -1;
+        }
+
         # Cache static assets
         location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
             expires 1y;
