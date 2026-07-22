@@ -66,12 +66,19 @@ interface AssistantResponse {
         </div>
       </div>
       <div class="nav-actions">
-        <button class="btn-login" (click)="goToLogin()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span class="btn-login-lbl">Se connecter</span>
-        </button>
+        @if (connected) {
+          <span class="chip-connected" [title]="userName">
+            <span class="cc-dot"></span>
+            <span class="cc-lbl">Connecté<span class="cc-name">{{ userName ? ' · ' + userName : '' }}</span></span>
+          </span>
+        } @else {
+          <button class="btn-login" (click)="goToLogin()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="btn-login-lbl">Se connecter</span>
+          </button>
+        }
         <button class="btn-calypso" (click)="goToCalypso()">
-          Accéder à Calypso
+          {{ connected ? 'Ouvrir Calypso' : 'Accéder à Calypso' }}
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
@@ -207,6 +214,18 @@ interface AssistantResponse {
     .btn-login svg{ color:var(--cyan); }
     .btn-login:hover{ border-color:rgba(47,107,255,.55); color:#fff; background:rgba(47,107,255,.10); }
 
+    /* Session active — chip « Connecté » à la place du bouton Se connecter */
+    .chip-connected{ display:inline-flex; align-items:center; gap:9px;
+      font-family:'Rajdhani',sans-serif; font-weight:700; font-size:14px; letter-spacing:.06em; text-transform:uppercase;
+      color:#6ee7b7; padding:11px 16px; border-radius:12px;
+      border:1px solid rgba(52,211,153,.4); background:rgba(16,185,129,.10); }
+    .cc-dot{ width:8px; height:8px; border-radius:50%; background:#34d399; position:relative; }
+    .cc-dot::after{ content:''; position:absolute; inset:-4px; border-radius:50%;
+      border:1.5px solid rgba(52,211,153,.7); animation:ccpulse 2s ease-out infinite; }
+    @keyframes ccpulse{ 0%{ transform:scale(.5); opacity:.8 } 80%,100%{ transform:scale(1.4); opacity:0 } }
+    .cc-name{ color:#a7f3d0; text-transform:none; letter-spacing:.02em; }
+    @media (prefers-reduced-motion:reduce){ .cc-dot::after{ animation:none } }
+
     /* stage */
     .stage{ position:relative; z-index:2; flex:1; display:flex; flex-direction:column;
       width:100%; max-width:900px; margin:0 auto; padding:8px clamp(16px,4vw,32px) 26px;
@@ -286,6 +305,8 @@ interface AssistantResponse {
       .btn-calypso{ padding:10px 14px; font-size:13px; }
       .btn-login{ padding:10px 12px; }
       .btn-login-lbl{ display:none; }
+      .chip-connected{ padding:10px 12px; }
+      .cc-name{ display:none; }
       .bg-car{ opacity:.6; }
     }
     @media (prefers-reduced-motion:reduce){ .up,.msg,.bg-glow{ animation:none; opacity:1; transform:none; } }
@@ -304,9 +325,24 @@ export class AiLandingComponent {
     { q: 'Comment réduire ma consommation de carburant ?', icon: this.ico('fuel') },
   ];
 
-  constructor(private router: Router, private http: HttpClient, private zone: NgZone) {}
+  /** Session active (« Se souvenir de moi ») : la landing doit le refléter et
+   *  « Accéder à Calypso » doit mener DIRECTEMENT au tableau de bord, pas au
+   *  login. Un jeton expiré n'est pas un problème : l'intercepteur le
+   *  rafraîchit via le refresh_token en arrivant sur le dashboard. */
+  connected = false;
+  userName = '';
 
-  goToCalypso(): void { this.router.navigate(['/login']); }
+  constructor(private router: Router, private http: HttpClient, private zone: NgZone) {
+    this.connected = !!localStorage.getItem('auth_token');
+    if (this.connected) {
+      try {
+        const u = JSON.parse(localStorage.getItem('auth_user') || '{}');
+        this.userName = (u.name || '').split(' ')[0] || '';
+      } catch { /* nom indisponible — le chip reste générique */ }
+    }
+  }
+
+  goToCalypso(): void { this.router.navigate([this.connected ? '/dashboard' : '/login']); }
   goToLogin(): void { this.router.navigate(['/login']); }
 
   ask(q: string): void { this.draft = q; this.send(); }
