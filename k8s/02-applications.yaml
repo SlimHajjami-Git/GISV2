@@ -87,10 +87,13 @@ spec:
                   pg_dump -Fc -h postgres -p 5432 -U postgres -d gis_v2 -f "$OUT"
                   # Copie hebdomadaire le lundi
                   if [ "$DOW" = "1" ]; then cp "$OUT" "/backups/weekly_${STAMP}.dump"; fi
-                  # Rotation : garder les 7 dernières auto_ quotidiennes
-                  ls -1t /backups/auto_*.dump 2>/dev/null | tail -n +8 | xargs -r rm -f
-                  # Rotation : garder les 4 dernières weekly_
-                  ls -1t /backups/weekly_*.dump 2>/dev/null | tail -n +5 | xargs -r rm -f
+                  # Rotation dimensionnée pour TN (dump ~1,9 Go, 29 Go libres) :
+                  # 5 quotidiennes + 2 hebdo + 3 pré-purge ~= 19 Go max theorique,
+                  # ~13 Go en pratique. Les sauvegardes manuelles (manual_) ne sont
+                  # JAMAIS supprimées automatiquement — nettoyage via l'écran admin.
+                  ls -1t /backups/auto_*.dump 2>/dev/null | tail -n +6 | xargs -r rm -f
+                  ls -1t /backups/weekly_*.dump 2>/dev/null | tail -n +3 | xargs -r rm -f
+                  ls -1t /backups/presuppr_*.dump 2>/dev/null | tail -n +4 | xargs -r rm -f
                   echo "Backups présents :"; ls -lh /backups/*.dump 2>/dev/null || true
               volumeMounts:
                 - name: db-backups
