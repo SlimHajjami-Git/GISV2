@@ -1,6 +1,7 @@
 import { Component, OnInit, OnDestroy, NgZone, ChangeDetectorRef } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription, interval } from 'rxjs';
+import { Share } from '@capacitor/share';
 import { ApiService } from '../../core/services/api.service';
 import { SignalRService, PositionUpdate, ConnectionState } from '../../core/services/signalr.service';
 import * as L from 'leaflet';
@@ -90,6 +91,10 @@ import * as L from 'leaflet';
           <ion-button expand="block" fill="outline" size="small" class="locate-btn" (click)="recenterSelected($event)">
             <ion-icon name="locate-outline" slot="start"></ion-icon>
             Localiser sur la carte
+          </ion-button>
+          <ion-button expand="block" size="small" class="share-btn" (click)="shareSelectedPosition()">
+            <ion-icon name="share-social-outline" slot="start"></ion-icon>
+            Partager la position
           </ion-button>
         </div>
       </div>
@@ -195,6 +200,7 @@ import * as L from 'leaflet';
     .sheet-row ion-icon { font-size: 16px; color: var(--ion-color-medium); flex: none; }
     .sheet-row span { line-height: 1.35; }
     .locate-btn { margin-top: 14px; }
+    .share-btn { margin-top: 6px; }
   `]
 })
 export class MonitoringPage implements OnInit, OnDestroy {
@@ -210,6 +216,9 @@ export class MonitoringPage implements OnInit, OnDestroy {
   lastUpdateLabel: string = '';
   /** A pending "Localiser" request queued until the map is ready */
   private pendingFocus: { vid: number; lat: number; lng: number } | null = null;
+  /** Vrai tant qu'un focus (Localiser / deep link) est en cours: empêche le
+   *  fitBounds flotte entière de loadPositions() d'écraser le zoom cible. */
+  private suppressAutoCenter = false;
 
   // Custom icons — four states:
   //   moving  (green)   = speed > 3 km/h (lenient; the server's 10 km/h
@@ -280,6 +289,7 @@ export class MonitoringPage implements OnInit, OnDestroy {
     private api: ApiService,
     private signalr: SignalRService,
     private route: ActivatedRoute,
+    private router: Router,
     private zone: NgZone,
     private cdr: ChangeDetectorRef
   ) {}
@@ -306,24 +316,42 @@ export class MonitoringPage implements OnInit, OnDestroy {
     this.signalr.startConnection();
   }
 
-  /** Focus the map on a specific vehicle position (used by "Localiser" from Vehicles) */
-  private focusOnVehicle(vehicleId: number, lat: number, lng: number) {
-    if (!this.map) return;
-    this.map.setView([lat, lng], 15, { animate: true });
-    // If we already have a marker, open its popup; otherwise it'll appear once SignalR/polling catches up
+  /** Focus the map on a specific vehicle (Localiser / deep link QR).
+   *  Returns true when the vehicle's marker existed (focus complet:
+   *  zoom + tooltip + bottom-sheet), false when only the coords zoom
+   *  could be applied. Prefer the marker's LIVE position over the
+   *  (possibly stale) coords carried by the link. */
+  private focusOnVehicle(vehicleId: number, lat: number, lng: number): boolean {
+    if (!this.map) return false;
     const marker = this.markers.get(vehicleId);
+    const target = marker ? marker.getLatLng() : L.latLng(lat, lng);
+    this.map.setView(target, 15, { animate: true });
     if (marker) {
       marker.openTooltip();
       this.selectedVehicle = (marker as any)._posData || null;
+      this.tickUI();
+      return true;
     }
+    return false;
   }
 
-  /** Apply queued focus request (from Localiser deep-link) once the map is ready */
+  /** Apply queued focus request (Localiser / deep link) once the map is ready.
+   *  Keeps pendingFocus alive while the marker doesn't exist yet so
+   *  loadPositions() can complete the focus once markers are created. */
   private applyPendingFocus() {
     if (!this.pendingFocus || !this.map) return;
     const { vid, lat, lng } = this.pendingFocus;
-    this.focusOnVehicle(vid, lat, lng);
-    this.pendingFocus = null;
+    if (this.focusOnVehicle(vid, lat, lng)) {
+      this.pendingFocus = null;
+      this.clearFocusParams();
+    }
+  }
+
+  /** Purge vehicleId/lat/lng de l'URL une fois le focus consommé — sinon
+   *  chaque retour sur l'onglet re-zoomerait sur les coordonnées figées
+   *  du lien (snapshot relu dans ionViewDidEnter). */
+  private clearFocusParams() {
+    this.router.navigate([], { relativeTo: this.route, queryParams: {}, replaceUrl: true });
   }
 
   ngOnInit() {
@@ -367,6 +395,7 @@ export class MonitoringPage implements OnInit, OnDestroy {
         if (!isNaN(lat) && !isNaN(lng) && !isNaN(vid)) {
           // Remember so ionViewDidEnter can apply once map is ready
           this.pendingFocus = { vid, lat, lng };
+          this.suppressAutoCenter = true;
           // If map is already up, focus immediately
           if (this.map) {
             setTimeout(() => this.applyPendingFocus(), 150);
@@ -409,6 +438,7 @@ export class MonitoringPage implements OnInit, OnDestroy {
     const vid = parseInt(qp.get('vehicleId') || '', 10);
     if (!isNaN(lat) && !isNaN(lng) && !isNaN(vid)) {
       this.pendingFocus = { vid, lat, lng };
+      this.suppressAutoCenter = true;
     }
 
     // If a Localiser navigation left a pending focus, apply it once map is ready
@@ -514,7 +544,20 @@ export class MonitoringPage implements OnInit, OnDestroy {
           this.lastUpdateAt = new Date();
           this.refreshLastUpdateLabel();
         }
-        this.centerOnAll();
+        if (this.pendingFocus) {
+          // Les markers existent maintenant: compléter le focus deep-link
+          // (zoom + tooltip + bottom-sheet) au lieu d'écraser le zoom cible
+          // par un fitBounds flotte entière.
+          this.applyPendingFocus();
+          if (this.pendingFocus) {
+            // Véhicule introuvable dans la flotte (ex: QR d'un autre
+            // serveur): le zoom coordonnées reste appliqué, on abandonne.
+            this.pendingFocus = null;
+            this.clearFocusParams();
+          }
+        } else if (!this.suppressAutoCenter) {
+          this.centerOnAll();
+        }
         this.tickUI();
       }
     });
@@ -558,6 +601,9 @@ export class MonitoringPage implements OnInit, OnDestroy {
 
   centerOnAll() {
     if (!this.map || this.markers.size === 0) return;
+    // Recentrage explicite (bouton toolbar) ou auto: le focus deep-link est
+    // terminé, les prochains loadPositions() peuvent de nouveau auto-centrer.
+    this.suppressAutoCenter = false;
     const bounds = L.latLngBounds([]);
     this.markers.forEach(m => bounds.extend(m.getLatLng()));
     this.map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
@@ -615,5 +661,29 @@ export class MonitoringPage implements OnInit, OnDestroy {
     if (this.map && this.selectedVehicle) {
       this.map.setView([this.selectedVehicle.latitude, this.selectedVehicle.longitude], 15, { animate: true });
     }
+  }
+
+  /** Partage la position du véhicule sélectionné via la feuille de partage
+   *  native (WhatsApp, Messenger, SMS…). Le lien est un Google Maps
+   *  universel, ouvrable par n'importe quel destinataire. */
+  async shareSelectedPosition() {
+    const v = this.selectedVehicle;
+    if (!v || v.latitude == null || v.longitude == null) return;
+    const label = v.plate || v.vehicleName || 'véhicule';
+    const mapsUrl = `https://www.google.com/maps?q=${Number(v.latitude).toFixed(6)},${Number(v.longitude).toFixed(6)}`;
+    const lines = [`Position du véhicule ${label}`];
+    if (v.address) lines.push(v.address);
+    // Dater la position: une dernière position connue peut être ancienne,
+    // le destinataire ne doit pas la croire "temps réel".
+    const recMs = v.recordedAt ? Date.parse(v.recordedAt) : NaN;
+    if (!isNaN(recMs)) lines.push(`Position du ${new Date(recMs).toLocaleString('fr-FR')}`);
+    lines.push(mapsUrl);
+    try {
+      await Share.share({
+        title: `Position ${label}`,
+        text: lines.join('\n'),
+        dialogTitle: 'Partager la position'
+      });
+    } catch { /* partage annulé par l'utilisateur */ }
   }
 }

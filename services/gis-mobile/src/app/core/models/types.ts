@@ -29,6 +29,9 @@ export interface Vehicle {
   isOnline?: boolean;
   ignitionOn?: boolean;
   lastAddress?: string;
+  /** Horodatage de la dernière position connue (SignalR ou REST) — sert à
+   *  dater la position dans le partage pour ne pas la présenter comme live. */
+  lastRecordedAt?: string;
   gpsDeviceId?: string;
   gpsImei?: string;
   // Nested GPS device object as returned by the backend GetVehicles query.

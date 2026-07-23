@@ -1180,9 +1180,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       lastCommStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
 
-    // "Guider un remorqueur" — partage de la position actuelle vers Google Maps.
-    // Cas d'usage : véhicule en panne loin → on envoie le lien (WhatsApp/SMS)
-    // ou on fait scanner le QR au remorqueur, qui n'a pas accès à l'application.
+    // "Partager la position" — QR qui ouvre l'appli mobile Calypso zoomée sur
+    // le véhicule (via la page publique /l/vehicle/:id), + liens Google Maps /
+    // WhatsApp pour un destinataire sans l'appli (remorqueur en panne, etc.).
     const towSection = this.buildLocationShareSection(vehicle, plate);
 
     return `
@@ -1238,42 +1238,53 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   /**
-   * Builds the "Guider un remorqueur" block for the map popup: a Google Maps
-   * link, WhatsApp share, copy-link button and a QR code, all pointing at the
-   * vehicle's CURRENT position. Intended for a broken-down (stationary)
-   * vehicle whose position must be handed to a tow truck driver that has no
-   * access to the app. Returns '' when no position is known.
+   * Builds the "Partager la position" block for the map popup.
    *
-   * The Maps URL uses the single-param form (`?q=lat,lon`, no '&') so it
-   * embeds safely in the copy button's inline onclick.
+   * - The QR encodes an https link to the public interstitial page
+   *   `/l/vehicle/<id>?lat=..&lng=..` (open-in-app.component). Every QR
+   *   scanner opens an https URL; the page then opens the Calypso mobile
+   *   app zoomed on this vehicle (deep link `calypso://vehicle/<id>`, via
+   *   `intent://` on Android with automatic Google Maps fallback when the
+   *   app isn't installed). A raw `calypso://` QR would be ignored by many
+   *   camera/scanner apps.
+   * - The Maps / WhatsApp / copy links keep pointing at a plain Google Maps
+   *   URL for recipients WITHOUT the app (e.g. a tow truck driver).
+   *
+   * Returns '' when no position is known. The Maps URL uses the
+   * single-param form (`?q=lat,lon`, no '&') so it embeds safely in the
+   * copy button's inline onclick.
    */
   private buildLocationShareSection(vehicle: any, plate: string): string {
     const loc = vehicle?.currentLocation;
     if (!loc || loc.lat == null || loc.lng == null) return '';
 
-    const mapsUrl = `https://www.google.com/maps?q=${Number(loc.lat).toFixed(6)},${Number(loc.lng).toFixed(6)}`;
+    const lat = Number(loc.lat).toFixed(6);
+    const lng = Number(loc.lng).toFixed(6);
+    const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+    // Origin courant (TN/DZ diffèrent) — la page /l/vehicle est publique.
+    const appUrl = `${window.location.origin}/l/vehicle/${vehicle.id}?lat=${lat}&lng=${lng}`;
     const waUrl = `https://wa.me/?text=${encodeURIComponent(`Position du véhicule ${plate} : ${mapsUrl}`)}`;
 
     let qrImg = '';
     try {
       const qr = qrcode(0, 'M');
-      qr.addData(mapsUrl);
+      qr.addData(appUrl);
       qr.make();
       qrImg = qr.createDataURL(4, 8);
     } catch { /* QR is best-effort; the links still work */ }
 
     return `
       <div style="padding: 10px 14px; background: #fff; border-top: 1px solid #f1f5f9;">
-        <div style="font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 8px;">Guider un remorqueur</div>
+        <div style="font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 8px;">Partager la position</div>
         <div style="display: flex; gap: 12px; align-items: center;">
-          ${qrImg ? `<img src="${qrImg}" width="84" height="84" alt="QR position" style="flex-shrink: 0; border: 1px solid #e2e8f0; border-radius: 6px;"/>` : ''}
+          ${qrImg ? `<img src="${qrImg}" width="84" height="84" alt="QR ouvrir dans l'appli" style="flex-shrink: 0; border: 1px solid #e2e8f0; border-radius: 6px;"/>` : ''}
           <div style="display: flex; flex-direction: column; gap: 6px; flex: 1;">
             <a href="${mapsUrl}" target="_blank" rel="noopener" style="display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 10px; background: #1a73e8; color: #fff; border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 600;">Ouvrir dans Maps</a>
             <a href="${waUrl}" target="_blank" rel="noopener" style="display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 10px; background: #25d366; color: #fff; border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 600;">Envoyer via WhatsApp</a>
             <button type="button" onclick="if(navigator.clipboard){navigator.clipboard.writeText('${mapsUrl}');this.textContent='Lien copié ✓';}" style="padding: 7px 10px; background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">Copier le lien</button>
           </div>
         </div>
-        <div style="font-size: 10px; color: #94a3b8; margin-top: 6px; text-align: center; line-height: 1.4;">Le remorqueur scanne le QR ou ouvre le lien — sans accès à l'application.</div>
+        <div style="font-size: 10px; color: #94a3b8; margin-top: 6px; text-align: center; line-height: 1.4;">QR : ouvre l'appli Calypso zoomée sur le véhicule. Liens : pour un destinataire sans l'appli (remorqueur…).</div>
       </div>`;
   }
 

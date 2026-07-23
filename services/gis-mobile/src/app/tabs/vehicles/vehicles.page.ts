@@ -6,6 +6,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { SignalRService, PositionUpdate } from '../../core/services/signalr.service';
 import { Vehicle } from '../../core/models/types';
 import { AlertController, ToastController } from '@ionic/angular';
+import { Share } from '@capacitor/share';
 
 @Component({
   selector: 'app-vehicles',
@@ -139,6 +140,10 @@ import { AlertController, ToastController } from '@ionic/angular';
               Playback
             </ion-button>
           </div>
+          <ion-button expand="block" fill="outline" shape="round" class="share-position-btn" (click)="sharePosition(selectedVehicle)">
+            <ion-icon name="share-social-outline" slot="start"></ion-icon>
+            Partager la position
+          </ion-button>
 
           <!-- Immobilization -->
           <div class="immo-section" *ngIf="canImmobilize && selectedVehicle.gpsDeviceId">
@@ -242,6 +247,7 @@ import { AlertController, ToastController } from '@ionic/angular';
     }
     .detail-actions { display: flex; gap: 8px; }
     .detail-actions ion-button { flex: 1; }
+    .share-position-btn { margin-top: 8px; }
     .immo-section { margin-top: 16px; border-top: 1px solid var(--ion-color-light-shade); padding-top: 16px; }
     .immo-status {
       display: flex; align-items: center; gap: 8px;
@@ -318,6 +324,7 @@ export class VehiclesPage implements OnInit, OnDestroy {
             v.currentLocation = { lat: pos.latitude, lng: pos.longitude };
             v.ignitionOn = pos.ignitionOn;
             v.isOnline = true;
+            v.lastRecordedAt = pos.recordedAt || v.lastRecordedAt;
             touched = true;
           }
         }
@@ -373,6 +380,7 @@ export class VehiclesPage implements OnInit, OnDestroy {
                 v.currentSpeed = p.lastPosition.speedKph || 0;
                 v.ignitionOn = p.lastPosition.ignitionOn ?? v.ignitionOn;
                 v.isOnline = true;
+                v.lastRecordedAt = p.lastPosition.recordedAt || v.lastRecordedAt;
               }
             });
             this.updateCounts();
@@ -489,6 +497,63 @@ export class VehiclesPage implements OnInit, OnDestroy {
         await toast.present();
       }
     });
+  }
+
+  /** Partage la dernière position connue via la feuille de partage native
+   *  (WhatsApp, Messenger, SMS…). Même stratégie de repli que Localiser :
+   *  position en mémoire sinon un dernier fetch REST. */
+  async sharePosition(v: Vehicle) {
+    if (v.currentLocation) {
+      await this.doSharePosition(v, v.currentLocation.lat, v.currentLocation.lng);
+      return;
+    }
+    this.api.getLastPositions().subscribe({
+      next: async (positions) => {
+        const list = Array.isArray(positions) ? positions : [];
+        const found = list.find((p: any) => String(p.vehicleId) === String(v.id) && p.lastPosition);
+        if (found) {
+          const lp = found.lastPosition;
+          v.currentLocation = { lat: lp.latitude, lng: lp.longitude };
+          v.lastRecordedAt = lp.recordedAt || v.lastRecordedAt;
+          await this.doSharePosition(v, lp.latitude, lp.longitude);
+        } else {
+          const toast = await this.toastCtrl.create({
+            message: `Aucune position connue pour ${v.name}.`,
+            duration: 3000,
+            color: 'warning',
+            position: 'bottom'
+          });
+          await toast.present();
+        }
+      },
+      error: async () => {
+        const toast = await this.toastCtrl.create({
+          message: 'Impossible de récupérer la position du véhicule.',
+          duration: 2500,
+          color: 'danger'
+        });
+        await toast.present();
+      }
+    });
+  }
+
+  private async doSharePosition(v: Vehicle, lat: number, lng: number) {
+    const label = v.plate || v.name || 'véhicule';
+    const mapsUrl = `https://www.google.com/maps?q=${Number(lat).toFixed(6)},${Number(lng).toFixed(6)}`;
+    const lines = [`Position du véhicule ${label}`];
+    if (v.lastAddress) lines.push(v.lastAddress);
+    // Dater la position: une dernière position connue peut être ancienne,
+    // le destinataire ne doit pas la croire "temps réel".
+    const recMs = v.lastRecordedAt ? Date.parse(v.lastRecordedAt) : NaN;
+    if (!isNaN(recMs)) lines.push(`Position du ${new Date(recMs).toLocaleString('fr-FR')}`);
+    lines.push(mapsUrl);
+    try {
+      await Share.share({
+        title: `Position ${label}`,
+        text: lines.join('\n'),
+        dialogTitle: 'Partager la position'
+      });
+    } catch { /* partage annulé par l'utilisateur */ }
   }
 
   openPlayback(v: Vehicle) {

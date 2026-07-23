@@ -1,5 +1,5 @@
 import { Component } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { LoadingController, ToastController, AlertController } from '@ionic/angular';
 import { AuthService } from '../core/services/auth.service';
 
@@ -133,6 +133,7 @@ export class LoginPage {
   constructor(
     private authService: AuthService,
     private router: Router,
+    private route: ActivatedRoute,
     private loadingCtrl: LoadingController,
     private toastCtrl: ToastController,
     private alertCtrl: AlertController
@@ -151,7 +152,15 @@ export class LoginPage {
       next: async (user) => {
         await loading.dismiss();
         if (user) {
-          this.router.navigate(['/tabs/dashboard'], { replaceUrl: true });
+          // Revenir sur la cible interceptée par l'AuthGuard (ex: deep link
+          // QR vers /tabs/monitoring?vehicleId=..). Uniquement des URLs
+          // internes ('/...') pour éviter toute redirection ouverte.
+          const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+          if (returnUrl && returnUrl.startsWith('/')) {
+            this.router.navigateByUrl(returnUrl, { replaceUrl: true });
+          } else {
+            this.router.navigate(['/tabs/dashboard'], { replaceUrl: true });
+          }
         } else {
           const toast = await this.toastCtrl.create({
             message: 'Email ou mot de passe incorrect',

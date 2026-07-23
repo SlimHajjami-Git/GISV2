@@ -68,6 +68,9 @@ export const routes: Routes = [
   { path: 'abonnement-suspendu', component: SubscriptionBlockedComponent },
   { path: 'politique-de-confidentialite', component: PrivacyPolicyComponent },
   { path: 'privacy-policy', redirectTo: 'politique-de-confidentialite', pathMatch: 'full' },
+  // Cible du QR "Partager la position" du monitoring: tente d'ouvrir l'appli
+  // mobile Calypso zoomée sur le véhicule, repli Google Maps. Publique.
+  { path: 'l/vehicle/:id', loadComponent: () => import('./components/open-in-app.component').then(m => m.OpenInAppComponent) },
   // Protected routes - Dashboard (always accessible when logged in)
   { path: 'dashboard', component: DashboardComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'dashboard' } },
 
