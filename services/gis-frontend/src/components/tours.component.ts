@@ -6,6 +6,7 @@ import autoTable from 'jspdf-autotable';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { ApiService } from '../services/api.service';
+import { PdfExportService } from '../services/pdf-export.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { forkJoin, Subject, of, Subscription } from 'rxjs';
@@ -511,7 +512,8 @@ declare let L: any;
           <button class="btn-outline-sm" *ngIf="selectedTour.status==='completed'||selectedTour.status==='in_progress'" (click)="replaySelectedTour()" title="Rejouer le trajet sur la carte">
             &#9654; Replay
           </button>
-          <button class="btn-outline-sm" *ngIf="selectedTour.timeline" (click)="generateTourReport()" title="Rapport PDF réel vs estimé">
+          <button class="btn-outline-sm" *ngIf="selectedTour.timeline" (click)="generateTourReport()"
+                  [disabled]="reportBusy" title="Rapport PDF réel vs estimé">
             &#128196; Rapport
           </button>
           <button class="btn-cancel" (click)="closeDetail()">Retour</button>
@@ -881,7 +883,8 @@ export class ToursComponent implements OnInit, OnDestroy {
     private http: HttpClient,
     private cdr: ChangeDetectorRef,
     private zone: NgZone,
-    private router: Router
+    private router: Router,
+    private pdfExport: PdfExportService
   ) {}
 
   /// Ouvre le lecteur de trajet (playback) borné à la fenêtre de la tournée :
@@ -905,77 +908,205 @@ export class ToursComponent implements OnInit, OnDestroy {
 
   /// Rapport PDF « réel vs estimé » : comparatif chiffré, chronologie réelle
   /// (départ, arrêts, arrivée) et phrases d'analyse (retard au départ, etc.).
-  generateTourReport() {
+  ///
+  /// Passe par PdfExportService pour l'en-tête de marque (logo Calypso) et
+  /// surtout pour clean() : les polices standard de jsPDF ne connaissent ni
+  /// les flèches ni l'arabe, et un seul caractère hors jeu corrompt TOUTE la
+  /// ligne en glyphes illisibles. Les adresses viennent du géocodeur et
+  /// contiennent régulièrement de l'arabe : elles doivent être assainies.
+  reportBusy = false;
+
+  async generateTourReport() {
     const t = this.selectedTour;
     const tl = t?.timeline;
-    if (!t || !tl) return;
+    // Le bouton attend un chargement asynchrone (logo) : sans ce verrou un
+    // double-clic générait deux PDF, et une exception dans la promesse
+    // n'était rattrapée par personne (handler async non attendu par Angular).
+    if (!t || !tl || this.reportBusy) return;
+    this.reportBusy = true;
+    try {
+      await this.buildTourReport(t, tl);
+    } catch (e) {
+      console.error('Rapport de tournée : échec de génération', e);
+      alert("Le rapport n'a pas pu être généré. Veuillez réessayer.");
+    } finally {
+      this.reportBusy = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  private async buildTourReport(t: any, tl: any) {
+    await this.pdfExport.preloadBrandAssets();
+    const clean = (s: any) => this.pdfExport.clean(String(s ?? ''));
 
     const fmtT = (d: any) => d ? new Date(d).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '-';
     const fmtDT = (d: any) => d ? new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
     const signed = (n: number) => (n > 0 ? '+' : '') + n;
+    const r1 = (n: number) => Math.round(n * 10) / 10;
 
-    const doc = new jsPDF();
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pw = doc.internal.pageSize.getWidth();
-    let y = 18;
+    const colors = this.pdfExport.brandColors;
 
-    // ── En-tête ──
-    doc.setFontSize(16); doc.setFont('helvetica', 'bold');
-    doc.text(`Rapport de tournée — ${t.name || ''}`, 14, y);
-    y += 7;
-    doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(100);
-    doc.text(`Véhicule : ${t.vehicleName || ''}${t.vehiclePlate ? ' (' + t.vehiclePlate + ')' : ''}` +
-      `${t.driverName ? '   ·   Chauffeur : ' + t.driverName : ''}   ·   Statut : ${t.status === 'completed' ? 'terminée' : t.status}`, 14, y);
-    y += 6;
-    doc.text(`Départ prévu : ${fmtDT(t.scheduledStartTime)}`, 14, y);
-    doc.setTextColor(0);
-    y += 8;
+    // ── En-tête de marque (identique aux autres rapports de l'application) ──
+    // On teste les valeurs NETTOYÉES et non les brutes : une valeur entièrement
+    // non-latine (les adresses du géocodeur le sont souvent) est « vraie » mais
+    // devient vide après nettoyage, ce qui laissait des séparateurs orphelins
+    // du type « Arrivée · » ou « Vehicule: X () ».
+    const vName = clean(t.vehicleName), vPlate = clean(t.vehiclePlate);
+    const dName = clean(t.driverName), tourName = clean(t.name);
+    const arrival = clean(tl.arrivalName);
+    const meta: string[] = [];
+    if (vName) meta.push(`Vehicule: ${vName}${vPlate ? ' (' + vPlate + ')' : ''}`);
+    if (dName) meta.push(`Chauffeur: ${dName}`);
+    meta.push(`Statut: ${clean(this.getStatusLabel(t.status))}`);
+    let y = this.pdfExport.drawBrandHeader(doc, {
+      title: `Rapport de tournée`,
+      meta,
+      rightNote: tourName
+    });
+
+    // ── Bandeau de contexte ──
+    doc.setFillColor(...colors.light);
+    doc.roundedRect(14, y, pw - 28, 12, 2, 2, 'F');
+    doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(71, 85, 105);
+    // clean() aussi sur la date : toLocaleString('fr-FR') insère des espaces
+    // insécables étroites (U+202F) que les polices standard ne connaissent pas.
+    const departLabel = clean(`Départ prévu : ${fmtDT(t.scheduledStartTime)}`);
+    doc.text(departLabel, 18, y + 7.5);
+    if (arrival) {
+      // Tronqué à la place réellement libre, sinon la destination alignée à
+      // droite passe par-dessus « Départ prévu » sur les noms longs.
+      const used = doc.getTextWidth(departLabel);
+      const avail = (pw - 36) - used - 6;
+      let destLabel = `Destination : ${arrival}`;
+      if (doc.getTextWidth(destLabel) > avail) {
+        while (destLabel.length > 16 && doc.getTextWidth(destLabel + '...') > avail) {
+          destLabel = destLabel.slice(0, -1);
+        }
+        destLabel += '...';
+      }
+      if (avail > 20) doc.text(destLabel, pw - 18, y + 7.5, { align: 'right' });
+    }
+    doc.setTextColor(0, 0, 0);
+    y += 18;
+
+    // ── Cartes de synthèse ──
+    const delay = tl.departureDelayMinutes;
+    const cards: { label: string; value: string; tone?: 'good' | 'bad' }[] = [
+      { label: 'Distance réelle', value: t.actualDistanceKm != null ? `${r1(t.actualDistanceKm)} km` : '-' },
+      { label: 'Conduite effective', value: tl.drivingMinutes != null ? `${tl.drivingMinutes} min` : '-' },
+      { label: 'Arrêts en chemin', value: `${tl.stoppedMinutes ?? 0} min (${(tl.stops || []).length})` },
+      {
+        label: 'Retard au départ',
+        value: delay != null ? `${signed(delay)} min` : '-',
+        // Neutre dans la zone de tolérance (±2 min) : un départ à l'heure n'est
+        // pas une performance à souligner en vert, et « 0 min » en vert intriguait.
+        tone: delay == null || Math.abs(delay) <= 2 ? undefined : (delay > 2 ? 'bad' : 'good')
+      },
+    ];
+    const cardW = (pw - 28) / cards.length;
+    cards.forEach((c, i) => {
+      const x = 14 + i * cardW;
+      doc.setFillColor(...colors.light);
+      doc.roundedRect(x, y, cardW - 3, 20, 2, 2, 'F');
+      doc.setTextColor(100, 116, 139); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+      doc.text(clean(c.label), x + 4, y + 7);
+      if (c.tone === 'bad') doc.setTextColor(190, 30, 45);
+      else if (c.tone === 'good') doc.setTextColor(5, 120, 85);
+      else doc.setTextColor(15, 23, 42);
+      doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+      doc.text(clean(c.value), x + 4, y + 15);
+    });
+    doc.setTextColor(0, 0, 0);
+    y += 27;
 
     // ── Comparatif estimé vs réel ──
     const drv = tl.drivingMinutes ?? t.actualDurationMinutes;
+    // Une estimation à 0 signifie « Valhalla n'a pas répondu à la création »,
+    // pas « trajet nul » : sans ce filtre, l'écart valait la totalité du trajet
+    // et le rapport annonçait un dépassement rouge de +612 km sur 0 km estimé.
+    const NA = 'non estimé';
+    const estKm = t.estimatedDistanceKm > 0 ? t.estimatedDistanceKm : null;
+    const estMin = t.estimatedDurationMinutes > 0 ? t.estimatedDurationMinutes : null;
+    const estL = t.estimatedFuelLiters > 0 ? t.estimatedFuelLiters : null;
+    doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(15, 23, 42);
+    doc.text('Estimé vs réel', 14, y);
     autoTable(doc, {
-      startY: y,
+      startY: y + 2,
       head: [['', 'Estimé', 'Réel', 'Écart']],
       body: [
-        ['Distance', `${t.estimatedDistanceKm ?? '-'} km`,
-          t.actualDistanceKm != null ? `${t.actualDistanceKm} km` : '-',
-          t.distanceDiffKm != null ? `${signed(Math.round(t.distanceDiffKm * 10) / 10)} km` : '-'],
-        ['Durée de conduite', `${t.estimatedDurationMinutes} min`,
+        ['Distance', estKm != null ? `${r1(estKm)} km` : NA,
+          t.actualDistanceKm != null ? `${r1(t.actualDistanceKm)} km` : '-',
+          estKm != null && t.distanceDiffKm != null ? `${signed(r1(t.distanceDiffKm))} km` : '-'],
+        ['Durée de conduite', estMin != null ? `${estMin} min` : NA,
           drv != null ? `${drv} min` : '-',
-          drv != null ? `${signed(drv - t.estimatedDurationMinutes)} min` : '-'],
-        ['Carburant', t.estimatedFuelLiters != null ? `${Math.round(t.estimatedFuelLiters * 10) / 10} L` : '-',
-          t.actualFuelLiters != null ? `${Math.round(t.actualFuelLiters * 10) / 10} L` : '-',
-          t.fuelDiffLiters != null ? `${signed(Math.round(t.fuelDiffLiters * 10) / 10)} L` : '-'],
+          estMin != null && drv != null ? `${signed(drv - estMin)} min` : '-'],
+        ['Carburant', estL != null ? `${r1(estL)} L` : NA,
+          t.actualFuelLiters != null ? `${r1(t.actualFuelLiters)} L` : '-',
+          estL != null && t.fuelDiffLiters != null ? `${signed(r1(t.fuelDiffLiters))} L` : '-'],
       ],
-      theme: 'grid', headStyles: { fillColor: [15, 23, 42] }, styles: { fontSize: 10 }
+      theme: 'grid',
+      headStyles: { fillColor: colors.primary, fontStyle: 'bold', fontSize: 9 },
+      styles: { fontSize: 9, cellPadding: 2.5 },
+      columnStyles: {
+        0: { fontStyle: 'bold', cellWidth: 45 },
+        1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }
+      },
+      // L'écart est la colonne qui porte l'information : on la met en couleur
+      // (rouge = dépassement, vert = économie) plutôt que de la noyer en noir.
+      didParseCell: (data: any) => {
+        if (data.section !== 'body' || data.column.index !== 3) return;
+        const v = String(data.cell.raw ?? '').trim();
+        // « - » et « non estimé » sont des placeholders d'absence de donnée.
+        // Sans ce garde-fou, '-'.startsWith('-') les peignait en vert gras,
+        // c'est-à-dire exactement comme une économie réelle : l'opérateur
+        // lisait un gain là où la mesure n'existe pas.
+        if (!/^[+-]\d/.test(v)) {
+          data.cell.styles.textColor = [148, 163, 184];
+          return;
+        }
+        data.cell.styles.textColor = v.startsWith('+') ? [190, 30, 45] : [5, 120, 85];
+        data.cell.styles.fontStyle = 'bold';
+      }
     });
-    y = (doc as any).lastAutoTable.finalY + 10;
+    y = (doc as any).lastAutoTable.finalY + 9;
 
     // ── Chronologie réelle ──
-    doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(15, 23, 42);
     doc.text('Chronologie réelle', 14, y);
     const chron: any[] = [];
     chron.push(['Tournée lancée', fmtT(tl.startTime), '']);
     chron.push(['Départ réel', fmtT(tl.departureTime),
       tl.departureDelayMinutes != null ? `${signed(tl.departureDelayMinutes)} min vs prévu (${fmtT(tl.scheduledStartTime)})` : '']);
-    (tl.stops || []).forEach((s: any, i: number) =>
-      chron.push([`Arrêt ${i + 1}`, `${fmtT(s.startTime)} → ${fmtT(s.endTime)}`, `${s.durationMinutes} min${s.address ? ' · ' + s.address : ''}`]));
-    chron.push(['Arrivée' + (tl.arrivalName ? ' · ' + tl.arrivalName : ''), fmtT(tl.arrivalTime),
+    (tl.stops || []).forEach((s: any, i: number) => {
+      // Adresse nettoyée AVANT le test : une adresse entièrement en arabe
+      // devient vide et ne doit pas laisser un « 12 min · » en suspens.
+      const addr = clean(s.address);
+      chron.push([`Arrêt ${i + 1}`, `${fmtT(s.startTime)} - ${fmtT(s.endTime)}`,
+        `${s.durationMinutes} min${addr ? ' · ' + addr : ''}`]);
+    });
+    chron.push(['Arrivée' + (arrival ? ' · ' + arrival : ''),
+      tl.arrivalTime ? fmtT(tl.arrivalTime) : 'en cours',
       tl.estimatedArrivalTime ? `estimée ${fmtT(tl.estimatedArrivalTime)}` : '']);
     autoTable(doc, {
-      startY: y + 2, head: [['Étape', 'Heure', 'Détail']], body: chron,
-      theme: 'striped', headStyles: { fillColor: [15, 23, 42] }, styles: { fontSize: 10 }
+      startY: y + 2,
+      head: [['Étape', 'Heure', 'Détail']],
+      body: chron.map(row => row.map((c: any) => clean(c))),
+      theme: 'striped',
+      headStyles: { fillColor: colors.primary, fontStyle: 'bold', fontSize: 9 },
+      styles: { fontSize: 9, cellPadding: 2.5, overflow: 'linebreak' },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 38 }, 1: { cellWidth: 30 }, 2: { cellWidth: 'auto' } }
     });
-    y = (doc as any).lastAutoTable.finalY + 10;
+    y = (doc as any).lastAutoTable.finalY + 9;
 
     // ── Analyse ──
-    doc.setFontSize(12); doc.setFont('helvetica', 'bold');
-    doc.text('Analyse', 14, y); y += 6;
-    doc.setFontSize(10); doc.setFont('helvetica', 'normal');
     const lines: string[] = [];
     if (tl.departureDelayMinutes > 2)
-      lines.push(`Le véhicule est parti ${tl.departureDelayMinutes} min en retard par rapport au moment indiqué (${fmtT(tl.scheduledStartTime)} → ${fmtT(tl.departureTime)}).`);
+      lines.push(`Le véhicule est parti ${tl.departureDelayMinutes} min en retard par rapport au moment indiqué (${fmtT(tl.scheduledStartTime)} -> ${fmtT(tl.departureTime)}).`);
     else if (tl.departureDelayMinutes < -2)
-      lines.push(`Le véhicule est parti ${-tl.departureDelayMinutes} min en avance (${fmtT(tl.scheduledStartTime)} → ${fmtT(tl.departureTime)}).`);
+      lines.push(`Le véhicule est parti ${-tl.departureDelayMinutes} min en avance (${fmtT(tl.scheduledStartTime)} -> ${fmtT(tl.departureTime)}).`);
     else
       lines.push(`Le véhicule est parti à l'heure prévue (${fmtT(tl.departureTime)}).`);
     if (tl.waitBeforeDepartureMinutes >= 1)
@@ -984,22 +1115,51 @@ export class ToursComponent implements OnInit, OnDestroy {
     if (tl.arrivalTime && tl.estimatedArrivalTime) {
       const diff = Math.round((new Date(tl.arrivalTime).getTime() - new Date(tl.estimatedArrivalTime).getTime()) / 60000);
       lines.push(diff > 2
-        ? `Arrivée avec ${diff} min de retard sur l'estimation (${fmtT(tl.estimatedArrivalTime)} → ${fmtT(tl.arrivalTime)}).`
+        ? `Arrivée avec ${diff} min de retard sur l'estimation (${fmtT(tl.estimatedArrivalTime)} -> ${fmtT(tl.arrivalTime)}).`
         : diff < -2
-          ? `Arrivée ${-diff} min en avance sur l'estimation (${fmtT(tl.estimatedArrivalTime)} → ${fmtT(tl.arrivalTime)}).`
+          ? `Arrivée ${-diff} min en avance sur l'estimation (${fmtT(tl.estimatedArrivalTime)} -> ${fmtT(tl.arrivalTime)}).`
           : `Arrivée conforme à l'estimation (${fmtT(tl.arrivalTime)}).`);
     }
-    lines.forEach(l => {
-      const wrapped = doc.splitTextToSize(`• ${l}`, pw - 28);
-      doc.text(wrapped, 14, y);
-      y += wrapped.length * 5 + 2;
+
+    // Hauteur RÉELLE du bloc : on pré-découpe les lignes pour la mesurer au
+    // lieu d'estimer 10 mm par phrase — une phrase longue occupe 3 lignes et
+    // le bloc débordait alors en bas de page.
+    doc.setFontSize(9.5); doc.setFont('helvetica', 'normal');
+    const wrappedLines = lines.map(l => doc.splitTextToSize(clean(l), pw - 34) as string[]);
+    const analysisHeight = 7 + wrappedLines.reduce((h, w) => h + w.length * 4.6 + 3, 0);
+    if (y + analysisHeight > doc.internal.pageSize.getHeight() - 22) {
+      doc.addPage();
+      y = 20;
+    }
+    doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(15, 23, 42);
+    doc.text('Analyse', 14, y);
+    y += 7;
+    doc.setFontSize(9.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(51, 65, 85);
+    wrappedLines.forEach(wrapped => {
+      // Puce dessinée plutôt qu'un caractère : aucun risque de glyphe manquant.
+      doc.setFillColor(...colors.accent);
+      doc.circle(16.5, y - 1.2, 0.9, 'F');
+      doc.text(wrapped, 21, y);
+      y += wrapped.length * 4.6 + 3;
     });
 
-    doc.setFontSize(8); doc.setTextColor(130);
-    doc.text(`Généré le ${new Date().toLocaleString('fr-FR')}`, 14, doc.internal.pageSize.getHeight() - 8);
+    this.pdfExport.drawBrandFooter(doc, `Rapport de tournée${tourName ? ' - ' + tourName : ''}`);
 
-    const day = t.scheduledStartTime ? new Date(t.scheduledStartTime).toISOString().slice(0, 10) : '';
-    doc.save(`tournee_${(t.name || t.id).toString().replace(/\s+/g, '_')}_${day}.pdf`);
+    // Nom de fichier : date LOCALE (toISOString aurait décalé le jour pour une
+    // tournée du matin en UTC+1) et accents translittérés plutôt que remplacés
+    // par des underscores — clean() est un filtre de glyphes PDF, pas un
+    // sanitizer de nom de fichier, et il rendait « Tournée Béja » en
+    // « Tourn_e_B_ja ». Repli sur l'id pour un nom entièrement non latin,
+    // sinon deux tournées différentes produisaient le même fichier.
+    const d = t.scheduledStartTime ? new Date(t.scheduledStartTime) : null;
+    const day = d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '';
+    const translit = String(t.name || '')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')   // é -> e, ç -> c
+      .replace(/[^\w.-]+/g, '_')
+      .replace(/_{2,}/g, '_')
+      .replace(/^_+|_+$/g, '');
+    const safeName = translit || `tournee-${t.id}`;
+    doc.save(`tournee_${safeName}_${day}.pdf`);
   }
 
   // ── Mini-lecteur replay intégré à la carte du détail ──

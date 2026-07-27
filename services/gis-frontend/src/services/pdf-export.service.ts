@@ -59,6 +59,95 @@ export class PdfExportService {
     this.preloadLogo();
   }
 
+  /** Précharge le logo Calypso. Public : tout rapport composant son propre
+   *  corps (ex. rapport de tournée) doit pouvoir l'attendre avant de dessiner. */
+  preloadBrandAssets(): Promise<string | null> {
+    return this.preloadLogo();
+  }
+
+  /**
+   * Dessine l'en-tête de marque commun à TOUS les PDF de l'application :
+   * bandeau bleu Calypso, logo dans son cartouche blanc, titre, et ligne de
+   * métadonnées. Retourne l'ordonnée à laquelle le corps peut commencer.
+   *
+   * Extrait de exportReportSync pour être réutilisable par les rapports qui
+   * ne sont pas de simples « stats + tableau » — sans cela chaque écran
+   * réinventait son propre en-tête et le résultat n'avait plus rien de commun.
+   */
+  drawBrandHeader(doc: jsPDF, opts: { title: string; meta?: string[]; rightNote?: string }): number {
+    const pageWidth = doc.internal.pageSize.getWidth();
+    doc.setFillColor(...this.primaryColor);
+    doc.rect(0, 0, pageWidth, 32, 'F');
+
+    const logo = this.getLogo();
+    const titleLeft = logo ? 38 : 14;
+    if (logo) {
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(8, 4, 26, 24, 2, 2, 'F');
+      try { doc.addImage(logo, 'PNG', 10, 5, 22, 22); } catch { /* logo optionnel */ }
+    }
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text(this.sanitizeText(opts.title), titleLeft, 14);
+
+    if (opts.meta?.length) {
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text(opts.meta.map(m => this.sanitizeText(m)).join('  |  '), titleLeft, 22);
+    }
+    if (opts.rightNote) {
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text(this.sanitizeText(opts.rightNote), pageWidth - 14, 14, { align: 'right' });
+    }
+
+    doc.setTextColor(0, 0, 0);
+    return 38;
+  }
+
+  /** Pied de page de marque commun (« Calypso · Belive » + date + pagination).
+   *  `bannerTitle` rappelle en plus un bandeau réduit en haut des pages 2+,
+   *  sans quoi les pages suivantes n'avaient aucune identité visuelle. */
+  drawBrandFooter(doc: jsPDF, bannerTitle?: string): void {
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const total = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= total; i++) {
+      doc.setPage(i);
+      if (bannerTitle && i > 1) {
+        doc.setFillColor(...this.primaryColor);
+        doc.rect(0, 0, pageWidth, 12, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.text(this.sanitizeText(bannerTitle), 14, 8);
+      }
+      doc.setDrawColor(226, 232, 240);
+      doc.line(14, pageHeight - 12, pageWidth - 14, pageHeight - 12);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(130, 130, 130);
+      doc.text(
+        `${this.footerBrand}  |  ${this.sanitizeText('Généré le')} ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+        14, pageHeight - 7
+      );
+      doc.text(`${i} / ${total}`, pageWidth - 14, pageHeight - 7, { align: 'right' });
+    }
+    doc.setTextColor(0, 0, 0);
+  }
+
+  /** Assainit une chaîne pour le jeu de caractères des polices standard jsPDF. Public : voir clean(). */
+  clean(text: string): string {
+    return this.sanitizeText(text);
+  }
+
+  /** Couleurs de la charte, pour les rapports qui composent leur propre corps. */
+  get brandColors() {
+    return { primary: this.primaryColor, accent: this.accentColor, light: this.lightBg };
+  }
+
   private preloadLogo(): Promise<string | null> {
     if (this.logoDataUrl) return Promise.resolve(this.logoDataUrl);
     if (this.logoLoading) return this.logoLoading;
@@ -99,11 +188,31 @@ export class PdfExportService {
           '\u2019': "'", '\u2018': "'", '\u201C': '"', '\u201D': '"',
           '\u2013': '-', '\u2014': '-', '\u2026': '...',
           '\u0152': 'OE', '\u0153': 'oe',
+          // Fl\u00E8ches et symboles : Helvetica/WinAnsi ne les conna\u00EEt pas et
+          // jsPDF corrompt alors TOUTE la ligne (glyphes \u00AB (cid:0) \u00BB illisibles
+          // dans le PDF final). Les traduire au lieu de les supprimer garde
+          // le sens : \u00AB 06:10 -> 06:13 \u00BB.
+          '\u2192': '->', '\u2190': '<-', '\u2194': '<->', '\u21D2': '=>',
+          '\u2022': '-',
+          '\u2264': '<=', '\u2265': '>=', '\u2260': '!=', '\u2248': '~',
+          '\u2212': '-', '\u2044': '/',
+          // Espaces typographiques : toLocaleString('fr-FR') ins\u00E8re une espace
+          // ins\u00E9cable \u00E9troite (U+202F) dans les dates et les nombres.
+          '\u202F': ' ', '\u2009': ' ', '\u200B': '',
+          // Sans ces trois-l\u00E0, un champ multiligne (note, description) voyait
+          // ses mots COLL\u00C9S : \u00AB ligne1\nligne2 \u00BB devenait \u00AB ligne1ligne2 \u00BB.
+          '\n': ' ', '\r': ' ', '\t': ' ',
         };
         return map[ch] || '';
       })
       .replace(/^\s+/, '')   // trim leading spaces left by stripped emojis
-      .replace(/\s{2,}/g, ' '); // collapse multiple spaces into one
+      .replace(/\s{2,}/g, ' ') // collapse multiple spaces into one
+      // Recoud la ponctuation laissée orpheline par les caractères retirés.
+      // Cas réel : une adresse Nominatim « RL 941 <arabe>, Tezdaine » donnait
+      // « RL 941 , Tezdaine » une fois l'arabe supprimé.
+      .replace(/\s+,/g, ',')
+      .replace(/,(\s*,)+/g, ',')
+      .replace(/[\s,]+$/, '');
   }
 
   async exportReport(config: PdfReportConfig): Promise<void> {
@@ -346,7 +455,10 @@ export class PdfExportService {
       doc.setTextColor(148, 163, 184);
       doc.setFont('helvetica', 'normal');
       const footerY = pageHeight - 7;
-      doc.text(`GIS Fleet Management - ${this.sanitizeText(config.title)}`, 10, footerY);
+      // Oubli du rebrand Calypso : ce pied de page (export groupé) affichait
+      // encore « GIS Fleet Management » alors que l'export simple était déjà
+      // passé à footerBrand — deux marques différentes selon le rapport.
+      doc.text(`${this.footerBrand} - ${this.sanitizeText(config.title)}`, 10, footerY);
       doc.text(`Page ${pageNum} / ${pageCount}`, pageWidth - 10, footerY, { align: 'right' });
     };
 
