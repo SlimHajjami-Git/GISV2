@@ -417,6 +417,24 @@ spec:
         app: gps-ingest
     spec:
       # hostNetwork: true would also work but is less isolated
+      initContainers:
+        # Au redémarrage du serveur, les pods démarrent avant que CoreDNS ne
+        # soit opérationnel. Le bootstrap Rust échoue alors sur la RÉSOLUTION
+        # de nom ("failed to lookup address information") et le conteneur meurt
+        # aussitôt : constaté 5 CrashLoopBackOff sur DZ après le boot du
+        # 26/07, pendant lesquels aucune trame GPS n'était ingérée.
+        # main.rs propage l'erreur (`?`) pour les TROIS dépendances — postgres,
+        # rabbitmq et redis — donc on attend les trois, comme le fait gis-api.
+        # `until nc -z` boucle sur l'échec DNS au lieu de crasher.
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z postgres 5432; do echo "Waiting for postgres..."; sleep 2; done']
+        - name: wait-for-rabbitmq
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z rabbitmq 5672; do echo "Waiting for rabbitmq..."; sleep 2; done']
+        - name: wait-for-redis
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z redis 6379; do echo "Waiting for redis..."; sleep 2; done']
       containers:
         - name: gps-ingest
           image: registry.local:5000/gisv2/gps-ingest:latest
