@@ -48,9 +48,10 @@ spec:
       storage: 10Gi
 
 ---
-# Sauvegarde automatique nocturne (02:30) — pg_dump -Fc + rotation
-# (7 quotidiennes + 4 hebdomadaires du lundi). Comble l'absence de backup
-# automatique signalée en prod. Utilise l'image postgis (contient pg_dump).
+# Sauvegarde automatique nocturne (02:30) — pg_dump -Fc + rotation.
+# Rétention : 3 quotidiennes + 2 hebdomadaires (lundi) + 3 pré-purge.
+# Les manual_ ne sont JAMAIS touchées (gérées depuis l'écran admin).
+# Utilise l'image postgis (contient pg_dump/pg_restore avec zstd).
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -79,24 +80,72 @@ spec:
               command: ["/bin/sh", "-c"]
               args:
                 - |
-                  set -e
+                  set -eu
                   STAMP=$(date +%Y%m%d-%H%M%S)
                   DOW=$(date +%u)   # 1 = lundi
-                  # PRÉ-ROTATION : on libère la place AVANT d'écrire la nouvelle
-                  # sauvegarde, en supprimant les PLUS ANCIENNES — jamais la plus
-                  # récente. Le disque ne dépasse ainsi jamais le plateau (~13 Go
-                  # sur TN), et si pg_dump échoue, les dernières nuits restent
-                  # intactes. Rétention finale : 5 quotidiennes + 2 hebdo +
-                  # 3 pré-purge. Les manual_ ne sont JAMAIS touchées (écran admin).
-                  ls -1t /backups/auto_*.dump 2>/dev/null | tail -n +5 | xargs -r rm -f
-                  if [ "$DOW" = "1" ]; then ls -1t /backups/weekly_*.dump 2>/dev/null | tail -n +2 | xargs -r rm -f; fi
-                  ls -1t /backups/presuppr_*.dump 2>/dev/null | tail -n +4 | xargs -r rm -f
+                  KEEP_DAILY=3
+                  KEEP_WEEKLY=2
+                  KEEP_PRESUPPR=3
+                  # Le temporaire commence par un point et finit par .part : il
+                  # n'est capturé par AUCUN glob de rotation (auto_*/weekly_*).
+                  TMP=/backups/.auto_${STAMP}.part
                   OUT=/backups/auto_${STAMP}.dump
-                  echo "pg_dump -> $OUT"
-                  pg_dump -Fc -h postgres -p 5432 -U postgres -d gis_v2 -f "$OUT"
-                  # Copie hebdomadaire le lundi
+
+                  # ---------------------------------------------------------
+                  # ORDRE CRITIQUE : dump -> validation -> publication -> rotation.
+                  # L'ancienne version faisait la rotation AVANT le dump. Quand le
+                  # disque se remplit, pg_dump échoue et laisse un fichier partiel ;
+                  # la nuit suivante `ls -1t` le classe en tête (le plus récent) et
+                  # le CONSERVE, en supprimant une sauvegarde VALIDE à la place. En
+                  # quelques nuits il ne restait que des fichiers corrompus, sans
+                  # aucune alerte. On ne supprime donc plus rien tant qu'une
+                  # nouvelle sauvegarde valide n'est pas publiée.
+                  # ---------------------------------------------------------
+
+                  # Nettoyage des tentatives interrompues des nuits précédentes.
+                  rm -f /backups/.auto_*.part 2>/dev/null || true
+
+                  # Place nécessaire = plus gros dump existant + 20 % de marge.
+                  REF_KB=$(du -k /backups/*.dump 2>/dev/null | sort -rn | head -1 | cut -f1 || true)
+                  [ -n "${REF_KB:-}" ] || REF_KB=3145728
+                  NEED_KB=$(( REF_KB + REF_KB / 5 ))
+                  FREE_KB=$(df -Pk /backups | awk 'NR==2{print $4}')
+
+                  if [ "$FREE_KB" -lt "$NEED_KB" ]; then
+                    echo "ATTENTION: espace insuffisant (libre ${FREE_KB}k < requis ${NEED_KB}k) — rotation anticipée"
+                    ls -1t /backups/auto_*.dump 2>/dev/null | tail -n +${KEEP_DAILY} | xargs -r rm -f
+                    FREE_KB=$(df -Pk /backups | awk 'NR==2{print $4}')
+                    if [ "$FREE_KB" -lt "$NEED_KB" ]; then
+                      echo "ECHEC: espace toujours insuffisant. Sauvegardes existantes CONSERVEES intactes."
+                      exit 1
+                    fi
+                  fi
+
+                  # 1) Dump. zstd:9 = ~16 % plus petit que gzip:6 et plus rapide.
+                  #    NE JAMAIS descendre à zstd:3 : mesuré +2,8 % sur ce schéma
+                  #    (gps_alerts s'y comprime 15 % moins bien qu'en gzip).
+                  echo "pg_dump -> $TMP"
+                  pg_dump -Fc --compress=zstd:9 -h postgres -p 5432 -U postgres -d gis_v2 -f "$TMP"
+
+                  # 2) Validation : un dump illisible ne doit jamais remplacer un
+                  #    dump sain. pg_restore -l lit la table des matières.
+                  echo "validation du dump (pg_restore -l)"
+                  pg_restore -l "$TMP" > /dev/null
+
+                  # 3) Publication atomique (même système de fichiers).
+                  mv "$TMP" "$OUT"
+                  echo "OK -> $OUT ($(du -h "$OUT" | cut -f1))"
+
+                  # 4) Copie hebdomadaire le lundi.
                   if [ "$DOW" = "1" ]; then cp "$OUT" "/backups/weekly_${STAMP}.dump"; fi
+
+                  # 5) Rotation — UNIQUEMENT après une sauvegarde valide publiée.
+                  ls -1t /backups/auto_*.dump 2>/dev/null | tail -n +$((KEEP_DAILY+1)) | xargs -r rm -f
+                  if [ "$DOW" = "1" ]; then ls -1t /backups/weekly_*.dump 2>/dev/null | tail -n +$((KEEP_WEEKLY+1)) | xargs -r rm -f; fi
+                  ls -1t /backups/presuppr_*.dump 2>/dev/null | tail -n +$((KEEP_PRESUPPR+1)) | xargs -r rm -f
+
                   echo "Backups présents :"; ls -lh /backups/*.dump 2>/dev/null || true
+                  df -h /backups | tail -1
               volumeMounts:
                 - name: db-backups
                   mountPath: /backups
