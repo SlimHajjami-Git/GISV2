@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Models;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -26,10 +27,20 @@ public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, Paginat
         // leaked every company's vehicles + drivers.
         var companyId = _tenantService.CompanyId ?? 0;
 
-        var vehicles = await _context.Vehicles
+        // Portée par utilisateur : un employé restreint à quelques véhicules ne
+        // doit voir que LEURS échéances. Le filtre société seul laissait fuiter
+        // tout le parc ici, alors que le monitoring et le playback filtraient
+        // bien — d'où la réclamation client.
+        var accessibleIds = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, cancellationToken);
+
+        var vehicleQuery = _context.Vehicles
             .AsNoTracking()
-            .Where(v => v.CompanyId == companyId)
-            .ToListAsync(cancellationToken);
+            .Where(v => v.CompanyId == companyId);
+
+        if (accessibleIds is not null)
+            vehicleQuery = vehicleQuery.Where(v => accessibleIds.Contains(v.Id));
+
+        var vehicles = await vehicleQuery.ToListAsync(cancellationToken);
 
         if (request.VehicleId.HasValue)
         {
@@ -48,10 +59,17 @@ public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, Paginat
         // Add driver permit expiries (from the standalone drivers table)
         if (!request.VehicleId.HasValue)
         {
-            var drivers = await _context.Drivers
+            var driverQuery = _context.Drivers
                 .AsNoTracking()
-                .Where(d => d.CompanyId == companyId && d.PermitExpiry != null)
-                .ToListAsync(cancellationToken);
+                .Where(d => d.CompanyId == companyId && d.PermitExpiry != null);
+
+            // Même portée pour les permis : un utilisateur restreint ne voit que
+            // les chauffeurs affectés aux véhicules qu'il a le droit de voir.
+            if (accessibleIds is not null)
+                driverQuery = driverQuery.Where(d => d.AssignedVehicleId != null
+                                                 && accessibleIds.Contains(d.AssignedVehicleId.Value));
+
+            var drivers = await driverQuery.ToListAsync(cancellationToken);
 
             foreach (var driver in drivers)
             {

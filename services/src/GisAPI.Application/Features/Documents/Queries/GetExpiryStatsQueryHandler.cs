@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -21,10 +22,19 @@ public class GetExpiryStatsQueryHandler : IRequestHandler<GetExpiryStatsQuery, E
         // Scope by caller's company even for system admins (see GetExpiriesQueryHandler).
         var companyId = _tenantService.CompanyId ?? 0;
 
-        var vehicles = await _context.Vehicles
+        // + portée par utilisateur : sans cela les compteurs (expirés, à venir)
+        // annonçaient des totaux calculés sur tout le parc à un employé qui
+        // n'avait accès qu'à deux véhicules.
+        var accessibleIds = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, cancellationToken);
+
+        var vehicleQuery = _context.Vehicles
             .AsNoTracking()
-            .Where(v => v.CompanyId == companyId)
-            .ToListAsync(cancellationToken);
+            .Where(v => v.CompanyId == companyId);
+
+        if (accessibleIds is not null)
+            vehicleQuery = vehicleQuery.Where(v => accessibleIds.Contains(v.Id));
+
+        var vehicles = await vehicleQuery.ToListAsync(cancellationToken);
 
         var today = DateTime.UtcNow.Date;
         var expiredCount = 0;
@@ -42,9 +52,15 @@ public class GetExpiryStatsQueryHandler : IRequestHandler<GetExpiryStatsQuery, E
         }
 
         // Include driver permit expiries in stats (from the standalone drivers table)
-        var driverPermitExpiries = await _context.Drivers
+        var driverQuery = _context.Drivers
             .AsNoTracking()
-            .Where(d => d.CompanyId == companyId && d.PermitExpiry != null)
+            .Where(d => d.CompanyId == companyId && d.PermitExpiry != null);
+
+        if (accessibleIds is not null)
+            driverQuery = driverQuery.Where(d => d.AssignedVehicleId != null
+                                              && accessibleIds.Contains(d.AssignedVehicleId.Value));
+
+        var driverPermitExpiries = await driverQuery
             .Select(d => d.PermitExpiry)
             .ToListAsync(cancellationToken);
 

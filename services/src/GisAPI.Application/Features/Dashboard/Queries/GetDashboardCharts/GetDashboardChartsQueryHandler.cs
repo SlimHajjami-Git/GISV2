@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -43,8 +44,15 @@ public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardCharts
         var periodStart = DateTime.SpecifyKind(new DateTime(year, month, 1), DateTimeKind.Utc);
         var periodEnd = DateTime.SpecifyKind(periodStart.AddMonths(1).AddSeconds(-1), DateTimeKind.Utc);
 
+        // Portée véhicules : restriction appliquée AVANT toute agrégation, car tous les
+        // graphiques dérivent de cette liste — sinon un employé restreint verrait les
+        // courbes et totaux du parc entier (fuite constatée).
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, cancellationToken);
+
         // Get vehicles
         var vehiclesQuery = _context.Vehicles.Where(v => v.CompanyId == companyId);
+        if (scope is not null)
+            vehiclesQuery = vehiclesQuery.Where(v => scope.Contains(v.Id));
         if (request.VehicleIds?.Any() == true)
             vehiclesQuery = vehiclesQuery.Where(v => request.VehicleIds.Contains(v.Id));
 

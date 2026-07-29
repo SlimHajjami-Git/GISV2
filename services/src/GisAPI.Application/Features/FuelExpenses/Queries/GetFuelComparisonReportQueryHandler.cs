@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -29,18 +30,33 @@ public class GetFuelComparisonReportQueryHandler
         var startDate = request.StartDate ?? DateTime.UtcNow.AddMonths(-1);
         var endDate = request.EndDate ?? DateTime.UtcNow;
 
+        // Portee vehicules : ce comparatif agrege litres et couts reels par vehicule. Le
+        // filtre est applique AVANT l'agregation, sinon les totaux resteraient ceux du parc
+        // entier. Fuite constatee : un employe restreint voyait les depenses de tout le parc.
+        // scope == null => admin societe, aucun filtre supplementaire.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
+
         // Company vehicles (all of them — a vehicle billed for fuel but with no GPS is itself
         // worth surfacing). Include the device so we can tell sensor vs estimation.
         var vq = _context.Vehicles.Where(v => v.CompanyId == companyId);
         if (request.VehicleId.HasValue)
             vq = vq.Where(v => v.Id == request.VehicleId.Value);
+        if (scope is not null)
+            vq = vq.Where(v => scope.Contains(v.Id));
         var vehicles = await vq.Include(v => v.GpsDevice).ToListAsync(ct);
 
         // REAL fuel billed in the period (card fills entered via /carburant).
-        var realEntries = await _context.FuelEntries
+        var feq = _context.FuelEntries
             .Where(fe => fe.CompanyId == companyId
                          && fe.InvoiceDate >= startDate
-                         && fe.InvoiceDate <= endDate)
+                         && fe.InvoiceDate <= endDate);
+
+        if (scope is not null)
+            // Les saisies non rattachees (VehicleId null) sont conservees : elles ne seront
+            // rapprochees, plus bas, que des vehicules autorises via la plaque.
+            feq = feq.Where(fe => fe.VehicleId == null || scope.Contains(fe.VehicleId.Value));
+
+        var realEntries = await feq
             .Select(fe => new { fe.VehicleId, fe.VehiclePlate, fe.Volume, fe.TotalAmount })
             .ToListAsync(ct);
 

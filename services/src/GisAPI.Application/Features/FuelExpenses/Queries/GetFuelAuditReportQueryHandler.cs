@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -29,10 +30,22 @@ public class GetFuelAuditReportQueryHandler
         var startDate = request.StartDate ?? DateTime.UtcNow.AddMonths(-1);
         var endDate = request.EndDate ?? DateTime.UtcNow;
 
-        var vehicle = await _context.Vehicles
-            .Include(v => v.GpsDevice)
-            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId, ct);
+        // Portee vehicules : l'audit detaille les pleins factures (montant, station) d'un
+        // vehicule precis. Fuite constatee : un employe restreint pouvait auditer
+        // n'importe quel vehicule du parc en changeant l'identifiant dans l'URL.
+        // scope == null => admin societe, aucun filtre supplementaire.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
 
+        var vehicleQuery = _context.Vehicles
+            .Include(v => v.GpsDevice)
+            .Where(v => v.Id == request.VehicleId && v.CompanyId == companyId);
+
+        if (scope is not null)
+            vehicleQuery = vehicleQuery.Where(v => scope.Contains(v.Id));
+
+        var vehicle = await vehicleQuery.FirstOrDefaultAsync(ct);
+
+        // Vehicule inconnu OU hors portee => rapport vide (aucune donnee carburant).
         if (vehicle == null)
         {
             return new FuelAuditReportDto(

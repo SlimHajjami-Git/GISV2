@@ -1,4 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,20 +9,33 @@ namespace GisAPI.Application.Features.VehicleMaintenance.Queries;
 public class GetMaintenanceAlertsQueryHandler : IRequestHandler<GetMaintenanceAlertsQuery, List<MaintenanceItemDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenant;
 
-    public GetMaintenanceAlertsQueryHandler(IGisDbContext context)
+    public GetMaintenanceAlertsQueryHandler(IGisDbContext context, ICurrentTenantService tenant)
     {
         _context = context;
+        _tenant = tenant;
     }
 
     public async Task<List<MaintenanceItemDto>> Handle(GetMaintenanceAlertsQuery request, CancellationToken cancellationToken)
     {
-        var schedules = await _context.VehicleMaintenanceSchedules
+        var companyId = _tenant.CompanyId ?? 0;
+
+        // Fuite constatée : le filtre société ne suffisait pas, un employé restreint
+        // à quelques véhicules voyait les alertes d'entretien de TOUT le parc.
+        // scope == null => administrateur de société : aucun filtre supplémentaire.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, cancellationToken);
+
+        var query = _context.VehicleMaintenanceSchedules
             .Include(s => s.Template)
             .Include(s => s.Vehicle)
                 .ThenInclude(v => v!.GpsDevice)
-            .Where(s => s.Status == "overdue" || s.Status == "due")
-            .ToListAsync(cancellationToken);
+            .Where(s => s.CompanyId == companyId && (s.Status == "overdue" || s.Status == "due"));
+
+        if (scope is not null)
+            query = query.Where(s => scope.Contains(s.VehicleId));
+
+        var schedules = await query.ToListAsync(cancellationToken);
 
         var today = DateTime.UtcNow.Date;
 
@@ -83,17 +98,30 @@ public class GetMaintenanceAlertsQueryHandler : IRequestHandler<GetMaintenanceAl
 public class GetMaintenanceStatsQueryHandler : IRequestHandler<GetMaintenanceStatsQuery, MaintenanceStatsDto>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenant;
 
-    public GetMaintenanceStatsQueryHandler(IGisDbContext context)
+    public GetMaintenanceStatsQueryHandler(IGisDbContext context, ICurrentTenantService tenant)
     {
         _context = context;
+        _tenant = tenant;
     }
 
     public async Task<MaintenanceStatsDto> Handle(GetMaintenanceStatsQuery request, CancellationToken cancellationToken)
     {
-        var schedules = await _context.VehicleMaintenanceSchedules
-            .Where(s => !s.IsPaused)
-            .ToListAsync(cancellationToken);
+        var companyId = _tenant.CompanyId ?? 0;
+
+        // Fuite constatée : ces compteurs étaient calculés sur tout le parc de la
+        // société, un employé restreint voyait donc des totaux qui ne le concernaient
+        // pas. La restriction est appliquée AVANT l'agrégation.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, cancellationToken);
+
+        var query = _context.VehicleMaintenanceSchedules
+            .Where(s => !s.IsPaused && s.CompanyId == companyId);
+
+        if (scope is not null)
+            query = query.Where(s => scope.Contains(s.VehicleId));
+
+        var schedules = await query.ToListAsync(cancellationToken);
 
         return new MaintenanceStatsDto(
             schedules.Count,
@@ -108,22 +136,36 @@ public class GetMaintenanceStatsQueryHandler : IRequestHandler<GetMaintenanceSta
 public class GetVehicleMaintenanceSchedulesQueryHandler : IRequestHandler<GetVehicleMaintenanceSchedulesQuery, List<VehicleScheduleDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenant;
     private readonly GisAPI.Application.Services.IMaintenanceSchedulerService _scheduler;
 
-    public GetVehicleMaintenanceSchedulesQueryHandler(IGisDbContext context, GisAPI.Application.Services.IMaintenanceSchedulerService scheduler)
+    public GetVehicleMaintenanceSchedulesQueryHandler(IGisDbContext context, ICurrentTenantService tenant, GisAPI.Application.Services.IMaintenanceSchedulerService scheduler)
     {
         _context = context;
+        _tenant = tenant;
         _scheduler = scheduler;
     }
 
     public async Task<List<VehicleScheduleDto>> Handle(GetVehicleMaintenanceSchedulesQuery request, CancellationToken cancellationToken)
     {
+        var companyId = _tenant.CompanyId ?? 0;
+
+        // Fuite constatée : l'identifiant de véhicule venait de l'URL sans contrôle,
+        // un employé restreint pouvait donc lire les échéances de n'importe quel
+        // véhicule du parc (scope == null => admin de société, il voit tout).
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, cancellationToken);
+
         var currentKm = await _scheduler.GetCurrentMileageAsync(request.VehicleId, cancellationToken);
         var today = DateTime.UtcNow.Date;
 
-        var schedules = await _context.VehicleMaintenanceSchedules
+        var query = _context.VehicleMaintenanceSchedules
             .Include(s => s.Template)
-            .Where(s => s.VehicleId == request.VehicleId && s.Template!.IsActive)
+            .Where(s => s.VehicleId == request.VehicleId && s.CompanyId == companyId && s.Template!.IsActive);
+
+        if (scope is not null)
+            query = query.Where(s => scope.Contains(s.VehicleId));
+
+        var schedules = await query
             .OrderBy(s => s.Status == "overdue" ? 0 : s.Status == "critical" ? 1 : s.Status == "due" ? 2 : 3)
             .ThenBy(s => s.NextDueKm)
             .ToListAsync(cancellationToken);
@@ -153,18 +195,31 @@ public class GetVehicleMaintenanceSchedulesQueryHandler : IRequestHandler<GetVeh
 public class GetMaintenanceNotificationsQueryHandler : IRequestHandler<GetMaintenanceNotificationsQuery, List<MaintenanceNotificationDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenant;
 
-    public GetMaintenanceNotificationsQueryHandler(IGisDbContext context)
+    public GetMaintenanceNotificationsQueryHandler(IGisDbContext context, ICurrentTenantService tenant)
     {
         _context = context;
+        _tenant = tenant;
     }
 
     public async Task<List<MaintenanceNotificationDto>> Handle(GetMaintenanceNotificationsQuery request, CancellationToken cancellationToken)
     {
+        // MaintenanceNotification n'a PAS de filtre global de société (contrairement
+        // aux échéances) : le filtre par companyId ci-dessous est donc obligatoire.
+        var companyId = _tenant.CompanyId ?? 0;
+
+        // Fuite constatée : un employé restreint recevait les notifications
+        // d'entretien de tout le parc (scope == null => admin de société, voit tout).
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, cancellationToken);
+
         var query = _context.MaintenanceNotifications
             .Include(n => n.Vehicle)
             .Include(n => n.Template)
-            .AsQueryable();
+            .Where(n => n.CompanyId == companyId);
+
+        if (scope is not null)
+            query = query.Where(n => scope.Contains(n.VehicleId));
 
         if (request.UnacknowledgedOnly)
         {
@@ -204,9 +259,14 @@ public class GetTemplatePartsQueryHandler : IRequestHandler<GetTemplatePartsQuer
 
     public async Task<List<TemplatePartDto>> Handle(GetTemplatePartsQuery request, CancellationToken cancellationToken)
     {
+        // Pas de portée « véhicules accessibles » ici : une pièce est rattachée à un
+        // MODÈLE d'entretien, pas à un véhicule. On garde en revanche le rattachement
+        // au modèle, lui-même filtré par société, pour qu'un identifiant de modèle
+        // deviné dans l'URL ne révèle pas les pièces d'une autre société.
         var parts = await _context.MaintenanceTemplateParts
             .Include(p => p.PreferredSupplier)
-            .Where(p => p.TemplateId == request.TemplateId)
+            .Where(p => p.TemplateId == request.TemplateId
+                     && _context.MaintenanceTemplates.Any(t => t.Id == p.TemplateId))
             .OrderBy(p => p.PartName)
             .ToListAsync(cancellationToken);
 
@@ -227,18 +287,31 @@ public class GetTemplatePartsQueryHandler : IRequestHandler<GetTemplatePartsQuer
 public class GetMaintenanceLogsQueryHandler : IRequestHandler<GetMaintenanceLogsQuery, List<MaintenanceLogDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenant;
 
-    public GetMaintenanceLogsQueryHandler(IGisDbContext context)
+    public GetMaintenanceLogsQueryHandler(IGisDbContext context, ICurrentTenantService tenant)
     {
         _context = context;
+        _tenant = tenant;
     }
 
     public async Task<List<MaintenanceLogDto>> Handle(GetMaintenanceLogsQuery request, CancellationToken cancellationToken)
     {
+        // MaintenanceLog n'a PAS de filtre global de société : le filtre companyId
+        // ci-dessous est obligatoire, l'identifiant de véhicule venant de l'URL.
+        var companyId = _tenant.CompanyId ?? 0;
+
+        // Fuite constatée : un employé restreint pouvait lire l'historique
+        // d'entretien de n'importe quel véhicule (scope == null => admin, voit tout).
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, cancellationToken);
+
         var query = _context.MaintenanceLogs
             .Include(l => l.Template)
             .Include(l => l.Supplier)
-            .Where(l => l.VehicleId == request.VehicleId);
+            .Where(l => l.VehicleId == request.VehicleId && l.CompanyId == companyId);
+
+        if (scope is not null)
+            query = query.Where(l => scope.Contains(l.VehicleId));
 
         if (request.TemplateId.HasValue)
             query = query.Where(l => l.TemplateId == request.TemplateId.Value);
@@ -265,20 +338,33 @@ public class GetMaintenanceLogsQueryHandler : IRequestHandler<GetMaintenanceLogs
 public class GetAllMaintenanceLogsQueryHandler : IRequestHandler<GetAllMaintenanceLogsQuery, List<MaintenanceLogReportDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenant;
 
-    public GetAllMaintenanceLogsQueryHandler(IGisDbContext context)
+    public GetAllMaintenanceLogsQueryHandler(IGisDbContext context, ICurrentTenantService tenant)
     {
         _context = context;
+        _tenant = tenant;
     }
 
     public async Task<List<MaintenanceLogReportDto>> Handle(GetAllMaintenanceLogsQuery request, CancellationToken ct)
     {
+        // MaintenanceLog n'a PAS de filtre global de société : filtre companyId obligatoire.
+        var companyId = _tenant.CompanyId ?? 0;
+
+        // Fuite constatée : ce rapport listait l'entretien de TOUT le parc alors qu'un
+        // employé restreint ne doit voir que ses véhicules affectés
+        // (scope == null => administrateur de société : aucun filtre supplémentaire).
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, ct);
+
         var query = _context.MaintenanceLogs
             .Include(l => l.Vehicle)
             .Include(l => l.Template)
             .Include(l => l.Supplier)
             .AsNoTracking()
-            .AsQueryable();
+            .Where(l => l.CompanyId == companyId);
+
+        if (scope is not null)
+            query = query.Where(l => scope.Contains(l.VehicleId));
 
         if (request.VehicleId.HasValue)
             query = query.Where(l => l.VehicleId == request.VehicleId.Value);
@@ -319,7 +405,12 @@ public class GetAllMaintenanceLogsQueryHandler : IRequestHandler<GetAllMaintenan
             .Include(s => s.Vehicle)
             .Include(s => s.Template)
             .AsNoTracking()
-            .Where(s => !s.IsPaused);
+            .Where(s => !s.IsPaused && s.CompanyId == companyId);
+
+        // Même portée que les logs terminés : sinon les entretiens PLANIFIÉS
+        // rouvraient la fuite sur tout le parc.
+        if (scope is not null)
+            schedQuery = schedQuery.Where(s => scope.Contains(s.VehicleId));
 
         if (request.VehicleId.HasValue)
             schedQuery = schedQuery.Where(s => s.VehicleId == request.VehicleId.Value);
@@ -353,19 +444,33 @@ public class GetAllMaintenanceLogsQueryHandler : IRequestHandler<GetAllMaintenan
 public class GetCurrentVehicleMileageQueryHandler : IRequestHandler<GetCurrentVehicleMileageQuery, VehicleMileageDto>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenant;
     private readonly GisAPI.Application.Services.IMaintenanceSchedulerService _scheduler;
 
-    public GetCurrentVehicleMileageQueryHandler(IGisDbContext context, GisAPI.Application.Services.IMaintenanceSchedulerService scheduler)
+    public GetCurrentVehicleMileageQueryHandler(IGisDbContext context, ICurrentTenantService tenant, GisAPI.Application.Services.IMaintenanceSchedulerService scheduler)
     {
         _context = context;
+        _tenant = tenant;
         _scheduler = scheduler;
     }
 
     public async Task<VehicleMileageDto> Handle(GetCurrentVehicleMileageQuery request, CancellationToken cancellationToken)
     {
-        var vehicle = await _context.Vehicles
+        var companyId = _tenant.CompanyId ?? 0;
+
+        // Fuite constatée : le kilométrage était renvoyé pour n'importe quel
+        // identifiant de véhicule passé dans l'URL, y compris ceux non affectés à
+        // l'utilisateur (scope == null => administrateur de société : voit tout).
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, cancellationToken);
+
+        var vehicleQuery = _context.Vehicles
             .Include(v => v.GpsDevice)
-            .FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken);
+            .Where(v => v.Id == request.VehicleId && v.CompanyId == companyId);
+
+        if (scope is not null)
+            vehicleQuery = vehicleQuery.Where(v => scope.Contains(v.Id));
+
+        var vehicle = await vehicleQuery.FirstOrDefaultAsync(cancellationToken);
 
         if (vehicle == null)
             return new VehicleMileageDto(request.VehicleId, 0, "unknown", null);

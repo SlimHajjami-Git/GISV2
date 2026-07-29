@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Models;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -29,9 +30,18 @@ public class GetVehicleMaintenanceQueryHandler : IRequestHandler<GetVehicleMaint
         // maintenance schedules in /maintenance because of that bypass.
         var companyId = _tenantService.CompanyId ?? 0;
 
+        // Le filtre société ne suffit pas : un employé restreint à quelques
+        // véhicules voyait ici les échéances d'entretien de TOUT le parc.
+        // On restreint donc aussi aux véhicules qui lui sont affectés
+        // (scope == null => administrateur de société, il voit tout le parc).
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, cancellationToken);
+
         var vehiclesQuery = _context.Vehicles
             .Where(v => v.CompanyId == companyId)
             .AsQueryable();
+
+        if (scope is not null)
+            vehiclesQuery = vehiclesQuery.Where(v => scope.Contains(v.Id));
 
         if (request.VehicleId.HasValue)
             vehiclesQuery = vehiclesQuery.Where(v => v.Id == request.VehicleId.Value);

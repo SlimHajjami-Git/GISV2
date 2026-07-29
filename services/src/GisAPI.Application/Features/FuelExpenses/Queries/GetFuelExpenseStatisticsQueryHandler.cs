@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -29,9 +30,18 @@ public class GetFuelExpenseStatisticsQueryHandler : IRequestHandler<GetFuelExpen
         var startDate = request.StartDate ?? DateTime.UtcNow.AddMonths(-1);
         var endDate = request.EndDate ?? DateTime.UtcNow;
 
+        // Portee vehicules : ces statistiques agregent le cout carburant du parc. Le filtre
+        // est applique AVANT l'agregation, sinon les totaux/moyennes resteraient ceux du parc
+        // entier. Fuite constatee : un employe restreint voyait les depenses de tout le parc.
+        // scope == null => admin societe, aucun filtre supplementaire.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, cancellationToken);
+
         // Get vehicles with GPS devices
         var vehiclesQuery = _context.Vehicles
             .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue);
+
+        if (scope is not null)
+            vehiclesQuery = vehiclesQuery.Where(v => scope.Contains(v.Id));
 
         if (request.VehicleId.HasValue)
             vehiclesQuery = vehiclesQuery.Where(v => v.Id == request.VehicleId.Value);
@@ -198,10 +208,21 @@ public class GetVehicleFuelExpenseQueryHandler : IRequestHandler<GetVehicleFuelE
         var startDate = request.StartDate ?? DateTime.UtcNow.AddMonths(-1);
         var endDate = request.EndDate ?? DateTime.UtcNow;
 
-        var vehicle = await _context.Vehicles
-            .Include(v => v.GpsDevice)
-            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId, cancellationToken);
+        // Portee vehicules : sans ce filtre, un employe restreint obtenait la depense
+        // carburant de n'importe quel vehicule en changeant l'identifiant dans l'URL.
+        // scope == null => admin societe, aucun filtre supplementaire.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, cancellationToken);
 
+        var vehicleQuery = _context.Vehicles
+            .Include(v => v.GpsDevice)
+            .Where(v => v.Id == request.VehicleId && v.CompanyId == companyId);
+
+        if (scope is not null)
+            vehicleQuery = vehicleQuery.Where(v => scope.Contains(v.Id));
+
+        var vehicle = await vehicleQuery.FirstOrDefaultAsync(cancellationToken);
+
+        // Vehicule inconnu OU hors portee => aucune donnee.
         if (vehicle == null || !vehicle.GpsDeviceId.HasValue)
             return null;
 

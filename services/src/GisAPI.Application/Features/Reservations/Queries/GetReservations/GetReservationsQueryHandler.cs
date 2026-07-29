@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -22,12 +23,19 @@ public class GetReservationsQueryHandler : IRequestHandler<GetReservationsQuery,
         var companyId = _tenantService.CompanyId
             ?? throw new DomainException("Société non identifiée");
 
+        // Portée véhicules : le filtre société ne suffisait pas — un employé restreint à
+        // quelques véhicules voyait les réservations de tout le parc. scope == null => admin société.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
+
         var query = _context.Reservations
             .Include(r => r.Vehicle)
             .Include(r => r.RequestedByUser)
             .Include(r => r.AssignedDriver)
             .Where(r => r.CompanyId == companyId)
             .AsQueryable();
+
+        if (scope is not null)
+            query = query.Where(r => scope.Contains(r.VehicleId));
 
         if (request.VehicleId.HasValue)
             query = query.Where(r => r.VehicleId == request.VehicleId.Value);

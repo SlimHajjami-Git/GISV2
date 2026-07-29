@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -38,12 +39,24 @@ public class GetRealFuelConsumptionQueryHandler
         var start = request.StartDate ?? DateTime.UtcNow.AddMonths(-12);
         var end = request.EndDate ?? DateTime.UtcNow;
 
-        var entries = await _context.FuelEntries
+        // Portee vehicules : ce rapport agrege litres, couts et L/100km par vehicule puis
+        // pour le parc. Le filtre est applique AVANT l'agregation, sinon les totaux
+        // resteraient ceux du parc entier. Fuite constatee : un employe restreint a ses
+        // vehicules voyait la consommation reelle de tout le parc.
+        // scope == null => admin societe, aucun filtre supplementaire.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, ct);
+
+        var entriesQuery = _context.FuelEntries
             .AsNoTracking()
             .Where(f => f.CompanyId == companyId
                         && f.VehicleId != null
                         && f.InvoiceDate >= start && f.InvoiceDate <= end
-                        && (request.VehicleId == null || f.VehicleId == request.VehicleId))
+                        && (request.VehicleId == null || f.VehicleId == request.VehicleId));
+
+        if (scope is not null)
+            entriesQuery = entriesQuery.Where(f => scope.Contains(f.VehicleId!.Value));
+
+        var entries = await entriesQuery
             .Select(f => new { VehicleId = f.VehicleId!.Value, f.Volume, f.TotalAmount, f.OdometerKm, f.InvoiceDate })
             .ToListAsync(ct);
 

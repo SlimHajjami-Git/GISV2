@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -28,11 +29,21 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
         // 1. Fetch vehicles scoped to current company
         // Explicit CompanyId filter (defense in depth; system admins also get scoped to their
         // active company for this report instead of seeing all fleets)
+        // Restriction aux véhicules affectés à l'appelant : sans elle, un
+        // employé restreint obtenait les coûts (carburant, entretien,
+        // réparations) de tout le parc. Le filtre s'applique ICI, sur la liste
+        // de véhicules dont dérivent tous les totaux et regroupements plus bas,
+        // donc avant toute agrégation. scope == null => admin société, vue complète.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
+
         var vehiclesQuery = _context.Vehicles.AsNoTracking()
             .Where(v => v.CompanyId == companyId)
             .Include(v => v.Department)
             .Include(v => v.AssignedDriver)
             .AsQueryable();
+
+        if (scope is not null)
+            vehiclesQuery = vehiclesQuery.Where(v => scope.Contains(v.Id));
 
         if (request.DepartmentId.HasValue)
             vehiclesQuery = vehiclesQuery.Where(v => v.DepartmentId == request.DepartmentId.Value);

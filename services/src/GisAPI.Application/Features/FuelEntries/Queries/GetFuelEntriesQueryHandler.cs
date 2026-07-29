@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Models;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -21,11 +22,34 @@ public class GetFuelEntriesQueryHandler : IRequestHandler<GetFuelEntriesQuery, P
     {
         var companyId = _tenantService.CompanyId ?? throw new UnauthorizedAccessException("Company ID not found");
 
+        // Portee vehicules : chaque plein expose le montant, la station, le numero de
+        // facture et le NOM DU CHAUFFEUR. Fuite constatee : un employe restreint a ses
+        // vehicules voyait les pleins de tout le parc. Seul l'admin societe voit tout.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, cancellationToken);
+
         var query = _context.FuelEntries
             .Include(e => e.FuelType)
             .Include(e => e.Driver)
             .Where(e => e.CompanyId == companyId)
             .AsQueryable();
+
+        if (scope is not null)
+        {
+            // Les saisies non rattachees a un vehicule (VehicleId null) ne restent visibles
+            // que si leur plaque correspond a un vehicule autorise — meme regle de
+            // rattachement que les rapports carburant (audit / comparatif).
+            var scopedPlates = await _context.Vehicles
+                .AsNoTracking()
+                .Where(v => v.CompanyId == companyId
+                            && scope.Contains(v.Id)
+                            && v.Plate != null && v.Plate != "")
+                .Select(v => v.Plate!)
+                .ToListAsync(cancellationToken);
+
+            query = query.Where(e =>
+                (e.VehicleId != null && scope.Contains(e.VehicleId.Value))
+                || (e.VehicleId == null && scopedPlates.Contains(e.VehiclePlate)));
+        }
 
         if (request.FuelTypeId.HasValue)
             query = query.Where(e => e.FuelTypeId == request.FuelTypeId.Value);

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -31,11 +32,22 @@ public class GetAccidentReportQueryHandler
         // report by guessing its id.
         var companyId = _tenantService.CompanyId ?? 0;
 
-        var ev = await _context.AccidentEvents
+        // Fuite constatée : le filtre société ne suffisait pas — un employé restreint à
+        // quelques véhicules pouvait ouvrir le rapport (position GPS, plaque, expertise)
+        // de n'importe quel accident du parc en devinant son identifiant. On limite donc
+        // aux véhicules qui lui sont affectés ; un administrateur (scope == null) voit tout.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
+
+        var query = _context.AccidentEvents
             .AsNoTracking()
             .Include(e => e.Documents)
             .Include(e => e.ThirdParties)
-            .FirstOrDefaultAsync(e => e.Id == request.AccidentId && e.CompanyId == companyId, ct);
+            .Where(e => e.Id == request.AccidentId && e.CompanyId == companyId);
+
+        if (scope is not null)
+            query = query.Where(e => e.VehicleId != null && scope.Contains(e.VehicleId.Value));
+
+        var ev = await query.FirstOrDefaultAsync(ct);
 
         if (ev == null) return null;
 

@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -22,13 +23,24 @@ public class GetAvailableVehiclesQueryHandler : IRequestHandler<GetAvailableVehi
         var companyId = _tenantService.CompanyId
             ?? throw new DomainException("Société non identifiée");
 
-        var activeReservationVehicleIds = await _context.Reservations
-            .Where(r => r.CompanyId == companyId && r.Status == "in_progress")
+        // Portée véhicules : le filtre société ne suffisait pas — un employé restreint à
+        // quelques véhicules se voyait proposer tout le parc à la réservation. null => admin société.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
+
+        var reservationsQuery = _context.Reservations
+            .Where(r => r.CompanyId == companyId && r.Status == "in_progress");
+        if (scope is not null)
+            reservationsQuery = reservationsQuery.Where(r => scope.Contains(r.VehicleId));
+
+        var activeReservationVehicleIds = await reservationsQuery
             .Select(r => r.VehicleId)
             .ToListAsync(ct);
 
-        var vehicles = await _context.Vehicles
-            .Where(v => v.CompanyId == companyId)
+        var vehiclesQuery = _context.Vehicles.Where(v => v.CompanyId == companyId);
+        if (scope is not null)
+            vehiclesQuery = vehiclesQuery.Where(v => scope.Contains(v.Id));
+
+        var vehicles = await vehiclesQuery
             .OrderBy(v => v.Name)
             .ToListAsync(ct);
 

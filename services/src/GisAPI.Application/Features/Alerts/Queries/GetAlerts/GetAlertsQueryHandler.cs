@@ -1,4 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,11 +9,22 @@ namespace GisAPI.Application.Features.Alerts.Queries.GetAlerts;
 public class GetAlertsQueryHandler : IRequestHandler<GetAlertsQuery, List<AlertDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenant;
 
-    public GetAlertsQueryHandler(IGisDbContext context) => _context = context;
+    public GetAlertsQueryHandler(IGisDbContext context, ICurrentTenantService tenant)
+    {
+        _context = context;
+        _tenant = tenant;
+    }
 
     public async Task<List<AlertDto>> Handle(GetAlertsQuery request, CancellationToken ct)
     {
+        // Fuite constatée : le filtre ne portait que sur la société, si bien qu'un
+        // employé restreint à quelques véhicules recevait les alertes de TOUT le parc
+        // (position GPS, nom et plaque inclus). On restreint donc aux véhicules qui
+        // lui sont réellement affectés ; un administrateur (scope == null) voit tout.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, ct);
+
         var vehicleIds = await _context.Vehicles
             .Where(v => v.CompanyId == request.CompanyId)
             .Select(v => v.Id)
@@ -21,6 +34,9 @@ public class GetAlertsQueryHandler : IRequestHandler<GetAlertsQuery, List<AlertD
             .Where(a => a.VehicleId.HasValue && vehicleIds.Contains(a.VehicleId.Value))
             .Include(a => a.Vehicle)
             .AsQueryable();
+
+        if (scope is not null)
+            query = query.Where(a => a.VehicleId.HasValue && scope.Contains(a.VehicleId.Value));
 
         if (request.Resolved.HasValue)
             query = query.Where(a => a.Resolved == request.Resolved.Value);

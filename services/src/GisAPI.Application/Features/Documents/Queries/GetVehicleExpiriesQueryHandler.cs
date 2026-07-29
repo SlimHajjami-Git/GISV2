@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,14 @@ public class GetVehicleExpiriesQueryHandler : IRequestHandler<GetVehicleExpiries
     {
         // Scope by caller's company even for system admins.
         var companyId = _tenantService.CompanyId ?? 0;
+
+        // Accès direct par identifiant : c'est le cas le plus exploitable de la
+        // famille (il suffit d'incrémenter l'id dans l'URL). Un utilisateur
+        // restreint doit se voir refuser un véhicule hors de sa portée, même
+        // s'il appartient à sa société.
+        var accessibleIds = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, cancellationToken);
+        if (accessibleIds is not null && !accessibleIds.Contains(request.VehicleId))
+            return new List<VehicleExpiryDto>();
 
         var vehicle = await _context.Vehicles
             .AsNoTracking()
