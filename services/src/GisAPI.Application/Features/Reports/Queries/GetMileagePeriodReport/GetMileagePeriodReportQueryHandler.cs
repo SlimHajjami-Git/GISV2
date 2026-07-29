@@ -1,6 +1,7 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Services;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
@@ -10,20 +11,28 @@ namespace GisAPI.Application.Features.Reports.Queries.GetMileagePeriodReport;
 public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeriodReportQuery, MileagePeriodReportDto>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
     private static readonly CultureInfo FrenchCulture = new("fr-FR");
     private static readonly TimeSpan LocalOffset = TimeSpan.FromHours(1); // Tunisia = UTC+1
 
-    public GetMileagePeriodReportQueryHandler(IGisDbContext context)
+    public GetMileagePeriodReportQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<MileagePeriodReportDto> Handle(GetMileagePeriodReportQuery request, CancellationToken ct)
     {
+        // Écran opérationnel : on borne explicitement à la société de l'appelant.
+        // Le filtre global de multi-tenance est contourné pour les administrateurs
+        // système, sans ce Where un admin pourrait sortir le rapport kilométrique
+        // d'un véhicule appartenant à une AUTRE société (fuite inter-sociétés).
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var vehicle = await _context.Vehicles
             .AsNoTracking()
             .Include(v => v.AssignedDriver)
-            .FirstOrDefaultAsync(v => v.Id == request.VehicleId, ct);
+            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId, ct);
 
         if (vehicle == null)
         {

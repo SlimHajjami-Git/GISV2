@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
@@ -9,11 +10,13 @@ namespace GisAPI.Application.Features.Reports.Queries.GetMonthlyFleetReport;
 public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleetReportQuery, MonthlyFleetReportDto>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
     private static readonly CultureInfo FrenchCulture = new("fr-FR");
 
-    public GetMonthlyFleetReportQueryHandler(IGisDbContext context)
+    public GetMonthlyFleetReportQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<MonthlyFleetReportDto> Handle(GetMonthlyFleetReportQuery request, CancellationToken ct)
@@ -93,9 +96,16 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
 
     private async Task<List<Vehicle>> GetVehiclesAsync(GetMonthlyFleetReportQuery request, CancellationToken ct)
     {
+        // Écran opérationnel : sans ce filtre, le rapport mensuel de flotte agrégeait
+        // les véhicules de TOUTES les sociétés pour un administrateur système (le
+        // filtre global de multi-tenance est contourné pour ces comptes). Tout le
+        // reste du rapport (positions, chauffeurs, coûts) dérive de cette liste,
+        // donc la borner ici suffit à cloisonner l'ensemble.
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var query = _context.Vehicles.AsNoTracking()
             .Include(v => v.AssignedDriver)
-            .AsQueryable();
+            .Where(v => v.CompanyId == companyId);
 
         if (request.VehicleIds?.Length > 0)
             query = query.Where(v => request.VehicleIds.Contains(v.Id));

@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
@@ -9,19 +10,27 @@ namespace GisAPI.Application.Features.Reports.Queries.GetMileageReport;
 public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuery, MileageReportDto>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
     private static readonly TimeSpan LocalOffset = TimeSpan.FromHours(1); // Tunisia = UTC+1
 
-    public GetMileageReportQueryHandler(IGisDbContext context)
+    public GetMileageReportQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<MileageReportDto> Handle(GetMileageReportQuery request, CancellationToken ct)
     {
+        // Écran opérationnel : on borne explicitement à la société de l'appelant.
+        // Le filtre global de multi-tenance est contourné pour les administrateurs
+        // système, sans ce Where un admin pourrait sortir le rapport kilométrique
+        // d'un véhicule appartenant à une AUTRE société (fuite inter-sociétés).
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var vehicle = await _context.Vehicles
             .AsNoTracking()
             .Include(v => v.AssignedDriver)
-            .FirstOrDefaultAsync(v => v.Id == request.VehicleId, ct);
+            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId, ct);
 
         if (vehicle == null)
         {
@@ -366,18 +375,25 @@ public class GetMileageReportsQueryHandler : IRequestHandler<GetMileageReportsQu
 {
     private readonly IGisDbContext _context;
     private readonly IMediator _mediator;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetMileageReportsQueryHandler(IGisDbContext context, IMediator mediator)
+    public GetMileageReportsQueryHandler(IGisDbContext context, IMediator mediator, ICurrentTenantService tenantService)
     {
         _context = context;
         _mediator = mediator;
+        _tenantService = tenantService;
     }
 
     public async Task<List<MileageReportDto>> Handle(GetMileageReportsQuery request, CancellationToken ct)
     {
+        // Écran opérationnel : sans ce filtre, le rapport multi-véhicules listait
+        // tout le parc de TOUTES les sociétés pour un administrateur système
+        // (le filtre global de multi-tenance est contourné pour ces comptes).
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var vehiclesQuery = _context.Vehicles
             .AsNoTracking()
-            .Where(v => v.GpsDeviceId.HasValue);
+            .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue);
 
         if (request.VehicleIds != null && request.VehicleIds.Length > 0)
             vehiclesQuery = vehiclesQuery.Where(v => request.VehicleIds.Contains(v.Id));

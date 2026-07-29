@@ -10,19 +10,36 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
 {
     private readonly IGisDbContext _context;
     private readonly IGeocodingService _geocodingService;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetDailyActivityReportQueryHandler(IGisDbContext context, IGeocodingService geocodingService)
+    public GetDailyActivityReportQueryHandler(
+        IGisDbContext context,
+        IGeocodingService geocodingService,
+        ICurrentTenantService tenantService)
     {
         _context = context;
         _geocodingService = geocodingService;
+        _tenantService = tenantService;
     }
 
     public async Task<DailyActivityReportDto> Handle(GetDailyActivityReportQuery request, CancellationToken ct)
     {
-        var vehicle = await _context.Vehicles
+        // Écran opérationnel : le filtre global de multi-tenance est contourné pour les
+        // administrateurs système, donc sans borne explicite ce rapport ouvrirait le
+        // véhicule d'une autre société (fuite inter-sociétés).
+        // Hors contexte HTTP (job DailyFleetReportService) CompanyId est null : on ne
+        // restreint pas, ce job boucle déjà société par société.
+        var companyId = _tenantService.CompanyId;
+
+        IQueryable<Vehicle> vehicleQuery = _context.Vehicles
             .AsNoTracking()
             .Include(v => v.AssignedDriver)
-            .FirstOrDefaultAsync(v => v.Id == request.VehicleId, ct);
+            .Where(v => v.Id == request.VehicleId);
+
+        if (companyId.HasValue)
+            vehicleQuery = vehicleQuery.Where(v => v.CompanyId == companyId.Value);
+
+        var vehicle = await vehicleQuery.FirstOrDefaultAsync(ct);
 
         if (vehicle == null)
         {
@@ -566,18 +583,33 @@ public class GetDailyActivityReportsQueryHandler : IRequestHandler<GetDailyActiv
 {
     private readonly IGisDbContext _context;
     private readonly IMediator _mediator;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetDailyActivityReportsQueryHandler(IGisDbContext context, IMediator mediator)
+    public GetDailyActivityReportsQueryHandler(
+        IGisDbContext context,
+        IMediator mediator,
+        ICurrentTenantService tenantService)
     {
         _context = context;
         _mediator = mediator;
+        _tenantService = tenantService;
     }
 
     public async Task<List<DailyActivityReportDto>> Handle(GetDailyActivityReportsQuery request, CancellationToken ct)
     {
+        // Écran opérationnel : le filtre global de multi-tenance est contourné pour les
+        // administrateurs système, sans quoi cette liste remonterait la flotte de TOUTES
+        // les sociétés (fuite inter-sociétés).
+        // Hors contexte HTTP (job DailyFleetReportService) CompanyId est null : on ne
+        // restreint pas, ce job passe déjà les véhicules d'une seule société.
+        var companyId = _tenantService.CompanyId;
+
         var vehiclesQuery = _context.Vehicles
             .AsNoTracking()
             .Where(v => v.GpsDeviceId.HasValue);
+
+        if (companyId.HasValue)
+            vehiclesQuery = vehiclesQuery.Where(v => v.CompanyId == companyId.Value);
 
         if (request.VehicleIds != null && request.VehicleIds.Length > 0)
             vehiclesQuery = vehiclesQuery.Where(v => request.VehicleIds.Contains(v.Id));

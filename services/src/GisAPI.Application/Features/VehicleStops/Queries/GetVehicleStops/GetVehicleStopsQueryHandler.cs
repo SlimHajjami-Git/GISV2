@@ -56,12 +56,17 @@ public class GetVehicleStopsQueryHandler : IRequestHandler<GetVehicleStopsQuery,
     
     private async Task<List<VehicleStopDto>> GetStopsFromTable(GetVehicleStopsQuery request, CancellationToken ct)
     {
+        // Écran opérationnel : filtre société explicite car le filtre global
+        // multi-tenance est contourné pour les administrateurs système (sans ça
+        // les arrêts de toutes les sociétés remontaient ici).
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var query = _context.VehicleStops
             .AsNoTracking()
             .Include(s => s.Vehicle)
             .Include(s => s.Driver)
             .Include(s => s.Geofence)
-            .AsQueryable();
+            .Where(s => s.CompanyId == companyId);
 
         if (request.VehicleId.HasValue)
         {
@@ -120,10 +125,15 @@ public class GetVehicleStopsQueryHandler : IRequestHandler<GetVehicleStopsQuery,
         if (!request.VehicleId.HasValue) return new List<VehicleStopDto>();
         
         // Get vehicle to find device ID
+        // Filtre société explicite : le filtre global est contourné pour les
+        // administrateurs système, un vehicleId d'une autre société aurait sinon
+        // donné accès à ses positions GPS.
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var vehicle = await _context.Vehicles
             .AsNoTracking()
-            .FirstOrDefaultAsync(v => v.Id == request.VehicleId.Value, ct);
-            
+            .FirstOrDefaultAsync(v => v.Id == request.VehicleId.Value && v.CompanyId == companyId, ct);
+
         if (vehicle?.GpsDeviceId == null) return new List<VehicleStopDto>();
         
         // Query GPS positions where ignition is off

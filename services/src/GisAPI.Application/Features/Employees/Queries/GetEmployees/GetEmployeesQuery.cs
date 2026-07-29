@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -30,18 +31,25 @@ public record EmployeeDto(
 public class GetEmployeesQueryHandler : IRequestHandler<GetEmployeesQuery, List<EmployeeDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetEmployeesQueryHandler(IGisDbContext context)
+    public GetEmployeesQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<List<EmployeeDto>> Handle(GetEmployeesQuery request, CancellationToken ct)
     {
+        // Écran opérationnel : on borne explicitement à la société de l'appelant.
+        // Le filtre global multi-tenance est contourné pour les administrateurs
+        // système, sans ça la liste des employés fuitait toutes les sociétés.
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var query = _context.Users
             .Include(u => u.Role)
             .Include(u => u.UserVehicles)
-            .Where(u => u.EmployeeRole != null);
+            .Where(u => u.CompanyId == companyId && u.EmployeeRole != null);
 
         if (!string.IsNullOrWhiteSpace(request.Role))
             query = query.Where(u => u.EmployeeRole == request.Role);
@@ -59,7 +67,7 @@ public class GetEmployeesQueryHandler : IRequestHandler<GetEmployeesQuery, List<
             .ToList();
 
         var vehicles = await _context.Vehicles
-            .Where(v => vehicleIds.Contains(v.Id))
+            .Where(v => v.CompanyId == companyId && vehicleIds.Contains(v.Id))
             .Select(v => new { v.Id, v.Name, v.Plate, v.AssignedDriverId })
             .ToListAsync(ct);
 

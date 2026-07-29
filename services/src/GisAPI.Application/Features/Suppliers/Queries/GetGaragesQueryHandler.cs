@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Models;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,17 +9,24 @@ namespace GisAPI.Application.Features.Suppliers.Queries;
 public class GetGaragesQueryHandler : IRequestHandler<GetGaragesQuery, PaginatedList<SupplierDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetGaragesQueryHandler(IGisDbContext context)
+    public GetGaragesQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<PaginatedList<SupplierDto>> Handle(GetGaragesQuery request, CancellationToken cancellationToken)
     {
+        // Écran OPÉRATIONNEL : on borne toujours à la société de l'appelant. Le filtre
+        // global de multi-tenance (GisDbContext) est contourné pour les administrateurs
+        // système — sans ce filtre explicite, la liste « Garages » affichait les garages
+        // de TOUTES les sociétés (fuite inter-sociétés).
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var query = _context.Suppliers
-            .Where(s => s.Type == "garage")
-            .AsQueryable();
+            .Where(s => s.CompanyId == companyId && s.Type == "garage");
 
         // Apply filters
         if (!string.IsNullOrWhiteSpace(request.SearchTerm))

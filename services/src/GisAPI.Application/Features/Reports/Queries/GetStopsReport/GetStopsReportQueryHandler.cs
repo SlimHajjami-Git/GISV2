@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,17 +8,24 @@ namespace GisAPI.Application.Features.Reports.Queries.GetStopsReport;
 public class GetStopsReportQueryHandler : IRequestHandler<GetStopsReportQuery, StopsReportDto>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetStopsReportQueryHandler(IGisDbContext context)
+    public GetStopsReportQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<StopsReportDto> Handle(GetStopsReportQuery request, CancellationToken ct)
     {
+        // Écran opérationnel : le filtre global de multi-tenance est contourné pour les
+        // administrateurs système, donc sans borne explicite ce rapport ouvrirait le
+        // véhicule d'une autre société (fuite inter-sociétés).
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var vehicle = await _context.Vehicles
             .AsNoTracking()
-            .FirstOrDefaultAsync(v => v.Id == request.VehicleId, ct);
+            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId, ct);
 
         if (vehicle == null)
         {
@@ -299,18 +307,28 @@ public class GetStopsReportAllVehiclesQueryHandler : IRequestHandler<GetStopsRep
 {
     private readonly IGisDbContext _context;
     private readonly IMediator _mediator;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetStopsReportAllVehiclesQueryHandler(IGisDbContext context, IMediator mediator)
+    public GetStopsReportAllVehiclesQueryHandler(
+        IGisDbContext context,
+        IMediator mediator,
+        ICurrentTenantService tenantService)
     {
         _context = context;
         _mediator = mediator;
+        _tenantService = tenantService;
     }
 
     public async Task<List<StopsReportDto>> Handle(GetStopsReportAllVehiclesQuery request, CancellationToken ct)
     {
+        // Écran opérationnel : le filtre global de multi-tenance est contourné pour les
+        // administrateurs système, sans quoi cette liste remonterait la flotte de TOUTES
+        // les sociétés (fuite inter-sociétés).
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var vehiclesQuery = _context.Vehicles
             .AsNoTracking()
-            .Where(v => v.GpsDeviceId.HasValue);
+            .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue);
 
         if (request.VehicleIds != null && request.VehicleIds.Length > 0)
             vehiclesQuery = vehiclesQuery.Where(v => request.VehicleIds.Contains(v.Id));

@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Models;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,16 +9,24 @@ namespace GisAPI.Application.Features.Suppliers.Queries;
 public class GetSuppliersQueryHandler : IRequestHandler<GetSuppliersQuery, PaginatedList<SupplierDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetSuppliersQueryHandler(IGisDbContext context)
+    public GetSuppliersQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<PaginatedList<SupplierDto>> Handle(GetSuppliersQuery request, CancellationToken cancellationToken)
     {
+        // Écran OPÉRATIONNEL : on borne toujours à la société de l'appelant. Le filtre
+        // global de multi-tenance (GisDbContext) est contourné pour les administrateurs
+        // système — sans ce filtre explicite, la liste « Fournisseurs » affichait les
+        // fournisseurs de TOUTES les sociétés (fuite inter-sociétés).
+        var companyId = _tenantService.CompanyId ?? 0;
+
         var query = _context.Suppliers
-            .AsQueryable();
+            .Where(s => s.CompanyId == companyId);
 
         // Apply filters
         if (!string.IsNullOrWhiteSpace(request.SearchTerm))
