@@ -62,15 +62,13 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
         var startDate = DateTime.SpecifyKind(request.StartDate.Date, DateTimeKind.Utc);
         var endDate = DateTime.SpecifyKind(request.EndDate.Date.AddDays(1), DateTimeKind.Utc);
 
-        var positions = await _context.GpsPositions
-            .AsNoTracking()
-            .Where(p => p.DeviceId == vehicle.GpsDeviceId &&
-                        p.RecordedAt >= startDate &&
-                        p.RecordedAt < endDate)
-            .OrderBy(p => p.RecordedAt)
-            .ToListAsync(ct);
+        // Agrégation côté Postgres : voir MileageAggregation pour le détail.
+        // Auparavant toutes les positions étaient rapatriées en mémoire, ce qui
+        // provoquait une OutOfMemoryException sur les gros parcs.
+        var deviceIds = new[] { vehicle.GpsDeviceId!.Value };
+        var daily = await MileageAggregation.DailyAsync(_context, deviceIds, startDate, endDate, ct);
 
-        if (!positions.Any())
+        if (daily.Count == 0)
         {
             return new MileageReportDto
             {
@@ -85,28 +83,28 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
             };
         }
 
-        // Get previous period for comparison
+        // Période de comparaison : une seule valeur agrégée suffit.
         var periodDays = (request.EndDate - request.StartDate).Days + 1;
         var previousStart = DateTime.SpecifyKind(request.StartDate.AddDays(-periodDays), DateTimeKind.Utc);
         var previousEnd = DateTime.SpecifyKind(request.StartDate.Date, DateTimeKind.Utc);
 
-        var previousPositions = await _context.GpsPositions
-            .AsNoTracking()
-            .Where(p => p.DeviceId == vehicle.GpsDeviceId &&
-                        p.RecordedAt >= previousStart &&
-                        p.RecordedAt < previousEnd)
-            .OrderBy(p => p.RecordedAt)
-            .ToListAsync(ct);
+        var previousTotals = await MileageAggregation.TotalsAsync(_context, deviceIds, previousStart, previousEnd, ct);
+        var previousDistance = previousTotals.FirstOrDefault()?.DistanceKm;
 
-        return ProcessMileageReport(vehicle, request.StartDate, request.EndDate, positions, previousPositions);
+        return BuildReport(vehicle, request.StartDate, request.EndDate, daily, previousDistance);
     }
 
-    private MileageReportDto ProcessMileageReport(
+    /// <summary>
+    /// Assemble le rapport à partir des lignes journalières agrégées en SQL.
+    /// Remplace l'ancien ProcessMileageReport, qui recalculait tout en mémoire
+    /// à partir de la liste brute des positions.
+    /// </summary>
+    internal static MileageReportDto BuildReport(
         Vehicle vehicle,
         DateTime startDate,
         DateTime endDate,
-        List<GpsPosition> positions,
-        List<GpsPosition> previousPositions)
+        List<MileageAggregation.DailyRow> daily,
+        double? previousDistanceKm)
     {
         var report = new MileageReportDto
         {
@@ -120,98 +118,79 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
             HasData = true
         };
 
-        // Odometer readings
-        var firstWithOdometer = positions.FirstOrDefault(p => p.OdometerKm.HasValue && p.OdometerKm > 0 && p.OdometerKm != 1048574);
-        var lastWithOdometer = positions.LastOrDefault(p => p.OdometerKm.HasValue && p.OdometerKm > 0 && p.OdometerKm != 1048574);
-        
-        if (firstWithOdometer != null && lastWithOdometer != null)
+        var ordered = daily.OrderBy(d => d.LocalDay).ToList();
+
+        // Compteur sur la période : premier et dernier relevé valides trouvés.
+        var firstOdo = ordered.FirstOrDefault(d => d.StartOdometerKm.HasValue)?.StartOdometerKm;
+        var lastOdo = ordered.LastOrDefault(d => d.EndOdometerKm.HasValue)?.EndOdometerKm;
+        if (firstOdo.HasValue && lastOdo.HasValue)
         {
-            report.StartOdometerKm = Math.Round((double)firstWithOdometer.OdometerKm!.Value, 2);
-            report.EndOdometerKm = Math.Round((double)lastWithOdometer.OdometerKm!.Value, 2);
+            report.StartOdometerKm = Math.Round((double)firstOdo.Value, 2);
+            report.EndOdometerKm = Math.Round((double)lastOdo.Value, 2);
             report.OdometerDifferenceKm = Math.Round(report.EndOdometerKm.Value - report.StartOdometerKm.Value, 2);
         }
 
-        // Calculate total distance from GPS positions
-        report.TotalDistanceKm = CalculateTotalDistance(positions);
-
-        // Group positions by day for daily breakdown (adjusted to local time: UTC+1 for Tunisia)
-        var dailyGroups = positions
-            .GroupBy(p => (p.RecordedAt + LocalOffset).Date)
-            .OrderBy(g => g.Key)
-            .ToList();
-
-        var dailyBreakdown = new List<DailyMileageDto>();
-        foreach (var dayGroup in dailyGroups)
+        var dailyBreakdown = ordered.Select(d =>
         {
-            var dayPositions = dayGroup.OrderBy(p => p.RecordedAt).ToList();
-            var dayDistance = CalculateTotalDistance(dayPositions);
-            var tripCount = CountTrips(dayPositions);
-            var drivingMinutes = CalculateDrivingMinutes(dayPositions);
-            var speeds = dayPositions.Where(p => p.SpeedKph > 0).Select(p => p.SpeedKph ?? 0).ToList();
-
-            var firstOdo = dayPositions.FirstOrDefault(p => p.OdometerKm > 0);
-            var lastOdo = dayPositions.LastOrDefault(p => p.OdometerKm > 0);
-
-            // Avg speed = distance / driving time (more accurate than average of GPS readings)
-            var avgSpeedKph = drivingMinutes > 0 ? dayDistance / (drivingMinutes / 60.0) : 0;
-
-            dailyBreakdown.Add(new DailyMileageDto
+            var drivingMinutes = d.DrivingSeconds / 60;
+            // Vitesse moyenne = distance / temps de conduite (plus juste qu'une
+            // moyenne des relevés GPS, qui surpondère les points à l'arrêt).
+            var avgSpeedKph = drivingMinutes > 0 ? d.DistanceKm / (drivingMinutes / 60.0) : 0;
+            return new DailyMileageDto
             {
-                Date = dayGroup.Key,
-                DayOfWeek = dayGroup.Key.ToString("dddd", new CultureInfo("fr-FR")),
-                DistanceKm = Math.Round(dayDistance, 2),
-                StartOdometerKm = firstOdo?.OdometerKm,
-                EndOdometerKm = lastOdo?.OdometerKm,
-                TripCount = tripCount,
+                Date = d.LocalDay,
+                DayOfWeek = d.LocalDay.ToString("dddd", new CultureInfo("fr-FR")),
+                DistanceKm = Math.Round(d.DistanceKm, 2),
+                // La colonne Postgres est numeric : Npgsql la mappe en decimal,
+                // le DTO expose des double.
+                StartOdometerKm = (double?)d.StartOdometerKm,
+                EndOdometerKm = (double?)d.EndOdometerKm,
+                TripCount = d.TripCount,
                 DrivingMinutes = drivingMinutes,
-                MaxSpeedKph = speeds.Any() ? Math.Round(speeds.Max(), 1) : 0,
+                MaxSpeedKph = Math.Round(d.MaxSpeedKph, 1),
                 AvgSpeedKph = Math.Round(avgSpeedKph, 1)
-            });
-        }
+            };
+        }).ToList();
+
         report.DailyBreakdown = dailyBreakdown;
+        report.TotalDistanceKm = dailyBreakdown.Sum(d => d.DistanceKm);
 
         // Weekly breakdown
-        var weeklyGroups = dailyBreakdown
+        report.WeeklyBreakdown = dailyBreakdown
             .GroupBy(d => CultureInfo.InvariantCulture.Calendar.GetWeekOfYear(d.Date, CalendarWeekRule.FirstDay, DayOfWeek.Monday))
             .OrderBy(g => g.First().Date)
-            .ToList();
-
-        report.WeeklyBreakdown = weeklyGroups.Select(wg => new WeeklyMileageDto
-        {
-            WeekNumber = wg.Key,
-            WeekStart = wg.Min(d => d.Date),
-            WeekEnd = wg.Max(d => d.Date),
-            DistanceKm = Math.Round(wg.Sum(d => d.DistanceKm), 2),
-            AverageDailyKm = Math.Round(wg.Average(d => d.DistanceKm), 2),
-            TripCount = wg.Sum(d => d.TripCount),
-            DrivingMinutes = wg.Sum(d => d.DrivingMinutes)
-        }).ToList();
+            .Select(wg => new WeeklyMileageDto
+            {
+                WeekNumber = wg.Key,
+                WeekStart = wg.Min(d => d.Date),
+                WeekEnd = wg.Max(d => d.Date),
+                DistanceKm = Math.Round(wg.Sum(d => d.DistanceKm), 2),
+                AverageDailyKm = Math.Round(wg.Average(d => d.DistanceKm), 2),
+                TripCount = wg.Sum(d => d.TripCount),
+                DrivingMinutes = wg.Sum(d => d.DrivingMinutes)
+            }).ToList();
 
         // Monthly breakdown
-        var monthlyGroups = dailyBreakdown
+        report.MonthlyBreakdown = dailyBreakdown
             .GroupBy(d => new { d.Date.Year, d.Date.Month })
             .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
-            .ToList();
-
-        report.MonthlyBreakdown = monthlyGroups.Select(mg => new MonthlyMileageDto
-        {
-            Year = mg.Key.Year,
-            Month = mg.Key.Month,
-            MonthName = new DateTime(mg.Key.Year, mg.Key.Month, 1).ToString("MMMM yyyy", new CultureInfo("fr-FR")),
-            DistanceKm = Math.Round(mg.Sum(d => d.DistanceKm), 2),
-            AverageDailyKm = Math.Round(mg.Average(d => d.DistanceKm), 2),
-            TripCount = mg.Sum(d => d.TripCount),
-            DaysWithActivity = mg.Count(d => d.DistanceKm > 0)
-        }).ToList();
+            .Select(mg => new MonthlyMileageDto
+            {
+                Year = mg.Key.Year,
+                Month = mg.Key.Month,
+                MonthName = new DateTime(mg.Key.Year, mg.Key.Month, 1).ToString("MMMM yyyy", new CultureInfo("fr-FR")),
+                DistanceKm = Math.Round(mg.Sum(d => d.DistanceKm), 2),
+                AverageDailyKm = Math.Round(mg.Average(d => d.DistanceKm), 2),
+                TripCount = mg.Sum(d => d.TripCount),
+                DaysWithActivity = mg.Count(d => d.DistanceKm > 0)
+            }).ToList();
 
         // Period comparison
-        if (previousPositions.Any())
+        if (previousDistanceKm.HasValue && previousDistanceKm.Value > 0)
         {
-            var previousDistance = CalculateTotalDistance(previousPositions);
+            var previousDistance = previousDistanceKm.Value;
             var difference = report.TotalDistanceKm - previousDistance;
-            var percentChange = previousDistance > 0 
-                ? ((report.TotalDistanceKm - previousDistance) / previousDistance) * 100 
-                : 0;
+            var percentChange = ((report.TotalDistanceKm - previousDistance) / previousDistance) * 100;
 
             report.PreviousPeriodComparison = new PeriodComparisonDto
             {
@@ -228,12 +207,11 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
         var daysWithActivity = dailyBreakdown.Count(d => d.DistanceKm > 0);
         var totalDrivingMinutes = dailyBreakdown.Sum(d => d.DrivingMinutes);
         var maxDaily = dailyBreakdown.Any() ? dailyBreakdown.Max(d => d.DistanceKm) : 0;
-        var minDaily = dailyBreakdown.Where(d => d.DistanceKm > 0).DefaultIfEmpty().Min(d => d?.DistanceKm ?? 0);
+        var minDaily = dailyBreakdown.Where(d => d.DistanceKm > 0).Select(d => d.DistanceKm).DefaultIfEmpty().Min();
         var maxDailyDate = dailyBreakdown.FirstOrDefault(d => d.DistanceKm == maxDaily)?.Date;
         var minDailyDate = dailyBreakdown.Where(d => d.DistanceKm > 0).FirstOrDefault(d => d.DistanceKm == minDaily)?.Date;
 
-        // Avg speed = distance / driving time (consistent with mileage period report)
-        var summaryMaxSpeed = positions.Where(p => p.SpeedKph > 0).Select(p => p.SpeedKph ?? 0).DefaultIfEmpty().Max();
+        var summaryMaxSpeed = dailyBreakdown.Select(d => d.MaxSpeedKph).DefaultIfEmpty().Max();
         var summaryAvgSpeed = totalDrivingMinutes > 0 ? report.TotalDistanceKm / (totalDrivingMinutes / 60.0) : 0;
 
         report.Summary = new MileageSummaryDto
@@ -258,103 +236,6 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
 
         return report;
     }
-
-    private static double CalculateTotalDistance(List<GpsPosition> positions)
-    {
-        const double MaxSegmentKm = 10.0;     // Max distance between 2 consecutive points
-        const double MaxImpliedKph = 250.0;    // Max implied speed (distance/time)
-        const double MinSegmentKm = 0.005;     // Ignore micro-movements (< 5m)
-
-        double totalDistance = 0;
-        for (int i = 1; i < positions.Count; i++)
-        {
-            var prev = positions[i - 1];
-            var curr = positions[i];
-            
-            // Only count distance if there's movement
-            if ((curr.SpeedKph ?? 0) > 0 || (prev.SpeedKph ?? 0) > 0)
-            {
-                var segmentKm = HaversineDistance(
-                    prev.Latitude, prev.Longitude,
-                    curr.Latitude, curr.Longitude);
-
-                // Filter aberrant segments (GPS jumps, corrupted historical data)
-                if (segmentKm < MinSegmentKm || segmentKm > MaxSegmentKm)
-                    continue;
-
-                // Check implied speed: distance / time must be realistic
-                var elapsedHours = (curr.RecordedAt - prev.RecordedAt).TotalHours;
-                if (elapsedHours > 0)
-                {
-                    var impliedKph = segmentKm / elapsedHours;
-                    if (impliedKph > MaxImpliedKph)
-                        continue;
-                }
-
-                totalDistance += segmentKm;
-            }
-        }
-        return totalDistance;
-    }
-
-    private static int CountTrips(List<GpsPosition> positions)
-    {
-        int tripCount = 0;
-        bool wasMoving = false;
-
-        foreach (var pos in positions)
-        {
-            // A trip requires actual movement, not just ignition on
-            var isMoving = (pos.SpeedKph ?? 0) > 3.0;
-            
-            if (isMoving && !wasMoving)
-            {
-                tripCount++;
-            }
-            wasMoving = isMoving;
-        }
-
-        return tripCount;
-    }
-
-    private static int CalculateDrivingMinutes(List<GpsPosition> positions)
-    {
-        if (positions.Count < 2) return 0;
-
-        int totalSeconds = 0;
-        for (int i = 1; i < positions.Count; i++)
-        {
-            var prev = positions[i - 1];
-            var curr = positions[i];
-
-            // Count time as driving ONLY when vehicle is actually moving (speed > 2 km/h)
-            // Ignition on without movement = idling, not driving
-            if ((prev.SpeedKph ?? 0) > 2)
-            {
-                var seconds = (int)(curr.RecordedAt - prev.RecordedAt).TotalSeconds;
-                if (seconds > 0 && seconds < 600) // Max 10 minutes gap to consider continuous
-                {
-                    totalSeconds += seconds;
-                }
-            }
-        }
-
-        return totalSeconds / 60;
-    }
-
-    private static double HaversineDistance(double lat1, double lon1, double lat2, double lon2)
-    {
-        const double R = 6371; // Earth's radius in km
-        var dLat = ToRadians(lat2 - lat1);
-        var dLon = ToRadians(lon2 - lon1);
-        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
-                Math.Cos(ToRadians(lat1)) * Math.Cos(ToRadians(lat2)) *
-                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
-        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-        return R * c;
-    }
-
-    private static double ToRadians(double degrees) => degrees * Math.PI / 180;
 
     private static string FormatDuration(int seconds)
     {
@@ -393,21 +274,59 @@ public class GetMileageReportsQueryHandler : IRequestHandler<GetMileageReportsQu
 
         var vehiclesQuery = _context.Vehicles
             .AsNoTracking()
+            .Include(v => v.AssignedDriver)
             .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue);
 
         if (request.VehicleIds != null && request.VehicleIds.Length > 0)
             vehiclesQuery = vehiclesQuery.Where(v => request.VehicleIds.Contains(v.Id));
 
-        var vehicleIds = await vehiclesQuery.Select(v => v.Id).ToListAsync(ct);
-        var reports = new List<MileageReportDto>();
+        var vehicles = await vehiclesQuery.ToListAsync(ct);
+        if (vehicles.Count == 0) return new List<MileageReportDto>();
 
-        foreach (var vehicleId in vehicleIds)
+        // Auparavant : une requête MediatR PAR véhicule, chacune rapatriant
+        // toutes ses positions (période courante + période de comparaison).
+        // Sur un parc de 14 véhicules cela suffisait à saturer les 512 Mi du pod.
+        // Désormais : DEUX requêtes agrégées pour l'ensemble du parc.
+        var deviceIds = vehicles.Select(v => v.GpsDeviceId!.Value).Distinct().ToArray();
+
+        var startDate = DateTime.SpecifyKind(request.StartDate.Date, DateTimeKind.Utc);
+        var endDate = DateTime.SpecifyKind(request.EndDate.Date.AddDays(1), DateTimeKind.Utc);
+        var periodDays = (request.EndDate - request.StartDate).Days + 1;
+        var previousStart = DateTime.SpecifyKind(request.StartDate.AddDays(-periodDays), DateTimeKind.Utc);
+        var previousEnd = DateTime.SpecifyKind(request.StartDate.Date, DateTimeKind.Utc);
+
+        var daily = await MileageAggregation.DailyAsync(_context, deviceIds, startDate, endDate, ct);
+        var previousTotals = await MileageAggregation.TotalsAsync(_context, deviceIds, previousStart, previousEnd, ct);
+
+        var dailyByDevice = daily.GroupBy(d => d.DeviceId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var previousByDevice = previousTotals.ToDictionary(t => t.DeviceId, t => t.DistanceKm);
+
+        var reports = new List<MileageReportDto>();
+        foreach (var vehicle in vehicles)
         {
-            var report = await _mediator.Send(new GetMileageReportQuery(
-                vehicleId,
-                request.StartDate,
-                request.EndDate), ct);
-            reports.Add(report);
+            var deviceId = vehicle.GpsDeviceId!.Value;
+            if (!dailyByDevice.TryGetValue(deviceId, out var rows) || rows.Count == 0)
+            {
+                // Aucune trame sur la période : même forme de réponse qu'avant.
+                reports.Add(new MileageReportDto
+                {
+                    VehicleId = vehicle.Id,
+                    VehicleName = vehicle.Name,
+                    Plate = vehicle.Plate,
+                    DriverName = vehicle.AssignedDriver?.FullName,
+                    VehicleType = vehicle.Type,
+                    StartDate = request.StartDate,
+                    EndDate = request.EndDate,
+                    HasData = false
+                });
+                continue;
+            }
+
+            previousByDevice.TryGetValue(deviceId, out var prevKm);
+            reports.Add(GetMileageReportQueryHandler.BuildReport(
+                vehicle, request.StartDate, request.EndDate, rows,
+                prevKm > 0 ? prevKm : null));
         }
 
         return reports;
