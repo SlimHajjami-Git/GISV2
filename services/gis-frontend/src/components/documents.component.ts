@@ -5,7 +5,7 @@ import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { DocumentRenewalPopupComponent, VehicleDocument as RenewableVehicleDocument } from './shared/document-renewal-popup.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
-import { ApiService } from '../services/api.service';
+import { ApiService, RenewalHistoryDto } from '../services/api.service';
 import { trigger, transition, style, animate } from '@angular/animations';
 
 export interface VehicleDocument {
@@ -216,6 +216,65 @@ export interface VehicleDocument {
         (closed)="closeRenewalPopup()"
         (saved)="onRenewalSaved($event)"
       />
+
+      <!-- Historique des renouvellements -->
+      <div class="hist-overlay" *ngIf="isHistoryOpen" (click)="closeHistory()">
+        <div class="hist-modal" (click)="$event.stopPropagation()">
+          <div class="hist-head">
+            <div>
+              <h2>Historique des renouvellements</h2>
+              <p *ngIf="historyDoc">
+                {{ getTypeIcon(historyDoc.type) }} {{ getTypeLabel(historyDoc.type) }}
+                · {{ historyDoc.vehicleName }}<span *ngIf="historyDoc.vehiclePlate"> ({{ historyDoc.vehiclePlate }})</span>
+              </p>
+            </div>
+            <button class="hist-close" (click)="closeHistory()" title="Fermer">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="hist-body">
+            <div class="hist-state" *ngIf="historyLoading">Chargement…</div>
+
+            <div class="hist-state hist-error" *ngIf="historyError && !historyLoading">
+              {{ historyError }}
+            </div>
+
+            <div class="hist-state" *ngIf="!historyLoading && !historyError && historyRows.length === 0">
+              Aucun renouvellement enregistré pour ce document.
+            </div>
+
+            <table class="hist-table" *ngIf="!historyLoading && !historyError && historyRows.length > 0">
+              <thead>
+                <tr>
+                  <th>Payé le</th>
+                  <th>Nouvelle échéance</th>
+                  <th>N° document</th>
+                  <th>Prestataire</th>
+                  <th class="num">Montant</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let h of historyRows">
+                  <td>{{ h.paymentDate | date:'dd/MM/yyyy' }}</td>
+                  <td>{{ h.expiryDate ? (h.expiryDate | date:'dd/MM/yyyy') : '—' }}</td>
+                  <td>{{ h.documentNumber || '—' }}</td>
+                  <td>{{ h.provider || '—' }}</td>
+                  <td class="num">{{ h.amount | appCurrency:0 }}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="4">Total sur {{ historyRows.length }} renouvellement(s)</td>
+                  <td class="num">{{ historyTotal | appCurrency:0 }}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
     </app-layout>
   `,
   styles: [`
@@ -599,6 +658,124 @@ export interface VehicleDocument {
       font-size: 14px;
     }
 
+    /* ===== HISTORIQUE DES RENOUVELLEMENTS ===== */
+    .hist-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+
+    .hist-modal {
+      background: #fff;
+      border-radius: 14px;
+      width: 100%;
+      max-width: 760px;
+      max-height: 82vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+    }
+
+    .hist-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 20px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .hist-head h2 {
+      margin: 0 0 4px;
+      font-size: 17px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .hist-head p {
+      margin: 0;
+      font-size: 13px;
+      color: #64748b;
+    }
+
+    .hist-close {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #475569;
+      flex-shrink: 0;
+    }
+
+    .hist-close:hover { background: #e2e8f0; }
+
+    .hist-body {
+      padding: 16px 20px 20px;
+      overflow-y: auto;
+    }
+
+    .hist-state {
+      padding: 28px 0;
+      text-align: center;
+      color: #64748b;
+      font-size: 14px;
+    }
+
+    .hist-error { color: #be1e2d; }
+
+    .hist-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .hist-table thead th {
+      text-align: left;
+      padding: 9px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #64748b;
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+      white-space: nowrap;
+    }
+
+    .hist-table tbody td {
+      padding: 10px;
+      font-size: 13px;
+      color: #1e293b;
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    .hist-table tbody tr:hover { background: #f8fafc; }
+
+    .hist-table tfoot td {
+      padding: 11px 10px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #0f172a;
+      border-top: 2px solid #e2e8f0;
+      background: #f8fafc;
+    }
+
+    .hist-table .num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
     /* ===== RESPONSIVE ===== */
     @media (max-width: 1024px) {
       .filter-bar {
@@ -944,9 +1121,55 @@ export class DocumentsComponent implements OnInit, OnDestroy {
     }
   }
 
+  // ── Historique des renouvellements ──
+  // Le bouton était un talon (« TODO: Open history modal ») qui ne faisait
+  // qu'écrire dans la console : rien ne se passait à l'écran. L'endpoint
+  // /documents/vehicle/{id}/history et ApiService.getRenewalHistory existaient
+  // déjà, seul l'écran manquait.
+  isHistoryOpen = false;
+  historyDoc: VehicleDocument | null = null;
+  historyRows: RenewalHistoryDto[] = [];
+  historyLoading = false;
+  historyError = '';
+
+  get historyTotal(): number {
+    return this.historyRows.reduce((sum, h) => sum + (h.amount || 0), 0);
+  }
+
   viewHistory(doc: VehicleDocument): void {
-    // TODO: Open history modal
-    console.log('View history for:', doc);
+    this.historyDoc = doc;
+    this.isHistoryOpen = true;
+    this.historyRows = [];
+    this.historyError = '';
+    this.historyLoading = true;
+
+    this.apiService.getRenewalHistory(doc.vehicleId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (rows) => {
+          // L'historique porte sur le VÉHICULE : on ne garde que les lignes du
+          // type de document ouvert, sinon l'assurance afficherait aussi la
+          // vignette et le contrôle technique.
+          const all = rows || [];
+          this.historyRows = all
+            .filter(h => h.documentType === doc.type)
+            .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
+          this.historyLoading = false;
+          this.cdr.detectChanges();
+        },
+        error: () => {
+          this.historyError = "Impossible de charger l'historique. Veuillez réessayer.";
+          this.historyLoading = false;
+          this.cdr.detectChanges();
+        }
+      });
+  }
+
+  closeHistory(): void {
+    this.isHistoryOpen = false;
+    this.historyDoc = null;
+    this.historyRows = [];
+    this.historyError = '';
   }
 
   exportToExcel(): void {
