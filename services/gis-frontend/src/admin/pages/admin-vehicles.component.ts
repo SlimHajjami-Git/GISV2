@@ -750,8 +750,29 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           console.error('Error updating vehicle:', err);
-          // Le backend renvoie un message précis (ex: doublon IMEI/MAT/SIM refusé) — l'afficher tel quel.
-          alert(err?.error?.message || 'Erreur lors de la mise à jour du véhicule');
+          const msg: string = err?.error?.message || 'Erreur lors de la mise à jour du véhicule';
+
+          // Cas courant d'exploitation : le boîtier a été remplacé sur le terrain
+          // et le nouvel IMEI possède déjà une fiche (créée à la réception du
+          // matériel). Le garde-fou anti-doublons bloque à juste titre, mais
+          // laissait l'opérateur sans issue — il fallait une intervention en base.
+          // On lui propose ici le remplacement, qui libère la fiche vide et
+          // renomme le boîtier en conservant tout l'historique du véhicule.
+          const isDuplicate = msg.includes('Doublon refusé');
+          const newImei = (formData.gpsImei || '').trim();
+
+          if (isDuplicate && newImei && this.selectedVehicle) {
+            const ok = confirm(
+              `${msg}\n\n` +
+              `S'agit-il d'un REMPLACEMENT de boîtier sur ce véhicule ?\n\n` +
+              `Si oui, l'IMEI ${newImei} sera affecté à « ${this.selectedVehicle.name} ». ` +
+              `La fiche qui l'occupait sera libérée UNIQUEMENT si elle est vide, et ` +
+              `l'historique du véhicule sera conservé.`
+            );
+            if (ok) { this.replaceDevice(newImei, formData, vehicleData); return; }
+          }
+
+          alert(msg);
         }
       });
     } else {
@@ -766,6 +787,52 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
         }
       });
     }
+  }
+
+  /**
+   * Remplacement de boîtier : appelé quand la mise à jour a été refusée pour
+   * doublon et que l'opérateur confirme qu'il s'agit d'un changement de matériel.
+   * Le backend renomme le boîtier en place (l'historique du véhicule suit) et
+   * refuse si la fiche à libérer contient la moindre donnée.
+   */
+  private replaceDevice(newImei: string, formData: any, vehicleData: Partial<AdminVehicle>) {
+    const vehicleId = this.selectedVehicle?.id;
+    if (!vehicleId) return;
+
+    this.adminService.replaceVehicleDevice(vehicleId, {
+      newImei,
+      newMat: formData.gpsMat || undefined,
+      newSimNumber: formData.gpsSimNumber || undefined,
+      newSimOperator: formData.gpsSimOperator || undefined
+    }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (res) => {
+        if (!res.success) { alert(res.message); return; }
+
+        // Le remplacement n'a traité que l'identité du boîtier. Les autres champs
+        // saisis dans le même formulaire (nom, plaque, kilométrage…) n'ont jamais
+        // été enregistrés puisque la mise à jour avait été refusée : on la rejoue
+        // maintenant que le doublon est levé, sinon l'opérateur les perdrait sans
+        // le savoir.
+        this.adminService.updateVehicle(vehicleId, vehicleData).pipe(takeUntil(this.destroy$)).subscribe({
+          next: () => {
+            alert(res.message);
+            this.loadData();
+            this.closeModals();
+          },
+          error: (err) => {
+            console.error('Error updating vehicle after device replacement:', err);
+            alert(`${res.message}\n\nEn revanche, les autres modifications du véhicule n'ont pas pu être enregistrées : `
+              + (err?.error?.message || 'erreur inconnue') + '\nRééditez la fiche pour les ressaisir.');
+            this.loadData();
+            this.closeModals();
+          }
+        });
+      },
+      error: (err) => {
+        console.error('Error replacing device:', err);
+        alert(err?.error?.message || 'Erreur lors du remplacement du boîtier');
+      }
+    });
   }
 
   saveVehicle() {

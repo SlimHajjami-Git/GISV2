@@ -120,6 +120,21 @@ export interface AdminVehicle {
   updatedAt: Date;
 }
 
+export interface ReplaceDeviceRequest {
+  newImei: string;
+  newSimNumber?: string;
+  newMat?: string;
+  newSimOperator?: string;
+}
+
+export interface ReplaceDeviceResult {
+  success: boolean;
+  message: string;
+  deviceId?: number;
+  previousImei?: string;
+  releasedDeviceId?: number;
+}
+
 export interface ServiceHealth {
   name: string;
   status: 'healthy' | 'degraded' | 'down';
@@ -713,6 +728,16 @@ export class AdminService {
 
   deleteVehicle(id: number): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/admin/vehicles/${id}`, { headers: this.getHeaders() });
+  }
+
+  /**
+   * Remplacement du boîtier GPS d'un véhicule (matériel changé sur le terrain).
+   * Renomme le boîtier en place — l'historique de positions du véhicule est
+   * conservé — et libère la fiche du nouvel IMEI si elle est strictement vide.
+   */
+  replaceVehicleDevice(vehicleId: number, payload: ReplaceDeviceRequest): Observable<ReplaceDeviceResult> {
+    return this.http.post<ReplaceDeviceResult>(
+      `${this.apiUrl}/admin/vehicles/${vehicleId}/replace-device`, payload, { headers: this.getHeaders() });
   }
 
   getServiceHealth(): Observable<ServiceHealth[]> {

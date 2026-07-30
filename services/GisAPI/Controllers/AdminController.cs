@@ -10,6 +10,7 @@ using GisAPI.Application.Features.Admin.Vehicles.Queries.GetAdminVehicleById;
 using GisAPI.Application.Features.Admin.Vehicles.Commands.CreateAdminVehicle;
 using GisAPI.Application.Features.Admin.Vehicles.Commands.UpdateAdminVehicle;
 using GisAPI.Application.Features.Admin.Vehicles.Commands.DeleteAdminVehicle;
+using GisAPI.Application.Features.Admin.Vehicles.Commands.ReplaceVehicleDevice;
 using GisAPI.Application.Features.Admin.Users;
 using GisAPI.Application.Features.Admin.Companies;
 using GisAPI.Application.Features.Admin.Companies.Queries.GetCompanies;
@@ -354,6 +355,28 @@ public class AdminController : ControllerBase
         ));
         if (!result.Success) return BadRequest(new { message = result.Error });
         return CreatedAtAction(nameof(GetVehicle), new { id = result.Vehicle!.Id }, result.Vehicle);
+    }
+
+    /// <summary>
+    /// Remplacement du boîtier GPS d'un véhicule (matériel change sur le terrain).
+    /// Le garde-fou anti-doublons bloque la modification classique quand le nouvel
+    /// IMEI a déjà une fiche : cet endpoint est la porte de sortie légitime — il
+    /// libère la fiche occupante SI ELLE EST VIDE, puis renomme le boîtier du
+    /// véhicule en place pour préserver son historique.
+    /// </summary>
+    [HttpPost("vehicles/{id}/replace-device")]
+    public async Task<ActionResult<ReplaceVehicleDeviceResult>> ReplaceVehicleDevice(
+        int id, [FromBody] ReplaceVehicleDeviceRequest request)
+    {
+        var result = await _mediator.Send(new ReplaceVehicleDeviceCommand(
+            id,
+            request.NewImei,
+            request.NewSimNumber,
+            request.NewMat,
+            request.NewSimOperator));
+
+        if (!result.Success) return BadRequest(new { message = result.Message });
+        return Ok(result);
     }
 
     [HttpPut("vehicles/{id}")]
@@ -1432,6 +1455,15 @@ public class CreateAdminVehicleRequest
     public string? GpsSimNumber { get; set; }
     public string? GpsSimOperator { get; set; }
     public DateTime? GpsInstallationDate { get; set; }
+}
+
+/// <summary>Corps de POST /admin/vehicles/{id}/replace-device.</summary>
+public class ReplaceVehicleDeviceRequest
+{
+    public string NewImei { get; set; } = string.Empty;
+    public string? NewSimNumber { get; set; }
+    public string? NewMat { get; set; }
+    public string? NewSimOperator { get; set; }
 }
 
 public class UpdateAdminVehicleRequest
