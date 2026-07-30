@@ -141,18 +141,20 @@ public class VehicleMaintenanceTests
     {
         // Arrange
         using var context = TestDbContextFactory.Create();
+        // Rôle "admin" => voit tout le parc : la portée par véhicule ne filtre rien ici.
+        var tenantService = TestDbContextFactory.CreateMockTenantService(companyId: 1);
         context.Vehicles.Add(new Vehicle { Id = 1, Name = "Test Vehicle", CompanyId = 1, Mileage = 60000 });
         context.MaintenanceTemplates.AddRange(
             new MaintenanceTemplate { Id = 1, Name = "Vidange", Category = "Moteur", Priority = "medium", IntervalKm = 10000, CompanyId = 1 },
             new MaintenanceTemplate { Id = 2, Name = "Freins", Category = "Freinage", Priority = "high", IntervalKm = 30000, CompanyId = 1 }
         );
         context.VehicleMaintenanceSchedules.AddRange(
-            new VehicleMaintenanceSchedule { Id = 1, VehicleId = 1, TemplateId = 1, NextDueKm = 55000, Status = "overdue" },
-            new VehicleMaintenanceSchedule { Id = 2, VehicleId = 1, TemplateId = 2, NextDueKm = 60500, Status = "due" }
+            new VehicleMaintenanceSchedule { Id = 1, VehicleId = 1, TemplateId = 1, NextDueKm = 55000, Status = "overdue", CompanyId = 1 },
+            new VehicleMaintenanceSchedule { Id = 2, VehicleId = 1, TemplateId = 2, NextDueKm = 60500, Status = "due", CompanyId = 1 }
         );
         await context.SaveChangesAsync();
 
-        var handler = new GetMaintenanceAlertsQueryHandler(context);
+        var handler = new GetMaintenanceAlertsQueryHandler(context, tenantService.Object);
         var query = new GetMaintenanceAlertsQuery();
 
         // Act
@@ -169,15 +171,17 @@ public class VehicleMaintenanceTests
     {
         // Arrange
         using var context = TestDbContextFactory.Create();
+        // Rôle "admin" => voit tout le parc : la portée par véhicule ne filtre rien ici.
+        var tenantService = TestDbContextFactory.CreateMockTenantService(companyId: 1);
         context.VehicleMaintenanceSchedules.AddRange(
-            new VehicleMaintenanceSchedule { Id = 1, VehicleId = 1, TemplateId = 1, Status = "overdue" },
-            new VehicleMaintenanceSchedule { Id = 2, VehicleId = 1, TemplateId = 2, Status = "due" },
-            new VehicleMaintenanceSchedule { Id = 3, VehicleId = 2, TemplateId = 1, Status = "upcoming" },
-            new VehicleMaintenanceSchedule { Id = 4, VehicleId = 2, TemplateId = 2, Status = "ok" }
+            new VehicleMaintenanceSchedule { Id = 1, VehicleId = 1, TemplateId = 1, Status = "overdue", CompanyId = 1 },
+            new VehicleMaintenanceSchedule { Id = 2, VehicleId = 1, TemplateId = 2, Status = "due", CompanyId = 1 },
+            new VehicleMaintenanceSchedule { Id = 3, VehicleId = 2, TemplateId = 1, Status = "upcoming", CompanyId = 1 },
+            new VehicleMaintenanceSchedule { Id = 4, VehicleId = 2, TemplateId = 2, Status = "ok", CompanyId = 1 }
         );
         await context.SaveChangesAsync();
 
-        var handler = new GetMaintenanceStatsQueryHandler(context);
+        var handler = new GetMaintenanceStatsQueryHandler(context, tenantService.Object);
         var query = new GetMaintenanceStatsQuery();
 
         // Act

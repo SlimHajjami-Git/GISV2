@@ -13,7 +13,7 @@ public class GetMonthlyFleetReportQueryHandlerTests
     {
         // Arrange
         using var context = TestDbContextFactory.Create();
-        var handler = new GetMonthlyFleetReportQueryHandler(context);
+        var handler = new GetMonthlyFleetReportQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetMonthlyFleetReportQuery(2024, 1);
 
         // Act
@@ -47,7 +47,7 @@ public class GetMonthlyFleetReportQueryHandlerTests
         context.Vehicles.AddRange(vehicles);
         await context.SaveChangesAsync();
 
-        var handler = new GetMonthlyFleetReportQueryHandler(context);
+        var handler = new GetMonthlyFleetReportQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetMonthlyFleetReportQuery(2024, 1);
 
         // Act
@@ -101,7 +101,7 @@ public class GetMonthlyFleetReportQueryHandlerTests
         context.GpsPositions.AddRange(positions);
         await context.SaveChangesAsync();
 
-        var handler = new GetMonthlyFleetReportQueryHandler(context);
+        var handler = new GetMonthlyFleetReportQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetMonthlyFleetReportQuery(2024, 1);
 
         // Act
@@ -133,7 +133,7 @@ public class GetMonthlyFleetReportQueryHandlerTests
         context.Vehicles.Add(vehicle);
         await context.SaveChangesAsync();
 
-        var handler = new GetMonthlyFleetReportQueryHandler(context);
+        var handler = new GetMonthlyFleetReportQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetMonthlyFleetReportQuery(2024, 1);
 
         // Act
@@ -155,7 +155,7 @@ public class GetMonthlyFleetReportQueryHandlerTests
         context.Companies.Add(company);
         await context.SaveChangesAsync();
 
-        var handler = new GetMonthlyFleetReportQueryHandler(context);
+        var handler = new GetMonthlyFleetReportQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetMonthlyFleetReportQuery(2024, 1);
 
         // Act
@@ -184,7 +184,7 @@ public class GetMonthlyFleetReportQueryHandlerTests
         context.Vehicles.AddRange(vehicles);
         await context.SaveChangesAsync();
 
-        var handler = new GetMonthlyFleetReportQueryHandler(context);
+        var handler = new GetMonthlyFleetReportQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetMonthlyFleetReportQuery(2024, 1);
 
         // Act
@@ -207,7 +207,7 @@ public class GetMonthlyFleetReportQueryHandlerTests
         context.Companies.Add(company);
         await context.SaveChangesAsync();
 
-        var handler = new GetMonthlyFleetReportQueryHandler(context);
+        var handler = new GetMonthlyFleetReportQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetMonthlyFleetReportQuery(2024, 2); // February
 
         // Act
@@ -238,7 +238,7 @@ public class GetMonthlyFleetReportQueryHandlerTests
         context.Vehicles.AddRange(vehicles);
         await context.SaveChangesAsync();
 
-        var handler = new GetMonthlyFleetReportQueryHandler(context);
+        var handler = new GetMonthlyFleetReportQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetMonthlyFleetReportQuery(2024, 1, VehicleIds: new[] { 1, 2 });
 
         // Act
@@ -253,7 +253,7 @@ public class GetMonthlyFleetReportQueryHandlerTests
     {
         // Arrange
         using var context = TestDbContextFactory.Create();
-        var handler = new GetMonthlyFleetReportQueryHandler(context);
+        var handler = new GetMonthlyFleetReportQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetMonthlyFleetReportQuery(2024, 6); // June
 
         // Act

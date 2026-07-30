@@ -203,7 +203,7 @@ public class DocumentExpiriesTests
         );
         await context.SaveChangesAsync();
 
-        var handler = new GetRenewalHistoryQueryHandler(context);
+        var handler = new GetRenewalHistoryQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetRenewalHistoryQuery(VehicleId: 1);
 
         // Act

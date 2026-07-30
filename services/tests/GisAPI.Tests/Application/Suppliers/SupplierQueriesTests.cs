@@ -13,7 +13,7 @@ public class SupplierQueriesTests
     {
         // Arrange
         using var context = TestDbContextFactory.Create();
-        var handler = new GetSuppliersQueryHandler(context);
+        var handler = new GetSuppliersQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetSuppliersQuery();
 
         // Act
@@ -37,7 +37,7 @@ public class SupplierQueriesTests
         );
         await context.SaveChangesAsync();
 
-        var handler = new GetSuppliersQueryHandler(context);
+        var handler = new GetSuppliersQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetSuppliersQuery();
 
         // Act
@@ -59,7 +59,7 @@ public class SupplierQueriesTests
         );
         await context.SaveChangesAsync();
 
-        var handler = new GetSuppliersQueryHandler(context);
+        var handler = new GetSuppliersQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetSuppliersQuery(Type: "garage");
 
         // Act
@@ -81,7 +81,7 @@ public class SupplierQueriesTests
         );
         await context.SaveChangesAsync();
 
-        var handler = new GetSuppliersQueryHandler(context);
+        var handler = new GetSuppliersQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetSuppliersQuery(SearchTerm: "Auto");
 
         // Act
@@ -104,7 +104,7 @@ public class SupplierQueriesTests
         );
         await context.SaveChangesAsync();
 
-        var handler = new GetSupplierStatsQueryHandler(context);
+        var handler = new GetSupplierStatsQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetSupplierStatsQuery();
 
         // Act
@@ -129,7 +129,7 @@ public class SupplierQueriesTests
         );
         await context.SaveChangesAsync();
 
-        var handler = new GetGaragesQueryHandler(context);
+        var handler = new GetGaragesQueryHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var query = new GetGaragesQuery();
 
         // Act
