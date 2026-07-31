@@ -210,18 +210,23 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegisterR
         // confirmation de son sens. L'utilisateur reçoit un lien, le suit, et son
         // compte bascule en « active ».
         //
-        // L'envoi est « au mieux » : si le serveur de messagerie est indisponible,
-        // le compte reste créé et confirmable via un renvoi, plutôt que de perdre
-        // l'inscription. Mais on le DIT dans la réponse, pour que l'écran affiche
-        // « email non parti, redemandez-le » au lieu de « vérifiez votre boîte ».
-        var emailSent = await TrySendConfirmationEmailAsync(user, societe.Name, ct);
+        // L'envoi est BORNÉ DANS LE TEMPS et ne peut pas retenir la réponse. Sans
+        // cela, l'inscription reste suspendue tant que le relais SMTP ne répond
+        // pas : le compte est créé, mais l'écran tourne indéfiniment sur
+        // « Création du compte… » et l'utilisateur croit l'application plantée —
+        // c'est exactement ce qui s'est produit en conditions réelles. À noter que
+        // SmtpClient.Timeout ne s'applique QU'À l'envoi synchrone : sur
+        // SendMailAsync il est ignoré, rien ne borne l'appel par défaut.
+        var delivered = await TrySendConfirmationEmailWithinAsync(
+            user, societe.Name, TimeSpan.FromSeconds(8));
 
         return new RegisterResult(
             user.Email,
-            emailSent
+            delivered
                 ? "Votre compte est créé. Ouvrez le lien de confirmation que nous venons de vous envoyer par email."
-                : "Votre compte est créé, mais l'email de confirmation n'a pas pu être envoyé. Demandez-en un nouveau.",
-            emailSent);
+                : "Votre compte est créé. L'email de confirmation peut mettre quelques minutes à arriver — "
+                  + "s'il ne vient pas, demandez-en un nouveau.",
+            delivered);
     }
 
     /// <summary>Jeton d'activation : aléatoire cryptographique, sûr en URL.</summary>
@@ -230,6 +235,38 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegisterR
         var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
         return Convert.ToBase64String(bytes)
             .Replace('+', '-').Replace('/', '_').TrimEnd('=');
+    }
+
+    /// <summary>
+    /// Envoie le courriel de confirmation SANS jamais retenir la réponse au-delà de
+    /// <paramref name="budget"/>. Au-delà, l'envoi se poursuit en arrière-plan (il
+    /// journalise lui-même son issue) et l'inscription rend la main.
+    ///
+    /// Le jeton d'annulation de la requête n'est VOLONTAIREMENT pas propagé : un
+    /// utilisateur qui ferme son onglet ne doit pas annuler l'email qui lui est
+    /// destiné.
+    ///
+    /// Retourne vrai seulement si l'envoi s'est achevé dans le délai. Ce n'est pas
+    /// une preuve de RÉCEPTION : le service de messagerie absorbe ses propres
+    /// erreurs, il n'y a donc pas de moyen ici de distinguer « remis » de « refusé
+    /// par le relais ». D'où une formulation prudente côté écran, et un bouton de
+    /// renvoi toujours disponible.
+    /// </summary>
+    private async Task<bool> TrySendConfirmationEmailWithinAsync(User user, string spaceName, TimeSpan budget)
+    {
+        using var cts = new CancellationTokenSource(budget);
+        var send = TrySendConfirmationEmailAsync(user, spaceName, cts.Token);
+
+        var finished = await Task.WhenAny(send, Task.Delay(budget));
+        if (finished != send)
+        {
+            _logger.LogWarning(
+                "Courriel de confirmation non parti en moins de {Seconds}s pour {Email} — envoi poursuivi en arrière-plan.",
+                budget.TotalSeconds, user.Email);
+            return false;
+        }
+
+        return await send;
     }
 
     private async Task<bool> TrySendConfirmationEmailAsync(User user, string spaceName, CancellationToken ct)
@@ -259,12 +296,15 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegisterR
   </p>
 </div>";
 
+            // throwOnFailure : sans lui, le service absorbe ses erreurs et on
+            // annoncerait « email envoyé » alors que le relais est injoignable.
             await _emailService.SendEmailAsync(
                 user.Email,
                 $"{user.FirstName} {user.LastName}".Trim(),
                 "Confirmez votre adresse email",
                 html,
-                ct);
+                ct,
+                throwOnFailure: true);
             return true;
         }
         catch (Exception ex)

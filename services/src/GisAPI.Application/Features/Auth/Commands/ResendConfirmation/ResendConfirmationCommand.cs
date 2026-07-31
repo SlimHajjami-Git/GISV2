@@ -78,9 +78,18 @@ public class ResendConfirmationCommandHandler
   </p>
 </div>";
 
-            await _emailService.SendEmailAsync(
+            // Même précaution qu'à l'inscription : l'envoi est borné et ne retient
+            // jamais la réponse. Le jeton de la requête n'est pas propagé — fermer
+            // l'onglet ne doit pas annuler l'email demandé.
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            var send = _emailService.SendEmailAsync(
                 user.Email, $"{user.FirstName} {user.LastName}".Trim(),
-                "Confirmez votre adresse email", html, ct);
+                "Confirmez votre adresse email", html, cts.Token);
+
+            if (await Task.WhenAny(send, Task.Delay(TimeSpan.FromSeconds(8))) != send)
+                _logger.LogWarning("Renvoi non parti en moins de 8s pour {Email} — poursuivi en arrière-plan.", email);
+            else
+                await send;
         }
         catch (Exception ex)
         {

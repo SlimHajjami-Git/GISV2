@@ -52,7 +52,7 @@ public class RegisterCommandHandlerTests
         var mailer = new Mock<IEmailService>();
         mailer.Setup(e => e.SendEmailAsync(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()))
             .Returns(Task.CompletedTask);
 
         AppRegistration.DefaultPlanCode = PlanCode;
@@ -210,7 +210,10 @@ public class RegisterCommandHandlerTests
         mailer.Verify(e => e.SendEmailAsync(
             "sonia@exemple.tn", It.IsAny<string>(), It.IsAny<string>(),
             It.Is<string>(html => html.Contains(user.EmailVerificationToken!)),
-            It.IsAny<CancellationToken>()), Times.Once);
+            It.IsAny<CancellationToken>(),
+            // throwOnFailure : sans lui le service absorbe ses erreurs et l'écran
+            // annoncerait « email envoyé » même relais injoignable.
+            true), Times.Once);
     }
 
     [Fact]
@@ -219,13 +222,42 @@ public class RegisterCommandHandlerTests
         var (handler, ctx, mailer) = Setup();
         mailer.Setup(e => e.SendEmailAsync(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()))
             .ThrowsAsync(new InvalidOperationException("SMTP injoignable"));
 
         var response = await handler.Handle(Command(), CancellationToken.None);
 
         response.EmailSent.Should().BeFalse("l'écran doit proposer un renvoi plutôt que « vérifiez votre boîte »");
         (await ctx.Users.CountAsync()).Should().Be(1, "le compte reste créé et confirmable");
+    }
+
+    [Fact]
+    public async Task Un_relais_SMTP_qui_ne_repond_pas_ne_bloque_pas_l_inscription()
+    {
+        // LE défaut vu en production : la réponse restait suspendue tant que le
+        // relais ne répondait pas, l'écran tournait sur « Création du compte… » et
+        // l'utilisateur croyait l'application plantée — alors que son compte était
+        // bel et bien créé. Piège du framework : SmtpClient.Timeout ne s'applique
+        // qu'à l'envoi SYNCHRONE, SendMailAsync l'ignore. C'est donc au handler de
+        // borner l'attente.
+        var (handler, ctx, mailer) = Setup();
+        mailer.Setup(e => e.SendEmailAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()))
+            .Returns(async (string _, string _, string _, string _, CancellationToken token, bool _) =>
+            {
+                // Un relais muet : ne rend la main que si on l'annule.
+                await Task.Delay(Timeout.Infinite, token);
+            });
+
+        var chrono = System.Diagnostics.Stopwatch.StartNew();
+        var response = await handler.Handle(Command(), CancellationToken.None);
+        chrono.Stop();
+
+        chrono.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(20),
+            "l'inscription doit rendre la main même si le relais ne répond jamais");
+        response.EmailSent.Should().BeFalse();
+        (await ctx.Users.CountAsync()).Should().Be(1, "le compte est créé quoi qu'il arrive");
     }
 
     [Fact]

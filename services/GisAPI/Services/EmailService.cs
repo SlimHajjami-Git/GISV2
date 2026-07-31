@@ -17,7 +17,7 @@ public class EmailService : IEmailService
         _logger = logger;
     }
 
-    public async Task SendEmailAsync(string toEmail, string toName, string subject, string htmlBody, CancellationToken ct = default)
+    public async Task SendEmailAsync(string toEmail, string toName, string subject, string htmlBody, CancellationToken ct = default, bool throwOnFailure = false)
     {
         try
         {
@@ -63,6 +63,10 @@ public class EmailService : IEmailService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send email to {Email}: {Subject}", toEmail, subject);
+            // Par défaut on absorbe : une alerte ou un rapport ne doit pas échouer
+            // parce que le relais tousse. Mais l'appelant qui a besoin de l'issue —
+            // la confirmation d'inscription — demande explicitement à la connaître.
+            if (throwOnFailure) throw;
         }
     }
 
