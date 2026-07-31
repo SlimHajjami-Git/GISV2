@@ -761,7 +761,12 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
     { key: 'suppliers', label: 'Fournisseurs' },
     { key: 'documents', label: 'Documents' },
     { key: 'accidents', label: 'Sinistres' },
-    { key: 'fleet_management', label: 'Gestion Flotte' }
+    { key: 'fleet_management', label: 'Gestion Flotte' },
+    // Ces deux modules existent en base et valent TRUE par défaut. Sans case ici,
+    // aucun plan ne pouvait les éteindre : un abonnement « sans GPS » se retrouvait
+    // avec l'écran Tournées ouvert alors qu'il n'a aucun itinéraire à suivre.
+    { key: 'carburant', label: 'Carburant' },
+    { key: 'tours', label: 'Tournées' }
   ];
 
   availableReports = [
@@ -882,7 +887,9 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
         suppliers: type.moduleSuppliers || false,
         documents: type.moduleDocuments || false,
         accidents: type.moduleAccidents || false,
-        fleet_management: type.moduleFleetManagement || false
+        fleet_management: type.moduleFleetManagement || false,
+        carburant: type.moduleFuel || false,
+        tours: type.moduleTours || false
       },
       reports: {
         trips: type.reportTrips || false,
@@ -986,6 +993,8 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
       moduleDocuments: this.formData.modules['documents'],
       moduleAccidents: this.formData.modules['accidents'],
       moduleFleetManagement: this.formData.modules['fleet_management'],
+      moduleFuel: this.formData.modules['carburant'],
+      moduleTours: this.formData.modules['tours'],
       // Reports
       reportTrips: this.formData.reports['trips'],
       reportFuel: this.formData.reports['fuel'],
@@ -1070,7 +1079,9 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
         suppliers: true,
         documents: true,
         accidents: true,
-        fleet_management: false
+        fleet_management: false,
+        carburant: true,
+        tours: false
       } as Record<string, boolean>,
       reports: {
         trips: true,

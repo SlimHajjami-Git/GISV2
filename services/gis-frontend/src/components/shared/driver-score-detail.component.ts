@@ -20,11 +20,16 @@ import { Employee, DriverScore, Vehicle, VehicleConsumptionData } from '../../mo
           </button>
           <div class="header-content">
             <div class="avatar-wrapper">
-              <div class="avatar" [style.border-color]="getScoreColor(driverScore?.overallScore || 0)">
+              <!-- Le score de conduite se calcule à partir des données de conduite
+                   du boîtier (freinages, accélérations, vitesse). Quand il n'y en a
+                   pas — client sans GPS, ou chauffeur jamais noté — le repli « 0 »
+                   affichait une pastille ROUGE à 0/100 : tous les chauffeurs
+                   passaient pour dangereux. On masque plutôt que d'inventer. -->
+              <div class="avatar" [style.border-color]="driverScore ? getScoreColor(driverScore.overallScore) : 'var(--border-color, #d0d5dd)'">
                 {{ getInitials() }}
               </div>
-              <div class="score-badge" [style.background]="getScoreColor(driverScore?.overallScore || 0)">
-                {{ driverScore?.overallScore || 0 }}
+              <div class="score-badge" *ngIf="driverScore" [style.background]="getScoreColor(driverScore.overallScore)">
+                {{ driverScore.overallScore }}
               </div>
             </div>
             <h2 class="driver-name">{{ employee?.name }}</h2>
@@ -37,22 +42,26 @@ import { Employee, DriverScore, Vehicle, VehicleConsumptionData } from '../../mo
           </div>
         </div>
 
-        <!-- Quick Stats Bar -->
-        <div class="quick-stats">
+        <!-- Quick Stats Bar — mêmes zéros trompeurs : « 0 trajet, 0 km » se lit
+             comme un chauffeur inactif, pas comme une donnée manquante. -->
+        <div class="quick-stats" *ngIf="driverScore">
           <div class="qs-item">
-            <span class="qs-value">{{ driverScore?.totalTrips || 0 }}</span>
+            <span class="qs-value">{{ driverScore.totalTrips || 0 }}</span>
             <span class="qs-label">Trajets</span>
           </div>
           <div class="qs-divider"></div>
           <div class="qs-item">
-            <span class="qs-value">{{ driverScore?.totalKmDriven || 0 }}</span>
+            <span class="qs-value">{{ driverScore.totalKmDriven || 0 }}</span>
             <span class="qs-label">Km parcourus</span>
           </div>
           <div class="qs-divider"></div>
           <div class="qs-item">
-            <span class="qs-value">{{ driverScore?.averageSpeed || 0 }}</span>
+            <span class="qs-value">{{ driverScore.averageSpeed || 0 }}</span>
             <span class="qs-label">Km/h moy.</span>
           </div>
+        </div>
+        <div class="no-score-banner" *ngIf="!driverScore">
+          Aucune donnée de conduite pour ce chauffeur — le score nécessite un véhicule équipé d'un boîtier.
         </div>
 
         <!-- Content -->
@@ -150,12 +159,15 @@ import { Employee, DriverScore, Vehicle, VehicleConsumptionData } from '../../mo
                  son score" — the 3-tile breakdown (harsh braking / acceleration
                  / speeding) was removed and replaced with a single average tile
                  so the panel matches the client's expectation. -->
-            <div class="avg-score-tile" [style.border-color]="getScoreColor(driverScore?.overallScore || 0)">
-              <div class="avg-score-value" [style.color]="getScoreColor(driverScore?.overallScore || 0)">
-                {{ driverScore?.overallScore || 0 }}<span class="avg-score-unit">/100</span>
+            <div class="avg-score-tile" *ngIf="driverScore" [style.border-color]="getScoreColor(driverScore.overallScore)">
+              <div class="avg-score-value" [style.color]="getScoreColor(driverScore.overallScore)">
+                {{ driverScore.overallScore }}<span class="avg-score-unit">/100</span>
               </div>
               <span class="avg-score-label">Moyenne du score</span>
             </div>
+            <p class="score-empty" *ngIf="!driverScore">
+              Score indisponible : aucun trajet enregistré pour ce chauffeur.
+            </p>
           </div>
 
           <!-- Consumption per Vehicle -->
@@ -266,6 +278,14 @@ import { Employee, DriverScore, Vehicle, VehicleConsumptionData } from '../../mo
     .qs-value { font-size: 18px; font-weight: 800; color: #0f172a; }
     .qs-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 1px; }
     .qs-divider { width: 1px; height: 28px; background: #e2e8f0; }
+    .no-score-banner {
+      padding: 12px 24px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+      font-size: 12px; color: #64748b; text-align: center; line-height: 1.45;
+    }
+    .score-empty {
+      margin: 0; padding: 16px; border: 1px dashed #cbd5e1; border-radius: 10px;
+      font-size: 12.5px; color: #64748b; text-align: center;
+    }
 
     /* Content */
     .panel-content { padding: 20px 24px; overflow-y: auto; flex: 1; }

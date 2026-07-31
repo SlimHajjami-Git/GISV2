@@ -57,8 +57,16 @@ public class DashboardService : IDashboardService
 
         var vehicles = await vehicleQuery.ToListAsync();
 
+        // Les cinq compteurs renvoyés (arrêt, contact mis, en circulation,
+        // maintenance, sans GPS) sont additionnés par l'écran pour former le
+        // total du parc ET le dénominateur des pourcentages. Ils doivent donc
+        // partitionner la flotte, sans recouvrement : un véhicule à la fois sans
+        // boîtier ET en maintenance était compté deux fois, ce qui gonflait le
+        // parc — de façon maximale chez un client sans GPS, où TOUS les
+        // véhicules tombent dans « sans GPS ».
+        // La maintenance prime : c'est un état posé par l'exploitant.
         var maintenanceVehicles = vehicles.Count(v => v.Status == "maintenance");
-        var noGpsVehicles = vehicles.Count(v => !v.GpsDeviceId.HasValue);
+        var noGpsVehicles = vehicles.Count(v => !v.GpsDeviceId.HasValue && v.Status != "maintenance");
         var deviceMap = vehicles.Where(v => v.GpsDeviceId.HasValue)
             .ToDictionary(v => v.GpsDeviceId!.Value, v => v);
 
@@ -117,12 +125,20 @@ public class DashboardService : IDashboardService
                 .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= periodStart && c.Date <= periodEnd)
                 .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
 
-            maintenanceCost = await _context.MaintenanceLogs.AsNoTracking()
-                .Where(m => m.Vehicle!.CompanyId == companyId && m.DoneDate >= periodStart && m.DoneDate <= periodEnd && m.ActualCost > 0)
-                .Select(m => (decimal?)m.ActualCost).SumAsync() ?? 0m;
-            maintenanceCost += await _context.VehicleCosts.AsNoTracking()
+            // Un entretien enregistré depuis l'écran écrit DEUX lignes pour une
+            // seule dépense : une VehicleCost (type « maintenance ») et un
+            // MaintenanceLog qui la référence par CostId. Additionner les deux
+            // tables doublait donc chaque entretien dans le coût affiché.
+            // On prend la dépense (VehicleCost) comme source, et on n'ajoute que
+            // les journaux SANS coût rattaché — les entretiens plus anciens ou
+            // importés, qui eux n'ont pas de ligne de dépense correspondante.
+            maintenanceCost = await _context.VehicleCosts.AsNoTracking()
                 .Where(c => c.CompanyId == companyId && c.Type == "maintenance" && c.Date >= periodStart && c.Date <= periodEnd)
                 .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
+            maintenanceCost += await _context.MaintenanceLogs.AsNoTracking()
+                .Where(m => m.Vehicle!.CompanyId == companyId && m.DoneDate >= periodStart && m.DoneDate <= periodEnd
+                            && m.ActualCost > 0 && m.CostId == null)
+                .Select(m => (decimal?)m.ActualCost).SumAsync() ?? 0m;
 
             repairCost = await _context.Repairs.AsNoTracking()
                 .Where(r => r.SocieteId == companyId && r.RepairDate >= periodStart && r.RepairDate <= periodEnd)

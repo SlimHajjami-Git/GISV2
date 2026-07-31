@@ -184,9 +184,12 @@ import { environment } from '../../environments/environment';
                   </div>
                   <div class="form-group">
                     <label>Abonnement <span class="required">*</span></label>
+                    <!-- [ngValue] et non [value] : [value] transmet une CHAÎNE, si bien que
+                         la comparaison stricte de saveClient() échouait et que l'API recevait
+                         "3" pour un int? — le changement de plan ne partait jamais. -->
                     <select [(ngModel)]="clientForm.subscriptionId">
-                      <option [value]="null">Sélectionner un abonnement</option>
-                      <option *ngFor="let sub of subscriptionTypes" [value]="sub.id">{{ sub.name }} - {{ sub.yearlyPrice }} {{ currencyCode }}/an</option>
+                      <option [ngValue]="undefined">Sélectionner un abonnement</option>
+                      <option *ngFor="let sub of subscriptionTypes" [ngValue]="sub.id">{{ sub.name }} - {{ sub.yearlyPrice }} {{ currencyCode }}/an</option>
                     </select>
                   </div>
                 </div>
@@ -1914,9 +1917,18 @@ export class AdminClientsComponent implements OnInit, OnDestroy {
     };
 
     if (this.showEditModal && this.selectedClient) {
-      this.adminService.updateClient(this.selectedClient.id, data).pipe(takeUntil(this.destroy$)).subscribe(() => {
-        this.loadData();
-        this.closeModals();
+      this.adminService.updateClient(this.selectedClient.id, data).pipe(takeUntil(this.destroy$)).subscribe({
+        next: () => {
+          this.loadData();
+          this.closeModals();
+        },
+        // Sans branche d'erreur, un refus de l'API laissait la modale ouverte sans
+        // un mot : c'est ce silence qui a permis au bug de liaison du <select> de
+        // passer inaperçu alors qu'aucun changement de plan n'aboutissait.
+        error: (err) => {
+          console.error('Error updating client:', err);
+          alert(err?.error?.message || "Le client n'a pas pu être enregistré. Vérifiez les champs et réessayez.");
+        }
       });
     }
   }
@@ -2054,7 +2066,16 @@ export class AdminClientsComponent implements OnInit, OnDestroy {
       email: this.wizardData.companyEmail,
       phone: this.wizardData.companyPhone,
       type: this.wizardData.companyType,
-      subscriptionTypeId: this.wizardData.subscriptionTypeId,
+      // L'API attend `subscriptionId` (CreateAdminCompanyRequest). Envoyé sous le
+      // nom `subscriptionTypeId`, le champ était ignoré au désérialisage, la valeur
+      // retombait à 0 et le handler traduit 0 en NULL sans lever d'erreur
+      // (CreateCompanyCommandHandler : SubscriptionTypeId = request.SubscriptionId > 0 ? ... : null).
+      // Résultat : toute société créée par l'assistant naissait SANS abonnement —
+      // 6 des 13 sociétés de la production sont dans ce cas.
+      // L'étape 2 de l'assistant impose déjà le choix d'un abonnement (voir
+      // validateStep) ; le `!` acte cette garantie plutôt que d'envoyer un
+      // undefined qui recréerait exactement le défaut corrigé ici.
+      subscriptionId: this.wizardData.subscriptionTypeId!,
       adminName: `${this.wizardData.adminFirstName} ${this.wizardData.adminLastName}`,
       adminEmail: this.wizardData.adminEmail,
       adminPassword: this.wizardData.adminPassword

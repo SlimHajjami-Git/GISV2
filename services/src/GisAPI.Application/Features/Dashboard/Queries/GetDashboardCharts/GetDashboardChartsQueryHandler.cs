@@ -16,6 +16,14 @@ internal sealed class ChartDayAgg
     public double SpeedSum { get; set; }
 }
 
+/// <summary>Une dépense d'entretien réduite à ce dont la courbe a besoin.</summary>
+internal sealed class MaintenanceCostPoint
+{
+    public int VehicleId { get; set; }
+    public DateTime Date { get; set; }
+    public decimal Amount { get; set; }
+}
+
 public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardChartsQuery, DashboardChartsDto>
 {
     private readonly IGisDbContext _context;
@@ -100,6 +108,23 @@ public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardCharts
             .GroupBy(x => x.Day)
             .ToDictionary(g => g.Key, g => g.Select(x => x.DeviceId).Distinct().Count());
 
+        // Dépenses d'entretien de la période — indépendantes du GPS, donc
+        // disponibles pour un abonnement sans boîtier. Seuls les montants et la
+        // date sont ramenés : la courbe n'a besoin de rien d'autre.
+        var maintenanceCosts = vehicleIds.Count == 0
+            ? new List<MaintenanceCostPoint>()
+            : await _context.VehicleCosts.AsNoTracking()
+                .Where(c => vehicleIds.Contains(c.VehicleId)
+                            && (c.Type == "maintenance" || c.Type == "repair")
+                            && c.Date >= periodStart && c.Date <= periodEnd)
+                .Select(c => new MaintenanceCostPoint
+                {
+                    VehicleId = c.VehicleId,
+                    Date = c.Date,
+                    Amount = c.Amount
+                })
+                .ToListAsync(cancellationToken);
+
         // Build charts
         var result = new DashboardChartsDto
         {
@@ -107,7 +132,7 @@ public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardCharts
             Period = $"{periodStart:MMMM yyyy}",
             DistanceByVehicle = BuildDistanceByVehicleChart(vehicles, distanceByVehicle),
             FuelDistribution = BuildFuelDistributionChart(vehicles, distanceByVehicle),
-            MaintenanceTrend = BuildMaintenanceTrendChart(vehicles, periodStart),
+            MaintenanceTrend = BuildMaintenanceTrendChart(vehicles, maintenanceCosts, periodStart),
             DailyDistanceTrend = BuildDailyDistanceTrend(distanceByDay, periodStart, periodEnd),
             UtilizationTrend = BuildUtilizationTrend(activeDevicesByDay, vehicles.Count, periodStart, periodEnd),
             CostBreakdown = BuildCostBreakdownChart(totalDistance),
@@ -173,25 +198,54 @@ public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardCharts
         };
     }
 
+    /// <summary>
+    /// Coûts d'entretien réellement enregistrés, répartis en quatre semaines.
+    ///
+    /// Les valeurs étaient tirées au sort (Random.Shared) et présentées comme des
+    /// « coûts de maintenance par période » : le graphique changeait à chaque
+    /// rechargement de la page et un client pouvait bâtir un budget dessus. Les
+    /// dépenses d'entretien sont pourtant en base (vehicle_costs, type
+    /// 'maintenance' ou 'repair') et ne dépendent d'aucun boîtier — elles sont
+    /// donc disponibles y compris pour un abonnement sans GPS.
+    /// </summary>
     private AreaChartDataDto BuildMaintenanceTrendChart(
         List<Vehicle> vehicles,
+        List<MaintenanceCostPoint> costs,
         DateTime periodStart)
     {
         var weekLabels = new List<string> { "Semaine 1", "Semaine 2", "Semaine 3", "Semaine 4" };
-        
-        // Simulated maintenance costs per vehicle per week
-        var series = vehicles.Take(5).Select((v, i) => new AreaChartSeriesDto
+
+        // Les cinq véhicules qui ont réellement coûté le plus sur la période :
+        // afficher les cinq premiers de la liste donnait des courbes plates.
+        var byVehicle = costs
+            .GroupBy(c => c.VehicleId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var ranked = vehicles
+            .Where(v => byVehicle.ContainsKey(v.Id))
+            .OrderByDescending(v => byVehicle[v.Id].Sum(c => c.Amount))
+            .Take(5)
+            .ToList();
+
+        var series = ranked.Select((v, i) =>
         {
-            Name = v.Name,
-            Color = ChartColors[i % ChartColors.Length],
-            BackgroundColor = $"{ChartColors[i % ChartColors.Length]}33",
-            Values = new List<double> { 
-                Math.Round(Random.Shared.NextDouble() * 200, 2),
-                Math.Round(Random.Shared.NextDouble() * 200, 2),
-                Math.Round(Random.Shared.NextDouble() * 200, 2),
-                Math.Round(Random.Shared.NextDouble() * 200, 2)
-            },
-            VehicleId = v.Id
+            var weekly = new double[4];
+            foreach (var c in byVehicle[v.Id])
+            {
+                // Semaine 1 = jours 1-7, …, semaine 4 = jour 22 et au-delà, pour
+                // que les mois de 29 à 31 jours ne perdent pas leur fin de mois.
+                var index = Math.Min(3, Math.Max(0, (c.Date.Day - 1) / 7));
+                weekly[index] += (double)c.Amount;
+            }
+
+            return new AreaChartSeriesDto
+            {
+                Name = v.Name,
+                Color = ChartColors[i % ChartColors.Length],
+                BackgroundColor = $"{ChartColors[i % ChartColors.Length]}33",
+                Values = weekly.Select(x => Math.Round(x, 2)).ToList(),
+                VehicleId = v.Id
+            };
         }).ToList();
 
         return new AreaChartDataDto

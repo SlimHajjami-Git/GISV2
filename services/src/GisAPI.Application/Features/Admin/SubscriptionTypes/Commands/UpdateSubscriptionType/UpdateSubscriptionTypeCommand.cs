@@ -58,7 +58,12 @@ public record UpdateSubscriptionTypeCommand(
     bool? ReportMonthly,
     bool? ReportMileagePeriod,
     bool? ReportSpeedInfraction,
-    bool? ReportDrivingBehavior
+    bool? ReportDrivingBehavior,
+    // Ajoutes EN FIN de liste a dessein : le controleur construit ces records
+    // par arguments POSITIONNELS, une insertion au milieu decalerait
+    // silencieusement tous les drapeaux suivants.
+    bool? ModuleFuel = null,
+    bool? ModuleTours = null
 ) : IRequest<SubscriptionTypeDto>;
 
 public class UpdateSubscriptionTypeCommandHandler : IRequestHandler<UpdateSubscriptionTypeCommand, SubscriptionTypeDto>
@@ -119,6 +124,8 @@ public class UpdateSubscriptionTypeCommandHandler : IRequestHandler<UpdateSubscr
         if (request.ModuleMaintenance.HasValue) subscriptionType.ModuleMaintenance = request.ModuleMaintenance.Value;
         if (request.ModuleCosts.HasValue) subscriptionType.ModuleCosts = request.ModuleCosts.Value;
         if (request.ModuleReports.HasValue) subscriptionType.ModuleReports = request.ModuleReports.Value;
+        if (request.ModuleFuel.HasValue) subscriptionType.ModuleFuel = request.ModuleFuel.Value;
+        if (request.ModuleTours.HasValue) subscriptionType.ModuleTours = request.ModuleTours.Value;
         if (request.ModuleSettings.HasValue) subscriptionType.ModuleSettings = request.ModuleSettings.Value;
         if (request.ModuleUsers.HasValue) subscriptionType.ModuleUsers = request.ModuleUsers.Value;
         if (request.ModuleSuppliers.HasValue) subscriptionType.ModuleSuppliers = request.ModuleSuppliers.Value;
@@ -180,6 +187,8 @@ public class UpdateSubscriptionTypeCommandHandler : IRequestHandler<UpdateSubscr
             ModuleMaintenance = subscriptionType.ModuleMaintenance,
             ModuleCosts = subscriptionType.ModuleCosts,
             ModuleReports = subscriptionType.ModuleReports,
+            ModuleFuel = subscriptionType.ModuleFuel,
+            ModuleTours = subscriptionType.ModuleTours,
             ModuleSettings = subscriptionType.ModuleSettings,
             ModuleUsers = subscriptionType.ModuleUsers,
             ModuleSuppliers = subscriptionType.ModuleSuppliers,

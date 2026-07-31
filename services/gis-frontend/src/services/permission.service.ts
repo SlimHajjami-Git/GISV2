@@ -199,8 +199,13 @@ export class PermissionService {
     if (!user) return false;
     if (user.isSystemAdmin) return true;
 
-    // Company admins always have full report access
-    if (user.isCompanyAdmin) return true;
+    // ⚠ Un administrateur de société ne contourne PAS la limite d'abonnement :
+    // c'est ce que payait sa société. Il contourne seulement les permissions
+    // par utilisateur (étape 3 plus bas), puisqu'il les attribue lui-même.
+    // Avant, le court-circuit sautait les DEUX étapes : le client du plan
+    // « Gestion de parc sans GPS » voyait donc les onglets Trajets, Vitesse et
+    // Arrêts, désespérément vides faute de boîtier.
+    const isCompanyAdmin = !!user.isCompanyAdmin;
 
     // Step 1: Check subscription-level report access (company limit)
     const features = user.subscriptionFeatures;
@@ -221,14 +226,34 @@ export class PermissionService {
       'speed_infraction': 'reportSpeedInfraction',
       'driving_behavior': 'reportDrivingBehavior',
       'monthly_costs': 'reportMonthlyCosts',
-      'monthly_fuel': 'reportMonthlyCosts'
+      'monthly_fuel': 'reportMonthlyCosts',
+      // Ces trois clés manquaient. Le rapport n'étant alors rattaché à aucun
+      // drapeau, il passait quel que soit l'abonnement : le client « sans GPS »
+      // se voyait proposer « Estimation coûts carburant » (calculée sur les
+      // positions) et « Carburant réel vs GPS » (verdict anti-fraude), tous deux
+      // bâtis sur une distance nulle. Il pouvait refacturer sur des chiffres
+      // fabriqués. Les deux dépendent du GPS : ReportFuel les gouverne.
+      'fuel_estimation': 'reportFuel',
+      'fuel_comparison': 'reportFuel',
+      'ai_fleet': 'advancedReports'
     };
 
     const featureKey = reportMapping[reportKey];
-    if (featureKey && features[featureKey] === false) return false;
+    if (!featureKey) {
+      // Défaut FERMÉ et non ouvert : un rapport ajouté sans être rattaché à un
+      // drapeau reste invisible tant qu'on ne l'a pas rattaché, au lieu d'être
+      // exposé à tous les abonnements par simple oubli — c'est exactement ainsi
+      // que les trois clés ci-dessus ont fui pendant des mois.
+      console.warn(`[Permissions] Rapport "${reportKey}" non rattaché à un drapeau d'abonnement : masqué par défaut.`);
+      return false;
+    }
+    if (features[featureKey] === false) return false;
 
     // Step 3: Check per-user report permissions
-    const up = user.userPermissions;
+    // L'administrateur de société attribue lui-même les permissions de ses
+    // utilisateurs : il n'est donc pas bridé par elles (mais il l'est bien par
+    // l'abonnement, vérifié à l'étape 1 ci-dessus).
+    const up = isCompanyAdmin ? null : user.userPermissions;
     if (up) {
       const userReportMapping: Record<string, string> = {
         'trips': 'canReportTrips',

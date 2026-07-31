@@ -24,7 +24,18 @@ public class UpdateCompanyCommandHandler : IRequestHandler<UpdateCompanyCommand,
         if (request.Email != null) company.Email = request.Email;
         if (request.Phone != null) company.Phone = request.Phone;
         if (request.Type != null) company.Type = request.Type;
-        if (request.SubscriptionId.HasValue) company.SubscriptionTypeId = request.SubscriptionId.Value;
+        if (request.SubscriptionId.HasValue)
+        {
+            // Vérifier l'existence du plan avant l'affectation : sinon la clé
+            // étrangère casse au SaveChanges et l'écran ne reçoit qu'un 500 muet.
+            var exists = await _context.SubscriptionTypes
+                .AnyAsync(s => s.Id == request.SubscriptionId.Value, ct);
+            if (!exists)
+                throw new GisAPI.Domain.Exceptions.DomainException(
+                    $"L'abonnement #{request.SubscriptionId.Value} est introuvable.");
+
+            company.SubscriptionTypeId = request.SubscriptionId.Value;
+        }
 
         company.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(ct);

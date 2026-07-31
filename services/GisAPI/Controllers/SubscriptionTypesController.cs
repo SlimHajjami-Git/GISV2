@@ -94,7 +94,9 @@ public class SubscriptionTypesController : ControllerBase
                 request.ReportMonthly,
                 request.ReportMileagePeriod,
                 request.ReportSpeedInfraction,
-                request.ReportDrivingBehavior
+                request.ReportDrivingBehavior,
+                request.ModuleFuel,
+                request.ModuleTours
             );
 
             var result = await _mediator.Send(command);
@@ -167,7 +169,9 @@ public class SubscriptionTypesController : ControllerBase
                 request.ReportMonthly,
                 request.ReportMileagePeriod,
                 request.ReportSpeedInfraction,
-                request.ReportDrivingBehavior
+                request.ReportDrivingBehavior,
+                request.ModuleFuel,
+                request.ModuleTours
             );
 
             var result = await _mediator.Send(command);
@@ -252,6 +256,8 @@ public class CreateSubscriptionTypeRequest
     public bool? ReportMileagePeriod { get; set; }
     public bool? ReportSpeedInfraction { get; set; }
     public bool? ReportDrivingBehavior { get; set; }
+    public bool? ModuleFuel { get; set; }
+    public bool? ModuleTours { get; set; }
 }
 
 public class UpdateSubscriptionTypeRequest
@@ -308,4 +314,6 @@ public class UpdateSubscriptionTypeRequest
     public bool? ReportMileagePeriod { get; set; }
     public bool? ReportSpeedInfraction { get; set; }
     public bool? ReportDrivingBehavior { get; set; }
+    public bool? ModuleFuel { get; set; }
+    public bool? ModuleTours { get; set; }
 }

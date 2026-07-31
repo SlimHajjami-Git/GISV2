@@ -58,7 +58,12 @@ public record CreateSubscriptionTypeCommand(
     bool? ReportMonthly,
     bool? ReportMileagePeriod,
     bool? ReportSpeedInfraction,
-    bool? ReportDrivingBehavior
+    bool? ReportDrivingBehavior,
+    // Ajoutes EN FIN de liste a dessein : le controleur construit ces records
+    // par arguments POSITIONNELS, une insertion au milieu decalerait
+    // silencieusement tous les drapeaux suivants.
+    bool? ModuleFuel = null,
+    bool? ModuleTours = null
 ) : IRequest<SubscriptionTypeDto>;
 
 public class CreateSubscriptionTypeCommandHandler : IRequestHandler<CreateSubscriptionTypeCommand, SubscriptionTypeDto>
@@ -114,6 +119,8 @@ public class CreateSubscriptionTypeCommandHandler : IRequestHandler<CreateSubscr
             ModuleMaintenance = request.ModuleMaintenance ?? true,
             ModuleCosts = request.ModuleCosts ?? false,
             ModuleReports = request.ModuleReports ?? true,
+            ModuleFuel = request.ModuleFuel ?? true,
+            ModuleTours = request.ModuleTours ?? true,
             ModuleSettings = request.ModuleSettings ?? true,
             ModuleUsers = request.ModuleUsers ?? true,
             ModuleSuppliers = request.ModuleSuppliers ?? false,
@@ -177,6 +184,8 @@ public class CreateSubscriptionTypeCommandHandler : IRequestHandler<CreateSubscr
             ModuleMaintenance = subscriptionType.ModuleMaintenance,
             ModuleCosts = subscriptionType.ModuleCosts,
             ModuleReports = subscriptionType.ModuleReports,
+            ModuleFuel = subscriptionType.ModuleFuel,
+            ModuleTours = subscriptionType.ModuleTours,
             ModuleSettings = subscriptionType.ModuleSettings,
             ModuleUsers = subscriptionType.ModuleUsers,
             ModuleSuppliers = subscriptionType.ModuleSuppliers,

@@ -16,6 +16,7 @@ interface FuelEntry {
   fuelTypeId: number;
   fuelTypeName: string;
   invoiceDate: string;
+  odometerKm?: number | null;
   isValid?: boolean;
   errors?: string[];
 }
@@ -26,6 +27,10 @@ interface ColumnMapping {
   pricePerLiter: number | null;
   invoiceDate: number | null;
   fuelType: number | null;
+  // Relevé au compteur : facultatif, mais c'est la seule source de kilométrage
+  // d'un client sans boîtier. Un relevé de carte carburant en contient presque
+  // toujours une colonne.
+  odometerKm: number | null;
 }
 
 @Component({
@@ -162,6 +167,14 @@ interface ColumnMapping {
                   <label>Montant Total <span class="required">*</span></label>
                   <input type="number" [(ngModel)]="manualEntry.totalAmount" (ngModelChange)="onTotalAmountEdit()" class="form-control" placeholder="Ex: 568.45" step="0.01" min="0">
                   <small class="form-hint">Renseignez volume + prix (calcul auto) OU saisissez directement le montant total.</small>
+                </div>
+                <!-- Le plein est le moment où le conducteur lit le compteur. Sans
+                     boîtier, ce relevé est la SEULE source du kilométrage : il
+                     alimente les échéances d'entretien au km et le coût au km. -->
+                <div class="form-group">
+                  <label>Kilométrage au compteur</label>
+                  <input type="number" [(ngModel)]="manualEntry.odometerKm" class="form-control" placeholder="Ex: 145820" step="1" min="0">
+                  <small class="form-hint">Met à jour le kilométrage du véhicule — indispensable sans boîtier GPS.</small>
                 </div>
               </div>
               <div class="form-actions">
@@ -309,7 +322,7 @@ interface ColumnMapping {
               </div>
               <table class="data-table">
                 <thead>
-                  <tr><th>Statut</th><th>Matricule</th><th>Volume</th><th>Prix/L</th><th>Total</th><th>Date</th><th>Type</th><th>Erreurs</th></tr>
+                  <tr><th>Statut</th><th>Matricule</th><th>Volume</th><th>Prix/L</th><th>Total</th><th>Date</th><th>Km</th><th>Type</th><th>Erreurs</th></tr>
                 </thead>
                 <tbody>
                   <tr *ngFor="let e of importEntries" [class.invalid]="!e.isValid">
@@ -319,6 +332,7 @@ interface ColumnMapping {
                     <td>{{ e.pricePerLiter | number:'1.3-3' }}</td>
                     <td>{{ e.totalAmount | number:'1.2-2' }}</td>
                     <td>{{ e.invoiceDate }}</td>
+                    <td>{{ e.odometerKm ? (e.odometerKm | number:'1.0-0') : '—' }}</td>
                     <td><select [(ngModel)]="e.fuelTypeId" *ngIf="e.isValid"><option *ngFor="let ft of fuelTypes" [ngValue]="ft.id">{{ ft.name }}</option></select></td>
                     <td><span *ngFor="let err of e.errors" class="error-tag">{{ err }}</span></td>
                   </tr>
@@ -356,6 +370,10 @@ interface ColumnMapping {
                     <th>Volume</th>
                     <th>Prix/L</th>
                     <th>Total</th>
+                    <!-- Sans cette colonne, un relevé au compteur saisi devenait
+                         invisible : impossible de vérifier ou de repérer une faute
+                         de frappe qui aurait fait bondir le kilométrage. -->
+                    <th>Km</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -367,6 +385,7 @@ interface ColumnMapping {
                     <td>{{ entry.volume | number:'1.2-2' }} L</td>
                     <td>{{ entry.pricePerLiter | number:'1.3-3' }}</td>
                     <td class="total-cell">{{ entry.totalAmount | number:'1.2-2' }}</td>
+                    <td>{{ entry.odometerKm ? (entry.odometerKm | number:'1.0-0') : '—' }}</td>
                     <td><button class="btn-icon-delete" (click)="deleteEntry(entry)" title="Supprimer">🗑️</button></td>
                   </tr>
                 </tbody>
@@ -568,7 +587,7 @@ export class CarburantComponent implements OnInit, OnDestroy {
   // totalAmountTouched stays false until the operator types in the total
   // field directly; before then any volume/price change keeps the total
   // auto-synced as volume × pricePerLiter.
-  manualEntry = { vehiclePlate: '', fuelTypeId: null as number | null, volume: 0, pricePerLiter: 0, totalAmount: 0, invoiceDate: new Date().toISOString().split('T')[0] };
+  manualEntry = { vehiclePlate: '', fuelTypeId: null as number | null, volume: 0, pricePerLiter: 0, totalAmount: 0, invoiceDate: new Date().toISOString().split('T')[0], odometerKm: null as number | null };
   totalAmountTouched = false;
   
   // Upload
@@ -581,14 +600,15 @@ export class CarburantComponent implements OnInit, OnDestroy {
   dataStartRow = 2;
 
   // Mapping
-  columnMapping: ColumnMapping = { vehiclePlate: null, volume: null, pricePerLiter: null, invoiceDate: null, fuelType: null };
+  columnMapping: ColumnMapping = { vehiclePlate: null, volume: null, pricePerLiter: null, invoiceDate: null, fuelType: null, odometerKm: null };
   activeMappingField: keyof ColumnMapping | null = null;
   mappingFields = [
     { key: 'vehiclePlate' as keyof ColumnMapping, label: 'Matricule', required: true },
     { key: 'volume' as keyof ColumnMapping, label: 'Volume', required: true },
     { key: 'pricePerLiter' as keyof ColumnMapping, label: 'Prix/L', required: true },
     { key: 'invoiceDate' as keyof ColumnMapping, label: 'Date', required: true },
-    { key: 'fuelType' as keyof ColumnMapping, label: 'Type', required: false }
+    { key: 'fuelType' as keyof ColumnMapping, label: 'Type', required: false },
+    { key: 'odometerKm' as keyof ColumnMapping, label: 'Kilométrage', required: false }
   ];
 
   showPreview = false;
@@ -713,7 +733,7 @@ export class CarburantComponent implements OnInit, OnDestroy {
   }
 
   resetManualEntry() {
-    this.manualEntry = { vehiclePlate: '', fuelTypeId: null, volume: 0, pricePerLiter: 0, totalAmount: 0, invoiceDate: new Date().toISOString().split('T')[0] };
+    this.manualEntry = { vehiclePlate: '', fuelTypeId: null, volume: 0, pricePerLiter: 0, totalAmount: 0, invoiceDate: new Date().toISOString().split('T')[0], odometerKm: null };
     this.totalAmountTouched = false;
   }
 
@@ -734,7 +754,10 @@ export class CarburantComponent implements OnInit, OnDestroy {
       volume: this.manualEntry.volume,
       pricePerLiter: this.manualEntry.pricePerLiter,
       totalAmount: total,
-      invoiceDate: this.manualEntry.invoiceDate
+      invoiceDate: this.manualEntry.invoiceDate,
+      odometerKm: this.manualEntry.odometerKm && this.manualEntry.odometerKm > 0
+        ? this.manualEntry.odometerKm
+        : undefined
     }).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         this.isSaving = false;
@@ -774,7 +797,7 @@ export class CarburantComponent implements OnInit, OnDestroy {
   }
   resetImport() {
     this.workbook = null; this.excelHeaders = []; this.excelData = []; this.showPreview = false; this.importEntries = [];
-    this.columnMapping = { vehiclePlate: null, volume: null, pricePerLiter: null, invoiceDate: null, fuelType: null };
+    this.columnMapping = { vehiclePlate: null, volume: null, pricePerLiter: null, invoiceDate: null, fuelType: null, odometerKm: null };
   }
 
   // Mapping
@@ -807,6 +830,9 @@ export class CarburantComponent implements OnInit, OnDestroy {
         totalAmount: 0, invoiceDate: this.parseDate(r[this.columnMapping.invoiceDate!]),
         fuelTypeId: this.defaultFuelTypeId || 0,
         fuelTypeName: this.columnMapping.fuelType !== null ? String(r[this.columnMapping.fuelType]) : '',
+        odometerKm: this.columnMapping.odometerKm !== null
+          ? (this.parseNumber(r[this.columnMapping.odometerKm]) || null)
+          : null,
         isValid: true, errors: []
       };
       e.totalAmount = e.volume * e.pricePerLiter;
@@ -880,7 +906,8 @@ export class CarburantComponent implements OnInit, OnDestroy {
       fuelTypeId: e.fuelTypeId,
       volume: e.volume,
       pricePerLiter: e.pricePerLiter,
-      invoiceDate: e.invoiceDate
+      invoiceDate: e.invoiceDate,
+      odometerKm: e.odometerKm && e.odometerKm > 0 ? e.odometerKm : undefined
     }));
     this.apiService.bulkCreateFuelEntries(requests).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {

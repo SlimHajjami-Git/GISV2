@@ -68,6 +68,8 @@ public class GetSubscriptionTypesQueryHandler : IRequestHandler<GetSubscriptionT
             ModuleMaintenance = st.ModuleMaintenance,
             ModuleCosts = st.ModuleCosts,
             ModuleReports = st.ModuleReports,
+            ModuleFuel = st.ModuleFuel,
+            ModuleTours = st.ModuleTours,
             ModuleSettings = st.ModuleSettings,
             ModuleUsers = st.ModuleUsers,
             ModuleSuppliers = st.ModuleSuppliers,

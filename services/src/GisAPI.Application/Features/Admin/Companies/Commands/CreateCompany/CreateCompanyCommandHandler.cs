@@ -27,22 +27,38 @@ public class CreateCompanyCommandHandler : IRequestHandler<CreateCompanyCommand,
         var subscriptionType = await _context.SubscriptionTypes
             .FirstOrDefaultAsync(s => s.Id == request.SubscriptionId, ct);
 
+        // Une société sans abonnement échappe à TOUT contrôle de droits : le
+        // middleware ne filtre rien quand SubscriptionType est null
+        // (PermissionMiddleware : « if (subscriptionType != null) »), et l'écran
+        // non plus. On refuse donc explicitement au lieu de créer silencieusement
+        // une société hors périmètre — c'est ainsi que 6 sociétés de production
+        // se sont retrouvées avec subscription_type_id NULL.
+        if (subscriptionType == null)
+            throw new GisAPI.Domain.Exceptions.DomainException(
+                request.SubscriptionId > 0
+                    ? $"L'abonnement #{request.SubscriptionId} est introuvable."
+                    : "Un abonnement doit être choisi pour créer une société.");
+
         var billingCycle = request.BillingCycle ?? "yearly";
         var startDate = DateTime.UtcNow;
+        // Plus de `?.` ici : l'abonnement est garanti présent depuis le contrôle
+        // ci-dessus. Les replis 30/90/365 jours masquaient une durée absente.
         var durationDays = billingCycle switch
         {
-            "monthly" => subscriptionType?.MonthlyDurationDays ?? 30,
-            "quarterly" => subscriptionType?.QuarterlyDurationDays ?? 90,
-            "yearly" => subscriptionType?.YearlyDurationDays ?? 365,
-            _ => 365
+            "monthly" => subscriptionType.MonthlyDurationDays,
+            "quarterly" => subscriptionType.QuarterlyDurationDays,
+            "yearly" => subscriptionType.YearlyDurationDays,
+            _ => subscriptionType.YearlyDurationDays
         };
-        var expiresAt = startDate.AddDays(durationDays);
+        // Un plan enregistré avec une durée à 0 ferait expirer l'abonnement le
+        // jour même de sa création : on retombe sur l'année.
+        var expiresAt = startDate.AddDays(durationDays > 0 ? durationDays : 365);
         var price = billingCycle switch
         {
-            "monthly" => subscriptionType?.MonthlyPrice ?? 0,
-            "quarterly" => subscriptionType?.QuarterlyPrice ?? 0,
-            "yearly" => subscriptionType?.YearlyPrice ?? 0,
-            _ => subscriptionType?.YearlyPrice ?? 0
+            "monthly" => subscriptionType.MonthlyPrice,
+            "quarterly" => subscriptionType.QuarterlyPrice,
+            "yearly" => subscriptionType.YearlyPrice,
+            _ => subscriptionType.YearlyPrice
         };
 
         var company = new Societe
@@ -51,7 +67,7 @@ public class CreateCompanyCommandHandler : IRequestHandler<CreateCompanyCommand,
             Email = request.Email,
             Phone = request.Phone,
             Type = request.Type ?? "transport",
-            SubscriptionTypeId = request.SubscriptionId > 0 ? request.SubscriptionId : null,
+            SubscriptionTypeId = subscriptionType.Id,
             IsActive = true,
             SubscriptionStartedAt = startDate,
             SubscriptionExpiresAt = expiresAt,

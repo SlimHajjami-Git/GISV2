@@ -29,11 +29,31 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
             ? DateTime.SpecifyKind(request.InvoiceDate, DateTimeKind.Utc)
             : request.InvoiceDate.ToUniversalTime();
 
-        // Try to find vehicle by plate
-        var vehicle = await _context.Vehicles
-            .FirstOrDefaultAsync(v => v.CompanyId == companyId && 
-                (v.Plate == request.VehiclePlate || v.Name == request.VehiclePlate), 
-                cancellationToken);
+        // Rattachement au véhicule par matricule.
+        //
+        // L'égalité stricte laissait échapper « 123 TU 4567 » face à « 123TU4567 »
+        // ou « 123 tu 4567 » : la ligne était alors enregistrée SANS véhicule, et
+        // l'import la comptait comme un succès. Le client croyait ses pleins
+        // chargés alors qu'ils n'entraient dans aucun calcul de consommation.
+        // On compare donc sans espaces ni casse, et on refuse explicitement un
+        // matricule renseigné qui ne correspond à rien.
+        var plate = (request.VehiclePlate ?? string.Empty).Trim();
+        Vehicle? vehicle = null;
+
+        if (plate.Length > 0)
+        {
+            var normalized = plate.Replace(" ", "").ToUpper();
+            vehicle = await _context.Vehicles
+                .FirstOrDefaultAsync(v => v.CompanyId == companyId &&
+                    ((v.Plate != null && v.Plate.Replace(" ", "").ToUpper() == normalized) ||
+                     v.Name.Replace(" ", "").ToUpper() == normalized),
+                    cancellationToken);
+
+            if (vehicle == null)
+                throw new GisAPI.Domain.Exceptions.DomainException(
+                    $"Aucun véhicule ne correspond au matricule « {plate} ». " +
+                    "Vérifiez le matricule ou créez d'abord le véhicule.");
+        }
 
         // Calypso 9 p2 — operator may submit a ticket where only the
         // gross total is legible. Honour an explicit TotalAmount > 0
@@ -48,7 +68,10 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
         {
             CompanyId = companyId,
             VehicleId = vehicle?.Id,
-            VehiclePlate = request.VehiclePlate,
+            // Le matricule tel que reconnu si le véhicule a été retrouvé : on
+            // enregistre la forme canonique plutôt que la frappe de l'opérateur,
+            // pour que l'historique reste lisible après un import approximatif.
+            VehiclePlate = vehicle?.Plate ?? vehicle?.Name ?? plate,
             FuelTypeId = request.FuelTypeId,
             Volume = request.Volume,
             PricePerLiter = request.PricePerLiter,
@@ -64,6 +87,25 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
         };
 
         _context.FuelEntries.Add(entry);
+
+        // Le relevé au compteur fait avancer le kilométrage du véhicule.
+        //
+        // C'est le pivot de l'offre « gestion de parc sans GPS » : sans boîtier,
+        // vehicles.mileage est la SEULE source des échéances d'entretien au
+        // kilométrage et du coût au kilomètre. Le plein est le moment naturel où
+        // le conducteur lit le compteur ; jusqu'ici la valeur était enregistrée
+        // sur la ligne de plein et n'allait pas plus loin, si bien qu'un client
+        // sans GPS voyait son kilométrage figé à la valeur saisie à la création
+        // du véhicule.
+        //
+        // On ne recule jamais : un relevé inférieur (erreur de frappe, ticket
+        // ancien saisi après coup) ne doit pas faire baisser le compteur.
+        if (vehicle != null && request.OdometerKm.HasValue && request.OdometerKm.Value > vehicle.Mileage)
+        {
+            vehicle.Mileage = (int)request.OdometerKm.Value;
+            vehicle.UpdatedAt = DateTime.UtcNow;
+        }
+
         await _context.SaveChangesAsync(cancellationToken);
 
         // Notify company admins (must be awaited to avoid DbContext concurrency issues in bulk scenarios)

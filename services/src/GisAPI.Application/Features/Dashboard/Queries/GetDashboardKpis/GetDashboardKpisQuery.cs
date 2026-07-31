@@ -64,13 +64,21 @@ public class FinancialKpisDto
     public decimal FuelCostPerKm { get; set; }
 }
 
+/// <summary>
+/// Indicateurs de performance. Les champs nullables valent null tant qu'aucune
+/// source ne les alimente : ils étaient renvoyés avec des constantes (12,5 km/L,
+/// 8 L/100 km, score 85, ponctualité 95 %) commentées « Estimated » / « Placeholder ».
+/// Aucun écran ne les affiche aujourd'hui, mais un chiffre inventé dans un contrat
+/// d'API finit toujours par être branché quelque part : null oblige l'appelant à
+/// gérer l'absence de donnée.
+/// </summary>
 public class PerformanceKpisDto
 {
-    public double FuelEfficiencyKmPerLiter { get; set; }
-    public double AvgConsumptionPer100Km { get; set; }
-    public double DriverPerformanceScore { get; set; }
+    public double? FuelEfficiencyKmPerLiter { get; set; }
+    public double? AvgConsumptionPer100Km { get; set; }
+    public double? DriverPerformanceScore { get; set; }
     public int SafetyIncidents { get; set; }
-    public double OnTimeDeliveryRate { get; set; }
+    public double? OnTimeDeliveryRate { get; set; }
     public double IdleTimePercentage { get; set; }
 }
 

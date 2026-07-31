@@ -990,7 +990,21 @@ static async Task SeedSubscriptionPlansAndTestCompany(GisAPI.Infrastructure.Pers
                 ModuleGeofences = false,
                 ModuleMaintenance = true,
                 ModuleCosts = true,
-                ModuleReports = false,
+                // ModuleReports doit rester TRUE : c'est la porte d'entrée de la
+                // route /reports. Le plan active explicitement trois rapports
+                // (kilométrage, coûts, entretien) plus bas ; avec ModuleReports
+                // à false, le FeatureGuard bloquait /reports et ces trois
+                // rapports étaient inatteignables. Le tri fin est fait par les
+                // drapeaux Report* ci-dessous, onglet par onglet.
+                ModuleReports = true,
+                // Les tournées supposent un itinéraire suivi en temps réel :
+                // sans boîtier l'écran ne peut rien afficher. Le champ vaut
+                // true par défaut dans l'entité, il faut donc l'éteindre ici.
+                ModuleTours = false,
+                // Les pleins sont saisis à la main (fuel_entries.odometer_km) :
+                // le module reste ouvert, seuls les rapports carburant DÉDUITS
+                // du GPS sont éteints plus bas (ReportFuel = false).
+                ModuleFuel = true,
                 ModuleSettings = true,
                 ModuleUsers = true,
                 ModuleSuppliers = true,

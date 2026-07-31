@@ -91,6 +91,20 @@ public class PermissionMiddleware
         { "/api/vehiclemaintenance", sub => sub.ModuleMaintenance },
         { "/api/costs", sub => sub.ModuleCosts },
         { "/api/fuelentries", sub => sub.ModuleFuel },
+        // Ces deux endpoints DÉDUISENT la consommation des positions GPS
+        // (FuelCalculationService lit GpsPositions et Trips). Sans boîtier la
+        // distance vaut 0 et le résultat est une estimation fabriquée, doublée
+        // d'un verdict « anti-fraude » qui classe toute la flotte en suspect.
+        // Ils relèvent donc de ReportFuel, pas du simple module Carburant — qui
+        // reste ouvert pour la saisie manuelle des pleins.
+        // Placés AVANT le préfixe générique : la correspondance retient la clé
+        // la plus longue, mais on les déclare ici pour que l'intention soit lisible.
+        { "/api/fuelexpenses/statistics", sub => sub.ModuleFuel && sub.ReportFuel },
+        { "/api/fuelexpenses/comparison", sub => sub.ModuleFuel && sub.ReportFuel },
+        { "/api/fuelexpenses/vehicle-audit", sub => sub.ModuleFuel && sub.ReportFuel },
+        // /api/fuelexpenses/real-consumption reste volontairement sur ModuleFuel :
+        // c'est le calcul plein-à-plein, purement manuel, écrit pour les clients
+        // sans boîtier. Il ne doit PAS dépendre de ReportFuel.
         { "/api/fuelexpenses", sub => sub.ModuleFuel },
         { "/api/fuelrecords", sub => sub.ModuleFuel },
         { "/api/documents", sub => sub.ModuleDocuments },

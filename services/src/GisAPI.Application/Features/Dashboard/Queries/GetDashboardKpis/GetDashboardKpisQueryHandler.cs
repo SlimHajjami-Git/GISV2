@@ -139,14 +139,18 @@ public class GetDashboardKpisQueryHandler : IRequestHandler<GetDashboardKpisQuer
                 : 0
         };
 
-        // Performance KPIs
+        // Performance KPIs — null tant qu'aucune source n'alimente l'indicateur.
+        // Ces quatre champs renvoyaient des constantes (12,5 km/L, 8 L/100 km,
+        // score 85, ponctualité 95 %) : des chiffres identiques pour toutes les
+        // sociétés, quel que soit leur parc. Le temps d'arrêt, lui, est bien
+        // calculé à partir des positions.
         var performanceKpis = new PerformanceKpisDto
         {
-            FuelEfficiencyKmPerLiter = 12.5, // Estimated
-            AvgConsumptionPer100Km = 8.0, // Estimated L/100km
-            DriverPerformanceScore = 85.0, // Placeholder
+            FuelEfficiencyKmPerLiter = null,
+            AvgConsumptionPer100Km = null,
+            DriverPerformanceScore = null,
             SafetyIncidents = 0,
-            OnTimeDeliveryRate = 95.0, // Placeholder
+            OnTimeDeliveryRate = null,
             IdleTimePercentage = positionCount > 0
                 ? Math.Round((double)idleCount / positionCount * 100, 1)
                 : 0

@@ -38,6 +38,11 @@ public class SubscriptionTypeDto
     public bool ModuleMaintenance { get; set; }
     public bool ModuleCosts { get; set; }
     public bool ModuleReports { get; set; }
+    // Absents de l'API jusqu'ici alors qu'ils existent en base et valent true
+    // par défaut : impossible donc d'éteindre les Tournées sur un plan « sans
+    // GPS », ni de piloter le module Carburant.
+    public bool ModuleFuel { get; set; }
+    public bool ModuleTours { get; set; }
     public bool ModuleSettings { get; set; }
     public bool ModuleUsers { get; set; }
     public bool ModuleSuppliers { get; set; }

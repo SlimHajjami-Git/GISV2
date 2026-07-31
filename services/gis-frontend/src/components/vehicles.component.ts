@@ -395,24 +395,39 @@ interface VehicleTrip {
                 </svg>
                 État du véhicule
               </h3>
+              <!-- Le niveau de carburant provient de la sonde du boîtier et n'est
+                   exposé que par l'endpoint de monitoring. Ici il n'a jamais été
+                   renseigné : la jauge affichait un pourcentage tiré au sort, puis
+                   75 % par défaut. On n'affiche donc la jauge que si la valeur
+                   existe réellement. -->
               <div class="gauge-item">
                 <div class="gauge-header">
                   <span>Niveau carburant</span>
-                  <span class="gauge-value">{{ selectedDetailVehicle.fuelLevel || 75 }}%</span>
+                  <span class="gauge-value" *ngIf="selectedDetailVehicle.fuelLevel != null">{{ selectedDetailVehicle.fuelLevel }}%</span>
+                  <span class="gauge-value muted" *ngIf="selectedDetailVehicle.fuelLevel == null">Non disponible</span>
                 </div>
-                <div class="gauge-bar-large">
-                  <div class="gauge-fill" [style.width.%]="selectedDetailVehicle.fuelLevel || 75"
-                       [class.low]="(selectedDetailVehicle.fuelLevel || 75) < 25"
-                       [class.medium]="(selectedDetailVehicle.fuelLevel || 75) >= 25 && (selectedDetailVehicle.fuelLevel || 75) < 50">
+                <div class="gauge-bar-large" *ngIf="selectedDetailVehicle.fuelLevel != null">
+                  <div class="gauge-fill" [style.width.%]="selectedDetailVehicle.fuelLevel"
+                       [class.low]="selectedDetailVehicle.fuelLevel! < 25"
+                       [class.medium]="selectedDetailVehicle.fuelLevel! >= 25 && selectedDetailVehicle.fuelLevel! < 50">
                   </div>
                 </div>
+                <div class="gauge-hint" *ngIf="selectedDetailVehicle.fuelLevel == null">
+                  Nécessite un boîtier équipé d'une sonde à carburant.
+                </div>
               </div>
+              <!-- Même principe : sans échéance kilométrique enregistrée, la
+                   valeur repli « kilométrage + 5000 » affichait une distance
+                   inventée. On dit maintenant qu'aucune échéance n'est planifiée. -->
               <div class="gauge-item">
                 <div class="gauge-header">
                   <span>Prochaine maintenance</span>
-                  <span class="gauge-value">{{ getMaintenanceRemaining(selectedDetailVehicle) | appDistance:0 }}</span>
+                  <span class="gauge-value" *ngIf="selectedDetailVehicle.nextMaintenanceKm != null">
+                    {{ getMaintenanceRemaining(selectedDetailVehicle) | appDistance:0 }}
+                  </span>
+                  <span class="gauge-value muted" *ngIf="selectedDetailVehicle.nextMaintenanceKm == null">Non planifiée</span>
                 </div>
-                <div class="gauge-bar-large">
+                <div class="gauge-bar-large" *ngIf="selectedDetailVehicle.nextMaintenanceKm != null">
                   <div class="gauge-fill maintenance" [style.width.%]="getMaintenancePercent(selectedDetailVehicle)">
                   </div>
                 </div>
@@ -2566,8 +2581,12 @@ export class VehiclesComponent implements OnInit, OnDestroy {
             fuelTankCapacity: v.fuelTankCapacity,
             assignedDriverId: v.assignedDriverId?.toString(),
             assignedDriverName: v.assignedDriverName,
-            fuelLevel: Math.floor(Math.random() * 60) + 40,
-            nextMaintenanceKm: v.mileage + Math.floor(Math.random() * 5000) + 1000,
+            // Ni le niveau de carburant ni l'échéance kilométrique ne sont
+            // renseignés par cet endpoint : on les laisse indéfinis. Ils étaient
+            // tirés au sort, si bien que le panneau détail affichait une jauge et
+            // une échéance différentes à chaque rechargement de la page.
+            fuelLevel: undefined,
+            nextMaintenanceKm: undefined,
             // Immobilisation operator-set state (propagated to the detail
             // panel toggle that mutes auto-alerts for this vehicle).
             isImmobilized: !!(v as any).isImmobilized,
@@ -2643,18 +2662,22 @@ export class VehiclesComponent implements OnInit, OnDestroy {
   }
 
   isMaintenanceSoon(vehicle: any): boolean {
-    const remaining = (vehicle.nextMaintenanceKm || 0) - vehicle.mileage;
+    if (vehicle?.nextMaintenanceKm == null) return false;
+    const remaining = vehicle.nextMaintenanceKm - vehicle.mileage;
     return remaining > 0 && remaining < 2000;
   }
 
-  getMaintenanceRemaining(vehicle: any): number {
-    const remaining = (vehicle.nextMaintenanceKm || vehicle.mileage + 5000) - vehicle.mileage;
-    return Math.max(0, remaining);
+  // Les replis « kilométrage + 5000 » affichaient une échéance là où il n'y en
+  // avait aucune. Sans échéance enregistrée on renvoie null et l'écran l'annonce.
+  getMaintenanceRemaining(vehicle: any): number | null {
+    if (vehicle?.nextMaintenanceKm == null) return null;
+    return Math.max(0, vehicle.nextMaintenanceKm - vehicle.mileage);
   }
 
   getMaintenancePercent(vehicle: any): number {
+    if (vehicle?.nextMaintenanceKm == null) return 0;
     const interval = 10000;
-    const remaining = (vehicle.nextMaintenanceKm || vehicle.mileage + 5000) - vehicle.mileage;
+    const remaining = vehicle.nextMaintenanceKm - vehicle.mileage;
     return Math.min(100, Math.max(0, (remaining / interval) * 100));
   }
 
@@ -2722,8 +2745,12 @@ export class VehiclesComponent implements OnInit, OnDestroy {
           this.selectedDetailVehicle = {
             ...this.selectedDetailVehicle,
             ...details,
-            fuelLevel: details.fuelLevel || 75,
-            nextMaintenanceKm: details.nextMaintenanceKm || 5000,
+            // Ces deux champs n'existent pas sur le DTO véhicule (fuelLevel n'est
+            // exposé que par l'endpoint de monitoring, alimenté par la sonde du
+            // boîtier). Les valeurs de repli 75 % et 5000 km n'étaient donc pas
+            // des valeurs de repli : c'était ce que le client voyait TOUJOURS.
+            fuelLevel: details.fuelLevel ?? undefined,
+            nextMaintenanceKm: details.nextMaintenanceKm ?? undefined,
             totalTrips: details.totalTrips || 0,
             monthlyDistance: details.monthlyDistance || 0,
             monthlyFuelCost: details.monthlyFuelCost || 0

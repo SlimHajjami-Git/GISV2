@@ -317,6 +317,8 @@ export interface SubscriptionType {
   moduleDocuments?: boolean;
   moduleAccidents?: boolean;
   moduleFleetManagement?: boolean;
+  moduleFuel?: boolean;
+  moduleTours?: boolean;
   // Report permissions
   reportTrips?: boolean;
   reportFuel?: boolean;
