@@ -289,6 +289,63 @@ export class AuthService {
     );
   }
 
+  /**
+   * Inscription libre : crée la société du visiteur et son compte, puis ouvre la
+   * session dans la foulée.
+   *
+   * L'API renvoie exactement la même charge utile que la connexion : on passe donc
+   * par le MÊME mappage (applySession) plutôt que d'en écrire un second, qui
+   * finirait par diverger — c'est déjà arrivé avec l'impersonation, qui oubliait
+   * la devise.
+   *
+   * Renvoie null en cas d'échec, l'appelant lisant le message porté par l'erreur.
+   */
+  registerCompany(payload: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    password: string;
+    companyName?: string;
+    phone?: string;
+  }): Observable<AuthUser> {
+    return this.http.post<AuthResponse>(`${this.API_URL}/auth/register`, payload).pipe(
+      map(response => this.applySession(response, true))
+    );
+  }
+
+  /**
+   * Applique une réponse d'authentification : mappage, stockage local,
+   * persistance de session, diffusion de l'utilisateur courant et devise.
+   * Extrait du login pour que l'inscription ne réinvente pas la même chose.
+   */
+  private applySession(response: AuthResponse, rememberMe: boolean): AuthUser {
+    const user: AuthUser = {
+      id: response.user.id?.toString() || '',
+      name: `${response.user.firstName} ${response.user.lastName}`.trim(),
+      email: response.user.email,
+      phone: response.user.phone,
+      roles: [response.user.roleName],
+      permissions: response.user.permissions || {},
+      companyId: response.user.companyId.toString(),
+      companyName: response.user.companyName,
+      companyType: response.user.companyType || '',
+      isCompanyAdmin: response.user.isCompanyAdmin,
+      isSystemAdmin: response.user.isSystemAdmin,
+      subscriptionFeatures: response.user.subscriptionFeatures,
+      assignedVehicleIds: response.user.assignedVehicleIds ?? null,
+      userPermissions: response.user.userPermissions ?? null,
+      currency: response.user.currency
+    };
+
+    localStorage.setItem('auth_token', response.token);
+    localStorage.setItem('refresh_token', response.refreshToken);
+    localStorage.setItem('auth_user', JSON.stringify(user));
+    this.setSessionPersistence(rememberMe);
+    this.currentUser$.next(user);
+    this.applyAccountCurrency(user.currency);
+    return user;
+  }
+
   private extractPermissions(permissions: Record<string, any> | null): string[] {
     if (!permissions) return [];
     const result: string[] = [];

@@ -1,365 +1,294 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router } from '@angular/router';
+import { Subject, takeUntil } from 'rxjs';
+import { AppLayoutComponent } from './shared/app-layout.component';
+import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { ApiService } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
+import { environment } from '../environments/environment';
 
+/**
+ * Abonnement & paiement.
+ *
+ * CE QUE CETTE PAGE PROMET — rien qu'elle ne puisse tenir. Le paiement en ligne
+ * n'est branché sur AUCUN prestataire : le bouton est donc inactif et le dit. On
+ * ne montre ni historique de facturation ni reçu, parce qu'aucune trace de
+ * paiement n'existe en base (la société ne porte que son dernier règlement et le
+ * montant du prochain). Un tableau vide « Historique » laisserait croire à une
+ * fonctionnalité en panne plutôt qu'absente.
+ *
+ * TOUT VIENT DU SERVEUR — le plan courant, l'échéance et le montant dû sortent de
+ * /api/subscriptions/current ; la grille des offres de /api/subscriptions. Aucun
+ * prix n'est recalculé côté écran, et aucun symbole monétaire n'est écrit en dur :
+ * la version précédente affichait « € » sur un déploiement facturé en dinars.
+ */
 @Component({
   selector: 'app-subscription',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AppLayoutComponent, ...USER_PREF_PIPES],
   template: `
-    <div class="dashboard">
-      <aside class="sidebar">
-        <div class="sidebar-header">
-          <div class="logo">
-            <svg width="32" height="32" viewBox="0 0 40 40" fill="none">
-              <rect width="40" height="40" rx="8" fill="#2563eb"/>
-              <path d="M12 20L18 26L28 14" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span>Calypso</span>
-          </div>
-        </div>
-        <nav class="sidebar-nav">
-          <a class="nav-item" (click)="navigate('/dashboard')">
-            <span class="nav-icon">📊</span>
-            <span>Tableau de bord</span>
-          </a>
-          <a class="nav-item" (click)="navigate('/vehicles')">
-            <span class="nav-icon">🚗</span>
-            <span>Véhicules</span>
-          </a>
-          <a class="nav-item" (click)="navigate('/employees')">
-            <span class="nav-icon">👥</span>
-            <span>Employés</span>
-          </a>
-          <a class="nav-item" (click)="navigate('/gps')">
-            <span class="nav-icon">📍</span>
-            <span>Suivi GPS</span>
-          </a>
-          <a class="nav-item active" (click)="navigate('/subscription')">
-            <span class="nav-icon">💳</span>
-            <span>Abonnement</span>
-          </a>
-        </nav>
-        <div class="sidebar-footer">
-          <div class="user-menu">
-            <div class="user-avatar">{{ companyName?.charAt(0) || 'U' }}</div>
-            <div class="user-info">
-              <div class="user-name">{{ companyName || 'Entreprise' }}</div>
-              <div class="user-role">Administrateur</div>
-            </div>
-          </div>
-          <button class="btn-logout" (click)="logout()">Déconnexion</button>
-        </div>
-      </aside>
-
-      <main class="main-content">
-        <header class="page-header">
+    <app-layout>
+      <div class="sub-page">
+        <header class="page-head">
           <div>
-            <h1>Mon abonnement</h1>
-            <p>Gérez votre formule et vos options</p>
+            <h1>Abonnement</h1>
+            <p class="sub">Votre offre, son échéance et les formules disponibles.</p>
           </div>
         </header>
 
-        <div class="subscription-layout">
-          <div class="current-plan-card">
-            <div class="plan-badge">Plan actuel</div>
-            <h2>{{ currentSubscription?.name }}</h2>
-            <div class="plan-price">
-              <span class="currency">€</span>
-              <span class="amount">{{ currentSubscription?.price }}</span>
-              <span class="period">/mois</span>
-            </div>
-            <ul class="features-list">
-              <li *ngFor="let feature of currentSubscription?.features">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <path d="M7 10L9 12L13 8" stroke="#10b981" stroke-width="2" stroke-linecap="round"/>
-                  <circle cx="10" cy="10" r="8" stroke="#10b981" stroke-width="2"/>
-                </svg>
-                {{ feature }}
-              </li>
-            </ul>
-            <button class="btn-outline-full">Changer de formule</button>
-          </div>
+        @if (loading) {
+          <div class="card skeleton">Chargement de votre abonnement…</div>
+        } @else {
 
-          <div class="usage-card">
-            <h3>Utilisation</h3>
-            <div class="usage-item">
-              <div class="usage-label">Véhicules enregistrés</div>
-              <div class="usage-bar">
-                <div class="usage-progress" [style.width.%]="getUsagePercent()"></div>
-              </div>
-              <div class="usage-text">{{ vehiclesCount }} / {{ maxVehicles }} véhicules</div>
+          <!-- Offre en cours -->
+          <section class="card current" [class.expiring]="daysRemaining !== null && daysRemaining <= 7">
+            <div class="current-main">
+              <span class="label">Offre en cours</span>
+              <h2>{{ currentPlan?.name || 'Aucune offre active' }}</h2>
+              @if (currentPlan?.description) {
+                <p class="desc">{{ currentPlan.description }}</p>
+              }
             </div>
 
-            <div class="usage-stats">
-              <div class="stat-item">
-                <div class="stat-label">Type d'entreprise</div>
-                <div class="stat-value">{{ getCompanyTypeLabel() }}</div>
+            <div class="current-facts">
+              <div class="fact">
+                <span class="fact-label">Échéance</span>
+                @if (expiresAt) {
+                  <span class="fact-value">{{ expiresAt | date:'dd MMMM yyyy' }}</span>
+                  @if (daysRemaining !== null) {
+                    <span class="fact-note" [class.warn]="daysRemaining <= 7">
+                      {{ daysRemaining > 0 ? 'dans ' + daysRemaining + ' jour(s)' : 'échue' }}
+                    </span>
+                  }
+                } @else {
+                  <span class="fact-value muted">—</span>
+                }
               </div>
-              <div class="stat-item">
-                <div class="stat-label">Date de création</div>
-                <div class="stat-value">{{ formatDate(expiresAt) }}</div>
+              <div class="fact">
+                <span class="fact-label">Prochain règlement</span>
+                @if (nextPaymentAmount != null) {
+                  <span class="fact-value">{{ nextPaymentAmount | appCurrency }}</span>
+                  <span class="fact-note">{{ billingCycleLabel }}</span>
+                } @else {
+                  <span class="fact-value muted">—</span>
+                }
               </div>
             </div>
-          </div>
-        </div>
+          </section>
 
-        <div class="all-plans-section">
-          <h2>Toutes les formules</h2>
-          <p>Choisissez la formule adaptée à vos besoins</p>
-
-          <div class="plans-grid">
-            <div
-              class="plan-card"
-              *ngFor="let sub of subscriptions"
-              [class.current]="sub.id === currentSubscription?.id"
-            >
-              <div class="plan-header">
-                <h3>{{ sub.name }}</h3>
-                <div class="plan-price">
-                  <span class="currency">€</span>
-                  <span class="amount">{{ sub.price }}</span>
-                  <span class="period">/mois</span>
-                </div>
+          <!-- Consommation par rapport aux limites du plan -->
+          @if (usage) {
+            <section class="card">
+              <h3 class="card-title">Utilisation</h3>
+              <div class="quota-grid">
+                @for (q of quotas; track q.label) {
+                  <div class="quota">
+                    <div class="quota-head">
+                      <span>{{ q.label }}</span>
+                      <span class="quota-num">{{ q.current }} <span class="of">/ {{ q.max || '∞' }}</span></span>
+                    </div>
+                    <div class="bar"><div class="bar-fill" [style.width.%]="q.pct" [class.full]="q.pct >= 90"></div></div>
+                  </div>
+                }
               </div>
-              <ul class="features-list">
-                <li *ngFor="let feature of sub.features">
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                    <path d="M7 10L9 12L13 8" stroke="#10b981" stroke-width="2" stroke-linecap="round"/>
-                    <circle cx="10" cy="10" r="8" stroke="#10b981" stroke-width="2"/>
-                  </svg>
-                  {{ feature }}
-                </li>
-              </ul>
-              <button
-                class="btn-primary btn-full"
-                *ngIf="sub.id !== currentSubscription?.id"
-              >
-                Passer à cette formule
-              </button>
-              <button
-                class="btn-outline-full"
-                *ngIf="sub.id === currentSubscription?.id"
-              >
-                Formule actuelle
-              </button>
+            </section>
+          }
+
+          <!-- Grille des offres -->
+          <section class="card">
+            <h3 class="card-title">Nos formules</h3>
+            <div class="plans">
+              @for (p of plans; track p.id) {
+                <article class="plan" [class.is-current]="p.id === currentPlan?.id">
+                  <header>
+                    <h4>{{ p.name }}</h4>
+                    @if (p.id === currentPlan?.id) { <span class="badge">Votre offre</span> }
+                  </header>
+                  <div class="price">
+                    <strong>{{ p.yearlyPrice | appCurrency }}</strong>
+                    <span>/ an</span>
+                  </div>
+                  @if (p.monthlyPrice > 0) {
+                    <p class="price-alt">ou {{ p.monthlyPrice | appCurrency }} / mois</p>
+                  }
+                  <ul class="plan-limits">
+                    <li>{{ p.maxVehicles }} véhicules</li>
+                    <li>{{ p.maxUsers }} utilisateurs</li>
+                    @if (p.gpsTracking) { <li>Suivi GPS temps réel</li> } @else { <li>Gestion sans boîtier GPS</li> }
+                  </ul>
+                  <button class="btn-plan" disabled>Choisir</button>
+                </article>
+              }
             </div>
-          </div>
-        </div>
-      </main>
-    </div>
+
+            <!-- Le seul message honnête tant qu'aucun prestataire n'est branché. -->
+            <div class="notice">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+              </svg>
+              <div>
+                <strong>Le paiement en ligne n'est pas encore ouvert.</strong>
+                <p>Pour changer de formule ou régler votre abonnement, contactez-nous&nbsp;: nous activons votre offre sous 24&nbsp;h ouvrées.</p>
+              </div>
+            </div>
+          </section>
+        }
+      </div>
+    </app-layout>
   `,
   styles: [`
-    .dashboard { display: flex; min-height: 100vh; background: #f9fafb; }
-    .sidebar {
-      width: 280px; background: #111827; color: white;
-      display: flex; flex-direction: column; position: fixed; height: 100vh;
+    .sub-page { max-width: 1100px; margin: 0 auto; padding: 4px 0 40px; }
+
+    .page-head { margin-bottom: 22px; }
+    .page-head h1 { font-size: 24px; font-weight: 800; color: var(--text-primary, #0f172a); margin: 0 0 4px; letter-spacing: -.02em; }
+    .page-head .sub { margin: 0; color: var(--text-secondary, #64748b); font-size: 14px; }
+
+    .card {
+      background: var(--bg-card, #fff);
+      border: 1px solid var(--border-color, #e6eaf2);
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 18px;
     }
-    .sidebar-header { padding: 24px; border-bottom: 1px solid #374151; }
-    .logo { display: flex; align-items: center; gap: 12px; font-size: 20px; font-weight: 700; }
-    .sidebar-nav { flex: 1; padding: 24px 16px; }
-    .nav-item {
-      display: flex; align-items: center; gap: 12px; padding: 12px 16px;
-      border-radius: 8px; color: #9ca3af; cursor: pointer; transition: all 0.2s;
-      margin-bottom: 4px; text-decoration: none;
+    .card-title { font-size: 15px; font-weight: 700; color: var(--text-primary, #0f172a); margin: 0 0 18px; }
+    .skeleton { color: var(--text-secondary, #64748b); font-size: 14px; }
+
+    .current { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; justify-content: space-between; }
+    .current.expiring { border-color: #fca5a5; }
+    .current-main .label { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #4f46e5; }
+    .current-main h2 { font-size: 22px; font-weight: 800; color: var(--text-primary, #0f172a); margin: 6px 0 4px; }
+    .current-main .desc { margin: 0; font-size: 13.5px; color: var(--text-secondary, #64748b); max-width: 46ch; }
+
+    .current-facts { display: flex; gap: 34px; }
+    .fact { display: flex; flex-direction: column; gap: 3px; }
+    .fact-label { font-size: 12px; color: var(--text-secondary, #64748b); }
+    .fact-value { font-size: 17px; font-weight: 700; color: var(--text-primary, #0f172a); }
+    .fact-value.muted { color: #94a3b8; font-weight: 600; }
+    .fact-note { font-size: 12px; color: var(--text-secondary, #64748b); }
+    .fact-note.warn { color: #b91c1c; font-weight: 600; }
+
+    .quota-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 18px; }
+    .quota-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; font-size: 13px; color: var(--text-secondary, #64748b); }
+    .quota-num { font-weight: 700; color: var(--text-primary, #0f172a); }
+    .quota-num .of { font-weight: 500; color: #94a3b8; }
+    .bar { height: 6px; border-radius: 99px; background: var(--bg-hover, #eef2f7); overflow: hidden; }
+    .bar-fill { height: 100%; background: #4f46e5; border-radius: 99px; transition: width .3s; }
+    .bar-fill.full { background: #dc2626; }
+
+    .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+    .plan {
+      border: 1px solid var(--border-color, #e6eaf2);
+      border-radius: 12px;
+      padding: 18px;
+      display: flex; flex-direction: column; gap: 10px;
     }
-    .nav-item:hover { background: #1f2937; color: white; }
-    .nav-item.active { background: #2563eb; color: white; }
-    .nav-icon { font-size: 20px; }
-    .sidebar-footer { padding: 24px; border-top: 1px solid #374151; }
-    .user-menu { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-    .user-avatar {
-      width: 40px; height: 40px; border-radius: 50%; background: #2563eb;
-      display: flex; align-items: center; justify-content: center; font-weight: 700;
-    }
-    .user-info { flex: 1; }
-    .user-name { font-weight: 600; font-size: 14px; }
-    .user-role { font-size: 12px; color: #9ca3af; }
-    .btn-logout {
-      width: 100%; padding: 10px; background: #1f2937; color: white;
-      border: none; border-radius: 8px; font-weight: 600; cursor: pointer;
+    .plan.is-current { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,.1); }
+    .plan header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .plan h4 { margin: 0; font-size: 15.5px; font-weight: 700; color: var(--text-primary, #0f172a); }
+    .badge { font-size: 11px; font-weight: 700; color: #4f46e5; background: rgba(79,70,229,.1); padding: 3px 8px; border-radius: 99px; }
+    .price { display: flex; align-items: baseline; gap: 5px; }
+    .price strong { font-size: 20px; font-weight: 800; color: var(--text-primary, #0f172a); }
+    .price span { font-size: 12.5px; color: var(--text-secondary, #64748b); }
+    .price-alt { margin: -4px 0 0; font-size: 12.5px; color: var(--text-secondary, #64748b); }
+    .plan-limits { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+    .plan-limits li { font-size: 13px; color: var(--text-secondary, #64748b); }
+    .btn-plan {
+      margin-top: auto;
+      padding: 10px; border-radius: 9px; border: 1px solid var(--border-color, #e6eaf2);
+      background: var(--bg-hover, #f8fafc); color: #94a3b8;
+      font-size: 13.5px; font-weight: 600; cursor: not-allowed;
     }
 
-    .main-content { flex: 1; margin-left: 280px; padding: 32px; }
-    .page-header { margin-bottom: 32px; }
-    .page-header h1 { font-size: 32px; font-weight: 800; color: #111827; margin: 0 0 4px; }
-    .page-header p { color: #6b7280; margin: 0; }
+    .notice {
+      display: flex; gap: 12px; align-items: flex-start;
+      margin-top: 20px; padding: 14px 16px;
+      background: rgba(79,70,229,.06);
+      border: 1px solid rgba(79,70,229,.2);
+      border-radius: 11px;
+      color: #3730a3;
+    }
+    .notice strong { display: block; font-size: 13.5px; margin-bottom: 3px; }
+    .notice p { margin: 0; font-size: 13px; color: var(--text-secondary, #64748b); line-height: 1.5; }
 
-    .subscription-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 48px; }
-
-    .current-plan-card {
-      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-      color: white; border-radius: 16px; padding: 40px; position: relative;
-    }
-    .plan-badge {
-      background: rgba(255, 255, 255, 0.2); padding: 6px 16px; border-radius: 20px;
-      font-size: 12px; font-weight: 700; display: inline-block; margin-bottom: 16px;
-    }
-    .current-plan-card h2 { font-size: 28px; font-weight: 800; margin: 0 0 24px; }
-    .plan-price {
-      display: flex; align-items: flex-start; gap: 4px; margin-bottom: 32px;
-    }
-    .plan-price .currency { font-size: 20px; margin-top: 8px; }
-    .plan-price .amount { font-size: 48px; font-weight: 800; line-height: 1; }
-    .plan-price .period { font-size: 16px; margin-top: 24px; opacity: 0.8; }
-
-    .features-list {
-      list-style: none; padding: 0; margin: 0 0 32px;
-    }
-    .features-list li {
-      display: flex; align-items: center; gap: 12px; padding: 10px 0;
-      font-size: 16px;
-    }
-    .current-plan-card .features-list svg path,
-    .current-plan-card .features-list svg circle {
-      stroke: white;
-    }
-
-    .btn-outline-full {
-      width: 100%; padding: 14px; background: rgba(255, 255, 255, 0.1);
-      color: white; border: 2px solid white; border-radius: 8px;
-      font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s;
-    }
-    .btn-outline-full:hover {
-      background: white; color: #2563eb;
-    }
-
-    .usage-card {
-      background: white; border-radius: 16px; padding: 40px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    }
-    .usage-card h3 { font-size: 20px; font-weight: 700; color: #111827; margin: 0 0 24px; }
-    .usage-item { margin-bottom: 32px; }
-    .usage-label { font-size: 14px; color: #6b7280; margin-bottom: 12px; font-weight: 600; }
-    .usage-bar {
-      height: 12px; background: #e5e7eb; border-radius: 6px; overflow: hidden;
-      margin-bottom: 8px;
-    }
-    .usage-progress {
-      height: 100%; background: linear-gradient(90deg, #2563eb 0%, #3b82f6 100%);
-      border-radius: 6px; transition: width 0.3s;
-    }
-    .usage-text { font-size: 14px; color: #111827; font-weight: 600; }
-
-    .usage-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-    .stat-item { }
-    .stat-label { font-size: 14px; color: #6b7280; margin-bottom: 6px; }
-    .stat-value { font-size: 18px; font-weight: 700; color: #111827; }
-
-    .all-plans-section { }
-    .all-plans-section h2 { font-size: 28px; font-weight: 800; color: #111827; margin: 0 0 8px; }
-    .all-plans-section > p { color: #6b7280; margin: 0 0 32px; }
-
-    .plans-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
-    .plan-card {
-      background: white; border: 2px solid #e5e7eb; border-radius: 16px;
-      padding: 32px; transition: all 0.3s;
-    }
-    .plan-card:hover {
-      transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
-      border-color: #2563eb;
-    }
-    .plan-card.current {
-      border-color: #2563eb; background: #eff6ff;
-    }
-    .plan-header { text-align: center; padding-bottom: 24px; border-bottom: 1px solid #e5e7eb; margin-bottom: 24px; }
-    .plan-header h3 { font-size: 20px; font-weight: 700; color: #111827; margin: 0 0 16px; }
-    .plan-header .plan-price { justify-content: center; margin: 0; }
-    .plan-header .currency { font-size: 20px; color: #6b7280; }
-    .plan-header .amount { font-size: 40px; color: #2563eb; }
-    .plan-header .period { font-size: 14px; color: #6b7280; }
-
-    .btn-primary {
-      width: 100%; padding: 14px; background: #2563eb; color: white;
-      border: none; border-radius: 8px; font-size: 16px; font-weight: 600;
-      cursor: pointer; transition: all 0.2s;
-    }
-    .btn-primary:hover { background: #1d4ed8; transform: translateY(-1px); }
-    .btn-full { width: 100%; }
-
-    @media (max-width: 968px) {
-      .subscription-layout,
-      .plans-grid {
-        grid-template-columns: 1fr;
-      }
+    @media (max-width: 720px) {
+      .current { flex-direction: column; gap: 20px; }
+      .current-facts { gap: 24px; }
     }
   `]
 })
-export class SubscriptionComponent implements OnInit {
-  subscriptions: any[] = [];
-  currentSubscription: any = null;
+export class SubscriptionComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
+
+  loading = true;
+  plans: any[] = [];
   currentPlan: any = null;
   usage: any = null;
-  expiresAt: string = '';
-  companyName: string = '';
-  companyType: string = '';
-  vehiclesCount: number = 0;
-  maxVehicles: number = 0;
-  loading = true;
+  expiresAt: string | null = null;
+  nextPaymentAmount: number | null = null;
+  billingCycle: string | null = null;
+
+  brand = (environment as any).brandName || 'Calypso';
 
   constructor(
-    private router: Router,
     private apiService: ApiService,
-    private authService: AuthService
+    private authService: AuthService,
+    private cdr: ChangeDetectorRef
   ) {}
 
-  ngOnInit() {
-    const user = this.authService.getCurrentUserSync();
-    if (!user) {
-      this.router.navigate(['/login']);
-      return;
-    }
-    this.companyName = user.companyName || '';
-    this.companyType = user.companyType || '';
-
-    // Load subscription plans from API
-    this.apiService.getSubscriptions().subscribe({
-      next: (subs: any[]) => { this.subscriptions = subs; },
-      error: () => { this.subscriptions = []; }
-    });
-
-    // Load current subscription from API
-    this.apiService.getCurrentSubscription().subscribe({
-      next: (data: any) => {
-        this.currentPlan = data.subscriptionType;
-        this.currentSubscription = data.subscriptionType;
-        this.usage = data.usage;
-        this.expiresAt = data.expiresAt;
-        this.vehiclesCount = data.usage?.vehicles?.current || 0;
-        this.maxVehicles = data.usage?.vehicles?.max || 0;
+  ngOnInit(): void {
+    this.apiService.getCurrentSubscription().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (res: any) => {
+        this.currentPlan = res?.subscriptionType ?? null;
+        this.usage = res?.usage ?? null;
+        this.expiresAt = res?.expiresAt ?? null;
+        this.nextPaymentAmount = res?.nextPaymentAmount ?? null;
+        this.billingCycle = res?.billingCycle ?? null;
         this.loading = false;
+        this.cdr.detectChanges();
       },
-      error: () => { this.loading = false; }
+      error: () => { this.loading = false; this.cdr.detectChanges(); }
+    });
+
+    this.apiService.getSubscriptions().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (res: any) => { this.plans = res ?? []; this.cdr.detectChanges(); },
+      error: () => { this.plans = []; }
     });
   }
 
-  getUsagePercent(): number {
-    if (!this.maxVehicles) return 0;
-    return (this.vehiclesCount / this.maxVehicles) * 100;
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
-  getCompanyTypeLabel(): string {
-    const labels: any = {
-      location: 'Location automobile',
-      transport: 'Transport',
-      other: 'Autre'
+  /** Jours restants avant échéance, ou null si aucune échéance n'est posée. */
+  get daysRemaining(): number | null {
+    if (!this.expiresAt) return null;
+    const ms = new Date(this.expiresAt).getTime() - Date.now();
+    return Math.ceil(ms / 86400000);
+  }
+
+  get billingCycleLabel(): string {
+    switch (this.billingCycle) {
+      case 'monthly': return 'facturation mensuelle';
+      case 'quarterly': return 'facturation trimestrielle';
+      case 'yearly': return 'facturation annuelle';
+      default: return '';
+    }
+  }
+
+  /** Les quotas du plan, mis en regard de la consommation réelle. */
+  get quotas(): Array<{ label: string; current: number; max: number; pct: number }> {
+    if (!this.usage) return [];
+    const build = (label: string, node: any) => {
+      const current = node?.current ?? 0;
+      const max = node?.max ?? 0;
+      return { label, current, max, pct: max > 0 ? Math.min(100, (current / max) * 100) : 0 };
     };
-    return labels[this.companyType] || this.companyType || '';
-  }
-
-  formatDate(date: any): string {
-    if (!date) return '';
-    return new Date(date).toLocaleDateString('fr-FR');
-  }
-
-  navigate(path: string) {
-    this.router.navigate([path]);
-  }
-
-  logout() {
-    this.authService.logout();
-    this.router.navigate(['/']);
+    return [
+      build('Véhicules', this.usage.vehicles),
+      build('Utilisateurs', this.usage.users),
+      build('Boîtiers GPS', this.usage.devices),
+      build('Géofences', this.usage.geofences)
+    ];
   }
 }

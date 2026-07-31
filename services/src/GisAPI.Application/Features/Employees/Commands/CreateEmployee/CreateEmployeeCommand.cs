@@ -2,6 +2,7 @@ using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.Employees.Queries.GetEmployees;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Exceptions;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -26,11 +27,16 @@ public class CreateEmployeeCommandHandler : IRequestHandler<CreateEmployeeComman
 {
     private readonly IGisDbContext _context;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly ICurrentTenantService _tenantService;
 
-    public CreateEmployeeCommandHandler(IGisDbContext context, IPasswordHasher passwordHasher)
+    public CreateEmployeeCommandHandler(
+        IGisDbContext context,
+        IPasswordHasher passwordHasher,
+        ICurrentTenantService tenantService)
     {
         _context = context;
         _passwordHasher = passwordHasher;
+        _tenantService = tenantService;
     }
 
     public async Task<EmployeeDto> Handle(CreateEmployeeCommand request, CancellationToken ct)
@@ -40,12 +46,38 @@ public class CreateEmployeeCommandHandler : IRequestHandler<CreateEmployeeComman
         if (exists)
             throw new DomainException("Un utilisateur avec cet email existe déjà");
 
-        // Get default employee role (non-admin)
+        // Rôle employé de CETTE société.
+        //
+        // La requête ne portait aucun filtre de société. Or Role n'a pas de
+        // filtre global de tenant (il porte SocieteId, pas CompanyId) : on
+        // récupérait donc le premier rôle non-admin de n'importe quelle société.
+        // Une base PostgreSQL a en plus un déclencheur qui impose au rôle et à
+        // l'utilisateur d'appartenir à la même société : la création échouait
+        // alors sur une erreur brute. Une société toute neuve, elle, n'avait
+        // aucune chance — c'est le premier mur qu'aurait rencontré un inscrit.
+        var companyId = _tenantService.CompanyId
+            ?? throw new DomainException("Société introuvable pour l'utilisateur courant.");
+
         var employeeRoleEntity = await _context.Roles
-            .FirstOrDefaultAsync(r => r.IsCompanyAdmin == false && r.IsSystemRole == false, ct);
+            .FirstOrDefaultAsync(r => r.SocieteId == companyId
+                                   && !r.IsCompanyAdmin && !r.IsSystemRole, ct);
 
         if (employeeRoleEntity == null)
-            throw new DomainException("Aucun rôle employé trouvé. Veuillez créer un rôle non-admin d'abord.");
+        {
+            // Repli : on crée le rôle plutôt que de bloquer l'exploitant sur une
+            // consigne qu'il ne comprendrait pas. Même geste que la création
+            // d'utilisateur.
+            employeeRoleEntity = new Role
+            {
+                Name = "Employé",
+                Description = "Accès limité — créé automatiquement",
+                SocieteId = companyId,
+                IsCompanyAdmin = false,
+                IsSystemRole = false
+            };
+            _context.Roles.Add(employeeRoleEntity);
+            await _context.SaveChangesAsync(ct);
+        }
 
         var user = new User
         {

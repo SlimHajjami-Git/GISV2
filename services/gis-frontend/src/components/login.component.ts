@@ -80,8 +80,15 @@ import { environment } from '../environments/environment';
           </button>
         </form>
 
+        <!-- Le lien d'inscription suit le même drapeau par déploiement que la
+             route : là où l'inscription libre n'est pas vendue, il n'apparaît pas
+             et le message d'origine reste affiché. -->
         <div class="auth-footer">
-          <p>Contactez votre administrateur pour obtenir un accès</p>
+          @if (signupEnabled) {
+            <p>Pas encore de compte ? <a routerLink="/inscription" class="link">Créer un compte</a></p>
+          } @else {
+            <p>Contactez votre administrateur pour obtenir un accès</p>
+          }
         </div>
       </div>
 
@@ -292,6 +299,9 @@ export class LoginComponent {
   isLoading = false;
   errorMessage = '';
   brand = (environment as any).brandName || 'Calypso';
+  // Même drapeau par déploiement que la route /inscription : sur un serveur qui ne
+  // vend pas l'inscription libre, la route n'existe pas et le lien mènerait nulle part.
+  signupEnabled = (environment as any).selfSignup === true;
 
   constructor(
     private router: Router,

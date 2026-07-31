@@ -1238,9 +1238,12 @@ export class ApiService {
     return this.http.get<any>(`${this.API_URL}/subscriptions/current`, { headers: this.getHeaders() });
   }
 
-  upgradeSubscription(subscriptionId: number, months = 1): Observable<any> {
-    return this.http.post<any>(`${this.API_URL}/subscriptions/upgrade`, { subscriptionId, months }, { headers: this.getHeaders() });
-  }
+  // upgradeSubscription() supprimée en même temps que l'endpoint serveur
+  // POST /api/subscriptions/upgrade : il changeait le plan et repoussait
+  // l'expiration sans contrôle de rôle ni preuve de paiement. Elle n'était
+  // appelée nulle part, et envoyait de toute façon `subscriptionId` là où le
+  // serveur attendait `SubscriptionTypeId`. Aucun écran ne doit prolonger un
+  // abonnement : cela passe par l'encaissement côté plateforme.
 
   // ==================== STATISTICS ====================
 

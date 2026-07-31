@@ -87,13 +87,17 @@ public class JwtServiceTests
     public void GenerateToken_ShouldContainRoles()
     {
         // Arrange
+        // Les revendications de rôle sont construites à partir de user.Role, pas de
+        // la propriété de compatibilité user.Roles : celle-ci ne fait que RELIRE
+        // Role.Name, si bien qu'affecter un tableau ne produisait aucun rôle dans
+        // le jeton. Le test posait donc une attente que le code n'a jamais tenue.
         var user = new User
         {
             Id = 1,
             Name = "Test",
             Email = "test@test.com",
             CompanyId = 1,
-            Roles = new[] { "admin", "manager" },
+            Role = new Role { Name = "admin", IsCompanyAdmin = true },
             Permissions = Array.Empty<string>()
         };
 
@@ -109,8 +113,11 @@ public class JwtServiceTests
             .Select(c => c.Value)
             .ToList();
 
+        // Un utilisateur porte UN rôle (User.RoleId), pas une liste : le jeton
+        // contient le nom du rôle, plus « company_admin » quand il en est un.
+        // L'attente d'un second rôle « manager » venait d'un modèle abandonné.
         roleClaims.Should().Contain("admin");
-        roleClaims.Should().Contain("manager");
+        roleClaims.Should().Contain("company_admin");
     }
 
     [Fact]

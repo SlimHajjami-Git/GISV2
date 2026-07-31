@@ -3,6 +3,7 @@ import { environment } from './environments/environment';
 import { AiLandingComponent } from './components/ai-landing.component';
 import { LandingComponent } from './components/landing.component';
 import { LoginComponent } from './components/login.component';
+import { RegisterComponent } from './components/register.component';
 import { DashboardComponent } from './components/dashboard.component';
 import { VehiclesComponent } from './components/vehicles.component';
 import { EmployeesComponent } from './components/employees.component';
@@ -54,6 +55,16 @@ import { TowingComponent } from './components/towing.component';
 // compile error.
 const aiLandingEnabled = (environment as any).aiAssistantLanding === true;
 
+// L'INSCRIPTION LIBRE est elle aussi PAR DÉPLOIEMENT : activée seulement quand le
+// environment.ts LOCAL du serveur pose selfSignup: true (Bougeo/DZ pour l'instant).
+// Même `as any` et même raison : sur un déploiement dont la copie locale ignore la
+// clé, son absence doit signifier « désactivée », pas une erreur de compilation.
+//
+// La route est INCLUSE CONDITIONNELLEMENT plutôt que gardée : là où la fonction
+// n'est pas vendue, /inscription n'existe pas du tout. Le vrai verrou reste côté
+// serveur (l'endpoint répond 404) — masquer un bouton ne ferme pas une API.
+const selfSignupEnabled = (environment as any).selfSignup === true;
+
 export const routes: Routes = [
   // Public routes (no auth required)
   // When enabled, the AI automobile assistant is the first page users land on
@@ -63,6 +74,12 @@ export const routes: Routes = [
   { path: 'assistant', component: aiLandingEnabled ? AiLandingComponent : LandingComponent },
   { path: 'accueil', component: LandingComponent },
   { path: 'login', component: LoginComponent },
+  ...(selfSignupEnabled
+    ? [
+        { path: 'inscription', component: RegisterComponent },
+        { path: 'register', redirectTo: 'inscription', pathMatch: 'full' as const }
+      ]
+    : []),
   { path: 'device-check', component: DeviceCheckComponent },
   // Écran pleine page hors layout : abonnement de la société suspendu/expiré.
   { path: 'abonnement-suspendu', component: SubscriptionBlockedComponent },

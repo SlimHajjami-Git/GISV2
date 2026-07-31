@@ -37,6 +37,38 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
+    /// Inscription libre : crée la société du visiteur ET son compte administrateur,
+    /// puis ouvre directement la session (même réponse que la connexion).
+    ///
+    /// Le chemin doit rester /api/auth/register : l'intercepteur du frontend le
+    /// whiteliste explicitement pour ne pas y joindre un jeton périmé, et
+    /// PermissionMiddleware laisse passer tout /api/auth. Le renommer déclencherait
+    /// une boucle de rafraîchissement puis une déconnexion.
+    ///
+    /// Le plan et la durée d'essai viennent de la configuration serveur, jamais de
+    /// la requête : un champ « plan » ici serait un libre-service.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("register")]
+    public async Task<ActionResult<LoginResponse>> Register([FromBody] RegisterRequest request)
+    {
+        // 404 et non 403 : sur un déploiement qui ne vend pas l'inscription libre,
+        // la route ne doit même pas révéler son existence.
+        if (!GisAPI.Domain.Common.AppRegistration.SelfSignupEnabled)
+            return NotFound();
+
+        var result = await _mediator.Send(new GisAPI.Application.Features.Auth.Commands.Register.RegisterCommand(
+            request.FirstName,
+            request.LastName,
+            request.Email,
+            request.Password,
+            request.CompanyName ?? string.Empty,
+            request.Phone));
+
+        return Ok(result);
+    }
+
+    /// <summary>
     /// "Voir en tant que" : réservé au super-administrateur (system_admin). Renvoie un
     /// jeton au périmètre de l'utilisateur cible pour visualiser l'app comme lui. La
     /// vérification du rôle system_admin est faite dans le handler (ICurrentTenantService).
@@ -240,6 +272,19 @@ public class AuthController : ControllerBase
 
 // Request DTOs for AuthController
 public record LoginRequest(string Email, string Password);
+
+/// <summary>
+/// Corps de l'inscription libre. AUCUN champ de plan d'abonnement : celui-ci vient
+/// de la configuration serveur. Le nom de société est facultatif — à défaut, la
+/// société prend le nom de la personne.
+/// </summary>
+public record RegisterRequest(
+    string FirstName,
+    string LastName,
+    string Email,
+    string Password,
+    string? CompanyName,
+    string? Phone);
 public record RefreshRequest(string Token, string RefreshToken);
 public record VerifyPasswordRequest(string Password);
 // ChangePasswordRequest is defined in GisAPI.DTOs.AuthDTOs.cs

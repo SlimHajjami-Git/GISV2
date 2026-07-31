@@ -15,7 +15,9 @@ public class RoleTests
         role.Id.Should().Be(0);
         role.Name.Should().BeEmpty();
         role.Description.Should().BeNull();
-        role.SocieteId.Should().Be(0);
+        // SocieteId est devenu nullable (les rôles système n'appartiennent à
+        // aucune société) : la valeur par défaut est null, plus 0.
+        role.SocieteId.Should().BeNull();
         role.IsCompanyAdmin.Should().BeFalse();
         role.Users.Should().NotBeNull().And.BeEmpty();
     }

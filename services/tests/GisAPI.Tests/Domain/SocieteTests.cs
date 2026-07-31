@@ -85,7 +85,9 @@ public class SocieteTests
         var settings = new SocieteSettings();
 
         // Assert
-        settings.Currency.Should().Be("DT");
+        // La devise par défaut est celle du déploiement (AppCurrency.Default, TND
+        // en Tunisie, DZD en Algérie), plus l'ancien littéral « DT ».
+        settings.Currency.Should().Be(GisAPI.Domain.Common.AppCurrency.Default);
         settings.Timezone.Should().Be("Africa/Tunis");
         settings.Language.Should().Be("fr");
         settings.DateFormat.Should().Be("dd/MM/yyyy");

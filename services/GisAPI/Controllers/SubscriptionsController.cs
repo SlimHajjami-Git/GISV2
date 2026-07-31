@@ -98,6 +98,14 @@ public class SubscriptionsController : ControllerBase
         return Ok(new
         {
             SubscriptionType = company.SubscriptionType,
+            // L'écran d'abonnement a besoin du montant dû et du rythme de
+            // facturation : sans eux il devait deviner un prix à partir de la
+            // grille, alors que la société porte la valeur qui fait foi.
+            company.NextPaymentAmount,
+            company.BillingCycle,
+            company.SubscriptionStatus,
+            company.LastPaymentAt,
+            company.SubscriptionStartedAt,
             Usage = new
             {
                 Vehicles = new { Current = vehicleCount, Max = company.SubscriptionType?.MaxVehicles ?? 0 },
@@ -109,27 +117,21 @@ public class SubscriptionsController : ControllerBase
         });
     }
 
-    [HttpPost("upgrade")]
-    public async Task<ActionResult> UpgradeSubscription([FromBody] UpgradeRequest request)
-    {
-        var companyId = GetCompanyId();
-
-        var company = await _context.Societes.FindAsync(companyId);
-        if (company == null)
-            return NotFound();
-
-        var subscriptionType = await _context.SubscriptionTypes.FindAsync(request.SubscriptionTypeId);
-        if (subscriptionType == null)
-            return NotFound(new { message = "Subscription type not found" });
-
-        company.SubscriptionTypeId = request.SubscriptionTypeId;
-        company.SubscriptionExpiresAt = DateTime.UtcNow.AddMonths(request.Months);
-        company.UpdatedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
-
-        return Ok(new { message = "Subscription upgraded successfully" });
-    }
+    // SUPPRIMÉ — POST /api/subscriptions/upgrade
+    //
+    // Cette action changeait le plan de la société et repoussait la date
+    // d'expiration de request.Months, sans AUCUN contrôle : la classe ne porte
+    // que [Authorize], donc n'importe quel utilisateur connecté — un chauffeur,
+    // un opérateur — pouvait s'attribuer le plan le plus complet pour la durée
+    // de son choix. Aucune borne sur Months, aucune trace de paiement.
+    //
+    // Tant que les comptes n'étaient créés qu'à la main par un administrateur,
+    // la porte restait dans le cercle des clients installés. Avec l'inscription
+    // libre, elle devient publique : on crée un compte, on appelle l'endpoint,
+    // on obtient tout gratuitement — et l'écran de paiement ne sert plus à rien.
+    //
+    // Le seul chemin légitime pour prolonger un abonnement reste
+    // RenewSubscriptionCommand (POST /api/admin/company/{id}/mark-paid), côté
+    // sys_admin, qui applique les durées et les prix du plan. C'est vers lui que
+    // devra converger un futur encaissement en ligne.
 }
-
-public record UpgradeRequest(int SubscriptionTypeId, int Months = 1);

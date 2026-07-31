@@ -27,6 +27,17 @@ var builder = WebApplication.CreateBuilder(args);
 GisAPI.Domain.Common.AppCurrency.Default =
     builder.Configuration["App:DefaultCurrency"] ?? "TND";
 
+// Inscription libre — réglages PAR DÉPLOIEMENT, lus une seule fois ici.
+// Fermée par défaut : un déploiement qui ne la vend pas répond 404 sur la route,
+// même si un client tente de l'appeler directement. Masquer le bouton côté écran
+// ne fermerait rien.
+GisAPI.Domain.Common.AppRegistration.SelfSignupEnabled =
+    builder.Configuration.GetValue("Registration:SelfSignupEnabled", false);
+GisAPI.Domain.Common.AppRegistration.DefaultPlanCode =
+    builder.Configuration["Registration:DefaultPlanCode"] ?? "plan-basique";
+GisAPI.Domain.Common.AppRegistration.TrialDays =
+    builder.Configuration.GetValue("Registration:TrialDays", 14);
+
 // Add Application & Infrastructure layers (CQRS, MediatR, EF Core, Multi-tenant, RabbitMQ)
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -302,8 +313,36 @@ builder.Services.AddRateLimiter(options =>
     // Invoice scan hits the paid Groq VISION model per request — throttle per IP
     // so an authenticated user (or a runaway client retry) can't drain cost/disk.
     static bool IsInvoiceScan(HttpContext c) => c.Request.Path.StartsWithSegments("/api/costs/scan-invoice");
+    // L'inscription libre est la seule route d'écriture ouverte sans jeton : sans
+    // plafond, une boucle crée des milliers de sociétés et d'utilisateurs. Deux
+    // barrières : une par adresse IP, et une globale qui borne les dégâts d'un
+    // réseau de machines.
+    static bool IsRegister(HttpContext c) => c.Request.Path.StartsWithSegments("/api/auth/register");
 
     options.GlobalLimiter = PartitionedRateLimiter.CreateChained(
+        // -1) inscription libre : 3 par heure et par IP, 30 par heure au total
+        PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+            IsRegister(ctx)
+                ? RateLimitPartition.GetFixedWindowLimiter(
+                    "register:" + GisAPI.Controllers.AssistantController.ResolveClientIp(ctx),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 3,
+                        Window = TimeSpan.FromHours(1),
+                        QueueLimit = 0
+                    })
+                : RateLimitPartition.GetNoLimiter("open")),
+        PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+            IsRegister(ctx)
+                ? RateLimitPartition.GetFixedWindowLimiter(
+                    "register-global",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 30,
+                        Window = TimeSpan.FromHours(1),
+                        QueueLimit = 0
+                    })
+                : RateLimitPartition.GetNoLimiter("open")),
         // 0) invoice scan: per-IP fixed window (runs before auth, so partition by IP)
         PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
             IsInvoiceScan(ctx)
