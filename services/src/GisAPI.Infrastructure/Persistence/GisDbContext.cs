@@ -365,6 +365,11 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<User>().Property(u => u.CanReportMileagePeriod).HasColumnName("can_report_mileage_period");
         modelBuilder.Entity<User>().Property(u => u.CanReportSpeedInfraction).HasColumnName("can_report_speed_infraction");
         modelBuilder.Entity<User>().Property(u => u.CanReportDrivingBehavior).HasColumnName("can_report_driving_behavior");
+        // Confirmation d'adresse email (inscription libre). Les colonnes de User
+        // sont nommées une à une ici : sans ces deux lignes, EF chercherait
+        // « EmailVerificationToken » en base et échouerait à la première requête.
+        modelBuilder.Entity<User>().Property(u => u.EmailVerificationToken).HasColumnName("email_verification_token").HasMaxLength(128);
+        modelBuilder.Entity<User>().Property(u => u.EmailVerificationExpiresAt).HasColumnName("email_verification_expires_at");
 
         // Role configuration is handled by RoleConfiguration.cs
 

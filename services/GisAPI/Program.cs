@@ -37,6 +37,13 @@ GisAPI.Domain.Common.AppRegistration.DefaultPlanCode =
     builder.Configuration["Registration:DefaultPlanCode"] ?? "plan-basique";
 GisAPI.Domain.Common.AppRegistration.TrialDays =
     builder.Configuration.GetValue("Registration:TrialDays", 14);
+GisAPI.Domain.Common.AppRegistration.EmailConfirmationHours =
+    builder.Configuration.GetValue("Registration:EmailConfirmationHours", 48);
+
+// Adresse publique de ce déploiement, utilisée pour composer les liens envoyés par
+// email. Sans elle, les liens partaient vers un domaine écrit en dur.
+GisAPI.Domain.Common.AppUrls.PublicBaseUrl =
+    (builder.Configuration["App:PublicBaseUrl"] ?? "https://gpa.belive.tn").TrimEnd('/');
 
 // Add Application & Infrastructure layers (CQRS, MediatR, EF Core, Multi-tenant, RabbitMQ)
 builder.Services.AddApplication();
@@ -317,7 +324,11 @@ builder.Services.AddRateLimiter(options =>
     // plafond, une boucle crée des milliers de sociétés et d'utilisateurs. Deux
     // barrières : une par adresse IP, et une globale qui borne les dégâts d'un
     // réseau de machines.
-    static bool IsRegister(HttpContext c) => c.Request.Path.StartsWithSegments("/api/auth/register");
+    // Le renvoi de confirmation est plafonné avec l'inscription : sans cela, il
+    // servirait à noyer une boîte mail sous des courriels que NOUS envoyons.
+    static bool IsRegister(HttpContext c) =>
+        c.Request.Path.StartsWithSegments("/api/auth/register")
+        || c.Request.Path.StartsWithSegments("/api/auth/resend-confirmation");
 
     options.GlobalLimiter = PartitionedRateLimiter.CreateChained(
         // -1) inscription libre : 3 par heure et par IP, 30 par heure au total

@@ -42,8 +42,17 @@ public class RegisterCommandValidator : AbstractValidator<RegisterCommand>
             .WithMessage("Le mot de passe ne doit pas contenir votre adresse email")
             .OverridePropertyName(nameof(RegisterCommand.Password));
 
-        // Le nom de société est FACULTATIF : à défaut, la société prend le nom de
-        // la personne qui s'inscrit. L'exiger bloquait les indépendants.
+        RuleFor(x => x.AccountType)
+            .Must(AccountTypes.IsValid)
+            .WithMessage("Type de compte invalide");
+
+        // Le nom de société n'est exigé QUE d'un professionnel. Un particulier n'a
+        // pas d'entreprise à déclarer : son espace prendra son nom, sans qu'il ait
+        // à inventer quoi que ce soit.
+        RuleFor(x => x.CompanyName)
+            .NotEmpty().WithMessage("Le nom de la société est obligatoire")
+            .When(x => x.AccountType == AccountTypes.Company);
+
         RuleFor(x => x.CompanyName)
             .MaximumLength(200).WithMessage("Le nom de la société ne doit pas dépasser 200 caractères");
 

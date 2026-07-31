@@ -21,6 +21,19 @@ public class User : TenantEntity
     public string Status { get; set; } = "active";
     public DateTime? LastLoginAt { get; set; }
 
+    // ── Confirmation d'adresse email (inscription libre) ──
+    //
+    // Un compte créé par inscription naît en Status = "pending" : la connexion le
+    // refuse déjà (LoginCommandHandler vérifie Status != "active"), aucune ligne
+    // supplémentaire n'est nécessaire pour le bloquer. Le jeton ci-dessous est
+    // envoyé par email ; le confirmer bascule le compte en "active".
+    //
+    // Une colonne plutôt qu'une table dédiée : il n'y a jamais qu'un seul jeton
+    // valide à la fois, et un renvoi de l'email doit invalider le précédent — ce
+    // qu'un simple écrasement fait naturellement.
+    public string? EmailVerificationToken { get; set; }
+    public DateTime? EmailVerificationExpiresAt { get; set; }
+
     // Module permissions (per-user access control)
     public string AccessLevel { get; set; } = "user"; // "admin" or "user"
     public bool CanMonitoring { get; set; } = true;

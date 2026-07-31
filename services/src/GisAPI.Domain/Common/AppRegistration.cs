@@ -36,4 +36,23 @@ public static class AppRegistration
     /// pas dans la supervision, et rend l'écran de paiement décoratif.
     /// </summary>
     public static int TrialDays { get; set; } = 14;
+
+    /// <summary>
+    /// Durée de validité du lien de confirmation d'adresse email, en heures.
+    /// </summary>
+    public static int EmailConfirmationHours { get; set; } = 48;
+}
+
+/// <summary>
+/// Adresse publique de l'application, PAR DÉPLOIEMENT (<c>App:PublicBaseUrl</c>,
+/// env <c>App__PublicBaseUrl</c>). Sert à composer les liens envoyés par email —
+/// confirmation d'inscription, notifications.
+///
+/// Nécessaire parce que les emails partaient jusqu'ici vers un domaine ÉCRIT EN DUR
+/// (gpa.belive.tn) : un client algérien recevait un lien vers le déploiement
+/// tunisien, sur lequel son compte n'existe pas.
+/// </summary>
+public static class AppUrls
+{
+    public static string PublicBaseUrl { get; set; } = "https://gpa.belive.tn";
 }

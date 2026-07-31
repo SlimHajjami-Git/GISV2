@@ -172,7 +172,7 @@ public class EmailService : IEmailService
 
         var actionButton = !string.IsNullOrEmpty(actionUrl)
             ? $@"<tr><td style=""padding:24px 30px 0;"">
-                    <a href=""https://gpa.belive.tn{actionUrl}"" style=""display:inline-block;padding:12px 28px;background:{typeColor};color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;"">Voir les détails</a>
+                    <a href=""{GisAPI.Domain.Common.AppUrls.PublicBaseUrl}{actionUrl}"" style=""display:inline-block;padding:12px 28px;background:{typeColor};color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;"">Voir les détails</a>
                   </td></tr>"
             : "";
 

@@ -23,26 +23,26 @@ namespace GisAPI.Application.Features.Auth.Commands.Register;
 /// exécuté, il avait accumulé plusieurs défauts qui n'auraient été découverts
 /// qu'en production. Ils sont corrigés ici et commentés sur place.
 /// </summary>
-public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResponse>
+public class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegisterResult>
 {
     private readonly IGisDbContext _context;
     private readonly IPasswordHasher _passwordHasher;
-    private readonly IJwtService _jwtService;
+    private readonly IEmailService _emailService;
     private readonly ILogger<RegisterCommandHandler> _logger;
 
     public RegisterCommandHandler(
         IGisDbContext context,
         IPasswordHasher passwordHasher,
-        IJwtService jwtService,
+        IEmailService emailService,
         ILogger<RegisterCommandHandler> logger)
     {
         _context = context;
         _passwordHasher = passwordHasher;
-        _jwtService = jwtService;
+        _emailService = emailService;
         _logger = logger;
     }
 
-    public async Task<LoginResponse> Handle(RegisterCommand request, CancellationToken ct)
+    public async Task<RegisterResult> Handle(RegisterCommand request, CancellationToken ct)
     {
         var email = (request.Email ?? string.Empty).Trim().ToLowerInvariant();
 
@@ -71,12 +71,18 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResp
             throw new DomainException("L'inscription est momentanément indisponible. Réessayez plus tard.");
         }
 
-        // Une société « au nom de l'utilisateur » : le nom d'entreprise est
-        // facultatif, beaucoup de nouveaux venus n'en ont pas encore.
+        // ── La société est créée SILENCIEUSEMENT ──
+        //
+        // Elle n'est pas une promesse faite à l'utilisateur, c'est la structure sur
+        // laquelle repose tout le modèle : filtres de tenant, rôles, abonnement,
+        // déclencheur PostgreSQL. Un particulier n'a donc ni à en entendre parler
+        // ni à inventer un nom d'entreprise — son espace prend simplement son nom.
+        // Le professionnel, lui, donne le nom sous lequel il veut être facturé.
+        var isCompany = request.AccountType == AccountTypes.Company;
         var fullName = $"{request.FirstName} {request.LastName}".Trim();
-        var societeName = string.IsNullOrWhiteSpace(request.CompanyName)
-            ? (string.IsNullOrWhiteSpace(fullName) ? email : fullName)
-            : request.CompanyName.Trim();
+        var societeName = isCompany && !string.IsNullOrWhiteSpace(request.CompanyName)
+            ? request.CompanyName!.Trim()
+            : (string.IsNullOrWhiteSpace(fullName) ? email : fullName);
 
         var now = DateTime.UtcNow;
         const string billingCycle = "yearly";
@@ -95,7 +101,10 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResp
         var societe = new Societe
         {
             Name = societeName,
-            Type = "transport",
+            // « autre » est la valeur déjà utilisée en base pour ce qui n'est ni du
+            // transport ni de la location : un particulier y entre naturellement,
+            // sans introduire un type que les écrans existants ne sauraient afficher.
+            Type = isCompany ? "transport" : "autre",
             Email = email,
             Phone = request.Phone,
             SubscriptionTypeId = plan.Id,
@@ -169,7 +178,12 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResp
             PasswordHash = _passwordHasher.HashPassword(request.Password),
             CompanyId = societe.Id,
             RoleId = adminRole.Id,
-            Status = "active",
+            // « pending » et non « active » : le compte n'est utilisable qu'une fois
+            // l'adresse confirmée. Aucune garde supplémentaire n'est nécessaire, la
+            // connexion refuse déjà tout statut différent de « active ».
+            Status = "pending",
+            EmailVerificationToken = GenerateToken(),
+            EmailVerificationExpiresAt = now.AddHours(AppRegistration.EmailConfirmationHours),
             AccessLevel = "admin",
             CanMonitoring = true, CanVehicles = true, CanDrivers = true,
             CanReports = true, CanGeofences = true, CanMaintenance = true,
@@ -186,45 +200,79 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, LoginResp
         _context.Users.Add(user);
         await _context.SaveChangesAsync(ct);
 
-        // ── Session ──
-        //
-        // Le jeton de rafraîchissement doit être PERSISTÉ. L'ancien code en
-        // renvoyait un au client sans jamais l'enregistrer : au premier
-        // renouvellement — donc quelques minutes après l'inscription — le serveur
-        // ne le reconnaissait pas et le nouvel inscrit était déconnecté.
-        var token = _jwtService.GenerateToken(user);
-        var refreshTokenStr = _jwtService.GenerateRefreshToken();
-        // Nom complet : « RefreshToken » désigne aussi un espace de noms de
-        // commandes dans cette couche.
-        _context.RefreshTokens.Add(new GisAPI.Domain.Entities.RefreshToken
-        {
-            Token = refreshTokenStr,
-            UserId = user.Id,
-            ExpiresAt = now.AddDays(7),
-            CreatedAt = now
-        });
-        await _context.SaveChangesAsync(ct);
-
-        // Renseigner les navigations avant de construire la réponse, sinon le nom
-        // de société et la devise sortent vides.
-        user.Role = adminRole;
-        user.Societe = societe;
-        societe.SubscriptionType = plan;
-
         _logger.LogInformation(
-            "Inscription libre : société « {Company} » (#{Id}) créée par {Email}, plan {Plan}, essai jusqu'au {Expiry:yyyy-MM-dd}",
-            societe.Name, societe.Id, user.Email, plan.Code, societe.SubscriptionExpiresAt);
+            "Inscription libre : espace « {Company} » (#{Id}) créé par {Email} ({Type}), plan {Plan}, essai jusqu'au {Expiry:yyyy-MM-dd}",
+            societe.Name, societe.Id, user.Email, request.AccountType, plan.Code, societe.SubscriptionExpiresAt);
 
-        // On réutilise les constructeurs du login : une réponse d'inscription qui
-        // aurait sa propre forme finirait par diverger de celle de la connexion.
-        return new LoginResponse(
-            token,
-            refreshTokenStr,
-            LoginCommandHandler.BuildUserDto(
-                user,
-                LoginCommandHandler.BuildSubscriptionFeatures(plan),
-                Array.Empty<int>(),
-                LoginCommandHandler.BuildUserPermissions(user))
-        );
+        // ── Courriel de confirmation ──
+        //
+        // AUCUNE session n'est ouverte ici : renvoyer un jeton viderait la
+        // confirmation de son sens. L'utilisateur reçoit un lien, le suit, et son
+        // compte bascule en « active ».
+        //
+        // L'envoi est « au mieux » : si le serveur de messagerie est indisponible,
+        // le compte reste créé et confirmable via un renvoi, plutôt que de perdre
+        // l'inscription. Mais on le DIT dans la réponse, pour que l'écran affiche
+        // « email non parti, redemandez-le » au lieu de « vérifiez votre boîte ».
+        var emailSent = await TrySendConfirmationEmailAsync(user, societe.Name, ct);
+
+        return new RegisterResult(
+            user.Email,
+            emailSent
+                ? "Votre compte est créé. Ouvrez le lien de confirmation que nous venons de vous envoyer par email."
+                : "Votre compte est créé, mais l'email de confirmation n'a pas pu être envoyé. Demandez-en un nouveau.",
+            emailSent);
+    }
+
+    /// <summary>Jeton d'activation : aléatoire cryptographique, sûr en URL.</summary>
+    private static string GenerateToken()
+    {
+        var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+        return Convert.ToBase64String(bytes)
+            .Replace('+', '-').Replace('/', '_').TrimEnd('=');
+    }
+
+    private async Task<bool> TrySendConfirmationEmailAsync(User user, string spaceName, CancellationToken ct)
+    {
+        try
+        {
+            var link = $"{AppUrls.PublicBaseUrl}/confirmation-email?token={user.EmailVerificationToken}";
+            var hours = AppRegistration.EmailConfirmationHours;
+
+            var html = $@"
+<div style=""font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#0f172a;"">
+  <h2 style=""font-size:20px;margin:0 0 14px;"">Confirmez votre adresse email</h2>
+  <p style=""font-size:14.5px;line-height:1.6;color:#334155;margin:0 0 20px;"">
+    Bonjour {System.Net.WebUtility.HtmlEncode(user.FirstName)},<br/>
+    votre espace <strong>{System.Net.WebUtility.HtmlEncode(spaceName)}</strong> est prêt.
+    Il ne reste qu'à confirmer cette adresse pour vous connecter.
+  </p>
+  <p style=""margin:0 0 24px;"">
+    <a href=""{link}"" style=""display:inline-block;padding:12px 28px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;"">Confirmer mon adresse</a>
+  </p>
+  <p style=""font-size:12.5px;line-height:1.6;color:#64748b;margin:0 0 8px;"">
+    Ce lien est valable {hours} heures. Si le bouton ne fonctionne pas, copiez cette adresse dans votre navigateur :<br/>
+    <span style=""word-break:break-all;color:#4f46e5;"">{link}</span>
+  </p>
+  <p style=""font-size:12.5px;color:#94a3b8;margin:18px 0 0;"">
+    Vous n'êtes pas à l'origine de cette inscription ? Ignorez ce message, le compte restera inactif.
+  </p>
+</div>";
+
+            await _emailService.SendEmailAsync(
+                user.Email,
+                $"{user.FirstName} {user.LastName}".Trim(),
+                "Confirmez votre adresse email",
+                html,
+                ct);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Ne jamais faire échouer l'inscription sur un incident de messagerie :
+            // le compte existe, il est confirmable par un renvoi.
+            _logger.LogError(ex, "Envoi du courriel de confirmation impossible pour {Email}", user.Email);
+            return false;
+        }
     }
 }

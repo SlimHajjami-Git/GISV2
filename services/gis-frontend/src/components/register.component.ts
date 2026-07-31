@@ -42,11 +42,55 @@ import { environment } from '../environments/environment';
               <span class="subtitle">Gestion de flotte</span>
             </div>
           </div>
-          <h1>Créer un compte</h1>
-          <p>{{ trialDays }} jours d'essai — sans carte bancaire</p>
+          <h1>{{ submitted ? 'Vérifiez votre boîte mail' : 'Créer un compte' }}</h1>
+          <p>{{ submitted ? 'Une dernière étape avant de commencer.' : trialDays + " jours d'essai — sans carte bancaire" }}</p>
         </div>
 
+        <!-- Après envoi : plus de formulaire, l'utilisateur doit aller lire son
+             courrier. Aucune session n'est ouverte tant que l'adresse n'est pas
+             confirmée. -->
+        @if (submitted) {
+          <div class="confirm-panel">
+            <div class="confirm-icon" [class.warn]="!emailSent">
+              @if (emailSent) {
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+                </svg>
+              } @else {
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+              }
+            </div>
+            <p class="confirm-text">{{ resultMessage }}</p>
+            <p class="confirm-mail">{{ email }}</p>
+
+            <button type="button" class="btn-secondary" [disabled]="isLoading || resendDone" (click)="onResend()">
+              {{ resendDone ? 'Nouveau lien demandé' : 'Renvoyer le lien' }}
+            </button>
+            @if (resendMessage) { <p class="hint center">{{ resendMessage }}</p> }
+          </div>
+        } @else {
+
         <form (ngSubmit)="onSubmit()" class="auth-form">
+          <!-- La société est créée dans tous les cas — c'est la structure sur
+               laquelle repose l'application — mais un particulier n'a pas à le
+               savoir ni à inventer un nom d'entreprise. -->
+          <div class="type-choice" role="radiogroup" aria-label="Type de compte">
+            <button type="button" class="type-btn" [class.active]="accountType === 'particulier'"
+                    role="radio" [attr.aria-checked]="accountType === 'particulier'"
+                    (click)="accountType = 'particulier'">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              Particulier
+            </button>
+            <button type="button" class="type-btn" [class.active]="accountType === 'societe'"
+                    role="radio" [attr.aria-checked]="accountType === 'societe'"
+                    (click)="accountType = 'societe'">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg>
+              Société
+            </button>
+          </div>
+
           <div class="form-row">
             <div class="form-group">
               <label for="firstName">Prénom</label>
@@ -63,12 +107,16 @@ import { environment } from '../environments/environment';
             <input type="email" id="email" name="email" [(ngModel)]="email" placeholder="exemple@entreprise.com" required />
           </div>
 
-          <div class="form-group">
-            <label for="companyName">Nom de la société <span class="optional">facultatif</span></label>
-            <input type="text" id="companyName" name="companyName" [(ngModel)]="companyName"
-                   [placeholder]="companyPlaceholder" />
-            <small class="hint">Sans indication, votre espace prendra votre nom.</small>
-          </div>
+          <!-- Ce champ n'apparaît QUE pour un professionnel : on ne demande pas à
+               un particulier le nom d'une entreprise qu'il n'a pas. -->
+          @if (accountType === 'societe') {
+            <div class="form-group">
+              <label for="companyName">Nom de la société</label>
+              <input type="text" id="companyName" name="companyName" [(ngModel)]="companyName"
+                     placeholder="Transports Ben Salah" required />
+              <small class="hint">Le nom sous lequel vous serez facturé.</small>
+            </div>
+          }
 
           <div class="form-group">
             <label for="phone">Téléphone <span class="optional">facultatif</span></label>
@@ -94,6 +142,7 @@ import { environment } from '../environments/environment';
             {{ isLoading ? 'Création du compte…' : 'Créer mon compte' }}
           </button>
         </form>
+        }
 
         <div class="auth-footer">
           <p>Vous avez déjà un compte ? <a routerLink="/login" class="link">Se connecter</a></p>
@@ -224,6 +273,43 @@ import { environment } from '../environments/environment';
       box-shadow: 0 0 0 3px rgba(79,70,229,.12);
     }
     .hint { display: block; margin-top: 6px; font-size: 12px; color: var(--c-sub); line-height: 1.45; }
+    .hint.center { text-align: center; margin-top: 12px; }
+
+    .type-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+    .type-btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 13px 10px;
+      background: #f8fafc;
+      border: 1px solid var(--c-border);
+      border-radius: 10px;
+      font-size: 14px; font-weight: 600; color: var(--c-sub);
+      cursor: pointer; transition: all .18s;
+    }
+    .type-btn:hover { border-color: #c7d2fe; color: var(--c-ink); }
+    .type-btn.active {
+      background: #fff; color: var(--c-indigo-ink);
+      border-color: var(--c-indigo);
+      box-shadow: 0 0 0 3px rgba(79,70,229,.12);
+    }
+
+    .confirm-panel { text-align: center; padding: 8px 0 4px; }
+    .confirm-icon {
+      width: 58px; height: 58px; margin: 0 auto 18px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 16px;
+      background: rgba(79,70,229,.1); color: var(--c-indigo);
+    }
+    .confirm-icon.warn { background: rgba(217,119,6,.12); color: #b45309; }
+    .confirm-text { margin: 0 0 6px; font-size: 14.5px; line-height: 1.6; color: #334155; }
+    .confirm-mail { margin: 0 0 22px; font-size: 14px; font-weight: 700; color: var(--c-ink); }
+    .btn-secondary {
+      padding: 11px 22px; border-radius: 10px;
+      background: #fff; color: var(--c-indigo-ink);
+      border: 1px solid var(--c-border);
+      font-size: 13.5px; font-weight: 600; cursor: pointer; transition: all .2s;
+    }
+    .btn-secondary:hover:not(:disabled) { border-color: var(--c-indigo); background: #f8fafc; }
+    .btn-secondary:disabled { opacity: .6; cursor: default; }
 
     .link { color: var(--c-indigo); text-decoration: none; font-weight: 600; }
     .link:hover { color: var(--c-indigo-ink); }
@@ -302,6 +388,7 @@ import { environment } from '../environments/environment';
   `]
 })
 export class RegisterComponent {
+  accountType: 'particulier' | 'societe' = 'particulier';
   firstName = '';
   lastName = '';
   email = '';
@@ -310,6 +397,13 @@ export class RegisterComponent {
   password = '';
   isLoading = false;
   errorMessage = '';
+
+  // Après envoi : le formulaire cède la place à l'écran « vérifiez votre boîte ».
+  submitted = false;
+  emailSent = false;
+  resultMessage = '';
+  resendDone = false;
+  resendMessage = '';
 
   brand = (environment as any).brandName || 'Calypso';
   // Purement informatif : la durée qui fait foi est celle du serveur.
@@ -321,22 +415,22 @@ export class RegisterComponent {
     private cdr: ChangeDetectorRef
   ) {}
 
-  /** Aperçu du nom que prendra l'espace si aucune société n'est saisie. */
-  get companyPlaceholder(): string {
-    const fullName = `${this.firstName} ${this.lastName}`.trim();
-    return fullName.length > 0 ? fullName : 'Nom de votre société';
-  }
-
   isValid(): boolean {
-    return this.firstName.trim().length > 0
+    const base = this.firstName.trim().length > 0
       && this.lastName.trim().length > 0
       && this.email.trim().length > 0
       && this.password.length >= 10;
+    // Un professionnel doit nommer sa société ; un particulier n'a rien à saisir.
+    return this.accountType === 'societe'
+      ? base && this.companyName.trim().length > 0
+      : base;
   }
 
   onSubmit() {
     if (!this.isValid()) {
-      this.errorMessage = 'Renseignez votre prénom, votre nom, votre email et un mot de passe d’au moins 10 caractères.';
+      this.errorMessage = this.accountType === 'societe'
+        ? 'Renseignez le nom de votre société, votre identité, votre email et un mot de passe d’au moins 10 caractères.'
+        : 'Renseignez votre prénom, votre nom, votre email et un mot de passe d’au moins 10 caractères.';
       return;
     }
 
@@ -349,13 +443,22 @@ export class RegisterComponent {
       lastName: this.lastName.trim(),
       email: this.email.trim(),
       password: this.password,
-      companyName: this.companyName.trim() || undefined,
+      accountType: this.accountType,
+      // Le nom d'entreprise n'est transmis que par un professionnel : pour un
+      // particulier il n'existe pas, et le serveur l'ignorerait de toute façon.
+      companyName: this.accountType === 'societe' ? this.companyName.trim() : undefined,
       phone: this.phone.trim() || undefined
     }).subscribe({
-      next: () => {
+      next: (res) => {
         this.isLoading = false;
-        // La session est déjà ouverte : on entre directement dans l'application.
-        this.router.navigate(['/dashboard']);
+        // AUCUNE session n'est ouverte : le compte attend la confirmation de
+        // l'adresse. On bascule sur l'écran qui le dit, plutôt que d'entrer dans
+        // l'application.
+        this.submitted = true;
+        this.emailSent = res?.emailSent ?? false;
+        this.resultMessage = res?.message
+          || 'Votre compte est créé. Ouvrez le lien de confirmation reçu par email.';
+        this.cdr.detectChanges();
       },
       error: (err) => {
         this.isLoading = false;
@@ -364,6 +467,26 @@ export class RegisterComponent {
         this.errorMessage = err?.error?.message
           || err?.error?.errors?.[0]?.errorMessage
           || 'La création du compte a échoué. Vérifiez vos informations et réessayez.';
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  onResend() {
+    this.isLoading = true;
+    this.resendMessage = '';
+    this.cdr.detectChanges();
+
+    this.authService.resendConfirmation(this.email.trim()).subscribe({
+      next: (res) => {
+        this.isLoading = false;
+        this.resendDone = true;
+        this.resendMessage = res?.message || 'Si un compte est en attente, un nouvel email vient d’être envoyé.';
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.isLoading = false;
+        this.resendMessage = 'Le renvoi a échoué. Réessayez dans quelques minutes.';
         this.cdr.detectChanges();
       }
     });

@@ -50,7 +50,8 @@ public class AuthController : ControllerBase
     /// </summary>
     [AllowAnonymous]
     [HttpPost("register")]
-    public async Task<ActionResult<LoginResponse>> Register([FromBody] RegisterRequest request)
+    public async Task<ActionResult<GisAPI.Application.Features.Auth.Commands.Register.RegisterResult>> Register(
+        [FromBody] RegisterRequest request)
     {
         // 404 et non 403 : sur un déploiement qui ne vend pas l'inscription libre,
         // la route ne doit même pas révéler son existence.
@@ -62,9 +63,42 @@ public class AuthController : ControllerBase
             request.LastName,
             request.Email,
             request.Password,
-            request.CompanyName ?? string.Empty,
-            request.Phone));
+            request.CompanyName,
+            request.Phone,
+            request.AccountType ?? GisAPI.Application.Features.Auth.Commands.Register.AccountTypes.Individual));
 
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Confirmation d'adresse : active un compte issu de l'inscription libre.
+    /// Anonyme par nature — l'utilisateur ne peut pas se connecter avant.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("confirm-email")]
+    public async Task<ActionResult> ConfirmEmail([FromBody] ConfirmEmailRequest request)
+    {
+        if (!GisAPI.Domain.Common.AppRegistration.SelfSignupEnabled)
+            return NotFound();
+
+        var result = await _mediator.Send(
+            new GisAPI.Application.Features.Auth.Commands.ConfirmEmail.ConfirmEmailCommand(request.Token));
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Renvoi du courriel de confirmation. Répond toujours la même chose, que
+    /// l'adresse existe ou non : sinon l'endpoint dirait qui est inscrit chez nous.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("resend-confirmation")]
+    public async Task<ActionResult> ResendConfirmation([FromBody] ResendConfirmationRequest request)
+    {
+        if (!GisAPI.Domain.Common.AppRegistration.SelfSignupEnabled)
+            return NotFound();
+
+        var result = await _mediator.Send(
+            new GisAPI.Application.Features.Auth.Commands.ResendConfirmation.ResendConfirmationCommand(request.Email));
         return Ok(result);
     }
 
@@ -284,7 +318,12 @@ public record RegisterRequest(
     string Email,
     string Password,
     string? CompanyName,
-    string? Phone);
+    string? Phone,
+    string? AccountType);
+
+public record ConfirmEmailRequest(string Token);
+
+public record ResendConfirmationRequest(string Email);
 public record RefreshRequest(string Token, string RefreshToken);
 public record VerifyPasswordRequest(string Password);
 // ChangePasswordRequest is defined in GisAPI.DTOs.AuthDTOs.cs

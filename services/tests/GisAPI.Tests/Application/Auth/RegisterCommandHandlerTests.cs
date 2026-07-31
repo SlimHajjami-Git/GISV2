@@ -31,7 +31,7 @@ public class RegisterCommandHandlerTests
 {
     private const string PlanCode = "plan-basique";
 
-    private static (RegisterCommandHandler handler, TestGisDbContext ctx) Setup(
+    private static (RegisterCommandHandler handler, TestGisDbContext ctx, Mock<IEmailService> mailer) Setup(
         bool withPlan = true, bool planActive = true)
     {
         var ctx = TestDbContextFactory.Create();
@@ -49,30 +49,33 @@ public class RegisterCommandHandlerTests
         var hasher = new Mock<IPasswordHasher>();
         hasher.Setup(h => h.HashPassword(It.IsAny<string>())).Returns("hashed");
 
-        var jwt = new Mock<IJwtService>();
-        // GenerateToken porte un paramètre facultatif : il faut l'expliciter, une
-        // arborescence d'expression n'accepte pas les arguments par défaut.
-        jwt.Setup(j => j.GenerateToken(It.IsAny<User>(), It.IsAny<string?>())).Returns("jwt-token");
-        jwt.Setup(j => j.GenerateRefreshToken()).Returns("refresh-token");
+        var mailer = new Mock<IEmailService>();
+        mailer.Setup(e => e.SendEmailAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         AppRegistration.DefaultPlanCode = PlanCode;
         AppRegistration.TrialDays = 14;
+        AppRegistration.EmailConfirmationHours = 48;
 
         var handler = new RegisterCommandHandler(
-            ctx, hasher.Object, jwt.Object,
+            ctx, hasher.Object, mailer.Object,
             NullLogger<RegisterCommandHandler>.Instance);
 
-        return (handler, ctx);
+        return (handler, ctx, mailer);
     }
 
     private static RegisterCommand Command(
-        string email = "sonia@exemple.tn", string? companyName = "Transports Sonia") =>
-        new("Sonia", "Ben Salah", email, "MotDePasse#2026", companyName ?? string.Empty, "+216 20 000 000");
+        string email = "sonia@exemple.tn",
+        string? companyName = "Transports Sonia",
+        string accountType = AccountTypes.Company) =>
+        new("Sonia", "Ben Salah", email, "MotDePasse#2026", companyName, "+216 20 000 000", accountType);
 
     [Fact]
     public async Task Inscription_cree_la_societe_ses_roles_et_l_utilisateur()
     {
-        var (handler, ctx) = Setup();
+        var (handler, ctx, _) = Setup();
 
         var response = await handler.Handle(Command(), CancellationToken.None);
 
@@ -87,19 +90,53 @@ public class RegisterCommandHandlerTests
 
         var user = await ctx.Users.SingleAsync();
         user.CompanyId.Should().Be(societe.Id);
-        user.Status.Should().Be("active");
-        response.Token.Should().Be("jwt-token");
+        user.Status.Should().Be("pending", "le compte n'est utilisable qu'après confirmation de l'adresse");
+        response.Email.Should().Be("sonia@exemple.tn");
     }
 
     [Fact]
-    public async Task Sans_nom_de_societe_la_societe_prend_le_nom_de_la_personne()
+    public async Task Un_particulier_obtient_un_espace_a_son_nom_sans_rien_declarer()
     {
-        var (handler, ctx) = Setup();
+        // Le point central : la société est une pièce de NOTRE modèle, pas une
+        // question posée au visiteur. Un particulier n'a aucune entreprise à
+        // nommer, et son espace prend simplement son nom.
+        var (handler, ctx, _) = Setup();
 
-        await handler.Handle(Command(companyName: null), CancellationToken.None);
+        await handler.Handle(
+            Command(companyName: null, accountType: AccountTypes.Individual),
+            CancellationToken.None);
 
         var societe = await ctx.Societes.SingleAsync();
         societe.Name.Should().Be("Sonia Ben Salah");
+        societe.Type.Should().Be("autre");
+    }
+
+    [Fact]
+    public async Task Un_particulier_qui_saisirait_un_nom_de_societe_le_voit_ignore()
+    {
+        // Le champ n'existe pas dans le formulaire pour un particulier : s'il
+        // arrive quand même, c'est du bruit et il ne doit pas renommer l'espace.
+        var (handler, ctx, _) = Setup();
+
+        await handler.Handle(
+            Command(companyName: "Société Fantôme", accountType: AccountTypes.Individual),
+            CancellationToken.None);
+
+        (await ctx.Societes.SingleAsync()).Name.Should().Be("Sonia Ben Salah");
+    }
+
+    [Fact]
+    public async Task Un_professionnel_obtient_un_espace_au_nom_de_son_entreprise()
+    {
+        var (handler, ctx, _) = Setup();
+
+        await handler.Handle(
+            Command(companyName: "Transports Sonia", accountType: AccountTypes.Company),
+            CancellationToken.None);
+
+        var societe = await ctx.Societes.SingleAsync();
+        societe.Name.Should().Be("Transports Sonia");
+        societe.Type.Should().Be("transport");
     }
 
     [Fact]
@@ -109,7 +146,7 @@ public class RegisterCommandHandlerTests
         // bloquée, n'apparaît pas dans la supervision, et l'écran de paiement
         // n'a rien à faire respecter — l'inscription offrirait un accès gratuit
         // et perpétuel.
-        var (handler, ctx) = Setup();
+        var (handler, ctx, _) = Setup();
         var avant = DateTime.UtcNow;
 
         await handler.Handle(Command(), CancellationToken.None);
@@ -127,7 +164,7 @@ public class RegisterCommandHandlerTests
     [Fact]
     public async Task Le_plan_est_resolu_par_code_et_non_pris_au_hasard()
     {
-        var (handler, ctx) = Setup();
+        var (handler, ctx, _) = Setup();
         // Un second plan, plus complet, créé APRÈS : l'ancien code prenait
         // « le premier plan actif venu », sans ORDER BY.
         ctx.SubscriptionTypes.Add(new SubscriptionType
@@ -145,18 +182,50 @@ public class RegisterCommandHandlerTests
     }
 
     [Fact]
-    public async Task Le_jeton_de_rafraichissement_est_persiste()
+    public async Task Aucune_session_n_est_ouverte_a_l_inscription()
     {
-        // NON-RÉGRESSION : il était renvoyé au client sans jamais être enregistré,
-        // donc le nouvel inscrit était déconnecté au premier renouvellement.
-        var (handler, ctx) = Setup();
+        // Renvoyer un jeton ici viderait la confirmation d'adresse de son sens :
+        // l'inscrit entrerait sans jamais avoir prouvé qu'il possède l'adresse.
+        var (handler, ctx, _) = Setup();
+
+        await handler.Handle(Command(), CancellationToken.None);
+
+        (await ctx.RefreshTokens.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Un_jeton_de_confirmation_borne_est_pose_et_l_email_part()
+    {
+        var (handler, ctx, mailer) = Setup();
+        var avant = DateTime.UtcNow;
 
         var response = await handler.Handle(Command(), CancellationToken.None);
 
-        var stored = await ctx.RefreshTokens.SingleAsync();
-        stored.Token.Should().Be(response.RefreshToken);
-        stored.RevokedAt.Should().BeNull();
-        stored.ExpiresAt.Should().BeAfter(DateTime.UtcNow);
+        var user = await ctx.Users.SingleAsync();
+        user.EmailVerificationToken.Should().NotBeNullOrWhiteSpace();
+        user.EmailVerificationExpiresAt.Should().NotBeNull();
+        user.EmailVerificationExpiresAt!.Value.Should().BeCloseTo(avant.AddHours(48), TimeSpan.FromMinutes(5));
+
+        response.EmailSent.Should().BeTrue();
+        mailer.Verify(e => e.SendEmailAsync(
+            "sonia@exemple.tn", It.IsAny<string>(), It.IsAny<string>(),
+            It.Is<string>(html => html.Contains(user.EmailVerificationToken!)),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Une_panne_de_messagerie_ne_perd_pas_l_inscription_mais_le_dit()
+    {
+        var (handler, ctx, mailer) = Setup();
+        mailer.Setup(e => e.SendEmailAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("SMTP injoignable"));
+
+        var response = await handler.Handle(Command(), CancellationToken.None);
+
+        response.EmailSent.Should().BeFalse("l'écran doit proposer un renvoi plutôt que « vérifiez votre boîte »");
+        (await ctx.Users.CountAsync()).Should().Be(1, "le compte reste créé et confirmable");
     }
 
     [Fact]
@@ -164,18 +233,15 @@ public class RegisterCommandHandlerTests
     {
         // Les valeurs par défaut de l'entité laissent plusieurs droits à faux :
         // le créateur se serait retrouvé bridé sur ses propres données.
-        var (handler, ctx) = Setup();
+        var (handler, ctx, _) = Setup();
 
-        var response = await handler.Handle(Command(), CancellationToken.None);
+        await handler.Handle(Command(), CancellationToken.None);
 
         var user = await ctx.Users.SingleAsync();
         user.AccessLevel.Should().Be("admin");
         user.CanReports.Should().BeTrue();
         user.CanVehicles.Should().BeTrue();
         user.CanSettings.Should().BeTrue();
-        response.User.IsCompanyAdmin.Should().BeTrue();
-        response.User.CompanyName.Should().Be("Transports Sonia",
-            "les navigations doivent être renseignées avant de construire la réponse");
     }
 
     [Fact]
@@ -183,19 +249,20 @@ public class RegisterCommandHandlerTests
     {
         // L'ancien code produisait { "modules": { ... } }, une forme imbriquée que
         // personne dans l'application ne sait lire.
-        var (handler, _) = Setup();
+        var (handler, ctx, _) = Setup();
 
-        var response = await handler.Handle(Command(), CancellationToken.None);
+        await handler.Handle(Command(), CancellationToken.None);
 
-        response.User.Permissions.Should().NotBeNull();
-        response.User.Permissions!.Should().ContainKey("vehicles");
-        response.User.Permissions.Should().NotContainKey("modules");
+        var adminRole = await ctx.Roles.SingleAsync(r => r.IsCompanyAdmin);
+        adminRole.Permissions.Should().NotBeNull();
+        adminRole.Permissions!.Should().ContainKey("vehicles");
+        adminRole.Permissions.Should().NotContainKey("modules");
     }
 
     [Fact]
     public async Task Un_email_deja_utilise_est_refuse()
     {
-        var (handler, ctx) = Setup();
+        var (handler, ctx, _) = Setup();
         ctx.Users.Add(TestDataBuilder.CreateUser(email: "sonia@exemple.tn"));
         await ctx.SaveChangesAsync();
 
@@ -208,7 +275,7 @@ public class RegisterCommandHandlerTests
     [Fact]
     public async Task Un_email_qui_ne_differe_que_par_la_casse_est_refuse()
     {
-        var (handler, ctx) = Setup();
+        var (handler, ctx, _) = Setup();
         ctx.Users.Add(TestDataBuilder.CreateUser(email: "sonia@exemple.tn"));
         await ctx.SaveChangesAsync();
 
@@ -220,7 +287,7 @@ public class RegisterCommandHandlerTests
     [Fact]
     public async Task L_email_est_enregistre_en_minuscules()
     {
-        var (handler, ctx) = Setup();
+        var (handler, ctx, _) = Setup();
 
         await handler.Handle(Command(email: "Sonia@Exemple.TN"), CancellationToken.None);
 
@@ -232,7 +299,7 @@ public class RegisterCommandHandlerTests
     {
         // Le garde-fou qui empêche de recréer une société sans abonnement — le trou
         // fermé côté création administrateur n'a aucune raison de rouvrir ici.
-        var (handler, ctx) = Setup(withPlan: false);
+        var (handler, ctx, _) = Setup(withPlan: false);
 
         var act = () => handler.Handle(Command(), CancellationToken.None);
 
@@ -244,7 +311,7 @@ public class RegisterCommandHandlerTests
     [Fact]
     public async Task Un_plan_desactive_n_est_pas_utilise()
     {
-        var (handler, ctx) = Setup(planActive: false);
+        var (handler, ctx, _) = Setup(planActive: false);
 
         var act = () => handler.Handle(Command(), CancellationToken.None);
 

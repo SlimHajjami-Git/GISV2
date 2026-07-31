@@ -305,45 +305,24 @@ export class AuthService {
     lastName: string;
     email: string;
     password: string;
+    accountType: 'particulier' | 'societe';
     companyName?: string;
     phone?: string;
-  }): Observable<AuthUser> {
-    return this.http.post<AuthResponse>(`${this.API_URL}/auth/register`, payload).pipe(
-      map(response => this.applySession(response, true))
-    );
+  }): Observable<{ email: string; message: string; emailSent: boolean }> {
+    return this.http.post<{ email: string; message: string; emailSent: boolean }>(
+      `${this.API_URL}/auth/register`, payload);
   }
 
-  /**
-   * Applique une réponse d'authentification : mappage, stockage local,
-   * persistance de session, diffusion de l'utilisateur courant et devise.
-   * Extrait du login pour que l'inscription ne réinvente pas la même chose.
-   */
-  private applySession(response: AuthResponse, rememberMe: boolean): AuthUser {
-    const user: AuthUser = {
-      id: response.user.id?.toString() || '',
-      name: `${response.user.firstName} ${response.user.lastName}`.trim(),
-      email: response.user.email,
-      phone: response.user.phone,
-      roles: [response.user.roleName],
-      permissions: response.user.permissions || {},
-      companyId: response.user.companyId.toString(),
-      companyName: response.user.companyName,
-      companyType: response.user.companyType || '',
-      isCompanyAdmin: response.user.isCompanyAdmin,
-      isSystemAdmin: response.user.isSystemAdmin,
-      subscriptionFeatures: response.user.subscriptionFeatures,
-      assignedVehicleIds: response.user.assignedVehicleIds ?? null,
-      userPermissions: response.user.userPermissions ?? null,
-      currency: response.user.currency
-    };
+  /** Confirme l'adresse email depuis le lien reçu, et active le compte. */
+  confirmEmail(token: string): Observable<{ success: boolean; message: string; alreadyConfirmed: boolean }> {
+    return this.http.post<{ success: boolean; message: string; alreadyConfirmed: boolean }>(
+      `${this.API_URL}/auth/confirm-email`, { token });
+  }
 
-    localStorage.setItem('auth_token', response.token);
-    localStorage.setItem('refresh_token', response.refreshToken);
-    localStorage.setItem('auth_user', JSON.stringify(user));
-    this.setSessionPersistence(rememberMe);
-    this.currentUser$.next(user);
-    this.applyAccountCurrency(user.currency);
-    return user;
+  /** Redemande un lien de confirmation. La réponse est neutre par construction. */
+  resendConfirmation(email: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(
+      `${this.API_URL}/auth/resend-confirmation`, { email });
   }
 
   private extractPermissions(permissions: Record<string, any> | null): string[] {

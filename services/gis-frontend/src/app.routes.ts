@@ -4,6 +4,7 @@ import { AiLandingComponent } from './components/ai-landing.component';
 import { LandingComponent } from './components/landing.component';
 import { LoginComponent } from './components/login.component';
 import { RegisterComponent } from './components/register.component';
+import { ConfirmEmailComponent } from './components/confirm-email.component';
 import { DashboardComponent } from './components/dashboard.component';
 import { VehiclesComponent } from './components/vehicles.component';
 import { EmployeesComponent } from './components/employees.component';
@@ -77,7 +78,10 @@ export const routes: Routes = [
   ...(selfSignupEnabled
     ? [
         { path: 'inscription', component: RegisterComponent },
-        { path: 'register', redirectTo: 'inscription', pathMatch: 'full' as const }
+        { path: 'register', redirectTo: 'inscription', pathMatch: 'full' as const },
+        // Cible du lien envoyé par email. Publique par nécessité : l'utilisateur
+        // ne peut pas se connecter tant que son adresse n'est pas confirmée.
+        { path: 'confirmation-email', component: ConfirmEmailComponent }
       ]
     : []),
   { path: 'device-check', component: DeviceCheckComponent },
