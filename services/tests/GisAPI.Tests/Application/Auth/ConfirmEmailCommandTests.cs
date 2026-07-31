@@ -54,22 +54,23 @@ public class ConfirmEmailCommandTests
 
         var user = await ctx.Users.SingleAsync();
         user.Status.Should().Be("active");
-        user.EmailVerificationToken.Should().BeNull("un jeton consommé ne doit plus servir");
-        user.EmailVerificationExpiresAt.Should().BeNull();
+        user.EmailVerificationExpiresAt.Should().BeNull("le jeton ne doit plus rien activer");
     }
 
     [Fact]
-    public async Task Un_lien_reclique_est_accueilli_sans_erreur()
+    public async Task Le_meme_lien_reclique_repond_deja_confirme_et_non_une_erreur()
     {
-        // Cas très fréquent : l'utilisateur reclique, ou sa messagerie préouvre les
-        // liens. Lui montrer « lien invalide » serait alarmant et faux.
-        var (handler, ctx) = Setup(status: "active");
+        // C'est le cas le PLUS fréquent : l'utilisateur reclique, ou l'antivirus de
+        // sa messagerie préouvre l'URL avant lui. Effacer le jeton à la première
+        // confirmation rendait ce chemin inatteignable et affichait « lien
+        // invalide » — c'est exactement ce qu'un essai réel a montré.
+        var (handler, _) = Setup();
 
-        var result = await handler.Handle(new ConfirmEmailCommand(Token), CancellationToken.None);
+        await handler.Handle(new ConfirmEmailCommand(Token), CancellationToken.None);
+        var second = await handler.Handle(new ConfirmEmailCommand(Token), CancellationToken.None);
 
-        result.Success.Should().BeTrue();
-        result.AlreadyConfirmed.Should().BeTrue();
-        (await ctx.Users.SingleAsync()).EmailVerificationToken.Should().BeNull();
+        second.Success.Should().BeTrue();
+        second.AlreadyConfirmed.Should().BeTrue();
     }
 
     [Fact]

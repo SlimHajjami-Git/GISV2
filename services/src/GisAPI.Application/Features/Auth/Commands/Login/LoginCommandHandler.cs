@@ -38,6 +38,14 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
         if (!_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
             throw new DomainException("Email ou mot de passe incorrect");
 
+        // Un compte en attente de confirmation n'est pas un compte désactivé : dire
+        // « Compte désactivé » à quelqu'un qui vient de s'inscrire l'envoie chercher
+        // un administrateur au lieu d'ouvrir son courrier.
+        if (user.Status == "pending")
+            throw new DomainException(
+                "Votre adresse email n'est pas encore confirmée. Ouvrez le lien reçu par email, "
+                + "ou demandez-en un nouveau.");
+
         if (user.Status != "active")
             throw new DomainException("Compte désactivé");
 

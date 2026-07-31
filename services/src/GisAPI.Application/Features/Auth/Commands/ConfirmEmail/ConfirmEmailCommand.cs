@@ -46,21 +46,21 @@ public class ConfirmEmailCommandHandler : IRequestHandler<ConfirmEmailCommand, C
             throw new DomainException(
                 "Ce lien de confirmation n'est plus valable. Demandez-en un nouveau depuis la page de connexion.");
 
+        // Compte déjà actif : le lien a déjà servi. C'est le cas le PLUS FRÉQUENT
+        // en pratique — l'utilisateur reclique, ou l'antivirus de sa messagerie
+        // préouvre l'URL avant lui. On l'accueille sereinement.
         if (user.Status == "active")
-        {
-            // Le jeton a déjà servi : on nettoie et on répond sereinement.
-            user.EmailVerificationToken = null;
-            user.EmailVerificationExpiresAt = null;
-            await _context.SaveChangesAsync(ct);
             return new ConfirmEmailResult(true, "Votre adresse est déjà confirmée. Vous pouvez vous connecter.", true);
-        }
 
         if (user.EmailVerificationExpiresAt is not DateTime expiry || expiry < DateTime.UtcNow)
             throw new DomainException(
                 "Ce lien de confirmation a expiré. Demandez-en un nouveau depuis la page de connexion.");
 
         user.Status = "active";
-        user.EmailVerificationToken = null;
+        // Le jeton n'est VOLONTAIREMENT pas effacé : l'effacer rendait la branche
+        // ci-dessus inatteignable, si bien qu'un second clic sur le même lien —
+        // situation banale — répondait « lien invalide ». Une fois le compte actif
+        // le jeton est inerte : il ne peut plus qu'activer ce qui l'est déjà.
         user.EmailVerificationExpiresAt = null;
         user.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(ct);
