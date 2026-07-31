@@ -568,15 +568,35 @@ impl TelemetryStore for Database {
         Ok(row.and_then(|r| r.get::<Option<String>, _>("mat")))
     }
 
+    /// Résolution de secours par MAT — utilisée UNIQUEMENT quand la trame ne porte
+    /// pas d'IMEI et qu'aucune connexion n'est déjà associée.
+    ///
+    /// Le MAT est une étiquette programmée dans l'appareil, pas une identité :
+    /// rien n'empêche deux boîtiers mal provisionnés de porter la même. Quand c'est
+    /// le cas, on ne DEVINE PAS. L'ancienne requête renvoyait la première ligne
+    /// venue, ce qui a fait écrire la trajectoire d'un véhicule HERTZ sur un
+    /// véhicule BELIVE. Un MAT ambigu ne résout plus rien : la trame est rejetée et
+    /// tracée, ce qui est réparable, là où une attribution erronée ne l'est pas.
     async fn get_device_uid_by_mat(&self, mat: &str) -> Result<Option<String>> {
-        let row = sqlx::query(
-            r#"SELECT device_uid FROM gps_devices WHERE mat = $1 AND device_uid != 'UNKNOWN_DEVICE'"#,
+        let rows = sqlx::query(
+            r#"SELECT device_uid FROM gps_devices
+               WHERE mat = $1 AND device_uid != 'UNKNOWN_DEVICE'
+               LIMIT 2"#,
         )
         .bind(mat)
-        .fetch_optional(&self.pool)
+        .fetch_all(&self.pool)
         .await?;
 
-        Ok(row.map(|r| r.get::<String, _>("device_uid")))
+        if rows.len() > 1 {
+            tracing::error!(
+                mat = %mat,
+                "MAT porté par plusieurs boîtiers — résolution refusée. \
+                 Corrigez le MAT sur l'appareil ou en base."
+            );
+            return Ok(None);
+        }
+
+        Ok(rows.into_iter().next().map(|r| r.get::<String, _>("device_uid")))
     }
 
     async fn insert_vehicle_stop(

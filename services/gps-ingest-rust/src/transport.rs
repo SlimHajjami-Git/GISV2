@@ -944,10 +944,39 @@ async fn process_single_frame(
                 
                 let mut frame = telemetry::hh::parse_frame(actual_frame)?;
                 
-                // Try to resolve device UID in order of priority:
-                // 1. From connection map (learned from AA01/HH01)
-                // 2. From MAT prefix (lookup in database)
-                let resolved_uid = if let Some(peer) = peer_addr {
+                // Ordre de résolution, du plus fiable au moins fiable :
+                //  1. l'IMEI écrit DANS la trame — identité matérielle, indiscutable ;
+                //  2. la table de connexions, apprise d'un AA01/HH01 précédent ;
+                //  3. en dernier recours le MAT, et seulement s'il est sans ambiguïté.
+                //
+                // L'IMEI passait AVANT en dernier alors qu'il est le seul identifiant
+                // sûr : une trame qui portait à la fois « MAT du véhicule A » et
+                // « IMEI du véhicule B » était classée chez A. En production, la
+                // trajectoire d'un véhicule HERTZ s'écrivait ainsi aussi sur un
+                // véhicule BELIVE — deux clients distincts.
+                let frame_imei = extract_imei(actual_frame);
+
+                let resolved_uid = if let Some(imei) = frame_imei {
+                    // La trame s'annonce elle-même : on corrige la table de
+                    // connexions au passage. Sans cela, une entrée périmée — un
+                    // couple IP:port réattribué par l'opérateur à un autre boîtier —
+                    // continuerait d'aiguiller les trames vers le mauvais appareil.
+                    if let Some(peer) = peer_addr {
+                        let mut map = connection_map.lock().await;
+                        match map.get(peer) {
+                            Some(previous) if previous != &imei => {
+                                warn!(
+                                    %peer, ancien = %previous, nouveau = %imei,
+                                    "Connexion réattribuée à un autre boîtier — table de connexions corrigée"
+                                );
+                                map.insert(peer.to_string(), imei.clone());
+                            }
+                            None => { map.insert(peer.to_string(), imei.clone()); }
+                            _ => {}
+                        }
+                    }
+                    Some(imei)
+                } else if let Some(peer) = peer_addr {
                     let map = connection_map.lock().await;
                     if let Some(uid) = map.get(peer).cloned() {
                         Some(uid)
@@ -2554,6 +2583,27 @@ fn extract_frames_smart(payload: &str) -> Vec<String> {
 
 /// Extract MAT prefix from frame if present (format: "NR08G0664 AA23...")
 /// Returns (Some(mat), remaining_frame) if prefix found, (None, original_frame) otherwise
+/// Extrait l'IMEI porté par la trame elle-même (`... IMEI:860141076682468`).
+///
+/// C'EST LA SEULE IDENTITÉ FIABLE D'UN BOÎTIER. Le MAT, lui, est une étiquette
+/// programmée dans l'appareil : deux boîtiers mal provisionnés peuvent porter la
+/// même, et c'est arrivé en production — le boîtier installé sur un véhicule HERTZ
+/// annonçait le MAT d'un véhicule BELIVE, si bien que sa trajectoire s'écrivait
+/// sur les deux fiches, chez deux clients différents.
+fn extract_imei(frame: &str) -> Option<String> {
+    let pos = frame.find("IMEI:")?;
+    let digits: String = frame[pos + 5..]
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    // Un IMEI fait 15 chiffres ; on tolère un peu de marge sans accepter n'importe quoi.
+    if digits.len() >= 14 && digits.len() <= 17 {
+        Some(digits)
+    } else {
+        None
+    }
+}
+
 fn extract_mat_prefix(frame: &str) -> (Option<String>, &str) {
     // Look for space followed by AA or HH
     if let Some(pos) = frame.find(" AA").or_else(|| frame.find(" HH")) {
@@ -2613,6 +2663,47 @@ fn starts_with_valid_header(s: &str) -> bool {
     s.starts_with("HH") || s.starts_with("AA") || s.contains(" AA") || s.contains(" HH")
 }
 
+
+#[cfg(test)]
+mod identite_boitier_tests {
+    use super::*;
+
+    /// Trame réelle relevée en production le 31/07/2026. Elle porte le MAT d'un
+    /// véhicule (NR08G0838, BELIVE) et l'IMEI d'un AUTRE (860141076682468, HERTZ) :
+    /// c'est ce boîtier mal provisionné qui a fait apparaître la même trajectoire
+    /// sur deux véhicules de deux clients différents.
+    const TRAME_CONFLIT: &str =
+        "NR08G0838 AA00141949310726@26/07/31,15:19:48+04 ,ICC:8921602080356623119F, IMEI:860141076682468";
+
+    #[test]
+    fn l_imei_de_la_trame_prime_sur_le_mat() {
+        let (mat, reste) = extract_mat_prefix(TRAME_CONFLIT);
+        assert_eq!(mat.as_deref(), Some("NR08G0838"), "le MAT reste lisible");
+
+        // Mais c'est l'IMEI qui identifie le matériel, et il désigne l'autre boîtier.
+        assert_eq!(extract_imei(reste).as_deref(), Some("860141076682468"));
+    }
+
+    #[test]
+    fn l_imei_est_lu_dans_une_trame_aa01() {
+        let aa01 = "AA01MF2-W0521-NTS-VW_P15-STD-2.0.0.1R00C30d, ICC:8921602080356623119F, IMEI:860141076682468";
+        assert_eq!(extract_imei(aa01).as_deref(), Some("860141076682468"));
+    }
+
+    #[test]
+    fn une_trame_sans_imei_ne_produit_rien() {
+        assert!(extract_imei("AA02000").is_none());
+        assert!(extract_imei("NR08G0838 AA33...").is_none());
+    }
+
+    #[test]
+    fn une_valeur_imei_aberrante_est_refusee() {
+        // Trop courte, tronquée par une coupure réseau : on préfère ne rien
+        // résoudre plutôt que d'attribuer la trame au hasard.
+        assert!(extract_imei("AA01 ..., IMEI:8601").is_none());
+        assert!(extract_imei("AA01 ..., IMEI:").is_none());
+    }
+}
 
 #[cfg(test)]
 mod tests {
