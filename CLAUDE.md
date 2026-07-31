@@ -36,7 +36,7 @@ npm run build                 # Production build
 cd services/GisAPI
 dotnet run                    # API on http://localhost:5000
 dotnet build
-dotnet test ../GisAPI.Tests/  # Run backend tests
+dotnet test ../tests/GisAPI.Tests/   # Run backend tests (305 tests)
 ```
 
 ### EF Core Migrations

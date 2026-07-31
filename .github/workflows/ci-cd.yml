@@ -1,0 +1,107 @@
+# ============================================================================
+#  GISV2 — CI/CD (GitHub Actions)
+#
+#  CI  : runs on GitHub-hosted runners for every PR + push to master
+#        (backend dotnet test, frontend ng build AOT, rust cargo build).
+#  CD  : runs on SELF-HOSTED runners installed on each server (labels 'dz' / 'tn'),
+#        reusing k8s/update.sh — required because registry.local:5000 and the K3s
+#        API are only reachable from the server itself.
+#
+#  Per-deployment config: TN uses the git defaults (Calypso / TND). DZ flips only
+#  the currency to DZD (sed) — brand/map stay identical to TN for now.
+#
+#  Flow on master: CI → deploy-dz → deploy-tn (auto). TN uses the 'tn-prod'
+#  Environment so a required-reviewer approval can be added later (GitHub Pro on
+#  private repos). The deploy jobs only run on master push, never on PRs.
+#
+#  See docs/CICD-SETUP.md for the one-time runner + environment setup.
+# ============================================================================
+name: CI/CD
+
+on:
+  push:
+    branches: [ master ]
+    paths-ignore: [ 'docs/**', '**/*.md' ]
+  pull_request:
+    branches: [ master ]
+
+permissions:
+  contents: read
+
+jobs:
+  # ───────────────────────────── CI ─────────────────────────────
+  backend-tests:
+    name: CI · backend (dotnet test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      # Le projet de tests est services/tests/GisAPI.Tests (celui déclaré dans
+      # GisAPI.sln). La CI pointait sur services/GisAPI.Tests, un doublon resté
+      # hors solution et non compilable depuis le refactor CQRS de février : ce
+      # job était donc rouge à chaque poussée.
+      - run: dotnet test services/tests/GisAPI.Tests/GisAPI.Tests.csproj -c Release
+
+  frontend-build:
+    name: CI · frontend (ng build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: services/gis-frontend/package-lock.json
+      - run: npm ci --legacy-peer-deps
+        working-directory: services/gis-frontend
+      - run: npm run build -- --configuration=production
+        working-directory: services/gis-frontend
+
+  ingest-build:
+    name: CI · rust ingest (cargo build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          rustup toolchain install nightly --profile minimal
+          rustup default nightly
+      - run: cargo build --release
+        working-directory: services/gps-ingest-rust
+
+  # ─────────────────────────── Deploy DZ (test) ───────────────────────────
+  deploy-dz:
+    name: Deploy · DZ (test)
+    needs: [ backend-tests, frontend-build, ingest-build ]
+    if: github.ref == 'refs/heads/master'
+    runs-on: [ self-hosted, dz ]
+    environment: dz-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Per-deployment config — DZ uses Dinar algérien (DZD)
+        run: sed -i "s/defaultCurrency: 'TND'/defaultCurrency: 'DZD'/" services/gis-frontend/src/environments/environment.ts
+      - name: Build & roll out (frontend + api)
+        run: |
+          chmod +x k8s/update.sh
+          sudo bash k8s/update.sh frontend
+          sudo bash k8s/update.sh api
+          sudo kubectl set env deployment/gis-api App__DefaultCurrency=DZD -n gisv2
+        # ⚠ NEVER run "update.sh config" — it overwrites live-patched secrets.
+
+  # ─────────────────────────── Deploy TN (prod) ───────────────────────────
+  deploy-tn:
+    name: Deploy · TN (prod)
+    needs: [ deploy-dz ]
+    if: github.ref == 'refs/heads/master'
+    runs-on: [ self-hosted, tn ]
+    environment: tn-prod
+    steps:
+      - uses: actions/checkout@v4
+      # TN keeps the git defaults (brandName Calypso, defaultCurrency TND) — no render.
+      - name: Build & roll out (frontend + api)
+        run: |
+          chmod +x k8s/update.sh
+          sudo bash k8s/update.sh frontend
+          sudo bash k8s/update.sh api
+        # ⚠ NEVER run "update.sh config" — it overwrites the live-patched Groq key + secrets.
