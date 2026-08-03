@@ -820,7 +820,51 @@ public class FuelCalculationService : IFuelCalculationService
             // small positive change = sensor noise → keep lastFuel
         }
 
-        return new FuelLevelAuditDto(true, tankCapacity, series, refills);
+        return new FuelLevelAuditDto(true, tankCapacity, series, MergeSameRefill(refills));
+    }
+
+    /// <summary>Fenêtre au-delà de laquelle deux hausses de niveau sont deux pleins distincts.</summary>
+    private const double SameRefillWindowMinutes = 30.0;
+
+    /// <summary>
+    /// Regroupe les hausses de niveau successives qui appartiennent au MÊME plein.
+    ///
+    /// POURQUOI — le détecteur émet un événement à chaque bond de niveau ≥ 10 %. Or
+    /// un remplissage réel fait monter la jauge par paliers : sur un poids lourd,
+    /// un plein unique produit trois ou quatre bonds à quelques minutes d'intervalle.
+    /// Chacun devenait un « remplissage » distinct, et le rapprochement avec les
+    /// factures n'en associant qu'UN par facture, les autres ressortaient en
+    /// « Non déclaré » — c'est-à-dire signalés comme du carburant entré dans le
+    /// réservoir sans justificatif. Exactement le contraire de la vérité.
+    ///
+    /// Cas réel (SGF, Scania 001, 29/06/2026) : 265 L à 20 h 35 puis 140 L à 20 h 37,
+    /// soit 405 L pour une facture de 423 L. Un seul plein, lu comme un plein
+    /// confirmé plus une anomalie.
+    ///
+    /// Le regroupement corrige aussi la comparaison des volumes : 405 L contre
+    /// 423 L (4 % d'écart) est probant, là où 265 L contre 423 L ne l'était pas.
+    /// </summary>
+    private static List<DetectedRefillDto> MergeSameRefill(List<DetectedRefillDto> refills)
+    {
+        if (refills.Count < 2) return refills;
+
+        var merged = new List<DetectedRefillDto>();
+        foreach (var r in refills.OrderBy(x => x.T))
+        {
+            if (merged.Count > 0
+                && (r.T - merged[^1].T).TotalMinutes <= SameRefillWindowMinutes)
+            {
+                // On conserve l'horodatage du DÉBUT du plein — c'est le moment où
+                // le conducteur est à la pompe — et on cumule les litres.
+                merged[^1] = merged[^1] with { Liters = Math.Round(merged[^1].Liters + r.Liters, 1) };
+            }
+            else
+            {
+                merged.Add(r);
+            }
+        }
+
+        return merged;
     }
 
     /// <summary>
