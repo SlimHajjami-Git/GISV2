@@ -70,7 +70,9 @@ export interface SystemUser {
   roles: string[];
   permissions: string[];
   assignedVehicleIds: number[];
-  status: 'active' | 'inactive' | 'suspended';
+  // « pending » : compte né d'une inscription libre, en attente de confirmation
+  // de son adresse email. La connexion le refuse tant qu'il n'est pas « active ».
+  status: 'active' | 'pending' | 'inactive' | 'suspended';
   lastLoginAt?: Date;
   createdAt: Date;
   isOnline: boolean;

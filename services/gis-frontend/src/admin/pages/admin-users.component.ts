@@ -11,7 +11,7 @@ interface EditUserForm {
   name: string;
   email: string;
   phone: string;
-  status: 'active' | 'suspended' | 'inactive';
+  status: 'active' | 'pending' | 'suspended' | 'inactive';
   roleId: number | null;
   password: string;
 }
@@ -36,10 +36,15 @@ interface EditUserForm {
               <option *ngFor="let company of (companies$ | async) || []" [value]="company.id">{{ company.name }}</option>
             </select>
             <select class="filter-select" [(ngModel)]="statusFilter" (ngModelChange)="onStatusChange($event)">
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="suspended">Suspended</option>
-              <option value="online">Online Now</option>
+              <option value="all">Tous les statuts</option>
+              <option value="active">Actifs</option>
+              <!-- Comptes issus de l'inscription libre dont l'adresse n'est pas
+                   encore confirmée. Sans cette entrée, ils étaient introuvables :
+                   sur un déploiement dont la messagerie n'est pas configurée,
+                   c'est pourtant le seul moyen de les débloquer. -->
+              <option value="pending">En attente de confirmation</option>
+              <option value="suspended">Suspendus</option>
+              <option value="online">Connectés</option>
             </select>
           </div>
           <div class="header-stats">
@@ -86,7 +91,7 @@ interface EditUserForm {
                   <span class="role-tag">{{ user.roleName || '—' }}</span>
                 </td>
                 <td>
-                  <span class="status-badge" [class]="user.status">{{ user.status | titlecase }}</span>
+                  <span class="status-badge" [class]="user.status">{{ statusLabel(user.status) }}</span>
                 </td>
                 <td>
                   <span class="last-login">{{ formatDate(user.lastLoginAt) }}</span>
@@ -99,8 +104,13 @@ interface EditUserForm {
                         <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                       </svg>
                     </button>
+                    <!-- Sur un compte en attente, ce bouton court-circuite la
+                         confirmation d'adresse : le titre le dit, pour que
+                         l'opérateur sache ce qu'il fait. -->
                     <button class="action-btn" [class.suspend]="user.status === 'active'" [class.activate]="user.status !== 'active'"
-                            (click)="toggleUserStatus(user)" [title]="user.status === 'active' ? 'Suspendre' : 'Activer'">
+                            (click)="toggleUserStatus(user)"
+                            [title]="user.status === 'active' ? 'Suspendre'
+                                   : (user.status === 'pending' ? 'Activer sans attendre la confirmation de l’adresse' : 'Activer')">
                       <svg *ngIf="user.status === 'active'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
                       </svg>
@@ -175,6 +185,11 @@ interface EditUserForm {
                 <div class="form-field">
                   <label>Statut</label>
                   <select [(ngModel)]="editForm.status">
+                    <!-- « En attente » n'est pas un statut qu'on attribue : il vient
+                         de l'inscription libre. On l'affiche pour que la liste ne
+                         paraisse pas vide sur un tel compte, mais on ne permet pas
+                         d'y revenir. -->
+                    <option value="pending" disabled>En attente de confirmation</option>
                     <option value="active">Actif</option>
                     <option value="suspended">Suspendu</option>
                     <option value="inactive">Inactif</option>
@@ -520,6 +535,12 @@ interface EditUserForm {
     .status-badge.suspended {
       background: rgba(220, 38, 38, 0.10);
       color: var(--adm-red-ink);
+    }
+
+    /* En attente de confirmation d'adresse : ni actif, ni fautif — ambre. */
+    .status-badge.pending {
+      background: rgba(217, 119, 6, 0.12);
+      color: #b45309;
     }
 
     .status-badge.inactive {
@@ -1236,7 +1257,29 @@ export class AdminUsersComponent implements OnInit, OnDestroy {
   }
 
   // ─── Suspend / Activate (quick action) ────────────────────────────────
+  /** Libellé français du statut. Le gabarit affichait la valeur brute en anglais. */
+  statusLabel(status: string): string {
+    switch (status) {
+      case 'active': return 'Actif';
+      case 'pending': return 'En attente';
+      case 'suspended': return 'Suspendu';
+      case 'inactive': return 'Inactif';
+      default: return status;
+    }
+  }
+
   toggleUserStatus(user: SystemUser) {
+    // Activer un compte « en attente » revient à se porter garant de l'adresse
+    // à la place de son propriétaire : on le demande explicitement.
+    if (user.status === 'pending') {
+      const ok = confirm(
+        `Activer « ${user.name || user.email} » sans confirmation de son adresse ?\n\n`
+        + `Ce compte est né d'une inscription libre et attend que ${user.email} soit confirmée. `
+        + `N'activez à la main que si vous savez que cette adresse appartient bien à cette personne.`
+      );
+      if (!ok) return;
+    }
+
     const newStatus: 'active' | 'suspended' = user.status === 'active' ? 'suspended' : 'active';
     const obs = newStatus === 'suspended'
       ? this.adminService.suspendUser(user.id)
