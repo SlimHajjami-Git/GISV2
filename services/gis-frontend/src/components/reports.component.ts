@@ -5640,10 +5640,28 @@ export class ReportsComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Verdict for a single fuel-comparison row, based on the adjustable thresholds. */
+  /**
+   * Verdict d'une ligne de comparaison réel / boîtier.
+   *
+   * L'écart se lit dans les DEUX sens, et ils ne veulent pas dire la même chose :
+   *  - écart POSITIF  → on a acheté PLUS que le réservoir n'a consommé : du
+   *    carburant payé n'est pas arrivé dans ce véhicule. C'est le soupçon de
+   *    détournement, et c'est ce que les seuils réglables encadrent.
+   *  - écart NÉGATIF  → le réservoir a consommé PLUS qu'on n'a acheté : ce n'est
+   *    pas une fraude, ce sont des achats qui n'ont pas été saisis.
+   *
+   * Le second cas retombait sur « 🟢 OK » — la condition ne teste que
+   * `diffLiters > seuil`. Un camion affichant −618,9 L (−35 %) était donc présenté
+   * comme conforme, alors que la moitié de ses pleins manquait à l'appel. Le
+   * rapport rassurait au lieu d'alerter.
+   */
   private fuelComparisonVerdict(row: FuelComparisonRow): string {
     if (row.diffLiters > this.fcThresholdLiters && row.diffPercent > this.fcThresholdPercent) return '🔴 Suspect';
     if (row.diffLiters > 0 && row.diffPercent > 10) return '🟡 À vérifier';
+    // Symétrique du seuil de soupçon, mais avec un sens différent : il manque des
+    // factures, pas du carburant.
+    if (-row.diffLiters > this.fcThresholdLiters && -row.diffPercent > this.fcThresholdPercent) return '🟠 Achats non saisis';
+    if (row.diffLiters < 0 && -row.diffPercent > 10) return '🟡 Saisie incomplète';
     return '🟢 OK';
   }
 
