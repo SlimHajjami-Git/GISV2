@@ -217,6 +217,20 @@ type NotifBucket = Notification | NotifThreadGroup;
             </svg>
             <span>Rapports</span>
           </a>
+
+          <!-- Abonnement & paiement.
+               L'écran existait mais n'était accessible par AUCUN lien : il fallait
+               taper l'URL à la main. Un client ne peut pas régler ce qu'il ne
+               trouve pas. Pas de garde de module : l'abonnement doit rester
+               joignable même quand les autres écrans sont fermés — c'est
+               précisément là qu'on va pour débloquer la situation. -->
+          <a [routerLink]="['/subscription']" routerLinkActive="active" class="nav-link" title="Abonnement">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="1" y="4" width="22" height="16" rx="2"/>
+              <line x1="1" y1="10" x2="23" y2="10"/>
+            </svg>
+            <span>Abonnement</span>
+          </a>
         </div>
 
         <!-- Right Actions -->
