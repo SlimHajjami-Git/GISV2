@@ -41,6 +41,13 @@ export interface AuthUser {
   userPermissions: UserPermissions | null;
   /** Account currency (server-side: Societe.Settings.Currency, else deployment default). */
   currency?: string;
+  /**
+   * La société gère-t-elle son abonnement elle-même ? Calculé côté serveur :
+   * vrai en période d'essai (jamais réglé) ou sur l'offre de gestion de parc en
+   * libre-service. Faux pour les clients installés, facturés à la main — l'écran
+   * d'abonnement leur est masqué.
+   */
+  selfServiceSubscription?: boolean;
 }
 
 export interface AuthResponse {
@@ -64,6 +71,7 @@ export interface AuthResponse {
     assignedVehicleIds: number[] | null;
     userPermissions: UserPermissions | null;
     currency?: string;
+    selfServiceSubscription?: boolean;
   };
 }
 
@@ -151,7 +159,10 @@ export class AuthService {
           subscriptionFeatures: parsed.subscriptionFeatures ?? null,
           assignedVehicleIds: parsed.assignedVehicleIds ?? null,
           userPermissions: parsed.userPermissions ?? null,
-          currency: parsed.currency
+          currency: parsed.currency,
+          // Sans cette ligne, le drapeau se perdait au rechargement de la page et
+          // l'entrée « Abonnement » disparaissait pour un compte qui y a droit.
+          selfServiceSubscription: parsed.selfServiceSubscription ?? false
         });
         this.applyAccountCurrency(parsed.currency);
       } catch (e) {
@@ -269,7 +280,8 @@ export class AuthService {
           subscriptionFeatures: response.user.subscriptionFeatures,
           assignedVehicleIds: response.user.assignedVehicleIds ?? null,
           userPermissions: response.user.userPermissions ?? null,
-          currency: response.user.currency
+          currency: response.user.currency,
+          selfServiceSubscription: response.user.selfServiceSubscription ?? false
         };
         console.log('AuthService.login - Mapped subscriptionFeatures:', user.subscriptionFeatures);
         console.log('AuthService.login - User permissions:', user.userPermissions);
@@ -487,7 +499,8 @@ export class AuthService {
           subscriptionFeatures: response.user.subscriptionFeatures,
           assignedVehicleIds: response.user.assignedVehicleIds ?? null,
           userPermissions: response.user.userPermissions ?? null,
-          currency: response.user.currency
+          currency: response.user.currency,
+          selfServiceSubscription: response.user.selfServiceSubscription ?? false
         };
         localStorage.setItem('auth_token', response.token);
         localStorage.setItem('refresh_token', response.refreshToken);

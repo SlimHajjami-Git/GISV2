@@ -233,7 +233,7 @@ type NotifBucket = Notification | NotifThreadGroup;
                trouve pas. Pas de garde de module : l'abonnement doit rester
                joignable même quand les autres écrans sont fermés — c'est
                précisément là qu'on va pour débloquer la situation. -->
-          <a [routerLink]="['/subscription']" routerLinkActive="active" class="nav-link" title="Abonnement">
+          <a *ngIf="canManageOwnSubscription()" [routerLink]="['/subscription']" routerLinkActive="active" class="nav-link" title="Abonnement">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="1" y="4" width="22" height="16" rx="2"/>
               <line x1="1" y1="10" x2="23" y2="10"/>
@@ -1855,6 +1855,11 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
 
   navigate(path: string) {
     this.router.navigate([path]);
+  }
+
+  /** L'entrée « Abonnement » n'est proposée qu'aux sociétés qui gèrent le leur. */
+  canManageOwnSubscription(): boolean {
+    return this.permissionService.canManageOwnSubscription();
   }
 
   hasModule(moduleName: string): boolean {

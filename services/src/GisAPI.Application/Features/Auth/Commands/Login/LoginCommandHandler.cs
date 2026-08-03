@@ -161,8 +161,34 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
             subscriptionFeatures,
             assignedVehicleIds,
             userPermissions,
-            Currency: user.Societe?.Settings?.Currency ?? GisAPI.Domain.Common.AppCurrency.Default
+            Currency: user.Societe?.Settings?.Currency ?? GisAPI.Domain.Common.AppCurrency.Default,
+            SelfServiceSubscription: IsSelfServiceSubscription(user.Societe)
         );
+    }
+
+    /// <summary>
+    /// La société gère-t-elle son abonnement elle-même ?
+    ///
+    /// Deux cas, et deux seulement :
+    ///  - elle est en ESSAI : aucun règlement n'a jamais été encaissé
+    ///    (last_payment_at nul). C'est le cas de tout compte issu de
+    ///    l'inscription libre, à qui l'on doit précisément montrer les offres.
+    ///  - elle est sur l'offre de GESTION DE PARC en libre-service
+    ///    (plan-basique), vendue sans négociation.
+    ///
+    /// Tous les autres — les clients installés, dont l'abonnement est négocié puis
+    /// facturé à la main — n'ont rien à faire sur un écran de paiement en ligne :
+    /// il est inactif, et leur laisser croire qu'ils peuvent changer de formule
+    /// d'un clic ne ferait que créer des appels au support.
+    /// </summary>
+    public static bool IsSelfServiceSubscription(GisAPI.Domain.Entities.Societe? societe)
+    {
+        if (societe == null) return false;
+
+        // Jamais réglé → en essai.
+        if (societe.LastPaymentAt == null) return true;
+
+        return societe.SubscriptionType?.Code == "plan-basique";
     }
 
     /// <summary>Map les permissions utilisateur (réutilisé par l'impersonation).</summary>

@@ -28,7 +28,17 @@ public record UserDto(
     SubscriptionFeaturesDto? SubscriptionFeatures,
     int[]? AssignedVehicleIds = null,
     UserPermissionsDto? UserPermissions = null,
-    string Currency = "TND"
+    string Currency = "TND",
+    // Cette société gère-t-elle son abonnement elle-même ?
+    //
+    // Vrai pour les comptes en ESSAI (jamais réglé) et pour l'offre de gestion de
+    // parc en libre-service. Faux pour les clients installés, dont l'abonnement
+    // est négocié et facturé à la main : leur montrer un écran de paiement en
+    // ligne — qui plus est inactif — n'a aucun sens et prête à confusion.
+    //
+    // La règle est calculée ICI, côté serveur, et pas déduite dans l'écran : elle
+    // doit rester unique et vérifiable.
+    bool SelfServiceSubscription = false
 );
 
 public record UserPermissionsDto(

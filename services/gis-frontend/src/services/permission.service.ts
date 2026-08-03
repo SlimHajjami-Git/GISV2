@@ -174,6 +174,24 @@ export class PermissionService {
     return user?.isSystemAdmin ?? false;
   }
 
+  /**
+   * L'écran Abonnement doit-il être proposé à cet utilisateur ?
+   *
+   * Seulement aux sociétés qui gèrent leur abonnement elles-mêmes : celles en
+   * période d'essai, et l'offre de gestion de parc en libre-service. Les clients
+   * installés ont un abonnement négocié et facturé à la main ; leur montrer une
+   * grille tarifaire et un bouton de paiement inactif ne ferait que les
+   * interroger. Le super-administrateur y garde accès pour le support.
+   *
+   * Le calcul est fait par le serveur (LoginCommandHandler) et transporté dans le
+   * jeton d'ouverture de session : la règle reste unique.
+   */
+  canManageOwnSubscription(): boolean {
+    const user = this.authService.getCurrentUserSync();
+    if (!user) return false;
+    return !!user.isSystemAdmin || !!user.selfServiceSubscription;
+  }
+
   isCompanyAdmin(): boolean {
     const user = this.authService.getCurrentUserSync();
     return user?.isCompanyAdmin ?? false;
