@@ -111,12 +111,17 @@ type NotifBucket = Notification | NotifThreadGroup;
           </a>
 
           <!--
-            Exploitation dropdown.
-            Véhicules entry removed (Calypso 7) — the menu now only links
-            to driver / tour / geofencing pages. Vehicle management has its
-            own entry point via the dashboard / direct URL /vehicles.
+            Exploitation.
+            « Véhicules » avait été retiré de ce menu (Calypso 7) au motif que
+            l'écran restait atteignable « depuis le tableau de bord ». C'est
+            faux : le tableau de bord ne contient aucun lien vers /vehicles. Il
+            ne restait donc que l'entrée cachée dans le menu de l'avatar — un
+            contrôle qui se lit « mon compte », où personne ne va chercher son
+            parc. Un client d'un plan SANS GPS, dont l'écran Suivi est fermé,
+            n'avait plus aucun chemin visible vers ses propres véhicules : c'est
+            le blocage rapporté par le premier inscrit.
           -->
-          <div class="nav-group" *ngIf="hasModule('employees') || hasModule('tours') || hasModule('geofences')">
+          <div class="nav-group" *ngIf="hasModule('vehicles') || hasModule('employees') || hasModule('tours') || hasModule('geofences')">
             <button class="nav-group-btn" [class.active]="openNavGroup === 'exploitation'" (click)="toggleNavGroup('exploitation', $event)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M5 17h-2v-6l2-5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0h-6m-6 -6h15m-6 0v-5"/>
@@ -125,6 +130,10 @@ type NotifBucket = Notification | NotifThreadGroup;
               <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="nav-group-dropdown" *ngIf="openNavGroup === 'exploitation'" (click)="$event.stopPropagation()">
+              <a *ngIf="hasModule('vehicles')" [routerLink]="['/vehicles']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5a2 2 0 0 1-2 2h-5"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                Véhicules
+              </a>
               <a *ngIf="hasModule('employees')" [routerLink]="['/drivers']" routerLinkActive="active" class="nav-dropdown-item" (click)="openNavGroup = null">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
                 Chauffeurs

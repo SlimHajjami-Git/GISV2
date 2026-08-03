@@ -5,6 +5,7 @@ import { Router } from '@angular/router';
 import { trigger, transition, style, animate, state } from '@angular/animations';
 import { Subject, takeUntil } from 'rxjs';
 import { ApiService, MaintenanceItemDto, DeclareFreeMaintenancesRequest } from '../services/api.service';
+import { AuthService } from '../services/auth.service';
 import { GeocodingService } from '../services/geocoding.service';
 import { Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -2536,7 +2537,8 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     private ngZone: NgZone,
     private cdr: ChangeDetectorRef,
     private appRef: ApplicationRef,
-    private userPrefs: UserPreferencesService
+    private userPrefs: UserPreferencesService,
+    private authService: AuthService
   ) {}
 
   ngOnInit() {
@@ -2545,11 +2547,23 @@ export class VehiclesComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const user = this.apiService.getCurrentUserSync();
+    // L'identité vient d'AuthService, comme partout ailleurs dans l'application.
+    //
+    // Elle était lue via ApiService.getCurrentUserSync(), qui renvoie un
+    // INSTANTANÉ figé au constructeur du service (loadStoredUser, appelé une
+    // seule fois). Or la connexion passe par AuthService, qui ne notifie jamais
+    // ApiService : dès qu'ApiService avait été instancié AVANT la connexion —
+    // page d'accueil publique, ou simple déconnexion suivie d'une reconnexion
+    // sans rechargement — l'instantané restait null, `isAdmin` gardait sa valeur
+    // initiale false, et le bouton « Nouveau véhicule » n'était jamais rendu.
+    // L'utilisateur voyait ses véhicules mais ne pouvait rien ajouter, sans le
+    // moindre message ; un F5 « réparait » le problème, ce qui le rendait
+    // d'autant plus déroutant.
+    const user = this.authService.getCurrentUserSync();
     if (user) {
-      this.isAdmin = user.isCompanyAdmin;
+      this.isAdmin = !!user.isCompanyAdmin || !!user.isSystemAdmin;
       this.company = {
-        id: user.companyId.toString(),
+        id: user.companyId?.toString(),
         name: user.companyName,
         type: 'transport',
         subscriptionId: '1'

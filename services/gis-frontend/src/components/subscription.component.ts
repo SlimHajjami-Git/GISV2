@@ -85,7 +85,11 @@ import { environment } from '../environments/environment';
                   <div class="quota">
                     <div class="quota-head">
                       <span>{{ q.label }}</span>
-                      <span class="quota-num">{{ q.current }} <span class="of">/ {{ q.max || '∞' }}</span></span>
+                      <!-- Une limite à 0 signifie « pas inclus dans l'offre »,
+                           jamais « illimité ». L'affichage « ∞ » promettait des
+                           boîtiers GPS sans limite sur un plan qui n'en autorise
+                           aucun — exactement l'inverse. -->
+                      <span class="quota-num">{{ q.current }} <span class="of">/ {{ q.max > 0 ? q.max : 'non inclus' }}</span></span>
                     </div>
                     <div class="bar"><div class="bar-fill" [style.width.%]="q.pct" [class.full]="q.pct >= 90"></div></div>
                   </div>
