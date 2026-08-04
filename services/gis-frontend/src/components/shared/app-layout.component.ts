@@ -1859,7 +1859,14 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
 
   /** L'entrée « Abonnement » n'est proposée qu'aux sociétés qui gèrent le leur. */
   canManageOwnSubscription(): boolean {
-    return this.permissionService.canManageOwnSubscription();
+    // MASQUÉ TEMPORAIREMENT, à la demande de l'exploitant (04/08/2026) : l'entrée
+    // ne doit être visible pour PERSONNE tant que l'offre en libre-service n'est
+    // pas prête à être montrée. Ce court-circuit est délibérément côté écran :
+    // il s'applique immédiatement, y compris aux sessions déjà ouvertes qui
+    // portent encore l'ancien drapeau en cache. Pour réactiver, supprimer cette
+    // ligne — la règle serveur (plan-basique uniquement) reprend la main.
+    return false;
+    // return this.permissionService.canManageOwnSubscription();
   }
 
   hasModule(moduleName: string): boolean {
