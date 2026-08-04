@@ -418,6 +418,14 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
 
         foreach (var gf in geofences)
         {
+            // Une zone à laquelle des véhicules ont été affectés ne concerne QUE
+            // ceux-là. On l'ignore entièrement pour les autres : ni alerte, ni
+            // suivi d'état — les inscrire dans newInside ferait repartir une
+            // fausse « entrée » le jour où le véhicule serait affecté.
+            // Liste vide = zone valable pour tout le parc.
+            if (gf.VehicleIds.Length > 0 && !gf.VehicleIds.Contains(vehicleId))
+                continue;
+
             var isInside = IsPointInGeofence(lat, lng, gf);
             if (isInside) newInside.Add(gf.Id);
 
@@ -554,7 +562,8 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             .Select(g => new GeofenceCacheEntry(
                 g.Id, g.Name, g.Type, g.Coordinates, g.CenterLat, g.CenterLng, g.Radius,
                 g.AlertOnEntry, g.AlertOnExit, g.AlertSpeedLimit,
-                g.ActiveDays, g.ActiveStartTime, g.ActiveEndTime
+                g.ActiveDays, g.ActiveStartTime, g.ActiveEndTime,
+                g.AssignedVehicles.Select(av => av.VehicleId).ToArray()
             ))
             .ToListAsync(ct);
 
@@ -688,7 +697,14 @@ public record GeofenceCacheEntry(
     // société. null/vide = zone active en permanence.
     string[]? ActiveDays,
     TimeSpan? ActiveStartTime,
-    TimeSpan? ActiveEndTime
+    TimeSpan? ActiveEndTime,
+    // Véhicules affectés à la zone. VIDE = la zone s'applique à tout le parc.
+    //
+    // Cette liste était enregistrée en base (geofence_vehicles) mais n'était
+    // jamais chargée ici : la surveillance évaluait CHAQUE zone active contre
+    // CHAQUE véhicule de la société. Un exploitant qui désignait un véhicule
+    // précis recevait donc aussi les entrées et sorties de tous les autres.
+    int[] VehicleIds
 );
 
 /// <summary>

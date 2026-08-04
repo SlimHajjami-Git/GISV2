@@ -18,7 +18,7 @@ public class GeofenceScheduleTests
         TimeZoneInfo.CreateCustomTimeZone("UTC+1", TimeSpan.FromHours(1), "UTC+1", "UTC+1");
 
     private static GeofenceCacheEntry Zone(string[]? days = null, TimeSpan? start = null, TimeSpan? end = null) =>
-        new(1, "Zone", "circle", null, 36.8, 10.18, 500, true, true, null, days, start, end);
+        new(1, "Zone", "circle", null, 36.8, 10.18, 500, true, true, null, days, start, end, Array.Empty<int>());
 
     // 2026-07-06 = lundi. 10:00 UTC → 11:00 locale (UTC+1).
     private static readonly DateTime MondayMorningUtc = new(2026, 7, 6, 10, 0, 0, DateTimeKind.Utc);
