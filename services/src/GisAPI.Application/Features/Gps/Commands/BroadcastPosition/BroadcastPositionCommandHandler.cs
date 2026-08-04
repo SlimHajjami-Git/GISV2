@@ -370,7 +370,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
         {
             try
             {
-                await CheckGeofences(cached.CompanyId, cached.VehicleId.Value, cached.VehicleName, cached.Plate,
+                await CheckGeofences(cached.CompanyId, cached.VehicleId.Value, cached.DeviceId, cached.VehicleName, cached.Plate,
                     request.Latitude, request.Longitude, speed, request.RecordedAt, ct);
             }
             catch (Exception ex)
@@ -405,15 +405,16 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
     /// Check vehicle position against all company geofences.
     /// Detects entry/exit transitions and publishes notification events.
     /// </summary>
-    private async Task CheckGeofences(int companyId, int vehicleId, string? vehicleName, string? plate,
+    private async Task CheckGeofences(int companyId, int vehicleId, int deviceId, string? vehicleName, string? plate,
         double lat, double lng, double speed, DateTime timestamp, CancellationToken ct)
     {
         // Get cached geofences for this company
         var (geofences, tz) = await GetCompanyGeofences(companyId, ct);
         if (geofences.Count == 0) return;
 
-        // Get current state for this vehicle
-        var currentInside = _vehicleGeofenceState.GetOrAdd(vehicleId, _ => new HashSet<int>());
+        // État courant du véhicule — reconstruit depuis la base à la première
+        // position vue après un démarrage, au lieu de partir d'une mémoire vide.
+        var currentInside = await GetOrSeedInsideStateAsync(vehicleId, deviceId, lat, lng, timestamp, geofences, ct);
         var newInside = new HashSet<int>();
 
         foreach (var gf in geofences)
@@ -547,6 +548,73 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
 
         // Update state
         _vehicleGeofenceState[vehicleId] = newInside;
+    }
+
+    /// <summary>
+    /// État « à l'intérieur » du véhicule, reconstruit au premier passage après un
+    /// démarrage du service.
+    ///
+    /// POURQUOI — cet état ne vit qu'en mémoire. Avant, chaque redémarrage le
+    /// vidait : un véhicule déjà stationné dans sa zone déclenchait une fausse
+    /// « entrée » à sa première position, alors qu'il n'avait pas bougé. On
+    /// ressème donc l'état depuis la DERNIÈRE POSITION EN BASE strictement
+    /// antérieure à celle qu'on traite : si elle était dans la zone, le véhicule
+    /// y était déjà — pas d'alerte ; si elle était dehors et que la position
+    /// courante est dedans, l'entrée est réelle et l'alerte part. Une vraie
+    /// entrée survenue pile pendant le redémarrage n'est ainsi pas perdue.
+    ///
+    /// L'antériorité STRICTE compte : la position courante est souvent déjà
+    /// écrite en base (le service Rust insère avant que ce consommateur ne la
+    /// traite) — un simple « dernière position » se sèmerait avec elle-même et
+    /// éteindrait toute alerte au premier passage.
+    ///
+    /// Sans aucune position antérieure (boîtier tout neuf), on sème avec la
+    /// position courante : sa toute première apparition dans une zone ne produit
+    /// pas d'« entrée » — le véhicule y était peut-être garé depuis des mois
+    /// avant la pose du boîtier.
+    /// </summary>
+    private async Task<HashSet<int>> GetOrSeedInsideStateAsync(
+        int vehicleId, int deviceId, double currentLat, double currentLng,
+        DateTime timestamp, List<GeofenceCacheEntry> geofences, CancellationToken ct)
+    {
+        if (_vehicleGeofenceState.TryGetValue(vehicleId, out var existing))
+            return existing;
+
+        var prior = await _context.GpsPositions
+            .AsNoTracking()
+            .Where(p => p.DeviceId == deviceId && p.RecordedAt < timestamp)
+            .OrderByDescending(p => p.RecordedAt)
+            .Select(p => new { p.Latitude, p.Longitude })
+            .FirstOrDefaultAsync(ct);
+
+        var seeded = ComputeInsideZones(
+            prior?.Latitude ?? currentLat,
+            prior?.Longitude ?? currentLng,
+            vehicleId, geofences);
+
+        // GetOrAdd : si deux positions du même véhicule se croisent ici, la
+        // première inscrite fait foi pour les deux.
+        return _vehicleGeofenceState.GetOrAdd(vehicleId, seeded);
+    }
+
+    /// <summary>
+    /// Zones contenant le point, pour CE véhicule : même géométrie et même règle
+    /// de périmètre que la boucle de surveillance (une zone affectée à des
+    /// véhicules ne concerne qu'eux ; liste vide = tout le parc). Publique et
+    /// pure pour être éprouvée par les tests.
+    /// </summary>
+    public static HashSet<int> ComputeInsideZones(
+        double lat, double lng, int vehicleId, IEnumerable<GeofenceCacheEntry> geofences)
+    {
+        var inside = new HashSet<int>();
+        foreach (var gf in geofences)
+        {
+            if (gf.VehicleIds.Length > 0 && !gf.VehicleIds.Contains(vehicleId))
+                continue;
+            if (IsPointInGeofence(lat, lng, gf))
+                inside.Add(gf.Id);
+        }
+        return inside;
     }
 
     private async Task<(List<GeofenceCacheEntry> Geofences, TimeZoneInfo Tz)> GetCompanyGeofences(int companyId, CancellationToken ct)
