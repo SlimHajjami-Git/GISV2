@@ -2,6 +2,7 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { SignalRService, PositionUpdate } from '../../core/services/signalr.service';
+import { motionState } from '../../core/vehicle-state.util';
 import { AuthService } from '../../core/services/auth.service';
 import { Router } from '@angular/router';
 
@@ -242,8 +243,11 @@ export class DashboardPage implements OnInit, OnDestroy {
           }
         }
         // Recompute counts once per batch, not once per device frame.
-        this.activeVehicles = this.recentPositions.filter(p => p.isMoving).length;
-        this.stoppedVehicles = this.recentPositions.filter(p => !p.isMoving).length;
+        // motionState teste la fraîcheur AVANT la vitesse : sans cela, un boîtier
+        // muet dont la dernière trame portait 8 km/h comptait « en mouvement »
+        // pour toujours et gonflait ce compteur.
+        this.activeVehicles = this.recentPositions.filter(p => motionState(p) === 'moving').length;
+        this.stoppedVehicles = this.recentPositions.filter(p => motionState(p) !== 'moving').length;
       })
     );
 
@@ -297,7 +301,14 @@ export class DashboardPage implements OnInit, OnDestroy {
             speedKph: p.lastPosition.speedKph || 0,
             courseDeg: p.lastPosition.courseDeg || 0,
             ignitionOn: p.lastPosition.ignitionOn ?? false,
-            isMoving: (p.lastPosition.speedKph || 0) > 3,
+            // La fraîcheur d'abord : une dernière position vieille de plusieurs
+            // jours ne rend pas le véhicule « en mouvement », quelle que soit la
+            // vitesse qu'elle portait au moment où elle a été prise.
+            isMoving: motionState({
+              speedKph: p.lastPosition.speedKph,
+              ignitionOn: p.lastPosition.ignitionOn,
+              recordedAt: p.lastPosition.recordedAt
+            }) === 'moving',
             recordedAt: p.lastPosition.recordedAt || '',
             timestamp: p.lastPosition.recordedAt || ''
           }));

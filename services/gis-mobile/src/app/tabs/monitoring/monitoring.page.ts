@@ -4,6 +4,7 @@ import { Subscription, interval } from 'rxjs';
 import { Share } from '@capacitor/share';
 import { ApiService } from '../../core/services/api.service';
 import { SignalRService, PositionUpdate, ConnectionState } from '../../core/services/signalr.service';
+import { motionState } from '../../core/vehicle-state.util';
 import * as L from 'leaflet';
 
 @Component({
@@ -260,29 +261,19 @@ export class MonitoringPage implements OnInit, OnDestroy {
   });
 
   /**
-   * Pick the right marker icon for a given position. Four states:
-   *   green (moving)  = moving (speed > 3 km/h or server flagged isMoving)
-   *   orange (idling) = ignition ON but not moving (engine running, driver waiting)
-   *   red (parked)    = ignition OFF but still transmitting recently (<30 min) — parked
-   *   gray (offline)  = no recent data, device offline / out of coverage
+   * Icône du marqueur — délégué à motionState, qui teste la FRAÎCHEUR AVANT la
+   * vitesse. L'ancien code court-circuitait sur « moving » dès que la dernière
+   * trame portait une vitesse > 3 km/h : un boîtier muet depuis 11 jours restait
+   * donc affiché vert « en mouvement » avec sa vitesse fantôme, alors même que
+   * la fiche indiquait « Dernière comm. : il y a 11 j ».
    */
   private pickIcon(pos: PositionUpdate): L.DivIcon {
-    const speed = pos.speedKph ?? 0;
-    const moving = pos.isMoving || speed > 3;
-    if (moving) return this.movingIcon;
-
-    const recordedMs = pos.recordedAt ? Date.parse(pos.recordedAt) : NaN;
-    const ageMs = !isNaN(recordedMs) ? (Date.now() - recordedMs) : Infinity;
-    const online = ageMs < 30 * 60 * 1000; // data in last 30 min → still online
-
-    // Ignition on → engine running, driver idling
-    if (pos.ignitionOn) return this.idlingIcon;
-
-    // Ignition off but still transmitting → parked / stationary
-    if (online) return this.parkedIcon;
-
-    // Too old → device offline
-    return this.stoppedIcon;
+    switch (motionState(pos)) {
+      case 'moving': return this.movingIcon;
+      case 'idling': return this.idlingIcon;
+      case 'parked': return this.parkedIcon;
+      default: return this.stoppedIcon;
+    }
   }
 
   constructor(
@@ -613,15 +604,10 @@ export class MonitoringPage implements OnInit, OnDestroy {
     this.selectedVehicle = null;
   }
 
-  /** Classify a position into a display state — mirrors pickIcon's logic. */
+  /** État affiché (pastille du panneau) — même source que les marqueurs. */
   vehicleState(pos: PositionUpdate | null): 'moving' | 'idling' | 'parked' | 'offline' {
     if (!pos) return 'offline';
-    const speed = pos.speedKph ?? 0;
-    if (pos.isMoving || speed > 3) return 'moving';
-    const recordedMs = pos.recordedAt ? Date.parse(pos.recordedAt) : NaN;
-    const online = !isNaN(recordedMs) && (Date.now() - recordedMs) < 30 * 60 * 1000;
-    if (pos.ignitionOn) return 'idling';
-    return online ? 'parked' : 'offline';
+    return motionState(pos);
   }
 
   stateLabel(pos: PositionUpdate | null): string {

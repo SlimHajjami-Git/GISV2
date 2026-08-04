@@ -4,6 +4,7 @@ import { Subscription } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { SignalRService, PositionUpdate } from '../../core/services/signalr.service';
+import { isFresh } from '../../core/vehicle-state.util';
 import { Vehicle } from '../../core/models/types';
 import { AlertController, ToastController } from '@ionic/angular';
 import { Share } from '@capacitor/share';
@@ -323,7 +324,11 @@ export class VehiclesPage implements OnInit, OnDestroy {
             v.currentSpeed = pos.speedKph;
             v.currentLocation = { lat: pos.latitude, lng: pos.longitude };
             v.ignitionOn = pos.ignitionOn;
-            v.isOnline = true;
+            // Une trame poussée en direct peut être un rejeu d'historique
+            // (trames AA23) : c'est son horodatage qui dit si le véhicule est
+            // en ligne, pas le fait qu'elle vienne d'arriver. Sans horodatage,
+            // on accorde le bénéfice du direct.
+            v.isOnline = pos.recordedAt ? isFresh(pos.recordedAt) : true;
             v.lastRecordedAt = pos.recordedAt || v.lastRecordedAt;
             touched = true;
           }
@@ -379,7 +384,10 @@ export class VehiclesPage implements OnInit, OnDestroy {
                 };
                 v.currentSpeed = p.lastPosition.speedKph || 0;
                 v.ignitionOn = p.lastPosition.ignitionOn ?? v.ignitionOn;
-                v.isOnline = true;
+                // « Avoir une dernière position » ne veut pas dire « être en
+                // ligne » : celle du 239 TU 6235 datait de 11 jours, et le
+                // véhicule était pourtant compté parmi les connectés.
+                v.isOnline = isFresh(p.lastPosition.recordedAt);
                 v.lastRecordedAt = p.lastPosition.recordedAt || v.lastRecordedAt;
               }
             });
