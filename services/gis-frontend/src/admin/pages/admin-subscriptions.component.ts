@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -961,7 +961,10 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
 
   constructor(
     private router: Router,
-    private adminService: AdminService
+    private adminService: AdminService,
+    // Comme les autres pages admin : sans detectChanges() explicite après les
+    // chargements, la liste n'apparaît qu'au clic suivant (page « vide »).
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit() {
@@ -976,6 +979,7 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
     this.adminService.getSubscriptionTypes().pipe(takeUntil(this.destroy$)).subscribe({
       next: (types) => {
         this.subscriptionTypes = types;
+        this.cdr.detectChanges();
       },
       error: (err) => console.error('Error loading subscription types:', err)
     });
@@ -987,7 +991,7 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
   loadOrders() {
     const status = this.ordersFilter === 'all' ? undefined : this.ordersFilter;
     this.adminService.getSubscriptionOrders(status).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (orders) => { this.orders = orders; }
+      next: (orders) => { this.orders = orders; this.cdr.detectChanges(); }
     });
   }
 
@@ -1017,6 +1021,7 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
   confirmOrder(order: SubscriptionOrderAdmin) {
     if (!confirm(`Confirmer la commande de ${order.companyName} (${order.amount} ${this.currencyCode}) ?\n\nLe règlement a bien été reçu ? L'abonnement sera activé immédiatement.`)) return;
     this.processingOrderId = order.id;
+    this.cdr.detectChanges();
     this.adminService.confirmSubscriptionOrder(order.id).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => { this.processingOrderId = null; this.loadOrders(); },
       error: (err) => {
@@ -1036,6 +1041,7 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
     const order = this.orderToReject;
     if (!order) return;
     this.processingOrderId = order.id;
+    this.cdr.detectChanges();
     this.adminService.rejectSubscriptionOrder(order.id, this.rejectReason || undefined).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         this.processingOrderId = null;
@@ -1045,6 +1051,7 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
       error: (err) => {
         this.processingOrderId = null;
         alert(err.error?.message || 'Erreur lors du rejet');
+        this.cdr.detectChanges();
       }
     });
   }
@@ -1162,6 +1169,7 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
     this.adminService.updateSubscriptionType(type.id, { isActive: !type.isActive }).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         type.isActive = !type.isActive;
+        this.cdr.detectChanges();
       },
       error: (err) => console.error('Error toggling status:', err)
     });
@@ -1248,6 +1256,7 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
         next: () => {
           this.loadData();
           this.closeModal();
+          this.cdr.detectChanges();
         },
         error: (err) => {
           console.error('Error updating type:', err);
@@ -1259,6 +1268,7 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
         next: () => {
           this.loadData();
           this.closeModal();
+          this.cdr.detectChanges();
         },
         error: (err) => {
           console.error('Error creating type:', err);
@@ -1281,6 +1291,7 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
         this.loadData();
         this.showDeleteConfirm = false;
         this.typeToDelete = null;
+        this.cdr.detectChanges();
       },
       error: (err) => console.error('Error deleting type:', err)
     });
